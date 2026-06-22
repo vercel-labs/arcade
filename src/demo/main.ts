@@ -7,6 +7,8 @@ const FPS = 30;
 // Supersample factor: render this many times larger per axis, then box-average
 // down for antialiased edges. 2 is a good quality/cost balance; 3 is smoother.
 const SS = 3;
+// Softmax "temperature" for glyph jitter when enabled (subtle variation).
+const JITTER_TEMP = 0.04;
 
 let cols = process.stdout.columns ?? 80;
 let rows = process.stdout.rows ?? 24;
@@ -14,6 +16,7 @@ let target = new RenderTarget(cols * SS, (rows - 1) * 2 * SS);
 let display: RenderTarget | undefined;
 let t = 0;
 let glyphMode = false;
+let jitter = false;
 let frame: ReturnType<typeof setInterval> | undefined;
 
 function quit(): void {
@@ -28,12 +31,15 @@ const parse = createInputParser({
     else if (key === 'm' || key === 'M') {
       glyphMode = !glyphMode;
       process.stdout.write('\x1b[2J');
+    } else if (key === 'j' || key === 'J') {
+      jitter = !jitter;
     }
   },
 });
 
 function hud(): string {
-  const text = ` engine demo — ${glyphMode ? 'glyph' : 'truecolor'} mode · m: toggle · q: quit `;
+  const j = glyphMode ? ` · jitter ${jitter ? 'on' : 'off'} (j)` : '';
+  const text = ` engine demo — ${glyphMode ? 'glyph' : 'truecolor'} mode · m: toggle${j} · q: quit `;
   return `\x1b[${rows};1H\x1b[2m${text.slice(0, cols)}\x1b[0m\x1b[K`;
 }
 
@@ -51,7 +57,7 @@ frame = setInterval(() => {
   renderDemo(target, t);
   let view: string;
   if (glyphMode) {
-    view = toShapeGlyph(target, cols, rows - 1, { color: true });
+    view = toShapeGlyph(target, cols, rows - 1, { color: true, jitterTemp: jitter ? JITTER_TEMP : 0 });
   } else {
     display = downsample(target, SS, display);
     view = toHalfBlock(display);

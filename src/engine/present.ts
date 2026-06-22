@@ -46,7 +46,13 @@ export interface ShapeGlyphOptions {
   color?: boolean;
   skipTopRows?: number;
   contrast?: number;
+  // > 0 enables softmax sampling among the nearest glyphs (subtle variation);
+  // 0 is deterministic nearest match.
+  jitterTemp?: number;
 }
+
+// Cells dimmer than this are matched deterministically even when jitter is on.
+const JITTER_MIN_BRIGHTNESS = 0.25;
 
 export function toShapeGlyph(
   target: RenderTarget,
@@ -54,7 +60,7 @@ export function toShapeGlyph(
   rows: number,
   options: ShapeGlyphOptions = {},
 ): string {
-  const { color = true, skipTopRows = 0, contrast = 2 } = options;
+  const { color = true, skipTopRows = 0, contrast = 2, jitterTemp = 0 } = options;
   const W = target.width;
   const H = target.height;
   const c = target.color;
@@ -109,7 +115,9 @@ export function toShapeGlyph(
         for (let i = 0; i < dim; i++) vec[i] = Math.pow(vec[i] / mx, contrast) * mx;
       }
 
-      const ch = matchGlyph(vec);
+      // Only jitter cells with real brightness — near-black background cells have
+      // near-identical candidates (space/./,) and would just flicker as noise.
+      const ch = matchGlyph(vec, mx > JITTER_MIN_BRIGHTNESS ? jitterTemp : 0);
       if (ch === ' ') {
         out += ' ';
         continue;

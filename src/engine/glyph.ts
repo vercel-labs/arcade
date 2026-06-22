@@ -43,10 +43,40 @@ function coverage(rows: string[]): number[] {
 const charVectors = keys.map((k) => coverage(FONT[k]));
 const charOutputs = keys.slice();
 
-// Nearest character to a cell's (already contrast-enhanced) brightness vector.
-export function matchGlyph(cell: number[]): string {
-  let best = 0;
-  let bestDist = Infinity;
+// Reused top-K buffers so the sampled path allocates nothing per cell.
+const SAMPLE_K = 6;
+const kd = new Array(SAMPLE_K);
+const ki = new Array(SAMPLE_K);
+const kw = new Array(SAMPLE_K);
+
+// Picks the character for a cell's (contrast-enhanced) brightness vector.
+// temperature <= 0: deterministic nearest match (argmin distance).
+// temperature > 0: softmax sampling over the K nearest — like an LLM picking a
+// high-probability token rather than always the top one — so a cell with
+// several near-equal matches varies among them instead of locking to one glyph.
+export function matchGlyph(cell: number[], temperature = 0): string {
+  if (temperature <= 0) {
+    let best = 0;
+    let bestDist = Infinity;
+    for (let c = 0; c < charVectors.length; c++) {
+      const v = charVectors[c];
+      let d = 0;
+      for (let i = 0; i < DIM; i++) {
+        const diff = cell[i] - v[i];
+        d += diff * diff;
+      }
+      if (d < bestDist) {
+        bestDist = d;
+        best = c;
+      }
+    }
+    return charOutputs[best];
+  }
+
+  for (let k = 0; k < SAMPLE_K; k++) {
+    kd[k] = Infinity;
+    ki[k] = -1;
+  }
   for (let c = 0; c < charVectors.length; c++) {
     const v = charVectors[c];
     let d = 0;
@@ -54,10 +84,28 @@ export function matchGlyph(cell: number[]): string {
       const diff = cell[i] - v[i];
       d += diff * diff;
     }
-    if (d < bestDist) {
-      bestDist = d;
-      best = c;
+    if (d < kd[SAMPLE_K - 1]) {
+      let p = SAMPLE_K - 1;
+      while (p > 0 && kd[p - 1] > d) {
+        kd[p] = kd[p - 1];
+        ki[p] = ki[p - 1];
+        p--;
+      }
+      kd[p] = d;
+      ki[p] = c;
     }
   }
-  return charOutputs[best];
+
+  const d0 = kd[0];
+  let sum = 0;
+  for (let k = 0; k < SAMPLE_K; k++) {
+    kw[k] = ki[k] < 0 ? 0 : Math.exp(-(kd[k] - d0) / temperature);
+    sum += kw[k];
+  }
+  let r = Math.random() * sum;
+  for (let k = 0; k < SAMPLE_K; k++) {
+    r -= kw[k];
+    if (r <= 0 && ki[k] >= 0) return charOutputs[ki[k]];
+  }
+  return charOutputs[ki[0]];
 }

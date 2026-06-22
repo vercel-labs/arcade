@@ -12,6 +12,8 @@ const NUDGE = 0.4;
 // Supersample factor for the attract screen (antialiasing + sub-cell detail
 // for shape-matched glyph mode).
 const SS = 3;
+// Softmax "temperature" for glyph jitter when enabled (subtle variation).
+const JITTER_TEMP = 0.04;
 
 type Mode = 'attract' | 'playing';
 
@@ -29,6 +31,7 @@ const game = new Game();
 
 let mode: Mode = 'attract';
 let glyphMode = false;
+let jitter = false;
 let t = 0;
 let frame: ReturnType<typeof setInterval> | undefined;
 
@@ -61,6 +64,8 @@ const parse = createInputParser({
       else if (key === 'm' || key === 'M') {
         glyphMode = !glyphMode;
         process.stdout.write('\x1b[2J');
+      } else if (key === 'j' || key === 'J') {
+        jitter = !jitter;
       }
       return;
     }
@@ -115,7 +120,7 @@ function tick(): void {
     attract.renderScene(target, t);
     let view: string;
     if (glyphMode) {
-      view = toShapeGlyph(target, cols, rows - 1, { color: true });
+      view = toShapeGlyph(target, cols, rows - 1, { color: true, jitterTemp: jitter ? JITTER_TEMP : 0 });
     } else {
       display = downsample(target, SS, display);
       bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
