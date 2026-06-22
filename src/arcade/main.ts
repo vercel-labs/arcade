@@ -1,4 +1,4 @@
-import { bloom, downsample, RenderTarget, toHalfBlock } from '../engine/index.ts';
+import { bloom, downsample, RenderTarget, toGlyph, toHalfBlock } from '../engine/index.ts';
 import { AttractScene } from './attract.ts';
 import { Framebuffer } from './framebuffer.ts';
 import { Game, PLAY_RANGE } from './game.ts';
@@ -27,6 +27,7 @@ const attract = new AttractScene();
 const game = new Game();
 
 let mode: Mode = 'attract';
+let glyphMode = false;
 let t = 0;
 let frame: ReturnType<typeof setInterval> | undefined;
 
@@ -56,6 +57,10 @@ const parse = createInputParser({
     }
     if (mode === 'attract') {
       if (key === 's' || key === 'S') startGame();
+      else if (key === 'm' || key === 'M') {
+        glyphMode = !glyphMode;
+        process.stdout.write('\x1b[2J');
+      }
       return;
     }
     switch (key) {
@@ -109,7 +114,8 @@ function tick(): void {
     attract.renderScene(target, t);
     display = downsample(target, SS, display);
     bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
-    process.stdout.write(toHalfBlock(display) + attract.overlay(cols, rows));
+    const view = glyphMode ? toGlyph(display, { color: true }) : toHalfBlock(display);
+    process.stdout.write(view + attract.overlay(cols, rows));
     return;
   }
 

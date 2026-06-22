@@ -4,7 +4,7 @@ export * from './math.ts';
 export * from './shader.ts';
 export { RenderTarget } from './framebuffer.ts';
 export { rasterize } from './raster.ts';
-export { toHalfBlock } from './present.ts';
+export { toHalfBlock, toGlyph, type GlyphOptions } from './present.ts';
 export { downsample } from './supersample.ts';
 export { bloom, type BloomOptions } from './bloom.ts';
 export { cube, tetrahedron, TETRA_VERTS, TETRA_FACES, type Mesh } from './mesh.ts';
