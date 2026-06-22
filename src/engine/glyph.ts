@@ -8,12 +8,14 @@ export const GW = 3;
 export const GH = 6;
 const DIM = GW * GH;
 
-// The character set the matcher may choose from. Letters/digits are excluded:
-// with the full font, dense regions match dense letters (W, M, N) which reads as
-// random "text soup". A symbol-only set keeps the shape matching but renders as
-// a clean ASCII schematic. Widen to Object.keys(FONT) for the full-font look.
-const CHARSET = ' .,\'`":;!|-_=~^+*/\\<>()[]{}?#%&@$';
-const keys = Object.keys(FONT).filter((k) => CHARSET.includes(k));
+// The character set the matcher may choose from. Defaults to all 95 printable
+// ASCII characters (as in Alex Harri's article) for maximum shape diversity, so
+// the genuinely-best-matching glyph always wins. If a scene ever reads as noisy
+// "text soup", you can narrow to a symbol-only subset for a cleaner schematic
+// look at the cost of match fidelity, e.g.:
+//   const CHARSET = ' .,\'`":;!|-_=~^+*/\\<>()[]{}?#%&@$';
+//   const keys = Object.keys(FONT).filter((k) => CHARSET.includes(k));
+const keys = Object.keys(FONT);
 
 // Coverage of a glyph: fraction of inked pixels falling in each grid region.
 function coverage(rows: string[]): number[] {
