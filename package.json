@@ -1,0 +1,25 @@
+{
+  "name": "arcade",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Terminal-rendered ASCII arcade — 3D games in the terminal, powered by Vercel AI Gateway",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx src/arcade/main.ts",
+    "demo": "tsx src/demo/main.ts",
+    "watch": "tsx watch src/arcade/main.ts",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/figlet": "1.7.0",
+    "@types/node": "22.10.5",
+    "tsx": "4.19.2",
+    "typescript": "5.7.3"
+  },
+  "dependencies": {
+    "figlet": "1.11.0"
+  }
+}
