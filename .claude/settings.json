@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "permissions": {
+    "allow": [
+      "Bash(pnpm snapshot:*)",
+      "Bash(pnpm exec tsx src/tools/snapshot.ts:*)",
+      "Bash(sips:*)"
+    ]
+  }
+}

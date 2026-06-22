@@ -26,6 +26,8 @@ export interface Varying {
   normal: Vec3;
   uv: [number, number];
   color: Vec3;
+  /** Barycentric weights, filled by the rasterizer. Useful for edge/wireframe shaders. */
+  bary: Vec3;
 }
 
 export type BlendMode = 'opaque' | 'add' | 'alpha';

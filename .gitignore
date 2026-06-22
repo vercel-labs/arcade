@@ -7,3 +7,6 @@ dist
 
 # local reference clones (not part of the project)
 reference/
+
+# render snapshots (local only)
+.snapshots/

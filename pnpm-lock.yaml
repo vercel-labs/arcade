@@ -7,14 +7,7 @@ settings:
 importers:
 
   .:
-    dependencies:
-      figlet:
-        specifier: 1.11.0
-        version: 1.11.0
     devDependencies:
-      '@types/figlet':
-        specifier: 1.7.0
-        version: 1.7.0
       '@types/node':
         specifier: 22.10.5
         version: 22.10.5
@@ -171,24 +164,12 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@types/figlet@1.7.0':
-    resolution: {integrity: sha512-KwrT7p/8Eo3Op/HBSIwGXOsTZKYiM9NpWRBJ5sVjWP/SmlS+oxxRvJht/FNAtliJvja44N3ul1yATgohnVBV0Q==}
-
   '@types/node@22.10.5':
     resolution: {integrity: sha512-F8Q+SeGimwOo86fiovQh8qiXfFEh2/ocYv7tU5pJ3EXMSSxk1Joj5wefpFK2fHTf/N6HKGSxIDBT9f3gCxXPkQ==}
-
-  commander@14.0.3:
-    resolution: {integrity: sha512-H+y0Jo/T1RZ9qPP4Eh1pkcQcLRglraJaSLoyOtHxu6AapkjWVCy2Sit1QQ4x3Dng8qDlSsZEet7g5Pq06MvTgw==}
-    engines: {node: '>=20'}
 
   esbuild@0.23.1:
     resolution: {integrity: sha512-VVNz/9Sa0bs5SELtn3f7qhJCDPCF5oMEl5cO9/SSinpE9hbPVvxbd572HH5AKiP7WD8INO53GgfDDhRjkylHEg==}
     engines: {node: '>=18'}
-    hasBin: true
-
-  figlet@1.11.0:
-    resolution: {integrity: sha512-EEx3OS/l2bFqcUNN2NM9FPJp8vAMrgbCxsbl2hbcJNNxOEwVe3mEzrhan7TbJQViZa8mMqhihlbCaqD+LyYKTQ==}
-    engines: {node: '>= 17.0.0'}
     hasBin: true
 
   fsevents@2.3.3:
@@ -289,13 +270,9 @@ snapshots:
   '@esbuild/win32-x64@0.23.1':
     optional: true
 
-  '@types/figlet@1.7.0': {}
-
   '@types/node@22.10.5':
     dependencies:
       undici-types: 6.20.0
-
-  commander@14.0.3: {}
 
   esbuild@0.23.1:
     optionalDependencies:
@@ -323,10 +300,6 @@ snapshots:
       '@esbuild/win32-arm64': 0.23.1
       '@esbuild/win32-ia32': 0.23.1
       '@esbuild/win32-x64': 0.23.1
-
-  figlet@1.11.0:
-    dependencies:
-      commander: 14.0.3
 
   fsevents@2.3.3:
     optional: true

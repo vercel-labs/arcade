@@ -1,25 +1,29 @@
+import { bloom, downsample, RenderTarget, toHalfBlock } from '../engine/index.ts';
+import { AttractScene } from './attract.ts';
 import { Framebuffer } from './framebuffer.ts';
 import { Game, PLAY_RANGE } from './game.ts';
 import { createInputParser } from '../platform/input.ts';
-import { LoadingScreen } from './loading.ts';
-import { PixelCanvas } from './pixel-canvas.ts';
 import { drawReticle, renderScene } from './renderer.ts';
 import * as term from '../platform/terminal.ts';
 
 const FPS = 30;
 const DT = 1 / FPS;
 const NUDGE = 0.4;
+// Supersample factor for the attract screen (antialiasing).
+const SS = 2;
 
 type Mode = 'attract' | 'playing';
 
 let cols = process.stdout.columns ?? 80;
 let rows = process.stdout.rows ?? 24;
 
-// The game draws ASCII glyphs; the attract screen draws half-block "pixels".
-// Both reserve the bottom row (HUD / prompt).
+// The game draws ASCII glyphs (legacy char framebuffer); the attract screen
+// renders through the engine to a supersampled RGBA target. Both reserve the
+// bottom row (HUD / prompt).
 const fb = new Framebuffer(cols, rows - 1);
-const canvas = new PixelCanvas(cols, rows - 1);
-const loading = new LoadingScreen();
+let target = new RenderTarget(cols * SS, (rows - 1) * 2 * SS);
+let display: RenderTarget | undefined;
+const attract = new AttractScene();
 const game = new Game();
 
 let mode: Mode = 'attract';
@@ -51,7 +55,7 @@ const parse = createInputParser({
       return;
     }
     if (mode === 'attract') {
-      startGame();
+      if (key === 's' || key === 'S') startGame();
       return;
     }
     switch (key) {
@@ -74,10 +78,7 @@ const parse = createInputParser({
     }
   },
   onMouse(e) {
-    if (mode === 'attract') {
-      if (e.type === 'down') startGame();
-      return;
-    }
+    if (mode === 'attract') return;
     if (e.type === 'move' || e.type === 'drag' || e.type === 'down') {
       aimAt(e.x, e.y);
     }
@@ -105,9 +106,10 @@ function tick(): void {
   t += DT;
 
   if (mode === 'attract') {
-    canvas.clear();
-    loading.renderScene(canvas, t);
-    process.stdout.write(canvas.toFrameString(loading.bannerHeight) + loading.overlay(cols, rows));
+    attract.renderScene(target, t);
+    display = downsample(target, SS, display);
+    bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
+    process.stdout.write(toHalfBlock(display) + attract.overlay(cols, rows));
     return;
   }
 
@@ -124,7 +126,8 @@ process.stdout.on('resize', () => {
   cols = process.stdout.columns ?? 80;
   rows = process.stdout.rows ?? 24;
   fb.resize(cols, rows - 1);
-  canvas.resize(cols, rows - 1);
+  target = new RenderTarget(cols * SS, (rows - 1) * 2 * SS);
+  display = undefined;
 });
 
 term.enter();

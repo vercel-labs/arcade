@@ -14,12 +14,8 @@
     "type-check": "tsc --noEmit"
   },
   "devDependencies": {
-    "@types/figlet": "1.7.0",
     "@types/node": "22.10.5",
     "tsx": "4.19.2",
     "typescript": "5.7.3"
-  },
-  "dependencies": {
-    "figlet": "1.11.0"
   }
 }

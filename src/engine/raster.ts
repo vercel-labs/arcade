@@ -57,6 +57,7 @@ function lerpVarying(a: Varying, b: Varying, t: number): Varying {
     normal: { x: l(a.normal.x, b.normal.x), y: l(a.normal.y, b.normal.y), z: l(a.normal.z, b.normal.z) },
     uv: [l(a.uv[0], b.uv[0]), l(a.uv[1], b.uv[1])],
     color: { x: l(a.color.x, b.color.x), y: l(a.color.y, b.color.y), z: l(a.color.z, b.color.z) },
+    bary: { x: 0, y: 0, z: 0 },
   };
 }
 
@@ -154,5 +155,6 @@ function interpolate(a: Screen, b: Screen, c: Screen, w0: number, w1: number, w2
       y: f(va.color.y, vb.color.y, vc.color.y),
       z: f(va.color.z, vb.color.z, vc.color.z),
     },
+    bary: { x: w0, y: w1, z: w2 },
   };
 }
