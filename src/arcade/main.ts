@@ -114,7 +114,7 @@ function tick(): void {
     attract.renderScene(target, t);
     display = downsample(target, SS, display);
     bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
-    const view = glyphMode ? toGlyph(display, { color: true }) : toHalfBlock(display);
+    const view = glyphMode ? toGlyph(display, { color: true, edges: true }) : toHalfBlock(display);
     process.stdout.write(view + attract.overlay(cols, rows));
     return;
   }

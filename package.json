@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "tsx src/arcade/main.ts",
     "demo": "tsx src/demo/main.ts",
+    "snapshot": "tsx src/tools/snapshot.ts",
     "watch": "tsx watch src/arcade/main.ts",
     "type-check": "tsc --noEmit"
   },

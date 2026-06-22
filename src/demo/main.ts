@@ -50,6 +50,6 @@ frame = setInterval(() => {
   t += 1 / FPS;
   renderDemo(target, t);
   display = downsample(target, SS, display);
-  const view = glyphMode ? toGlyph(display, { color: true }) : toHalfBlock(display);
+  const view = glyphMode ? toGlyph(display, { color: true, edges: true }) : toHalfBlock(display);
   process.stdout.write(view + hud());
 }, 1000 / FPS);

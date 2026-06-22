@@ -1,11 +1,16 @@
 import { RenderTarget } from './framebuffer.ts';
 
-// Box-downsamples a high-resolution render target by an integer factor,
-// averaging each factor×factor block into one output pixel. This is SSAA: edges
-// rendered at higher resolution become partial-coverage blends here, removing
-// the hard staircase of single-sample rasterization.
-//
-// Pass a reusable `out` target to avoid per-frame allocation.
+// sRGB ⇄ linear (gamma ≈ 2.2). Values are 0..255 floats but may exceed 255 from
+// additive blending; the power curve handles >1 fine and round-trips it back.
+const GAMMA = 2.2;
+const toLinear = (v: number): number => Math.pow(v / 255, GAMMA);
+const toSrgb = (v: number): number => Math.pow(v, 1 / GAMMA) * 255;
+
+// Box-downsamples a high-resolution render target by an integer factor — SSAA.
+// Averages IN LINEAR LIGHT (decode sRGB → average → re-encode): averaging in
+// gamma space darkens partial-coverage edges and muddies smooth gradients,
+// while linear averaging keeps them clean. Pass a reusable `out` to avoid
+// per-frame allocation.
 export function downsample(src: RenderTarget, factor: number, out?: RenderTarget): RenderTarget {
   if (factor <= 1) return src;
   const W = Math.floor(src.width / factor);
@@ -24,15 +29,15 @@ export function downsample(src: RenderTarget, factor: number, out?: RenderTarget
         const row = (y * factor + dy) * sw;
         for (let dx = 0; dx < factor; dx++) {
           const si = (row + x * factor + dx) * 3;
-          r += sc[si];
-          g += sc[si + 1];
-          b += sc[si + 2];
+          r += toLinear(sc[si]);
+          g += toLinear(sc[si + 1]);
+          b += toLinear(sc[si + 2]);
         }
       }
       const di = (y * W + x) * 3;
-      dc[di] = r * inv;
-      dc[di + 1] = g * inv;
-      dc[di + 2] = b * inv;
+      dc[di] = toSrgb(r * inv);
+      dc[di + 1] = toSrgb(g * inv);
+      dc[di + 2] = toSrgb(b * inv);
     }
   }
   return dst;
