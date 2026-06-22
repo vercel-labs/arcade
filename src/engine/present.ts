@@ -1,4 +1,5 @@
 import type { RenderTarget } from './framebuffer.ts';
+import { GH, GW, matchGlyph } from './glyph.ts';
 
 // Serializes a render target to a single ANSI string using the upper half-block
 // ▀: foreground = top pixel, background = bottom pixel, so each terminal cell
@@ -31,85 +32,90 @@ export function toHalfBlock(target: RenderTarget, skipTopRows = 0): string {
   return out + '\x1b[0m';
 }
 
-// Glyph mode: one character per cell drawn from a dark→light ramp, so the
-// character's ink density encodes brightness — the "ASCII art" look. Optionally
-// tinted with the cell's truecolor (color: true) or left monochrome like zero's
-// AsciiTerminal (color: false). With `edges`, a Sobel pass over the cell
-// luminance overrides high-gradient cells with directional line glyphs
-// (| / - \), so silhouettes read as drawn strokes rather than ramp fill — the
-// structure-over-brightness idea that makes ASCII look sharp. Averages the two
-// stacked pixels into one sample (half the vertical resolution of toHalfBlock).
-export interface GlyphOptions {
-  ramp?: string;
+// Shape-matched glyph mode (per Alex Harri's "ASCII rendering"): instead of a
+// luminance ramp, each cell is reduced to a GW×GH grid of brightness values and
+// rendered as the character whose ink *distribution* best matches it (nearest
+// in Euclidean distance). This captures shape, not just density, so silhouettes
+// read as the right strokes (| / \ _ etc.) without a separate edge pass.
+//
+// Samples the high-resolution (pre-downsample) target so each cell has enough
+// sub-cell detail; `cols`/`rows` are the terminal grid. `color` tints each glyph
+// with the cell's average color. `contrast` applies Alex's global contrast
+// enhancement to the cell vector (normalize → pow → denormalize) to sharpen.
+export interface ShapeGlyphOptions {
   color?: boolean;
   skipTopRows?: number;
-  edges?: boolean;
-  edgeThreshold?: number; // Sobel magnitude (luminance 0..1) above which a cell becomes an edge
+  contrast?: number;
 }
 
-const DEFAULT_RAMP = ' .:-=+*#%@';
-// Terminal cells are ~twice as tall as wide; scale the vertical gradient so the
-// directional glyph matches the *visual* edge angle, not the numeric one.
-const EDGE_ASPECT = 0.5;
-
-export function toGlyph(target: RenderTarget, options: GlyphOptions = {}): string {
-  const { ramp = DEFAULT_RAMP, color = true, skipTopRows = 0, edges = false, edgeThreshold = 0.7 } = options;
+export function toShapeGlyph(
+  target: RenderTarget,
+  cols: number,
+  rows: number,
+  options: ShapeGlyphOptions = {},
+): string {
+  const { color = true, skipTopRows = 0, contrast = 2 } = options;
   const W = target.width;
-  const rows = Math.floor(target.height / 2);
-  const col = target.color;
-  const maxIdx = ramp.length - 1;
-
-  // Pass 1: per-cell luminance (average the two stacked pixels). Needed up front
-  // so the edge pass can read neighbor cells.
-  const lum = new Float32Array(W * rows);
-  for (let cy = 0; cy < rows; cy++) {
-    const top = 2 * cy * W;
-    const bot = (2 * cy + 1) * W;
-    for (let x = 0; x < W; x++) {
-      const ti = (top + x) * 3;
-      const bi = (bot + x) * 3;
-      const r = (col[ti] + col[bi]) * 0.5;
-      const g = (col[ti + 1] + col[bi + 1]) * 0.5;
-      const b = (col[ti + 2] + col[bi + 2]) * 0.5;
-      lum[cy * W + x] = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-    }
-  }
+  const H = target.height;
+  const c = target.color;
+  const fw = W / cols;
+  const fh = H / rows;
+  const dim = GW * GH;
+  const sum = new Array(dim);
+  const cnt = new Array(dim);
+  const vec = new Array(dim);
 
   let out = '';
   let last = '';
   for (let cy = Math.max(0, skipTopRows); cy < rows; cy++) {
     out += `\x1b[${cy + 1};1H`;
-    const top = 2 * cy * W;
-    const bot = (2 * cy + 1) * W;
-    for (let x = 0; x < W; x++) {
-      const i = cy * W + x;
-      let ch = ramp[Math.min(maxIdx, Math.max(0, Math.round(lum[i] * maxIdx)))];
-
-      if (edges && cy > 0 && cy < rows - 1 && x > 0 && x < W - 1) {
-        const tl = lum[i - W - 1];
-        const tc = lum[i - W];
-        const tr = lum[i - W + 1];
-        const ml = lum[i - 1];
-        const mr = lum[i + 1];
-        const bl = lum[i + W - 1];
-        const bc = lum[i + W];
-        const br = lum[i + W + 1];
-        const gx = tr + 2 * mr + br - (tl + 2 * ml + bl);
-        const gy = bl + 2 * bc + br - (tl + 2 * tc + tr);
-        if (Math.hypot(gx, gy) > edgeThreshold) ch = edgeGlyph(gx, gy);
+    const y0 = Math.floor(cy * fh);
+    const y1 = Math.max(y0 + 1, Math.floor((cy + 1) * fh));
+    for (let cx = 0; cx < cols; cx++) {
+      const x0 = Math.floor(cx * fw);
+      const x1 = Math.max(x0 + 1, Math.floor((cx + 1) * fw));
+      const rw = x1 - x0;
+      const rh = y1 - y0;
+      sum.fill(0);
+      cnt.fill(0);
+      let cr = 0;
+      let cg = 0;
+      let cb = 0;
+      let cc = 0;
+      for (let y = y0; y < y1; y++) {
+        const gy = Math.min(GH - 1, Math.floor(((y - y0) * GH) / rh));
+        for (let x = x0; x < x1; x++) {
+          const i = (y * W + x) * 3;
+          const r = c[i];
+          const g = c[i + 1];
+          const b = c[i + 2];
+          const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+          const gx = Math.min(GW - 1, Math.floor(((x - x0) * GW) / rw));
+          const idx = gy * GW + gx;
+          sum[idx] += lum;
+          cnt[idx]++;
+          cr += r;
+          cg += g;
+          cb += b;
+          cc++;
+        }
+      }
+      let mx = 0;
+      for (let i = 0; i < dim; i++) {
+        vec[i] = cnt[i] ? sum[i] / cnt[i] : 0;
+        if (vec[i] > mx) mx = vec[i];
+      }
+      if (mx > 0 && contrast !== 1) {
+        for (let i = 0; i < dim; i++) vec[i] = Math.pow(vec[i] / mx, contrast) * mx;
       }
 
+      const ch = matchGlyph(vec);
       if (ch === ' ') {
         out += ' ';
         continue;
       }
-      if (color) {
-        const ti = (top + x) * 3;
-        const bi = (bot + x) * 3;
-        const r = (col[ti] + col[bi]) * 0.5;
-        const g = (col[ti + 1] + col[bi + 1]) * 0.5;
-        const b = (col[ti + 2] + col[bi + 2]) * 0.5;
-        const seq = `\x1b[38;2;${byte(r)};${byte(g)};${byte(b)}m`;
+      if (color && cc > 0) {
+        const seq = `\x1b[38;2;${byte(cr / cc)};${byte(cg / cc)};${byte(cb / cc)}m`;
         if (seq !== last) {
           out += seq;
           last = seq;
@@ -119,16 +125,6 @@ export function toGlyph(target: RenderTarget, options: GlyphOptions = {}): strin
     }
   }
   return out + '\x1b[0m';
-}
-
-// Maps a luminance gradient to the line glyph that lies along the edge
-// (perpendicular to the gradient), aspect-corrected for tall terminal cells.
-function edgeGlyph(gx: number, gy: number): string {
-  const deg = ((Math.atan2(gy * EDGE_ASPECT, gx) * 180) / Math.PI + 180) % 180;
-  if (deg < 22.5 || deg >= 157.5) return '|';
-  if (deg < 67.5) return '/';
-  if (deg < 112.5) return '-';
-  return '\\';
 }
 
 function byte(v: number): number {

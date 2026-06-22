@@ -1,4 +1,4 @@
-import { bloom, downsample, RenderTarget, toGlyph, toHalfBlock } from '../engine/index.ts';
+import { bloom, downsample, RenderTarget, toHalfBlock, toShapeGlyph } from '../engine/index.ts';
 import { AttractScene } from './attract.ts';
 import { Framebuffer } from './framebuffer.ts';
 import { Game, PLAY_RANGE } from './game.ts';
@@ -9,8 +9,9 @@ import * as term from '../platform/terminal.ts';
 const FPS = 30;
 const DT = 1 / FPS;
 const NUDGE = 0.4;
-// Supersample factor for the attract screen (antialiasing).
-const SS = 2;
+// Supersample factor for the attract screen (antialiasing + sub-cell detail
+// for shape-matched glyph mode).
+const SS = 3;
 
 type Mode = 'attract' | 'playing';
 
@@ -112,9 +113,14 @@ function tick(): void {
 
   if (mode === 'attract') {
     attract.renderScene(target, t);
-    display = downsample(target, SS, display);
-    bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
-    const view = glyphMode ? toGlyph(display, { color: true, edges: true }) : toHalfBlock(display);
+    let view: string;
+    if (glyphMode) {
+      view = toShapeGlyph(target, cols, rows - 1, { color: true });
+    } else {
+      display = downsample(target, SS, display);
+      bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
+      view = toHalfBlock(display);
+    }
     process.stdout.write(view + attract.overlay(cols, rows));
     return;
   }

@@ -1,12 +1,12 @@
 import { renderDemo } from './scene.ts';
-import { downsample, RenderTarget, toGlyph, toHalfBlock } from '../engine/index.ts';
+import { downsample, RenderTarget, toHalfBlock, toShapeGlyph } from '../engine/index.ts';
 import { createInputParser } from '../platform/input.ts';
 import * as term from '../platform/terminal.ts';
 
 const FPS = 30;
 // Supersample factor: render this many times larger per axis, then box-average
 // down for antialiased edges. 2 is a good quality/cost balance; 3 is smoother.
-const SS = 2;
+const SS = 3;
 
 let cols = process.stdout.columns ?? 80;
 let rows = process.stdout.rows ?? 24;
@@ -49,7 +49,12 @@ process.stdin.on('data', parse);
 frame = setInterval(() => {
   t += 1 / FPS;
   renderDemo(target, t);
-  display = downsample(target, SS, display);
-  const view = glyphMode ? toGlyph(display, { color: true, edges: true }) : toHalfBlock(display);
+  let view: string;
+  if (glyphMode) {
+    view = toShapeGlyph(target, cols, rows - 1, { color: true });
+  } else {
+    display = downsample(target, SS, display);
+    view = toHalfBlock(display);
+  }
   process.stdout.write(view + hud());
 }, 1000 / FPS);

@@ -10,7 +10,7 @@ const cols = Number(process.argv[2]) || 110;
 const rows = Number(process.argv[3]) || 44;
 const t = Number(process.argv[4]) || 0.6;
 const out = process.argv[5] || '.snapshots/attract.ppm';
-const SS = 2;
+const SS = 3;
 
 const scene = new AttractScene();
 const target = new RenderTarget(cols * SS, (rows - 1) * 2 * SS);
