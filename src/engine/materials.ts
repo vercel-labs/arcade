@@ -1,3 +1,4 @@
+import { hslToRgb } from './color.ts';
 import { dot3, mat4MulDir, mat4MulVec4, normalize3, sub3, type Mat4, type Vec3 } from './math.ts';
 import type { Material } from './shader.ts';
 
@@ -29,14 +30,18 @@ export interface GlassUniforms {
   cameraPos: Vec3;
   edgeColor: Vec3; // bright edge glow (0..255)
   edgeWidth: number; // edge thickness in barycentric units (~0.02–0.06)
-  bodyColor: Vec3; // faint internal tint (0..255)
-  bodyStrength: number; // 0..1, how visible the glass body is
+  glassColor: Vec3; // glass body tint (0..255)
+  bodyStrength: number; // 0..1, overall fill brightness
+  ambient: number; // 0..1, minimum fill so faces are always filled (not just rims)
+  fresnelPower: number; // higher = brighter only at grazing faces
+  dispersion: number; // 0..1, strength of the internal rainbow sheen
 }
 
-// Glowing-glass material: bright edges from the barycentric distance to each
-// triangle edge, plus a faint Fresnel-driven body that brightens at grazing
-// angles. Meant to be drawn additively over the rainbow so the glass reads as
-// translucent — you see the spectrum through it, with the edges catching light.
+// Glassy, FILLED prism material. Each face is filled (not just outlined): a
+// glass-tinted body brightened at grazing faces (Fresnel), an internal rainbow
+// sheen driven by world position (fake dispersion — the spectrum you see inside
+// real glass), and bright barycentric edges on top. Drawn additively over the
+// rainbow so the glass still reads as translucent.
 export const glassMaterial: Material<GlassUniforms> = {
   cull: 'none',
   blend: 'add',
@@ -49,13 +54,23 @@ export const glassMaterial: Material<GlassUniforms> = {
   fragment(u, vy) {
     const e = Math.min(vy.bary.x, vy.bary.y, vy.bary.z);
     const edge = 1 - smoothstep(0, u.edgeWidth, e);
+
     const view = normalize3(sub3(u.cameraPos, vy.world));
-    const facing = Math.abs(dot3(normalize3(vy.normal), view));
-    const body = (1 - facing) * u.bodyStrength; // grazing faces shimmer faintly
+    const facing = Math.abs(dot3(normalize3(vy.normal), view)); // 1 face-on, 0 edge-on
+    const fres = Math.pow(1 - facing, u.fresnelPower);
+    // Filled body: always at least `ambient`, brighter toward grazing faces.
+    const body = u.bodyStrength * (u.ambient + (1 - u.ambient) * fres);
+
+    // Internal dispersion: a smooth hue gradient across the glass volume (shifts
+    // as the prism rotates because it's keyed to world position).
+    const hue = (vy.world.y * 120 + vy.world.x * 70 + 200) % 360;
+    const [dr, dg, db] = hslToRgb(hue < 0 ? hue + 360 : hue, 1, 0.5);
+    const disp = u.dispersion * (0.35 + 0.65 * fres);
+
     return {
-      r: u.edgeColor.x * edge + u.bodyColor.x * body,
-      g: u.edgeColor.y * edge + u.bodyColor.y * body,
-      b: u.edgeColor.z * edge + u.bodyColor.z * body,
+      r: u.edgeColor.x * edge + u.glassColor.x * body + dr * disp,
+      g: u.edgeColor.y * edge + u.glassColor.y * body + dg * disp,
+      b: u.edgeColor.z * edge + u.glassColor.z * body + db * disp,
       a: 1,
     };
   },

@@ -98,8 +98,6 @@ export class AttractScene {
 
     const exitN = effective(1);
     const entryN = effective(-1);
-    const exit: P2 = { x: center.x + exitN.x * radius * 0.7, y: center.y + exitN.y * radius * 0.7 };
-    const entry: P2 = { x: center.x + entryN.x * radius * 0.7, y: center.y + entryN.y * radius * 0.7 };
 
     // Rainbow leaves bent toward the exit-face normal; the more oblique, the wider.
     const k = 0.65;
@@ -112,17 +110,26 @@ export class AttractScene {
     const oblique = 1 - Math.max(0, exitN.x);
     const spread = 0.22 + 0.16 * oblique;
 
-    drawRainbow(target, exit, angle, W, radius * 0.18, Math.min(H * 0.5, W * Math.tan(spread)), 0.85);
-    drawBeam(target, { x: 0, y: entry.y - H * 0.1 }, entry, 0.9);
+    // Anchor the beam and rainbow INSIDE the prism silhouette (well within
+    // `radius`) so there's no gap between the light and the glass — the beam
+    // runs into the prism and the rainbow emerges from within it.
+    const entry: P2 = { x: center.x + entryN.x * radius * 0.85, y: center.y + entryN.y * radius * 0.85 };
+    const beamEnd: P2 = { x: center.x - entryN.x * radius * 0.1, y: center.y - entryN.y * radius * 0.1 };
+
+    drawRainbow(target, center, angle, W, radius * 0.12, Math.min(H * 0.5, W * Math.tan(spread)), 0.85);
+    drawBeam(target, { x: 0, y: entry.y - H * 0.08 }, beamEnd, 1.2);
 
     rasterize(target, mesh, glassMaterial, {
       mvp,
       model,
       cameraPos: camera.eye,
-      edgeColor: { x: 205, y: 215, z: 240 },
+      edgeColor: { x: 215, y: 222, z: 240 },
       edgeWidth: 0.03,
-      bodyColor: { x: 30, y: 55, z: 95 },
-      bodyStrength: 0.3,
+      glassColor: { x: 180, y: 198, z: 225 },
+      bodyStrength: 0.42,
+      ambient: 0.42,
+      fresnelPower: 2,
+      dispersion: 0.16,
     });
   }
 
@@ -161,10 +168,12 @@ function drawBeam(target: RenderTarget, a: P2, b: P2, intensity: number): void {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy)));
-  const v = 235 * intensity;
+  const v = 255 * intensity;
   for (let i = 0; i <= steps; i++) {
     const tt = i / steps;
-    addGlow(target, a.x + dx * tt, a.y + dy * tt, v, v, v, 1.4);
+    // Dim toward the prism end so the beam visibly fades as it meets the glass.
+    const vv = v * (1 - 0.45 * tt);
+    addGlow(target, a.x + dx * tt, a.y + dy * tt, vv, vv, vv, 1.7);
   }
 }
 

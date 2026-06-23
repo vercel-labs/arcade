@@ -12,3 +12,6 @@ https://github.com/sinclairzx81/zero
 
 WebGL-powered React Component for video to ASCII conversion.
 https://github.com/elijah0528/video2ascii
+
+I Tried Turning Games Into Text
+https://www.youtube.com/watch?v=gg40RWiaHRY
