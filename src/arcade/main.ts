@@ -4,6 +4,8 @@ import { Framebuffer } from './framebuffer.ts';
 import { Game, PLAY_RANGE } from './game.ts';
 import { createInputParser } from '../platform/input.ts';
 import { drawReticle, renderScene } from './renderer.ts';
+import { hitButtons, layoutButtons, renderButtons, type ButtonRect } from './ui.ts';
+import { renderDemo } from '../demo/scene.ts';
 import * as term from '../platform/terminal.ts';
 
 const FPS = 30;
@@ -14,8 +16,11 @@ const NUDGE = 0.4;
 const SS = 3;
 // Softmax "temperature" for glyph jitter when enabled (subtle variation).
 const JITTER_TEMP = 0.04;
+// Bottom rows reserved on the attract screen for the button bar + margin, so the
+// scene doesn't render under the buttons and there's space below them.
+const ATTRACT_RESERVE = 2;
 
-type Mode = 'attract' | 'playing';
+type Mode = 'attract' | 'playing' | 'demo';
 
 let cols = process.stdout.columns ?? 80;
 let rows = process.stdout.rows ?? 24;
@@ -24,14 +29,15 @@ let rows = process.stdout.rows ?? 24;
 // renders through the engine to a supersampled RGBA target. Both reserve the
 // bottom row (HUD / prompt).
 const fb = new Framebuffer(cols, rows - 1);
-let target = new RenderTarget(cols * SS, (rows - 1) * 2 * SS);
+let target = new RenderTarget(cols * SS, (rows - ATTRACT_RESERVE) * 2 * SS);
 let display: RenderTarget | undefined;
 const attract = new AttractScene();
 const game = new Game();
 
 let mode: Mode = 'attract';
-let glyphMode = false;
+let glyphMode = true;
 let jitter = false;
+let hoveredButton: string | null = null;
 let t = 0;
 let frame: ReturnType<typeof setInterval> | undefined;
 
@@ -53,6 +59,61 @@ function aimAt(mx: number, my: number): void {
   game.movePlayerTo(nx * PLAY_RANGE, -ny * PLAY_RANGE);
 }
 
+function toggleMode(): void {
+  glyphMode = !glyphMode;
+  process.stdout.write('\x1b[2J');
+}
+
+function enterDemo(): void {
+  mode = 'demo';
+  process.stdout.write('\x1b[2J');
+}
+
+function toAttract(): void {
+  mode = 'attract';
+  process.stdout.write('\x1b[2J');
+}
+
+// The bottom button bar for the current screen (empty during gameplay).
+function currentBar(): ButtonRect[] {
+  const modeLabel = `  mode: ${glyphMode ? 'ascii' : 'color'}  `;
+  const row = rows - 1;
+  if (mode === 'attract') {
+    return layoutButtons(
+      [
+        { id: 'start', label: '  Start  ' },
+        { id: 'demo', label: '  Demo  ' },
+        { id: 'mode', label: modeLabel },
+        { id: 'quit', label: '  Quit  ' },
+      ],
+      cols,
+      row,
+    );
+  }
+  if (mode === 'demo') {
+    return layoutButtons(
+      [
+        { id: 'back', label: '  Back  ' },
+        { id: 'mode', label: modeLabel },
+        { id: 'quit', label: '  Quit  ' },
+      ],
+      cols,
+      row,
+    );
+  }
+  return [];
+}
+
+// Presents the engine `target` (prism or demo cube) in the active color/glyph mode.
+function presentScene(): string {
+  if (glyphMode) {
+    return toShapeGlyph(target, cols, rows - ATTRACT_RESERVE, { color: true, jitterTemp: jitter ? JITTER_TEMP : 0 });
+  }
+  display = downsample(target, SS, display);
+  bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
+  return toHalfBlock(display);
+}
+
 const parse = createInputParser({
   onKey(key) {
     if (key === 'quit' || key === 'q' || key === 'escape') {
@@ -61,12 +122,15 @@ const parse = createInputParser({
     }
     if (mode === 'attract') {
       if (key === 's' || key === 'S') startGame();
-      else if (key === 'm' || key === 'M') {
-        glyphMode = !glyphMode;
-        process.stdout.write('\x1b[2J');
-      } else if (key === 'j' || key === 'J') {
-        jitter = !jitter;
-      }
+      else if (key === 'd' || key === 'D') enterDemo();
+      else if (key === 'm' || key === 'M') toggleMode();
+      else if (key === 'j' || key === 'J') jitter = !jitter;
+      return;
+    }
+    if (mode === 'demo') {
+      if (key === 'b' || key === 'B') toAttract();
+      else if (key === 'm' || key === 'M') toggleMode();
+      else if (key === 'j' || key === 'J') jitter = !jitter;
       return;
     }
     switch (key) {
@@ -89,7 +153,17 @@ const parse = createInputParser({
     }
   },
   onMouse(e) {
-    if (mode === 'attract') return;
+    if (mode === 'attract' || mode === 'demo') {
+      hoveredButton = hitButtons(currentBar(), e.x, e.y);
+      if (e.type === 'down' && hoveredButton) {
+        if (hoveredButton === 'start') startGame();
+        else if (hoveredButton === 'demo') enterDemo();
+        else if (hoveredButton === 'back') toAttract();
+        else if (hoveredButton === 'mode') toggleMode();
+        else if (hoveredButton === 'quit') quit();
+      }
+      return;
+    }
     if (e.type === 'move' || e.type === 'drag' || e.type === 'down') {
       aimAt(e.x, e.y);
     }
@@ -118,15 +192,13 @@ function tick(): void {
 
   if (mode === 'attract') {
     attract.renderScene(target, t);
-    let view: string;
-    if (glyphMode) {
-      view = toShapeGlyph(target, cols, rows - 1, { color: true, jitterTemp: jitter ? JITTER_TEMP : 0 });
-    } else {
-      display = downsample(target, SS, display);
-      bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
-      view = toHalfBlock(display);
-    }
-    process.stdout.write(view + attract.overlay(cols, rows));
+    process.stdout.write(presentScene() + renderButtons(currentBar(), hoveredButton));
+    return;
+  }
+
+  if (mode === 'demo') {
+    renderDemo(target, t);
+    process.stdout.write(presentScene() + renderButtons(currentBar(), hoveredButton));
     return;
   }
 
@@ -143,7 +215,7 @@ process.stdout.on('resize', () => {
   cols = process.stdout.columns ?? 80;
   rows = process.stdout.rows ?? 24;
   fb.resize(cols, rows - 1);
-  target = new RenderTarget(cols * SS, (rows - 1) * 2 * SS);
+  target = new RenderTarget(cols * SS, (rows - ATTRACT_RESERVE) * 2 * SS);
   display = undefined;
 });
 

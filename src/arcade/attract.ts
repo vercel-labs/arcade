@@ -132,12 +132,6 @@ export class AttractScene {
       dispersion: 0.16,
     });
   }
-
-  overlay(cols: number, rows: number): string {
-    const prompt = 'press s to start   ·   press q to quit';
-    const pc = Math.max(1, Math.floor((cols - prompt.length) / 2) + 1);
-    return `\x1b[${rows};${pc}H\x1b[38;2;90;90;100m${prompt}\x1b[0m`;
-  }
 }
 
 function addGlow(target: RenderTarget, px: number, py: number, r: number, g: number, b: number, radius: number): void {
