@@ -66,6 +66,12 @@ function cycleMode(): void {
   process.stdout.write('\x1b[2J');
 }
 
+function setRenderMode(next: RenderMode): void {
+  if (renderMode === next) return;
+  renderMode = next;
+  process.stdout.write('\x1b[2J');
+}
+
 function enterDemo(): void {
   mode = 'demo';
   process.stdout.write('\x1b[2J');
@@ -129,6 +135,9 @@ const parse = createInputParser({
       if (key === 's' || key === 'S') startGame();
       else if (key === 'd' || key === 'D') enterDemo();
       else if (key === 'm' || key === 'M') cycleMode();
+      else if (key === 'c' || key === 'C') setRenderMode('color');
+      else if (key === 'l' || key === 'L') setRenderMode('luminance');
+      else if (key === 'a' || key === 'A') setRenderMode('ascii');
       else if (key === 'j' || key === 'J') jitter = !jitter;
       return;
     }
