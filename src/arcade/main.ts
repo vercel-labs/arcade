@@ -1,4 +1,4 @@
-import { bloom, downsample, RenderTarget, toHalfBlock, toShapeGlyph } from '../engine/index.ts';
+import { bloom, downsample, RenderTarget, toHalfBlock, toLuminance, toShapeGlyph } from '../engine/index.ts';
 import { AttractScene } from './attract.ts';
 import { Framebuffer } from './framebuffer.ts';
 import { Game, PLAY_RANGE } from './game.ts';
@@ -21,6 +21,8 @@ const JITTER_TEMP = 0.04;
 const ATTRACT_RESERVE = 2;
 
 type Mode = 'attract' | 'playing' | 'demo';
+type RenderMode = 'color' | 'ascii' | 'luminance';
+const MODE_ORDER: RenderMode[] = ['ascii', 'color', 'luminance'];
 
 let cols = process.stdout.columns ?? 80;
 let rows = process.stdout.rows ?? 24;
@@ -35,7 +37,7 @@ const attract = new AttractScene();
 const game = new Game();
 
 let mode: Mode = 'attract';
-let glyphMode = true;
+let renderMode: RenderMode = 'ascii';
 let jitter = false;
 let hoveredButton: string | null = null;
 let t = 0;
@@ -59,8 +61,8 @@ function aimAt(mx: number, my: number): void {
   game.movePlayerTo(nx * PLAY_RANGE, -ny * PLAY_RANGE);
 }
 
-function toggleMode(): void {
-  glyphMode = !glyphMode;
+function cycleMode(): void {
+  renderMode = MODE_ORDER[(MODE_ORDER.indexOf(renderMode) + 1) % MODE_ORDER.length];
   process.stdout.write('\x1b[2J');
 }
 
@@ -76,7 +78,7 @@ function toAttract(): void {
 
 // The bottom button bar for the current screen (empty during gameplay).
 function currentBar(): ButtonRect[] {
-  const modeLabel = `  mode: ${glyphMode ? 'ascii' : 'color'}  `;
+  const modeLabel = `  mode: ${renderMode.padEnd(9)}  `;
   const row = rows - 1;
   if (mode === 'attract') {
     return layoutButtons(
@@ -106,8 +108,11 @@ function currentBar(): ButtonRect[] {
 
 // Presents the engine `target` (prism or demo cube) in the active color/glyph mode.
 function presentScene(): string {
-  if (glyphMode) {
+  if (renderMode === 'ascii') {
     return toShapeGlyph(target, cols, rows - ATTRACT_RESERVE, { color: true, jitterTemp: jitter ? JITTER_TEMP : 0 });
+  }
+  if (renderMode === 'luminance') {
+    return toLuminance(target, cols, rows - ATTRACT_RESERVE, { color: true });
   }
   display = downsample(target, SS, display);
   bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
@@ -123,13 +128,13 @@ const parse = createInputParser({
     if (mode === 'attract') {
       if (key === 's' || key === 'S') startGame();
       else if (key === 'd' || key === 'D') enterDemo();
-      else if (key === 'm' || key === 'M') toggleMode();
+      else if (key === 'm' || key === 'M') cycleMode();
       else if (key === 'j' || key === 'J') jitter = !jitter;
       return;
     }
     if (mode === 'demo') {
       if (key === 'b' || key === 'B') toAttract();
-      else if (key === 'm' || key === 'M') toggleMode();
+      else if (key === 'm' || key === 'M') cycleMode();
       else if (key === 'j' || key === 'J') jitter = !jitter;
       return;
     }
@@ -159,7 +164,7 @@ const parse = createInputParser({
         if (hoveredButton === 'start') startGame();
         else if (hoveredButton === 'demo') enterDemo();
         else if (hoveredButton === 'back') toAttract();
-        else if (hoveredButton === 'mode') toggleMode();
+        else if (hoveredButton === 'mode') cycleMode();
         else if (hoveredButton === 'quit') quit();
       }
       return;

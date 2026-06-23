@@ -135,6 +135,74 @@ export function toShapeGlyph(
   return out + '\x1b[0m';
 }
 
+// Luminance mode: classic brightness → ramp character (NOT shape-matching).
+// Each cell's average brightness selects a glyph from a 10-level dark→light
+// ramp (index 0 = empty space). Optionally tinted with the cell's color.
+export interface LuminanceOptions {
+  color?: boolean;
+  skipTopRows?: number;
+  ramp?: string;
+}
+
+const LUMINANCE_RAMP = ' .:coP0?@█';
+
+export function toLuminance(
+  target: RenderTarget,
+  cols: number,
+  rows: number,
+  options: LuminanceOptions = {},
+): string {
+  const { color = true, skipTopRows = 0, ramp = LUMINANCE_RAMP } = options;
+  const W = target.width;
+  const H = target.height;
+  const c = target.color;
+  const fw = W / cols;
+  const fh = H / rows;
+  const maxIdx = ramp.length - 1;
+  let out = '';
+  let last = '';
+  for (let cy = Math.max(0, skipTopRows); cy < rows; cy++) {
+    out += `\x1b[${cy + 1};1H`;
+    const y0 = Math.floor(cy * fh);
+    const y1 = Math.max(y0 + 1, Math.floor((cy + 1) * fh));
+    for (let cx = 0; cx < cols; cx++) {
+      const x0 = Math.floor(cx * fw);
+      const x1 = Math.max(x0 + 1, Math.floor((cx + 1) * fw));
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let n = 0;
+      for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+          const i = (y * W + x) * 3;
+          r += c[i];
+          g += c[i + 1];
+          b += c[i + 2];
+          n++;
+        }
+      }
+      r /= n;
+      g /= n;
+      b /= n;
+      const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      const ch = ramp[Math.min(maxIdx, Math.max(0, Math.round(lum * maxIdx)))];
+      if (ch === ' ') {
+        out += ' ';
+        continue;
+      }
+      if (color) {
+        const seq = `\x1b[38;2;${byte(r)};${byte(g)};${byte(b)}m`;
+        if (seq !== last) {
+          out += seq;
+          last = seq;
+        }
+      }
+      out += ch;
+    }
+  }
+  return out + '\x1b[0m';
+}
+
 function byte(v: number): number {
   if (v <= 0) return 0;
   if (v >= 255) return 255;
