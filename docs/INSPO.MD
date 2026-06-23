@@ -15,3 +15,6 @@ https://github.com/elijah0528/video2ascii
 
 I Tried Turning Games Into Text
 https://www.youtube.com/watch?v=gg40RWiaHRY
+
+ASCII rendering deep dive
+https://alexharri.com/blog/ascii-rendering

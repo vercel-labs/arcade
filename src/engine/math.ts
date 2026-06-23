@@ -104,6 +104,12 @@ export function mat4Translate(x: number, y: number, z: number): Mat4 {
   return m;
 }
 
+export function mat4Scale(x: number, y: number, z: number): Mat4 {
+  const m = mat4Identity();
+  m[0] = x; m[5] = y; m[10] = z;
+  return m;
+}
+
 export function mat4MulVec4(m: Mat4, v: Vec4): Vec4 {
   return {
     x: m[0] * v.x + m[4] * v.y + m[8] * v.z + m[12] * v.w,

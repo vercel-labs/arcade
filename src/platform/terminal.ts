@@ -10,6 +10,13 @@ const CURSOR_SHOW = '\x1b[?25h';
 // 1003 = report any mouse motion; 1006 = SGR extended coordinates (no 223 cap).
 const MOUSE_ON = '\x1b[?1003h\x1b[?1006h';
 const MOUSE_OFF = '\x1b[?1006l\x1b[?1003l';
+// OSC 11 sets the terminal's default background color; OSC 111 resets it to the
+// user's configured color. We force black so unpainted regions (margins, the
+// reserved bottom row, empty cells in ASCII mode) match the scene instead of
+// showing the user's theme background. Set inside the alt screen and reset on
+// leave, so it can never leak into the user's shell.
+const BG_BLACK = '\x1b]11;#000000\x07';
+const BG_RESET = '\x1b]111\x07';
 
 let active = false;
 let cleanupRegistered = false;
@@ -17,7 +24,7 @@ let cleanupRegistered = false;
 export function enter(): void {
   if (active) return;
   active = true;
-  process.stdout.write(ALT_SCREEN_ON + CURSOR_HIDE + MOUSE_ON);
+  process.stdout.write(ALT_SCREEN_ON + CURSOR_HIDE + MOUSE_ON + BG_BLACK);
   if (process.stdin.isTTY) process.stdin.setRawMode(true);
   process.stdin.resume();
   process.stdin.setEncoding('utf8');
@@ -28,7 +35,7 @@ export function leave(): void {
   if (!active) return;
   active = false;
   if (process.stdin.isTTY) process.stdin.setRawMode(false);
-  process.stdout.write(MOUSE_OFF + CURSOR_SHOW + ALT_SCREEN_OFF);
+  process.stdout.write(BG_RESET + MOUSE_OFF + CURSOR_SHOW + ALT_SCREEN_OFF);
 }
 
 function registerCleanup(): void {

@@ -6,6 +6,27 @@ export interface Mesh {
   indices: number[];
 }
 
+export interface AABB {
+  min: Vec3;
+  max: Vec3;
+}
+
+// Axis-aligned bounds of a mesh's vertices.
+export function meshBounds(mesh: Mesh): AABB {
+  const min: Vec3 = { x: Infinity, y: Infinity, z: Infinity };
+  const max: Vec3 = { x: -Infinity, y: -Infinity, z: -Infinity };
+  for (const v of mesh.vertices) {
+    const p = v.position;
+    if (p.x < min.x) min.x = p.x;
+    if (p.y < min.y) min.y = p.y;
+    if (p.z < min.z) min.z = p.z;
+    if (p.x > max.x) max.x = p.x;
+    if (p.y > max.y) max.y = p.y;
+    if (p.z > max.z) max.z = p.z;
+  }
+  return { min, max };
+}
+
 interface Face {
   corners: [Vec3, Vec3, Vec3, Vec3];
   normal: Vec3;
@@ -85,6 +106,25 @@ export const TETRA_FACES: [number, number, number][] = [
   [0, 3, 1],
   [1, 2, 3],
 ];
+
+// Rebuild a mesh as flat-shaded triangle soup: each triangle gets its own three
+// vertices sharing one geometric face normal (from positions). Lighting then
+// depends only on geometry, not the source's (possibly inconsistent) stored
+// normals — pair with two-sided shading so orientation doesn't matter either.
+export function flatShade(mesh: Mesh): Mesh {
+  const vertices: VertexIn[] = [];
+  const indices: number[] = [];
+  for (let i = 0; i < mesh.indices.length; i += 3) {
+    const a = mesh.vertices[mesh.indices[i]];
+    const b = mesh.vertices[mesh.indices[i + 1]];
+    const c = mesh.vertices[mesh.indices[i + 2]];
+    const n = norm(cross(sub(b.position, a.position), sub(c.position, a.position)));
+    const base = vertices.length;
+    for (const v of [a, b, c]) vertices.push({ position: v.position, normal: n, uv: v.uv, color: v.color });
+    indices.push(base, base + 1, base + 2);
+  }
+  return { vertices, indices };
+}
 
 export function tetrahedron(): Mesh {
   const vertices: VertexIn[] = [];

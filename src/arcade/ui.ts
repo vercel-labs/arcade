@@ -30,7 +30,12 @@ export function hitButtons(buttons: ButtonRect[], mx: number, my: number): strin
 }
 
 export function renderButtons(buttons: ButtonRect[], hovered: string | null): string {
-  let out = '';
+  if (buttons.length === 0) return '';
+  // Clear the whole bar row first: the buttons are centered, so on a width
+  // change they re-center and the previous cells on this row (which nothing else
+  // repaints) would otherwise persist as ghosts. ESC[2K + rewrite in one frame
+  // is atomic to the terminal, so there's no flicker.
+  let out = `\x1b[${buttons[0].row};1H\x1b[2K`;
   for (const b of buttons) {
     const h = b.id === hovered;
     // Minimal pill: dim on near-black normally, bright inverted on hover.

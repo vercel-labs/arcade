@@ -24,6 +24,62 @@ export const lambertMaterial: Material<LambertUniforms> = {
   },
 };
 
+export interface PieceUniforms {
+  mvp: Mat4;
+  model: Mat4;
+  cameraPos: Vec3; // world-space eye, for two-sided normal correction
+  keyDir: Vec3; // normalized, points toward the key light
+  fillDir: Vec3; // normalized, points toward the (weaker) fill light
+  keyStrength: number; // 0..1+, key contribution
+  fillStrength: number; // 0..1, fill contribution (lifts shadows without flattening)
+  ambient: number; // 0..1 floor (keep low for prominent shadows)
+  tint: Vec3; // base color 0..255 — drives the piece's color (white/brown/…)
+  glow?: Vec3; // optional highlight color; the lit color is blended toward it (e.g. hover)
+}
+
+// Fraction the lit color is pulled toward `glow` when present (hover highlight).
+const GLOW_MIX = 0.42;
+
+// Solid object material with a two-light rig (key + fill) and a flat color
+// `tint`. Color identifies the piece set; fixed world-space lights sculpt the
+// form, and a two-sided normal correction makes lighting consistent even though
+// these assets have inconsistent normal orientation (some sub-meshes mirrored).
+export const pieceMaterial: Material<PieceUniforms> = {
+  // No culling: the chess assets have mixed triangle winding (some sub-meshes
+  // are mirrored), so back-face culling drops faces from one side. The z-buffer
+  // handles occlusion regardless, and culling saved little here anyway.
+  cull: 'none',
+  vertex(u, vin) {
+    const clip = mat4MulVec4(u.mvp, { x: vin.position.x, y: vin.position.y, z: vin.position.z, w: 1 });
+    const w = mat4MulVec4(u.model, { x: vin.position.x, y: vin.position.y, z: vin.position.z, w: 1 });
+    const normal = mat4MulDir(u.model, vin.normal);
+    return { clip, world: { x: w.x, y: w.y, z: w.z }, normal, uv: vin.uv, color: u.tint, bary: { x: 0, y: 0, z: 0 } };
+  },
+  fragment(u, vy) {
+    let n = normalize3(vy.normal);
+    // Two-sided: flip the normal to face the camera so the *visible* surface is
+    // always shaded by its true outward direction — regardless of whether the
+    // asset stored the normal pointing in or out. This is what makes every piece
+    // light the same way instead of king/bishop reading inverted.
+    const view = sub3(u.cameraPos, vy.world);
+    if (dot3(n, view) < 0) n = { x: -n.x, y: -n.y, z: -n.z };
+    const key = u.keyStrength * Math.max(0, dot3(n, u.keyDir));
+    const fill = u.fillStrength * Math.max(0, dot3(n, u.fillDir));
+    // Clamp to 1 so bright tints (e.g. ivory) never blow out to white: every
+    // tint then sweeps the identical shadow→lit gradient, differing only in hue.
+    const intensity = Math.min(1, u.ambient + key + fill);
+    let r = u.tint.x * intensity;
+    let g = u.tint.y * intensity;
+    let b = u.tint.z * intensity;
+    if (u.glow) {
+      r += (u.glow.x - r) * GLOW_MIX;
+      g += (u.glow.y - g) * GLOW_MIX;
+      b += (u.glow.z - b) * GLOW_MIX;
+    }
+    return { r, g, b, a: 1 };
+  },
+};
+
 export interface GlassUniforms {
   mvp: Mat4;
   model: Mat4;

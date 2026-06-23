@@ -18,6 +18,11 @@ export interface MouseEvent {
   y: number;
   /** -1 = wheel up, +1 = wheel down. Only set for `wheel` events. */
   wheel?: -1 | 1;
+  /** Modifier keys held during the event (SGR mouse encoding). */
+  shift: boolean;
+  /** Meta/Alt (Option on macOS; some terminals also map ⌘ here). */
+  meta: boolean;
+  ctrl: boolean;
 }
 
 export interface Handlers {
@@ -71,13 +76,15 @@ function decodeMouse(cb: number, x: number, y: number, terminator: string): Mous
   const button = cb & 3;
   const isMotion = (cb & 32) !== 0;
   const isWheel = (cb & 64) !== 0;
+  // Modifier bits per the SGR mouse encoding.
+  const mods = { shift: (cb & 4) !== 0, meta: (cb & 8) !== 0, ctrl: (cb & 16) !== 0 };
 
   if (isWheel) {
-    return { type: 'wheel', button, x, y, wheel: button === 0 ? -1 : 1 };
+    return { type: 'wheel', button, x, y, wheel: button === 0 ? -1 : 1, ...mods };
   }
   if (isMotion) {
     // button === 3 means no button is held, so it's a bare move, not a drag.
-    return { type: button === 3 ? 'move' : 'drag', button, x, y };
+    return { type: button === 3 ? 'move' : 'drag', button, x, y, ...mods };
   }
-  return { type: terminator === 'M' ? 'down' : 'up', button, x, y };
+  return { type: terminator === 'M' ? 'down' : 'up', button, x, y, ...mods };
 }

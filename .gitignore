@@ -10,3 +10,11 @@ reference/
 
 # render snapshots (local only)
 .snapshots/
+
+# Heavy chess assets: only chess_blender/ is loaded at runtime. The raw model
+# sources and the superseded sliced/decimated sets stay local (regenerate with
+# src/tools/slice-chess.ts and decimate-chess.ts).
+public/assets/chess_pieces.obj
+public/assets/chess_pieces.glb
+public/assets/chess/
+public/assets/chess_decimated/

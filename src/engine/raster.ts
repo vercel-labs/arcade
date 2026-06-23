@@ -19,13 +19,17 @@ export function rasterize<U>(target: RenderTarget, mesh: Mesh, material: Materia
   const cull = material.cull ?? 'back';
   const idx = mesh.indices;
   for (let i = 0; i < idx.length; i += 3) {
-    const tri = [
-      material.vertex(uniforms, mesh.vertices[idx[i]]),
-      material.vertex(uniforms, mesh.vertices[idx[i + 1]]),
-      material.vertex(uniforms, mesh.vertices[idx[i + 2]]),
-    ];
-    const poly = clipNear(tri);
-    // Fan-triangulate the (possibly clipped) polygon.
+    const a = material.vertex(uniforms, mesh.vertices[idx[i]]);
+    const b = material.vertex(uniforms, mesh.vertices[idx[i + 1]]);
+    const c = material.vertex(uniforms, mesh.vertices[idx[i + 2]]);
+    // Fast path: triangle fully in front of the near plane (the overwhelming
+    // common case) needs no clipping — skip the array/lerp allocations entirely.
+    if (a.clip.w > NEAR_W && b.clip.w > NEAR_W && c.clip.w > NEAR_W) {
+      drawTriangle(target, material, uniforms, a, b, c, blend, cull);
+      continue;
+    }
+    const poly = clipNear([a, b, c]);
+    // Fan-triangulate the clipped polygon.
     for (let k = 2; k < poly.length; k++) {
       drawTriangle(target, material, uniforms, poly[0], poly[k - 1], poly[k], blend, cull);
     }

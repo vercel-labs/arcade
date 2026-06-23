@@ -13,7 +13,15 @@ export {
 } from './present.ts';
 export { downsample } from './supersample.ts';
 export { bloom, type BloomOptions } from './bloom.ts';
-export { cube, tetrahedron, TETRA_VERTS, TETRA_FACES, type Mesh } from './mesh.ts';
+export { cube, flatShade, meshBounds, tetrahedron, TETRA_VERTS, TETRA_FACES, type AABB, type Mesh } from './mesh.ts';
+export { parseObj, type ParseObjOptions } from './obj.ts';
 export { cameraMatrices, type Camera, type CameraMatrices } from './camera.ts';
-export { lambertMaterial, type LambertUniforms, glassMaterial, type GlassUniforms } from './materials.ts';
+export {
+  lambertMaterial,
+  type LambertUniforms,
+  glassMaterial,
+  type GlassUniforms,
+  pieceMaterial,
+  type PieceUniforms,
+} from './materials.ts';
 export { hslToRgb, lerpRgb, type RGB } from './color.ts';
