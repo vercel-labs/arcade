@@ -10,7 +10,7 @@
 // overwrite scene cells — it never reads the scene. A later phase folds the
 // scene into a Surface and diffs two grids for minimal output.
 
-import type { RGB } from './color.ts';
+import { blendOver, type RGB, type RGBA } from './color.ts';
 
 import { stringWidth } from './width.ts';
 
@@ -43,6 +43,9 @@ export class Surface {
   private opaque: Uint8Array;
   // 1 if the row has any opaque cell this frame; lets the runtime clear ghosts.
   private touched: Uint8Array;
+  // Optional clip rect: while set, setCell drops writes outside it (overflow
+  // clipping for the UI layer). Structurally compatible with tui's LayoutBox.
+  private clipRect: { x: number; y: number; w: number; h: number } | null = null;
 
   constructor(cols: number, rows: number) {
     this.cols = cols;
@@ -76,7 +79,16 @@ export class Surface {
   }
 
   private inBounds(x: number, y: number): boolean {
-    return x >= 0 && x < this.cols && y >= 0 && y < this.rows;
+    if (x < 0 || x >= this.cols || y < 0 || y >= this.rows) return false;
+    const c = this.clipRect;
+    if (c && (x < c.x || x >= c.x + c.w || y < c.y || y >= c.y + c.h)) return false;
+    return true;
+  }
+
+  // Restrict subsequent writes to a rect (null clears). The UI layer sets this
+  // per node so overflow:hidden content can't paint outside its viewport.
+  setClip(r: { x: number; y: number; w: number; h: number } | null): void {
+    this.clipRect = r;
   }
 
   // Paint one opaque cell. `ch` of '' clears the glyph to a space.
@@ -93,6 +105,19 @@ export class Surface {
     this.style[i] = style;
     this.opaque[i] = 1;
     this.touched[y] = 1;
+  }
+
+  // Paint one cell with alpha compositing: blend `bg` over whatever color the
+  // cell already holds (the scene, once it fills the Surface), then blend `fg`
+  // over that result. The cell becomes opaque with the composited colors, so a
+  // later diff/serialize treats it like any other painted cell.
+  setCellWithAlphaBlending(x: number, y: number, ch: string, fg: RGBA, bg: RGBA, style = 0): void {
+    if (!this.inBounds(x, y)) return;
+    const i = y * this.cols + x;
+    const dst: RGB = [this.bg[i * 3], this.bg[i * 3 + 1], this.bg[i * 3 + 2]];
+    const nb = blendOver(dst, bg);
+    const nf = blendOver(nb, fg);
+    this.setCell(x, y, ch, nf, nb, style);
   }
 
   // Fill a rectangle with a background color (spaces). Clips to bounds.

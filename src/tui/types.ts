@@ -2,18 +2,21 @@
 // frame (cheap, like the old currentBar()); per-node interaction state lives in
 // the Screen runtime keyed by `id`, so the tree itself stays pure data.
 
-import type { RGB } from '../engine/index.ts';
 import type { Key } from '../platform/input.ts';
+import type { ColorToken } from './theme.ts';
 
 // A size along one axis: fixed cells, a percentage of the parent's content box,
 // or 'auto' (intrinsic — text width for Text, summed children for Box).
 export type Dimension = number | { pct: number } | 'auto';
 
 export type FlexDirection = 'row' | 'column';
-export type Justify = 'start' | 'center' | 'end' | 'between' | 'around';
+export type Justify = 'start' | 'center' | 'end' | 'between' | 'around' | 'evenly';
 export type Align = 'start' | 'center' | 'end' | 'stretch';
-// Padding is either uniform, or [vertical, horizontal].
-export type Padding = number | [number, number];
+// Box spacing: uniform, [vertical, horizontal], or [top, right, bottom, left].
+export type Spacing = number | [number, number] | [number, number, number, number];
+export type Padding = Spacing;
+export type Position = 'relative' | 'absolute';
+export type Overflow = 'visible' | 'hidden';
 export type BorderStyle = 'none' | 'square' | 'round';
 
 export interface Style {
@@ -28,11 +31,21 @@ export interface Style {
   alignItems?: Align; // cross-axis placement, default 'start'
   gap?: number; // cells between children
   padding?: Padding;
+  margin?: Spacing; // outer spacing; participates in flex sizing/positioning
   flexGrow?: number; // share of leftover main-axis space, default 0
-  background?: RGB;
-  color?: RGB; // text/foreground color
+  flexShrink?: number; // share of overflow to absorb, default 1 (0 = never shrink)
+  flexBasis?: number; // initial main-axis size before grow/shrink (overrides width/height intrinsic)
+  // Out-of-flow positioning against the nearest ancestor's content box.
+  position?: Position; // default 'relative'
+  top?: Dimension;
+  left?: Dimension;
+  right?: Dimension;
+  bottom?: Dimension;
+  overflow?: Overflow; // 'hidden' clips descendants to this node's content box
+  background?: ColorToken; // theme token, RGB/RGBA tuple, CSS string, or 'transparent'
+  color?: ColorToken; // text/foreground color
   border?: BorderStyle;
-  borderColor?: RGB;
+  borderColor?: ColorToken;
   bold?: boolean;
   dim?: boolean;
   underline?: boolean;
@@ -64,4 +77,7 @@ export interface Node {
   onKey?: (k: Key) => boolean;
   // Filled by layout(); read by paint and hit-test (one source of truth).
   layout?: LayoutBox;
+  // Filled by layout() when an ancestor sets overflow:hidden — the rect this
+  // node's painting and hit-testing are clipped to (undefined = no clip).
+  clip?: LayoutBox;
 }

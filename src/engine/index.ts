@@ -24,7 +24,7 @@ export {
   pieceMaterial,
   type PieceUniforms,
 } from './materials.ts';
-export { hslToRgb, lerpRgb, type RGB } from './color.ts';
+export { hslToRgb, lerpRgb, parseColor, blendOver, type RGB, type RGBA } from './color.ts';
 export { cellWidth, stringWidth } from './width.ts';
 export {
   Surface,

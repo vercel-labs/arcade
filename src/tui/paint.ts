@@ -2,13 +2,23 @@
 // (hover/focus/pressed) is merged over its base style here, so the same tree
 // renders differently depending on what's focused/hovered.
 //
-// Background inheritance: a Box with a `background` fills its rect and passes
-// that color down, so descendant Text/Buttons without their own background
-// still paint opaque cells over it. With no background anywhere, opaque text
-// falls back to black (v1 has no scene-blended text — that's Phase 4).
+// Colors are resolved from tokens to RGBA via the theme. A background with
+// alpha < 1 composites over whatever is already in the cell (the scene, once it
+// fills the Surface) via setCellWithAlphaBlending; an opaque background fills
+// flat. The resolved RGB is inherited by descendants so text without its own
+// background still paints over the right color (black if nothing set it).
 
-import { STYLE_BOLD, STYLE_DIM, STYLE_UNDERLINE, type RGB, type Surface } from '../engine/index.ts';
+import {
+  blendOver,
+  STYLE_BOLD,
+  STYLE_DIM,
+  STYLE_UNDERLINE,
+  type RGB,
+  type RGBA,
+  type Surface,
+} from '../engine/index.ts';
 
+import { defaultTheme, resolveColor, type Theme } from './theme.ts';
 import type { LayoutBox, Node, Style } from './types.ts';
 
 const DEFAULT_FG: RGB = [220, 220, 230];
@@ -19,6 +29,8 @@ export interface PaintState {
   focusId: string | null;
   pressedId: string | null;
 }
+
+const rgbOf = (c: RGBA): RGB => [c[0], c[1], c[2]];
 
 function styleBits(s: Style): number {
   let b = 0;
@@ -49,10 +61,15 @@ function padOf(s: Style): { v: number; h: number } {
 const SQUARE = { tl: '┌', tr: '┐', bl: '└', br: '┘', h: '─', v: '│' };
 const ROUND = { tl: '╭', tr: '╮', bl: '╰', br: '╯', h: '─', v: '│' };
 
-function drawBorder(surf: Surface, lb: LayoutBox, e: Style, bg: RGB, bits: number): void {
+function drawBorder(surf: Surface, lb: LayoutBox, e: Style, bg: RGB, bits: number, theme: Theme): void {
   if (lb.w < 2 || lb.h < 2) return;
   const c = e.border === 'round' ? ROUND : SQUARE;
-  const col = e.borderColor ?? e.color ?? DEFAULT_FG;
+  const col =
+    e.borderColor != null
+      ? rgbOf(resolveColor(e.borderColor, theme))
+      : e.color != null
+        ? rgbOf(resolveColor(e.color, theme))
+        : DEFAULT_FG;
   const x2 = lb.x + lb.w - 1;
   const y2 = lb.y + lb.h - 1;
   surf.setCell(lb.x, lb.y, c.tl, col, bg, bits);
@@ -69,25 +86,40 @@ function drawBorder(surf: Surface, lb: LayoutBox, e: Style, bg: RGB, bits: numbe
   }
 }
 
-function paintNode(node: Node, surf: Surface, st: PaintState, inheritedBg: RGB | undefined): void {
+function paintNode(node: Node, surf: Surface, st: PaintState, theme: Theme, inheritedBg: RGB | undefined): void {
   const lb = node.layout;
   if (lb && lb.w > 0 && lb.h > 0) {
+    surf.setClip(node.clip ?? null); // overflow clipping from an ancestor
     const e = effective(node, st);
     const bits = styleBits(e);
     const b = e.border && e.border !== 'none' ? 1 : 0;
-    const bg = e.background ?? inheritedBg;
-    const fg = e.color ?? DEFAULT_FG;
-    if (e.background != null) surf.fillRect(lb.x, lb.y, lb.w, lb.h, e.background, bits);
-    if (b) drawBorder(surf, lb, e, bg ?? BLACK, bits);
+    let bg: RGB = inheritedBg ?? BLACK;
+    if (e.background != null) {
+      const c = resolveColor(e.background, theme);
+      if (c[3] >= 1) {
+        const rgb = rgbOf(c);
+        surf.fillRect(lb.x, lb.y, lb.w, lb.h, rgb, bits);
+        bg = rgb;
+      } else if (c[3] > 0) {
+        for (let yy = lb.y; yy < lb.y + lb.h; yy++) {
+          for (let xx = lb.x; xx < lb.x + lb.w; xx++) surf.setCellWithAlphaBlending(xx, yy, ' ', c, c, bits);
+        }
+        bg = blendOver(inheritedBg ?? BLACK, c);
+      }
+      // c[3] === 0 (transparent): no fill; bg stays the inherited backdrop.
+    }
+    const fg = e.color != null ? rgbOf(resolveColor(e.color, theme)) : DEFAULT_FG;
+    if (b) drawBorder(surf, lb, e, bg, bits, theme);
     if (node.kind !== 'box' && node.text) {
       const p = padOf(e);
-      surf.drawText(lb.x + p.h + b, lb.y + p.v + b, node.text, fg, bg ?? BLACK, bits);
+      surf.drawText(lb.x + p.h + b, lb.y + p.v + b, node.text, fg, bg, bits);
     }
     inheritedBg = bg;
   }
-  for (const c of node.children ?? []) paintNode(c, surf, st, inheritedBg);
+  for (const c of node.children ?? []) paintNode(c, surf, st, theme, inheritedBg);
 }
 
-export function paint(root: Node, surf: Surface, st: PaintState): void {
-  paintNode(root, surf, st, undefined);
+export function paint(root: Node, surf: Surface, st: PaintState, theme: Theme = defaultTheme): void {
+  paintNode(root, surf, st, theme, undefined);
+  surf.setClip(null); // don't leak a clip into later direct Surface writes
 }

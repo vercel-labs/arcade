@@ -9,11 +9,13 @@ function contains(lb: LayoutBox, x: number, y: number): boolean {
 }
 
 // Topmost interactive node containing the point, or null. Later nodes in
-// preorder paint on top, so the last match wins.
+// preorder paint on top, so the last match wins. A clipped node is only hit
+// where it's actually visible (inside its clip rect).
 export function hitTest(root: Node, x: number, y: number): Node | null {
   let found: Node | null = null;
   const walk = (n: Node): void => {
-    if (n.layout && contains(n.layout, x, y) && (n.focusable || n.onClick)) found = n;
+    const visible = n.layout && contains(n.layout, x, y) && (!n.clip || contains(n.clip, x, y));
+    if (visible && (n.focusable || n.onClick)) found = n;
     for (const c of n.children ?? []) walk(c);
   };
   walk(root);
