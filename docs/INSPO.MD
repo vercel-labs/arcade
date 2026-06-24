@@ -23,3 +23,10 @@ Very cool mini demos of ASCII art
 https://play.ertdfgcvb.xyz/abc.html
 https://play.ertdfgcvb.xyz/abc.html#source:examples
 https://github.com/ertdfgcvb/play.core
+
+OpenTUI (terminal user interfaces)
+https://github.com/anomalyco/opentui
+https://opentui.com/
+
+Terminal graphics protocol (pixels and images)
+https://sw.kovidgoyal.net/kitty/graphics-protocol/

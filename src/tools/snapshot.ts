@@ -65,7 +65,7 @@ function surfaceToPpm(
 }
 
 const noop = (): void => {};
-const barActions = { start: noop, chessGame: noop, demo: noop, logos: noop, back: noop, reset: noop, mode: noop, quit: noop };
+const barActions = { chessGame: noop, demo: noop, logos: noop, back: noop, reset: noop, mode: noop, quit: noop };
 
 // Render a scene full-height, then composite that screen's button bar over it —
 // proving the bar sits ON TOP of the 3D scene (opaque pills overwrite it;

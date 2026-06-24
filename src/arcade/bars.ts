@@ -7,11 +7,10 @@ import { Box, Button, Modal, Text, type Node, type Style } from '../tui/index.ts
 import { BISHOP, BLACK, type Color, KNIGHT, type PieceType, QUEEN, ROOK } from '../games/chess/types.ts';
 import type { RGB } from '../engine/index.ts';
 
-export type Mode = 'attract' | 'playing' | 'demo' | 'chess' | 'chess-game' | 'logos';
+export type Mode = 'attract' | 'demo' | 'chess' | 'chess-game' | 'logos';
 export type RenderMode = 'color' | 'ascii' | 'luminance';
 
 export interface BarActions {
-  start(): void;
   chessGame(): void;
   demo(): void;
   logos(): void;
@@ -51,7 +50,6 @@ export function buildBar(mode: Mode, renderMode: RenderMode, a: BarActions): Nod
 
   if (mode === 'attract') {
     buttons = [
-      Button({ id: 'start', label: 'start', onClick: a.start, style: PILL }),
       Button({ id: 'chess-game', label: 'chess game', onClick: a.chessGame, style: PILL }),
       Button({ id: 'demo', label: 'demo', onClick: a.demo, style: PILL }),
       Button({ id: 'logos', label: 'logos', onClick: a.logos, style: PILL }),

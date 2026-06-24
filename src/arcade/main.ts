@@ -14,10 +14,7 @@ import { AttractScene } from './attract.ts';
 import { ChessScene } from './chess.ts';
 import { ChessGameScene } from './chess-game.ts';
 import { LogosScene } from './logos-scene.ts';
-import { Framebuffer } from './framebuffer.ts';
-import { Game, PLAY_RANGE } from './game.ts';
 import { createInputParser, type Key, type MouseEvent } from '../platform/input.ts';
-import { drawReticle, renderScene } from './renderer.ts';
 import { buildBar, buildPromotion, type BarActions, type Mode, type RenderMode } from './bars.ts';
 import type { Color } from '../games/chess/types.ts';
 import { Renderer, Screen, type LayoutBox } from '../tui/index.ts';
@@ -26,7 +23,6 @@ import * as term from '../platform/terminal.ts';
 
 const FPS = 30;
 const DT = 1 / FPS;
-const NUDGE = 0.4;
 // Cells-equivalent the arrow keys pan the chess camera per press (held keys
 // repeat). Tuned to feel like a firm nudge; pan() scales it by distance.
 const PAN_STEP = 10;
@@ -48,15 +44,12 @@ const UNIFIED = true;
 let cols = process.stdout.columns ?? 80;
 let rows = process.stdout.rows ?? 24;
 
-// The game draws ASCII glyphs (legacy char framebuffer) and reserves its bottom
-// row for the HUD. The attract/chess scenes render through the engine to a
-// supersampled RGBA target at FULL height — the button bar composites on top of
-// the scene's bottom row rather than sitting on a reserved blank strip.
-const fb = new Framebuffer(cols, rows - 1);
+// The attract/chess/logos scenes render through the engine to a supersampled
+// RGBA target at FULL height — the button bar composites on top of the scene's
+// bottom row rather than sitting on a reserved blank strip.
 let target = new RenderTarget(cols * SS, rows * 2 * SS);
 let display: RenderTarget | undefined;
 const attract = new AttractScene();
-const game = new Game();
 const chess = new ChessScene();
 const chessGame = new ChessGameScene();
 const logosScene = new LogosScene();
@@ -96,11 +89,11 @@ let downY = 0;
 let t = 0;
 // Whether we currently hold a live (continuous-animation) lease on the renderer.
 let liveHeld = false;
-// Continuously-animating screens (attract prism, dodge game) hold a live lease;
+// Continuously-animating screens (attract prism, demo, logos) hold a live lease;
 // the chess turntables are static and render on demand. Called on every screen
 // transition (via fullRepaint).
 function syncLive(): void {
-  const want = mode === 'attract' || mode === 'demo' || mode === 'playing' || mode === 'logos';
+  const want = mode === 'attract' || mode === 'demo' || mode === 'logos';
   if (want === liveHeld) return;
   if (want) r.requestLive();
   else r.dropLive();
@@ -129,19 +122,6 @@ function quit(): void {
   r.destroy();
   term.leave();
   process.exit(0);
-}
-
-function startGame(): void {
-  mode = 'playing';
-  game.reset();
-  ui.setRoot(null); // gameplay has no bar; the HUD is drawn separately
-  fullRepaint();
-}
-
-function aimAt(mx: number, my: number): void {
-  const nx = ((mx - 1) / Math.max(1, cols - 1)) * 2 - 1;
-  const ny = ((my - 1) / Math.max(1, rows - 1)) * 2 - 1;
-  game.movePlayerTo(nx * PLAY_RANGE, -ny * PLAY_RANGE);
 }
 
 function cycleMode(): void {
@@ -186,7 +166,6 @@ function toAttract(): void {
 // closes each Button's onClick over these, so clicks and Enter dispatch the same
 // way the old onMouse id→action branch did.
 const actions: BarActions = {
-  start: startGame,
   chessGame: enterChessGame,
   demo: enterDemo,
   logos: enterLogos,
@@ -304,10 +283,9 @@ function onKeyImpl(key: Key): void {
   // The UI consumes only Tab (focus) and Enter/Space (activate) when something
   // is focused — never bare letters — so per-screen shortcuts and the camera
   // arrows below still work.
-  if (mode !== 'playing' && ui.handleKey(key)) return;
+  if (ui.handleKey(key)) return;
   if (mode === 'attract') {
-    if (key === 's' || key === 'S') startGame();
-    else if (key === 'd' || key === 'D') enterDemo();
+    if (key === 'd' || key === 'D') enterDemo();
     else if (key === 'g' || key === 'G') enterChess();
     else if (key === 'n' || key === 'N') enterChessGame();
     else if (key === 'm' || key === 'M') cycleMode();
@@ -349,24 +327,6 @@ function onKeyImpl(key: Key): void {
     else if (key === 'up') orbit.pan(0, PAN_STEP);
     else if (key === 'down') orbit.pan(0, -PAN_STEP);
     return;
-  }
-  switch (key) {
-    case 'r':
-    case 'R':
-      if (game.over) game.reset();
-      break;
-    case 'left':
-      game.nudge(-NUDGE, 0);
-      break;
-    case 'right':
-      game.nudge(NUDGE, 0);
-      break;
-    case 'up':
-      game.nudge(0, NUDGE);
-      break;
-    case 'down':
-      game.nudge(0, -NUDGE);
-      break;
   }
 }
 
@@ -428,14 +388,11 @@ function onMouseImpl(e: MouseEvent): void {
     else if (e.type === 'up') ui.pointerUp();
     return;
   }
-  if (e.type === 'move' || e.type === 'drag' || e.type === 'down') {
-    aimAt(e.x, e.y);
-  }
 }
 
 // Wrap the handlers so every input requests a render — essential for the
 // on-demand chess screens (idle until interacted with), harmless for the
-// continuously-live attract/demo/playing screens.
+// continuously-live attract/demo/logos screens.
 const parse = createInputParser({
   onKey(key) {
     onKeyImpl(key);
@@ -446,23 +403,6 @@ const parse = createInputParser({
     r.requestRender();
   },
 });
-
-function hud(): string {
-  const text = ` score ${game.score}   speed ${game.speed.toFixed(1)}   ·   move: mouse / arrows   ·   q: quit `;
-  return `\x1b[${rows};1H\x1b[2m${text.slice(0, cols)}\x1b[0m\x1b[K`;
-}
-
-function gameOverOverlay(): string {
-  const lines = ['  GAME OVER  ', `  score ${game.score}  `, '  R: restart · Q: quit  '];
-  const top = Math.floor(rows / 2) - 1;
-  let out = '';
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const col = Math.max(1, Math.floor((cols - line.length) / 2));
-    out += `\x1b[${top + i};${col}H\x1b[1;97;41m${line}\x1b[0m`;
-  }
-  return out;
-}
 
 function tick(): void {
   t += DT;
@@ -515,20 +455,11 @@ function tick(): void {
     if (orbit.needsRender() || jitter) r.requestRender();
     return;
   }
-
-  game.update(DT);
-  fb.clear();
-  renderScene(fb, game.obstacles, { x: game.player.x, y: game.player.y, z: 0 });
-  drawReticle(fb);
-  let out = fb.toFrameString() + hud();
-  if (game.over) out += gameOverOverlay();
-  r.write(out);
 }
 
 process.stdout.on('resize', () => {
   cols = process.stdout.columns ?? 80;
   rows = process.stdout.rows ?? 24;
-  fb.resize(cols, rows - 1);
   target = new RenderTarget(cols * SS, rows * 2 * SS);
   ui.resize(cols, rows);
   display = undefined;

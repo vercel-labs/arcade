@@ -66,8 +66,12 @@ export class AttractScene {
     const apex = project(TETRA_VERTS[0]);
     const radius = Math.max(6, Math.hypot(apex.x - center.x, apex.y - center.y));
 
-    // Screen-space normal of each face (which way it faces in the image plane).
-    const faceNormals: P2[] = TETRA_FACES.map(([a, b, c]) => {
+    // Per face: its screen-space normal (image-plane direction), and its
+    // bird's-eye (top-down XZ) rightwardness — how far toward +X the world
+    // normal points, ignoring height. The latter drives face selection.
+    const faceNormals: P2[] = [];
+    const faceBirdRight: number[] = [];
+    TETRA_FACES.forEach(([a, b, c]) => {
       let n = normalize3(cross3(sub3(worldVerts[b], worldVerts[a]), sub3(worldVerts[c], worldVerts[a])));
       const fc: Vec3 = {
         x: (worldVerts[a].x + worldVerts[b].x + worldVerts[c].x) / 3,
@@ -75,9 +79,15 @@ export class AttractScene {
         z: (worldVerts[a].z + worldVerts[b].z + worldVerts[c].z) / 3,
       };
       if (dot3(n, sub3(fc, { x: centerW.x, y: centerW.y, z: centerW.z })) < 0) n = { x: -n.x, y: -n.y, z: -n.z };
+      // Only the three faces meeting at the apex (vertex 0) may guide the ray —
+      // never the downward base face. (Tilt gives the base a big sideways normal,
+      // so excluding by a small-XZ threshold is not enough; gate on apex membership.)
+      const isTopFace = a === 0 || b === 0 || c === 0;
+      const lxz = Math.hypot(n.x, n.z);
+      faceBirdRight.push(!isTopFace || lxz < 1e-4 ? -Infinity : n.x / lxz);
       const vn = mat4MulDir(view, n);
       const l = Math.hypot(vn.x, vn.y) || 1;
-      return { x: vn.x / l, y: -vn.y / l };
+      faceNormals.push({ x: vn.x / l, y: -vn.y / l });
     });
 
     const effective = (sign: number): P2 => {
@@ -96,17 +106,20 @@ export class AttractScene {
       return { x: sx / l, y: sy / l };
     };
 
-    const exitN = effective(1);
+    // Track the apex face whose bird's-eye (top-down XZ) normal points most to
+    // the right (+X). The three apex normals are 120° apart, so exactly one is
+    // ever within ±60° of straight-right; when it swings past 60° the next face
+    // snaps in at -60° (300°). The ray follows that face's SCREEN normal, so the
+    // rainbow stays orthogonal to it and snaps between faces as the prism turns.
+    let sel = 0;
+    for (let i = 1; i < faceBirdRight.length; i++) if (faceBirdRight[i] > faceBirdRight[sel]) sel = i;
+    const exitN = faceNormals[sel];
     const entryN = effective(-1);
 
-    // Rainbow leaves bent toward the exit-face normal; the more oblique, the wider.
-    const k = 0.65;
-    let bx = (1 - k) + k * exitN.x;
-    let by = k * exitN.y;
-    const bl = Math.hypot(bx, by) || 1;
-    bx /= bl;
-    by /= bl;
-    const angle = Math.atan2(by, bx);
+    // Rainbow exits orthogonal to the prism's right-facing (exit) face: the ray
+    // direction IS the exit-face normal, so it swings up/down as the prism turns
+    // counterclockwise. Purely stylistic — not Snell's law.
+    const angle = Math.atan2(exitN.y, exitN.x);
     const oblique = 1 - Math.max(0, exitN.x);
     const spread = 0.22 + 0.16 * oblique;
 
@@ -200,7 +213,12 @@ function drawRainbow(
       const e = u / hw;
       if (Math.abs(e) > 1) continue;
       const across = (e + 1) / 2;
-      const [r, g, b] = hslToRgb((1 - across) * 250, 1, 0.5);
+      // Gentle S-curve on the hue ramp: smoothstep is steepest at the middle,
+      // so it moves fastest through green (compressing its fat band) and lingers
+      // a touch more at the red/violet ends — balances the band widths.
+      const p = 1 - across;
+      const pw = p + (p * p * (3 - 2 * p) - p) * 0.5;
+      const [r, g, b] = hslToRgb(pw * 250, 1, 0.5);
       const cov = Math.abs(e) < 0.78 ? 1 : Math.max(0, (1 - Math.abs(e)) / 0.22);
       const along = 1 - 0.12 * (s / length);
       const bright = intensity * cov * along;
