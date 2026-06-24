@@ -48,6 +48,17 @@ const orderedKeys = keys.includes(' ') ? [' ', ...keys.filter((k) => k !== ' ')]
 const charVectors = orderedKeys.map((k) => coverage(FONT[k]));
 const charOutputs = orderedKeys.slice();
 
+// Total coverage (brightness) per glyph. Used for an EXACT lower-bound prune in
+// matchGlyph: by Cauchy-Schwarz, the squared distance is at least
+// (Σcell − Σglyph)² / DIM, so a glyph whose total coverage is far from the cell's
+// can't beat the current best — we skip its full 18-dim distance without changing
+// which glyph wins (iteration order is preserved, so ties resolve identically).
+const charSums = charVectors.map((v) => {
+  let s = 0;
+  for (let i = 0; i < DIM; i++) s += v[i];
+  return s;
+});
+
 // Reused top-K buffers so the sampled path allocates nothing per cell.
 const SAMPLE_K = 6;
 const kd = new Array(SAMPLE_K);
@@ -60,10 +71,17 @@ const kw = new Array(SAMPLE_K);
 // high-probability token rather than always the top one — so a cell with
 // several near-equal matches varies among them instead of locking to one glyph.
 export function matchGlyph(cell: number[], temperature = 0): string {
+  let cellSum = 0;
+  for (let i = 0; i < DIM; i++) cellSum += cell[i];
+
   if (temperature <= 0) {
     let best = 0;
     let bestDist = Infinity;
     for (let c = 0; c < charVectors.length; c++) {
+      // Brightness lower bound: if (Σcell−Σglyph)²/DIM ≥ bestDist this glyph
+      // can't win, so skip its full distance. Exact (no output change).
+      const dsum = cellSum - charSums[c];
+      if (dsum * dsum >= bestDist * DIM) continue;
       const v = charVectors[c];
       let d = 0;
       for (let i = 0; i < DIM; i++) {
@@ -84,9 +102,11 @@ export function matchGlyph(cell: number[], temperature = 0): string {
     ki[k] = -1;
   }
   for (let c = 0; c < charVectors.length; c++) {
+    const worst = kd[SAMPLE_K - 1];
+    const dsum = cellSum - charSums[c];
+    if (dsum * dsum >= worst * DIM) continue; // brightness too far for the top-K
     const v = charVectors[c];
     let d = 0;
-    const worst = kd[SAMPLE_K - 1];
     for (let i = 0; i < DIM; i++) {
       const diff = cell[i] - v[i];
       d += diff * diff;
