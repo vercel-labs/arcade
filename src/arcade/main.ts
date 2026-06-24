@@ -4,11 +4,11 @@ import { ChessScene } from './chess.ts';
 import { ChessGameScene } from './chess-game.ts';
 import { Framebuffer } from './framebuffer.ts';
 import { Game, PLAY_RANGE } from './game.ts';
-import { createInputParser } from '../platform/input.ts';
+import { createInputParser, type Key, type MouseEvent } from '../platform/input.ts';
 import { drawReticle, renderScene } from './renderer.ts';
 import { buildBar, buildPromotion, type BarActions, type Mode, type RenderMode } from './bars.ts';
 import type { Color } from '../games/chess/types.ts';
-import { Screen, type LayoutBox } from '../tui/index.ts';
+import { Renderer, Screen, type LayoutBox } from '../tui/index.ts';
 import { renderDemo } from '../demo/scene.ts';
 import * as term from '../platform/terminal.ts';
 
@@ -42,6 +42,9 @@ const chess = new ChessScene();
 const chessGame = new ChessGameScene();
 // The 2D UI overlay (button bar). Lays out + paints over the scene each frame.
 const ui = new Screen(cols, rows);
+// Render-on-demand loop. Animating screens hold a live lease; static screens
+// (chess turntable) render only when an interaction requests it.
+const r = new Renderer({ targetFps: FPS });
 
 // Bar geometry: a band of pills composited over the scene, lifted off the very
 // bottom edge by a margin so it doesn't hug it. BAR_HEIGHT must match the pill
@@ -71,7 +74,18 @@ let lastMouseY = 0;
 let downX = 0;
 let downY = 0;
 let t = 0;
-let frame: ReturnType<typeof setInterval> | undefined;
+// Whether we currently hold a live (continuous-animation) lease on the renderer.
+let liveHeld = false;
+// Continuously-animating screens (attract prism, dodge game) hold a live lease;
+// the chess turntables are static and render on demand. Called on every screen
+// transition (via fullRepaint).
+function syncLive(): void {
+  const want = mode === 'attract' || mode === 'demo' || mode === 'playing';
+  if (want === liveHeld) return;
+  if (want) r.requestLive();
+  else r.dropLive();
+  liveHeld = want;
+}
 // Dirty-flag rendering for the static (turntable) chess scenes: skip re-render +
 // re-write when nothing changed. `forceFrame` requests one unconditional repaint
 // after a transition that clears the screen or changes the present output (mode
@@ -80,14 +94,18 @@ let frame: ReturnType<typeof setInterval> | undefined;
 let forceFrame = false;
 const CLEAR = '\x1b[2J';
 
-// Clear the screen and force the next frame to paint in full.
+// Clear the screen and force the next frame to paint in full. Used on every
+// screen transition / resize: updates the live lease for the new mode and
+// requests the (single) repaint that follows the clear.
 function fullRepaint(): void {
   process.stdout.write(CLEAR);
   forceFrame = true;
+  syncLive();
+  r.requestRender();
 }
 
 function quit(): void {
-  if (frame) clearInterval(frame);
+  r.destroy();
   term.leave();
   process.exit(0);
 }
@@ -219,145 +237,158 @@ function pointerNdc(x: number, y: number): { ndcX: number; ndcY: number; aspect:
   };
 }
 
+function onKeyImpl(key: Key): void {
+  // While the promotion picker is up it's modal: Escape cancels, Tab cycles
+  // options, Enter/Space picks the focused one. Swallow everything else (so
+  // 'q' doesn't quit mid-choice).
+  if (isPromoting()) {
+    if (key === 'escape') {
+      chessGame.cancelPromotion();
+      forceFrame = true; // repaint over the popup without an ESC[2J black flash
+    } else {
+      ui.handleKey(key);
+    }
+    return;
+  }
+  if (key === 'quit' || key === 'q' || key === 'escape') {
+    quit();
+    return;
+  }
+  // The UI consumes only Tab (focus) and Enter/Space (activate) when something
+  // is focused — never bare letters — so per-screen shortcuts and the camera
+  // arrows below still work.
+  if (mode !== 'playing' && ui.handleKey(key)) return;
+  if (mode === 'attract') {
+    if (key === 's' || key === 'S') startGame();
+    else if (key === 'd' || key === 'D') enterDemo();
+    else if (key === 'g' || key === 'G') enterChess();
+    else if (key === 'n' || key === 'N') enterChessGame();
+    else if (key === 'm' || key === 'M') cycleMode();
+    else if (key === 'c' || key === 'C') setRenderMode('color');
+    else if (key === 'l' || key === 'L') setRenderMode('luminance');
+    else if (key === 'a' || key === 'A') setRenderMode('ascii');
+    else if (key === 'j' || key === 'J') jitter = !jitter;
+    return;
+  }
+  if (mode === 'demo') {
+    if (key === 'b' || key === 'B') toAttract();
+    else if (key === 'm' || key === 'M') cycleMode();
+    else if (key === 'j' || key === 'J') jitter = !jitter;
+    return;
+  }
+  const orbit = orbitScene();
+  if (orbit) {
+    if (key === 'b' || key === 'B') toAttract();
+    else if (key === 'r' || key === 'R') orbit.resetView();
+    else if (key === 'm' || key === 'M') cycleMode();
+    else if (key === 'c' || key === 'C') setRenderMode('color');
+    else if (key === 'l' || key === 'L') setRenderMode('luminance');
+    else if (key === 'a' || key === 'A') setRenderMode('ascii');
+    else if (key === 'j' || key === 'J') {
+      jitter = !jitter;
+      forceFrame = true; // toggling jitter changes the present even if the scene is idle
+    }
+    // Arrow keys pan the camera in their direction (the content moves opposite).
+    else if (key === 'left') orbit.pan(PAN_STEP, 0);
+    else if (key === 'right') orbit.pan(-PAN_STEP, 0);
+    else if (key === 'up') orbit.pan(0, PAN_STEP);
+    else if (key === 'down') orbit.pan(0, -PAN_STEP);
+    return;
+  }
+  switch (key) {
+    case 'r':
+    case 'R':
+      if (game.over) game.reset();
+      break;
+    case 'left':
+      game.nudge(-NUDGE, 0);
+      break;
+    case 'right':
+      game.nudge(NUDGE, 0);
+      break;
+    case 'up':
+      game.nudge(0, NUDGE);
+      break;
+    case 'down':
+      game.nudge(0, -NUDGE);
+      break;
+  }
+}
+
+function onMouseImpl(e: MouseEvent): void {
+  // Modal promotion picker: clicks/hover go to the popup; the board and camera
+  // are frozen until a choice is made.
+  if (isPromoting()) {
+    if (e.type === 'move') ui.hover(e.x, e.y);
+    else if (e.type === 'down') ui.pointerDown(e.x, e.y);
+    else if (e.type === 'up') ui.pointerUp();
+    return;
+  }
+  const orbit = orbitScene();
+  if (orbit) {
+    if (e.type === 'wheel') {
+      orbit.zoomBy(e.wheel === -1 ? 0.9 : 1.1);
+      return;
+    }
+    if (e.type === 'move') {
+      ui.hover(e.x, e.y);
+      return;
+    }
+    if (e.type === 'down') {
+      // A hit on the bar fires that button's onClick; otherwise it's the board.
+      if (!ui.pointerDown(e.x, e.y)) {
+        // On the board: begin a potential drag (rotate); an up near here is a click.
+        draggingCamera = true;
+        lastMouseX = downX = e.x;
+        lastMouseY = downY = e.y;
+      }
+      return;
+    }
+    if (e.type === 'drag' && draggingCamera) {
+      const dx = e.x - lastMouseX;
+      const dy = e.y - lastMouseY;
+      lastMouseX = e.x;
+      lastMouseY = e.y;
+      // Pan with a modifier (⌘/Option/Shift/Ctrl) or right-drag; orbit otherwise.
+      // Right-click usually pops the terminal menu, so the modifier is primary.
+      if (e.meta || e.shift || e.ctrl || e.button === 2) orbit.pan(dx, dy);
+      else orbit.orbit(dx, dy);
+      return;
+    }
+    if (e.type === 'up') {
+      ui.pointerUp();
+      // A press that barely moved is a click → select/move (chess-game only).
+      if (draggingCamera && mode === 'chess-game' && Math.abs(e.x - downX) + Math.abs(e.y - downY) <= 1) {
+        const { ndcX, ndcY, aspect } = pointerNdc(e.x, e.y);
+        chessGame.click(ndcX, ndcY, aspect);
+      }
+      draggingCamera = false;
+      return;
+    }
+    return;
+  }
+  if (mode === 'attract' || mode === 'demo') {
+    if (e.type === 'move') ui.hover(e.x, e.y);
+    else if (e.type === 'down') ui.pointerDown(e.x, e.y);
+    else if (e.type === 'up') ui.pointerUp();
+    return;
+  }
+  if (e.type === 'move' || e.type === 'drag' || e.type === 'down') {
+    aimAt(e.x, e.y);
+  }
+}
+
+// Wrap the handlers so every input requests a render — essential for the
+// on-demand chess screens (idle until interacted with), harmless for the
+// continuously-live attract/demo/playing screens.
 const parse = createInputParser({
   onKey(key) {
-    // While the promotion picker is up it's modal: Escape cancels, Tab cycles
-    // options, Enter/Space picks the focused one. Swallow everything else (so
-    // 'q' doesn't quit mid-choice).
-    if (isPromoting()) {
-      if (key === 'escape') {
-        chessGame.cancelPromotion();
-        forceFrame = true; // repaint over the popup without an ESC[2J black flash
-      } else {
-        ui.handleKey(key);
-      }
-      return;
-    }
-    if (key === 'quit' || key === 'q' || key === 'escape') {
-      quit();
-      return;
-    }
-    // The UI consumes only Tab (focus) and Enter/Space (activate) when something
-    // is focused — never bare letters — so per-screen shortcuts and the camera
-    // arrows below still work.
-    if (mode !== 'playing' && ui.handleKey(key)) return;
-    if (mode === 'attract') {
-      if (key === 's' || key === 'S') startGame();
-      else if (key === 'd' || key === 'D') enterDemo();
-      else if (key === 'g' || key === 'G') enterChess();
-      else if (key === 'n' || key === 'N') enterChessGame();
-      else if (key === 'm' || key === 'M') cycleMode();
-      else if (key === 'c' || key === 'C') setRenderMode('color');
-      else if (key === 'l' || key === 'L') setRenderMode('luminance');
-      else if (key === 'a' || key === 'A') setRenderMode('ascii');
-      else if (key === 'j' || key === 'J') jitter = !jitter;
-      return;
-    }
-    if (mode === 'demo') {
-      if (key === 'b' || key === 'B') toAttract();
-      else if (key === 'm' || key === 'M') cycleMode();
-      else if (key === 'j' || key === 'J') jitter = !jitter;
-      return;
-    }
-    const orbit = orbitScene();
-    if (orbit) {
-      if (key === 'b' || key === 'B') toAttract();
-      else if (key === 'r' || key === 'R') orbit.resetView();
-      else if (key === 'm' || key === 'M') cycleMode();
-      else if (key === 'c' || key === 'C') setRenderMode('color');
-      else if (key === 'l' || key === 'L') setRenderMode('luminance');
-      else if (key === 'a' || key === 'A') setRenderMode('ascii');
-      else if (key === 'j' || key === 'J') {
-        jitter = !jitter;
-        forceFrame = true; // toggling jitter changes the present even if the scene is idle
-      }
-      // Arrow keys pan the camera in their direction (the content moves opposite).
-      else if (key === 'left') orbit.pan(PAN_STEP, 0);
-      else if (key === 'right') orbit.pan(-PAN_STEP, 0);
-      else if (key === 'up') orbit.pan(0, PAN_STEP);
-      else if (key === 'down') orbit.pan(0, -PAN_STEP);
-      return;
-    }
-    switch (key) {
-      case 'r':
-      case 'R':
-        if (game.over) game.reset();
-        break;
-      case 'left':
-        game.nudge(-NUDGE, 0);
-        break;
-      case 'right':
-        game.nudge(NUDGE, 0);
-        break;
-      case 'up':
-        game.nudge(0, NUDGE);
-        break;
-      case 'down':
-        game.nudge(0, -NUDGE);
-        break;
-    }
+    onKeyImpl(key);
+    r.requestRender();
   },
   onMouse(e) {
-    // Modal promotion picker: clicks/hover go to the popup; the board and camera
-    // are frozen until a choice is made.
-    if (isPromoting()) {
-      if (e.type === 'move') ui.hover(e.x, e.y);
-      else if (e.type === 'down') ui.pointerDown(e.x, e.y);
-      else if (e.type === 'up') ui.pointerUp();
-      return;
-    }
-    const orbit = orbitScene();
-    if (orbit) {
-      if (e.type === 'wheel') {
-        orbit.zoomBy(e.wheel === -1 ? 0.9 : 1.1);
-        return;
-      }
-      if (e.type === 'move') {
-        ui.hover(e.x, e.y);
-        return;
-      }
-      if (e.type === 'down') {
-        // A hit on the bar fires that button's onClick; otherwise it's the board.
-        if (!ui.pointerDown(e.x, e.y)) {
-          // On the board: begin a potential drag (rotate); an up near here is a click.
-          draggingCamera = true;
-          lastMouseX = downX = e.x;
-          lastMouseY = downY = e.y;
-        }
-        return;
-      }
-      if (e.type === 'drag' && draggingCamera) {
-        const dx = e.x - lastMouseX;
-        const dy = e.y - lastMouseY;
-        lastMouseX = e.x;
-        lastMouseY = e.y;
-        // Pan with a modifier (⌘/Option/Shift/Ctrl) or right-drag; orbit otherwise.
-        // Right-click usually pops the terminal menu, so the modifier is primary.
-        if (e.meta || e.shift || e.ctrl || e.button === 2) orbit.pan(dx, dy);
-        else orbit.orbit(dx, dy);
-        return;
-      }
-      if (e.type === 'up') {
-        ui.pointerUp();
-        // A press that barely moved is a click → select/move (chess-game only).
-        if (draggingCamera && mode === 'chess-game' && Math.abs(e.x - downX) + Math.abs(e.y - downY) <= 1) {
-          const { ndcX, ndcY, aspect } = pointerNdc(e.x, e.y);
-          chessGame.click(ndcX, ndcY, aspect);
-        }
-        draggingCamera = false;
-        return;
-      }
-      return;
-    }
-    if (mode === 'attract' || mode === 'demo') {
-      if (e.type === 'move') ui.hover(e.x, e.y);
-      else if (e.type === 'down') ui.pointerDown(e.x, e.y);
-      else if (e.type === 'up') ui.pointerUp();
-      return;
-    }
-    if (e.type === 'move' || e.type === 'drag' || e.type === 'down') {
-      aimAt(e.x, e.y);
-    }
+    onMouseImpl(e);
+    r.requestRender();
   },
 });
 
@@ -384,14 +415,14 @@ function tick(): void {
   if (mode === 'attract') {
     attract.renderScene(target, t);
     syncBar();
-    process.stdout.write(presentScene() + ui.frame());
+    r.write(presentScene() + ui.frame());
     return;
   }
 
   if (mode === 'demo') {
     renderDemo(target, t);
     syncBar();
-    process.stdout.write(presentScene() + ui.frame());
+    r.write(presentScene() + ui.frame());
     return;
   }
 
@@ -404,12 +435,15 @@ function tick(): void {
     const sceneDirty = forceFrame || jitter || orbit.needsRender();
     if (sceneDirty) {
       orbit.renderScene(target);
-      process.stdout.write(presentScene(false, true) + ui.frame());
+      r.write(presentScene(false, true) + ui.frame());
     } else if (ui.dirty()) {
       // Only a button hover/focus changed: repaint just the bar, not the scene.
-      process.stdout.write(ui.frame());
+      r.write(ui.frame());
     }
     forceFrame = false;
+    // Render-on-demand: chess holds no live lease, so re-arm the next frame while
+    // the scene is still animating (a move/camera settle) or jitter is on.
+    if (orbit.needsRender() || jitter) r.requestRender();
     return;
   }
 
@@ -419,7 +453,7 @@ function tick(): void {
   drawReticle(fb);
   let out = fb.toFrameString() + hud();
   if (game.over) out += gameOverOverlay();
-  process.stdout.write(out);
+  r.write(out);
 }
 
 process.stdout.on('resize', () => {
@@ -438,4 +472,7 @@ process.stdout.on('resize', () => {
 
 term.enter();
 process.stdin.on('data', parse);
-frame = setInterval(tick, 1000 / FPS);
+r.onFrame(tick);
+syncLive(); // attract starts live (continuously animating)
+r.start();
+r.requestRender();

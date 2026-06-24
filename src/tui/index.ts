@@ -3,6 +3,7 @@
 // width, color) and platform (input types); nothing imports app code.
 export { Box, Text, Button } from './nodes.ts';
 export { Screen } from './screen.ts';
+export { Renderer, type FrameFn, type RendererOpts } from './renderer.ts';
 export { layout } from './layout.ts';
 export { paint, type PaintState } from './paint.ts';
 export { defaultTheme, resolveColor, type Theme, type ColorToken } from './theme.ts';
