@@ -29,11 +29,13 @@ import {
   FLAG_CASTLE_K,
   FLAG_CASTLE_Q,
   FLAG_EP,
+  FLAG_PROMO,
   KING,
   KNIGHT,
   type Move,
   PAWN,
   pieceColor,
+  type PieceType,
   pieceType,
   QUEEN,
   ROOK,
@@ -73,7 +75,7 @@ const ANIM_FRAMES = 9; // ~0.3s at 30fps for a single animation phase
 const DOT_LIFT = 0.012; // float the move dots just above the board surface
 const HILITE_LIFT = 0.004; // selected-square tint sits just above the board, under the piece
 const ARC_HEIGHT = 0.5; // peak lift of a parabolic arc (captures + knight hops), world units
-const JAIL_GAP = 0.6; // x-gap between the board edge and the first jail column (× square)
+const JAIL_GAP = 0.9; // x-gap between the board edge and the first jail column (× square)
 const JAIL_STEP = 0.9; // jail slot spacing, a touch tighter than a board square (× square)
 
 // How a piece travels between two world points: `slide` stays on the board
@@ -136,6 +138,10 @@ export class ChessGameScene {
     t: number;
     jail?: { type: number; color: Color; captor: Color };
   } | null = null;
+  // A promotion awaiting the player's piece choice: the pawn's move is paused
+  // (not yet played) while the orchestrator shows the promotion popup. `color`
+  // is the promoting pawn's color, so the popup can tint its piece symbols.
+  private pendingPromo: { from: number; to: number; color: Color } | null = null;
   // Captured pieces, in capture order, parked off-board in an implicit 2×8 grid.
   // `whiteJail` holds the black pieces White has captured (shown bottom-right by
   // White's h1); `blackJail` holds White pieces Black captured (top-left). Each
@@ -252,14 +258,21 @@ export class ChessGameScene {
   }
 
   click(ndcX: number, ndcY: number, aspect: number): void {
-    if (this.anim) return; // ignore input mid-move
+    if (this.anim || this.pendingPromo) return; // ignore input mid-move / mid-promotion
     const sq = this.squareAt(ndcX, ndcY, aspect);
     if (sq < 0) return this.deselect();
     // Clicking a highlighted destination plays that move.
     if (this.selectedSq >= 0) {
       const move = this.targets.get(sq);
       if (move) {
-        this.startMove(move);
+        // A promotion pauses here: record from/to/color and let the orchestrator
+        // raise the picker; choosePromotion() resumes with the chosen piece.
+        if (move.flags & FLAG_PROMO) {
+          this.pendingPromo = { from: move.from, to: move.to, color: pieceColor(move.piece) };
+          this.dirty = true;
+        } else {
+          this.startMove(move);
+        }
         return;
       }
     }
@@ -284,6 +297,31 @@ export class ChessGameScene {
     if (this.selectedSq !== -1) this.dirty = true;
     this.selectedSq = -1;
     this.targets.clear();
+  }
+
+  // ── Promotion ───────────────────────────────────────────────────────────────
+  // The color of a pawn awaiting promotion choice, or null if none is pending.
+  // The orchestrator polls this to raise/dismiss the promotion picker.
+  pendingPromotion(): Color | null {
+    return this.pendingPromo ? this.pendingPromo.color : null;
+  }
+
+  // Resume a paused promotion with the chosen piece type, playing the matching
+  // legal move (which may itself be a capture, handled by startMove).
+  choosePromotion(type: PieceType): void {
+    const pp = this.pendingPromo;
+    this.pendingPromo = null;
+    if (!pp) return;
+    const move = this.game.legalActions().find((m) => m.from === pp.from && m.to === pp.to && m.promotion === type);
+    if (move) this.startMove(move);
+    else this.deselect();
+  }
+
+  // Abandon a pending promotion (the pawn stays put; selection clears).
+  cancelPromotion(): void {
+    this.pendingPromo = null;
+    this.deselect();
+    this.dirty = true;
   }
 
   private startMove(move: Move): void {
@@ -415,6 +453,7 @@ export class ChessGameScene {
     // In-flight move: draw each segment at its position for the current phase
     // (done → at its target, pending → at its origin, active → interpolated),
     // advance the phase clock, and commit the move once all phases finish.
+    let justSettled = false;
     if (this.anim) {
       const A = this.anim;
       for (const s of A.segs) {
@@ -430,13 +469,17 @@ export class ChessGameScene {
           this.game.applyAction(A.move);
           if (A.jail) (A.jail.captor === WHITE ? this.whiteJail : this.blackJail).push({ type: A.jail.type, color: A.jail.color });
           this.anim = null;
+          justSettled = true;
         }
       }
     }
 
-    // A still frame has now been painted; stay dirty only while a move is still
-    // animating (each animation frame changes the image), otherwise go idle.
-    this.dirty = this.anim !== null;
+    // Stay dirty while a move animates. The frame that *finishes* a move still
+    // draws the moving piece (e.g. a pawn) and only then applies the action, so
+    // the promoted/landed piece lives in the board model but hasn't been drawn —
+    // keep one more frame dirty so that settled state actually paints (otherwise
+    // the gate skips it and a promotion lingers as a pawn until the next input).
+    this.dirty = this.anim !== null || justSettled;
   }
 
   private buildBoard(): { light: Mesh; dark: Mesh; base: Mesh } {

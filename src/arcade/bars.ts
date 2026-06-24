@@ -3,7 +3,9 @@
 // pill padding is style padding, and hover colors are a style overlay. Per-button
 // onClick closures replace the id→action if/else that used to live in onMouse.
 
-import { Box, Button, type Node, type Style } from '../tui/index.ts';
+import { Box, Button, Text, type Node, type Style } from '../tui/index.ts';
+import { BISHOP, BLACK, type Color, KNIGHT, type PieceType, QUEEN, ROOK } from '../games/chess/types.ts';
+import type { RGB } from '../engine/index.ts';
 
 export type Mode = 'attract' | 'playing' | 'demo' | 'chess' | 'chess-game';
 export type RenderMode = 'color' | 'ascii' | 'luminance';
@@ -70,4 +72,63 @@ export function buildBar(mode: Mode, renderMode: RenderMode, a: BarActions): Nod
   }
 
   return Box({ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 2 }, buttons);
+}
+
+// Piece colors for the promotion popup — the side's set color, lifted a touch so
+// brown stays legible on the dark popup background.
+const IVORY: RGB = [232, 228, 216];
+const BROWN: RGB = [184, 126, 74];
+
+// Filled chess glyphs (outline glyphs read poorly at one cell); tinted to the
+// promoting side's color via the button's fg.
+const PROMO_OPTIONS: { type: PieceType; sym: string; name: string }[] = [
+  { type: QUEEN, sym: '♛', name: 'Queen' },
+  { type: ROOK, sym: '♜', name: 'Rook' },
+  { type: BISHOP, sym: '♝', name: 'Bishop' },
+  { type: KNIGHT, sym: '♞', name: 'Knight' },
+];
+
+// The promotion picker: a bordered popup centered on screen, listing the four
+// promotion choices. Each row shows the piece's glyph + name in the pawn's
+// color. `onPick` plays the chosen promotion. Built fresh each frame like the
+// bar; the Screen keeps hover/focus by id. (Cancel is handled by the orchestrator
+// via Escape.)
+export function buildPromotion(color: Color, onPick: (t: PieceType) => void): Node {
+  const tint = color === BLACK ? BROWN : IVORY;
+  const options = PROMO_OPTIONS.map((o) =>
+    Button({
+      id: `promo-${o.name.toLowerCase()}`,
+      label: `${o.sym}  ${o.name}`,
+      onClick: () => onPick(o.type),
+      style: {
+        padding: [0, 2],
+        background: [40, 42, 52],
+        color: tint,
+        bold: true,
+        hover: { background: [72, 76, 92] },
+        focus: { background: [72, 76, 92] },
+        pressed: { background: [104, 108, 126] },
+      },
+    }),
+  );
+
+  // No line border: the solid background already reads as a panel against the
+  // busy ASCII scene, so the extra frame is visual noise. Tight padding keeps it
+  // compact.
+  const popup = Box(
+    {
+      flexDirection: 'column',
+      alignItems: 'stretch',
+      gap: 1,
+      padding: [1, 2],
+      background: [26, 28, 36],
+    },
+    [
+      Box({ justifyContent: 'center' }, [Text({ text: 'Promote to', style: { color: [222, 224, 234], bold: true } })]),
+      ...options,
+    ],
+  );
+
+  // Full-screen transparent overlay that centers the popup over the scene.
+  return Box({ flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }, [popup]);
 }

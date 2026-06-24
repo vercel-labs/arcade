@@ -73,6 +73,12 @@ export class Screen {
     );
   }
 
+  // Set keyboard focus directly (by node id), e.g. to focus a default option
+  // when a modal opens. Matched against the tree's ids at paint/key time.
+  setFocus(id: string | null): void {
+    this.state.focusId = id;
+  }
+
   // Mouse move (1-based). Returns whether the hovered node changed.
   hover(x1: number, y1: number): boolean {
     const n = this.root ? hitTest(this.root, x1 - 1, y1 - 1) : null;

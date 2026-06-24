@@ -6,7 +6,8 @@ import { Framebuffer } from './framebuffer.ts';
 import { Game, PLAY_RANGE } from './game.ts';
 import { createInputParser } from '../platform/input.ts';
 import { drawReticle, renderScene } from './renderer.ts';
-import { buildBar, type BarActions, type Mode, type RenderMode } from './bars.ts';
+import { buildBar, buildPromotion, type BarActions, type Mode, type RenderMode } from './bars.ts';
+import type { Color } from '../games/chess/types.ts';
 import { Screen, type LayoutBox } from '../tui/index.ts';
 import { renderDemo } from '../demo/scene.ts';
 import * as term from '../platform/terminal.ts';
@@ -150,10 +151,42 @@ const actions: BarActions = {
   quit,
 };
 
-// Rebuild the bar tree for the current screen (cheap; the Screen retains
-// hover/focus state by id across rebuilds).
+// The promoting pawn's color while the chess promotion picker is up, else null.
+// (Compared with `!== null` because WHITE is 0 — falsy.)
+function promoColor(): Color | null {
+  return mode === 'chess-game' ? chessGame.pendingPromotion() : null;
+}
+function isPromoting(): boolean {
+  return promoColor() !== null;
+}
+// Tracks the open→closed edge so the picker focuses its default option once.
+let promoFocused = false;
+
+// Rebuild the overlay tree for the current screen (cheap; the Screen retains
+// hover/focus state by id across rebuilds). While a promotion is pending the
+// overlay becomes the centered, full-screen picker instead of the bottom bar.
 function syncBar(): void {
-  ui.setRoot(buildBar(mode, renderMode, actions), barRegion());
+  const pc = promoColor();
+  if (pc !== null) {
+    ui.setRoot(
+      buildPromotion(pc, (t) => {
+        chessGame.choosePromotion(t);
+        // Force a scene repaint (which overwrites the popup's cells) rather than
+        // a full clear — ESC[2J here would blank the screen for a frame, flashing
+        // black before the move animation paints.
+        forceFrame = true;
+      }),
+      { x: 0, y: 0, w: cols, h: rows },
+    );
+    if (!promoFocused) {
+      ui.setFocus('promo-queen'); // default highlight so Enter promotes to queen
+      promoFocused = true;
+      forceFrame = true; // ensure the freshly-opened popup paints this frame
+    }
+  } else {
+    promoFocused = false;
+    ui.setRoot(buildBar(mode, renderMode, actions), barRegion());
+  }
 }
 
 // Presents the engine `target` (prism / demo cube / chess) in the active
@@ -188,6 +221,18 @@ function pointerNdc(x: number, y: number): { ndcX: number; ndcY: number; aspect:
 
 const parse = createInputParser({
   onKey(key) {
+    // While the promotion picker is up it's modal: Escape cancels, Tab cycles
+    // options, Enter/Space picks the focused one. Swallow everything else (so
+    // 'q' doesn't quit mid-choice).
+    if (isPromoting()) {
+      if (key === 'escape') {
+        chessGame.cancelPromotion();
+        forceFrame = true; // repaint over the popup without an ESC[2J black flash
+      } else {
+        ui.handleKey(key);
+      }
+      return;
+    }
     if (key === 'quit' || key === 'q' || key === 'escape') {
       quit();
       return;
@@ -253,6 +298,14 @@ const parse = createInputParser({
     }
   },
   onMouse(e) {
+    // Modal promotion picker: clicks/hover go to the popup; the board and camera
+    // are frozen until a choice is made.
+    if (isPromoting()) {
+      if (e.type === 'move') ui.hover(e.x, e.y);
+      else if (e.type === 'down') ui.pointerDown(e.x, e.y);
+      else if (e.type === 'up') ui.pointerUp();
+      return;
+    }
     const orbit = orbitScene();
     if (orbit) {
       if (e.type === 'wheel') {
