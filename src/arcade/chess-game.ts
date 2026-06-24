@@ -60,7 +60,7 @@ const HILITE_DARK: Vec3 = { x: 152, y: 144, z: 100 };
 // fittingly low/high-brightness glyph): a darker-grey dot on light squares, a
 // lighter-grey dot on dark squares. The two greys are kept fairly close in shade
 // (but the dark one stays clearly below the light one to preserve the inversion).
-const DOT_ON_LIGHT: Vec3 = { x: 98, y: 98, z: 104 };
+const DOT_ON_LIGHT: Vec3 = { x: 98, y: 95, z: 88 };
 const DOT_ON_DARK: Vec3 = { x: 126, y: 123, z: 116 };
 
 const KEY_DIR = normalize3({ x: -0.4, y: 0.85, z: 0.5 });
