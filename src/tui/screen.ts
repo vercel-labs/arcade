@@ -30,17 +30,25 @@ export class Screen {
   private region: LayoutBox = { x: 0, y: 0, w: 0, h: 0 };
   // Frame differ for the unified composited path (frameComposited).
   private differ = new CellDiffer();
+  // Cached scene-only layer for the unified path: re-sampling the scene into
+  // cells is the expensive step, so we recompute it only when the scene actually
+  // changed and reuse it (cheap copy) on UI-only frames (e.g. a hover).
+  private sceneLayer: Surface;
+  private sceneValid = false;
 
   constructor(cols: number, rows: number) {
     this.cols = cols;
     this.rows = rows;
     this.surface = new Surface(cols, rows);
+    this.sceneLayer = new Surface(cols, rows);
   }
 
   resize(cols: number, rows: number): void {
     this.cols = cols;
     this.rows = rows;
     this.surface.resize(cols, rows);
+    this.sceneLayer.resize(cols, rows);
+    this.sceneValid = false;
     this.differ.reset();
   }
 
@@ -67,14 +75,20 @@ export class Screen {
     return this.surface.serialize();
   }
 
-  // Unified compositing path: `present` fills the Surface with the scene (every
-  // cell opaque), the UI paints over it (alpha-composited where translucent),
-  // and only cells that changed since the last frame are emitted. Returns '' when
-  // nothing changed. resetDiff() (e.g. after an ESC[2J / resize) forces the next
-  // frame to repaint in full.
-  frameComposited(present: (surf: Surface) => void): string {
-    this.surface.clear();
-    present(this.surface);
+  // Unified compositing path. `present` fills a Surface with the scene (every
+  // cell opaque); the UI paints over it (alpha-composited where translucent);
+  // only cells changed since the last frame are emitted ('' when nothing
+  // changed). `sceneChanged` lets a UI-only frame (e.g. a hover) skip the
+  // expensive scene re-sample and reuse the cached scene layer — the perf
+  // fix that makes this viable on static screens like the chess turntable.
+  // resetDiff() (after an ESC[2J / resize) forces a full repaint next frame.
+  frameComposited(present: (surf: Surface) => void, sceneChanged = true): string {
+    if (sceneChanged || !this.sceneValid) {
+      this.sceneLayer.clear();
+      present(this.sceneLayer);
+      this.sceneValid = true;
+    }
+    this.sceneLayer.copyInto(this.surface);
     if (this.root) paint(this.root, this.surface, this.state);
     this.painted = { ...this.state };
     return this.differ.diff(this.surface);
@@ -82,6 +96,7 @@ export class Screen {
 
   resetDiff(): void {
     this.differ.reset();
+    this.sceneValid = false;
   }
 
   // Whether interaction state changed since the last paint.

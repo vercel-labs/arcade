@@ -37,12 +37,12 @@ const JITTER_TEMP = 0.04;
 
 const MODE_ORDER: RenderMode[] = ['ascii', 'color', 'luminance'];
 
-// Unified compositing (OpenTUI keystone): when true, the scene paints into the
-// same Surface as the UI and a single diff is flushed, instead of "scene string
-// + UI overlay string". Currently OFF: the cell-renderer port (shapeGlyphToSurface)
-// diverges from toShapeGlyph on a few cells' colors, and re-sampling the whole
-// scene on every hover regresses chess perf — both must be fixed before re-enabling.
-const UNIFIED = false;
+// Unified compositing (OpenTUI keystone): the scene paints into the same Surface
+// as the UI and a single diff is flushed, instead of "scene string + UI overlay
+// string". Color parity fixed (setCell clamps) and UI-only frames reuse a cached
+// scene layer (no per-hover re-sample). Flip to false to fall back to the legacy
+// path instantly.
+const UNIFIED = true;
 
 let cols = process.stdout.columns ?? 80;
 let rows = process.stdout.rows ?? 24;
@@ -475,7 +475,11 @@ function tick(): void {
     if (sceneDirty) orbit.renderScene(target);
     if (UNIFIED) {
       // Composite scene + UI into one diffed buffer; skip when nothing changed.
-      if (sceneDirty || ui.dirty()) r.write(ui.frameComposited((s) => presentSceneInto(s, false, true)));
+      // Pass sceneDirty so a hover-only frame reuses the cached scene layer
+      // instead of re-sampling the whole scene.
+      if (sceneDirty || ui.dirty()) {
+        r.write(ui.frameComposited((s) => presentSceneInto(s, false, true), sceneDirty));
+      }
     } else if (sceneDirty) {
       r.write(presentScene(false, true) + ui.frame());
     } else if (ui.dirty()) {
