@@ -22,20 +22,18 @@ const PAN_STEP = 10;
 const SS = 3;
 // Softmax "temperature" for glyph jitter when enabled (subtle variation).
 const JITTER_TEMP = 0.04;
-// Bottom rows reserved on the attract screen for the button bar + margin, so the
-// scene doesn't render under the buttons and there's space below them.
-const ATTRACT_RESERVE = 2;
 
 const MODE_ORDER: RenderMode[] = ['ascii', 'color', 'luminance'];
 
 let cols = process.stdout.columns ?? 80;
 let rows = process.stdout.rows ?? 24;
 
-// The game draws ASCII glyphs (legacy char framebuffer); the attract screen
-// renders through the engine to a supersampled RGBA target. Both reserve the
-// bottom row (HUD / prompt).
+// The game draws ASCII glyphs (legacy char framebuffer) and reserves its bottom
+// row for the HUD. The attract/chess scenes render through the engine to a
+// supersampled RGBA target at FULL height — the button bar composites on top of
+// the scene's bottom row rather than sitting on a reserved blank strip.
 const fb = new Framebuffer(cols, rows - 1);
-let target = new RenderTarget(cols * SS, (rows - ATTRACT_RESERVE) * 2 * SS);
+let target = new RenderTarget(cols * SS, rows * 2 * SS);
 let display: RenderTarget | undefined;
 const attract = new AttractScene();
 const game = new Game();
@@ -44,10 +42,14 @@ const chessGame = new ChessGameScene();
 // The 2D UI overlay (button bar). Lays out + paints over the scene each frame.
 const ui = new Screen(cols, rows);
 
-// Where the bottom button bar lives: a single full-width row just above the
-// reserved margin (0-based, so 1-based row rows-1 → y = rows-2).
+// Bar geometry: a band of pills composited over the scene, lifted off the very
+// bottom edge by a margin so it doesn't hug it. BAR_HEIGHT must match the pill
+// height (1 text row + the pill's vertical padding, top and bottom). Opaque
+// pills overwrite the scene; the gaps and the margin row show it through.
+const BAR_HEIGHT = 1;
+const BAR_BOTTOM_MARGIN = 1;
 function barRegion(): LayoutBox {
-  return { x: 0, y: rows - 2, w: cols, h: 1 };
+  return { x: 0, y: rows - BAR_HEIGHT - BAR_BOTTOM_MARGIN, w: cols, h: BAR_HEIGHT };
 }
 
 // The active turntable scene when in a chess view (drives orbit/pan/zoom), or null.
@@ -140,7 +142,6 @@ function toAttract(): void {
 // way the old onMouse id→action branch did.
 const actions: BarActions = {
   start: startGame,
-  chess: enterChess,
   chessGame: enterChessGame,
   demo: enterDemo,
   back: toAttract,
@@ -160,14 +161,14 @@ function syncBar(): void {
 // effects, off for solid geometry like the chess pieces.
 function presentScene(withBloom = true, hybridShadow = false): string {
   if (renderMode === 'ascii') {
-    return toShapeGlyph(target, cols, rows - ATTRACT_RESERVE, {
+    return toShapeGlyph(target, cols, rows, {
       color: true,
       jitterTemp: jitter ? JITTER_TEMP : 0,
       hybrid: hybridShadow,
     });
   }
   if (renderMode === 'luminance') {
-    return toLuminance(target, cols, rows - ATTRACT_RESERVE, { color: true });
+    return toLuminance(target, cols, rows, { color: true });
   }
   display = downsample(target, SS, display);
   if (withBloom) bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
@@ -177,7 +178,7 @@ function presentScene(withBloom = true, hybridShadow = false): string {
 // Maps a 1-based terminal mouse cell to a normalized device coordinate (−1..1,
 // +y up) plus the aspect the scene renders at — for ray-picking the board.
 function pointerNdc(x: number, y: number): { ndcX: number; ndcY: number; aspect: number } {
-  const sceneRows = rows - ATTRACT_RESERVE;
+  const sceneRows = rows;
   return {
     ndcX: ((x - 0.5) / cols) * 2 - 1,
     ndcY: 1 - ((y - 0.5) / sceneRows) * 2,
@@ -372,7 +373,7 @@ process.stdout.on('resize', () => {
   cols = process.stdout.columns ?? 80;
   rows = process.stdout.rows ?? 24;
   fb.resize(cols, rows - 1);
-  target = new RenderTarget(cols * SS, (rows - ATTRACT_RESERVE) * 2 * SS);
+  target = new RenderTarget(cols * SS, rows * 2 * SS);
   ui.resize(cols, rows);
   display = undefined;
   // The scene repaints every cell it owns each frame, but the reserved button

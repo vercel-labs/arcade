@@ -25,7 +25,6 @@ export class Screen {
   // Interaction state as of the last paint, for dirty() (mirrors the old
   // `hoveredButton !== lastHoveredButton` check that gated chess repaints).
   private painted: PaintState = { hoverId: null, focusId: null, pressedId: null };
-  private prevRows: number[] = [];
   // The region the root is laid out into. Stored so hit-testing always has fresh
   // geometry even on frames we don't repaint (e.g. an idle chess turntable).
   private region: LayoutBox = { x: 0, y: 0, w: 0, h: 0 };
@@ -40,7 +39,6 @@ export class Screen {
     this.cols = cols;
     this.rows = rows;
     this.surface.resize(cols, rows);
-    this.prevRows = [];
   }
 
   // Set the tree and lay it out into `region` immediately, so hit-testing has
@@ -53,21 +51,17 @@ export class Screen {
     if (this.root) layout(this.root, this.region);
   }
 
-  // Paint the (already laid-out) root and return the escape string. Prefixes a
-  // row clear for any row painted last frame or this frame (v1: the bar sits
-  // over scene-free rows, so a full-row clear is safe and removes stale cells).
+  // Paint the (already laid-out) root and return the escape string. No row clear
+  // is emitted: the bar composites OVER the scene, so blanking a row would wipe
+  // the scene showing through the transparent gaps between pills. Erasure of last
+  // frame's opaque cells is handled by the scene's full-frame repaint (and by
+  // fullRepaint/ESC[2J on geometry changes like resize). The pills are constant-
+  // geometry per screen, so they leave no ghosts.
   frame(): string {
     this.surface.clear();
-    if (this.root) {
-      paint(this.root, this.surface, this.state);
-    }
-    const rows = this.surface.rowsTouched();
-    const clearRows = new Set<number>([...this.prevRows, ...rows]);
-    let prefix = '';
-    for (const r of clearRows) prefix += `\x1b[${r + 1};1H\x1b[2K`;
-    this.prevRows = rows;
+    if (this.root) paint(this.root, this.surface, this.state);
     this.painted = { ...this.state };
-    return prefix + this.surface.serialize();
+    return this.surface.serialize();
   }
 
   // Whether interaction state changed since the last paint.

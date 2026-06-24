@@ -10,7 +10,6 @@ export type RenderMode = 'color' | 'ascii' | 'luminance';
 
 export interface BarActions {
   start(): void;
-  chess(): void;
   chessGame(): void;
   demo(): void;
   back(): void;
@@ -19,45 +18,56 @@ export interface BarActions {
   quit(): void;
 }
 
-// A pill: dim on near-black normally, bright inverted on hover/press, with a
-// distinct focus tint so keyboard focus is visible.
+// A pill: muted slate normally, bright inverted on hover/press, with a distinct
+// focus tint so keyboard focus is visible. Horizontal padding gives the label a
+// little room; the pill is a single row so the label is vertically centered
+// (text is cell-locked, so only odd heights center — 1 row here, 3 if more body
+// is wanted). A centered 2-row pill needs half-block edges + scene compositing.
 const PILL: Style = {
   padding: [0, 2],
-  background: [28, 28, 34],
-  color: [180, 180, 190],
+  background: [44, 46, 56],
+  color: [212, 214, 224],
   bold: true,
-  hover: { background: [235, 235, 240], color: [0, 0, 0] },
-  focus: { background: [70, 70, 84], color: [245, 245, 250] },
-  pressed: { background: [235, 235, 240], color: [0, 0, 0] },
+  hover: { background: [238, 240, 248], color: [16, 16, 24] },
+  focus: { background: [86, 90, 108], color: [248, 248, 252] },
+  pressed: { background: [255, 255, 255], color: [12, 12, 18] },
 };
 
+// Center a string within a fixed-width field. Keeps the mode button a stable
+// width as the render-mode name changes, without the label drifting left (the
+// old padEnd left-anchored the text inside the pill).
+function centerField(s: string, width: number): string {
+  const pad = Math.max(0, width - s.length);
+  const left = Math.floor(pad / 2);
+  return ' '.repeat(left) + s + ' '.repeat(pad - left);
+}
+
 export function buildBar(mode: Mode, renderMode: RenderMode, a: BarActions): Node {
-  const modeLabel = `mode: ${renderMode.padEnd(9)}`;
+  const modeLabel = `mode: ${centerField(renderMode, 9)}`;
   let buttons: Node[] = [];
 
   if (mode === 'attract') {
     buttons = [
-      Button({ id: 'start', label: 'Start', onClick: a.start, style: PILL }),
-      Button({ id: 'chess', label: 'Chess', onClick: a.chess, style: PILL }),
-      Button({ id: 'chess-game', label: 'Chess Game', onClick: a.chessGame, style: PILL }),
-      Button({ id: 'demo', label: 'Demo', onClick: a.demo, style: PILL }),
+      Button({ id: 'start', label: 'start', onClick: a.start, style: PILL }),
+      Button({ id: 'chess-game', label: 'chess game', onClick: a.chessGame, style: PILL }),
+      Button({ id: 'demo', label: 'demo', onClick: a.demo, style: PILL }),
       Button({ id: 'mode', label: modeLabel, onClick: a.mode, style: PILL }),
-      Button({ id: 'quit', label: 'Quit', onClick: a.quit, style: PILL }),
+      Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
     ];
   } else if (mode === 'demo') {
     buttons = [
-      Button({ id: 'back', label: 'Back', onClick: a.back, style: PILL }),
+      Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
       Button({ id: 'mode', label: modeLabel, onClick: a.mode, style: PILL }),
-      Button({ id: 'quit', label: 'Quit', onClick: a.quit, style: PILL }),
+      Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
     ];
   } else if (mode === 'chess' || mode === 'chess-game') {
     buttons = [
-      Button({ id: 'back', label: 'Back', onClick: a.back, style: PILL }),
-      Button({ id: 'reset', label: 'Reset View', onClick: a.reset, style: PILL }),
+      Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
+      Button({ id: 'reset', label: 'reset view', onClick: a.reset, style: PILL }),
       Button({ id: 'mode', label: modeLabel, onClick: a.mode, style: PILL }),
-      Button({ id: 'quit', label: 'Quit', onClick: a.quit, style: PILL }),
+      Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
     ];
   }
 
-  return Box({ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 3 }, buttons);
+  return Box({ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 2 }, buttons);
 }

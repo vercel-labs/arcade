@@ -4,19 +4,86 @@
 //   pnpm exec tsx src/tools/snapshot.ts [cols] [rows] [t] [out.ppm]
 //   pnpm exec tsx src/tools/snapshot.ts chess [cols] [rows] [out.ppm]
 //   pnpm exec tsx src/tools/snapshot.ts ui [cols] [rows] [hover=<id>|focus=<id>] [out.ppm]
+//   pnpm exec tsx src/tools/snapshot.ts overlay [chess|chess-game|attract] [cols] [rows] [out.ppm]
 import { writeFileSync } from 'node:fs';
 import { bloom, downsample, RenderTarget, Surface } from '../engine/index.ts';
 import { FONT } from '../engine/font8x8.ts';
 import { AttractScene } from '../arcade/attract.ts';
 import { ChessScene } from '../arcade/chess.ts';
 import { ChessGameScene } from '../arcade/chess-game.ts';
-import { buildBar } from '../arcade/bars.ts';
+import { buildBar, type Mode } from '../arcade/bars.ts';
 import { layout, paint, type PaintState } from '../tui/index.ts';
 
 if (process.argv[2] === 'ui') {
   uiSnapshot();
+} else if (process.argv[2] === 'overlay') {
+  overlaySnapshot();
 } else {
   sceneSnapshot();
+}
+
+// Render a scene full-height, then composite that screen's button bar over its
+// bottom row — proving the bar sits ON TOP of the 3D scene (opaque pills
+// overwrite it; transparent gaps show it through). Each cell is drawn as two
+// stacked half-block colors sampled from the downsampled scene, with the bar
+// glyphs stamped over opaque cells.
+function overlaySnapshot(): void {
+  const scene = (process.argv[3] as Mode) ?? 'chess';
+  const cols = Number(process.argv[4]) || 110;
+  const rows = Number(process.argv[5]) || 40;
+  const out = process.argv[6] ?? `.snapshots/overlay-${scene}.ppm`;
+  const SS = 3;
+
+  const target = new RenderTarget(cols * SS, rows * 2 * SS);
+  if (scene === 'chess') new ChessScene().renderScene(target);
+  else if (scene === 'chess-game') new ChessGameScene().renderScene(target);
+  else new AttractScene().renderScene(target, 0.6);
+  const display = downsample(target, SS);
+  if (scene === 'attract') bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
+
+  const noop = (): void => {};
+  const root = buildBar(scene, 'ascii', {
+    start: noop, chessGame: noop, demo: noop, back: noop, reset: noop, mode: noop, quit: noop,
+  });
+  const surf = new Surface(cols, rows);
+  layout(root, { x: 0, y: rows - 2, w: cols, h: 1 });
+  paint(root, surf, { hoverId: 'reset', focusId: null, pressedId: null });
+
+  const CW = 8;
+  const CH = 8;
+  const W = cols * CW;
+  const H = rows * CH;
+  const body = Buffer.alloc(W * H * 3);
+  const dc = display.color; // cols × (rows*2), RGB floats
+  const at = (x: number, y: number): [number, number, number] => {
+    const i = (y * cols + x) * 3;
+    return [dc[i], dc[i + 1], dc[i + 2]];
+  };
+  const put = (px: number, py: number, c: [number, number, number]): void => {
+    const i = (py * W + px) * 3;
+    body[i] = Math.max(0, Math.min(255, c[0]));
+    body[i + 1] = Math.max(0, Math.min(255, c[1]));
+    body[i + 2] = Math.max(0, Math.min(255, c[2]));
+  };
+  for (let cy = 0; cy < rows; cy++) {
+    for (let cx = 0; cx < cols; cx++) {
+      const top = at(cx, cy * 2);
+      const bot = at(cx, cy * 2 + 1);
+      // Scene first: top half = upper pixel, bottom half = lower pixel.
+      for (let py = 0; py < CH; py++) {
+        for (let px = 0; px < CW; px++) put(cx * CW + px, cy * CH + py, py < CH / 2 ? top : bot);
+      }
+      const cell = surf.getCell(cx, cy);
+      if (!cell || !cell.opaque) continue; // transparent → scene shows through
+      const glyph = FONT[cell.ch];
+      for (let py = 0; py < CH; py++) {
+        const bits = glyph?.[py] ?? '';
+        for (let px = 0; px < CW; px++) put(cx * CW + px, cy * CH + py, bits[px] === '1' ? cell.fg : cell.bg);
+      }
+    }
+  }
+  writeFileSync(out, Buffer.concat([Buffer.from(`P6\n${W} ${H}\n255\n`, 'ascii'), body]));
+  console.log(`wrote ${out} (${W}x${H})`);
 }
 
 // Rasterize the button-bar tree (laid out + painted onto a Surface) to a PPM,
@@ -37,7 +104,7 @@ function uiSnapshot(): void {
 
   const noop = (): void => {};
   const root = buildBar('attract', 'ascii', {
-    start: noop, chess: noop, chessGame: noop, demo: noop, back: noop, reset: noop, mode: noop, quit: noop,
+    start: noop, chessGame: noop, demo: noop, back: noop, reset: noop, mode: noop, quit: noop,
   });
   const surf = new Surface(cols, rows);
   layout(root, { x: 0, y: rows - 2, w: cols, h: 1 });
