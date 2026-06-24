@@ -1,0 +1,8 @@
+// Public API of the TUI overlay library. App code (arcade/) imports from here;
+// modules inside tui import each other directly. tui consumes engine (Surface,
+// width, color) and platform (input types); nothing imports app code.
+export { Box, Text, Button } from './nodes.ts';
+export { Screen } from './screen.ts';
+export { layout } from './layout.ts';
+export { paint, type PaintState } from './paint.ts';
+export type { Node, Style, Dimension, LayoutBox, BorderStyle } from './types.ts';

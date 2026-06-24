@@ -23,9 +23,12 @@ import {
 import { ChessState } from '../games/chess/chess.ts';
 import {
   BISHOP,
+  BLACK,
   type Color,
+  FLAG_CAPTURE,
   FLAG_CASTLE_K,
   FLAG_CASTLE_Q,
+  FLAG_EP,
   KING,
   KNIGHT,
   type Move,
@@ -49,8 +52,16 @@ const BROWN: Vec3 = { x: 150, y: 96, z: 52 }; // dark set
 const LIGHT_SQ: Vec3 = { x: 142, y: 138, z: 130 };
 const DARK_SQ: Vec3 = { x: 78, y: 74, z: 70 };
 const FRAME: Vec3 = { x: 46, y: 43, z: 40 };
-const DISC_TINT: Vec3 = { x: 120, y: 122, z: 132 }; // legal-move indicator dot
-const HOVER_GLOW: Vec3 = { x: 244, y: 230, z: 138 }; // pastel yellow — lit color blends toward this on hover/select
+// Single muted pastel-yellow used for the selected-square tint (light and dark
+// squares alike) and the legal-move dots.
+const HILITE_LIGHT: Vec3 = { x: 152, y: 144, z: 100 };
+const HILITE_DARK: Vec3 = { x: 152, y: 144, z: 100 };
+// Legal-move dots invert against their square for contrast (and so ASCII picks a
+// fittingly low/high-brightness glyph): a darker-grey dot on light squares, a
+// lighter-grey dot on dark squares. The two greys are kept fairly close in shade
+// (but the dark one stays clearly below the light one to preserve the inversion).
+const DOT_ON_LIGHT: Vec3 = { x: 98, y: 98, z: 104 };
+const DOT_ON_DARK: Vec3 = { x: 126, y: 123, z: 116 };
 
 const KEY_DIR = normalize3({ x: -0.4, y: 0.85, z: 0.5 });
 const FILL_DIR = normalize3({ x: 0.6, y: 0.25, z: 0.35 });
@@ -58,19 +69,42 @@ const AMBIENT = 0.32;
 const KEY_STRENGTH = 0.7;
 const FILL_STRENGTH = 0.18;
 
-const ANIM_FRAMES = 9; // ~0.3s at 30fps for a piece to slide to its destination
-const DISC_LIFT = 0.012; // float the indicator just above the board surface
+const ANIM_FRAMES = 9; // ~0.3s at 30fps for a single animation phase
+const DOT_LIFT = 0.012; // float the move dots just above the board surface
+const HILITE_LIFT = 0.004; // selected-square tint sits just above the board, under the piece
+const ARC_HEIGHT = 0.5; // peak lift of a parabolic arc (captures + knight hops), world units
+const JAIL_GAP = 0.6; // x-gap between the board edge and the first jail column (× square)
+const JAIL_STEP = 0.9; // jail slot spacing, a touch tighter than a board square (× square)
 
-// One piece sliding from `from` to `to` (a normal move is one segment; castling
-// is two — the king and the rook).
-interface AnimSegment {
+// How a piece travels between two world points: `slide` stays on the board
+// plane; `arc` adds a low parabolic hop (captured pieces leaving the board, and
+// knights, which "jump").
+type Motion = 'slide' | 'arc';
+
+// One animated piece moving from a world point to another during a given phase.
+// `hideSq` is the board square it currently occupies, suppressed from the static
+// board render for the whole animation so it isn't drawn twice.
+interface AnimSeg {
   mesh: Mesh;
   color: Color;
-  from: number; // 0x88
-  to: number; // 0x88
+  from: Vec3;
+  to: Vec3;
+  motion: Motion;
+  phase: number; // 0-based phase index this segment animates in
+  hideSq: number; // 0x88 board square to suppress while animating (-1 = none)
 }
 
 const ease = (t: number): number => t * t * (3 - 2 * t);
+
+// Interpolate a world position along a segment at eased parameter `e`, adding a
+// low parabolic lift (peaks at e=0.5) for arc motion.
+function travel(a: Vec3, b: Vec3, e: number, motion: Motion): Vec3 {
+  return {
+    x: a.x + (b.x - a.x) * e,
+    y: a.y + (b.y - a.y) * e + (motion === 'arc' ? ARC_HEIGHT * 4 * e * (1 - e) : 0),
+    z: a.z + (b.z - a.z) * e,
+  };
+}
 
 // A playable chess board: a procedural 8×8 board driven by a live ChessState.
 // Hover a piece for a pastel-yellow glow; click it to reveal legal-move dots;
@@ -83,15 +117,42 @@ export class ChessGameScene {
   private darkSquares: Mesh;
   private base: Mesh;
   private disc: Mesh;
+  private hiliteQuad: Mesh; // one-square quad for the selected-square tint
   private scale: number;
   private square: number;
   private cam: OrbitCamera;
 
   // Interaction state.
-  private hoverSq = -1; // 0x88 square under the cursor, or -1
   private selectedSq = -1; // selected piece's square, or -1
   private targets = new Map<number, Move>(); // legal destination square → move
-  private anim: { segments: AnimSegment[]; move: Move; t: number } | null = null;
+  // In-flight move: a list of phased segments played sequentially (e.g. a capture
+  // is phase 0 = captured piece arcs to jail, phase 1 = capturer moves). `jail`,
+  // if set, is the captured piece to file into the jail once the move completes.
+  private anim: {
+    segs: AnimSeg[];
+    move: Move;
+    phases: number;
+    phase: number;
+    t: number;
+    jail?: { type: number; color: Color; captor: Color };
+  } | null = null;
+  // Captured pieces, in capture order, parked off-board in an implicit 2×8 grid.
+  // `whiteJail` holds the black pieces White has captured (shown bottom-right by
+  // White's h1); `blackJail` holds White pieces Black captured (top-left). Each
+  // is keyed by its captor for jailSlot().
+  private whiteJail: { type: number; color: Color }[] = [];
+  private blackJail: { type: number; color: Color }[] = [];
+  // Dirty-flag rendering: the scene is static between interactions (no camera
+  // auto-orbit), so the orchestrator can skip re-rendering and re-writing an
+  // unchanged frame. Set on any camera/selection change; stays set while a move
+  // is animating; cleared once a still frame has been rendered.
+  private dirty = true;
+
+  // Whether the visible scene has changed since the last render. Starts true so
+  // the first frame always paints.
+  needsRender(): boolean {
+    return this.dirty;
+  }
 
   constructor(dir = 'public/assets/chess_blender') {
     const meshes: Record<string, Mesh> = {};
@@ -118,6 +179,8 @@ export class ChessGameScene {
     this.darkSquares = board.dark;
     this.base = board.base;
     this.disc = buildDisc(this.square / 6, 24); // diameter ≈ 1/3 of a square
+    this.hiliteQuad = { vertices: [], indices: [] };
+    quad(this.hiliteQuad, -this.square / 2, -this.square / 2, this.square / 2, this.square / 2, 0);
 
     const boardWidth = 8 * this.square;
     const dist = boardWidth / (2 * Math.tan(FOVY / 2)) + 2;
@@ -136,18 +199,39 @@ export class ChessGameScene {
     return { x: (file - 3.5) * this.square, y: 0, z: (3.5 - rank) * this.square };
   }
 
+  // World position of a captured piece's parking slot, for the given captor's
+  // jail. An implicit 2×8 grid off the board's right edge (from the captor's
+  // POV): index 0 sits just past the h1 corner, the column fills back toward h8,
+  // and the 9th piece (index 8) starts a second column further out. Black's jail
+  // is the 180° mirror, putting it at the top-left from White's view.
+  private jailSlot(captor: Color, index: number): Vec3 {
+    const sq = this.square;
+    const edge = 4 * sq; // right edge of the playing surface
+    const col = Math.floor(index / 8); // 0 = nearer the board, 1 = further out
+    const row = index % 8; // 0 = nearest the h1 corner, 7 = back by h8
+    const x = edge + JAIL_GAP * sq + col * JAIL_STEP * sq;
+    // Row 0 aligns just inside the front-right corner, a touch ahead of h1's
+    // center; successive rows step back toward h8.
+    const z = edge - (JAIL_STEP * sq) / 2 - row * JAIL_STEP * sq;
+    return captor === WHITE ? { x, y: 0, z } : { x: -x, y: 0, z: -z };
+  }
+
   // ── Camera passthrough ─────────────────────────────────────────────────────
   resetView(): void {
     this.cam.reset();
+    this.dirty = true;
   }
   orbit(dx: number, dy: number): void {
     this.cam.orbit(dx, dy);
+    this.dirty = true;
   }
   pan(dx: number, dy: number): void {
     this.cam.pan(dx, dy);
+    this.dirty = true;
   }
   zoomBy(factor: number): void {
     this.cam.zoomBy(factor);
+    this.dirty = true;
   }
 
   // ── Picking & interaction ───────────────────────────────────────────────────
@@ -165,14 +249,6 @@ export class ChessGameScene {
     const rank = Math.floor(4 - (eye.z + dir.z * t) / this.square);
     if (file < 0 || file > 7 || rank < 0 || rank > 7) return -1;
     return rank * 16 + file;
-  }
-
-  setHover(ndcX: number, ndcY: number, aspect: number): void {
-    this.hoverSq = this.squareAt(ndcX, ndcY, aspect);
-  }
-
-  clearHover(): void {
-    this.hoverSq = -1;
   }
 
   click(ndcX: number, ndcY: number, aspect: number): void {
@@ -195,6 +271,7 @@ export class ChessGameScene {
 
   private select(sq: number): void {
     this.selectedSq = sq;
+    this.dirty = true;
     this.targets.clear();
     for (const m of this.game.legalActions()) {
       if (m.from !== sq) continue;
@@ -204,22 +281,67 @@ export class ChessGameScene {
   }
 
   private deselect(): void {
+    if (this.selectedSq !== -1) this.dirty = true;
     this.selectedSq = -1;
     this.targets.clear();
   }
 
   private startMove(move: Move): void {
     const color = pieceColor(move.piece);
-    const segments: AnimSegment[] = [{ mesh: this.meshByType[pieceType(move.piece)], color, from: move.from, to: move.to }];
-    if (move.flags & FLAG_CASTLE_K) {
-      const rank = color === WHITE ? 0 : 7;
-      segments.push({ mesh: this.meshByType[ROOK], color, from: square(7, rank), to: square(5, rank) });
+    const segs: AnimSeg[] = [];
+    let jail: { type: number; color: Color; captor: Color } | undefined;
+
+    // Capture: the captured piece arcs off to its jail slot at the same time the
+    // capturer moves to the square — both in phase 0 — so the whole thing reads
+    // as one smooth motion rather than a two-step take-then-move.
+    if (move.flags & (FLAG_CAPTURE | FLAG_EP)) {
+      // En passant takes the pawn behind the destination, not on it.
+      const capturedSq = move.flags & FLAG_EP ? move.to + (color === WHITE ? -16 : 16) : move.to;
+      const capType = pieceType(move.captured);
+      const capColor = pieceColor(move.captured);
+      const list = color === WHITE ? this.whiteJail : this.blackJail;
+      segs.push({
+        mesh: this.meshByType[capType],
+        color: capColor,
+        from: this.squareCenter(capturedSq),
+        to: this.jailSlot(color, list.length),
+        motion: 'arc',
+        phase: 0,
+        hideSq: capturedSq,
+      });
+      jail = { type: capType, color: capColor, captor: color };
     }
-    if (move.flags & FLAG_CASTLE_Q) {
+
+    // The mover travels in phase 0 too. Knights hop (arc); everyone else slides.
+    const moverPhase = 0;
+    segs.push({
+      mesh: this.meshByType[pieceType(move.piece)],
+      color,
+      from: this.squareCenter(move.from),
+      to: this.squareCenter(move.to),
+      motion: pieceType(move.piece) === KNIGHT ? 'arc' : 'slide',
+      phase: moverPhase,
+      hideSq: move.from,
+    });
+
+    // Castling rook rides alongside the king (same phase, sliding; never a capture).
+    const addRook = (fromFile: number, toFile: number): void => {
       const rank = color === WHITE ? 0 : 7;
-      segments.push({ mesh: this.meshByType[ROOK], color, from: square(0, rank), to: square(3, rank) });
-    }
-    this.anim = { segments, move, t: 0 };
+      segs.push({
+        mesh: this.meshByType[ROOK],
+        color,
+        from: this.squareCenter(square(fromFile, rank)),
+        to: this.squareCenter(square(toFile, rank)),
+        motion: 'slide',
+        phase: moverPhase,
+        hideSq: square(fromFile, rank),
+      });
+    };
+    if (move.flags & FLAG_CASTLE_K) addRook(7, 5);
+    if (move.flags & FLAG_CASTLE_Q) addRook(0, 3);
+
+    this.anim = { segs, move, phases: 1, phase: 0, t: 0, jail };
+    this.dirty = true;
     this.deselect();
   }
 
@@ -232,7 +354,7 @@ export class ChessGameScene {
     const scaleM = mat4Scale(this.scale, this.scale, this.scale);
     const blackOrient = mat4Multiply(mat4RotY(Math.PI), scaleM);
 
-    const draw = (mesh: Mesh, model: number[], tint: Vec3, glow?: Vec3): void => {
+    const draw = (mesh: Mesh, model: number[], tint: Vec3): void => {
       rasterize(target, mesh, pieceMaterial, {
         mvp: mat4Multiply(viewProjection, model),
         model,
@@ -243,7 +365,6 @@ export class ChessGameScene {
         fillStrength: FILL_STRENGTH,
         ambient: AMBIENT,
         tint,
-        glow,
       });
     };
     const orient = (color: Color): number[] => (color === WHITE ? scaleM : blackOrient);
@@ -254,41 +375,68 @@ export class ChessGameScene {
     draw(this.darkSquares, identity, DARK_SQ);
     draw(this.lightSquares, identity, LIGHT_SQ);
 
-    // Legal-move indicator dots (only while a piece is selected and idle).
+    // Selected-square tint + legal-move dots (only while idle).
     if (this.selectedSq >= 0 && !this.anim) {
+      const sc = this.squareCenter(this.selectedSq);
+      const light = ((this.selectedSq & 7) + (this.selectedSq >> 4)) % 2 === 1;
+      draw(this.hiliteQuad, mat4Translate(sc.x, HILITE_LIFT, sc.z), light ? HILITE_LIGHT : HILITE_DARK);
       for (const to of this.targets.keys()) {
         const c = this.squareCenter(to);
-        draw(this.disc, mat4Translate(c.x, DISC_LIFT, c.z), DISC_TINT);
+        const onLight = (((to & 7) + (to >> 4)) % 2) === 1;
+        draw(this.disc, mat4Translate(c.x, DOT_LIFT, c.z), onLight ? DOT_ON_LIGHT : DOT_ON_DARK);
       }
     }
 
-    // Pieces, read live from the board. Skip any piece currently sliding.
-    const sliding = this.anim ? new Set(this.anim.segments.map((s) => s.from)) : null;
+    // Draw a piece (board or jail) at a world position, oriented and tinted by color.
+    const place = (mesh: Mesh, pos: Vec3, color: Color): void =>
+      draw(mesh, mat4Multiply(mat4Translate(pos.x, pos.y, pos.z), orient(color)), color === WHITE ? IVORY : BROWN);
+
+    // Pieces, read live from the board. Suppress any piece an animation is
+    // currently moving (it's drawn by the animation block instead).
+    const hidden = this.anim ? new Set(this.anim.segs.map((s) => s.hideSq)) : null;
     for (let sq = 0; sq < 128; sq++) {
       if (sq & 0x88) continue;
       const p = this.game.board.squares[sq];
-      if (!p || sliding?.has(sq)) continue;
-      const c = this.squareCenter(sq);
+      if (!p || hidden?.has(sq)) continue;
       const color = pieceColor(p);
-      const glow = sq === this.selectedSq || sq === this.hoverSq ? HOVER_GLOW : undefined;
-      draw(this.meshByType[pieceType(p)], mat4Multiply(mat4Translate(c.x, 0, c.z), orient(color)), color === WHITE ? IVORY : BROWN, glow);
+      place(this.meshByType[pieceType(p)], this.squareCenter(sq), color);
     }
 
-    // In-flight move: draw sliding pieces, advance, and commit on arrival.
+    // Captured pieces, parked in their implicit jail grids.
+    for (let i = 0; i < this.whiteJail.length; i++) {
+      const e = this.whiteJail[i];
+      place(this.meshByType[e.type], this.jailSlot(WHITE, i), e.color);
+    }
+    for (let i = 0; i < this.blackJail.length; i++) {
+      const e = this.blackJail[i];
+      place(this.meshByType[e.type], this.jailSlot(BLACK, i), e.color);
+    }
+
+    // In-flight move: draw each segment at its position for the current phase
+    // (done → at its target, pending → at its origin, active → interpolated),
+    // advance the phase clock, and commit the move once all phases finish.
     if (this.anim) {
-      const e = ease(this.anim.t);
-      for (const seg of this.anim.segments) {
-        const a = this.squareCenter(seg.from);
-        const b = this.squareCenter(seg.to);
-        const model = mat4Multiply(mat4Translate(a.x + (b.x - a.x) * e, 0, a.z + (b.z - a.z) * e), orient(seg.color));
-        draw(seg.mesh, model, seg.color === WHITE ? IVORY : BROWN);
+      const A = this.anim;
+      for (const s of A.segs) {
+        const pos =
+          s.phase < A.phase ? s.to : s.phase > A.phase ? s.from : travel(s.from, s.to, ease(A.t), s.motion);
+        place(s.mesh, pos, s.color);
       }
-      this.anim.t += 1 / ANIM_FRAMES;
-      if (this.anim.t >= 1) {
-        this.game.applyAction(this.anim.move);
-        this.anim = null;
+      A.t += 1 / ANIM_FRAMES;
+      if (A.t >= 1) {
+        A.t = 0;
+        A.phase++;
+        if (A.phase >= A.phases) {
+          this.game.applyAction(A.move);
+          if (A.jail) (A.jail.captor === WHITE ? this.whiteJail : this.blackJail).push({ type: A.jail.type, color: A.jail.color });
+          this.anim = null;
+        }
       }
     }
+
+    // A still frame has now been painted; stay dirty only while a move is still
+    // animating (each animation frame changes the image), otherwise go idle.
+    this.dirty = this.anim !== null;
   }
 
   private buildBoard(): { light: Mesh; dark: Mesh; base: Mesh } {

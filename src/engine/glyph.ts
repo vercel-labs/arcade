@@ -40,8 +40,13 @@ function coverage(rows: string[]): number[] {
 // makes uniform-bright cells drift toward edge-ink glyphs. Raw coverage matches
 // density faithfully here — a fully-lit cell goes to the densest glyph, a
 // half-lit cell to the glyph inked on that half.
-const charVectors = keys.map((k) => coverage(FONT[k]));
-const charOutputs = keys.slice();
+// Space first: it's the nearest match for the majority of cells (dark/empty
+// regions), so checking it before everything else seeds a tight `bestDist`
+// immediately, which lets the partial-distance early-out below reject most
+// other glyphs within a couple of dimensions.
+const orderedKeys = keys.includes(' ') ? [' ', ...keys.filter((k) => k !== ' ')] : keys;
+const charVectors = orderedKeys.map((k) => coverage(FONT[k]));
+const charOutputs = orderedKeys.slice();
 
 // Reused top-K buffers so the sampled path allocates nothing per cell.
 const SAMPLE_K = 6;
@@ -64,6 +69,7 @@ export function matchGlyph(cell: number[], temperature = 0): string {
       for (let i = 0; i < DIM; i++) {
         const diff = cell[i] - v[i];
         d += diff * diff;
+        if (d >= bestDist) break; // partial distance already loses — skip rest
       }
       if (d < bestDist) {
         bestDist = d;
@@ -80,9 +86,11 @@ export function matchGlyph(cell: number[], temperature = 0): string {
   for (let c = 0; c < charVectors.length; c++) {
     const v = charVectors[c];
     let d = 0;
+    const worst = kd[SAMPLE_K - 1];
     for (let i = 0; i < DIM; i++) {
       const diff = cell[i] - v[i];
       d += diff * diff;
+      if (d >= worst) break; // can't enter the top-K — skip rest
     }
     if (d < kd[SAMPLE_K - 1]) {
       let p = SAMPLE_K - 1;

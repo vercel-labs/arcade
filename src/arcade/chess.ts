@@ -52,6 +52,13 @@ export class ChessScene {
   private rows: Row[] = [];
   private scale = 1;
   private cam: OrbitCamera;
+  // Static between camera moves (no auto-orbit), so the orchestrator can skip
+  // re-rendering an unchanged frame. Set on any camera change, cleared on render.
+  private dirty = true;
+
+  needsRender(): boolean {
+    return this.dirty;
+  }
 
   constructor(dir = 'public/assets/chess_blender') {
     // Flat-shade so lighting reads from geometry, not the assets' inconsistent
@@ -90,15 +97,19 @@ export class ChessScene {
 
   resetView(): void {
     this.cam.reset();
+    this.dirty = true;
   }
   orbit(dxCells: number, dyCells: number): void {
     this.cam.orbit(dxCells, dyCells);
+    this.dirty = true;
   }
   pan(dxCells: number, dyCells: number): void {
     this.cam.pan(dxCells, dyCells);
+    this.dirty = true;
   }
   zoomBy(factor: number): void {
     this.cam.zoomBy(factor);
+    this.dirty = true;
   }
 
   renderScene(target: RenderTarget): void {
@@ -133,5 +144,6 @@ export class ChessScene {
         });
       }
     }
+    this.dirty = false;
   }
 }

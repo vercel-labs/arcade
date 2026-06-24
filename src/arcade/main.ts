@@ -6,7 +6,8 @@ import { Framebuffer } from './framebuffer.ts';
 import { Game, PLAY_RANGE } from './game.ts';
 import { createInputParser } from '../platform/input.ts';
 import { drawReticle, renderScene } from './renderer.ts';
-import { hitButtons, layoutButtons, renderButtons, type ButtonRect } from './ui.ts';
+import { buildBar, type BarActions, type Mode, type RenderMode } from './bars.ts';
+import { Screen, type LayoutBox } from '../tui/index.ts';
 import { renderDemo } from '../demo/scene.ts';
 import * as term from '../platform/terminal.ts';
 
@@ -25,8 +26,6 @@ const JITTER_TEMP = 0.04;
 // scene doesn't render under the buttons and there's space below them.
 const ATTRACT_RESERVE = 2;
 
-type Mode = 'attract' | 'playing' | 'demo' | 'chess' | 'chess-game';
-type RenderMode = 'color' | 'ascii' | 'luminance';
 const MODE_ORDER: RenderMode[] = ['ascii', 'color', 'luminance'];
 
 let cols = process.stdout.columns ?? 80;
@@ -42,6 +41,14 @@ const attract = new AttractScene();
 const game = new Game();
 const chess = new ChessScene();
 const chessGame = new ChessGameScene();
+// The 2D UI overlay (button bar). Lays out + paints over the scene each frame.
+const ui = new Screen(cols, rows);
+
+// Where the bottom button bar lives: a single full-width row just above the
+// reserved margin (0-based, so 1-based row rows-1 → y = rows-2).
+function barRegion(): LayoutBox {
+  return { x: 0, y: rows - 2, w: cols, h: 1 };
+}
 
 // The active turntable scene when in a chess view (drives orbit/pan/zoom), or null.
 function orbitScene(): ChessScene | ChessGameScene | null {
@@ -53,7 +60,6 @@ function orbitScene(): ChessScene | ChessGameScene | null {
 let mode: Mode = 'attract';
 let renderMode: RenderMode = 'ascii';
 let jitter = false;
-let hoveredButton: string | null = null;
 // Camera-drag tracking for the chess screens. `downX/downY` mark where a drag
 // began, so an up close to it counts as a click (select) rather than a rotate.
 let draggingCamera = false;
@@ -63,6 +69,19 @@ let downX = 0;
 let downY = 0;
 let t = 0;
 let frame: ReturnType<typeof setInterval> | undefined;
+// Dirty-flag rendering for the static (turntable) chess scenes: skip re-render +
+// re-write when nothing changed. `forceFrame` requests one unconditional repaint
+// after a transition that clears the screen or changes the present output (mode
+// switch, render-mode/jitter toggle, resize). A pure button-hover change is
+// detected via `ui.dirty()`, which repaints just the bar without the scene.
+let forceFrame = false;
+const CLEAR = '\x1b[2J';
+
+// Clear the screen and force the next frame to paint in full.
+function fullRepaint(): void {
+  process.stdout.write(CLEAR);
+  forceFrame = true;
+}
 
 function quit(): void {
   if (frame) clearInterval(frame);
@@ -73,7 +92,8 @@ function quit(): void {
 function startGame(): void {
   mode = 'playing';
   game.reset();
-  process.stdout.write('\x1b[2J');
+  ui.setRoot(null); // gameplay has no bar; the HUD is drawn separately
+  fullRepaint();
 }
 
 function aimAt(mx: number, my: number): void {
@@ -84,79 +104,55 @@ function aimAt(mx: number, my: number): void {
 
 function cycleMode(): void {
   renderMode = MODE_ORDER[(MODE_ORDER.indexOf(renderMode) + 1) % MODE_ORDER.length];
-  process.stdout.write('\x1b[2J');
+  fullRepaint();
 }
 
 function setRenderMode(next: RenderMode): void {
   if (renderMode === next) return;
   renderMode = next;
-  process.stdout.write('\x1b[2J');
+  fullRepaint();
 }
 
 function enterDemo(): void {
   mode = 'demo';
-  process.stdout.write('\x1b[2J');
+  fullRepaint();
 }
 
 function enterChess(): void {
   mode = 'chess';
   draggingCamera = false;
-  process.stdout.write('\x1b[2J');
+  fullRepaint();
 }
 
 function enterChessGame(): void {
   mode = 'chess-game';
   draggingCamera = false;
-  process.stdout.write('\x1b[2J');
+  fullRepaint();
 }
 
 function toAttract(): void {
   mode = 'attract';
-  process.stdout.write('\x1b[2J');
+  fullRepaint();
 }
 
-// The bottom button bar for the current screen (empty during gameplay).
-function currentBar(): ButtonRect[] {
-  const modeLabel = `  mode: ${renderMode.padEnd(9)}  `;
-  const row = rows - 1;
-  if (mode === 'attract') {
-    return layoutButtons(
-      [
-        { id: 'start', label: '  Start  ' },
-        { id: 'chess', label: '  Chess  ' },
-        { id: 'chess-game', label: '  Chess Game  ' },
-        { id: 'demo', label: '  Demo  ' },
-        { id: 'mode', label: modeLabel },
-        { id: 'quit', label: '  Quit  ' },
-      ],
-      cols,
-      row,
-    );
-  }
-  if (mode === 'demo') {
-    return layoutButtons(
-      [
-        { id: 'back', label: '  Back  ' },
-        { id: 'mode', label: modeLabel },
-        { id: 'quit', label: '  Quit  ' },
-      ],
-      cols,
-      row,
-    );
-  }
-  if (mode === 'chess' || mode === 'chess-game') {
-    return layoutButtons(
-      [
-        { id: 'back', label: '  Back  ' },
-        { id: 'reset', label: '  Reset View  ' },
-        { id: 'mode', label: modeLabel },
-        { id: 'quit', label: '  Quit  ' },
-      ],
-      cols,
-      row,
-    );
-  }
-  return [];
+// Bar button actions, wired to the screen-transition functions above. buildBar
+// closes each Button's onClick over these, so clicks and Enter dispatch the same
+// way the old onMouse id→action branch did.
+const actions: BarActions = {
+  start: startGame,
+  chess: enterChess,
+  chessGame: enterChessGame,
+  demo: enterDemo,
+  back: toAttract,
+  reset: () => orbitScene()?.resetView(),
+  mode: cycleMode,
+  quit,
+};
+
+// Rebuild the bar tree for the current screen (cheap; the Screen retains
+// hover/focus state by id across rebuilds).
+function syncBar(): void {
+  ui.setRoot(buildBar(mode, renderMode, actions), barRegion());
 }
 
 // Presents the engine `target` (prism / demo cube / chess) in the active
@@ -195,6 +191,10 @@ const parse = createInputParser({
       quit();
       return;
     }
+    // The UI consumes only Tab (focus) and Enter/Space (activate) when something
+    // is focused — never bare letters — so per-screen shortcuts and the camera
+    // arrows below still work.
+    if (mode !== 'playing' && ui.handleKey(key)) return;
     if (mode === 'attract') {
       if (key === 's' || key === 'S') startGame();
       else if (key === 'd' || key === 'D') enterDemo();
@@ -221,12 +221,15 @@ const parse = createInputParser({
       else if (key === 'c' || key === 'C') setRenderMode('color');
       else if (key === 'l' || key === 'L') setRenderMode('luminance');
       else if (key === 'a' || key === 'A') setRenderMode('ascii');
-      else if (key === 'j' || key === 'J') jitter = !jitter;
-      // Arrow keys pan the scene in their direction (the content follows).
-      else if (key === 'left') orbit.pan(-PAN_STEP, 0);
-      else if (key === 'right') orbit.pan(PAN_STEP, 0);
-      else if (key === 'up') orbit.pan(0, -PAN_STEP);
-      else if (key === 'down') orbit.pan(0, PAN_STEP);
+      else if (key === 'j' || key === 'J') {
+        jitter = !jitter;
+        forceFrame = true; // toggling jitter changes the present even if the scene is idle
+      }
+      // Arrow keys pan the camera in their direction (the content moves opposite).
+      else if (key === 'left') orbit.pan(PAN_STEP, 0);
+      else if (key === 'right') orbit.pan(-PAN_STEP, 0);
+      else if (key === 'up') orbit.pan(0, PAN_STEP);
+      else if (key === 'down') orbit.pan(0, -PAN_STEP);
       return;
     }
     switch (key) {
@@ -256,24 +259,12 @@ const parse = createInputParser({
         return;
       }
       if (e.type === 'move') {
-        hoveredButton = hitButtons(currentBar(), e.x, e.y);
-        // Hover-highlight the piece under the cursor (chess-game only).
-        if (mode === 'chess-game') {
-          if (hoveredButton) chessGame.clearHover();
-          else {
-            const { ndcX, ndcY, aspect } = pointerNdc(e.x, e.y);
-            chessGame.setHover(ndcX, ndcY, aspect);
-          }
-        }
+        ui.hover(e.x, e.y);
         return;
       }
       if (e.type === 'down') {
-        hoveredButton = hitButtons(currentBar(), e.x, e.y);
-        if (hoveredButton === 'back') toAttract();
-        else if (hoveredButton === 'reset') orbit.resetView();
-        else if (hoveredButton === 'mode') cycleMode();
-        else if (hoveredButton === 'quit') quit();
-        else {
+        // A hit on the bar fires that button's onClick; otherwise it's the board.
+        if (!ui.pointerDown(e.x, e.y)) {
           // On the board: begin a potential drag (rotate); an up near here is a click.
           draggingCamera = true;
           lastMouseX = downX = e.x;
@@ -293,6 +284,7 @@ const parse = createInputParser({
         return;
       }
       if (e.type === 'up') {
+        ui.pointerUp();
         // A press that barely moved is a click → select/move (chess-game only).
         if (draggingCamera && mode === 'chess-game' && Math.abs(e.x - downX) + Math.abs(e.y - downY) <= 1) {
           const { ndcX, ndcY, aspect } = pointerNdc(e.x, e.y);
@@ -304,16 +296,9 @@ const parse = createInputParser({
       return;
     }
     if (mode === 'attract' || mode === 'demo') {
-      hoveredButton = hitButtons(currentBar(), e.x, e.y);
-      if (e.type === 'down' && hoveredButton) {
-        if (hoveredButton === 'start') startGame();
-        else if (hoveredButton === 'chess') enterChess();
-        else if (hoveredButton === 'chess-game') enterChessGame();
-        else if (hoveredButton === 'demo') enterDemo();
-        else if (hoveredButton === 'back') toAttract();
-        else if (hoveredButton === 'mode') cycleMode();
-        else if (hoveredButton === 'quit') quit();
-      }
+      if (e.type === 'move') ui.hover(e.x, e.y);
+      else if (e.type === 'down') ui.pointerDown(e.x, e.y);
+      else if (e.type === 'up') ui.pointerUp();
       return;
     }
     if (e.type === 'move' || e.type === 'drag' || e.type === 'down') {
@@ -344,20 +329,33 @@ function tick(): void {
 
   if (mode === 'attract') {
     attract.renderScene(target, t);
-    process.stdout.write(presentScene() + renderButtons(currentBar(), hoveredButton));
+    syncBar();
+    process.stdout.write(presentScene() + ui.frame());
     return;
   }
 
   if (mode === 'demo') {
     renderDemo(target, t);
-    process.stdout.write(presentScene() + renderButtons(currentBar(), hoveredButton));
+    syncBar();
+    process.stdout.write(presentScene() + ui.frame());
     return;
   }
 
   const orbit = orbitScene();
   if (orbit) {
-    orbit.renderScene(target);
-    process.stdout.write(presentScene(false, true) + renderButtons(currentBar(), hoveredButton));
+    // Dirty-flag gate: the chess turntables are static between interactions, so
+    // skip the (expensive) re-render + full-screen write when nothing changed.
+    // `jitter` intentionally animates (per-frame glyph noise) so it forces redraw.
+    syncBar();
+    const sceneDirty = forceFrame || jitter || orbit.needsRender();
+    if (sceneDirty) {
+      orbit.renderScene(target);
+      process.stdout.write(presentScene(false, true) + ui.frame());
+    } else if (ui.dirty()) {
+      // Only a button hover/focus changed: repaint just the bar, not the scene.
+      process.stdout.write(ui.frame());
+    }
+    forceFrame = false;
     return;
   }
 
@@ -375,12 +373,13 @@ process.stdout.on('resize', () => {
   rows = process.stdout.rows ?? 24;
   fb.resize(cols, rows - 1);
   target = new RenderTarget(cols * SS, (rows - ATTRACT_RESERVE) * 2 * SS);
+  ui.resize(cols, rows);
   display = undefined;
   // The scene repaints every cell it owns each frame, but the reserved button
   // row does not, and the buttons re-center when the width changes — so without
   // a wipe the old (differently-positioned) bar lingers as ghosts. Clear once on
   // resize; the next tick repaints everything at the new geometry.
-  process.stdout.write('\x1b[2J');
+  fullRepaint();
 });
 
 term.enter();

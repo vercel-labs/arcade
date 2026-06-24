@@ -18,3 +18,8 @@ https://www.youtube.com/watch?v=gg40RWiaHRY
 
 ASCII rendering deep dive
 https://alexharri.com/blog/ascii-rendering
+
+Very cool mini demos of ASCII art
+https://play.ertdfgcvb.xyz/abc.html
+https://play.ertdfgcvb.xyz/abc.html#source:examples
+https://github.com/ertdfgcvb/play.core

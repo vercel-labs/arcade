@@ -25,3 +25,12 @@ export {
   type PieceUniforms,
 } from './materials.ts';
 export { hslToRgb, lerpRgb, type RGB } from './color.ts';
+export { cellWidth, stringWidth } from './width.ts';
+export {
+  Surface,
+  type Cell,
+  STYLE_BOLD,
+  STYLE_DIM,
+  STYLE_UNDERLINE,
+  STYLE_REVERSE,
+} from './surface.ts';

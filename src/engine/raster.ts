@@ -132,33 +132,43 @@ function drawTriangle<U>(
   }
 }
 
+// Single reused Varying scratch — interpolate() mutates it in place and returns
+// it, so the per-pixel hot path allocates nothing (no fresh Varying + 6 nested
+// objects per covered pixel). Safe because the fragment shader reads it
+// synchronously and never retains the reference past its own return.
+const SCRATCH: Varying = {
+  clip: { x: 0, y: 0, z: 0, w: 1 },
+  world: { x: 0, y: 0, z: 0 },
+  normal: { x: 0, y: 0, z: 0 },
+  uv: [0, 0],
+  color: { x: 0, y: 0, z: 0 },
+  bary: { x: 0, y: 0, z: 0 },
+};
+
 // Perspective-correct barycentric interpolation: each attribute is weighted by
 // invw, summed, then divided by the interpolated invw.
 function interpolate(a: Screen, b: Screen, c: Screen, w0: number, w1: number, w2: number, invw: number): Varying {
-  const f = (pa: number, pb: number, pc: number): number =>
-    (w0 * pa * a.invw + w1 * pb * b.invw + w2 * pc * c.invw) / invw;
+  const k0 = (w0 * a.invw) / invw;
+  const k1 = (w1 * b.invw) / invw;
+  const k2 = (w2 * c.invw) / invw;
   const va = a.vy;
   const vb = b.vy;
   const vc = c.vy;
-  return {
-    // clip is unused downstream of rasterization; only world/normal/uv/color matter.
-    clip: { x: 0, y: 0, z: 0, w: 1 / invw },
-    world: {
-      x: f(va.world.x, vb.world.x, vc.world.x),
-      y: f(va.world.y, vb.world.y, vc.world.y),
-      z: f(va.world.z, vb.world.z, vc.world.z),
-    },
-    normal: {
-      x: f(va.normal.x, vb.normal.x, vc.normal.x),
-      y: f(va.normal.y, vb.normal.y, vc.normal.y),
-      z: f(va.normal.z, vb.normal.z, vc.normal.z),
-    },
-    uv: [f(va.uv[0], vb.uv[0], vc.uv[0]), f(va.uv[1], vb.uv[1], vc.uv[1])],
-    color: {
-      x: f(va.color.x, vb.color.x, vc.color.x),
-      y: f(va.color.y, vb.color.y, vc.color.y),
-      z: f(va.color.z, vb.color.z, vc.color.z),
-    },
-    bary: { x: w0, y: w1, z: w2 },
-  };
+  const o = SCRATCH;
+  o.clip.w = 1 / invw;
+  o.world.x = k0 * va.world.x + k1 * vb.world.x + k2 * vc.world.x;
+  o.world.y = k0 * va.world.y + k1 * vb.world.y + k2 * vc.world.y;
+  o.world.z = k0 * va.world.z + k1 * vb.world.z + k2 * vc.world.z;
+  o.normal.x = k0 * va.normal.x + k1 * vb.normal.x + k2 * vc.normal.x;
+  o.normal.y = k0 * va.normal.y + k1 * vb.normal.y + k2 * vc.normal.y;
+  o.normal.z = k0 * va.normal.z + k1 * vb.normal.z + k2 * vc.normal.z;
+  o.uv[0] = k0 * va.uv[0] + k1 * vb.uv[0] + k2 * vc.uv[0];
+  o.uv[1] = k0 * va.uv[1] + k1 * vb.uv[1] + k2 * vc.uv[1];
+  o.color.x = k0 * va.color.x + k1 * vb.color.x + k2 * vc.color.x;
+  o.color.y = k0 * va.color.y + k1 * vb.color.y + k2 * vc.color.y;
+  o.color.z = k0 * va.color.z + k1 * vb.color.z + k2 * vc.color.z;
+  o.bary.x = w0;
+  o.bary.y = w1;
+  o.bary.z = w2;
+  return o;
 }

@@ -34,11 +34,7 @@ export interface PieceUniforms {
   fillStrength: number; // 0..1, fill contribution (lifts shadows without flattening)
   ambient: number; // 0..1 floor (keep low for prominent shadows)
   tint: Vec3; // base color 0..255 — drives the piece's color (white/brown/…)
-  glow?: Vec3; // optional highlight color; the lit color is blended toward it (e.g. hover)
 }
-
-// Fraction the lit color is pulled toward `glow` when present (hover highlight).
-const GLOW_MIX = 0.42;
 
 // Solid object material with a two-light rig (key + fill) and a flat color
 // `tint`. Color identifies the piece set; fixed world-space lights sculpt the
@@ -55,30 +51,30 @@ export const pieceMaterial: Material<PieceUniforms> = {
     const normal = mat4MulDir(u.model, vin.normal);
     return { clip, world: { x: w.x, y: w.y, z: w.z }, normal, uv: vin.uv, color: u.tint, bary: { x: 0, y: 0, z: 0 } };
   },
+  // Allocation-free fragment (runs once per covered pixel): manual normalize +
+  // dot products and a reused RGBA, so no per-pixel Vec3/object churn. Same math
+  // as a normalize3/sub3/dot3 formulation, just without the temporaries.
   fragment(u, vy) {
-    let n = normalize3(vy.normal);
-    // Two-sided: flip the normal to face the camera so the *visible* surface is
-    // always shaded by its true outward direction — regardless of whether the
-    // asset stored the normal pointing in or out. This is what makes every piece
-    // light the same way instead of king/bishop reading inverted.
-    const view = sub3(u.cameraPos, vy.world);
-    if (dot3(n, view) < 0) n = { x: -n.x, y: -n.y, z: -n.z };
-    const key = u.keyStrength * Math.max(0, dot3(n, u.keyDir));
-    const fill = u.fillStrength * Math.max(0, dot3(n, u.fillDir));
-    // Clamp to 1 so bright tints (e.g. ivory) never blow out to white: every
-    // tint then sweeps the identical shadow→lit gradient, differing only in hue.
+    const nx = vy.normal.x;
+    const ny = vy.normal.y;
+    const nz = vy.normal.z;
+    let inv = 1 / Math.sqrt(nx * nx + ny * ny + nz * nz);
+    // Two-sided: flip the normal to face the camera (sign of n·view).
+    const vdot = nx * (u.cameraPos.x - vy.world.x) + ny * (u.cameraPos.y - vy.world.y) + nz * (u.cameraPos.z - vy.world.z);
+    if (vdot < 0) inv = -inv;
+    const Nx = nx * inv;
+    const Ny = ny * inv;
+    const Nz = nz * inv;
+    const key = u.keyStrength * Math.max(0, Nx * u.keyDir.x + Ny * u.keyDir.y + Nz * u.keyDir.z);
+    const fill = u.fillStrength * Math.max(0, Nx * u.fillDir.x + Ny * u.fillDir.y + Nz * u.fillDir.z);
     const intensity = Math.min(1, u.ambient + key + fill);
-    let r = u.tint.x * intensity;
-    let g = u.tint.y * intensity;
-    let b = u.tint.z * intensity;
-    if (u.glow) {
-      r += (u.glow.x - r) * GLOW_MIX;
-      g += (u.glow.y - g) * GLOW_MIX;
-      b += (u.glow.z - b) * GLOW_MIX;
-    }
-    return { r, g, b, a: 1 };
+    PIECE_RGBA.r = u.tint.x * intensity;
+    PIECE_RGBA.g = u.tint.y * intensity;
+    PIECE_RGBA.b = u.tint.z * intensity;
+    return PIECE_RGBA;
   },
 };
+const PIECE_RGBA = { r: 0, g: 0, b: 0, a: 1 };
 
 export interface GlassUniforms {
   mvp: Mat4;
