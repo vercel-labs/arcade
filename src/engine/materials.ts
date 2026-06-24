@@ -1,6 +1,7 @@
 import { hslToRgb } from './color.ts';
 import { dot3, mat4MulDir, mat4MulVec4, normalize3, sub3, type Mat4, type Vec3 } from './math.ts';
 import type { Material } from './shader.ts';
+import { sampleTexture, type Texture } from './texture.ts';
 
 export interface LambertUniforms {
   mvp: Mat4;
@@ -132,3 +133,44 @@ function smoothstep(a: number, b: number, x: number): number {
   const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
   return t * t * (3 - 2 * t);
 }
+
+export interface WispUniforms {
+  mvp: Mat4;
+  logo: Texture; // RGBA source (decodePng)
+  bg: Vec3; // the logo's background color (0..255) — the mark is whatever differs from it
+  tint: Vec3; // brand hue (0..255) the whole wisp is colored with
+  gain: number; // emissive multiplier; >1 pushes the core bright enough to bloom
+  flicker: number; // 0..1+ per-frame brightness wobble (the "living flame" pulse)
+  edge0: number; // mask soft-edge start, in normalized color-distance (0..1)
+  edge1: number; // mask soft-edge end
+}
+
+// Emissive "will-o'-wisp" material: paints a logo as a glowing, brand-hued mark.
+// The mark is extracted by how far each texel's color sits from the logo's own
+// background (× its alpha), so it works for both opaque dark-background tiles and
+// cut-out transparent logos. The whole thing is recolored to a single brand hue
+// and drawn additively (over black), so bloom turns the bright core into a halo.
+const NORM = 1 / Math.sqrt(3 * 255 * 255); // normalize an RGB distance to 0..1
+const WISP_RGBA = { r: 0, g: 0, b: 0, a: 0 };
+export const wispMaterial: Material<WispUniforms> = {
+  cull: 'none',
+  blend: 'add',
+  vertex(u, vin) {
+    const clip = mat4MulVec4(u.mvp, { x: vin.position.x, y: vin.position.y, z: vin.position.z, w: 1 });
+    return { clip, world: vin.position, normal: vin.normal, uv: vin.uv, color: vin.color, bary: { x: 0, y: 0, z: 0 } };
+  },
+  fragment(u, vy) {
+    const px = sampleTexture(u.logo, vy.uv[0], vy.uv[1]); // [r,g,b,a], a in 0..1
+    const dr = px[0] - u.bg.x;
+    const dg = px[1] - u.bg.y;
+    const db = px[2] - u.bg.z;
+    const dist = Math.sqrt(dr * dr + dg * dg + db * db) * NORM;
+    const mask = smoothstep(u.edge0, u.edge1, dist) * px[3];
+    if (mask <= 0.002) return null; // background → discard, so only the mark glows
+    WISP_RGBA.r = u.tint.x * u.gain;
+    WISP_RGBA.g = u.tint.y * u.gain;
+    WISP_RGBA.b = u.tint.z * u.gain;
+    WISP_RGBA.a = Math.min(1, mask * u.flicker); // additive weight: tint*gain*mask*flicker
+    return WISP_RGBA;
+  },
+};

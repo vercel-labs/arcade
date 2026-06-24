@@ -13,6 +13,7 @@ import {
 import { AttractScene } from './attract.ts';
 import { ChessScene } from './chess.ts';
 import { ChessGameScene } from './chess-game.ts';
+import { LogosScene } from './logos-scene.ts';
 import { Framebuffer } from './framebuffer.ts';
 import { Game, PLAY_RANGE } from './game.ts';
 import { createInputParser, type Key, type MouseEvent } from '../platform/input.ts';
@@ -42,7 +43,7 @@ const MODE_ORDER: RenderMode[] = ['ascii', 'color', 'luminance'];
 // string". Color parity fixed (setCell clamps) and UI-only frames reuse a cached
 // scene layer (no per-hover re-sample). Flip to false to fall back to the legacy
 // path instantly.
-const UNIFIED = true;
+const UNIFIED = false;
 
 let cols = process.stdout.columns ?? 80;
 let rows = process.stdout.rows ?? 24;
@@ -58,6 +59,7 @@ const attract = new AttractScene();
 const game = new Game();
 const chess = new ChessScene();
 const chessGame = new ChessGameScene();
+const logosScene = new LogosScene();
 // The 2D UI overlay (button bar). Lays out + paints over the scene each frame.
 const ui = new Screen(cols, rows);
 // Render-on-demand loop. Animating screens hold a live lease; static screens
@@ -98,7 +100,7 @@ let liveHeld = false;
 // the chess turntables are static and render on demand. Called on every screen
 // transition (via fullRepaint).
 function syncLive(): void {
-  const want = mode === 'attract' || mode === 'demo' || mode === 'playing';
+  const want = mode === 'attract' || mode === 'demo' || mode === 'playing' || mode === 'logos';
   if (want === liveHeld) return;
   if (want) r.requestLive();
   else r.dropLive();
@@ -170,6 +172,11 @@ function enterChessGame(): void {
   fullRepaint();
 }
 
+function enterLogos(): void {
+  mode = 'logos';
+  fullRepaint();
+}
+
 function toAttract(): void {
   mode = 'attract';
   fullRepaint();
@@ -182,6 +189,7 @@ const actions: BarActions = {
   start: startGame,
   chessGame: enterChessGame,
   demo: enterDemo,
+  logos: enterLogos,
   back: toAttract,
   reset: () => orbitScene()?.resetView(),
   mode: cycleMode,
@@ -315,6 +323,14 @@ function onKeyImpl(key: Key): void {
     else if (key === 'j' || key === 'J') jitter = !jitter;
     return;
   }
+  if (mode === 'logos') {
+    if (key === 'b' || key === 'B') toAttract();
+    else if (key === 'm' || key === 'M') cycleMode();
+    else if (key === 'c' || key === 'C') setRenderMode('color');
+    else if (key === 'l' || key === 'L') setRenderMode('luminance');
+    else if (key === 'a' || key === 'A') setRenderMode('ascii');
+    return;
+  }
   const orbit = orbitScene();
   if (orbit) {
     if (key === 'b' || key === 'B') toAttract();
@@ -406,7 +422,7 @@ function onMouseImpl(e: MouseEvent): void {
     }
     return;
   }
-  if (mode === 'attract' || mode === 'demo') {
+  if (mode === 'attract' || mode === 'demo' || mode === 'logos') {
     if (e.type === 'move') ui.hover(e.x, e.y);
     else if (e.type === 'down') ui.pointerDown(e.x, e.y);
     else if (e.type === 'up') ui.pointerUp();
@@ -460,6 +476,13 @@ function tick(): void {
 
   if (mode === 'demo') {
     renderDemo(target, t);
+    syncBar();
+    r.write(UNIFIED ? ui.frameComposited((s) => presentSceneInto(s)) : presentScene() + ui.frame());
+    return;
+  }
+
+  if (mode === 'logos') {
+    logosScene.renderScene(target, t);
     syncBar();
     r.write(UNIFIED ? ui.frameComposited((s) => presentSceneInto(s)) : presentScene() + ui.frame());
     return;

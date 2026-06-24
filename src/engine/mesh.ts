@@ -90,6 +90,25 @@ function v(x: number, y: number, z: number): Vec3 {
   return { x, y, z };
 }
 
+// A camera-facing quad in the XY plane (normal +z), extent ±`h`, with uv mapped
+// so the top-left of the image (u=0,v=0) lands at the top-left corner. The unit
+// billboard for textured sprites — pair with a translate/scale model matrix to
+// place it. White base color (textured materials sample their own color).
+export function quad(h = 0.5): Mesh {
+  const n: Vec3 = { x: 0, y: 0, z: 1 };
+  const white: Vec3 = { x: 255, y: 255, z: 255 };
+  const corners: Vec3[] = [v(-h, -h, 0), v(h, -h, 0), v(h, h, 0), v(-h, h, 0)];
+  // +y is up in world but v=0 is the top image row, so the top corners get v=0.
+  const uvs: [number, number][] = [
+    [0, 1],
+    [1, 1],
+    [1, 0],
+    [0, 0],
+  ];
+  const vertices: VertexIn[] = corners.map((p, i) => ({ position: p, normal: n, uv: uvs[i], color: white }));
+  return { vertices, indices: [0, 1, 2, 0, 2, 3] };
+}
+
 // A triangular pyramid (tetrahedron): apex up, equilateral base. Exported raw
 // so scenes can reuse the geometry for effects (e.g. deriving refraction from
 // the live face normals) while rendering the same shape via `tetrahedron()`.

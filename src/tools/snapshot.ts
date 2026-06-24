@@ -11,6 +11,7 @@ import { FONT } from '../engine/font8x8.ts';
 import { AttractScene } from '../arcade/attract.ts';
 import { ChessScene } from '../arcade/chess.ts';
 import { ChessGameScene } from '../arcade/chess-game.ts';
+import { LogosScene } from '../arcade/logos-scene.ts';
 import { buildBar, type Mode } from '../arcade/bars.ts';
 import { layout, paint, type PaintState } from '../tui/index.ts';
 
@@ -63,7 +64,7 @@ function surfaceToPpm(
 }
 
 const noop = (): void => {};
-const barActions = { start: noop, chessGame: noop, demo: noop, back: noop, reset: noop, mode: noop, quit: noop };
+const barActions = { start: noop, chessGame: noop, demo: noop, logos: noop, back: noop, reset: noop, mode: noop, quit: noop };
 
 // Render a scene full-height, then composite that screen's button bar over it —
 // proving the bar sits ON TOP of the 3D scene (opaque pills overwrite it;
@@ -119,7 +120,8 @@ function uiSnapshot(): void {
 }
 
 function sceneSnapshot(): void {
-  const scene = process.argv[2] === 'chess' || process.argv[2] === 'chess-game' ? process.argv[2] : null;
+  const a0 = process.argv[2];
+  const scene = a0 === 'chess' || a0 === 'chess-game' || a0 === 'logos' ? a0 : null;
   const args = scene ? process.argv.slice(3) : process.argv.slice(2);
   const cols = Number(args[0]) || 110;
   const rows = Number(args[1]) || 44;
@@ -132,11 +134,14 @@ function sceneSnapshot(): void {
     new ChessScene().renderScene(target);
   } else if (scene === 'chess-game') {
     new ChessGameScene().renderScene(target);
+  } else if (scene === 'logos') {
+    new LogosScene().renderScene(target, t);
   } else {
     new AttractScene().renderScene(target, t);
   }
   const display = downsample(target, SS);
-  if (!scene) bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
+  // Bloom the emissive screens (prism + logo wisps); skip for solid chess geometry.
+  if (!scene || scene === 'logos') bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
 
   const W = display.width;
   const H = display.height;
@@ -177,10 +182,11 @@ function unifiedSnapshot(): void {
   const target = new RenderTarget(cols * SS, rows * 2 * SS);
   if (scene === 'chess') new ChessScene().renderScene(target);
   else if (scene === 'chess-game') new ChessGameScene().renderScene(target);
+  else if (scene === 'logos') new LogosScene().renderScene(target, 0.6);
   else new AttractScene().renderScene(target, 0.6);
 
   const surf = new Surface(cols, rows);
-  shapeGlyphToSurface(surf, target, cols, rows, { color: true, hybrid: scene !== 'attract' });
+  shapeGlyphToSurface(surf, target, cols, rows, { color: true, hybrid: scene !== 'attract' && scene !== 'logos' });
   const root = buildBar(scene, 'ascii', barActions);
   layout(root, { x: 0, y: rows - 2, w: cols, h: 1 });
   paint(root, surf, { hoverId: 'reset', focusId: null, pressedId: null });
