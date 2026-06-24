@@ -195,6 +195,64 @@ export class Surface {
     return out;
   }
 
+  // Emit only cells that differ from `prev` (same dims), as cursor moves + SGR +
+  // glyphs, runs of changed cells coalesced. Used by the unified compositing
+  // path where the whole frame (scene + UI) lives in this Surface and an idle
+  // frame produces an empty string. A fresh `prev` (all transparent) yields a
+  // full emit, so the first frame after a reset repaints everything.
+  diff(prev: Surface): string {
+    let out = '';
+    let lastSeq = '';
+    for (let y = 0; y < this.rows; y++) {
+      let runActive = false;
+      for (let x = 0; x < this.cols; x++) {
+        const i = y * this.cols + x;
+        if (this.cellEq(prev, i)) {
+          runActive = false; // an unchanged cell breaks the cursor run
+          continue;
+        }
+        if (!runActive) {
+          out += `\x1b[${y + 1};${x + 1}H`;
+          runActive = true;
+          lastSeq = '';
+        }
+        if (this.ch[i] === CONTINUATION) continue;
+        const seq = this.sgr(i);
+        if (seq !== lastSeq) {
+          out += seq;
+          lastSeq = seq;
+        }
+        out += this.ch[i];
+      }
+    }
+    if (out) out += '\x1b[0m';
+    return out;
+  }
+
+  private cellEq(prev: Surface, i: number): boolean {
+    return (
+      this.opaque[i] === prev.opaque[i] &&
+      this.ch[i] === prev.ch[i] &&
+      this.style[i] === prev.style[i] &&
+      this.fg[i * 3] === prev.fg[i * 3] &&
+      this.fg[i * 3 + 1] === prev.fg[i * 3 + 1] &&
+      this.fg[i * 3 + 2] === prev.fg[i * 3 + 2] &&
+      this.bg[i * 3] === prev.bg[i * 3] &&
+      this.bg[i * 3 + 1] === prev.bg[i * 3 + 1] &&
+      this.bg[i * 3 + 2] === prev.bg[i * 3 + 2]
+    );
+  }
+
+  // Copy this Surface's cells into `dst` (same dims) — the differ's shadow update.
+  copyInto(dst: Surface): void {
+    for (let i = 0; i < this.ch.length; i++) dst.ch[i] = this.ch[i];
+    dst.fg.set(this.fg);
+    dst.bg.set(this.bg);
+    dst.style.set(this.style);
+    dst.opaque.set(this.opaque);
+    dst.touched.set(this.touched);
+  }
+
   // Build the SGR for cell i: reset, then style bits, then truecolor fg/bg.
   private sgr(i: number): string {
     let s = '\x1b[0';

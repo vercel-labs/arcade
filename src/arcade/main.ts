@@ -1,4 +1,15 @@
-import { bloom, downsample, RenderTarget, toHalfBlock, toLuminance, toShapeGlyph } from '../engine/index.ts';
+import {
+  bloom,
+  downsample,
+  halfBlockToSurface,
+  luminanceToSurface,
+  RenderTarget,
+  shapeGlyphToSurface,
+  type Surface,
+  toHalfBlock,
+  toLuminance,
+  toShapeGlyph,
+} from '../engine/index.ts';
 import { AttractScene } from './attract.ts';
 import { ChessScene } from './chess.ts';
 import { ChessGameScene } from './chess-game.ts';
@@ -25,6 +36,11 @@ const SS = 3;
 const JITTER_TEMP = 0.04;
 
 const MODE_ORDER: RenderMode[] = ['ascii', 'color', 'luminance'];
+
+// Unified compositing (OpenTUI keystone): when true, the scene paints into the
+// same Surface as the UI and a single diff is flushed, instead of "scene string
+// + UI overlay string". Flip to false to instantly revert to the legacy path.
+const UNIFIED = true;
 
 let cols = process.stdout.columns ?? 80;
 let rows = process.stdout.rows ?? 24;
@@ -100,6 +116,7 @@ const CLEAR = '\x1b[2J';
 function fullRepaint(): void {
   process.stdout.write(CLEAR);
   forceFrame = true;
+  if (UNIFIED) ui.resetDiff(); // the screen was cleared — next composite emits in full
   syncLive();
   r.requestRender();
 }
@@ -224,6 +241,26 @@ function presentScene(withBloom = true, hybridShadow = false): string {
   display = downsample(target, SS, display);
   if (withBloom) bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
   return toHalfBlock(display);
+}
+
+// Cell-writing twin of presentScene for the unified path: paints the scene into
+// `surf` (the bottom layer) instead of returning a string. Same mode logic.
+function presentSceneInto(surf: Surface, withBloom = true, hybridShadow = false): void {
+  if (renderMode === 'ascii') {
+    shapeGlyphToSurface(surf, target, cols, rows, {
+      color: true,
+      jitterTemp: jitter ? JITTER_TEMP : 0,
+      hybrid: hybridShadow,
+    });
+    return;
+  }
+  if (renderMode === 'luminance') {
+    luminanceToSurface(surf, target, cols, rows, { color: true });
+    return;
+  }
+  display = downsample(target, SS, display);
+  if (withBloom) bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
+  halfBlockToSurface(surf, display);
 }
 
 // Maps a 1-based terminal mouse cell to a normalized device coordinate (−1..1,
@@ -415,14 +452,14 @@ function tick(): void {
   if (mode === 'attract') {
     attract.renderScene(target, t);
     syncBar();
-    r.write(presentScene() + ui.frame());
+    r.write(UNIFIED ? ui.frameComposited((s) => presentSceneInto(s)) : presentScene() + ui.frame());
     return;
   }
 
   if (mode === 'demo') {
     renderDemo(target, t);
     syncBar();
-    r.write(presentScene() + ui.frame());
+    r.write(UNIFIED ? ui.frameComposited((s) => presentSceneInto(s)) : presentScene() + ui.frame());
     return;
   }
 
@@ -433,8 +470,11 @@ function tick(): void {
     // `jitter` intentionally animates (per-frame glyph noise) so it forces redraw.
     syncBar();
     const sceneDirty = forceFrame || jitter || orbit.needsRender();
-    if (sceneDirty) {
-      orbit.renderScene(target);
+    if (sceneDirty) orbit.renderScene(target);
+    if (UNIFIED) {
+      // Composite scene + UI into one diffed buffer; skip when nothing changed.
+      if (sceneDirty || ui.dirty()) r.write(ui.frameComposited((s) => presentSceneInto(s, false, true)));
+    } else if (sceneDirty) {
       r.write(presentScene(false, true) + ui.frame());
     } else if (ui.dirty()) {
       // Only a button hover/focus changed: repaint just the bar, not the scene.

@@ -7,7 +7,7 @@
 // inside the TUI (layout, Surface, hit-test) is 0-based, so the mouse methods
 // subtract 1 at the boundary.
 
-import { Surface } from '../engine/index.ts';
+import { CellDiffer, Surface } from '../engine/index.ts';
 
 import type { Key } from '../platform/input.ts';
 import { focusOrder } from './focus.ts';
@@ -28,6 +28,8 @@ export class Screen {
   // The region the root is laid out into. Stored so hit-testing always has fresh
   // geometry even on frames we don't repaint (e.g. an idle chess turntable).
   private region: LayoutBox = { x: 0, y: 0, w: 0, h: 0 };
+  // Frame differ for the unified composited path (frameComposited).
+  private differ = new CellDiffer();
 
   constructor(cols: number, rows: number) {
     this.cols = cols;
@@ -39,6 +41,7 @@ export class Screen {
     this.cols = cols;
     this.rows = rows;
     this.surface.resize(cols, rows);
+    this.differ.reset();
   }
 
   // Set the tree and lay it out into `region` immediately, so hit-testing has
@@ -62,6 +65,23 @@ export class Screen {
     if (this.root) paint(this.root, this.surface, this.state);
     this.painted = { ...this.state };
     return this.surface.serialize();
+  }
+
+  // Unified compositing path: `present` fills the Surface with the scene (every
+  // cell opaque), the UI paints over it (alpha-composited where translucent),
+  // and only cells that changed since the last frame are emitted. Returns '' when
+  // nothing changed. resetDiff() (e.g. after an ESC[2J / resize) forces the next
+  // frame to repaint in full.
+  frameComposited(present: (surf: Surface) => void): string {
+    this.surface.clear();
+    present(this.surface);
+    if (this.root) paint(this.root, this.surface, this.state);
+    this.painted = { ...this.state };
+    return this.differ.diff(this.surface);
+  }
+
+  resetDiff(): void {
+    this.differ.reset();
   }
 
   // Whether interaction state changed since the last paint.

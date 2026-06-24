@@ -6,7 +6,7 @@
 //   pnpm exec tsx src/tools/snapshot.ts ui [cols] [rows] [hover=<id>|focus=<id>] [out.ppm]
 //   pnpm exec tsx src/tools/snapshot.ts overlay [chess|chess-game|attract] [cols] [rows] [out.ppm]
 import { writeFileSync } from 'node:fs';
-import { bloom, downsample, RenderTarget, Surface } from '../engine/index.ts';
+import { bloom, downsample, RenderTarget, shapeGlyphToSurface, Surface } from '../engine/index.ts';
 import { FONT } from '../engine/font8x8.ts';
 import { AttractScene } from '../arcade/attract.ts';
 import { ChessScene } from '../arcade/chess.ts';
@@ -157,6 +157,33 @@ if (process.argv[2] === 'ui') {
   uiSnapshot();
 } else if (process.argv[2] === 'overlay') {
   overlaySnapshot();
+} else if (process.argv[2] === 'unified') {
+  unifiedSnapshot();
 } else {
   sceneSnapshot();
+}
+
+// The unified compositing path (ASCII mode): the scene paints into the SAME
+// Surface as the bar via shapeGlyphToSurface, then the bar paints over it — one
+// composited cell grid, rasterized straight from the Surface. Verifies the
+// scene-into-Surface port + over-the-scene compositing in one image.
+function unifiedSnapshot(): void {
+  const scene = (process.argv[3] as Mode) ?? 'attract';
+  const cols = Number(process.argv[4]) || 110;
+  const rows = Number(process.argv[5]) || 40;
+  const out = process.argv[6] ?? `.snapshots/unified-${scene}.ppm`;
+  const SS = 3;
+
+  const target = new RenderTarget(cols * SS, rows * 2 * SS);
+  if (scene === 'chess') new ChessScene().renderScene(target);
+  else if (scene === 'chess-game') new ChessGameScene().renderScene(target);
+  else new AttractScene().renderScene(target, 0.6);
+
+  const surf = new Surface(cols, rows);
+  shapeGlyphToSurface(surf, target, cols, rows, { color: true, hybrid: scene !== 'attract' });
+  const root = buildBar(scene, 'ascii', barActions);
+  layout(root, { x: 0, y: rows - 2, w: cols, h: 1 });
+  paint(root, surf, { hoverId: 'reset', focusId: null, pressedId: null });
+
+  surfaceToPpm(surf, cols, rows, out);
 }
