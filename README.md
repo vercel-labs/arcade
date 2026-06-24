@@ -1,6 +1,12 @@
-# arcade
+# Arcade
 
-Terminal-rendered ASCII arcade — 3D games drawn with characters in the terminal, with full mouse + keyboard interaction. Pure TypeScript, zero native dependencies.
+**3D games rendered as ASCII in your terminal, built to be played by humans _and_ AI models.**
+
+Arcade is the first build-out of **Vercel Arcade**: a showcase where you can play classic games against frontier AI models (or watch the models play each other) entirely inside a terminal, rendered with truecolor characters. Everything here is pure TypeScript with **zero native dependencies**. The 3D renderer, the UI layer, and the game rules are all written from scratch.
+
+The first game is **chess**. The pieces are real 3D models, lit and rasterized in software, and presented as ASCII/half-blocks. You can already click a piece, see its legal moves, and play it out; the full rules engine is in place.
+
+> Internal design + product context lives in the Vercel Arcade Notion. This README covers the codebase.
 
 ## Run
 
@@ -9,39 +15,73 @@ pnpm install
 pnpm dev
 ```
 
-You boot into an animated attract screen — a Dark Side of the Moon homage: a rotating 3D glass prism splitting a white beam into a rainbow, under a 3D "VERCEL ARCADE" wordmark. **Press any key** to start.
+You boot into an animated attract screen (a _Dark Side of the Moon_ homage: a rotating glass prism splitting a beam into a rainbow). From the bottom button bar you can jump to:
 
-Then you're flying forward through space. Spinning cubes rush toward you from the distance — **move the mouse** (or arrow keys) to dodge them. You score for every cube you thread past; a collision ends the run. Speed ramps up the longer you survive. `R` restarts after a crash, `q` (or `Esc`) quits.
+- **Chess Game**: the playable 3D board (see below).
+- **Chess**: a turntable showcase of the piece models.
+- **Demo**: a lit, spinning engine cube.
+- **Start**: a 3D dodge game (fly through space, dodge cubes).
+- **mode**: cycle the render style between **ascii** (shape-matched glyphs) · **color** (half-block truecolor) · **luminance** (brightness ramp).
 
-> Best in a truecolor terminal (iTerm2, Ghostty, Kitty, WezTerm, VS Code). Apple Terminal.app has weak mouse support — aiming may not work there.
+**Chess Game controls:** click a piece to highlight its square + show legal-move dots, click a dot to slide it there. **Left-drag** orbits, **scroll** zooms, **arrow keys** pan, **Reset View** recenters. `q`/`Esc` quits.
 
-## How it works
+> Best in a truecolor terminal (Ghostty, iTerm2, Kitty, WezTerm, VS Code). Apple Terminal.app has weak mouse support.
 
-No GPU, no WebGL. Everything is a pure-software pipeline. Two rendering primitives:
+## Architecture
 
-- **`src/framebuffer.ts`** — the game's character grid + depth buffer (ASCII glyphs). Serializes to a single string per frame (one `stdout.write`) and only emits a color escape when the color changes between cells.
-- **`src/pixel-canvas.ts`** — the attract screen's image-like primitive: an upper-half-block (`▀`) canvas where each cell is two truecolor pixels (foreground = top, background = bottom), composited additively for glow.
+The repo is organized as a few standalone libraries plus the app that composes them. Imports flow one way: the libraries never import app code, so they stay reusable.
 
-On top of those:
+```
+src/
+  engine/     3D software renderer (no GPU): math, meshes, rasterizer, materials,
+              ASCII/half-block presenters, bloom, supersampling
+  tui/        mini retained-mode TUI library: flexbox layout + Box/Text/Button,
+              hover/focus/press state, hit-testing, paints to a Surface
+  platform/   terminal control (alt-screen, raw mode, SGR mouse) + input parsing
+  games/      game harness (Game/State + registry) and the chess rules engine
+  arcade/     THE app: orchestrator, attract scene, dodge game, chess screens
+  demo/       engine cube demo
+  tools/      snapshots, perft, mesh slicing/decimation, benchmarks
+```
 
-- **`src/renderer.ts`** — a minimal triangle rasterizer for the game. Transforms each cube instance's vertices, projects them with perspective (and a 2:1 character-cell aspect correction), back-face culls, then scanline-fills each triangle into a shared character + depth buffer. Flat-shaded by `normal · light`, mapped to an ASCII ramp and 24-bit color.
-- **`src/loading.ts`** — the Dark Side of the Moon attract screen: a rotating 3D glass prism (bright chromatic-fringed edges + specular glint), a glowing white beam, a hue-swept rainbow wedge, and the `figlet` "VERCEL ARCADE" wordmark recolored with a gradient.
-- **`src/game.ts`** — game state: the player, obstacle spawning, movement, proximity tinting, collision/scoring, and restart.
-- **`src/terminal.ts`** — alternate screen, hidden cursor, raw mode, SGR mouse reporting (modes 1003 + 1006), and bulletproof cleanup on every exit path.
-- **`src/input.ts`** — parses the raw stdin stream into keyboard and mouse (move / drag / wheel) events.
-- **`src/main.ts`** — the game loop: input → update → render at 30fps, plus the HUD and game-over overlay.
+### `engine/`: the 3D ASCII rendering engine
 
-## Next steps
+A from-scratch software rasterizer. Column-major `Mat4` math → perspective camera → near-plane clipping → edge-function rasterization → perspective-correct interpolation → z-buffer. The single style hook is the **`Material`** (a vertex + fragment program pair), so the whole arcade shares one controllable look; current materials include a two-light flat-shaded piece material and a glassy refraction material. Meshes come from a built-in cube/tetrahedron or the **OBJ loader** (`parseObj` + `flatShade`).
 
-- Frame diffing (write only changed cells) for larger grids
-- More meshes beyond the cube (load arbitrary `.obj` / glTF)
-- More game modes
-- Vercel AI Gateway integration for AI-driven game logic
+The render target is then handed to one of three **presenters**:
+
+- **half-block**: two truecolor pixels per cell via `▀`, with optional bloom + supersampling.
+- **shape-glyph**: picks the character whose ink _shape_ best matches each cell (after Alex Harri's "ASCII rendering"), with a luminance fallback so shadows stay legible.
+- **luminance**: a classic dark→light character ramp.
+
+### `tui/`: a mini TUI library
+
+A small retained-mode UI layer for the on-screen controls (the button bars). The app rebuilds a tree of `Box`/`Text`/`Button` nodes each frame; the `Screen` runtime carries hover/focus/pressed state across frames (keyed by node id), runs a flexbox-style layout pass, hit-tests the mouse, and paints to an engine `Surface`. It composes over the 3D scene as an overlay.
+
+### `games/`: the game harness + chess
+
+An extensible, **AI-ready** harness modeled on DeepMind OpenSpiel (a `Game`/`State` split) and Kaggle Game Arena (a player is just `observation → action`). A `State` exposes `legalActions`, `applyAction`, `isTerminal`, `returns`, `clone`, and notation conversion; games self-register in a name→factory registry.
+
+The **chess rules engine** is implemented from scratch (0x88 board, full legal move generation, castling/en passant/promotion, checkmate/stalemate, and the 50-move/threefold/insufficient-material draws, with SAN + UCI notation). Correctness is proven by **perft** against the known reference node counts (`pnpm exec tsx src/tools/perft.ts`).
+
+## Roadmap
+
+- [x] 3D ASCII rendering engine
+- [x] Mini TUI library for in-terminal controls
+- [x] Chess: 3D board, interactive play, and a verified rules engine
+- [ ] **AI Gateway + AI SDK integration**: wire frontier models in to play **you vs AI** and **AI vs AI**. The game harness exposes the board so an agent can read the position and submit legal moves.
+- [ ] **Realtime audio "table talk"**: give the models a voice so they can banter/commentate as they play.
+- [ ] **More games**: poker and codenames next, reusing the same engine + harness.
 
 ## Scripts
 
-| Command           | What it does              |
-| ----------------- | ------------------------- |
-| `pnpm dev`        | Run the demo              |
-| `pnpm watch`      | Run with auto-reload      |
-| `pnpm type-check` | Type-check with `tsc`     |
+| Command                                       | What it does                                  |
+| --------------------------------------------- | --------------------------------------------- |
+| `pnpm dev`                                    | Run the arcade                                |
+| `pnpm demo`                                   | Run the engine cube demo                      |
+| `pnpm snapshot [cols] [rows] [t]`             | Render a frame to a `.ppm` image (for review) |
+| `pnpm watch`                                  | Run with auto-reload                          |
+| `pnpm type-check`                             | Type-check with `tsc`                         |
+| `pnpm exec tsx src/tools/perft.ts`            | Verify the chess move generator               |
+
+Credits for the techniques and assets this builds on are in [`NOTICE.md`](./NOTICE.md).
