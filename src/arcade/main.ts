@@ -54,13 +54,6 @@ let rows = process.stdout.rows ?? 24;
 // the scene's bottom row rather than sitting on a reserved blank strip.
 const fb = new Framebuffer(cols, rows - 1);
 let target = new RenderTarget(cols * SS, rows * 2 * SS);
-// Low-res target for the "interactive preview" while actively orbiting/panning
-// the camera: rendering at SS=1 (no supersampling) and presenting with the cheap
-// luminance ramp (skips the glyph search) turns a ~22ms chess frame into ~10ms,
-// so rotation stays smooth; the crisp SS=3 shape-glyph frame is rendered once the
-// drag settles.
-const SS_DRAG = 1;
-let targetLow = new RenderTarget(cols * SS_DRAG, rows * 2 * SS_DRAG);
 let display: RenderTarget | undefined;
 const attract = new AttractScene();
 const game = new Game();
@@ -424,7 +417,6 @@ function onMouseImpl(e: MouseEvent): void {
         const { ndcX, ndcY, aspect } = pointerNdc(e.x, e.y);
         chessGame.click(ndcX, ndcY, aspect);
       }
-      if (draggingCamera) forceFrame = true; // settle: repaint crisp at full SS
       draggingCamera = false;
       return;
     }
@@ -503,27 +495,16 @@ function tick(): void {
     // `jitter` intentionally animates (per-frame glyph noise) so it forces redraw.
     syncBar();
     const sceneDirty = forceFrame || jitter || orbit.needsRender();
-    // While actively dragging the camera, render the cheap low-res preview
-    // (SS=1 + luminance ramp) for a high frame rate; the next settled frame
-    // (drag end sets forceFrame) repaints crisp at full SS in the real mode.
-    const low = draggingCamera;
-    const tgt = low ? targetLow : target;
-    if (sceneDirty) orbit.renderScene(tgt);
+    if (sceneDirty) orbit.renderScene(target);
     if (UNIFIED) {
       // Composite scene + UI into one diffed buffer; skip when nothing changed.
       // Pass sceneDirty so a hover-only frame reuses the cached scene layer
       // instead of re-sampling the whole scene.
       if (sceneDirty || ui.dirty()) {
-        r.write(
-          ui.frameComposited(
-            (s) => (low ? luminanceToSurface(s, tgt, cols, rows, { color: true }) : presentSceneInto(s, false, true)),
-            sceneDirty,
-          ),
-        );
+        r.write(ui.frameComposited((s) => presentSceneInto(s, false, true), sceneDirty));
       }
     } else if (sceneDirty) {
-      const scene = low ? toLuminance(tgt, cols, rows, { color: true }) : presentScene(false, true);
-      r.write(scene + ui.frame());
+      r.write(presentScene(false, true) + ui.frame());
     } else if (ui.dirty()) {
       // Only a button hover/focus changed: repaint just the bar, not the scene.
       r.write(ui.frame());
@@ -549,7 +530,6 @@ process.stdout.on('resize', () => {
   rows = process.stdout.rows ?? 24;
   fb.resize(cols, rows - 1);
   target = new RenderTarget(cols * SS, rows * 2 * SS);
-  targetLow = new RenderTarget(cols * SS_DRAG, rows * 2 * SS_DRAG);
   ui.resize(cols, rows);
   display = undefined;
   // The scene repaints every cell it owns each frame, but the reserved button
