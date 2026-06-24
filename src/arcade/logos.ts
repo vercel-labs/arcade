@@ -16,7 +16,7 @@ export const BRAND_HUE: Record<string, RGB> = {
   openai: [16, 163, 127],
   anthropic: [217, 119, 87],
   google: [66, 133, 244],
-  xai: [150, 180, 230],
+  xai: [88, 126, 198], // steel blue — deep enough to stay colored, not blow to white
 };
 
 const ORG_TO_FILE: Record<string, string> = {
