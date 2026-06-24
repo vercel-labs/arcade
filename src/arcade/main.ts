@@ -39,8 +39,10 @@ const MODE_ORDER: RenderMode[] = ['ascii', 'color', 'luminance'];
 
 // Unified compositing (OpenTUI keystone): when true, the scene paints into the
 // same Surface as the UI and a single diff is flushed, instead of "scene string
-// + UI overlay string". Flip to false to instantly revert to the legacy path.
-const UNIFIED = true;
+// + UI overlay string". Currently OFF: the cell-renderer port (shapeGlyphToSurface)
+// diverges from toShapeGlyph on a few cells' colors, and re-sampling the whole
+// scene on every hover regresses chess perf — both must be fixed before re-enabling.
+const UNIFIED = false;
 
 let cols = process.stdout.columns ?? 80;
 let rows = process.stdout.rows ?? 24;

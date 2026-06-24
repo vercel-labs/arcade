@@ -25,6 +25,14 @@ export const STYLE_REVERSE = 8;
 // terminal cursor already advanced two columns past the wide glyph.
 const CONTINUATION = '\0';
 
+// Clamp + round a color channel to a byte. Channels can arrive > 255 (additive
+// glass, bloom) — a bare Uint8Array store would wrap mod 256 and wreck the hue.
+function byte(v: number): number {
+  if (v <= 0) return 0;
+  if (v >= 255) return 255;
+  return Math.round(v);
+}
+
 export interface Cell {
   ch: string;
   fg: RGB;
@@ -91,17 +99,19 @@ export class Surface {
     this.clipRect = r;
   }
 
-  // Paint one opaque cell. `ch` of '' clears the glyph to a space.
+  // Paint one opaque cell. `ch` of '' clears the glyph to a space. Colors are
+  // clamped + rounded to 0..255 (channels from additive/bloomed scene colors can
+  // exceed 255; a raw Uint8Array store would wrap mod 256 and corrupt the hue).
   setCell(x: number, y: number, ch: string, fg: RGB, bg: RGB, style = 0): void {
     if (!this.inBounds(x, y)) return;
     const i = y * this.cols + x;
     this.ch[i] = ch === '' ? ' ' : ch;
-    this.fg[i * 3] = fg[0];
-    this.fg[i * 3 + 1] = fg[1];
-    this.fg[i * 3 + 2] = fg[2];
-    this.bg[i * 3] = bg[0];
-    this.bg[i * 3 + 1] = bg[1];
-    this.bg[i * 3 + 2] = bg[2];
+    this.fg[i * 3] = byte(fg[0]);
+    this.fg[i * 3 + 1] = byte(fg[1]);
+    this.fg[i * 3 + 2] = byte(fg[2]);
+    this.bg[i * 3] = byte(bg[0]);
+    this.bg[i * 3 + 1] = byte(bg[1]);
+    this.bg[i * 3 + 2] = byte(bg[2]);
     this.style[i] = style;
     this.opaque[i] = 1;
     this.touched[y] = 1;
