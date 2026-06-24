@@ -91,6 +91,9 @@ function paintNode(node: Node, surf: Surface, st: PaintState, theme: Theme, inhe
   if (lb && lb.w > 0 && lb.h > 0) {
     surf.setClip(node.clip ?? null); // overflow clipping from an ancestor
     const e = effective(node, st);
+    // Scrim: dim the cells already in the Surface (the scene) under this node,
+    // keeping their glyphs, before painting this node's own bg/content on top.
+    if (e.scrim != null) surf.blendRect(lb.x, lb.y, lb.w, lb.h, resolveColor(e.scrim, theme));
     const bits = styleBits(e);
     const b = e.border && e.border !== 'none' ? 1 : 0;
     let bg: RGB = inheritedBg ?? BLACK;

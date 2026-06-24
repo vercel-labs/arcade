@@ -43,6 +43,10 @@ export interface Style {
   bottom?: Dimension;
   overflow?: Overflow; // 'hidden' clips descendants to this node's content box
   background?: ColorToken; // theme token, RGB/RGBA tuple, CSS string, or 'transparent'
+  // Like a translucent background, but blends over the cells ALREADY in the
+  // Surface (the scene) keeping their glyphs — a real dim, not a flat fill.
+  // Used for modal scrims (needs the unified compositing path).
+  scrim?: ColorToken;
   color?: ColorToken; // text/foreground color
   border?: BorderStyle;
   borderColor?: ColorToken;

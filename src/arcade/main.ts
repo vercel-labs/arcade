@@ -43,7 +43,7 @@ const MODE_ORDER: RenderMode[] = ['ascii', 'color', 'luminance'];
 // string". Color parity fixed (setCell clamps) and UI-only frames reuse a cached
 // scene layer (no per-hover re-sample). Flip to false to fall back to the legacy
 // path instantly.
-const UNIFIED = false;
+const UNIFIED = true;
 
 let cols = process.stdout.columns ?? 80;
 let rows = process.stdout.rows ?? 24;

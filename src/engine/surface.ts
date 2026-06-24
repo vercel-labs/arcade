@@ -137,6 +137,29 @@ export class Surface {
     }
   }
 
+  // Blend `c` over the fg AND bg of each cell in a rect, KEEPING each cell's
+  // glyph/style — a scrim that dims whatever is already there (the scene) rather
+  // than overwriting it. Only touches opaque cells (transparent ones have no
+  // content to dim).
+  blendRect(x: number, y: number, w: number, h: number, c: RGBA): void {
+    for (let yy = y; yy < y + h; yy++) {
+      for (let xx = x; xx < x + w; xx++) {
+        if (!this.inBounds(xx, yy)) continue;
+        const i = yy * this.cols + xx;
+        if (!this.opaque[i]) continue;
+        const fg = blendOver([this.fg[i * 3], this.fg[i * 3 + 1], this.fg[i * 3 + 2]], c);
+        const bg = blendOver([this.bg[i * 3], this.bg[i * 3 + 1], this.bg[i * 3 + 2]], c);
+        this.fg[i * 3] = byte(fg[0]);
+        this.fg[i * 3 + 1] = byte(fg[1]);
+        this.fg[i * 3 + 2] = byte(fg[2]);
+        this.bg[i * 3] = byte(bg[0]);
+        this.bg[i * 3 + 1] = byte(bg[1]);
+        this.bg[i * 3 + 2] = byte(bg[2]);
+        this.touched[yy] = 1;
+      }
+    }
+  }
+
   // Draw text starting at (x, y), advancing by each glyph's display width. A
   // wide glyph occupies two cells (the second is a continuation sentinel).
   drawText(x: number, y: number, str: string, fg: RGB, bg: RGB, style = 0): void {

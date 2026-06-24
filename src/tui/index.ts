@@ -2,6 +2,7 @@
 // modules inside tui import each other directly. tui consumes engine (Surface,
 // width, color) and platform (input types); nothing imports app code.
 export { Box, Text, Button } from './nodes.ts';
+export { Modal } from './components/modal.ts';
 export { Screen } from './screen.ts';
 export { Renderer, type FrameFn, type RendererOpts } from './renderer.ts';
 export { layout } from './layout.ts';

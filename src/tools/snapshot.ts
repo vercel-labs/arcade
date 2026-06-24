@@ -12,7 +12,8 @@ import { AttractScene } from '../arcade/attract.ts';
 import { ChessScene } from '../arcade/chess.ts';
 import { ChessGameScene } from '../arcade/chess-game.ts';
 import { LogosScene } from '../arcade/logos-scene.ts';
-import { buildBar, type Mode } from '../arcade/bars.ts';
+import { buildBar, buildPromotion, type Mode } from '../arcade/bars.ts';
+import type { Color } from '../games/chess/types.ts';
 import { layout, paint, type PaintState } from '../tui/index.ts';
 
 type Rgb = [number, number, number];
@@ -164,8 +165,28 @@ if (process.argv[2] === 'ui') {
   overlaySnapshot();
 } else if (process.argv[2] === 'unified') {
   unifiedSnapshot();
+} else if (process.argv[2] === 'modal') {
+  modalSnapshot();
 } else {
   sceneSnapshot();
+}
+
+// The promotion modal composited over the chess scene via the unified path:
+// scene → Surface (shape-glyph), then the Modal's scrim dims it in place while
+// the popup paints crisp on top. Proves the translucent-scrim effect.
+function modalSnapshot(): void {
+  const cols = Number(process.argv[3]) || 110;
+  const rows = Number(process.argv[4]) || 40;
+  const out = process.argv[5] ?? '.snapshots/modal.ppm';
+  const SS = 3;
+  const target = new RenderTarget(cols * SS, rows * 2 * SS);
+  new ChessGameScene().renderScene(target);
+  const surf = new Surface(cols, rows);
+  shapeGlyphToSurface(surf, target, cols, rows, { color: true, hybrid: true });
+  const root = buildPromotion(0 as Color, () => {}); // WHITE
+  layout(root, { x: 0, y: 0, w: cols, h: rows });
+  paint(root, surf, { hoverId: 'promo-queen', focusId: 'promo-queen', pressedId: null });
+  surfaceToPpm(surf, cols, rows, out);
 }
 
 // The unified compositing path (ASCII mode): the scene paints into the SAME

@@ -3,7 +3,7 @@
 // pill padding is style padding, and hover colors are a style overlay. Per-button
 // onClick closures replace the id→action if/else that used to live in onMouse.
 
-import { Box, Button, Text, type Node, type Style } from '../tui/index.ts';
+import { Box, Button, Modal, Text, type Node, type Style } from '../tui/index.ts';
 import { BISHOP, BLACK, type Color, KNIGHT, type PieceType, QUEEN, ROOK } from '../games/chess/types.ts';
 import type { RGB } from '../engine/index.ts';
 
@@ -131,6 +131,7 @@ export function buildPromotion(color: Color, onPick: (t: PieceType) => void): No
     ],
   );
 
-  // Full-screen transparent overlay that centers the popup over the scene.
-  return Box({ flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }, [popup]);
+  // Centered modal: a translucent scrim dims the scene behind the popup (real
+  // dim under the unified renderer's alpha compositing).
+  return Modal(popup);
 }
