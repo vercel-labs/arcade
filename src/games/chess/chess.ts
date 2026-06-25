@@ -2,7 +2,7 @@ import { type Game, type GameState, TERMINAL } from '../game.ts';
 import { registerGame } from '../registry.ts';
 import { Board } from './board.ts';
 import { generateLegalMoves, isInCheck } from './movegen.ts';
-import { moveToSan, moveToUci } from './san.ts';
+import { looseKey, moveToSan, moveToUci } from './san.ts';
 import {
   BISHOP,
   BLACK,
@@ -34,6 +34,7 @@ export interface ChessResult {
 export class ChessState implements GameState<Move> {
   readonly board: Board;
   private history: string[]; // repetition keys, including the current position
+  private sanHistory: string[] = []; // SAN of each played move, for the PGN move history
   private cachedLegal: Move[] | null = null;
 
   constructor(fen: string = START_FEN) {
@@ -51,6 +52,7 @@ export class ChessState implements GameState<Move> {
   }
 
   applyAction(m: Move): void {
+    this.sanHistory.push(this.actionToString(m)); // SAN needs the pre-move board + legal list
     this.board.applyMove(m);
     this.history.push(this.board.key());
     this.cachedLegal = null;
@@ -60,6 +62,7 @@ export class ChessState implements GameState<Move> {
     const s = Object.create(ChessState.prototype) as ChessState;
     (s as { board: Board }).board = this.board.clone();
     s.history = this.history.slice();
+    s.sanHistory = this.sanHistory.slice();
     s.cachedLegal = null;
     return s;
   }
@@ -76,23 +79,49 @@ export class ChessState implements GameState<Move> {
     return this.board.toFEN();
   }
 
+  // Numbered PGN movetext of the moves played so far, in SAN — e.g.
+  // "1. e4 e5 2. Nf3 Nc6". Empty at the start position. Matches the move-history
+  // format Game Arena feeds its chess players, so an AI sees the game's narrative
+  // (plans, repetitions) rather than a stateless snapshot of the current position.
+  moveHistory(): string {
+    const out: string[] = [];
+    for (let i = 0; i < this.sanHistory.length; i++) {
+      if (i % 2 === 0) out.push(`${i / 2 + 1}.`); // move number before each White ply
+      out.push(this.sanHistory[i]);
+    }
+    return out.join(' ');
+  }
+
   actionToString(m: Move): string {
     return moveToSan(this.board, m, this.legalActions());
   }
 
   // Lenient parse: accepts UCI ("e2e4", "e7e8q") or SAN ("Nf3", "exd5", "O-O"),
   // matched against the legal move list (Game Arena's "soft parse" approach).
+  // First an exact match against canonical notation; failing that, a soft match
+  // that forgives the common ways models mangle SAN — a dropped capture "x", a
+  // missing promotion "=", wrong case, "0-0" for castling — but only when it
+  // resolves to a UNIQUE legal move. Genuinely ambiguous under-specified input
+  // (e.g. "Nd7" when two knights reach d7) returns null so the caller re-prompts.
   actionFromString(s: string): Move | null {
-    const uci = s.trim().toLowerCase();
-    const san = s.trim().replace(/[+#!?]/g, '');
+    const cleaned = s.trim().replace(/^\d+\.+\s*/, ''); // drop a leading move number ("1." / "2...")
+    const uci = cleaned.toLowerCase();
+    const san = cleaned.replace(/[+#!?]/g, '');
     const sanO = san.replace(/0/g, 'O'); // tolerate "0-0" for castling
+    const want = looseKey(cleaned);
     const legal = this.legalActions();
+    let loose: Move | null = null;
+    let looseAmbiguous = false;
     for (const m of legal) {
-      if (moveToUci(m) === uci) return m;
+      const mu = moveToUci(m);
       const ms = moveToSan(this.board, m, legal).replace(/[+#!?]/g, '');
-      if (ms === san || ms === sanO) return m;
+      if (mu === uci || ms === san || ms === sanO) return m; // exact
+      if (looseKey(mu) === want || looseKey(ms) === want) {
+        if (loose) looseAmbiguous = true; // a second loose hit — too vague to trust
+        loose = m;
+      }
     }
-    return null;
+    return looseAmbiguous ? null : loose;
   }
 
   toString(): string {

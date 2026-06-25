@@ -26,6 +26,12 @@ export class Screen {
   // Interaction state as of the last paint, for dirty() (mirrors the old
   // `hoveredButton !== lastHoveredButton` check that gated chess repaints).
   private painted: PaintState = { hoverId: null, focusId: null, pressedId: null };
+  // Set when an input mutates a component's INTERNAL state (a ScrollBox offset, an
+  // Input caret, a Select index) — content the dirty() gate must repaint even
+  // though hover/focus/pressed are unchanged. Without this, a wheel/arrow/drag on
+  // the move panel updates state but the render-on-demand tick skips the write
+  // until an unrelated click flips pressed/focus. Cleared after each painted frame.
+  private contentDirty = false;
   // The region the root is laid out into. Stored so hit-testing always has fresh
   // geometry even on frames we don't repaint (e.g. an idle chess turntable).
   private region: LayoutBox = { x: 0, y: 0, w: 0, h: 0 };
@@ -131,6 +137,7 @@ export class Screen {
     this.surface.clear();
     if (this.root) paint(this.root, this.surface, this.state);
     this.painted = { ...this.state };
+    this.contentDirty = false;
     return this.surface.serialize();
   }
 
@@ -150,6 +157,7 @@ export class Screen {
     this.sceneLayer.copyInto(this.surface);
     if (this.root) paint(this.root, this.surface, this.state);
     this.painted = { ...this.state };
+    this.contentDirty = false;
     return this.differ.diff(this.surface);
   }
 
@@ -170,6 +178,7 @@ export class Screen {
   // Whether interaction state changed since the last paint.
   dirty(): boolean {
     return (
+      this.contentDirty ||
       this.state.hoverId !== this.painted.hoverId ||
       this.state.focusId !== this.painted.focusId ||
       this.state.pressedId !== this.painted.pressedId
@@ -212,6 +221,7 @@ export class Screen {
       if (target.onMouse && target.layout) {
         this.captured = target;
         target.onMouse(this.local(target, x1, y1, 'down'));
+        this.contentDirty = true; // e.g. clicking the scrollbar track jumps the offset
       }
       target.onClick?.();
     }
@@ -223,7 +233,9 @@ export class Screen {
   drag(x1: number, y1: number): boolean {
     const n = this.captured;
     if (!n || !n.onMouse || !n.layout) return false;
-    return n.onMouse(this.local(n, x1, y1, 'drag'));
+    const handled = n.onMouse(this.local(n, x1, y1, 'drag'));
+    if (handled) this.contentDirty = true;
+    return handled;
   }
 
   // Mouse wheel (1-based). Routes to a component's onMouse (ScrollBox/Select/
@@ -233,9 +245,25 @@ export class Screen {
   wheel(x1: number, y1: number, dir: -1 | 1): boolean {
     if (!this.root) return false;
     const target = hitTest(this.root, x1 - 1, y1 - 1);
-    if (target?.onMouse && target.layout) target.onMouse({ ...this.local(target, x1, y1, 'wheel'), wheel: dir });
+    if (target?.onMouse && target.layout) {
+      target.onMouse({ ...this.local(target, x1, y1, 'wheel'), wheel: dir });
+      this.contentDirty = true; // the scrollable likely moved — force a repaint
+    }
     // Block the scene's wheel-zoom whenever the cursor is over any solid surface.
     return hitSurface(this.root, x1 - 1, y1 - 1) != null;
+  }
+
+  // Route a scroll key (↑/↓/PageUp/PageDown) to the interactive node under the
+  // 1-based cell, so a hovered scrollable scrolls WITHOUT needing focus. Returns
+  // true if that node's onKey consumed it. Limited to scroll keys so it never
+  // steals typing/selection from a hovered (but unfocused) input/select.
+  tryScrollKey(x1: number, y1: number, ev: KeyEvent): boolean {
+    if (ev.name !== 'up' && ev.name !== 'down' && ev.name !== 'pageup' && ev.name !== 'pagedown') return false;
+    if (!this.root) return false;
+    const target = hitTest(this.root, x1 - 1, y1 - 1);
+    const consumed = target?.onKey ? target.onKey(ev) : false;
+    if (consumed) this.contentDirty = true;
+    return consumed;
   }
 
   // Build a PointerHit in coordinates local to node n's layout box.
@@ -258,7 +286,10 @@ export class Screen {
     const order = focusOrder(this.root);
     if (this.state.focusId) {
       const f = order.find((n) => n.id === this.state.focusId);
-      if (f?.onKey && f.onKey(ev)) return true;
+      if (f?.onKey && f.onKey(ev)) {
+        this.contentDirty = true; // focused widget mutated (caret, scroll, selection)
+        return true;
+      }
     }
     if (ev.name === 'tab') {
       if (order.length === 0) return false;

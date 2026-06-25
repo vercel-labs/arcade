@@ -20,6 +20,7 @@ export interface ScrollBoxOpts {
 
 const TRACK: RGB = defaultTheme.pillBg;
 const THUMB: RGB = defaultTheme.accent;
+const WHEEL_STEP = 3; // rows scrolled per wheel notch (1 felt sluggish)
 
 export class ScrollBox implements Component {
   id: string;
@@ -44,6 +45,9 @@ export class ScrollBox implements Component {
   }
 
   onKey(ev: KeyEvent): boolean {
+    // Don't swallow scroll keys when there's nothing to scroll — let them fall
+    // through (e.g. to camera pan) so a short/empty panel isn't a dead zone.
+    if (this.maxScroll() === 0) return false;
     if (ev.name === 'up' || ev.name === 'k') this.scrollBy(-1);
     else if (ev.name === 'down' || ev.name === 'j') this.scrollBy(1);
     else if (ev.name === 'pageup') this.scrollBy(-this.height);
@@ -52,11 +56,12 @@ export class ScrollBox implements Component {
     return true;
   }
 
-  // Mouse: wheel scrolls a row at a time; click/drag on the scrollbar column
+  // Mouse: wheel scrolls a few rows per notch; click/drag on the scrollbar column
   // (rightmost cell) jumps the scroll position proportional to the y within it.
   onMouse(ev: PointerHit): boolean {
     if (ev.type === 'wheel') {
-      this.scrollBy(ev.wheel === -1 ? -1 : 1);
+      if (this.maxScroll() === 0) return false; // nothing to scroll — don't consume
+      this.scrollBy(ev.wheel === -1 ? -WHEEL_STEP : WHEEL_STEP);
       return true;
     }
     if (ev.x >= ev.w - 1) {

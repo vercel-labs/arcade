@@ -1,5 +1,5 @@
 import type { GameState } from '../games/game.ts';
-import type { Player } from './player.ts';
+import type { Player, TurnContext } from './player.ts';
 
 // The rendering surface a match drives: the live game state plus a way to play
 // (and visibly animate) one action. `ChessGameScene` implements this. Keeping it
@@ -33,15 +33,31 @@ export async function runMatch<A>(
   hooks: MatchHooks<A> = {},
 ): Promise<number[]> {
   const { signal } = hooks;
+  let lastSaid: string | undefined; // the previous mover's line, for opponent banter
   while (!scene.state().isTerminal()) {
     if (signal?.aborted) break;
     const state = scene.state();
     const idx = state.currentPlayer();
     const player = players[idx];
     hooks.onThinking?.(player, idx);
-    const { action, rationale } = await player.chooseAction(state, signal);
+    // Per-turn context. Commentary flows through `emit` (a voice player streams
+    // speech chunks; a text player may not call it at all). If nothing was
+    // emitted but a rationale came back, surface it once — so plain text players
+    // keep working unchanged. `opponentSaid` lets this player react to the last
+    // utterance without the caller threading it manually.
+    let emitted = false;
+    const ctx: TurnContext = {
+      signal,
+      emit: (chunk) => {
+        emitted = true;
+        hooks.onCommentary?.(chunk, player, idx);
+      },
+      opponentSaid: lastSaid,
+    };
+    const { action, rationale } = await player.chooseAction(state, ctx);
     if (signal?.aborted) break;
-    if (rationale) hooks.onCommentary?.(rationale, player, idx);
+    if (!emitted && rationale) hooks.onCommentary?.(rationale, player, idx);
+    if (rationale) lastSaid = rationale;
     await scene.playMove(action);
   }
   return scene.state().returns();

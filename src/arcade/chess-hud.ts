@@ -110,12 +110,14 @@ export function buildChessGameRoot(
   // The move-list Slot stays in the tree in BOTH states — when minimized it's
   // wrapped in a 0×0 clipped box (hidden, but still "referenced") so the Screen
   // doesn't auto-unmount the ScrollBox; otherwise re-expanding would find it
-  // unmounted and render an empty panel. No drawn border — the translucent fill
-  // alone separates the panel from the scene, so minimized it reads as a button.
-  const body = opts.minimized
-    ? Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot('chess-history')])
-    : Slot('chess-history');
-  const panel = Box({ flexDirection: 'column', padding: [0, 1], background: [16, 18, 26, 0.9] }, [header, body]);
+  // unmounted and render an empty panel. Expanded, a one-row spacer separates the
+  // header from the list so the panel doesn't feel cramped. No drawn border — the
+  // translucent fill alone separates the panel from the scene, so minimized it
+  // reads as a button.
+  const children = opts.minimized
+    ? [header, Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot('chess-history')])]
+    : [header, Box({ height: 1 }), Slot('chess-history')];
+  const panel = Box({ flexDirection: 'column', padding: [0, 1], background: [16, 18, 26, 0.9] }, children);
 
   const c = opts.commentary && opts.t < opts.commentary.until ? opts.commentary : null;
   const label = c ? (c.model ? `${shortModel(c.model)}:  ${c.text}` : c.text) : '';

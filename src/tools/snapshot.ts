@@ -241,6 +241,8 @@ if (process.argv[2] === 'ui') {
   chessOverlaySnapshot();
 } else if (process.argv[2] === 'gameover') {
   gameOverSnapshot();
+} else if (process.argv[2] === 'king-anim') {
+  kingAnimSnapshot();
 } else {
   sceneSnapshot();
 }
@@ -292,15 +294,20 @@ function chessOverlaySnapshot(): void {
 
   const screen = new Screen(cols, rows);
   mountChessHud(screen);
-  // A long game so the scrollbar is visible (verifies the gapless thumb).
-  refreshMoveHistory([
-    'e4', 'c5', 'Nf3', 'Nc6', 'Bb5', 'Nd4', 'Nxd4', 'cxd4', 'Bxd7+', 'Qxd7', 'O-O', 'Qh3', 'gxh3', 'Bxh3', 'Qf3', 'Bg2',
-    'Qxf7+', 'Kxf7', 'Kxg2', 'd3', 'cxd3', 'Nf6', 'e5', 'Ne4', 'e6+', 'Kxe6', 'dxe4', 'Rb8', 'e5', 'Kxe5', 'Re1+', 'Kf5',
-    'Rxe7', 'Bxe7', 'f4', 'Kxf4', 'Rxe7', 'Kg5', 'Re5+', 'Kh6', 'Rh5+', 'Kg6', 'b4', 'a5', 'bxa5', 'Rb2+',
-  ]);
+  // 'short' renders a one-move list (no scrollbar) to inspect the panel edges;
+  // otherwise a long game so the scrollbar is visible (gapless-thumb check).
+  refreshMoveHistory(
+    process.argv.includes('short')
+      ? ['c4']
+      : [
+          'e4', 'c5', 'Nf3', 'Nc6', 'Bb5', 'Nd4', 'Nxd4', 'cxd4', 'Bxd7+', 'Qxd7', 'O-O', 'Qh3', 'gxh3', 'Bxh3', 'Qf3', 'Bg2',
+          'Qxf7+', 'Kxf7', 'Kxg2', 'd3', 'cxd3', 'Nf6', 'e5', 'Ne4', 'e6+', 'Kxe6', 'dxe4', 'Rb8', 'e5', 'Kxe5', 'Re1+', 'Kf5',
+          'Rxe7', 'Bxe7', 'f4', 'Kxf4', 'Rxe7', 'Kg5', 'Re5+', 'Kh6', 'Rh5+', 'Kg6', 'b4', 'a5', 'bxa5', 'Rb2+',
+        ],
+  );
   const region = { x: 0, y: 0, w: cols, h: rows };
   screen.setRoot(
-    buildChessGameRoot(region, buildBar('chess-game', 'ascii', barActions, true), {
+    buildChessGameRoot(region, buildBar('chess-game', 'ascii', barActions, { label: 'pause ai', active: true }), {
       minimized,
       onToggle: noop,
       onCopy: noop,
@@ -311,6 +318,38 @@ function chessOverlaySnapshot(): void {
   );
   const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
   surfaceToPpm(surf, cols, rows, out);
+}
+
+// Captures a king mid-move (white castling, ~halfway through the animation) to
+// verify the HUD wisp tracks the king's interpolated position rather than
+// teleporting at settle. Both wisps render; the white one should sit above the
+// king as it slides e1→g1.
+//   pnpm exec tsx src/tools/snapshot.ts king-anim [cols] [rows] [out.ppm]
+function kingAnimSnapshot(): void {
+  const cols = Number(process.argv[3]) || 140;
+  const rows = Number(process.argv[4]) || 50;
+  const out = process.argv[5] ?? '.snapshots/king-anim.ppm';
+  const SS = 3;
+  const cg = new ChessGameScene();
+  cg.beginMatch();
+  for (const san of ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5']) {
+    const m = cg.state().actionFromString(san);
+    if (m) cg.state().applyAction(m);
+  }
+  const castle = cg.state().actionFromString('O-O');
+  if (castle) void cg.playMove(castle);
+  const target = new RenderTarget(cols * SS, rows * 2 * SS);
+  // Pump fewer than ANIM_FRAMES (9) so the king is caught mid-slide.
+  for (let i = 0; i < 4; i++) cg.renderScene(target, i / 30);
+  const display = downsample(target, SS);
+  const W = display.width;
+  const H = display.height;
+  const header = `P6\n${W} ${H}\n255\n`;
+  const body = Buffer.alloc(W * H * 3);
+  const c = display.color;
+  for (let i = 0; i < W * H * 3; i++) body[i] = c[i] <= 0 ? 0 : c[i] >= 255 ? 255 : Math.round(c[i]);
+  writeFileSync(out, Buffer.concat([Buffer.from(header, 'ascii'), body]));
+  console.log(`wrote ${out} (${W}x${H})`);
 }
 
 // The game-over result popup composited over a finished board (fool's mate, so

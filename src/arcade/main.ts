@@ -110,18 +110,26 @@ let lastMouseX = 0;
 let lastMouseY = 0;
 let downX = 0;
 let downY = 0;
+// Latest pointer cell (1-based), so scroll keys can target the hovered component.
+let hoverX = 0;
+let hoverY = 0;
 let t = 0;
 // Whether we currently hold a live (continuous-animation) lease on the renderer.
 let liveHeld = false;
 
 // AI-vs-AI match. The two sides default to distinct frontier models (distinct
-// provider wisps in the HUD; at least one Claude). `matchAbort` cancels an
-// in-flight match (toggle off / navigate away). `commentary` is the current
-// pre-move rationale toast, shown until `t` passes `until`.
+// provider wisps in the HUD; at least one Claude). `matchAbort` cancels the
+// running turn-loop (pause / stop / navigate away). `matchPlayers` are the two
+// players for the current game — kept across a pause so resume continues with
+// them. `matchPaused` halts the loop on the current turn (no thinking/moves)
+// while keeping the match alive. `commentary` is the current pre-move rationale
+// toast, shown until `t` passes `until`.
 const DEFAULT_WHITE = 'anthropic/claude-sonnet-4.6';
 const DEFAULT_BLACK = 'openai/gpt-5.4';
 const COMMENTARY_SECS = 3.5;
 let matchAbort: AbortController | null = null;
+let matchPlayers: Player<Move>[] | null = null;
+let matchPaused = false;
 let commentary: Commentary | null = null;
 // Whether the move-history panel is collapsed to its "Moves" header button
 // (toggle with the 'h' key or by clicking the header / ✕). History persists.
@@ -240,19 +248,49 @@ function copyMoves(): void {
 }
 
 // ── AI-vs-AI match driver ──────────────────────────────────────────────────────
-// Cancel an in-flight match and leave spectator mode (the final position stays
-// on the board). Safe to call when no match is running.
+// Fully stop the match: cancel the loop, drop the players, and leave spectator
+// mode (the final position stays on the board). Safe to call when idle. Used by
+// reset-game and on navigating away — NOT by pause.
 function stopAiMatch(): void {
   matchAbort?.abort();
   matchAbort = null;
+  matchPlayers = null;
+  matchPaused = false;
   commentary = null;
+  chessGame.setMatchPaused(false);
   chessGame.endMatch();
 }
 
-// Kick off a fresh AI-vs-AI game. Two ModelPlayers alternate via runMatch; the
-// async loop lives beside the render tick (it awaits the network and each move's
-// settle). A held live lease keeps frames flowing so the HUD wisps pulse and
-// moves animate while we wait on the models.
+// Run the turn-loop for the current `matchPlayers` against the live board. A new
+// AbortController per run lets pause/stop cancel an in-flight model call. The loop
+// lives beside the render tick (it awaits the network + each move's settle); a
+// held live lease keeps frames flowing so the HUD wisps animate while we wait.
+// On exit: if paused, the match stays alive on the current turn; otherwise it
+// ended (terminal or stopped) and we leave spectator mode.
+function runMatchLoop(): void {
+  if (!matchPlayers) return;
+  const ctrl = new AbortController();
+  matchAbort = ctrl;
+  syncLive();
+  r.requestRender();
+  runMatch<Move>(chessGame, matchPlayers, {
+    signal: ctrl.signal,
+    onCommentary: (text, player) => {
+      commentary = { text, model: player.name, until: t + COMMENTARY_SECS };
+    },
+  })
+    .catch(() => {}) // aborted mid-decision (pause/stop) — fine
+    .finally(() => {
+      if (matchAbort === ctrl) matchAbort = null;
+      if (matchPaused) return; // paused: keep the match alive on the current turn
+      chessGame.endMatch(); // ended (terminal or stopped); final position stays up
+      matchPlayers = null;
+      syncLive();
+      r.requestRender();
+    });
+}
+
+// Start a fresh AI-vs-AI game from the initial position.
 function startAiMatch(): void {
   if (!process.env.AI_GATEWAY_API_KEY) {
     commentary = { text: 'Set AI_GATEWAY_API_KEY in .env.local to play (see .env.example)', model: '', until: t + 6 };
@@ -261,35 +299,39 @@ function startAiMatch(): void {
   }
   const providerOf = (slug: string): string => slug.split('/')[0] ?? slug;
   chessGame.beginMatch(providerOf(DEFAULT_WHITE), providerOf(DEFAULT_BLACK));
-  const players: Player<Move>[] = [
+  matchPaused = false;
+  matchPlayers = [
     new ModelPlayer<Move>({ model: DEFAULT_WHITE, gameName: 'chess' }),
     new ModelPlayer<Move>({ model: DEFAULT_BLACK, gameName: 'chess' }),
   ];
-  const ctrl = new AbortController();
-  matchAbort = ctrl;
-  syncLive(); // take the live lease now that a match is active
-  r.requestRender();
-  runMatch<Move>(chessGame, players, {
-    signal: ctrl.signal,
-    onCommentary: (text, player) => {
-      commentary = { text, model: player.name, until: t + COMMENTARY_SECS };
-    },
-  })
-    .catch(() => {}) // aborted mid-decision — fine
-    .finally(() => {
-      if (matchAbort === ctrl) matchAbort = null;
-      chessGame.endMatch(); // leave spectator mode; final position stays up
-      syncLive(); // release the live lease
-      r.requestRender();
-    });
+  runMatchLoop();
 }
 
-// Toggle the AI match (bound to a key in the chess context). Entering from
-// elsewhere first opens the chess game.
-function toggleAiMatch(): void {
+// Pause on whoever's turn it is: cancel the in-flight model call (stop thinking)
+// and halt the loop, but keep the match + HUD alive. The side-to-move wisp stops
+// pulsing to show it's idle.
+function pauseAiMatch(): void {
+  matchPaused = true;
+  chessGame.setMatchPaused(true);
+  matchAbort?.abort(); // cancel any in-flight thinking
+  matchAbort = null;
+  r.requestRender();
+}
+
+// Resume from the current turn: the same players continue against the live board.
+function resumeAiMatch(): void {
+  matchPaused = false;
+  chessGame.setMatchPaused(false);
+  runMatchLoop();
+}
+
+// The AI button / 'p' key: play (idle) → pause (running) → resume (paused).
+// Entering from elsewhere first opens the chess game.
+function aiButton(): void {
   if (mode !== 'chess-game') enterChessGame();
-  if (chessGame.isMatchActive()) stopAiMatch();
-  else startAiMatch();
+  if (!chessGame.isMatchActive()) startAiMatch();
+  else if (matchPaused) resumeAiMatch();
+  else pauseAiMatch();
   r.requestRender();
 }
 
@@ -338,7 +380,7 @@ const actions: BarActions = {
   reset: () => activeOrbit()?.resetView(),
   mode: cycleMode,
   quit,
-  aiMatch: toggleAiMatch,
+  aiMatch: aiButton,
   resetGame,
 };
 
@@ -366,7 +408,7 @@ for (const c of [
   { id: 'chess.panUp', title: 'Pan up', run: () => activeOrbit()?.pan(0, PAN_STEP) },
   { id: 'chess.panDown', title: 'Pan down', run: () => activeOrbit()?.pan(0, -PAN_STEP) },
   { id: 'chess.cancelPromotion', title: 'Cancel promotion', run: cancelPromotion },
-  { id: 'chess.toggleAI', title: 'Toggle AI vs AI', run: toggleAiMatch },
+  { id: 'chess.toggleAI', title: 'Play / pause AI', run: aiButton },
   { id: 'chess.toggleHistory', title: 'Toggle move history', run: toggleHistory },
   { id: 'chess.resetGame', title: 'Reset game', run: resetGame },
   { id: 'chess.closeGameOver', title: 'Close result', run: closeGameOver },
@@ -515,11 +557,22 @@ function syncBar(): void {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     popGameOver();
     promoFocused = false;
+    // Re-mount the move-history panel: a modal popup (game-over result, promotion)
+    // replaces the whole root, dropping the Slot — which auto-unmounts the
+    // ScrollBox. Re-registering the persistent instance here (idempotent; its rows
+    // + scroll survive on the module-level object) restores the list when the popup
+    // closes, so Close preserves the game for review / PGN copy.
+    mountChessHud(ui);
     // Full-screen overlay: move-history panel (top-right) + commentary toast over
     // the board, with the standard bar beneath. Refresh the panel rows first.
     refreshMoveHistory(chessGame.moves());
+    const ai = !chessGame.isMatchActive()
+      ? { label: 'play ai', active: false }
+      : matchPaused
+        ? { label: 'resume ai', active: true }
+        : { label: 'pause ai', active: true };
     ui.setRoot(
-      buildChessGameRoot({ x: 0, y: 0, w: cols, h: rows }, buildBar(mode, renderMode, actions, chessGame.isMatchActive()), {
+      buildChessGameRoot({ x: 0, y: 0, w: cols, h: rows }, buildBar(mode, renderMode, actions, ai), {
         minimized: historyMinimized,
         onToggle: toggleHistory,
         onCopy: copyMoves,
@@ -588,14 +641,18 @@ function pointerNdc(x: number, y: number): { ndcX: number; ndcY: number; aspect:
 
 function onKeyImpl(ev: KeyEvent): void {
   // Focused widget first (the promotion picker's Tab/Enter/Space; future Inputs),
-  // then the layered keymap. The keymap is context-aware: the 'promoting' modal
-  // layer (pushed in syncBar) maps Escape to cancel and swallows every other
-  // stray key, so the old isPromoting() branch is gone.
+  // then a hovered scrollable (so ↑/↓/PageUp/PageDown scroll the move panel under
+  // the cursor without a click to focus it), then the layered keymap. The keymap
+  // is context-aware: the 'promoting' modal layer (pushed in syncBar) maps Escape
+  // to cancel and swallows every other stray key.
   if (ui.handleKey(ev)) return;
+  if (ui.tryScrollKey(hoverX, hoverY, ev)) return;
   keymap.handle(ev);
 }
 
 function onMouseImpl(e: MouseEvent): void {
+  hoverX = e.x; // track the cursor so scroll keys can target what's under it
+  hoverY = e.y;
   // Modal popups (promotion picker, game-over result): clicks/hover go to the
   // popup; the board and camera are frozen until it's dismissed.
   if (isPromoting() || gameOver) {

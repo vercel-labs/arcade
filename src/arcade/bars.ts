@@ -47,7 +47,12 @@ function centerField(s: string, width: number): string {
   return ' '.repeat(left) + s + ' '.repeat(pad - left);
 }
 
-export function buildBar(mode: Mode, renderMode: RenderMode, a: BarActions, matchActive = false): Node {
+export function buildBar(
+  mode: Mode,
+  renderMode: RenderMode,
+  a: BarActions,
+  ai: { label: string; active: boolean } = { label: 'play ai', active: false },
+): Node {
   const modeLabel = `mode: ${centerField(renderMode, 9)}`;
   let buttons: Node[] = [];
 
@@ -74,14 +79,14 @@ export function buildBar(mode: Mode, renderMode: RenderMode, a: BarActions, matc
       Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
     ];
   } else if (mode === 'chess-game') {
-    // The playable board: a button toggles AI-vs-AI (the side-to-move thinks,
-    // plays, then hands over; toggling off aborts). Highlighted while running.
-    const aiStyle = matchActive
+    // The playable board: the AI button plays (idle) → pauses (running) → resumes
+    // (paused). Highlighted whenever a match exists (running or paused).
+    const aiStyle = ai.active
       ? { ...PILL, background: [86, 64, 120] as RGB, color: [238, 230, 250] as RGB }
       : PILL;
     buttons = [
       Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
-      Button({ id: 'ai', label: matchActive ? 'stop ai' : 'play ai', onClick: a.aiMatch, style: aiStyle }),
+      Button({ id: 'ai', label: ai.label, onClick: a.aiMatch, style: aiStyle }),
       Button({ id: 'reset-game', label: 'reset game', onClick: a.resetGame, style: PILL }),
       Button({ id: 'reset', label: 'reset view', onClick: a.reset, style: PILL }),
       Button({ id: 'mode', label: modeLabel, onClick: a.mode, style: PILL }),

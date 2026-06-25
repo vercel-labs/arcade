@@ -167,6 +167,9 @@ export class ChessGameScene {
   // pending resolver, fired when the in-flight move finishes animating. `moveLog`
   // is the running SAN history (for the move panel), captured at settle time.
   private matchActive = false;
+  // Paused: the side-to-move wisp stops pulsing (idle) to show the AI isn't
+  // thinking. Set by the orchestrator; the board stays frozen either way.
+  private matchPaused = false;
   private settleResolve: (() => void) | null = null;
   private moveLog: string[] = [];
   // HUD: a provider wisp per side (top corners), pulsing the side to move. Loaded
@@ -289,6 +292,24 @@ export class ChessGameScene {
     return -1;
   }
 
+  // The king's current rendered world position, so its HUD wisp tracks it. While
+  // that king is mid-move (its own move or a castle), follow the SAME interpolated
+  // point the king mesh is drawn at — otherwise the wisp would sit on the origin
+  // square until the move settles, then teleport. Falls back to the king's board
+  // square when it isn't animating. Returns null only if the king is missing.
+  private kingWorldPos(color: Color): Vec3 | null {
+    if (this.anim) {
+      const A = this.anim;
+      const kingMesh = this.meshByType[KING];
+      for (const s of A.segs) {
+        if (s.mesh !== kingMesh || s.color !== color) continue;
+        return s.phase < A.phase ? s.to : s.phase > A.phase ? s.from : travel(s.from, s.to, ease(A.t), s.motion);
+      }
+    }
+    const sq = this.kingSquare(color);
+    return sq < 0 ? null : this.squareCenter(sq);
+  }
+
   // Restore the initial position and clear history / captures / in-flight move.
   // Resolves any pending playMove() so an aborted match loop can unwind cleanly.
   private resetBoard(): void {
@@ -314,6 +335,7 @@ export class ChessGameScene {
     this.whiteWisp = this.loadHudWisp(white, 0);
     this.blackWisp = this.loadHudWisp(black, 1.7);
     this.matchActive = true;
+    this.matchPaused = false;
     this.dirty = true;
   }
 
@@ -340,6 +362,14 @@ export class ChessGameScene {
   // on the board for inspection.
   endMatch(): void {
     this.matchActive = false;
+    this.matchPaused = false;
+    this.dirty = true;
+  }
+
+  // Pause/resume the HUD pulse (the AI's "thinking" indicator). Paused → the
+  // side-to-move wisp breathes idle instead of pulsing.
+  setMatchPaused(paused: boolean): void {
+    this.matchPaused = paused;
     this.dirty = true;
   }
 
@@ -606,12 +636,12 @@ export class ChessGameScene {
       const dt = this.lastT < 0 ? 1 / 30 : Math.min(0.1, Math.max(0, t - this.lastT));
       this.lastT = t;
       const { right, up } = this.cam.basis();
-      const turn = this.game.currentPlayer();
+      // Side to move pulses ("thinking"); when paused, no one pulses (idle).
+      const turn = this.matchPaused ? -1 : this.game.currentPlayer();
       const drawKingWisp = (wisp: Wisp | null, color: Color): void => {
         if (!wisp) return;
-        const sq = this.kingSquare(color);
-        if (sq < 0) return;
-        const c = this.squareCenter(sq);
+        const c = this.kingWorldPos(color);
+        if (!c) return;
         wisp.setSpeaking(turn === color);
         wisp.renderWorld(target, viewProjection, right, up, { x: c.x, y: WISP_FLOAT, z: c.z }, W, H, t, dt, WISP_SCALE);
       };

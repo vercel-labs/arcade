@@ -19,6 +19,20 @@ export function moveToUci(m: Move): string {
   return squareToAlg(m.from) + squareToAlg(m.to) + (m.promotion ? PIECE_CHARS[m.promotion] : '');
 }
 
+// Collapse a move string to a forgiving comparison key for soft-matching: lower
+// case, "0"→"o" (so "0-0" reads as castling), and drop the bits models add or
+// omit inconsistently — castling dashes, check/annotation marks, the capture "x",
+// the promotion "=", and whitespace. So "Bxd5", "Bd5", "bd5" all key to "bd5",
+// and "e8=Q", "e8Q", "e8=q" all key to "e8q". Used only after an exact match
+// fails, and only accepted when the key resolves to a single legal move.
+export function looseKey(s: string): string {
+  return s
+    .trim()
+    .toLowerCase()
+    .replace(/0/g, 'o')
+    .replace(/[-+#!?x=:.,*\s]/g, '');
+}
+
 // Standard Algebraic Notation, with disambiguation and check/checkmate suffix.
 // `legal` is the legal move list for `b` (used for disambiguation).
 export function moveToSan(b: Board, m: Move, legal: Move[]): string {

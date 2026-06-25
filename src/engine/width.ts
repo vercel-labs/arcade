@@ -51,6 +51,10 @@ export function cellWidth(cp: number): number {
   // otherwise wide, but terminals render them in a single cell (no emoji
   // presentation). Treat them as narrow so glyph+label rows stay aligned.
   if (cp >= 0x2654 && cp <= 0x265f) return 1;
+  // The check/cross control dingbats (✓ ✔ ✕ ✖ ✗ ✘, U+2713–2718) are likewise
+  // text-presentation single-cell in terminals — used for the panel's ✕ close
+  // button. Without this they'd be mis-sized as wide and the header loses a cell.
+  if (cp >= 0x2713 && cp <= 0x2718) return 1;
   if (isWide(cp)) return 2;
   return 1;
 }
