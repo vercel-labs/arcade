@@ -4,6 +4,7 @@ dist
 .DS_Store
 .env
 .env.*
+!.env.example
 
 # local reference clones (not part of the project)
 reference/

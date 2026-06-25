@@ -15,12 +15,23 @@ import { ChessScene } from './chess.ts';
 import { ChessGameScene } from './chess-game.ts';
 import { LogosScene } from './logos-scene.ts';
 import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/input.ts';
-import { buildBar, buildPromotion, type BarActions, type Mode, type RenderMode } from './bars.ts';
+import { buildBar, buildGameOver, buildPromotion, type BarActions, type Mode, type RenderMode } from './bars.ts';
 import { buildShowcase, mountShowcase } from './ui-showcase.ts';
-import type { Color } from '../games/chess/types.ts';
+import { buildChessGameRoot, type Commentary, mountChessHud, movesToPgn, refreshMoveHistory } from './chess-hud.ts';
+import { copyToClipboard } from '../platform/clipboard.ts';
+import { BLACK, type Color, type Move, WHITE } from '../games/chess/types.ts';
+import type { ChessResult } from '../games/chess/chess.ts';
+import type { RGB } from '../engine/index.ts';
 import { Keymap, Renderer, Screen, type LayoutBox } from '../tui/index.ts';
 import { renderDemo } from '../demo/scene.ts';
 import * as term from '../platform/terminal.ts';
+import { loadEnv } from '../ai/env.ts';
+import { runMatch } from '../ai/match.ts';
+import { ModelPlayer } from '../ai/model-player.ts';
+import type { Player } from '../ai/player.ts';
+
+// Populate process.env from .env.local before anything reads AI_GATEWAY_API_KEY.
+loadEnv();
 
 const FPS = 30;
 const DT = 1 / FPS;
@@ -102,11 +113,53 @@ let downY = 0;
 let t = 0;
 // Whether we currently hold a live (continuous-animation) lease on the renderer.
 let liveHeld = false;
+
+// AI-vs-AI match. The two sides default to distinct frontier models (distinct
+// provider wisps in the HUD; at least one Claude). `matchAbort` cancels an
+// in-flight match (toggle off / navigate away). `commentary` is the current
+// pre-move rationale toast, shown until `t` passes `until`.
+const DEFAULT_WHITE = 'anthropic/claude-sonnet-4.6';
+const DEFAULT_BLACK = 'openai/gpt-5.4';
+const COMMENTARY_SECS = 3.5;
+let matchAbort: AbortController | null = null;
+let commentary: Commentary | null = null;
+// Whether the move-history panel is collapsed to its "Moves" header button
+// (toggle with the 'h' key or by clicking the header / ✕). History persists.
+let historyMinimized = false;
+// The game-over result popup (chess-game only): set once the board is terminal,
+// cleared on a new game; `dismissed` suppresses re-showing after Close until the
+// board leaves the terminal state; `focused` is the focus-once edge.
+let gameOver: ChessResult | null = null;
+let gameOverDismissed = false;
+let gameOverFocused = false;
+
+// Map a chess result to the popup's display strings + winner tint (ivory/brown
+// to match the piece sets; neutral for a draw).
+function gameOverText(r: ChessResult): { title: string; subtitle: string; tint: RGB } {
+  const reasons: Record<ChessResult['reason'], string> = {
+    checkmate: 'checkmate',
+    stalemate: 'stalemate',
+    'fifty-move': 'the 50-move rule',
+    repetition: 'repetition',
+    'insufficient-material': 'insufficient material',
+  };
+  const title = r.winner === null ? 'Draw' : r.winner === WHITE ? 'White wins' : 'Black wins';
+  const tint: RGB = r.winner === BLACK ? [184, 126, 74] : r.winner === WHITE ? [232, 228, 216] : [222, 224, 234];
+  return { title, subtitle: `by ${reasons[r.reason]}`, tint };
+}
+
+function closeGameOver(): void {
+  gameOver = null;
+  gameOverDismissed = true; // don't reopen for this same terminal position
+  gameOverFocused = false;
+  forceFrame = true;
+}
 // Continuously-animating screens (attract prism, demo, logos) hold a live lease;
 // the chess turntables are static and render on demand. Called on every screen
 // transition (via fullRepaint).
 function syncLive(): void {
-  const want = mode === 'attract' || mode === 'demo' || mode === 'logos';
+  const want =
+    mode === 'attract' || mode === 'demo' || mode === 'logos' || (mode === 'chess-game' && chessGame.isMatchActive());
   if (want === liveHeld) return;
   if (want) r.requestLive();
   else r.dropLive();
@@ -150,11 +203,13 @@ function setRenderMode(next: RenderMode): void {
 }
 
 function enterDemo(): void {
+  stopAiMatch();
   mode = 'demo';
   fullRepaint();
 }
 
 function enterChess(): void {
+  stopAiMatch();
   mode = 'chess';
   draggingCamera = false;
   fullRepaint();
@@ -163,15 +218,100 @@ function enterChess(): void {
 function enterChessGame(): void {
   mode = 'chess-game';
   draggingCamera = false;
+  mountChessHud(ui); // (re)register the move-history panel for its Slot
   fullRepaint();
 }
 
+// Collapse/expand the move-history panel (bound to 'h', and the panel's own
+// header/✕ buttons call this too).
+function toggleHistory(): void {
+  historyMinimized = !historyMinimized;
+  forceFrame = true;
+}
+
+// Copy the move history to the clipboard as PGN (the panel's copy button). The
+// result token reflects the current outcome (or * for an unfinished game).
+function copyMoves(): void {
+  const r = chessGame.state().result();
+  const token = !r ? '*' : r.winner === WHITE ? '1-0' : r.winner === BLACK ? '0-1' : '1/2-1/2';
+  copyToClipboard(movesToPgn(chessGame.moves(), token));
+  commentary = { text: 'Copied PGN to clipboard', model: '', until: t + 2 };
+  forceFrame = true;
+}
+
+// ── AI-vs-AI match driver ──────────────────────────────────────────────────────
+// Cancel an in-flight match and leave spectator mode (the final position stays
+// on the board). Safe to call when no match is running.
+function stopAiMatch(): void {
+  matchAbort?.abort();
+  matchAbort = null;
+  commentary = null;
+  chessGame.endMatch();
+}
+
+// Kick off a fresh AI-vs-AI game. Two ModelPlayers alternate via runMatch; the
+// async loop lives beside the render tick (it awaits the network and each move's
+// settle). A held live lease keeps frames flowing so the HUD wisps pulse and
+// moves animate while we wait on the models.
+function startAiMatch(): void {
+  if (!process.env.AI_GATEWAY_API_KEY) {
+    commentary = { text: 'Set AI_GATEWAY_API_KEY in .env.local to play (see .env.example)', model: '', until: t + 6 };
+    r.requestRender();
+    return;
+  }
+  const providerOf = (slug: string): string => slug.split('/')[0] ?? slug;
+  chessGame.beginMatch(providerOf(DEFAULT_WHITE), providerOf(DEFAULT_BLACK));
+  const players: Player<Move>[] = [
+    new ModelPlayer<Move>({ model: DEFAULT_WHITE, gameName: 'chess' }),
+    new ModelPlayer<Move>({ model: DEFAULT_BLACK, gameName: 'chess' }),
+  ];
+  const ctrl = new AbortController();
+  matchAbort = ctrl;
+  syncLive(); // take the live lease now that a match is active
+  r.requestRender();
+  runMatch<Move>(chessGame, players, {
+    signal: ctrl.signal,
+    onCommentary: (text, player) => {
+      commentary = { text, model: player.name, until: t + COMMENTARY_SECS };
+    },
+  })
+    .catch(() => {}) // aborted mid-decision — fine
+    .finally(() => {
+      if (matchAbort === ctrl) matchAbort = null;
+      chessGame.endMatch(); // leave spectator mode; final position stays up
+      syncLive(); // release the live lease
+      r.requestRender();
+    });
+}
+
+// Toggle the AI match (bound to a key in the chess context). Entering from
+// elsewhere first opens the chess game.
+function toggleAiMatch(): void {
+  if (mode !== 'chess-game') enterChessGame();
+  if (chessGame.isMatchActive()) stopAiMatch();
+  else startAiMatch();
+  r.requestRender();
+}
+
+// Reset to a fresh game: abort any running AI match, restore the start position,
+// and clear the move history + captures.
+function resetGame(): void {
+  if (mode !== 'chess-game') return;
+  stopAiMatch();
+  chessGame.resetGame();
+  syncLive(); // release the live lease the match held
+  forceFrame = true;
+  r.requestRender();
+}
+
 function enterLogos(): void {
+  stopAiMatch();
   mode = 'logos';
   fullRepaint();
 }
 
 function toAttract(): void {
+  stopAiMatch();
   mode = 'attract';
   fullRepaint();
 }
@@ -180,6 +320,7 @@ function toAttract(): void {
 // set-diff unmounts them on leave, but the module-level instances persist, so
 // their state survives across visits.
 function enterUi(): void {
+  stopAiMatch();
   mode = 'ui';
   mountShowcase(ui);
   fullRepaint();
@@ -197,6 +338,8 @@ const actions: BarActions = {
   reset: () => activeOrbit()?.resetView(),
   mode: cycleMode,
   quit,
+  aiMatch: toggleAiMatch,
+  resetGame,
 };
 
 // Named commands + a layered keymap (the OpenTUI-style command surface). Each
@@ -223,6 +366,10 @@ for (const c of [
   { id: 'chess.panUp', title: 'Pan up', run: () => activeOrbit()?.pan(0, PAN_STEP) },
   { id: 'chess.panDown', title: 'Pan down', run: () => activeOrbit()?.pan(0, -PAN_STEP) },
   { id: 'chess.cancelPromotion', title: 'Cancel promotion', run: cancelPromotion },
+  { id: 'chess.toggleAI', title: 'Toggle AI vs AI', run: toggleAiMatch },
+  { id: 'chess.toggleHistory', title: 'Toggle move history', run: toggleHistory },
+  { id: 'chess.resetGame', title: 'Reset game', run: resetGame },
+  { id: 'chess.closeGameOver', title: 'Close result', run: closeGameOver },
 ]) {
   keymap.register(c);
 }
@@ -240,6 +387,9 @@ for (const b of [
 ]) {
   keymap.bind('global', b);
 }
+keymap.bind('chess', { key: 'p', cmd: 'chess.toggleAI' });
+keymap.bind('chess', { key: 'h', cmd: 'chess.toggleHistory' });
+keymap.bind('chess', { key: 'n', cmd: 'chess.resetGame' });
 keymap.bind('attract', { key: 'd', cmd: 'nav.demo' });
 keymap.bind('attract', { key: 'g', cmd: 'nav.chess' });
 keymap.bind('attract', { key: 'n', cmd: 'nav.chessGame' });
@@ -264,6 +414,8 @@ for (const layer of ['chess', 'logos', 'ui']) {
 // Promotion picker is modal: Escape cancels; the modal layer (pushed in syncBar)
 // swallows every other stray key so 'q' can't quit mid-choice.
 keymap.bind('promoting', { key: 'escape', cmd: 'chess.cancelPromotion' });
+// Game-over popup is modal too: Escape closes it (and the layer shadows 'q' etc.).
+keymap.bind('gameover', { key: 'escape', cmd: 'chess.closeGameOver' });
 
 // Point the keymap's base layer at the current mode (chess + chess-game share
 // the orbit bindings). The 'promoting' modal is pushed/popped separately.
@@ -300,6 +452,24 @@ let promoFocused = false;
 // hover/focus state by id across rebuilds). While a promotion is pending the
 // overlay becomes the centered, full-screen picker instead of the bottom bar.
 function syncBar(): void {
+  // Game-over detection (chess-game only): open the result popup once the board is
+  // terminal — for both human and AI games — until dismissed (Close) or a new game
+  // leaves the terminal state. Cleared when in any other mode.
+  if (mode === 'chess-game') {
+    if (!chessGame.state().isTerminal()) {
+      gameOver = null;
+      gameOverDismissed = false;
+      gameOverFocused = false;
+    } else if (!gameOver && !gameOverDismissed) {
+      gameOver = chessGame.state().result();
+    }
+  } else if (gameOver) {
+    gameOver = null;
+  }
+  const popGameOver = (): void => {
+    if (keymap.hasContext('gameover')) keymap.popContext('gameover');
+  };
+
   const pc = promoColor();
   if (pc !== null) {
     // Keep the keymap's modal layer in lockstep with picker visibility (idempotent
@@ -320,7 +490,19 @@ function syncBar(): void {
       promoFocused = true;
       forceFrame = true; // ensure the freshly-opened popup paints this frame
     }
+  } else if (mode === 'chess-game' && gameOver) {
+    if (keymap.hasContext('promoting')) keymap.popContext('promoting');
+    promoFocused = false;
+    if (!keymap.hasContext('gameover')) keymap.pushContext('gameover', true);
+    const { title, subtitle, tint } = gameOverText(gameOver);
+    ui.setRoot(buildGameOver({ title, subtitle, tint }, resetGame, closeGameOver), { x: 0, y: 0, w: cols, h: rows });
+    if (!gameOverFocused) {
+      ui.setFocus('over-newgame'); // default highlight so Enter starts a new game
+      gameOverFocused = true;
+      forceFrame = true;
+    }
   } else if (mode === 'ui') {
+    popGameOver();
     // The component playground: a full-screen tree (centered panel + the standard
     // bar) laid out over the scene, so Tab/typing reach the mounted components.
     ui.setRoot(buildShowcase({ x: 0, y: 0, w: cols, h: rows }, buildBar('ui', renderMode, actions)), {
@@ -329,8 +511,26 @@ function syncBar(): void {
       w: cols,
       h: rows,
     });
+  } else if (mode === 'chess-game') {
+    if (keymap.hasContext('promoting')) keymap.popContext('promoting');
+    popGameOver();
+    promoFocused = false;
+    // Full-screen overlay: move-history panel (top-right) + commentary toast over
+    // the board, with the standard bar beneath. Refresh the panel rows first.
+    refreshMoveHistory(chessGame.moves());
+    ui.setRoot(
+      buildChessGameRoot({ x: 0, y: 0, w: cols, h: rows }, buildBar(mode, renderMode, actions, chessGame.isMatchActive()), {
+        minimized: historyMinimized,
+        onToggle: toggleHistory,
+        onCopy: copyMoves,
+        commentary,
+        t,
+      }),
+      { x: 0, y: 0, w: cols, h: rows },
+    );
   } else {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
+    popGameOver();
     promoFocused = false;
     ui.setRoot(buildBar(mode, renderMode, actions), barRegion());
   }
@@ -396,9 +596,9 @@ function onKeyImpl(ev: KeyEvent): void {
 }
 
 function onMouseImpl(e: MouseEvent): void {
-  // Modal promotion picker: clicks/hover go to the popup; the board and camera
-  // are frozen until a choice is made.
-  if (isPromoting()) {
+  // Modal popups (promotion picker, game-over result): clicks/hover go to the
+  // popup; the board and camera are frozen until it's dismissed.
+  if (isPromoting() || gameOver) {
     if (e.type === 'move') ui.hover(e.x, e.y);
     else if (e.type === 'down') ui.pointerDown(e.x, e.y);
     else if (e.type === 'up') ui.pointerUp();
@@ -407,6 +607,9 @@ function onMouseImpl(e: MouseEvent): void {
   const orbit = activeOrbit();
   if (orbit) {
     if (e.type === 'wheel') {
+      // A wheel over a scrollable component (ScrollBox/Select/Slider) scrolls it;
+      // otherwise it zooms the scene.
+      if (ui.wheel(e.x, e.y, e.wheel === -1 ? -1 : 1)) return;
       orbit.zoomBy(e.wheel === -1 ? 0.9 : 1.1);
       return;
     }
@@ -415,24 +618,31 @@ function onMouseImpl(e: MouseEvent): void {
       return;
     }
     if (e.type === 'down') {
-      // A hit on the bar fires that button's onClick; otherwise it's the board.
+      // A hit on a UI node (bar button or component) fires its onClick / onMouse
+      // and captures the pointer; a miss begins a camera drag (an up near here is
+      // a click).
       if (!ui.pointerDown(e.x, e.y)) {
-        // On the board: begin a potential drag (rotate); an up near here is a click.
         draggingCamera = true;
         lastMouseX = downX = e.x;
         lastMouseY = downY = e.y;
       }
       return;
     }
-    if (e.type === 'drag' && draggingCamera) {
-      const dx = e.x - lastMouseX;
-      const dy = e.y - lastMouseY;
-      lastMouseX = e.x;
-      lastMouseY = e.y;
-      // Pan with a modifier (⌘/Option/Shift/Ctrl) or right-drag; orbit otherwise.
-      // Right-click usually pops the terminal menu, so the modifier is primary.
-      if (e.meta || e.shift || e.ctrl || e.button === 2) orbit.pan(dx, dy);
-      else orbit.orbit(dx, dy);
+    if (e.type === 'drag') {
+      if (draggingCamera) {
+        const dx = e.x - lastMouseX;
+        const dy = e.y - lastMouseY;
+        lastMouseX = e.x;
+        lastMouseY = e.y;
+        // Pan with a modifier (⌘/Option/Shift/Ctrl) or right-drag; orbit otherwise.
+        // Right-click usually pops the terminal menu, so the modifier is primary.
+        if (e.meta || e.shift || e.ctrl || e.button === 2) orbit.pan(dx, dy);
+        else orbit.orbit(dx, dy);
+        return;
+      }
+      // Not a camera drag → route to a component that captured the down (a Slider
+      // being dragged, a ScrollBox scrollbar).
+      if (ui.drag(e.x, e.y)) return;
       return;
     }
     if (e.type === 'up') {
@@ -522,7 +732,7 @@ function tick(): void {
     // `jitter` intentionally animates (per-frame glyph noise) so it forces redraw.
     syncBar();
     const sceneDirty = forceFrame || jitter || orbit.needsRender();
-    if (sceneDirty) orbit.renderScene(target);
+    if (sceneDirty) orbit.renderScene(target, t);
     if (UNIFIED) {
       // Composite scene + UI into one diffed buffer; skip when nothing changed.
       // Pass sceneDirty so a hover-only frame reuses the cached scene layer

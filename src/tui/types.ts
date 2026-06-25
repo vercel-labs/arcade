@@ -70,6 +70,18 @@ export interface LayoutBox {
 
 export type Kind = 'box' | 'text' | 'button';
 
+// A mouse event delivered to a node's onMouse, in coordinates LOCAL to the
+// node's layout box (top-left = 0,0), plus the box size so a component can map
+// the hit to a row / track position / scrollbar without knowing its own layout.
+export interface PointerHit {
+  type: 'down' | 'drag' | 'wheel';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  wheel?: -1 | 1; // for type 'wheel': -1 = up, +1 = down
+}
+
 export interface Node {
   kind: Kind;
   id?: string;
@@ -80,6 +92,10 @@ export interface Node {
   onClick?: () => void;
   // Returns true if the key was consumed (stops fall-through to app handlers).
   onKey?: (ev: KeyEvent) => boolean;
+  // Mouse interaction with local coordinates (click/drag/wheel). A down captures
+  // the pointer so subsequent drags route here even off the node. Returns true if
+  // consumed (so the caller doesn't also treat it as a scene gesture).
+  onMouse?: (ev: PointerHit) => boolean;
   // Filled by layout(); read by paint and hit-test (one source of truth).
   layout?: LayoutBox;
   // Filled by layout() when an ancestor sets overflow:hidden — the rect this

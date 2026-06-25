@@ -12,10 +12,10 @@ import { CellDiffer, Surface } from '../engine/index.ts';
 import type { KeyEvent } from '../platform/input.ts';
 import { type Component, Registry } from './component.ts';
 import { focusOrder } from './focus.ts';
-import { hitTest } from './hit.ts';
+import { hitSurface, hitTest } from './hit.ts';
 import { layout } from './layout.ts';
 import { paint, type PaintState } from './paint.ts';
-import type { LayoutBox, Node } from './types.ts';
+import type { LayoutBox, Node, PointerHit } from './types.ts';
 
 export class Screen {
   cols: number;
@@ -42,6 +42,9 @@ export class Screen {
   private registry = new Registry();
   private mountedRefs = new Set<string>();
   private focusedComponent: string | null = null;
+  // The node that received the last pointer 'down' and has onMouse — drags route
+  // here (pointer capture) until the next up.
+  private captured: Node | null = null;
 
   constructor(cols: number, rows: number) {
     this.cols = cols;
@@ -189,19 +192,62 @@ export class Screen {
   }
 
   // Mouse press (1-based). Focuses + fires the hit node's onClick (the old bar
-  // also acted on `down`). Returns the hit node, or null if the press missed.
+  // also acted on `down`). If the node has onMouse it also gets a 'down' (with
+  // local coords) and captures the pointer, so subsequent drag()s route to it.
+  // Returns the hit node, or null if the press missed.
   pointerDown(x1: number, y1: number): Node | null {
-    const n = this.root ? hitTest(this.root, x1 - 1, y1 - 1) : null;
-    if (!n) return null;
-    this.state.pressedId = n.id ?? null;
-    if (n.focusable) this.state.focusId = n.id ?? null;
-    n.onClick?.();
-    return n;
+    this.captured = null;
+    if (!this.root) return null;
+    // Absorb the press if it lands on ANY solid surface (panel or widget); only a
+    // press over a transparent gap / open scene falls through to the caller.
+    const surface = hitSurface(this.root, x1 - 1, y1 - 1);
+    if (!surface) return null;
+    // Route interaction (focus / onMouse / onClick) to the nearest interactive
+    // node, which may be an ancestor of the surface (e.g. the Select that owns a
+    // background-painted row).
+    const target = hitTest(this.root, x1 - 1, y1 - 1);
+    if (target) {
+      this.state.pressedId = target.id ?? null;
+      if (target.focusable) this.state.focusId = target.id ?? null;
+      if (target.onMouse && target.layout) {
+        this.captured = target;
+        target.onMouse(this.local(target, x1, y1, 'down'));
+      }
+      target.onClick?.();
+    }
+    return surface;
   }
 
-  // Mouse release: drop the pressed highlight.
+  // Mouse drag (1-based). Routes to the node captured on the last down, if it
+  // has onMouse. Returns true if consumed (caller skips scene gestures).
+  drag(x1: number, y1: number): boolean {
+    const n = this.captured;
+    if (!n || !n.onMouse || !n.layout) return false;
+    return n.onMouse(this.local(n, x1, y1, 'drag'));
+  }
+
+  // Mouse wheel (1-based). Routes to a component's onMouse (ScrollBox/Select/
+  // Slider) when one is under the cursor. Returns true if the cursor is over ANY
+  // solid UI surface — even a non-interactive panel — so the caller suppresses
+  // the scene's wheel-zoom (the wheel doesn't propagate through the panel).
+  wheel(x1: number, y1: number, dir: -1 | 1): boolean {
+    if (!this.root) return false;
+    const target = hitTest(this.root, x1 - 1, y1 - 1);
+    if (target?.onMouse && target.layout) target.onMouse({ ...this.local(target, x1, y1, 'wheel'), wheel: dir });
+    // Block the scene's wheel-zoom whenever the cursor is over any solid surface.
+    return hitSurface(this.root, x1 - 1, y1 - 1) != null;
+  }
+
+  // Build a PointerHit in coordinates local to node n's layout box.
+  private local(n: Node, x1: number, y1: number, type: 'down' | 'drag' | 'wheel'): PointerHit {
+    const lb = n.layout!;
+    return { type, x: x1 - 1 - lb.x, y: y1 - 1 - lb.y, w: lb.w, h: lb.h };
+  }
+
+  // Mouse release: drop the pressed highlight + release the capture.
   pointerUp(): void {
     this.state.pressedId = null;
+    this.captured = null;
   }
 
   // Keyboard. Consumes Tab / Shift+Tab (cycle focus forward/back) and Enter/Space

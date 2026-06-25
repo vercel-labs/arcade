@@ -12,8 +12,9 @@ import { AttractScene } from '../arcade/attract.ts';
 import { ChessScene } from '../arcade/chess.ts';
 import { ChessGameScene } from '../arcade/chess-game.ts';
 import { LogosScene } from '../arcade/logos-scene.ts';
-import { buildBar, buildPromotion, type Mode } from '../arcade/bars.ts';
+import { buildBar, buildGameOver, buildPromotion, type Mode } from '../arcade/bars.ts';
 import { buildShowcase, mountShowcase } from '../arcade/ui-showcase.ts';
+import { buildChessGameRoot, mountChessHud, refreshMoveHistory } from '../arcade/chess-hud.ts';
 import type { Color } from '../games/chess/types.ts';
 import { layout, paint, Screen, type PaintState } from '../tui/index.ts';
 
@@ -121,7 +122,7 @@ function blockBits(ch: string, px: number, py: number): boolean {
 }
 
 const noop = (): void => {};
-const barActions = { chessGame: noop, demo: noop, logos: noop, ui: noop, back: noop, reset: noop, mode: noop, quit: noop };
+const barActions = { chessGame: noop, demo: noop, logos: noop, ui: noop, back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop };
 
 // Render a scene full-height, then composite that screen's button bar over it —
 // proving the bar sits ON TOP of the 3D scene (opaque pills overwrite it;
@@ -190,7 +191,18 @@ function sceneSnapshot(): void {
   if (scene === 'chess') {
     new ChessScene().renderScene(target);
   } else if (scene === 'chess-game') {
-    new ChessGameScene().renderScene(target);
+    const cg = new ChessGameScene();
+    if (process.argv.includes('match')) {
+      // Spin up the AI HUD and play a few opening moves (applied directly — no
+      // animation wait) so the still shows a live board with the side-to-move
+      // wisp pulsing.
+      cg.beginMatch();
+      for (const san of ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5']) {
+        const m = cg.state().actionFromString(san);
+        if (m) cg.state().applyAction(m);
+      }
+    }
+    cg.renderScene(target, t);
   } else if (scene === 'logos') {
     new LogosScene().renderScene(target, t);
   } else {
@@ -225,6 +237,10 @@ if (process.argv[2] === 'ui') {
   modalSnapshot();
 } else if (process.argv[2] === 'showcase') {
   showcaseSnapshot();
+} else if (process.argv[2] === 'chess-overlay') {
+  chessOverlaySnapshot();
+} else if (process.argv[2] === 'gameover') {
+  gameOverSnapshot();
 } else {
   sceneSnapshot();
 }
@@ -248,6 +264,73 @@ function showcaseSnapshot(): void {
   if (focusArg) screen.setFocus(focusArg.split('=')[1]);
   const region = { x: 0, y: 0, w: cols, h: rows };
   screen.setRoot(buildShowcase(region, buildBar('ui', 'ascii', barActions)), region);
+  const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
+  surfaceToPpm(surf, cols, rows, out);
+}
+
+// The chess-game match overlay composited over the board via the real Screen
+// (so the move-history Slot expands): the AI HUD wisps + bar 'play/stop ai'
+// button + the collapsible Moves panel. Pass 'min' to render the collapsed panel.
+//   pnpm exec tsx src/tools/snapshot.ts chess-overlay [cols] [rows] [min] [out.ppm]
+function chessOverlaySnapshot(): void {
+  const args = process.argv.slice(3);
+  const cols = Number(args[0]) || 140;
+  const rows = Number(args[1]) || 50;
+  const minimized = args.includes('min');
+  const out = args.find((a) => a.endsWith('.ppm')) ?? `.snapshots/chess-overlay${minimized ? '-min' : ''}.ppm`;
+  const SS = 3;
+  const t = 0.7;
+
+  const cg = new ChessGameScene();
+  cg.beginMatch();
+  for (const san of ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6']) {
+    const m = cg.state().actionFromString(san);
+    if (m) cg.state().applyAction(m);
+  }
+  const target = new RenderTarget(cols * SS, rows * 2 * SS);
+  cg.renderScene(target, t);
+
+  const screen = new Screen(cols, rows);
+  mountChessHud(screen);
+  // A long game so the scrollbar is visible (verifies the gapless thumb).
+  refreshMoveHistory([
+    'e4', 'c5', 'Nf3', 'Nc6', 'Bb5', 'Nd4', 'Nxd4', 'cxd4', 'Bxd7+', 'Qxd7', 'O-O', 'Qh3', 'gxh3', 'Bxh3', 'Qf3', 'Bg2',
+    'Qxf7+', 'Kxf7', 'Kxg2', 'd3', 'cxd3', 'Nf6', 'e5', 'Ne4', 'e6+', 'Kxe6', 'dxe4', 'Rb8', 'e5', 'Kxe5', 'Re1+', 'Kf5',
+    'Rxe7', 'Bxe7', 'f4', 'Kxf4', 'Rxe7', 'Kg5', 'Re5+', 'Kh6', 'Rh5+', 'Kg6', 'b4', 'a5', 'bxa5', 'Rb2+',
+  ]);
+  const region = { x: 0, y: 0, w: cols, h: rows };
+  screen.setRoot(
+    buildChessGameRoot(region, buildBar('chess-game', 'ascii', barActions, true), {
+      minimized,
+      onToggle: noop,
+      onCopy: noop,
+      commentary: { text: 'developing toward the Ruy Lopez', model: 'openai/gpt-5.4', until: 99 },
+      t,
+    }),
+    region,
+  );
+  const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
+  surfaceToPpm(surf, cols, rows, out);
+}
+
+// The game-over result popup composited over a finished board (fool's mate, so
+// the result is a real checkmate). Verifies the centered card + scrim.
+//   pnpm exec tsx src/tools/snapshot.ts gameover [cols] [rows] [out.ppm]
+function gameOverSnapshot(): void {
+  const cols = Number(process.argv[3]) || 140;
+  const rows = Number(process.argv[4]) || 50;
+  const out = process.argv[5] ?? '.snapshots/gameover.ppm';
+  const SS = 3;
+  const cg = new ChessGameScene();
+  for (const san of ['f3', 'e5', 'g4', 'Qh4']) {
+    const m = cg.state().actionFromString(san);
+    if (m) cg.state().applyAction(m);
+  }
+  const target = new RenderTarget(cols * SS, rows * 2 * SS);
+  cg.renderScene(target, 0.7);
+  const screen = new Screen(cols, rows);
+  const region = { x: 0, y: 0, w: cols, h: rows };
+  screen.setRoot(buildGameOver({ title: 'Black wins', subtitle: 'by checkmate', tint: [184, 126, 74] }, noop, noop), region);
   const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
   surfaceToPpm(surf, cols, rows, out);
 }

@@ -7,7 +7,7 @@ import type { Surface } from '../../engine/index.ts';
 import type { KeyEvent } from '../../platform/input.ts';
 import type { Component } from '../component.ts';
 import { defaultTheme } from '../theme.ts';
-import type { LayoutBox, Node } from '../types.ts';
+import type { LayoutBox, Node, PointerHit } from '../types.ts';
 
 export interface SliderOpts {
   id: string;
@@ -60,6 +60,21 @@ export class Slider implements Component {
     return true;
   }
 
+  // Mouse: click or drag anywhere on the track sets the value from the x
+  // position; wheel nudges by a step.
+  onMouse(ev: PointerHit): boolean {
+    if (ev.type === 'wheel') {
+      this.nudge(ev.wheel === -1 ? this.step : -this.step);
+      return true;
+    }
+    const v = Math.max(0, Math.min(1, ev.x / Math.max(1, ev.w - 1)));
+    if (v !== this.value) {
+      this.value = v;
+      this.opts.onChange?.(v);
+    }
+    return true;
+  }
+
   private paint(surf: Surface, box: LayoutBox): void {
     const w = box.w;
     const thumbX = Math.round(this.value * (w - 1));
@@ -77,6 +92,7 @@ export class Slider implements Component {
       focusable: true,
       style: { width: this.width, height: 1 },
       onKey: (ev) => this.onKey(ev),
+      onMouse: (ev) => this.onMouse(ev),
       draw: (surf, b) => this.paint(surf, b),
     };
   }
