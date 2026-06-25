@@ -56,9 +56,16 @@ export function buildBar(mode: Mode, renderMode: RenderMode, a: BarActions): Nod
       Button({ id: 'mode', label: modeLabel, onClick: a.mode, style: PILL }),
       Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
     ];
-  } else if (mode === 'demo' || mode === 'logos') {
+  } else if (mode === 'demo') {
     buttons = [
       Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
+      Button({ id: 'mode', label: modeLabel, onClick: a.mode, style: PILL }),
+      Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
+    ];
+  } else if (mode === 'logos') {
+    buttons = [
+      Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
+      Button({ id: 'reset', label: 'reset view', onClick: a.reset, style: PILL }),
       Button({ id: 'mode', label: modeLabel, onClick: a.mode, style: PILL }),
       Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
     ];

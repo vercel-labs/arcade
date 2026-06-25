@@ -23,20 +23,23 @@ sips -s format png .snapshots/attract.ppm --out .snapshots/attract.png -Z 1000
 ```
 src/
   engine/     reusable software 3D renderer — knows nothing about the arcade (a library)
+  tui/        reusable retained-mode UI library — flexbox layout, Surface compositing
   platform/   terminal control (alt screen, raw mode, SGR mouse) + input parsing
-  arcade/     THE app: orchestrator (main.ts) + dodge game + attract scene
+  games/      game harness (Game/State + registry) + the chess rules engine
+  arcade/     THE app: orchestrator (main.ts) + chess screens + attract/logos scenes
   demo/       engine cube demo
   tools/      snapshot.ts (render a frame to an image)
 ```
 
-Import direction is one-way: `arcade/` and `demo/` consume `engine/` (via the
-`engine/index.ts` barrel) and `platform/`. **The engine never imports app code** — keep
-it that way so it stays reusable (the goal is to grow it into a 3D game engine, e.g. a
-poker table). Inside `engine/`, modules import each other directly, not the barrel.
+Import direction is one-way: `arcade/` consumes the libraries (`engine/` via the
+`engine/index.ts` barrel, `tui/` via `tui/index.ts`, plus `platform/` and `games/`).
+**The libraries never import app code** — keep it that way so they stay reusable (the goal
+is to grow `engine/` into a 3D game engine and `tui/` into the shared UI toolkit for every
+game). Inside a library, modules import each other directly, not through the barrel.
 
 ## Commands
 
-- `pnpm dev` — run the arcade (attract screen → dodge game)
+- `pnpm dev` — run the arcade (attract screen → chess / demo / logos)
 - `pnpm demo` — run the engine cube demo
 - `pnpm snapshot [cols] [rows] [t]` — render a frame to `.snapshots/attract.ppm`
 - `pnpm type-check` — `tsc --noEmit`

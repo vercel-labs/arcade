@@ -4,6 +4,7 @@
 export { Box, Text, Button } from './nodes.ts';
 export { Modal } from './components/modal.ts';
 export { Screen } from './screen.ts';
+export { Keymap, eventToChord, type Command, type Binding } from './keymap.ts';
 export { Renderer, type FrameFn, type RendererOpts } from './renderer.ts';
 export { layout } from './layout.ts';
 export { paint, type PaintState } from './paint.ts';

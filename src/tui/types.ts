@@ -2,7 +2,7 @@
 // frame (cheap, like the old currentBar()); per-node interaction state lives in
 // the Screen runtime keyed by `id`, so the tree itself stays pure data.
 
-import type { Key } from '../platform/input.ts';
+import type { KeyEvent } from '../platform/input.ts';
 import type { ColorToken } from './theme.ts';
 
 // A size along one axis: fixed cells, a percentage of the parent's content box,
@@ -78,7 +78,7 @@ export interface Node {
   focusable?: boolean;
   onClick?: () => void;
   // Returns true if the key was consumed (stops fall-through to app handlers).
-  onKey?: (k: Key) => boolean;
+  onKey?: (ev: KeyEvent) => boolean;
   // Filled by layout(); read by paint and hit-test (one source of truth).
   layout?: LayoutBox;
   // Filled by layout() when an ancestor sets overflow:hidden — the rect this

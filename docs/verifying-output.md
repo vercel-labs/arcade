@@ -58,10 +58,11 @@ and `sips`, so these run without a prompt.
 ## What the live terminal experience is
 
 `pnpm dev` boots the **attract screen** (a Dark Side of the Moon homage: a rotating glass
-prism splitting a white beam into a rainbow on black), and **any key** starts the
-**dodge game**. It's drawn with the upper half-block `▀` at 24-bit color, so it needs a
-**truecolor terminal** (iTerm2, Ghostty, Kitty, WezTerm, VS Code). The snapshot PNG and
-the terminal look essentially identical — each PNG pixel is one half-block.
+prism splitting a white beam into a rainbow on black); from the button bar you jump to the
+**chess** screens, the engine **demo**, or the **logos** showcase. It's drawn with the
+upper half-block `▀` at 24-bit color, so it needs a **truecolor terminal** (iTerm2,
+Ghostty, Kitty, WezTerm, VS Code). The snapshot PNG and the terminal look essentially
+identical — each PNG pixel is one half-block.
 
 When you need to confirm something only the *human* can see (exact terminal colors, input
 feel, mouse), ask the user to run `pnpm dev`. For everything visual about a given frame,

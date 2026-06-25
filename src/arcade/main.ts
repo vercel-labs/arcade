@@ -14,10 +14,10 @@ import { AttractScene } from './attract.ts';
 import { ChessScene } from './chess.ts';
 import { ChessGameScene } from './chess-game.ts';
 import { LogosScene } from './logos-scene.ts';
-import { createInputParser, type Key, type MouseEvent } from '../platform/input.ts';
+import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/input.ts';
 import { buildBar, buildPromotion, type BarActions, type Mode, type RenderMode } from './bars.ts';
 import type { Color } from '../games/chess/types.ts';
-import { Renderer, Screen, type LayoutBox } from '../tui/index.ts';
+import { Keymap, Renderer, Screen, type LayoutBox } from '../tui/index.ts';
 import { renderDemo } from '../demo/scene.ts';
 import * as term from '../platform/terminal.ts';
 
@@ -76,6 +76,14 @@ function orbitScene(): ChessScene | ChessGameScene | null {
   return null;
 }
 
+// The camera-controllable scene for the active mode: the chess turntables or the
+// logos wisp orbit (which animates continuously, so it lives on the live path
+// rather than the chess render-on-demand gate). Drives the shared drag/pan/zoom
+// mouse handler and the reset/pan key commands.
+function activeOrbit(): ChessScene | ChessGameScene | LogosScene | null {
+  return mode === 'logos' ? logosScene : orbitScene();
+}
+
 let mode: Mode = 'attract';
 let renderMode: RenderMode = 'ascii';
 let jitter = false;
@@ -115,6 +123,7 @@ function fullRepaint(): void {
   forceFrame = true;
   if (UNIFIED) ui.resetDiff(); // the screen was cleared — next composite emits in full
   syncLive();
+  syncContext(); // keep the keymap's active layer in sync with the current mode
   r.requestRender();
 }
 
@@ -170,10 +179,91 @@ const actions: BarActions = {
   demo: enterDemo,
   logos: enterLogos,
   back: toAttract,
-  reset: () => orbitScene()?.resetView(),
+  reset: () => activeOrbit()?.resetView(),
   mode: cycleMode,
   quit,
 };
+
+// Named commands + a layered keymap (the OpenTUI-style command surface). Each
+// action is registered once with a stable id; keys are bound to ids per context
+// (mode). onKeyImpl collapses to `keymap.handle(ev)`. The id catalog
+// (`keymap.commands()`) is also the surface an AI agent will drive the app
+// through — a human key and an agent command id hit the same `run`.
+const keymap = new Keymap();
+for (const c of [
+  { id: 'app.quit', title: 'Quit', run: quit },
+  { id: 'view.cycleRenderMode', title: 'Cycle render style', run: cycleMode },
+  { id: 'view.setColor', title: 'Render: color', run: () => setRenderMode('color') },
+  { id: 'view.setLuminance', title: 'Render: luminance', run: () => setRenderMode('luminance') },
+  { id: 'view.setAscii', title: 'Render: ascii', run: () => setRenderMode('ascii') },
+  { id: 'view.toggleJitter', title: 'Toggle glyph jitter', run: toggleJitter },
+  { id: 'nav.back', title: 'Back to attract', run: toAttract },
+  { id: 'nav.demo', title: 'Open demo', run: enterDemo },
+  { id: 'nav.chess', title: 'Open chess showcase', run: enterChess },
+  { id: 'nav.chessGame', title: 'Open chess game', run: enterChessGame },
+  { id: 'chess.resetView', title: 'Reset camera', run: () => activeOrbit()?.resetView() },
+  { id: 'chess.panLeft', title: 'Pan left', run: () => activeOrbit()?.pan(PAN_STEP, 0) },
+  { id: 'chess.panRight', title: 'Pan right', run: () => activeOrbit()?.pan(-PAN_STEP, 0) },
+  { id: 'chess.panUp', title: 'Pan up', run: () => activeOrbit()?.pan(0, PAN_STEP) },
+  { id: 'chess.panDown', title: 'Pan down', run: () => activeOrbit()?.pan(0, -PAN_STEP) },
+  { id: 'chess.cancelPromotion', title: 'Cancel promotion', run: cancelPromotion },
+]) {
+  keymap.register(c);
+}
+// Global: work in every mode. (escape/ctrl+c/q all quit; the 'promoting' modal
+// layer shadows escape to cancel instead — see syncBar.)
+for (const b of [
+  { key: 'q', cmd: 'app.quit' },
+  { key: 'escape', cmd: 'app.quit' },
+  { key: 'ctrl+c', cmd: 'app.quit' },
+  { key: 'm', cmd: 'view.cycleRenderMode' },
+  { key: 'c', cmd: 'view.setColor' },
+  { key: 'l', cmd: 'view.setLuminance' },
+  { key: 'a', cmd: 'view.setAscii' },
+  { key: 'j', cmd: 'view.toggleJitter' },
+]) {
+  keymap.bind('global', b);
+}
+keymap.bind('attract', { key: 'd', cmd: 'nav.demo' });
+keymap.bind('attract', { key: 'g', cmd: 'nav.chess' });
+keymap.bind('attract', { key: 'n', cmd: 'nav.chessGame' });
+for (const layer of ['demo', 'logos', 'chess']) keymap.bind(layer, { key: 'b', cmd: 'nav.back' });
+// Orbit/pan/reset bindings are shared by the chess turntables and the logos wisp
+// orbit (the commands resolve the active scene via activeOrbit()).
+for (const layer of ['chess', 'logos']) {
+  for (const b of [
+    { key: 'r', cmd: 'chess.resetView' },
+    { key: 'left', cmd: 'chess.panLeft' },
+    { key: 'right', cmd: 'chess.panRight' },
+    { key: 'up', cmd: 'chess.panUp' },
+    { key: 'down', cmd: 'chess.panDown' },
+  ]) {
+    keymap.bind(layer, b);
+  }
+}
+// Promotion picker is modal: Escape cancels; the modal layer (pushed in syncBar)
+// swallows every other stray key so 'q' can't quit mid-choice.
+keymap.bind('promoting', { key: 'escape', cmd: 'chess.cancelPromotion' });
+
+// Point the keymap's base layer at the current mode (chess + chess-game share
+// the orbit bindings). The 'promoting' modal is pushed/popped separately.
+function syncContext(): void {
+  const layer: string = mode === 'chess' || mode === 'chess-game' ? 'chess' : mode;
+  keymap.setBase(layer);
+}
+
+// Toggle per-frame glyph jitter; forceFrame so an idle chess turntable repaints.
+function toggleJitter(): void {
+  jitter = !jitter;
+  forceFrame = true;
+}
+
+// Cancel a pending chess promotion and repaint over the popup without a black
+// flash (an ESC[2J here would blank the screen for one frame).
+function cancelPromotion(): void {
+  chessGame.cancelPromotion();
+  forceFrame = true;
+}
 
 // The promoting pawn's color while the chess promotion picker is up, else null.
 // (Compared with `!== null` because WHITE is 0 — falsy.)
@@ -192,6 +282,9 @@ let promoFocused = false;
 function syncBar(): void {
   const pc = promoColor();
   if (pc !== null) {
+    // Keep the keymap's modal layer in lockstep with picker visibility (idempotent
+    // each frame, so it self-heals even if a resize reset the base stack).
+    if (!keymap.hasContext('promoting')) keymap.pushContext('promoting', true);
     ui.setRoot(
       buildPromotion(pc, (t) => {
         chessGame.choosePromotion(t);
@@ -208,6 +301,7 @@ function syncBar(): void {
       forceFrame = true; // ensure the freshly-opened popup paints this frame
     }
   } else {
+    if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     promoFocused = false;
     ui.setRoot(buildBar(mode, renderMode, actions), barRegion());
   }
@@ -263,71 +357,13 @@ function pointerNdc(x: number, y: number): { ndcX: number; ndcY: number; aspect:
   };
 }
 
-function onKeyImpl(key: Key): void {
-  // While the promotion picker is up it's modal: Escape cancels, Tab cycles
-  // options, Enter/Space picks the focused one. Swallow everything else (so
-  // 'q' doesn't quit mid-choice).
-  if (isPromoting()) {
-    if (key === 'escape') {
-      chessGame.cancelPromotion();
-      forceFrame = true; // repaint over the popup without an ESC[2J black flash
-    } else {
-      ui.handleKey(key);
-    }
-    return;
-  }
-  if (key === 'quit' || key === 'q' || key === 'escape') {
-    quit();
-    return;
-  }
-  // The UI consumes only Tab (focus) and Enter/Space (activate) when something
-  // is focused — never bare letters — so per-screen shortcuts and the camera
-  // arrows below still work.
-  if (ui.handleKey(key)) return;
-  if (mode === 'attract') {
-    if (key === 'd' || key === 'D') enterDemo();
-    else if (key === 'g' || key === 'G') enterChess();
-    else if (key === 'n' || key === 'N') enterChessGame();
-    else if (key === 'm' || key === 'M') cycleMode();
-    else if (key === 'c' || key === 'C') setRenderMode('color');
-    else if (key === 'l' || key === 'L') setRenderMode('luminance');
-    else if (key === 'a' || key === 'A') setRenderMode('ascii');
-    else if (key === 'j' || key === 'J') jitter = !jitter;
-    return;
-  }
-  if (mode === 'demo') {
-    if (key === 'b' || key === 'B') toAttract();
-    else if (key === 'm' || key === 'M') cycleMode();
-    else if (key === 'j' || key === 'J') jitter = !jitter;
-    return;
-  }
-  if (mode === 'logos') {
-    if (key === 'b' || key === 'B') toAttract();
-    else if (key === 'm' || key === 'M') cycleMode();
-    else if (key === 'c' || key === 'C') setRenderMode('color');
-    else if (key === 'l' || key === 'L') setRenderMode('luminance');
-    else if (key === 'a' || key === 'A') setRenderMode('ascii');
-    return;
-  }
-  const orbit = orbitScene();
-  if (orbit) {
-    if (key === 'b' || key === 'B') toAttract();
-    else if (key === 'r' || key === 'R') orbit.resetView();
-    else if (key === 'm' || key === 'M') cycleMode();
-    else if (key === 'c' || key === 'C') setRenderMode('color');
-    else if (key === 'l' || key === 'L') setRenderMode('luminance');
-    else if (key === 'a' || key === 'A') setRenderMode('ascii');
-    else if (key === 'j' || key === 'J') {
-      jitter = !jitter;
-      forceFrame = true; // toggling jitter changes the present even if the scene is idle
-    }
-    // Arrow keys pan the camera in their direction (the content moves opposite).
-    else if (key === 'left') orbit.pan(PAN_STEP, 0);
-    else if (key === 'right') orbit.pan(-PAN_STEP, 0);
-    else if (key === 'up') orbit.pan(0, PAN_STEP);
-    else if (key === 'down') orbit.pan(0, -PAN_STEP);
-    return;
-  }
+function onKeyImpl(ev: KeyEvent): void {
+  // Focused widget first (the promotion picker's Tab/Enter/Space; future Inputs),
+  // then the layered keymap. The keymap is context-aware: the 'promoting' modal
+  // layer (pushed in syncBar) maps Escape to cancel and swallows every other
+  // stray key, so the old isPromoting() branch is gone.
+  if (ui.handleKey(ev)) return;
+  keymap.handle(ev);
 }
 
 function onMouseImpl(e: MouseEvent): void {
@@ -339,7 +375,7 @@ function onMouseImpl(e: MouseEvent): void {
     else if (e.type === 'up') ui.pointerUp();
     return;
   }
-  const orbit = orbitScene();
+  const orbit = activeOrbit();
   if (orbit) {
     if (e.type === 'wheel') {
       orbit.zoomBy(e.wheel === -1 ? 0.9 : 1.1);
@@ -382,7 +418,7 @@ function onMouseImpl(e: MouseEvent): void {
     }
     return;
   }
-  if (mode === 'attract' || mode === 'demo' || mode === 'logos') {
+  if (mode === 'attract' || mode === 'demo') {
     if (e.type === 'move') ui.hover(e.x, e.y);
     else if (e.type === 'down') ui.pointerDown(e.x, e.y);
     else if (e.type === 'up') ui.pointerUp();
@@ -394,8 +430,8 @@ function onMouseImpl(e: MouseEvent): void {
 // on-demand chess screens (idle until interacted with), harmless for the
 // continuously-live attract/demo/logos screens.
 const parse = createInputParser({
-  onKey(key) {
-    onKeyImpl(key);
+  onKey(ev) {
+    onKeyImpl(ev);
     r.requestRender();
   },
   onMouse(e) {
@@ -474,5 +510,6 @@ term.enter();
 process.stdin.on('data', parse);
 r.onFrame(tick);
 syncLive(); // attract starts live (continuously animating)
+syncContext(); // activate attract's key bindings from boot (no transition yet)
 r.start();
 r.requestRender();

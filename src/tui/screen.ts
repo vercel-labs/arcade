@@ -9,7 +9,7 @@
 
 import { CellDiffer, Surface } from '../engine/index.ts';
 
-import type { Key } from '../platform/input.ts';
+import type { KeyEvent } from '../platform/input.ts';
 import { focusOrder } from './focus.ts';
 import { hitTest } from './hit.ts';
 import { layout } from './layout.ts';
@@ -139,24 +139,25 @@ export class Screen {
     this.state.pressedId = null;
   }
 
-  // Keyboard. Consumes Tab (cycle focus) and Enter/Space (activate the focused
-  // node), plus any focused node's custom onKey. Returns true if consumed, so
-  // the caller can stop before its own per-screen key handling.
-  handleKey(key: Key): boolean {
+  // Keyboard. Consumes Tab / Shift+Tab (cycle focus forward/back) and Enter/Space
+  // (activate the focused node), plus any focused node's custom onKey. Returns
+  // true if consumed, so the caller can stop before its own per-screen handling.
+  handleKey(ev: KeyEvent): boolean {
     if (!this.root) return false;
     const order = focusOrder(this.root);
     if (this.state.focusId) {
       const f = order.find((n) => n.id === this.state.focusId);
-      if (f?.onKey && f.onKey(key)) return true;
+      if (f?.onKey && f.onKey(ev)) return true;
     }
-    if (key === '\t') {
+    if (ev.name === 'tab') {
       if (order.length === 0) return false;
       const idx = order.findIndex((n) => n.id === this.state.focusId);
-      const next = order[(idx + 1 + order.length) % order.length] ?? order[0];
+      const step = ev.shift ? -1 : 1; // Shift+Tab walks focus backward
+      const next = order[(idx + step + order.length) % order.length] ?? order[0];
       this.state.focusId = next.id ?? null;
       return true;
     }
-    if (key === '\r' || key === '\n' || key === ' ') {
+    if (ev.name === 'enter' || ev.name === 'space') {
       if (!this.state.focusId) return false;
       const f = order.find((n) => n.id === this.state.focusId);
       f?.onClick?.();

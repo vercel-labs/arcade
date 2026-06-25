@@ -2,7 +2,7 @@
 // reconciler. Rebuild the tree each frame; the Screen retains interaction state
 // (focus/hover/pressed) by `id`, so the literals stay pure.
 
-import type { Key } from '../platform/input.ts';
+import type { KeyEvent } from '../platform/input.ts';
 import type { Node, Style } from './types.ts';
 
 // A layout container, optionally with a background/border.
@@ -22,7 +22,7 @@ export function Button(opts: {
   id: string;
   label: string;
   onClick?: () => void;
-  onKey?: (k: Key) => boolean;
+  onKey?: (ev: KeyEvent) => boolean;
   style?: Style;
 }): Node {
   return {

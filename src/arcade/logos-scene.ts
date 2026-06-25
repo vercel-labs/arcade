@@ -3,9 +3,8 @@ import {
   cameraMatrices,
   type Camera,
   decodePng,
-  mat4Multiply,
+  type Mat4,
   mat4MulVec4,
-  mat4Translate,
   quad,
   rasterize,
   type RenderTarget,
@@ -14,45 +13,37 @@ import {
   type Vec3,
   wispMaterial,
 } from '../engine/index.ts';
+import { OrbitCamera } from './orbit.ts';
 import { BRAND_HUE } from './logos.ts';
 
-// Will-o'-wisp logos: each AI Gateway provider mark floats in 3D as a glowing,
-// brand-hued sigil wrapped in a procedural flame — rising tongues with a
-// dark→brand→white-hot brightness ramp, plus drifting ember sparks. The mark is
-// a textured quad (wispMaterial); the flame + embers are additive screen-space
-// passes around it, so bloom turns the hot cores into a halo. Every wisp shares
-// one uniform flame envelope so the four read as a consistent set.
+// Will-o'-wisp logos in 3D: each AI Gateway provider mark floats as a spectral
+// plasma orb — a soft, gassy ball of brand-hued light (no hard shell) with the
+// logo billboarded inside so it always faces the camera head-on, plus drifting
+// ember sparks. The screen is an orbit turntable (drag/pan/zoom) like chess; the
+// orb glow + embers are world-anchored so they read correctly from any angle.
 
 const PROVIDERS = ['openai', 'anthropic', 'google', 'xai'] as const;
 
-const camera: Camera = {
-  eye: { x: 0, y: 0, z: 6 },
-  target: { x: 0, y: 0, z: 0 },
-  up: { x: 0, y: 1, z: 0 },
-  fovy: (50 * Math.PI) / 180,
-  near: 0.1,
-  far: 100,
-};
+const FOVY = (50 * Math.PI) / 180;
+const SIZE = 0.85; // logo billboard half-extent (world units; a bit bigger than a chess piece)
+const SPACING = 2.8; // gap between orb centers along x
+const EMBERS_PER = 14;
 
-const HALF = 0.78; // quad half-extent (logo ~1.56 world units tall)
-const SPACING = 2.0; // gap between logo centers along x
-const BOB_AMP = 0.16; // vertical float amplitude
-const GAIN = 1.45; // mark emissive multiplier (>1 so the core blooms)
-
-// Flame envelope, in multiples of the mark's projected pixel radius R (uniform
-// across logos → uniform wisps). The flame rises, so it's much taller than wide.
-const FLAME_UP = 3.0; // tongues reach this * R above the mark center
-const FLAME_DOWN = 0.7; // flame skirt below center
-const FLAME_HALF = 1.05; // flame half-width at the base
-const EMBERS_PER = 12;
+// The glyph grid packs 2 stacked pixels per character row, so a pixel-space
+// circle reads as a wide ellipse. Compressing vertical distance by this factor
+// when measuring radial falloff makes the orb/embers read round on screen.
+const VY = 0.62;
+// Plasma stays pure brand-hue and capped below white, so the bright (clamping-to-
+// white) logo mark and the white-hot embers read as the core inside colored gas.
+const PLASMA_CAP = 0.7;
 
 interface Ember {
-  x: number; // horizontal offset from mark center (px)
-  h: number; // height above center (px, grows as it rises)
-  vx: number; // px/s
-  vy: number; // px/s (upward)
-  life: number; // seconds remaining
-  max: number; // lifespan
+  x: number; // world offset from orb center
+  z: number;
+  h: number; // height above center (world, grows as it rises)
+  vy: number; // world units/s
+  life: number;
+  max: number;
 }
 
 interface Wisp {
@@ -60,13 +51,14 @@ interface Wisp {
   bg: Vec3; // tile background (mark = whatever differs from it)
   tint: Vec3; // brand hue
   x: number; // world column
-  phase: number; // desync bob/flicker/flame per logo
+  phase: number; // desync flicker/embers per logo
   embers: Ember[];
 }
 
 export class LogosScene {
   private wisps: Wisp[];
-  private mesh = quad(HALF);
+  private mesh = quad(SIZE); // shared; corners rewritten per-orb to billboard
+  private cam: OrbitCamera;
   private rng: () => number;
   private lastT = -1;
 
@@ -86,18 +78,34 @@ export class LogosScene {
         embers,
       };
     });
+    // Frame the whole row, viewed from a slight angle so the 3D/billboard reads.
+    const rowWidth = SPACING * (PROVIDERS.length - 1) + 2 * SIZE;
+    const dist = rowWidth / (2 * Math.tan(FOVY / 2)) + 1.5;
+    this.cam = new OrbitCamera({ azimuth: 0.5, elevation: 0.16, distance: dist, target: { x: 0, y: 0, z: 0 } }, 3, 40);
     // Pre-warm so a single (snapshot) frame already shows a full ember column.
     for (let s = 0; s < 40; s++) for (const w of this.wisps) this.updateEmbers(w, 1 / 30);
   }
 
+  resetView(): void {
+    this.cam.reset();
+  }
+  orbit(dx: number, dy: number): void {
+    this.cam.orbit(dx, dy);
+  }
+  pan(dx: number, dy: number): void {
+    this.cam.pan(dx, dy);
+  }
+  zoomBy(factor: number): void {
+    this.cam.zoomBy(factor);
+  }
+
   private spawnEmber(seeded = false): Ember {
-    const max = 1.2 + this.rng() * 1.1;
+    const max = 1.3 + this.rng() * 1.2;
     return {
-      x: (this.rng() - 0.5) * 0.7, // scaled by R at draw time
+      x: (this.rng() - 0.5) * SIZE * 0.7,
+      z: (this.rng() - 0.5) * SIZE * 0.7,
       h: 0,
-      vx: (this.rng() - 0.5) * 0.5,
-      vy: 1.25 + this.rng() * 0.9,
-      // Seeded embers start partway through life so the first frame isn't empty.
+      vy: SIZE * (1.0 + this.rng() * 0.7),
       life: seeded ? this.rng() * max : max,
       max,
     };
@@ -111,9 +119,8 @@ export class LogosScene {
         continue;
       }
       e.h += e.vy * dt;
-      e.x += e.vx * dt;
-      e.vx += (this.rng() - 0.5) * 1.6 * dt; // gentle wander
-      e.vy *= 1 + 0.25 * dt; // accelerate upward slightly
+      e.x += (this.rng() - 0.5) * SIZE * 0.5 * dt; // gentle horizontal wander
+      e.vy *= 1 + 0.2 * dt; // accelerate upward slightly
     }
   }
 
@@ -123,33 +130,37 @@ export class LogosScene {
     const H = target.height;
     const dt = this.lastT < 0 ? 1 / 30 : Math.min(0.1, Math.max(0, t - this.lastT));
     this.lastT = t;
-    const { viewProjection } = cameraMatrices(camera, W / H);
+
+    const eye = this.cam.eye();
+    const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 200 };
+    const { viewProjection: vp } = cameraMatrices(camera, W / H);
+    const { right, up } = this.cam.basis();
 
     for (const w of this.wisps) {
-      const bob = Math.sin(t * 0.9 + w.phase) * BOB_AMP;
-      const model = mat4Translate(w.x, bob, 0);
-      const mvp = mat4Multiply(viewProjection, model);
+      const P: Vec3 = { x: w.x, y: 0, z: 0 };
+      const center = project(vp, P.x, P.y, P.z, W, H);
+      // Projected orb radius from the camera-up edge → tracks zoom/perspective.
+      const edge = project(vp, P.x + up.x * SIZE, up.y * SIZE, P.z + up.z * SIZE, W, H);
+      const R = Math.max(8, Math.hypot(edge.x - center.x, edge.y - center.y));
 
-      // Uniform pixel radius from the projected quad half-height (same for all).
-      const center = project(mvp, 0, 0, W, H);
-      const top = project(mvp, 0, HALF, W, H);
-      const R = Math.max(10, Math.abs(top.y - center.y));
+      drawPlasma(target, center.x, center.y, R, w.tint, t, w.phase);
 
-      drawFlame(target, center.x, center.y, R, w.tint, t, w.phase);
-
+      // Billboard: rewrite the quad's corners from the camera basis so it faces
+      // the camera, then draw the emissive mark with viewProjection as the mvp.
+      billboard(this.mesh.vertices, P, right, up, SIZE);
       rasterize(target, this.mesh, wispMaterial, {
-        mvp,
+        mvp: vp,
         logo: w.tex,
         bg: w.bg,
         tint: w.tint,
-        gain: GAIN,
-        flicker: 0.88 + 0.12 * Math.sin(t * 7 + w.phase),
+        gain: 1.5,
+        flicker: 0.9 + 0.1 * Math.sin(t * 7 + w.phase),
         edge0: 0.22,
         edge1: 0.5,
       });
 
       this.updateEmbers(w, dt);
-      drawEmbers(target, center.x, center.y, R, w.tint, w.embers, t, w.phase);
+      drawEmbers(target, vp, P, w, W, H, R, t);
     }
   }
 }
@@ -159,38 +170,47 @@ interface P2 {
   y: number;
 }
 
-function project(mvp: ReturnType<typeof mat4Multiply>, x: number, y: number, W: number, H: number): P2 {
-  const c = mat4MulVec4(mvp, { x, y, z: 0, w: 1 });
+function project(vp: Mat4, x: number, y: number, z: number, W: number, H: number): P2 {
+  const c = mat4MulVec4(vp, { x, y, z, w: 1 });
   const w = c.w || 1e-4;
   return { x: ((c.x / w) * 0.5 + 0.5) * W, y: (1 - ((c.y / w) * 0.5 + 0.5)) * H };
 }
 
+// Rewrite a quad's 4 corner positions to a camera-facing billboard at center `P`,
+// spanning ±h along the camera right/up vectors. Order matches quad(): the
+// corners are (-,-), (+,-), (+,+), (-,+) in (right, up).
+function billboard(verts: { position: Vec3 }[], P: Vec3, right: Vec3, up: Vec3, h: number): void {
+  const sx = [-h, h, h, -h];
+  const sy = [-h, -h, h, h];
+  for (let i = 0; i < 4; i++) {
+    const p = verts[i].position;
+    p.x = P.x + right.x * sx[i] + up.x * sy[i];
+    p.y = P.y + right.y * sx[i] + up.y * sy[i];
+    p.z = P.z + right.z * sx[i] + up.z * sy[i];
+  }
+}
+
 // --- flame palette -----------------------------------------------------------
 
-// Map a 0..~1.3 intensity to a flame color in `out` (0..255). Cool/dim values
-// are a dark brand tint; mid values are the full brand hue; hot values blow out
-// toward white — the spread of brightness that makes the flame read as fire.
+// Map a 0..~1.3 intensity to a flame color in `out` (0..255): dim values are a
+// dark brand tint, mid values the full brand hue, hot values blow toward white —
+// the brightness spread that makes the gas read as glowing rather than flat.
 function flameColor(i: number, hue: Vec3, out: Vec3): void {
   if (i <= 0) {
     out.x = out.y = out.z = 0;
     return;
   }
-  if (i < 0.8) {
-    const k = i / 0.8; // black → brand (most of the flame lives here)
+  if (i < 0.55) {
+    const k = i / 0.55;
     out.x = hue.x * k;
     out.y = hue.y * k;
     out.z = hue.z * k;
   } else {
-    const k = Math.min(1, (i - 0.8) / 0.5); // brand → near-white hot core (rare)
+    const k = Math.min(1, (i - 0.55) / 0.45);
     out.x = hue.x + (255 - hue.x) * k;
     out.y = hue.y + (255 - hue.y) * k;
     out.z = hue.z + (255 - hue.z) * k;
   }
-}
-
-function smooth(a: number, b: number, x: number): number {
-  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
-  return t * t * (3 - 2 * t);
 }
 
 // --- value noise (cheap fbm) -------------------------------------------------
@@ -219,126 +239,75 @@ function fbm(x: number, y: number): number {
   return 0.6 * vnoise(x, y) + 0.3 * vnoise(x * 2.1 + 5.2, y * 2.1 + 1.3) + 0.15 * vnoise(x * 4.3 + 9.1, y * 4.3);
 }
 
-// --- flame + ember rendering -------------------------------------------------
+// --- plasma orb + embers -----------------------------------------------------
 
 const FCOL: Vec3 = { x: 0, y: 0, z: 0 };
 
-// Additive procedural flame around (cx,cy). A rising, swaying teardrop: width
-// tapers with height, brightness falls off upward, and two-octave noise scrolling
-// upward carves the turbulent tongues. Worked in pixel space; the flame is built
-// tall so it survives the glyph grid's vertical squish and reads as fire.
-function drawFlame(target: RenderTarget, cx: number, cy: number, R: number, hue: Vec3, t: number, phase: number): void {
+// Additive spectral plasma around (cx,cy): a radial gas ball (a uniform sphere
+// reads as a radial falloff from every angle, so a billboarded radial splat is
+// correct as the camera orbits) modulated by upward-scrolling noise for gassy
+// motion, with a slight upward bias and a whole-orb flicker.
+function drawPlasma(target: RenderTarget, cx: number, cy: number, R: number, hue: Vec3, t: number, phase: number): void {
   const Wt = target.width;
   const Ht = target.height;
   const c = target.color;
-  const halfW = R * FLAME_HALF;
-  const upPx = R * FLAME_UP;
-  const downPx = R * FLAME_DOWN;
-
-  // Pass 1: a soft ambient halo around the mark (dim brand glow), slightly tall
-  // so it reads round through the glyph grid's vertical squish.
-  addGlow(target, cx, cy, hue, R * 1.25, R * 1.7, 0.32);
-
-  // Pass 2: rising tongues. Brightness peaks just ABOVE the mark and fades to the
-  // tips, so the logo itself stays legible in the cooler base.
-  const x0 = Math.max(0, Math.floor(cx - halfW - 2));
-  const x1 = Math.min(Wt - 1, Math.ceil(cx + halfW + 2));
-  const y0 = Math.max(0, Math.floor(cy - upPx - 2));
-  const y1 = Math.min(Ht - 1, Math.ceil(cy + downPx + 2));
+  const reach = R * 1.8;
+  const breathe = 0.9 + 0.12 * Math.sin(t * 5 + phase);
+  const x0 = Math.max(0, Math.floor(cx - reach - 2));
+  const x1 = Math.min(Wt - 1, Math.ceil(cx + reach + 2));
+  const y0 = Math.max(0, Math.floor(cy - reach / VY - 2));
+  const y1 = Math.min(Ht - 1, Math.ceil(cy + reach / VY + 2));
 
   for (let y = y0; y <= y1; y++) {
-    const ny = (cy - y) / upPx; // 0 at center, 1 at the tongue tips
-    // Bump profile: ramp in above the mark, taper to the tips.
-    const vfall = smooth(-0.05, 0.32, ny) * Math.pow(Math.max(0, 1 - ny), 1.4);
-    if (vfall <= 0.002) continue;
-    const width = halfW * (1 - 0.78 * Math.max(0, ny)) * (0.85 + 0.15 * Math.sin(t * 6 + phase + ny * 4));
-    if (width <= 1) continue;
-    const sway = Math.sin(ny * 3.1 + t * 2.3 + phase) * R * 0.22 * Math.max(0, ny);
-
+    const dy = y - cy;
     for (let x = x0; x <= x1; x++) {
-      const dx = x - cx - sway;
-      const nx = dx / width;
-      if (nx < -1 || nx > 1) continue;
-      const column = 1 - nx * nx; // bright core, soft sides
-      const n = fbm((dx / R) * 1.6 + phase * 3, ny * 2.4 - t * 1.9 + phase);
-      const inten = vfall * column * (0.3 + 0.85 * n);
-      if (inten <= 0.03) continue;
-      flameColor(inten, hue, FCOL);
-      const w = 0.6;
+      const dx = x - cx;
+      const d = Math.sqrt(dx * dx + (dy * VY) * (dy * VY)) / reach;
+      if (d >= 1) continue;
+      let base = 1 - d;
+      base *= base; // soft core, falls off to the rim
+      // Turbulence scrolls upward; sampled in orb-radius units so it's scale-stable.
+      const n = fbm((dx / R) * 1.5 + phase * 3, (dy / R) * 1.5 - t * 1.3 + phase);
+      let inten = base * (0.45 + 0.95 * n) * breathe;
+      inten *= 1 + 0.3 * (-dy / reach); // a touch brighter above center (rising wisp)
+      if (inten <= 0.04) continue;
+      // Pure brand hue, capped below the white regime — the gas around the mark.
+      const k = Math.min(PLASMA_CAP, inten);
       const i = (y * Wt + x) * 3;
-      c[i] += FCOL.x * w;
-      c[i + 1] += FCOL.y * w;
-      c[i + 2] += FCOL.z * w;
+      c[i] += hue.x * k;
+      c[i + 1] += hue.y * k;
+      c[i + 2] += hue.z * k;
     }
   }
 }
 
-// Additive radial splat with independent x/y radii (ry>rx counters the glyph
-// grid's vertical squish so the halo reads round). Strength scales the peak.
-function addGlow(target: RenderTarget, px: number, py: number, hue: Vec3, rx: number, ry: number, strength: number): void {
+// Additive ember sparks: world-anchored points rising from the orb, projected to
+// screen, fading over life and hottest (whitest) when young.
+function drawEmbers(target: RenderTarget, vp: Mat4, P: Vec3, w: Wisp, W: number, H: number, R: number, t: number): void {
   const Wt = target.width;
   const Ht = target.height;
   const c = target.color;
-  const cx = Math.round(px);
-  const cy = Math.round(py);
-  const radX = Math.ceil(rx * 2);
-  const radY = Math.ceil(ry * 2);
-  const sx2 = 2 * (rx / 2) ** 2;
-  const sy2 = 2 * (ry / 2) ** 2;
-  for (let dy = -radY; dy <= radY; dy++) {
-    const y = cy + dy;
-    if (y < 0 || y >= Ht) continue;
-    for (let dx = -radX; dx <= radX; dx++) {
-      const x = cx + dx;
-      if (x < 0 || x >= Wt) continue;
-      const f = Math.exp(-((dx * dx) / sx2 + (dy * dy) / sy2)) * strength;
-      if (f < 0.004) continue;
-      const i = (y * Wt + x) * 3;
-      c[i] += hue.x * f;
-      c[i + 1] += hue.y * f;
-      c[i + 2] += hue.z * f;
-    }
-  }
-}
-
-// Additive ember sparks: small bright dots rising from the mark, fading over
-// life, hottest (whitest) when young, shrinking as they climb.
-function drawEmbers(
-  target: RenderTarget,
-  cx: number,
-  cy: number,
-  R: number,
-  hue: Vec3,
-  embers: Ember[],
-  t: number,
-  phase: number,
-): void {
-  const Wt = target.width;
-  const Ht = target.height;
-  const c = target.color;
-  for (const e of embers) {
+  for (const e of w.embers) {
     const frac = e.life / e.max; // 1 fresh → 0 dead
-    const px = cx + e.x * R;
-    const py = cy - e.h * R; // h is in units of R
-    if (py < 0 || py >= Ht || px < 0 || px >= Wt) continue;
-    // Fade in fast, out slow; flicker; brighter (whiter) when young.
-    const fade = Math.min(1, frac * 4) * frac;
-    const flick = 0.7 + 0.3 * Math.sin(t * 22 + e.x * 30 + phase);
+    const sp = project(vp, P.x + e.x, P.y + e.h, P.z + e.z, W, H);
+    if (sp.x < 0 || sp.x >= Wt || sp.y < 0 || sp.y >= Ht) continue;
+    const fade = Math.min(1, frac * 4) * frac; // fast in, slow out
+    const flick = 0.7 + 0.3 * Math.sin(t * 22 + e.x * 30 + w.phase);
     const inten = (0.7 + 0.5 * frac) * fade * flick;
     if (inten <= 0.02) continue;
-    flameColor(0.6 + 0.6 * frac, hue, FCOL); // young = closer to white-hot
-    const rad = Math.max(1, R * 0.16 * (0.5 + 0.5 * frac));
+    flameColor(0.6 + 0.6 * frac, w.tint, FCOL);
+    const rad = Math.max(1, R * 0.13 * (0.5 + 0.5 * frac));
     const sigma2 = 2 * (rad * 0.6) ** 2;
     const ri = Math.ceil(rad * 2);
-    const bx = Math.round(px);
-    const by = Math.round(py);
+    const bx = Math.round(sp.x);
+    const by = Math.round(sp.y);
     for (let dy = -ri; dy <= ri; dy++) {
       const yy = by + dy;
       if (yy < 0 || yy >= Ht) continue;
       for (let dx = -ri; dx <= ri; dx++) {
         const xx = bx + dx;
         if (xx < 0 || xx >= Wt) continue;
-        const g = Math.exp(-(dx * dx + dy * dy) / sigma2) * inten;
+        const g = Math.exp(-(dx * dx + (dy / VY) * (dy / VY)) / sigma2) * inten;
         if (g < 0.01) continue;
         const i = (yy * Wt + xx) * 3;
         c[i] += FCOL.x * g;

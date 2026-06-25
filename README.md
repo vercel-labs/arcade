@@ -4,7 +4,7 @@
 
 Arcade is the first build-out of **Vercel Arcade**: a showcase where you can play classic games against frontier AI models (or watch the models play each other) entirely inside a terminal, rendered with truecolor characters. Everything here is pure TypeScript with **zero native dependencies**. The 3D renderer, the UI layer, and the game rules are all written from scratch.
 
-The first game is **chess**. The pieces are real 3D models, lit and rasterized in software, and presented as ASCII/half-blocks. You can already click a piece, see its legal moves, and play it out; the full rules engine is in place.
+**Chess is the game currently in development.** The pieces are real 3D models, lit and rasterized in software, and presented as ASCII/half-blocks. You can already click a piece, see its legal moves, and play it out; the full rules engine is in place. (An earlier 3D dodge prototype has been removed — chess is the focus.)
 
 > Internal design + product context lives in the Vercel Arcade Notion. This README covers the codebase.
 
@@ -20,7 +20,7 @@ You boot into an animated attract screen (a _Dark Side of the Moon_ homage: a ro
 - **Chess Game**: the playable 3D board (see below).
 - **Chess**: a turntable showcase of the piece models.
 - **Demo**: a lit, spinning engine cube.
-- **Start**: a 3D dodge game (fly through space, dodge cubes).
+- **Logos**: a showcase of the AI Gateway provider logos as 3D textured quads.
 - **mode**: cycle the render style between **ascii** (shape-matched glyphs) · **color** (half-block truecolor) · **luminance** (brightness ramp).
 
 **Chess Game controls:** click a piece to highlight its square + show legal-move dots, click a dot to slide it there. **Left-drag** orbits, **scroll** zooms, **arrow keys** pan, **Reset View** recenters. `q`/`Esc` quits.
@@ -39,7 +39,7 @@ src/
               hover/focus/press state, hit-testing, paints to a Surface
   platform/   terminal control (alt-screen, raw mode, SGR mouse) + input parsing
   games/      game harness (Game/State + registry) and the chess rules engine
-  arcade/     THE app: orchestrator, attract scene, dodge game, chess screens
+  arcade/     THE app: orchestrator, attract scene, chess screens, logos showcase
   demo/       engine cube demo
   tools/      snapshots, perft, mesh slicing/decimation, benchmarks
 ```
@@ -56,7 +56,9 @@ The render target is then handed to one of three **presenters**:
 
 ### `tui/`: a mini TUI library
 
-A small retained-mode UI layer for the on-screen controls (the button bars). The app rebuilds a tree of `Box`/`Text`/`Button` nodes each frame; the `Screen` runtime carries hover/focus/pressed state across frames (keyed by node id), runs a flexbox-style layout pass, hit-tests the mouse, and paints to an engine `Surface`. It composes over the 3D scene as an overlay.
+A small retained-mode UI layer, growing into the shared building blocks for every game (controls, menus, dialogs, pickers). The app rebuilds a tree of `Box`/`Text`/`Button` nodes each frame; the `Screen` runtime carries hover/focus/pressed state across frames (keyed by node id), runs a flexbox-style layout pass (absolute positioning, margins, per-side padding, `overflow:hidden` clipping), hit-tests the mouse, and paints to an engine `Surface`.
+
+Rendering is **unified**: the 3D scene paints into the same `Surface` as the UI, so each frame is one alpha-composited cell grid that gets diffed and flushed (only changed cells are written). This is what lets a translucent **Modal** scrim dim the live scene behind a popup — the chess promotion picker is the first consumer. Richer components (`Input`, `Select`, `ScrollBox`, `Slider`) are being added as games need them.
 
 ### `games/`: the game harness + chess
 

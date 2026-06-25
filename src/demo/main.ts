@@ -26,12 +26,12 @@ function quit(): void {
 }
 
 const parse = createInputParser({
-  onKey(key) {
-    if (key === 'quit' || key === 'q' || key === 'escape') quit();
-    else if (key === 'm' || key === 'M') {
+  onKey(ev) {
+    if (ev.name === 'q' || ev.name === 'escape' || (ev.ctrl && ev.name === 'c')) quit();
+    else if (ev.name === 'm') {
       glyphMode = !glyphMode;
       process.stdout.write('\x1b[2J');
-    } else if (key === 'j' || key === 'J') {
+    } else if (ev.name === 'j') {
       jitter = !jitter;
     }
   },
