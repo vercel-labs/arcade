@@ -13,8 +13,9 @@ import { ChessScene } from '../arcade/chess.ts';
 import { ChessGameScene } from '../arcade/chess-game.ts';
 import { LogosScene } from '../arcade/logos-scene.ts';
 import { buildBar, buildPromotion, type Mode } from '../arcade/bars.ts';
+import { buildShowcase, mountShowcase } from '../arcade/ui-showcase.ts';
 import type { Color } from '../games/chess/types.ts';
-import { layout, paint, type PaintState } from '../tui/index.ts';
+import { layout, paint, Screen, type PaintState } from '../tui/index.ts';
 
 type Rgb = [number, number, number];
 // One terminal cell rasterizes to CW×CH pixels; the 8x8 glyph stamps top-left.
@@ -56,7 +57,10 @@ function surfaceToPpm(
       const glyph = FONT[cell.ch];
       for (let py = 0; py < CH; py++) {
         const bits = glyph?.[py] ?? '';
-        for (let px = 0; px < CW; px++) put(cx * CW + px, cy * CH + py, bits[px] === '1' ? cell.fg : cell.bg);
+        for (let px = 0; px < CW; px++) {
+          const on = glyph ? bits[px] === '1' : blockBits(cell.ch, px, py);
+          put(cx * CW + px, cy * CH + py, on ? cell.fg : cell.bg);
+        }
       }
     }
   }
@@ -64,8 +68,60 @@ function surfaceToPpm(
   console.log(`wrote ${out} (${W}x${H})`);
 }
 
+// The 8x8 ASCII font has no block/box-drawing glyphs, so for those chars we
+// synthesize the pixel pattern procedurally — otherwise half-blocks, lines,
+// borders, and the slider/scrollbar render blank in snapshots (they'd be fine in
+// a real terminal). Covers the glyphs the TUI components actually emit. px/py are
+// 0..7 within the cell; mid = the central 2 rows/cols (3,4).
+function blockBits(ch: string, px: number, py: number): boolean {
+  const midX = px === 3 || px === 4;
+  const midY = py === 3 || py === 4;
+  switch (ch) {
+    case '█':
+      return true;
+    case '▀':
+      return py < 4;
+    case '▄':
+      return py >= 4;
+    case '▌':
+      return px < 4;
+    case '▐':
+      return px >= 4;
+    case '░':
+      return (px + py) % 4 === 0;
+    case '▒':
+      return (px + py) % 2 === 0;
+    case '▓':
+      return (px + py) % 4 !== 0;
+    case '─':
+    case '━':
+      return midY;
+    case '│':
+    case '┃':
+      return midX;
+    case '●':
+      return (px - 3.5) ** 2 + (py - 3.5) ** 2 <= 7;
+    case '•':
+      return (px - 3.5) ** 2 + (py - 3.5) ** 2 <= 3;
+    case '╭':
+    case '┌':
+      return (midY && px >= 3) || (midX && py >= 3);
+    case '╮':
+    case '┐':
+      return (midY && px <= 4) || (midX && py >= 3);
+    case '╰':
+    case '└':
+      return (midY && px >= 3) || (midX && py <= 4);
+    case '╯':
+    case '┘':
+      return (midY && px <= 4) || (midX && py <= 4);
+    default:
+      return false;
+  }
+}
+
 const noop = (): void => {};
-const barActions = { chessGame: noop, demo: noop, logos: noop, back: noop, reset: noop, mode: noop, quit: noop };
+const barActions = { chessGame: noop, demo: noop, logos: noop, ui: noop, back: noop, reset: noop, mode: noop, quit: noop };
 
 // Render a scene full-height, then composite that screen's button bar over it —
 // proving the bar sits ON TOP of the 3D scene (opaque pills overwrite it;
@@ -167,8 +223,33 @@ if (process.argv[2] === 'ui') {
   unifiedSnapshot();
 } else if (process.argv[2] === 'modal') {
   modalSnapshot();
+} else if (process.argv[2] === 'showcase') {
+  showcaseSnapshot();
 } else {
   sceneSnapshot();
+}
+
+// The 'ui' component playground composited over the chess scene via the real
+// Screen (so Slots expand to their live components). `focus=<id>` focuses one
+// component so its focused styling (caret/highlight/thumb) shows.
+function showcaseSnapshot(): void {
+  const args = process.argv.slice(3);
+  const cols = Number(args[0]) || 110;
+  const rows = Number(args[1]) || 40;
+  const focusArg = args.find((a) => a.startsWith('focus='));
+  const out = args.find((a) => a.endsWith('.ppm')) ?? '.snapshots/showcase.ppm';
+  const SS = 3;
+
+  const target = new RenderTarget(cols * SS, rows * 2 * SS);
+  new ChessScene().renderScene(target);
+
+  const screen = new Screen(cols, rows);
+  mountShowcase(screen);
+  if (focusArg) screen.setFocus(focusArg.split('=')[1]);
+  const region = { x: 0, y: 0, w: cols, h: rows };
+  screen.setRoot(buildShowcase(region, buildBar('ui', 'ascii', barActions)), region);
+  const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
+  surfaceToPpm(surf, cols, rows, out);
 }
 
 // The promotion modal composited over the chess scene via the unified path:

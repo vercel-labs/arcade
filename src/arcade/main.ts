@@ -16,6 +16,7 @@ import { ChessGameScene } from './chess-game.ts';
 import { LogosScene } from './logos-scene.ts';
 import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/input.ts';
 import { buildBar, buildPromotion, type BarActions, type Mode, type RenderMode } from './bars.ts';
+import { buildShowcase, mountShowcase } from './ui-showcase.ts';
 import type { Color } from '../games/chess/types.ts';
 import { Keymap, Renderer, Screen, type LayoutBox } from '../tui/index.ts';
 import { renderDemo } from '../demo/scene.ts';
@@ -76,12 +77,16 @@ function orbitScene(): ChessScene | ChessGameScene | null {
   return null;
 }
 
-// The camera-controllable scene for the active mode: the chess turntables or the
-// logos wisp orbit (which animates continuously, so it lives on the live path
-// rather than the chess render-on-demand gate). Drives the shared drag/pan/zoom
-// mouse handler and the reset/pan key commands.
+// The camera-controllable scene for the active mode: the chess turntables, the
+// logos wisp orbit, or the chess board behind the UI playground. Drives the
+// shared drag/pan/zoom mouse handler and the reset/pan key commands. (The 'ui'
+// backdrop is camera-controllable too, so dragging on the scene behind the panel
+// rotates it.) `orbitScene()` stays null for 'ui' so the tick uses the dedicated
+// 'ui' branch, which always recomposites for live component edits.
 function activeOrbit(): ChessScene | ChessGameScene | LogosScene | null {
-  return mode === 'logos' ? logosScene : orbitScene();
+  if (mode === 'logos') return logosScene;
+  if (mode === 'ui') return chess;
+  return orbitScene();
 }
 
 let mode: Mode = 'attract';
@@ -171,6 +176,15 @@ function toAttract(): void {
   fullRepaint();
 }
 
+// The component playground. (Re)mount the showcase instances each entry — the
+// set-diff unmounts them on leave, but the module-level instances persist, so
+// their state survives across visits.
+function enterUi(): void {
+  mode = 'ui';
+  mountShowcase(ui);
+  fullRepaint();
+}
+
 // Bar button actions, wired to the screen-transition functions above. buildBar
 // closes each Button's onClick over these, so clicks and Enter dispatch the same
 // way the old onMouse id→action branch did.
@@ -178,6 +192,7 @@ const actions: BarActions = {
   chessGame: enterChessGame,
   demo: enterDemo,
   logos: enterLogos,
+  ui: enterUi,
   back: toAttract,
   reset: () => activeOrbit()?.resetView(),
   mode: cycleMode,
@@ -201,6 +216,7 @@ for (const c of [
   { id: 'nav.demo', title: 'Open demo', run: enterDemo },
   { id: 'nav.chess', title: 'Open chess showcase', run: enterChess },
   { id: 'nav.chessGame', title: 'Open chess game', run: enterChessGame },
+  { id: 'nav.ui', title: 'Open UI playground', run: enterUi },
   { id: 'chess.resetView', title: 'Reset camera', run: () => activeOrbit()?.resetView() },
   { id: 'chess.panLeft', title: 'Pan left', run: () => activeOrbit()?.pan(PAN_STEP, 0) },
   { id: 'chess.panRight', title: 'Pan right', run: () => activeOrbit()?.pan(-PAN_STEP, 0) },
@@ -227,10 +243,14 @@ for (const b of [
 keymap.bind('attract', { key: 'd', cmd: 'nav.demo' });
 keymap.bind('attract', { key: 'g', cmd: 'nav.chess' });
 keymap.bind('attract', { key: 'n', cmd: 'nav.chessGame' });
-for (const layer of ['demo', 'logos', 'chess']) keymap.bind(layer, { key: 'b', cmd: 'nav.back' });
-// Orbit/pan/reset bindings are shared by the chess turntables and the logos wisp
-// orbit (the commands resolve the active scene via activeOrbit()).
-for (const layer of ['chess', 'logos']) {
+keymap.bind('attract', { key: 'u', cmd: 'nav.ui' });
+for (const layer of ['demo', 'logos', 'chess', 'ui']) keymap.bind(layer, { key: 'b', cmd: 'nav.back' });
+// Orbit/pan/reset bindings are shared by the chess turntables, the logos wisp
+// orbit, and the chess backdrop behind the UI playground (the commands resolve
+// the active scene via activeOrbit()). In 'ui', a focused component consumes
+// arrows first (Screen.handleKey runs before the keymap), so these pan only when
+// the scene — not a widget — has focus.
+for (const layer of ['chess', 'logos', 'ui']) {
   for (const b of [
     { key: 'r', cmd: 'chess.resetView' },
     { key: 'left', cmd: 'chess.panLeft' },
@@ -300,6 +320,15 @@ function syncBar(): void {
       promoFocused = true;
       forceFrame = true; // ensure the freshly-opened popup paints this frame
     }
+  } else if (mode === 'ui') {
+    // The component playground: a full-screen tree (centered panel + the standard
+    // bar) laid out over the scene, so Tab/typing reach the mounted components.
+    ui.setRoot(buildShowcase({ x: 0, y: 0, w: cols, h: rows }, buildBar('ui', renderMode, actions)), {
+      x: 0,
+      y: 0,
+      w: cols,
+      h: rows,
+    });
   } else {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     promoFocused = false;
@@ -408,10 +437,15 @@ function onMouseImpl(e: MouseEvent): void {
     }
     if (e.type === 'up') {
       ui.pointerUp();
-      // A press that barely moved is a click → select/move (chess-game only).
-      if (draggingCamera && mode === 'chess-game' && Math.abs(e.x - downX) + Math.abs(e.y - downY) <= 1) {
+      // A press that barely moved is a click (not a drag-orbit).
+      const isClick = draggingCamera && Math.abs(e.x - downX) + Math.abs(e.y - downY) <= 1;
+      if (isClick && mode === 'chess-game') {
         const { ndcX, ndcY, aspect } = pointerNdc(e.x, e.y);
         chessGame.click(ndcX, ndcY, aspect);
+      } else if (isClick && mode === 'logos') {
+        // Click a wisp to play/pause its speaking pulse.
+        const { ndcX, ndcY } = pointerNdc(e.x, e.y);
+        logosScene.toggleAt(ndcX, ndcY);
       }
       draggingCamera = false;
       return;
@@ -461,6 +495,23 @@ function tick(): void {
     logosScene.renderScene(target, t);
     syncBar();
     r.write(UNIFIED ? ui.frameComposited((s) => presentSceneInto(s)) : presentScene() + ui.frame());
+    return;
+  }
+
+  if (mode === 'ui') {
+    // The component playground sits over the chess board, which is itself
+    // camera-controllable (drag to orbit, scroll to zoom, arrows to pan when no
+    // component is focused). Re-render the scene only while the camera is moving
+    // (forceFrame / needsRender); but ALWAYS recomposite the UI over the cached
+    // scene, since a component edit (typing, slider) changes the tree without
+    // tripping ui.dirty(). The empty diff of an idle frame writes nothing.
+    syncBar();
+    const sceneDirty = forceFrame || chess.needsRender();
+    if (sceneDirty) chess.renderScene(target);
+    if (UNIFIED) r.write(ui.frameComposited((s) => presentSceneInto(s, false, true), sceneDirty));
+    else r.write(presentScene(false, true) + ui.frame());
+    forceFrame = false;
+    if (chess.needsRender()) r.requestRender(); // keep animating while the camera settles
     return;
   }
 

@@ -35,3 +35,10 @@ export function Button(opts: {
     style: { padding: [0, 2], ...opts.style },
   };
 }
+
+// A placeholder where a persistent Component renders. The Screen expands it
+// before layout by calling the registered instance's build() (see component.ts).
+// Until expansion it's an empty box, so an unmounted/missing id renders nothing.
+export function Slot(componentId: string, style: Style = {}): Node {
+  return { kind: 'box', style, component: componentId };
+}

@@ -117,6 +117,15 @@ function paintNode(node: Node, surf: Surface, st: PaintState, theme: Theme, inhe
       const p = padOf(e);
       surf.drawText(lb.x + p.h + b, lb.y + p.v + b, node.text, fg, bg, bits);
     }
+    // FrameBuffer escape hatch: hand-draw into this node's content box (inside the
+    // border + padding), clipped like everything else. Runs after the node's own
+    // bg/border so it draws on top of them.
+    if (node.draw) {
+      const p = padOf(e);
+      const cx = lb.x + b + p.h;
+      const cy = lb.y + b + p.v;
+      node.draw(surf, { x: cx, y: cy, w: Math.max(0, lb.w - 2 * (b + p.h)), h: Math.max(0, lb.h - 2 * (b + p.v)) });
+    }
     inheritedBg = bg;
   }
   for (const c of node.children ?? []) paintNode(c, surf, st, theme, inheritedBg);

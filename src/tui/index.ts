@@ -1,8 +1,15 @@
 // Public API of the TUI overlay library. App code (arcade/) imports from here;
 // modules inside tui import each other directly. tui consumes engine (Surface,
 // width, color) and platform (input types); nothing imports app code.
-export { Box, Text, Button } from './nodes.ts';
+export { Box, Text, Button, Slot } from './nodes.ts';
 export { Modal } from './components/modal.ts';
+export { ASCIIFont, asciiFontLines } from './components/asciifont.ts';
+export { FrameBuffer, type FrameDraw } from './components/framebuffer.ts';
+export { Input, type InputOpts } from './components/input.ts';
+export { Select, type SelectOpts } from './components/select.ts';
+export { ScrollBox, type ScrollBoxOpts } from './components/scrollbox.ts';
+export { Slider, type SliderOpts } from './components/slider.ts';
+export { type Component, Registry } from './component.ts';
 export { Screen } from './screen.ts';
 export { Keymap, eventToChord, type Command, type Binding } from './keymap.ts';
 export { Renderer, type FrameFn, type RendererOpts } from './renderer.ts';

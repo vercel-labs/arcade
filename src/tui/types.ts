@@ -2,6 +2,7 @@
 // frame (cheap, like the old currentBar()); per-node interaction state lives in
 // the Screen runtime keyed by `id`, so the tree itself stays pure data.
 
+import type { Surface } from '../engine/index.ts';
 import type { KeyEvent } from '../platform/input.ts';
 import type { ColorToken } from './theme.ts';
 
@@ -84,4 +85,12 @@ export interface Node {
   // Filled by layout() when an ancestor sets overflow:hidden — the rect this
   // node's painting and hit-testing are clipped to (undefined = no clip).
   clip?: LayoutBox;
+  // Marks this node as a Slot for a persistent Component (the id). Before layout
+  // the Screen replaces its children with the live instance's build() output, so
+  // the component's state survives the per-frame tree rebuild.
+  component?: string;
+  // FrameBuffer escape hatch: hand-draw into this node's content box. Called by
+  // paint after the node's own bg/border, clipped to the node. The box is the
+  // content rect (inside border + padding), in absolute Surface cells.
+  draw?: (surf: Surface, box: LayoutBox) => void;
 }

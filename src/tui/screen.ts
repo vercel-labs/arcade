@@ -10,6 +10,7 @@
 import { CellDiffer, Surface } from '../engine/index.ts';
 
 import type { KeyEvent } from '../platform/input.ts';
+import { type Component, Registry } from './component.ts';
 import { focusOrder } from './focus.ts';
 import { hitTest } from './hit.ts';
 import { layout } from './layout.ts';
@@ -35,6 +36,12 @@ export class Screen {
   // changed and reuse it (cheap copy) on UI-only frames (e.g. a hover).
   private sceneLayer: Surface;
   private sceneValid = false;
+  // Persistent components + the bookkeeping for their per-frame lifecycle: the
+  // set of component ids referenced by last frame's tree, and which component
+  // (if any) currently holds keyboard focus.
+  private registry = new Registry();
+  private mountedRefs = new Set<string>();
+  private focusedComponent: string | null = null;
 
   constructor(cols: number, rows: number) {
     this.cols = cols;
@@ -59,7 +66,56 @@ export class Screen {
   setRoot(root: Node | null, region?: LayoutBox): void {
     this.root = root;
     if (region) this.region = region;
+    this.expand(this.root);
     if (this.root) layout(this.root, this.region);
+  }
+
+  // Register a persistent component instance (fires its onMount). Reference it in
+  // the per-frame tree with Slot(id); expand() splices its build() output in.
+  mount(c: Component): void {
+    this.registry.mount(c);
+  }
+
+  // Drop a component (fires onUnmount). Usually unnecessary — expand() auto-
+  // unmounts any component whose Slot left the tree.
+  unmount(id: string): void {
+    this.registry.unmount(id);
+    this.mountedRefs.delete(id);
+  }
+
+  component(id: string): Component | undefined {
+    return this.registry.get(id);
+  }
+
+  // Replace each Slot node's children with its live component's build() output,
+  // then reconcile lifecycle as a set-diff: components whose Slot vanished since
+  // last frame are unmounted, and onFocus/onBlur fire as keyboard focus moves
+  // between components. Runs before layout so the spliced subtrees are measured.
+  private expand(root: Node | null): void {
+    const refs = new Set<string>();
+    const walk = (n: Node): void => {
+      if (n.component) {
+        const c = this.registry.get(n.component);
+        if (c) {
+          refs.add(n.component);
+          n.children = [c.build()];
+        }
+      }
+      for (const ch of n.children ?? []) walk(ch);
+    };
+    if (root) walk(root);
+
+    // Focus transition (a component is "focused" only while its Slot is present).
+    const fc = this.state.focusId && refs.has(this.state.focusId) ? this.state.focusId : null;
+    if (fc !== this.focusedComponent) {
+      if (this.focusedComponent) this.registry.get(this.focusedComponent)?.onBlur?.();
+      if (fc) this.registry.get(fc)?.onFocus?.();
+      this.focusedComponent = fc;
+    }
+
+    // Auto-unmount components that left the tree since last frame.
+    for (const id of this.mountedRefs) if (!refs.has(id)) this.registry.unmount(id);
+    this.mountedRefs = refs;
   }
 
   // Paint the (already laid-out) root and return the escape string. No row clear
@@ -97,6 +153,15 @@ export class Screen {
   resetDiff(): void {
     this.differ.reset();
     this.sceneValid = false;
+  }
+
+  // Composite scene + UI into a fresh Surface and return it (no diff) — for
+  // headless rasterization (snapshots / tests). The root must already be set.
+  snapshot(present: (surf: Surface) => void): Surface {
+    const surf = new Surface(this.cols, this.rows);
+    present(surf);
+    if (this.root) paint(this.root, surf, this.state);
+    return surf;
   }
 
   // Whether interaction state changed since the last paint.
