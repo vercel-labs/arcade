@@ -69,9 +69,9 @@ export function buildShowcase(region: LayoutBox, bar: Node): Node {
       flexDirection: 'column',
       gap: 1,
       padding: [1, 3],
-      background: [16, 18, 26, 0.92], // translucent — the chess scene shows through
-      border: 'round',
-      borderColor: 'focusRing',
+      // No border — the translucent fill alone separates the panel from the scene
+      // (the edge reads as a contrast boundary, not a drawn line).
+      background: [16, 18, 26, 0.92],
     },
     [
       Box({ justifyContent: 'center' }, [ASCIIFont('UI', { color: 'accent' })]),

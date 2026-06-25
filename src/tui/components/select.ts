@@ -6,7 +6,7 @@
 import type { KeyEvent } from '../../platform/input.ts';
 import type { Component } from '../component.ts';
 import { Box, Text } from '../nodes.ts';
-import type { Node, Style } from '../types.ts';
+import type { Node, PointerHit, Style } from '../types.ts';
 
 export interface SelectOpts {
   id: string;
@@ -59,6 +59,22 @@ export class Select implements Component {
     return true;
   }
 
+  // Mouse: wheel scrolls the selection; click/drag highlights the row under the
+  // cursor, and a click (down) commits it (onSelect), like clicking a menu item.
+  onMouse(ev: PointerHit): boolean {
+    if (ev.type === 'wheel') {
+      this.move(ev.wheel === -1 ? -1 : 1);
+      return true;
+    }
+    const row = this.scroll + ev.y;
+    if (row >= 0 && row < this.items.length) {
+      this.index = row;
+      this.opts.onChange?.(this.index, this.items[this.index]);
+      if (ev.type === 'down') this.opts.onSelect?.(this.index, this.items[this.index]);
+    }
+    return true;
+  }
+
   build(): Node {
     const rows: Node[] = [];
     const end = Math.min(this.items.length, this.scroll + this.height);
@@ -77,6 +93,7 @@ export class Select implements Component {
       id: this.id,
       focusable: true,
       onKey: (ev) => this.onKey(ev),
+      onMouse: (ev) => this.onMouse(ev),
     };
   }
 }

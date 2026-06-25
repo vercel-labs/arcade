@@ -19,6 +19,8 @@ export interface BarActions {
   reset(): void;
   mode(): void;
   quit(): void;
+  aiMatch(): void;
+  resetGame(): void;
 }
 
 // A pill: muted slate normally, bright inverted on hover/press, with a distinct
@@ -45,7 +47,7 @@ function centerField(s: string, width: number): string {
   return ' '.repeat(left) + s + ' '.repeat(pad - left);
 }
 
-export function buildBar(mode: Mode, renderMode: RenderMode, a: BarActions): Node {
+export function buildBar(mode: Mode, renderMode: RenderMode, a: BarActions, matchActive = false): Node {
   const modeLabel = `mode: ${centerField(renderMode, 9)}`;
   let buttons: Node[] = [];
 
@@ -71,7 +73,21 @@ export function buildBar(mode: Mode, renderMode: RenderMode, a: BarActions): Nod
       Button({ id: 'mode', label: modeLabel, onClick: a.mode, style: PILL }),
       Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
     ];
-  } else if (mode === 'chess' || mode === 'chess-game') {
+  } else if (mode === 'chess-game') {
+    // The playable board: a button toggles AI-vs-AI (the side-to-move thinks,
+    // plays, then hands over; toggling off aborts). Highlighted while running.
+    const aiStyle = matchActive
+      ? { ...PILL, background: [86, 64, 120] as RGB, color: [238, 230, 250] as RGB }
+      : PILL;
+    buttons = [
+      Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
+      Button({ id: 'ai', label: matchActive ? 'stop ai' : 'play ai', onClick: a.aiMatch, style: aiStyle }),
+      Button({ id: 'reset-game', label: 'reset game', onClick: a.resetGame, style: PILL }),
+      Button({ id: 'reset', label: 'reset view', onClick: a.reset, style: PILL }),
+      Button({ id: 'mode', label: modeLabel, onClick: a.mode, style: PILL }),
+      Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
+    ];
+  } else if (mode === 'chess') {
     buttons = [
       Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
       Button({ id: 'reset', label: 'reset view', onClick: a.reset, style: PILL }),
@@ -141,4 +157,43 @@ export function buildPromotion(color: Color, onPick: (t: PieceType) => void): No
   // Centered modal: a translucent scrim dims the scene behind the popup (real
   // dim under the unified renderer's alpha compositing).
   return Modal(popup);
+}
+
+// The game-over result popup (chess.com style): a centered card with the outcome
+// ("White wins" / "Draw") tinted to the winner's set color, the reason beneath
+// ("by checkmate"), and New game / Close buttons. Same Modal + card styling as the
+// promotion picker. `title`/`subtitle` are supplied by the orchestrator (which
+// knows the chess result), keeping this presentation-only.
+export function buildGameOver(
+  opts: { title: string; subtitle: string; tint: RGB },
+  onNewGame: () => void,
+  onClose: () => void,
+): Node {
+  const btn = (id: string, label: string, onClick: () => void, primary: boolean): Node =>
+    Button({
+      id,
+      label,
+      onClick,
+      style: {
+        padding: [0, 2],
+        background: primary ? [86, 64, 120] : [40, 42, 52],
+        color: primary ? [238, 230, 250] : [212, 214, 224],
+        bold: true,
+        hover: { background: primary ? [110, 84, 150] : [72, 76, 92] },
+        focus: { background: primary ? [110, 84, 150] : [72, 76, 92] },
+        pressed: { background: [120, 124, 142] },
+      },
+    });
+
+  const card = Box(
+    { flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [1, 3], background: [26, 28, 36] },
+    [
+      Box({ justifyContent: 'center' }, [Text({ text: opts.title, style: { color: opts.tint, bold: true } })]),
+      Box({ justifyContent: 'center' }, [Text({ text: opts.subtitle, style: { color: [170, 174, 188] } })]),
+      Box({ height: 0 }), // small gap before the actions
+      btn('over-newgame', 'New game', onNewGame, true),
+      btn('over-close', 'Close', onClose, false),
+    ],
+  );
+  return Modal(card);
 }

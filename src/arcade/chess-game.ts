@@ -43,6 +43,8 @@ import {
   WHITE,
 } from '../games/chess/types.ts';
 import { OrbitCamera } from './orbit.ts';
+import { BRAND_HUE } from './logos.ts';
+import { loadWisp, mulberry32, type Wisp } from './wisp.ts';
 
 const PIECE_NAMES = ['pawn', 'queen', 'bishop', 'rook', 'king', 'knight'];
 
@@ -72,6 +74,11 @@ const KEY_STRENGTH = 0.7;
 const FILL_STRENGTH = 0.18;
 
 const ANIM_FRAMES = 9; // ~0.3s at 30fps for a single animation phase
+// Match HUD: the wisp floats this far (world units) above a king's square center —
+// clear of the king's crown (TALLEST = 1.7) — and is drawn at this fraction of the
+// logos-scene wisp size so it reads as a hovering badge, not a full orb.
+const WISP_FLOAT = 2.7;
+const WISP_SCALE = 0.6;
 const DOT_LIFT = 0.012; // float the move dots just above the board surface
 const HILITE_LIFT = 0.004; // selected-square tint sits just above the board, under the piece
 const ARC_HEIGHT = 0.5; // peak lift of a parabolic arc (captures + knight hops), world units
@@ -154,10 +161,26 @@ export class ChessGameScene {
   // is animating; cleared once a still frame has been rendered.
   private dirty = true;
 
+  // AI-vs-AI match state. `matchActive` flips the board to spectator mode (mouse
+  // picking is ignored; the driver plays moves via playMove) and keeps the scene
+  // continuously rendering so the HUD wisps pulse. `settleResolve` is playMove's
+  // pending resolver, fired when the in-flight move finishes animating. `moveLog`
+  // is the running SAN history (for the move panel), captured at settle time.
+  private matchActive = false;
+  private settleResolve: (() => void) | null = null;
+  private moveLog: string[] = [];
+  // HUD: a provider wisp per side (top corners), pulsing the side to move. Loaded
+  // per match from the model slugs. `wispRng` seeds their ember motion; `lastT`
+  // tracks frame delta for the pulse animation.
+  private whiteWisp: Wisp | null = null;
+  private blackWisp: Wisp | null = null;
+  private wispRng = mulberry32(0xc4e55);
+  private lastT = -1;
+
   // Whether the visible scene has changed since the last render. Starts true so
-  // the first frame always paints.
+  // the first frame always paints; an active match animates every frame (wisps).
   needsRender(): boolean {
-    return this.dirty;
+    return this.dirty || this.matchActive;
   }
 
   constructor(dir = 'public/assets/chess_blender') {
@@ -240,6 +263,98 @@ export class ChessGameScene {
     this.dirty = true;
   }
 
+  // ── AI-vs-AI match ───────────────────────────────────────────────────────────
+  // The live game state — read-only use by the match driver (legality, terminal,
+  // returns). Implements MatchScene<Move> together with playMove().
+  state(): ChessState {
+    return this.game;
+  }
+
+  // The SAN move history so far (for the move-history panel).
+  moves(): readonly string[] {
+    return this.moveLog;
+  }
+
+  isMatchActive(): boolean {
+    return this.matchActive;
+  }
+
+  // The 0x88 square of a color's king (for anchoring its HUD wisp), or -1.
+  private kingSquare(color: Color): number {
+    for (let sq = 0; sq < 128; sq++) {
+      if (sq & 0x88) continue;
+      const p = this.game.board.squares[sq];
+      if (p && pieceType(p) === KING && pieceColor(p) === color) return sq;
+    }
+    return -1;
+  }
+
+  // Restore the initial position and clear history / captures / in-flight move.
+  // Resolves any pending playMove() so an aborted match loop can unwind cleanly.
+  private resetBoard(): void {
+    const pending = this.settleResolve;
+    this.settleResolve = null;
+    this.game = new ChessState();
+    this.whiteJail = [];
+    this.blackJail = [];
+    this.moveLog = [];
+    this.deselect();
+    this.anim = null;
+    this.pendingPromo = null;
+    this.dirty = true;
+    pending?.(); // wake the awaiter (microtask) so a cancelled match can finish unwinding
+  }
+
+  // Start a fresh AI-vs-AI game: reset the board, load the two provider wisps for
+  // the HUD, and switch to spectator mode. The driver then plays moves via
+  // playMove(). `white`/`black` are provider keys (e.g. "anthropic", "openai")
+  // derived from the model slugs.
+  beginMatch(white = 'anthropic', black = 'openai'): void {
+    this.resetBoard();
+    this.whiteWisp = this.loadHudWisp(white, 0);
+    this.blackWisp = this.loadHudWisp(black, 1.7);
+    this.matchActive = true;
+    this.dirty = true;
+  }
+
+  // Reset to a fresh game and leave spectator (AI) mode — the start position,
+  // empty history, no captures. (The orchestrator stops any running match first.)
+  resetGame(): void {
+    this.resetBoard();
+    this.matchActive = false;
+  }
+
+  // Load a provider's HUD wisp, or null if we have no logo/tint for it (only the
+  // four baked providers render; the match still plays without a wisp).
+  private loadHudWisp(provider: string, phase: number): Wisp | null {
+    const hue = BRAND_HUE[provider];
+    if (!hue) return null;
+    try {
+      return loadWisp(`public/assets/logos/${provider}.png`, { x: hue[0], y: hue[1], z: hue[2] }, phase, this.wispRng);
+    } catch {
+      return null;
+    }
+  }
+
+  // Leave spectator mode (match finished or cancelled). The final position stays
+  // on the board for inspection.
+  endMatch(): void {
+    this.matchActive = false;
+    this.dirty = true;
+  }
+
+  // Programmatically play a move (the driver's entry point): runs the SAME phased
+  // animation a click does, and resolves once the move has fully settled (applied
+  // and painted). Promotions arrive fully specified in the Move, so they animate
+  // directly — no interactive picker.
+  playMove(move: Move): Promise<void> {
+    if (this.anim || this.pendingPromo) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      this.settleResolve = resolve;
+      this.startMove(move);
+    });
+  }
+
   // ── Picking & interaction ───────────────────────────────────────────────────
   // Map a normalized device coordinate (−1..1, +y up) to the 0x88 board square
   // under it, by casting a ray from the eye through the cursor onto the y=0 plane.
@@ -258,6 +373,7 @@ export class ChessGameScene {
   }
 
   click(ndcX: number, ndcY: number, aspect: number): void {
+    if (this.matchActive) return; // spectator mode: the AI driver owns the board
     if (this.anim || this.pendingPromo) return; // ignore input mid-move / mid-promotion
     const sq = this.squareAt(ndcX, ndcY, aspect);
     if (sq < 0) return this.deselect();
@@ -384,7 +500,9 @@ export class ChessGameScene {
   }
 
   // ── Rendering ───────────────────────────────────────────────────────────────
-  renderScene(target: RenderTarget): void {
+  // `t` (seconds) drives the match HUD wisp pulse; the board itself is static, so
+  // it defaults to 0 for the snapshot/bench tools that render a single still frame.
+  renderScene(target: RenderTarget, t = 0): void {
     target.clear(10, 11, 14);
     const eye = this.cam.eye();
     const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 400 };
@@ -466,12 +584,39 @@ export class ChessGameScene {
         A.t = 0;
         A.phase++;
         if (A.phase >= A.phases) {
+          this.moveLog.push(this.game.actionToString(A.move)); // SAN needs the pre-move board
           this.game.applyAction(A.move);
           if (A.jail) (A.jail.captor === WHITE ? this.whiteJail : this.blackJail).push({ type: A.jail.type, color: A.jail.color });
           this.anim = null;
           justSettled = true;
+          const done = this.settleResolve; // wake playMove's awaiter
+          this.settleResolve = null;
+          done?.();
         }
       }
+    }
+
+    // Match HUD: each side's provider wisp floats in 3D just above that side's
+    // king, tracking it as it moves and scaling with the camera. The side to move
+    // pulses (neither once the game is over). Drawn after the board so the flame
+    // glows over it.
+    if (this.matchActive && (this.whiteWisp || this.blackWisp)) {
+      const W = target.width;
+      const H = target.height;
+      const dt = this.lastT < 0 ? 1 / 30 : Math.min(0.1, Math.max(0, t - this.lastT));
+      this.lastT = t;
+      const { right, up } = this.cam.basis();
+      const turn = this.game.currentPlayer();
+      const drawKingWisp = (wisp: Wisp | null, color: Color): void => {
+        if (!wisp) return;
+        const sq = this.kingSquare(color);
+        if (sq < 0) return;
+        const c = this.squareCenter(sq);
+        wisp.setSpeaking(turn === color);
+        wisp.renderWorld(target, viewProjection, right, up, { x: c.x, y: WISP_FLOAT, z: c.z }, W, H, t, dt, WISP_SCALE);
+      };
+      drawKingWisp(this.whiteWisp, WHITE);
+      drawKingWisp(this.blackWisp, BLACK);
     }
 
     // Stay dirty while a move animates. The frame that *finishes* a move still

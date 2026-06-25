@@ -9,7 +9,7 @@ import type { KeyEvent } from '../../platform/input.ts';
 import type { Component } from '../component.ts';
 import { Box, Text } from '../nodes.ts';
 import { defaultTheme } from '../theme.ts';
-import type { LayoutBox, Node } from '../types.ts';
+import type { LayoutBox, Node, PointerHit } from '../types.ts';
 
 export interface ScrollBoxOpts {
   id: string;
@@ -52,7 +52,24 @@ export class ScrollBox implements Component {
     return true;
   }
 
+  // Mouse: wheel scrolls a row at a time; click/drag on the scrollbar column
+  // (rightmost cell) jumps the scroll position proportional to the y within it.
+  onMouse(ev: PointerHit): boolean {
+    if (ev.type === 'wheel') {
+      this.scrollBy(ev.wheel === -1 ? -1 : 1);
+      return true;
+    }
+    if (ev.x >= ev.w - 1) {
+      const frac = ev.h > 1 ? ev.y / (ev.h - 1) : 0;
+      this.scroll = Math.max(0, Math.min(this.maxScroll(), Math.round(frac * this.maxScroll())));
+    }
+    return true;
+  }
+
   // Slim scrollbar in the rightmost column: a track with a proportional thumb.
+  // Painted via cell BACKGROUNDS (a space glyph) rather than block characters, so
+  // stacked cells form one solid, gapless bar — a foreground '█' can show thin
+  // line-spacing seams between rows in many terminals.
   private paintBar(surf: Surface, box: LayoutBox): void {
     const total = this.rows.length;
     if (total <= this.height) return; // nothing to scroll
@@ -61,8 +78,8 @@ export class ScrollBox implements Component {
     const span = box.h - thumb;
     const top = box.y + (this.maxScroll() === 0 ? 0 : Math.round((this.scroll / this.maxScroll()) * span));
     for (let y = box.y; y < box.y + box.h; y++) {
-      const on = y >= top && y < top + thumb;
-      surf.setCell(x, y, on ? '█' : '░', on ? THUMB : TRACK, defaultTheme.bg);
+      const color = y >= top && y < top + thumb ? THUMB : TRACK;
+      surf.setCell(x, y, ' ', color, color);
     }
   }
 
@@ -80,6 +97,7 @@ export class ScrollBox implements Component {
       id: this.id,
       focusable: true,
       onKey: (ev) => this.onKey(ev),
+      onMouse: (ev) => this.onMouse(ev),
       draw: (surf, b) => this.paintBar(surf, b),
     };
   }

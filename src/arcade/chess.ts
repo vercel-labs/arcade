@@ -112,7 +112,10 @@ export class ChessScene {
     this.dirty = true;
   }
 
-  renderScene(target: RenderTarget): void {
+  // `_t` is unused (this turntable is static) but keeps the signature uniform
+  // with ChessGameScene's animated HUD, so the shared orbit-scene call site can
+  // pass time without branching.
+  renderScene(target: RenderTarget, _t?: number): void {
     target.clear(10, 11, 14);
     const aspect = target.width / target.height;
     const eye = this.cam.eye();

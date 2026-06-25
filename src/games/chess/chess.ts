@@ -5,6 +5,8 @@ import { generateLegalMoves, isInCheck } from './movegen.ts';
 import { moveToSan, moveToUci } from './san.ts';
 import {
   BISHOP,
+  BLACK,
+  type Color,
   type Move,
   KNIGHT,
   PAWN,
@@ -19,6 +21,13 @@ import {
 } from './types.ts';
 
 export const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+// How a finished game ended (for a result/game-over display).
+export type ChessReason = 'checkmate' | 'stalemate' | 'fifty-move' | 'repetition' | 'insufficient-material';
+export interface ChessResult {
+  winner: Color | null; // null = draw
+  reason: ChessReason;
+}
 
 // A chess position as a harness GameState. Players: 0 = White, 1 = Black.
 // Utilities are +1 win / -1 loss / 0 draw.
@@ -104,15 +113,29 @@ export class ChessState implements GameState<Move> {
     return out;
   }
 
+  // Who won and how, or null while the game is ongoing. The side delivering
+  // checkmate is the side NOT to move at the mated position.
+  result(): ChessResult | null {
+    const term = this.terminal();
+    if (!term) return null;
+    const winner = term.reason === 'checkmate' ? (this.board.turn === WHITE ? BLACK : WHITE) : null;
+    return { winner, reason: term.reason };
+  }
+
   // null = game ongoing; otherwise the per-player utility vector.
   private outcome(): number[] | null {
+    return this.terminal()?.returns ?? null;
+  }
+
+  // The terminal verdict (utility vector + reason), or null if the game continues.
+  private terminal(): { returns: number[]; reason: ChessReason } | null {
     if (this.legalActions().length === 0) {
-      if (isInCheck(this.board)) return this.board.turn === WHITE ? [-1, 1] : [1, -1]; // checkmate
-      return [0, 0]; // stalemate
+      if (isInCheck(this.board)) return { returns: this.board.turn === WHITE ? [-1, 1] : [1, -1], reason: 'checkmate' };
+      return { returns: [0, 0], reason: 'stalemate' };
     }
-    if (this.board.halfmove >= 100) return [0, 0]; // 50-move rule
-    if (this.isThreefold()) return [0, 0];
-    if (this.insufficientMaterial()) return [0, 0];
+    if (this.board.halfmove >= 100) return { returns: [0, 0], reason: 'fifty-move' };
+    if (this.isThreefold()) return { returns: [0, 0], reason: 'repetition' };
+    if (this.insufficientMaterial()) return { returns: [0, 0], reason: 'insufficient-material' };
     return null;
   }
 
