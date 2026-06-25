@@ -8,10 +8,12 @@
 // translucent fill — no line border), and expands back. It's left-anchored, so
 // the "Moves" label keeps the same position in both states. Click it (or the ✕,
 // shown when expanded) to toggle.
-import { Box, Button, ScrollBox, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../tui/index.ts';
+import { Box, Button, type Row, ScrollBox, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../tui/index.ts';
+import type { RGB } from '../engine/index.ts';
 
 const HISTORY_HEIGHT = 18; // visible move rows in the panel viewport
 const HISTORY_WIDTH = 22; // inner content width — header + list share it (fixed)
+const ILLEGAL: RGB = [226, 92, 86]; // a move played under the illegal-moves toggle
 
 // Long-lived so scroll position persists across frames/visits.
 export const moveHistory = new ScrollBox({ id: 'chess-history', width: HISTORY_WIDTH, height: HISTORY_HEIGHT, rows: [] });
@@ -39,16 +41,26 @@ export function movesToPgn(sans: readonly string[], result = '*'): string {
   return `${out}${result}`.trim();
 }
 
+// One numbered move-pair row ("1. e4    e5"). White/black are independent Text
+// segments so either can be tinted red (an illegal-toggle move) without affecting
+// the other or the move number; the padding matches the old single-string layout.
+function moveRow(n: number, white: string, black: string, whiteBad: boolean, blackBad: boolean): Node {
+  return Box({ flexDirection: 'row', width: HISTORY_WIDTH }, [
+    Text({ text: `${String(n).padStart(2)}. `, style: { color: 'fg' } }),
+    Text({ text: white.padEnd(7), style: { color: whiteBad ? ILLEGAL : 'fg' } }),
+    Text({ text: ' ', style: { color: 'fg' } }),
+    Text({ text: black, style: { color: blackBad ? ILLEGAL : 'fg' } }),
+  ]);
+}
+
 // SAN log → numbered move-pair rows ("1. e4    e5"), then refresh the panel.
-// Auto-follows the latest move ONLY when already scrolled to the bottom, so a
-// manual scroll-up to review earlier moves isn't yanked back down every frame.
-export function refreshMoveHistory(sans: readonly string[]): void {
-  const rows: string[] = [];
+// `illegal[i]` (parallel to `sans`) tints that ply's SAN red. Auto-follows the
+// latest move ONLY when already scrolled to the bottom, so a manual scroll-up to
+// review earlier moves isn't yanked back down every frame.
+export function refreshMoveHistory(sans: readonly string[], illegal: readonly boolean[] = []): void {
+  const rows: Row[] = [];
   for (let i = 0; i < sans.length; i += 2) {
-    const n = String(i / 2 + 1).padStart(2);
-    const white = (sans[i] ?? '').padEnd(7);
-    const black = sans[i + 1] ?? '';
-    rows.push(`${n}. ${white} ${black}`);
+    rows.push(moveRow(i / 2 + 1, sans[i] ?? '', sans[i + 1] ?? '', illegal[i] ?? false, illegal[i + 1] ?? false));
   }
   const prevMax = Math.max(0, moveHistory.rows.length - HISTORY_HEIGHT);
   const atBottom = moveHistory.scroll >= prevMax;

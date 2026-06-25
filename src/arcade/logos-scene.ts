@@ -1,7 +1,6 @@
-import { type Camera, cameraMatrices, type Mat4, mat4MulVec4, type RenderTarget, type RGB, type Vec3 } from '../engine/index.ts';
+import { type Camera, cameraMatrices, type Mat4, mat4MulVec4, type RenderTarget, type Vec3 } from '../engine/index.ts';
 import { OrbitCamera } from './orbit.ts';
-import { BRAND_HUE } from './logos.ts';
-import { loadWisp, mulberry32, type Wisp, WISP_SIZE } from './wisp.ts';
+import { loadWisp, mulberry32, providerTint, type Wisp, WISP_SIZE } from './wisp.ts';
 
 // Will-o'-wisp logos in 3D: each AI Gateway provider mark floats as a spectral
 // plasma orb (see wisp.ts) with the logo billboarded inside, plus drifting ember
@@ -25,8 +24,7 @@ export class LogosScene {
   constructor(dir = 'public/assets/logos') {
     const rng = mulberry32(0x10905c); // fixed seed → reproducible snapshots
     this.wisps = PROVIDERS.map((name, i) => {
-      const hue = BRAND_HUE[name] ?? ([255, 255, 255] as RGB);
-      const wisp = loadWisp(`${dir}/${name}.png`, { x: hue[0], y: hue[1], z: hue[2] }, i * 1.7, rng);
+      const wisp = loadWisp(`${dir}/${name}.png`, providerTint(name), i * 1.7, rng);
       return { wisp, x: (i - (PROVIDERS.length - 1) / 2) * SPACING };
     });
     // Frame the whole row, viewed from a slight angle so the 3D/billboard reads.

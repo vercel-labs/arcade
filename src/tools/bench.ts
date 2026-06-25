@@ -10,7 +10,7 @@ const cols = Number(process.argv[2]) || 140;
 const rows = Number(process.argv[3]) || 50;
 const FRAMES = Number(process.argv[4]) || 200;
 const SS = Number(process.argv[5]) || 3;
-const presentRows = rows - 2; // mirrors ATTRACT_RESERVE in main.ts
+const presentRows = rows - 2; // mirrors PRISM_RESERVE in main.ts
 
 const target = new RenderTarget(cols * SS, presentRows * 2 * SS);
 const scene = new ChessGameScene();

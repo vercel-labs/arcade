@@ -7,7 +7,7 @@ import { Box, Button, Modal, Text, type Node, type Style } from '../tui/index.ts
 import { BISHOP, BLACK, type Color, KNIGHT, type PieceType, QUEEN, ROOK } from '../games/chess/types.ts';
 import type { RGB } from '../engine/index.ts';
 
-export type Mode = 'attract' | 'demo' | 'chess' | 'chess-game' | 'logos' | 'ui';
+export type Mode = 'prism' | 'demo' | 'chess' | 'chess-game' | 'logos' | 'ui';
 export type RenderMode = 'color' | 'ascii' | 'luminance';
 
 export interface BarActions {
@@ -21,6 +21,7 @@ export interface BarActions {
   quit(): void;
   aiMatch(): void;
   resetGame(): void;
+  illegalMoves(): void;
 }
 
 // A pill: muted slate normally, bright inverted on hover/press, with a distinct
@@ -52,11 +53,12 @@ export function buildBar(
   renderMode: RenderMode,
   a: BarActions,
   ai: { label: string; active: boolean } = { label: 'play ai', active: false },
+  illegalOn = false,
 ): Node {
   const modeLabel = `mode: ${centerField(renderMode, 9)}`;
   let buttons: Node[] = [];
 
-  if (mode === 'attract') {
+  if (mode === 'prism') {
     buttons = [
       Button({ id: 'chess-game', label: 'chess game', onClick: a.chessGame, style: PILL }),
       Button({ id: 'demo', label: 'demo', onClick: a.demo, style: PILL }),
@@ -84,10 +86,16 @@ export function buildBar(
     const aiStyle = ai.active
       ? { ...PILL, background: [86, 64, 120] as RGB, color: [238, 230, 250] as RGB }
       : PILL;
+    // The illegal-moves toggle: when on, AI moves bypass the rules. A warm red
+    // highlight signals "no rules" is live.
+    const illegalStyle = illegalOn
+      ? { ...PILL, background: [150, 58, 58] as RGB, color: [250, 232, 230] as RGB }
+      : PILL;
     buttons = [
       Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
       Button({ id: 'ai', label: ai.label, onClick: a.aiMatch, style: aiStyle }),
       Button({ id: 'reset-game', label: 'reset game', onClick: a.resetGame, style: PILL }),
+      Button({ id: 'illegal', label: `illegal: ${illegalOn ? 'on' : 'off'}`, onClick: a.illegalMoves, style: illegalStyle }),
       Button({ id: 'reset', label: 'reset view', onClick: a.reset, style: PILL }),
       Button({ id: 'mode', label: modeLabel, onClick: a.mode, style: PILL }),
       Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),

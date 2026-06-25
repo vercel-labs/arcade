@@ -10,7 +10,7 @@ import {
   toLuminance,
   toShapeGlyph,
 } from '../engine/index.ts';
-import { AttractScene } from './attract.ts';
+import { PrismScene } from './prism.ts';
 import { ChessScene } from './chess.ts';
 import { ChessGameScene } from './chess-game.ts';
 import { LogosScene } from './logos-scene.ts';
@@ -18,6 +18,7 @@ import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/i
 import { buildBar, buildGameOver, buildPromotion, type BarActions, type Mode, type RenderMode } from './bars.ts';
 import { buildShowcase, mountShowcase } from './ui-showcase.ts';
 import { buildChessGameRoot, type Commentary, mountChessHud, movesToPgn, refreshMoveHistory } from './chess-hud.ts';
+import { buildMatchSetup, matchSetupSelection, mountMatchSetup } from './match-setup.ts';
 import { copyToClipboard } from '../platform/clipboard.ts';
 import { BLACK, type Color, type Move, WHITE } from '../games/chess/types.ts';
 import type { ChessResult } from '../games/chess/chess.ts';
@@ -38,7 +39,7 @@ const DT = 1 / FPS;
 // Cells-equivalent the arrow keys pan the chess camera per press (held keys
 // repeat). Tuned to feel like a firm nudge; pan() scales it by distance.
 const PAN_STEP = 10;
-// Supersample factor for the attract screen (antialiasing + sub-cell detail
+// Supersample factor for the prism screen (antialiasing + sub-cell detail
 // for shape-matched glyph mode).
 const SS = 3;
 // Softmax "temperature" for glyph jitter when enabled (subtle variation).
@@ -56,12 +57,12 @@ const UNIFIED = true;
 let cols = process.stdout.columns ?? 80;
 let rows = process.stdout.rows ?? 24;
 
-// The attract/chess/logos scenes render through the engine to a supersampled
+// The prism/chess/logos scenes render through the engine to a supersampled
 // RGBA target at FULL height — the button bar composites on top of the scene's
 // bottom row rather than sitting on a reserved blank strip.
 let target = new RenderTarget(cols * SS, rows * 2 * SS);
 let display: RenderTarget | undefined;
-const attract = new AttractScene();
+const prism = new PrismScene();
 const chess = new ChessScene();
 const chessGame = new ChessGameScene();
 const logosScene = new LogosScene();
@@ -100,7 +101,7 @@ function activeOrbit(): ChessScene | ChessGameScene | LogosScene | null {
   return orbitScene();
 }
 
-let mode: Mode = 'attract';
+let mode: Mode = 'prism';
 let renderMode: RenderMode = 'ascii';
 let jitter = false;
 // Camera-drag tracking for the chess screens. `downX/downY` mark where a drag
@@ -117,20 +118,23 @@ let t = 0;
 // Whether we currently hold a live (continuous-animation) lease on the renderer.
 let liveHeld = false;
 
-// AI-vs-AI match. The two sides default to distinct frontier models (distinct
-// provider wisps in the HUD; at least one Claude). `matchAbort` cancels the
-// running turn-loop (pause / stop / navigate away). `matchPlayers` are the two
-// players for the current game — kept across a pause so resume continues with
-// them. `matchPaused` halts the loop on the current turn (no thinking/moves)
-// while keeping the match alive. `commentary` is the current pre-move rationale
-// toast, shown until `t` passes `until`.
-const DEFAULT_WHITE = 'anthropic/claude-sonnet-4.6';
-const DEFAULT_BLACK = 'openai/gpt-5.4';
+// AI-vs-AI match. The two sides are chosen in the setup modal (provider → model).
+// `matchAbort` cancels the running turn-loop (pause / stop / navigate away).
+// `matchPlayers` are the two players for the current game — kept across a pause so
+// resume continues with them. `matchPaused` halts the loop on the current turn (no
+// thinking/moves) while keeping the match alive. `commentary` is the current
+// pre-move rationale toast, shown until `t` passes `until`. `matchSetupOpen` shows
+// the model picker; `setupFocused` is its focus-once edge.
 const COMMENTARY_SECS = 3.5;
 let matchAbort: AbortController | null = null;
 let matchPlayers: Player<Move>[] | null = null;
 let matchPaused = false;
 let commentary: Commentary | null = null;
+let matchSetupOpen = false;
+let setupFocused = false;
+// When on, AI moves bypass the rules: the model's move is parsed loosely and
+// applied as-is. A thunk hands this live value to each ModelPlayer.
+let illegalAllowed = false;
 // Whether the move-history panel is collapsed to its "Moves" header button
 // (toggle with the 'h' key or by clicking the header / ✕). History persists.
 let historyMinimized = false;
@@ -162,12 +166,12 @@ function closeGameOver(): void {
   gameOverFocused = false;
   forceFrame = true;
 }
-// Continuously-animating screens (attract prism, demo, logos) hold a live lease;
+// Continuously-animating screens (prism, demo, logos) hold a live lease;
 // the chess turntables are static and render on demand. Called on every screen
 // transition (via fullRepaint).
 function syncLive(): void {
   const want =
-    mode === 'attract' || mode === 'demo' || mode === 'logos' || (mode === 'chess-game' && chessGame.isMatchActive());
+    mode === 'prism' || mode === 'demo' || mode === 'logos' || (mode === 'chess-game' && chessGame.isMatchActive());
   if (want === liveHeld) return;
   if (want) r.requestLive();
   else r.dropLive();
@@ -290,21 +294,46 @@ function runMatchLoop(): void {
     });
 }
 
-// Start a fresh AI-vs-AI game from the initial position.
-function startAiMatch(): void {
+// Start a fresh AI-vs-AI game from the initial position with the chosen models.
+function startAiMatch(whiteSlug: string, blackSlug: string): void {
+  const providerOf = (slug: string): string => slug.split('/')[0] ?? slug;
+  chessGame.beginMatch(providerOf(whiteSlug), providerOf(blackSlug));
+  matchPaused = false;
+  matchPlayers = [
+    new ModelPlayer<Move>({ model: whiteSlug, gameName: 'chess', allowIllegal: () => illegalAllowed }),
+    new ModelPlayer<Move>({ model: blackSlug, gameName: 'chess', allowIllegal: () => illegalAllowed }),
+  ];
+  runMatchLoop();
+}
+
+// Open the setup modal to pick the two models (needs a Gateway key). The four
+// selects are (re)mounted for their Slots; pickers retain their last selection.
+function openMatchSetup(): void {
   if (!process.env.AI_GATEWAY_API_KEY) {
     commentary = { text: 'Set AI_GATEWAY_API_KEY in .env.local to play (see .env.example)', model: '', until: t + 6 };
     r.requestRender();
     return;
   }
-  const providerOf = (slug: string): string => slug.split('/')[0] ?? slug;
-  chessGame.beginMatch(providerOf(DEFAULT_WHITE), providerOf(DEFAULT_BLACK));
-  matchPaused = false;
-  matchPlayers = [
-    new ModelPlayer<Move>({ model: DEFAULT_WHITE, gameName: 'chess' }),
-    new ModelPlayer<Move>({ model: DEFAULT_BLACK, gameName: 'chess' }),
-  ];
-  runMatchLoop();
+  mountMatchSetup(ui);
+  matchSetupOpen = true;
+  setupFocused = false;
+  forceFrame = true;
+  r.requestRender();
+}
+
+function closeMatchSetup(): void {
+  matchSetupOpen = false;
+  setupFocused = false;
+  forceFrame = true;
+}
+
+// Start button: only fires when both sides have a model (the button is disabled
+// otherwise), so the selection is guaranteed.
+function confirmMatchSetup(): void {
+  const sel = matchSetupSelection();
+  if (!sel) return;
+  closeMatchSetup();
+  startAiMatch(sel.white, sel.black);
 }
 
 // Pause on whoever's turn it is: cancel the in-flight model call (stop thinking)
@@ -325,11 +354,19 @@ function resumeAiMatch(): void {
   runMatchLoop();
 }
 
+// Toggle illegal-moves mode (bar button / 'i' key). Takes effect on the next AI
+// move (the ModelPlayers read it live via a thunk).
+function toggleIllegal(): void {
+  illegalAllowed = !illegalAllowed;
+  forceFrame = true;
+  r.requestRender();
+}
+
 // The AI button / 'p' key: play (idle) → pause (running) → resume (paused).
 // Entering from elsewhere first opens the chess game.
 function aiButton(): void {
   if (mode !== 'chess-game') enterChessGame();
-  if (!chessGame.isMatchActive()) startAiMatch();
+  if (!chessGame.isMatchActive()) openMatchSetup();
   else if (matchPaused) resumeAiMatch();
   else pauseAiMatch();
   r.requestRender();
@@ -352,9 +389,9 @@ function enterLogos(): void {
   fullRepaint();
 }
 
-function toAttract(): void {
+function toPrism(): void {
   stopAiMatch();
-  mode = 'attract';
+  mode = 'prism';
   fullRepaint();
 }
 
@@ -376,12 +413,13 @@ const actions: BarActions = {
   demo: enterDemo,
   logos: enterLogos,
   ui: enterUi,
-  back: toAttract,
+  back: toPrism,
   reset: () => activeOrbit()?.resetView(),
   mode: cycleMode,
   quit,
   aiMatch: aiButton,
   resetGame,
+  illegalMoves: toggleIllegal,
 };
 
 // Named commands + a layered keymap (the OpenTUI-style command surface). Each
@@ -397,7 +435,7 @@ for (const c of [
   { id: 'view.setLuminance', title: 'Render: luminance', run: () => setRenderMode('luminance') },
   { id: 'view.setAscii', title: 'Render: ascii', run: () => setRenderMode('ascii') },
   { id: 'view.toggleJitter', title: 'Toggle glyph jitter', run: toggleJitter },
-  { id: 'nav.back', title: 'Back to attract', run: toAttract },
+  { id: 'nav.back', title: 'Back to prism', run: toPrism },
   { id: 'nav.demo', title: 'Open demo', run: enterDemo },
   { id: 'nav.chess', title: 'Open chess showcase', run: enterChess },
   { id: 'nav.chessGame', title: 'Open chess game', run: enterChessGame },
@@ -411,7 +449,9 @@ for (const c of [
   { id: 'chess.toggleAI', title: 'Play / pause AI', run: aiButton },
   { id: 'chess.toggleHistory', title: 'Toggle move history', run: toggleHistory },
   { id: 'chess.resetGame', title: 'Reset game', run: resetGame },
+  { id: 'chess.toggleIllegal', title: 'Toggle illegal moves', run: toggleIllegal },
   { id: 'chess.closeGameOver', title: 'Close result', run: closeGameOver },
+  { id: 'chess.cancelSetup', title: 'Cancel match setup', run: closeMatchSetup },
 ]) {
   keymap.register(c);
 }
@@ -432,10 +472,11 @@ for (const b of [
 keymap.bind('chess', { key: 'p', cmd: 'chess.toggleAI' });
 keymap.bind('chess', { key: 'h', cmd: 'chess.toggleHistory' });
 keymap.bind('chess', { key: 'n', cmd: 'chess.resetGame' });
-keymap.bind('attract', { key: 'd', cmd: 'nav.demo' });
-keymap.bind('attract', { key: 'g', cmd: 'nav.chess' });
-keymap.bind('attract', { key: 'n', cmd: 'nav.chessGame' });
-keymap.bind('attract', { key: 'u', cmd: 'nav.ui' });
+keymap.bind('chess', { key: 'i', cmd: 'chess.toggleIllegal' });
+keymap.bind('prism', { key: 'd', cmd: 'nav.demo' });
+keymap.bind('prism', { key: 'g', cmd: 'nav.chess' });
+keymap.bind('prism', { key: 'n', cmd: 'nav.chessGame' });
+keymap.bind('prism', { key: 'u', cmd: 'nav.ui' });
 for (const layer of ['demo', 'logos', 'chess', 'ui']) keymap.bind(layer, { key: 'b', cmd: 'nav.back' });
 // Orbit/pan/reset bindings are shared by the chess turntables, the logos wisp
 // orbit, and the chess backdrop behind the UI playground (the commands resolve
@@ -458,6 +499,8 @@ for (const layer of ['chess', 'logos', 'ui']) {
 keymap.bind('promoting', { key: 'escape', cmd: 'chess.cancelPromotion' });
 // Game-over popup is modal too: Escape closes it (and the layer shadows 'q' etc.).
 keymap.bind('gameover', { key: 'escape', cmd: 'chess.closeGameOver' });
+// Match-setup modal: Escape cancels; the layer shadows stray keys.
+keymap.bind('setup', { key: 'escape', cmd: 'chess.cancelSetup' });
 
 // Point the keymap's base layer at the current mode (chess + chess-game share
 // the orbit bindings). The 'promoting' modal is pushed/popped separately.
@@ -508,8 +551,12 @@ function syncBar(): void {
   } else if (gameOver) {
     gameOver = null;
   }
+  if (mode !== 'chess-game') matchSetupOpen = false; // the picker only lives in the chess view
   const popGameOver = (): void => {
     if (keymap.hasContext('gameover')) keymap.popContext('gameover');
+  };
+  const popSetup = (): void => {
+    if (keymap.hasContext('setup')) keymap.popContext('setup');
   };
 
   const pc = promoColor();
@@ -543,8 +590,25 @@ function syncBar(): void {
       gameOverFocused = true;
       forceFrame = true;
     }
+  } else if (matchSetupOpen) {
+    if (keymap.hasContext('promoting')) keymap.popContext('promoting');
+    popGameOver();
+    promoFocused = false;
+    if (!keymap.hasContext('setup')) keymap.pushContext('setup', true);
+    ui.setRoot(buildMatchSetup({ x: 0, y: 0, w: cols, h: rows }, { onStart: confirmMatchSetup, onCancel: closeMatchSetup }), {
+      x: 0,
+      y: 0,
+      w: cols,
+      h: rows,
+    });
+    if (!setupFocused) {
+      ui.setFocus('setup-white-provider'); // start in White's provider list
+      setupFocused = true;
+      forceFrame = true;
+    }
   } else if (mode === 'ui') {
     popGameOver();
+    popSetup();
     // The component playground: a full-screen tree (centered panel + the standard
     // bar) laid out over the scene, so Tab/typing reach the mounted components.
     ui.setRoot(buildShowcase({ x: 0, y: 0, w: cols, h: rows }, buildBar('ui', renderMode, actions)), {
@@ -556,6 +620,7 @@ function syncBar(): void {
   } else if (mode === 'chess-game') {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     popGameOver();
+    popSetup();
     promoFocused = false;
     // Re-mount the move-history panel: a modal popup (game-over result, promotion)
     // replaces the whole root, dropping the Slot — which auto-unmounts the
@@ -565,14 +630,14 @@ function syncBar(): void {
     mountChessHud(ui);
     // Full-screen overlay: move-history panel (top-right) + commentary toast over
     // the board, with the standard bar beneath. Refresh the panel rows first.
-    refreshMoveHistory(chessGame.moves());
+    refreshMoveHistory(chessGame.moves(), chessGame.illegalFlags());
     const ai = !chessGame.isMatchActive()
       ? { label: 'play ai', active: false }
       : matchPaused
         ? { label: 'resume ai', active: true }
         : { label: 'pause ai', active: true };
     ui.setRoot(
-      buildChessGameRoot({ x: 0, y: 0, w: cols, h: rows }, buildBar(mode, renderMode, actions, ai), {
+      buildChessGameRoot({ x: 0, y: 0, w: cols, h: rows }, buildBar(mode, renderMode, actions, ai, illegalAllowed), {
         minimized: historyMinimized,
         onToggle: toggleHistory,
         onCopy: copyMoves,
@@ -584,6 +649,7 @@ function syncBar(): void {
   } else {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     popGameOver();
+    popSetup();
     promoFocused = false;
     ui.setRoot(buildBar(mode, renderMode, actions), barRegion());
   }
@@ -653,9 +719,9 @@ function onKeyImpl(ev: KeyEvent): void {
 function onMouseImpl(e: MouseEvent): void {
   hoverX = e.x; // track the cursor so scroll keys can target what's under it
   hoverY = e.y;
-  // Modal popups (promotion picker, game-over result): clicks/hover go to the
-  // popup; the board and camera are frozen until it's dismissed.
-  if (isPromoting() || gameOver) {
+  // Modal popups (promotion picker, game-over result, match setup): clicks/hover
+  // go to the popup; the board and camera are frozen until it's dismissed.
+  if (isPromoting() || gameOver || matchSetupOpen) {
     if (e.type === 'move') ui.hover(e.x, e.y);
     else if (e.type === 'down') ui.pointerDown(e.x, e.y);
     else if (e.type === 'up') ui.pointerUp();
@@ -719,7 +785,7 @@ function onMouseImpl(e: MouseEvent): void {
     }
     return;
   }
-  if (mode === 'attract' || mode === 'demo') {
+  if (mode === 'prism' || mode === 'demo') {
     if (e.type === 'move') ui.hover(e.x, e.y);
     else if (e.type === 'down') ui.pointerDown(e.x, e.y);
     else if (e.type === 'up') ui.pointerUp();
@@ -729,7 +795,7 @@ function onMouseImpl(e: MouseEvent): void {
 
 // Wrap the handlers so every input requests a render — essential for the
 // on-demand chess screens (idle until interacted with), harmless for the
-// continuously-live attract/demo/logos screens.
+// continuously-live prism/demo/logos screens.
 const parse = createInputParser({
   onKey(ev) {
     onKeyImpl(ev);
@@ -744,8 +810,8 @@ const parse = createInputParser({
 function tick(): void {
   t += DT;
 
-  if (mode === 'attract') {
-    attract.renderScene(target, t);
+  if (mode === 'prism') {
+    prism.renderScene(target, t);
     syncBar();
     r.write(UNIFIED ? ui.frameComposited((s) => presentSceneInto(s)) : presentScene() + ui.frame());
     return;
@@ -827,7 +893,7 @@ process.stdout.on('resize', () => {
 term.enter();
 process.stdin.on('data', parse);
 r.onFrame(tick);
-syncLive(); // attract starts live (continuously animating)
-syncContext(); // activate attract's key bindings from boot (no transition yet)
+syncLive(); // prism starts live (continuously animating)
+syncContext(); // activate prism's key bindings from boot (no transition yet)
 r.start();
 r.requestRender();

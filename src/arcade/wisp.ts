@@ -18,6 +18,7 @@ import {
   type Vec3,
   wispMaterial,
 } from '../engine/index.ts';
+import { BRAND_HUE } from './logos.ts';
 
 // Billboard half-extent in world units (a bit bigger than a chess piece).
 export const WISP_SIZE = 0.85;
@@ -162,6 +163,73 @@ export class Wisp {
 // Load a wisp from a logo PNG with a given brand tint, desync phase, and shared rng.
 export function loadWisp(pngPath: string, tint: Vec3, phase: number, rng: () => number): Wisp {
   return new Wisp({ tex: decodePng(readFileSync(pngPath)), tint, phase, rng });
+}
+
+// A readable light silver for logos with no usable hue (monochrome marks on a
+// neutral tile, e.g. a white "openai" mark on black).
+const NEUTRAL_TINT: Vec3 = { x: 205, y: 210, z: 222 };
+
+// Scale a color so its brightest channel is ~210 — dim brand colors read clearly
+// and over-bright ones are eased down, preserving hue.
+function normalizeTint(c: Vec3): Vec3 {
+  const max = Math.max(c.x, c.y, c.z);
+  if (max < 1) return { ...NEUTRAL_TINT };
+  const s = 210 / max;
+  return { x: Math.min(255, c.x * s), y: Math.min(255, c.y * s), z: Math.min(255, c.z * s) };
+}
+
+// Derive a provider's brand tint from its logo. Most gateway marks are brand-
+// colored, so a saturation-weighted average of the "mark" pixels (those differing
+// from the tile background) yields the hue. For a monochrome mark on a colored
+// tile (e.g. a white mark on deepseek's blue), fall back to the tile color. For a
+// monochrome mark on a neutral tile (white/black on black/white), use NEUTRAL.
+export function deriveTint(tex: Texture): Vec3 {
+  const bg = cornerColor(tex);
+  const { width: W, height: H, data: d } = tex;
+  let wr = 0;
+  let wg = 0;
+  let wb = 0;
+  let wt = 0;
+  let n = 0;
+  for (let i = 0; i < W * H; i++) {
+    const o = i * 4;
+    if (d[o + 3] < 128) continue; // transparent (logos are opaque, but guard)
+    const r = d[o];
+    const g = d[o + 1];
+    const b = d[o + 2];
+    if (Math.hypot(r - bg.x, g - bg.y, b - bg.z) < 60) continue; // background-ish → not the mark
+    n++;
+    const chroma = Math.max(r, g, b) - Math.min(r, g, b);
+    wr += r * chroma;
+    wg += g * chroma;
+    wb += b * chroma;
+    wt += chroma;
+  }
+  if (n === 0) return { ...NEUTRAL_TINT };
+  if (wt / n >= 22) return normalizeTint({ x: wr / wt, y: wg / wt, z: wb / wt }); // colored mark
+  const bgChroma = Math.max(bg.x, bg.y, bg.z) - Math.min(bg.x, bg.y, bg.z);
+  if (bgChroma >= 40) return normalizeTint(bg); // monochrome mark on a colored tile
+  return { ...NEUTRAL_TINT };
+}
+
+// The wisp tint for a provider: a hand-tuned BRAND_HUE override when present, else
+// derived from the baked logo. Cached (decodes each logo at most once).
+const tintCache = new Map<string, Vec3>();
+export function providerTint(provider: string): Vec3 {
+  const hit = tintCache.get(provider);
+  if (hit) return hit;
+  const hue = BRAND_HUE[provider];
+  let tint: Vec3;
+  if (hue) tint = { x: hue[0], y: hue[1], z: hue[2] };
+  else {
+    try {
+      tint = deriveTint(decodePng(readFileSync(`public/assets/logos/${provider}.png`)));
+    } catch {
+      tint = { ...NEUTRAL_TINT };
+    }
+  }
+  tintCache.set(provider, tint);
+  return tint;
 }
 
 // Small deterministic PRNG so ember motion is reproducible across snapshots.

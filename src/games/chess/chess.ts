@@ -7,13 +7,24 @@ import {
   BISHOP,
   BLACK,
   type Color,
-  type Move,
+  EMPTY,
+  FILES,
+  fileOf,
+  FLAG_CAPTURE,
+  FLAG_CASTLE_K,
+  FLAG_CASTLE_Q,
+  FLAG_PROMO,
+  KING,
   KNIGHT,
+  type Move,
   PAWN,
+  piece,
   pieceColor,
   PIECE_CHARS,
+  type PieceType,
   pieceType,
   QUEEN,
+  rankOf,
   ROOK,
   square,
   squareColor,
@@ -21,6 +32,11 @@ import {
 } from './types.ts';
 
 export const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+// Algebraic square ("e4") → 0x88 index, and SAN piece letters → PieceType — for
+// the loose (illegal-moves) parser.
+const algSquare = (a: string): number => square(a.charCodeAt(0) - 97, Number(a[1]) - 1);
+const CHAR_TYPE: Record<string, PieceType> = { n: KNIGHT, b: BISHOP, r: ROOK, q: QUEEN, k: KING, p: PAWN };
 
 // How a finished game ended (for a result/game-over display).
 export type ChessReason = 'checkmate' | 'stalemate' | 'fifty-move' | 'repetition' | 'insufficient-material';
@@ -122,6 +138,79 @@ export class ChessState implements GameState<Move> {
       }
     }
     return looseAmbiguous ? null : loose;
+  }
+
+  // Parse ANY move string into a concrete Move WITHOUT legality (the illegal-moves
+  // toggle): pull out the piece type + destination (+ disambiguation/promotion),
+  // pick a source piece of that type for the side to move, and relocate it there.
+  // Captures (even own pieces), moving into check, non-L knight hops, etc. are all
+  // allowed — applyMove just trusts the Move. null only when nothing can be parsed
+  // (no destination, or no such piece exists to move).
+  actionFromStringLoose(s: string): Move | null {
+    const color = this.board.turn;
+    const sq = this.board.squares;
+    const cleaned = s.trim().replace(/^\d+\.+\s*/, '').replace(/[+#!?]/g, '').trim();
+
+    // Castling → the side-to-move's standard king + rook squares.
+    const cnorm = cleaned.toLowerCase().replace(/0/g, 'o').replace(/[^o]/g, '');
+    if (cnorm === 'oo' || cnorm === 'ooo') {
+      const rank = color === WHITE ? 0 : 7;
+      const from = square(4, rank);
+      const kingside = cnorm === 'oo';
+      return {
+        from,
+        to: square(kingside ? 6 : 2, rank),
+        piece: sq[from] || piece(color, KING),
+        captured: EMPTY,
+        promotion: 0,
+        flags: kingside ? FLAG_CASTLE_K : FLAG_CASTLE_Q,
+      };
+    }
+
+    // UCI (e2e4, g1f3, e7e8q): move whatever sits on `from` to `to`.
+    const uci = cleaned.toLowerCase().match(/^([a-h][1-8])([a-h][1-8])([qrbnQRBN])?$/);
+    if (uci) {
+      const from = algSquare(uci[1]);
+      const to = algSquare(uci[2]);
+      if (!sq[from]) return null;
+      return this.looseMove(from, to, sq[from], uci[3] ? CHAR_TYPE[uci[3].toLowerCase()] : 0);
+    }
+
+    // SAN: [piece?][disambig file?][disambig rank?][x?][dest][=promo?].
+    const m = cleaned.match(/^([NBRQK])?([a-h])?([1-8])?x?([a-h][1-8])=?([NBRQK])?$/i);
+    if (!m) return null;
+    const type: PieceType = m[1] ? CHAR_TYPE[m[1].toLowerCase()] : PAWN;
+    const to = algSquare(m[4].toLowerCase());
+    const from = this.findSource(color, type, m[2]?.toLowerCase(), m[3], to);
+    if (from < 0) return null;
+    return this.looseMove(from, to, sq[from], m[5] ? CHAR_TYPE[m[5].toLowerCase()] : 0);
+  }
+
+  // A source piece of (color, type) for the side to move, narrowed by any
+  // disambiguation. Pawn moves without a file hint take the destination file (a
+  // push); otherwise the first matching piece wins (illegal mode is permissive).
+  private findSource(color: Color, type: PieceType, disFile: string | undefined, disRank: string | undefined, to: number): number {
+    const sq = this.board.squares;
+    for (let s = 0; s < 128; s++) {
+      if (s & 0x88) continue;
+      const p = sq[s];
+      if (!p || pieceColor(p) !== color || pieceType(p) !== type) continue;
+      if (disFile && FILES[fileOf(s)] !== disFile) continue;
+      if (disRank && rankOf(s) + 1 !== Number(disRank)) continue;
+      if (type === PAWN && !disFile && fileOf(s) !== fileOf(to)) continue;
+      return s;
+    }
+    return -1;
+  }
+
+  // Assemble a Move that relocates `moving` from→to (capturing whatever's on `to`,
+  // including an own piece), with promotion when given. No legality implied.
+  private looseMove(from: number, to: number, moving: number, promotion: PieceType | 0): Move {
+    const captured = this.board.squares[to];
+    let flags = 0;
+    if (captured) flags |= FLAG_CAPTURE;
+    if (promotion) flags |= FLAG_PROMO;
+    return { from, to, piece: moving, captured, promotion, flags };
   }
 
   toString(): string {

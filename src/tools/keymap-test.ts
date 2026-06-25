@@ -61,25 +61,25 @@ console.log('keymap precedence + modal:');
   km.bind('global', { key: 'q', cmd: 'app.quit' });
   km.bind('global', { key: 'escape', cmd: 'app.quit' });
   km.bind('global', { key: 'm', cmd: 'view.cycleRenderMode' });
-  km.bind('attract', { key: 'd', cmd: 'nav.demo' });
+  km.bind('prism', { key: 'd', cmd: 'nav.demo' });
   km.bind('chess', { key: 'r', cmd: 'chess.resetView' });
   km.bind('promoting', { key: 'escape', cmd: 'chess.cancelPromotion' });
 
   const send = (raw: string): boolean => km.handle(parseKeys(raw)[0]);
 
-  km.setBase('attract');
+  km.setBase('prism');
   fired.length = 0;
-  ok(send('d') && fired[0] === 'nav.demo', "attract: 'd' → nav.demo");
+  ok(send('d') && fired[0] === 'nav.demo', "prism: 'd' → nav.demo");
   fired.length = 0;
-  ok(send('m') && fired[0] === 'view.cycleRenderMode', "attract: 'm' → global cycle");
+  ok(send('m') && fired[0] === 'view.cycleRenderMode', "prism: 'm' → global cycle");
   fired.length = 0;
-  ok(send('r') === false && fired.length === 0, "attract: 'r' not bound → no command");
+  ok(send('r') === false && fired.length === 0, "prism: 'r' not bound → no command");
 
   km.setBase('chess');
   fired.length = 0;
   ok(send('r') && fired[0] === 'chess.resetView', "chess: 'r' → resetView");
   fired.length = 0;
-  ok(send('d') === false, "chess: 'd' (attract-only) not bound");
+  ok(send('d') === false, "chess: 'd' (prism-only) not bound");
 
   // Modal: 'promoting' shadows escape and swallows everything else.
   km.pushContext('promoting', true);

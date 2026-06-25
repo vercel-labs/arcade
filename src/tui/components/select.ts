@@ -35,6 +35,14 @@ export class Select implements Component {
     this.height = opts.height ?? opts.items.length;
   }
 
+  // Replace the list contents, resetting the selection + scroll to the top. Used
+  // when a dependent select repopulates (e.g. models after the provider changes).
+  setItems(items: string[]): void {
+    this.items = items;
+    this.index = 0;
+    this.scroll = 0;
+  }
+
   onFocus(): void {
     this.focused = true;
   }

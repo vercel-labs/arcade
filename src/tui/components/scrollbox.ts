@@ -11,9 +11,14 @@ import { Box, Text } from '../nodes.ts';
 import { defaultTheme } from '../theme.ts';
 import type { LayoutBox, Node, PointerHit } from '../types.ts';
 
+// A row is either a plain string (rendered as a single fg-colored line) or a
+// pre-built Node, letting a caller mix colors within a row (e.g. the chess move
+// panel paints illegal moves red). Node rows are responsible for their own width.
+export type Row = string | Node;
+
 export interface ScrollBoxOpts {
   id: string;
-  rows: string[];
+  rows: Row[];
   height: number; // visible rows
   width?: number;
 }
@@ -25,7 +30,7 @@ const WHEEL_STEP = 3; // rows scrolled per wheel notch (1 felt sluggish)
 export class ScrollBox implements Component {
   id: string;
   scroll = 0;
-  rows: string[];
+  rows: Row[];
   private height: number;
   private opts: ScrollBoxOpts;
 
@@ -92,7 +97,8 @@ export class ScrollBox implements Component {
     const end = Math.min(this.rows.length, this.scroll + this.height);
     const lines: Node[] = [];
     for (let i = this.scroll; i < end; i++) {
-      lines.push(Text({ text: this.rows[i], style: { color: 'fg', width: this.opts.width } }));
+      const row = this.rows[i];
+      lines.push(typeof row === 'string' ? Text({ text: row, style: { color: 'fg', width: this.opts.width } }) : row);
     }
     return {
       ...Box(

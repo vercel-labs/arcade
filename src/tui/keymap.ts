@@ -1,7 +1,7 @@
 // A declarative, layered keymap over named commands. Instead of a per-screen
 // if/else on key strings, an action is registered once as a Command with a
 // stable id, and keys are bound to that id within a named layer (a "context"
-// like 'attract' or 'chess'). Contexts form a stack; the topmost layer that
+// like 'prism' or 'chess'). Contexts form a stack; the topmost layer that
 // binds a key wins, so a modal context ('promoting') can shadow the screen and
 // the global layer beneath it.
 //

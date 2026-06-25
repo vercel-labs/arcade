@@ -40,7 +40,7 @@ interface P2 {
   y: number;
 }
 
-export class AttractScene {
+export class PrismScene {
   // Draws the prism + beam + rainbow into the (supersampled) render target.
   renderScene(target: RenderTarget, t: number): void {
     target.clear(0, 0, 0);

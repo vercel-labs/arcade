@@ -13,12 +13,18 @@ import { type MatchScene, runMatch } from '../ai/match.ts';
 import { ModelPlayer } from '../ai/model-player.ts';
 import type { Player } from '../ai/player.ts';
 import type { Move } from '../games/chess/types.ts';
-import { RenderTarget, stringWidth } from '../engine/index.ts';
-import { Screen } from '../tui/index.ts';
+import { readFileSync } from 'node:fs';
+import { decodePng, RenderTarget, stringWidth } from '../engine/index.ts';
+import { Screen, Select } from '../tui/index.ts';
 import { ChessGameScene } from '../arcade/chess-game.ts';
 import { buildBar, buildGameOver, type BarActions } from '../arcade/bars.ts';
 import { buildChessGameRoot, mountChessHud, moveHistory, movesToPgn, refreshMoveHistory } from '../arcade/chess-hud.ts';
-import { BLACK } from '../games/chess/types.ts';
+import { BISHOP, BLACK, FLAG_CAPTURE, KING, pieceColor, pieceType, QUEEN, ROOK, square, WHITE } from '../games/chess/types.ts';
+import { modelsFor, providers } from '../arcade/models.ts';
+import { matchSetupReady, matchSetupSelection, mountMatchSetup } from '../arcade/match-setup.ts';
+import { deriveTint, providerTint } from '../arcade/wisp.ts';
+import { BRAND_HUE } from '../arcade/logos.ts';
+import type { KeyEvent } from '../platform/input.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -63,6 +69,24 @@ function mockModel(replies: { move: string; rationale: string }[]): MockLanguage
       // Minimal valid v3 generate result; cast for the verbose nested usage shape.
       return {
         content: [{ type: 'text', text: JSON.stringify(reply) }],
+        finishReason: { unified: 'stop', raw: undefined },
+        usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+        warnings: [],
+      } as unknown as GenResult;
+    },
+  });
+}
+
+// A mock that emits RAW text (not JSON) — used to exercise ModelPlayer's plain-
+// text fallback: structured Output.object parsing fails on prose, so it drops to
+// the text path and soft-parses the move.
+function mockTextModel(texts: string[]): MockLanguageModelV3 {
+  let i = 0;
+  return new MockLanguageModelV3({
+    doGenerate: async () => {
+      const text = texts[Math.min(i++, texts.length - 1)];
+      return {
+        content: [{ type: 'text', text }],
         finishReason: { unified: 'stop', raw: undefined },
         usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
         warnings: [],
@@ -126,6 +150,20 @@ async function main(): Promise<void> {
     check('ModelPlayer falls back to a legal move after exhausting retries', legal);
   }
 
+  // 3c. Text fallback: a model that can't emit the JSON schema (structured output
+  //     errors on prose) still works — ModelPlayer drops to plain text and soft-
+  //     parses the move, both from an explicit "MOVE:" line and from bare prose.
+  {
+    const state = new ChessState();
+    const marked = new ModelPlayer<Move>({ model: mockTextModel(['Develop the knight.\nMOVE: Nf3']), name: 'mock-text', gameName: 'chess' });
+    const a1 = await marked.chooseAction(state);
+    check('text fallback parses an explicit MOVE: line', state.actionToString(a1.action) === 'Nf3', state.actionToString(a1.action));
+
+    const prose = new ModelPlayer<Move>({ model: mockTextModel(["I'll play e4 to take the center."]), name: 'mock-prose', gameName: 'chess' });
+    const a2 = await prose.chooseAction(state);
+    check('text fallback soft-parses a move from bare prose', state.actionToString(a2.action) === 'e4', state.actionToString(a2.action));
+  }
+
   // 3b. actionFromString soft-matches mangled-but-legal SAN (the common reason a
   //     model's legal move was wrongly rejected → fallback). Exact match still
   //     wins; ambiguous under-specified input stays null so the caller re-prompts.
@@ -158,7 +196,7 @@ async function main(): Promise<void> {
   //    move-history ScrollBox expands and the commentary toast renders.
   {
     const noop = (): void => {};
-    const actions: BarActions = { chessGame: noop, demo: noop, logos: noop, ui: noop, back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop };
+    const actions: BarActions = { chessGame: noop, demo: noop, logos: noop, ui: noop, back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop };
     const ui = new Screen(80, 30);
     mountChessHud(ui);
     refreshMoveHistory(['e4', 'e5', 'Nf3', 'Nc6']);
@@ -208,11 +246,37 @@ async function main(): Promise<void> {
     check('re-mount restores the move list after a popup → close cycle', afterClose.includes('e4') && afterClose.includes('Nf3'));
   }
 
+  // 4b. Illegal-toggle moves render RED in the move panel. The panel is given a
+  //     parallel illegal[] flag array; the flagged ply's SAN must paint reddish
+  //     while legal moves stay light, and the red must vanish when nothing's flagged.
+  {
+    const noop = (): void => {};
+    const actions: BarActions = { chessGame: noop, demo: noop, logos: noop, ui: noop, back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop };
+    const ui = new Screen(80, 30);
+    mountChessHud(ui);
+    const render = (): void =>
+      ui.setRoot(
+        buildChessGameRoot({ x: 0, y: 0, w: 80, h: 30 }, buildBar('chess-game', 'ascii', actions), { minimized: false, onToggle: noop, onCopy: noop, commentary: null, t: 0 }),
+        { x: 0, y: 0, w: 80, h: 30 },
+      );
+    // The illegal tint ([226,92,86]) emits a truecolor fg SGR (38;2;226;92;86) in
+    // the composited frame; legal moves use the light fg, so the red code is absent.
+    const RED_SGR = '38;2;226;92;86';
+    refreshMoveHistory(['e4', 'Qxf7'], [false, true]); // black's Qxf7 is the illegal one
+    render();
+    const redFrame = ui.frameComposited(() => {});
+    check('an illegal move paints red in the panel', redFrame.includes(RED_SGR) && redFrame.includes('Qxf7'));
+    refreshMoveHistory(['e4', 'e5'], [false, false]); // all legal → no red
+    render();
+    const cleanFrame = ui.frameComposited(() => {});
+    check('legal moves never paint red', !cleanFrame.includes(RED_SGR));
+  }
+
   // 7b. A scroll key (↑/↓) over the hovered move panel scrolls it without focus,
   //     and the wheel step moves several rows per notch (snappier than 1).
   {
     const noop = (): void => {};
-    const actions: BarActions = { chessGame: noop, demo: noop, logos: noop, ui: noop, back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop };
+    const actions: BarActions = { chessGame: noop, demo: noop, logos: noop, ui: noop, back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop };
     const ui = new Screen(80, 30);
     mountChessHud(ui);
     refreshMoveHistory(Array.from({ length: 60 }, (_, i) => (i % 2 === 0 ? 'Nf3' : 'Nc6'))); // 30 rows → scrollable, snapped to bottom
@@ -284,6 +348,36 @@ async function main(): Promise<void> {
       scene.moves().length === 0 && scene.state().legalActions().length === 20 && !scene.isMatchActive(),
       `moves=${scene.moves().length} legal=${scene.state().legalActions().length} match=${scene.isMatchActive()}`,
     );
+  }
+
+  // 5b. Illegal-toggle moves: a loosely-parsed illegal move played via playMove is
+  //     logged AND flagged illegal (illegalFlags() parallel to moves()), while a
+  //     legal move flags false. An illegal CAPTURE still animates the take — the
+  //     captured piece leaves the board (its square ends empty after settle).
+  {
+    const scene = new ChessGameScene();
+    scene.beginMatch();
+    const target = new RenderTarget(120, 80);
+    const pump = (): void => {
+      for (let i = 0; i < 20; i++) scene.renderScene(target, i / 30);
+    };
+    const playLoose = (san: string): void => {
+      const m = scene.state().actionFromStringLoose(san);
+      if (!m) throw new Error(`unparseable in test: ${san}`);
+      scene.playMove(m);
+      pump();
+    };
+    playLoose('e4'); // legal
+    playLoose('Qd6'); // white queen teleports d1→d6 (no rules) — illegal
+    const flags = scene.illegalFlags();
+    check('illegalFlags() flags an illegal-toggle move (not the legal one)', scene.moves().length === 2 && flags[0] === false && flags[1] === true, `moves=[${scene.moves()}] flags=[${flags}]`);
+
+    // Illegal capture animates the take: queen d6 → e7 grabs black's e7 pawn.
+    const e7 = square(4, 6);
+    const before = scene.state().board.squares[e7];
+    playLoose('Qxe7'); // illegal capture of the e7 pawn
+    const after = scene.state().board.squares[e7];
+    check('an illegal capture still removes the captured piece (take animates)', !!before && pieceType(before) === 1 /* PAWN */ && pieceType(after) === QUEEN, `before=${before} after=${after}`);
   }
 
   // 6. ChessState.result() reports winner + reason at terminal states.
@@ -393,6 +487,99 @@ async function main(): Promise<void> {
     const quiet = new ModelPlayer<Move>({ model: capture, gameName: 'chess' }); // banter off (default)
     await quiet.chooseAction(new ChessState(), { opponentSaid: 'I will crush you' });
     check('banter off: opponent line kept out of the decision prompt', !lastPrompt.includes('I will crush you'));
+  }
+
+  // 10. Match-setup picker: Start gating + provider→model clearing. Drive the
+  //     real Select instances (via the Screen registry) the way clicks/Enter would.
+  {
+    const ui = new Screen(120, 40);
+    mountMatchSetup(ui);
+    const enter = { name: 'enter', raw: '', sequence: '', ctrl: false, shift: false, meta: false, eventType: 'press' } as KeyEvent;
+    const wp = ui.component('setup-white-provider') as Select;
+    const wm = ui.component('setup-white-model') as Select;
+    const bm = ui.component('setup-black-model') as Select;
+    const provs = providers();
+    const commit = (s: Select, i: number): void => {
+      s.index = i;
+      s.onKey?.(enter); // Enter commits → onSelect
+    };
+
+    check('setup: Start disabled until both sides have a model', !matchSetupReady());
+    commit(wm, 0); // White picks a model
+    check('setup: one side chosen is still not ready', !matchSetupReady());
+    commit(bm, 0); // Black picks a model
+    check('setup: ready once both sides have a model', matchSetupReady() && matchSetupSelection() !== null);
+
+    // Pick a DIFFERENT provider for White → clears White's model → not ready.
+    const otherProv = provs.findIndex((p) => p.slug !== 'anthropic');
+    commit(wp, otherProv);
+    check('setup: changing provider clears that side’s model', !matchSetupReady());
+    // Re-pick a model under the new provider → ready again.
+    commit(wm, 0);
+    check('setup: re-picking a model restores ready', matchSetupReady());
+    // Picking a different model under the SAME provider keeps it ready.
+    if ((ui.component('setup-white-model') as Select).items.length > 1) commit(wm, 1);
+    check('setup: switching model under same provider stays ready', matchSetupReady());
+  }
+
+  // 11. Brand tints: colored marks derive a hue; the tuned 4 use their override.
+  {
+    const mistral = deriveTint(decodePng(readFileSync('public/assets/logos/mistral.png')));
+    check('deriveTint: mistral reads orange (r highest, has chroma)', mistral.x > 150 && mistral.x > mistral.z + 40, JSON.stringify(mistral));
+    const oa = providerTint('openai');
+    check('providerTint: openai uses the BRAND_HUE override', oa.x === BRAND_HUE.openai[0] && oa.y === BRAND_HUE.openai[1], JSON.stringify(oa));
+    const mi = providerTint('minimax'); // no override → derived (red-ish)
+    check('providerTint: minimax derives a non-grey hue', Math.max(mi.x, mi.y, mi.z) - Math.min(mi.x, mi.y, mi.z) > 30, JSON.stringify(mi));
+  }
+
+  // 12. Unsupported providers are hidden from the picker but still resolvable by
+  //     name (so the probe can re-test them).
+  {
+    const slugs = providers().map((p) => p.slug);
+    const hidden = ['arcee-ai', 'meituan', 'sakana'];
+    check('picker hides the unsupported providers', hidden.every((s) => !slugs.includes(s)), slugs.join(','));
+    check('hidden providers still resolve by name', modelsFor('arcee-ai').length > 0);
+  }
+
+  // 13. Illegal-moves loose parse: any piece → any square, no rules.
+  {
+    const f7 = square(5, 6);
+    const e2 = square(4, 1);
+    const a5 = square(0, 4);
+
+    const cap = new ChessState();
+    const bxf7 = cap.actionFromStringLoose('Bxf7'); // illegal from start, but parseable
+    check('loose: Bxf7 → capture move to f7', bxf7 !== null && bxf7.to === f7 && (bxf7.flags & FLAG_CAPTURE) !== 0, JSON.stringify(bxf7 && { to: bxf7.to, flags: bxf7.flags }));
+    cap.applyAction(bxf7!);
+    check('loose: applying it relocates a white bishop to f7', pieceType(cap.board.squares[f7]) === BISHOP && pieceColor(cap.board.squares[f7]) === WHITE);
+
+    const own = new ChessState();
+    own.applyAction(own.actionFromStringLoose('Ke2')!); // king "captures" its own pawn
+    check('loose: a piece can capture its own (Ke2 onto the e-pawn)', pieceType(own.board.squares[e2]) === KING);
+
+    const uci = new ChessState();
+    uci.applyAction(uci.actionFromStringLoose('a1a5')!); // rook teleports through its own pawn
+    check('loose: UCI a1a5 teleports the rook to a5', pieceType(uci.board.squares[a5]) === ROOK && uci.board.squares[square(0, 0)] === 0);
+
+    check('loose: unparseable input is null', new ChessState().actionFromStringLoose('hello there') === null);
+  }
+
+  // 14. ModelPlayer honours the allowIllegal toggle; legal mode lists legal moves
+  //     on the retry prompt.
+  {
+    const state = new ChessState();
+    const f7 = square(5, 6);
+    const loose = new ModelPlayer<Move>({ model: mockModel([{ move: 'Bxf7', rationale: 'aggressive' }]), allowIllegal: () => true, gameName: 'chess' });
+    const la = await loose.chooseAction(state);
+    check('allowIllegal: an illegal move is accepted as-is', la.action.to === f7, String(la.action.to));
+
+    const strictModel = mockModel([{ move: 'Bxf7', rationale: 'aggressive' }]); // always illegal
+    const strict = new ModelPlayer<Move>({ model: strictModel, allowIllegal: () => false, maxRetries: 1, gameName: 'chess' });
+    const sa = await strict.chooseAction(state);
+    const legalMove = state.legalActions().some((m) => m.from === sa.action.from && m.to === sa.action.to);
+    check('legal mode: rejects the illegal move and falls back to a legal one', legalMove);
+    const retryPrompt = JSON.stringify(strictModel.doGenerateCalls[1] ?? {});
+    check('legal mode: the retry prompt lists the legal moves', /legal moves are/i.test(retryPrompt));
   }
 
   console.log(failures === 0 ? '\nmatch: all checks pass ✓' : `\nmatch: ${failures} FAILED ✗`);

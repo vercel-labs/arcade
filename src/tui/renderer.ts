@@ -1,6 +1,6 @@
 // The render-on-demand loop. The loop ticks at targetFps, but a tick only does
 // render work when either (a) someone holds a "live" lease — a continuously
-// animating screen (attract prism, dodge game, a running chess animation), or
+// animating screen (the prism, a running chess animation), or
 // (b) a one-off render was requested (an interaction changed state). An idle
 // screen (e.g. a static chess turntable) does no render or write work at all,
 // while animations stay naturally capped at targetFps.

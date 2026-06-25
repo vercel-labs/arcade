@@ -1,6 +1,6 @@
 # Arcade — agent guide
 
-A terminal-rendered ASCII arcade: 3D games and an animated attract screen drawn with
+A terminal-rendered ASCII arcade: 3D games and an animated prism screen drawn with
 truecolor half-blocks in the terminal. **Pure TypeScript, no GPU, no native deps.** Run
 with `tsx`/Node and plain `pnpm`.
 
@@ -12,8 +12,8 @@ view it. **See [docs/verifying-output.md](docs/verifying-output.md).** Quick ver
 
 ```bash
 pnpm snapshot 140 50 0.7
-sips -s format png .snapshots/attract.ppm --out .snapshots/attract.png -Z 1000
-# then Read .snapshots/attract.png
+sips -s format png .snapshots/prism.ppm --out .snapshots/prism.png -Z 1000
+# then Read .snapshots/prism.png
 ```
 
 (`.claude/settings.json` already allowlists these commands.)
@@ -26,7 +26,7 @@ src/
   tui/        reusable retained-mode UI library — flexbox layout, Surface compositing
   platform/   terminal control (alt screen, raw mode, SGR mouse) + input parsing
   games/      game harness (Game/State + registry) + the chess rules engine
-  arcade/     THE app: orchestrator (main.ts) + chess screens + attract/logos scenes
+  arcade/     THE app: orchestrator (main.ts) + chess screens + prism/logos scenes
   demo/       engine cube demo
   tools/      snapshot.ts (render a frame to an image)
 ```
@@ -39,9 +39,9 @@ game). Inside a library, modules import each other directly, not through the bar
 
 ## Commands
 
-- `pnpm dev` — run the arcade (attract screen → chess / demo / logos)
+- `pnpm dev` — run the arcade (prism screen → chess / demo / logos)
 - `pnpm demo` — run the engine cube demo
-- `pnpm snapshot [cols] [rows] [t]` — render a frame to `.snapshots/attract.ppm`
+- `pnpm snapshot [cols] [rows] [t]` — render a frame to `.snapshots/prism.ppm`
 - `pnpm type-check` — `tsc --noEmit`
 
 ## Conventions

@@ -20,15 +20,15 @@ render one frame headlessly and write it to an image. `src/tools/snapshot.ts` ru
 faithfully represents what the terminal shows.
 
 ```bash
-# 1. Render a frame of the attract scene to a PPM.
+# 1. Render a frame of the prism scene to a PPM.
 #    args: [cols] [rows] [t]  — t is the animation time in seconds.
 pnpm snapshot 140 50 0.7
 
 # 2. Convert PPM -> PNG (macOS built-in `sips`; -Z upscales for legibility).
-sips -s format png .snapshots/attract.ppm --out .snapshots/attract.png -Z 1000
+sips -s format png .snapshots/prism.ppm --out .snapshots/prism.png -Z 1000
 
 # 3. View it — use the Read tool on the absolute path:
-#    /Users/<you>/Repos/arcade/.snapshots/attract.png
+#    /Users/<you>/Repos/arcade/.snapshots/prism.png
 ```
 
 The Read tool renders PNGs visually, so after step 3 you can see colors, glow, the
@@ -57,7 +57,7 @@ and `sips`, so these run without a prompt.
 
 ## What the live terminal experience is
 
-`pnpm dev` boots the **attract screen** (a Dark Side of the Moon homage: a rotating glass
+`pnpm dev` boots the **prism screen** (a Dark Side of the Moon homage: a rotating glass
 prism splitting a white beam into a rainbow on black); from the button bar you jump to the
 **chess** screens, the engine **demo**, or the **logos** showcase. It's drawn with the
 upper half-block `▀` at 24-bit color, so it needs a **truecolor terminal** (iTerm2,

@@ -15,7 +15,7 @@ pnpm install
 pnpm dev
 ```
 
-You boot into an animated attract screen (a _Dark Side of the Moon_ homage: a rotating glass prism splitting a beam into a rainbow). From the bottom button bar you can jump to:
+You boot into an animated prism screen (a _Dark Side of the Moon_ homage: a rotating glass prism splitting a beam into a rainbow). From the bottom button bar you can jump to:
 
 - **Chess Game**: the playable 3D board (see below).
 - **Chess**: a turntable showcase of the piece models.
@@ -39,7 +39,7 @@ src/
               hover/focus/press state, hit-testing, paints to a Surface
   platform/   terminal control (alt-screen, raw mode, SGR mouse) + input parsing
   games/      game harness (Game/State + registry) and the chess rules engine
-  arcade/     THE app: orchestrator, attract scene, chess screens, logos showcase
+  arcade/     THE app: orchestrator, prism scene, chess screens, logos showcase
   demo/       engine cube demo
   tools/      snapshots, perft, mesh slicing/decimation, benchmarks
 ```

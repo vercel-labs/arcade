@@ -43,8 +43,7 @@ import {
   WHITE,
 } from '../games/chess/types.ts';
 import { OrbitCamera } from './orbit.ts';
-import { BRAND_HUE } from './logos.ts';
-import { loadWisp, mulberry32, type Wisp } from './wisp.ts';
+import { loadWisp, mulberry32, providerTint, type Wisp } from './wisp.ts';
 
 const PIECE_NAMES = ['pawn', 'queen', 'bishop', 'rook', 'king', 'knight'];
 
@@ -172,6 +171,9 @@ export class ChessGameScene {
   private matchPaused = false;
   private settleResolve: (() => void) | null = null;
   private moveLog: string[] = [];
+  // Parallel to `moveLog`: whether each played move was illegal at the time (only
+  // possible under the illegal-moves toggle). The move panel paints these red.
+  private moveIllegal: boolean[] = [];
   // HUD: a provider wisp per side (top corners), pulsing the side to move. Loaded
   // per match from the model slugs. `wispRng` seeds their ember motion; `lastT`
   // tracks frame delta for the pulse animation.
@@ -278,6 +280,19 @@ export class ChessGameScene {
     return this.moveLog;
   }
 
+  // Per-move illegal flags, parallel to moves() (the panel paints illegal moves red).
+  illegalFlags(): readonly boolean[] {
+    return this.moveIllegal;
+  }
+
+  // Was `move` a legal move on the current (pre-move) board? Matched on from/to
+  // (and promotion piece). Used to flag illegal-toggle moves for the panel.
+  private isLegalNow(move: Move): boolean {
+    return this.game
+      .legalActions()
+      .some((m) => m.from === move.from && m.to === move.to && (m.promotion || 0) === (move.promotion || 0));
+  }
+
   isMatchActive(): boolean {
     return this.matchActive;
   }
@@ -319,6 +334,7 @@ export class ChessGameScene {
     this.whiteJail = [];
     this.blackJail = [];
     this.moveLog = [];
+    this.moveIllegal = [];
     this.deselect();
     this.anim = null;
     this.pendingPromo = null;
@@ -346,13 +362,12 @@ export class ChessGameScene {
     this.matchActive = false;
   }
 
-  // Load a provider's HUD wisp, or null if we have no logo/tint for it (only the
-  // four baked providers render; the match still plays without a wisp).
+  // Load a provider's HUD wisp (tinted by its brand color, derived from the logo
+  // when not hand-tuned), or null if there's no baked logo for it — the match
+  // still plays, just without that side's wisp.
   private loadHudWisp(provider: string, phase: number): Wisp | null {
-    const hue = BRAND_HUE[provider];
-    if (!hue) return null;
     try {
-      return loadWisp(`public/assets/logos/${provider}.png`, { x: hue[0], y: hue[1], z: hue[2] }, phase, this.wispRng);
+      return loadWisp(`public/assets/logos/${provider}.png`, providerTint(provider), phase, this.wispRng);
     } catch {
       return null;
     }
@@ -615,6 +630,7 @@ export class ChessGameScene {
         A.phase++;
         if (A.phase >= A.phases) {
           this.moveLog.push(this.game.actionToString(A.move)); // SAN needs the pre-move board
+          this.moveIllegal.push(!this.isLegalNow(A.move)); // legality vs the pre-move board
           this.game.applyAction(A.move);
           if (A.jail) (A.jail.captor === WHITE ? this.whiteJail : this.blackJail).push({ type: A.jail.type, color: A.jail.color });
           this.anim = null;

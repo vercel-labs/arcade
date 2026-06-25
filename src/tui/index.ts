@@ -7,7 +7,7 @@ export { ASCIIFont, asciiFontLines } from './components/asciifont.ts';
 export { FrameBuffer, type FrameDraw } from './components/framebuffer.ts';
 export { Input, type InputOpts } from './components/input.ts';
 export { Select, type SelectOpts } from './components/select.ts';
-export { ScrollBox, type ScrollBoxOpts } from './components/scrollbox.ts';
+export { type Row, ScrollBox, type ScrollBoxOpts } from './components/scrollbox.ts';
 export { Slider, type SliderOpts } from './components/slider.ts';
 export { type Component, Registry } from './component.ts';
 export { Screen } from './screen.ts';
