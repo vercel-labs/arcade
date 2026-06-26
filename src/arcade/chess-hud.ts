@@ -11,12 +11,14 @@
 import { Box, Button, type Row, ScrollBox, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../tui/index.ts';
 import type { RGB } from '../engine/index.ts';
 
-const HISTORY_HEIGHT = 18; // visible move rows in the panel viewport
+const HISTORY_HEIGHT = 18; // MAX visible move rows — the panel grows to this, then scrolls
 const HISTORY_WIDTH = 22; // inner content width — header + list share it (fixed)
 const ILLEGAL: RGB = [226, 92, 86]; // a move played under the illegal-moves toggle
 
-// Long-lived so scroll position persists across frames/visits.
-export const moveHistory = new ScrollBox({ id: 'chess-history', width: HISTORY_WIDTH, height: HISTORY_HEIGHT, rows: [] });
+// Long-lived so scroll position persists across frames/visits. autoHeight: the
+// panel is only as tall as the moves played (tiny/empty at game start) and grows
+// until it hits HISTORY_HEIGHT, where the scrollbar takes over.
+export const moveHistory = new ScrollBox({ id: 'chess-history', width: HISTORY_WIDTH, height: HISTORY_HEIGHT, rows: [], autoHeight: true });
 
 export function mountChessHud(ui: Screen): void {
   ui.mount(moveHistory);

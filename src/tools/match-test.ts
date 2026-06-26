@@ -15,7 +15,7 @@ import type { Player } from '../ai/player.ts';
 import type { Move } from '../games/chess/types.ts';
 import { readFileSync } from 'node:fs';
 import { decodePng, RenderTarget, stringWidth } from '../engine/index.ts';
-import { Screen, Select } from '../tui/index.ts';
+import { Dropdown, Screen } from '../tui/index.ts';
 import { ChessGameScene } from '../arcade/chess-game.ts';
 import { buildBar, buildGameOver, type BarActions } from '../arcade/bars.ts';
 import { buildChessGameRoot, mountChessHud, moveHistory, movesToPgn, refreshMoveHistory } from '../arcade/chess-hud.ts';
@@ -490,36 +490,39 @@ async function main(): Promise<void> {
   }
 
   // 10. Match-setup picker: Start gating + provider→model clearing. Drive the
-  //     real Select instances (via the Screen registry) the way clicks/Enter would.
+  //     real Dropdown instances (via the Screen registry) the way clicks/Enter would.
   {
     const ui = new Screen(120, 40);
     mountMatchSetup(ui);
-    const enter = { name: 'enter', raw: '', sequence: '', ctrl: false, shift: false, meta: false, eventType: 'press' } as KeyEvent;
-    const wp = ui.component('setup-white-provider') as Select;
-    const wm = ui.component('setup-white-model') as Select;
-    const bm = ui.component('setup-black-model') as Select;
+    const wp = ui.component('setup-white-provider') as Dropdown;
+    const wm = ui.component('setup-white-model') as Dropdown;
     const provs = providers();
-    const commit = (s: Select, i: number): void => {
-      s.index = i;
-      s.onKey?.(enter); // Enter commits → onSelect
-    };
+    const commit = (s: Dropdown, i: number): void => s.pick(i); // commit a choice (Enter/click path)
 
-    check('setup: Start disabled until both sides have a model', !matchSetupReady());
-    commit(wm, 0); // White picks a model
-    check('setup: one side chosen is still not ready', !matchSetupReady());
-    commit(bm, 0); // Black picks a model
-    check('setup: ready once both sides have a model', matchSetupReady() && matchSetupSelection() !== null);
+    // TEMP demo default pre-commits both models (see match-setup.ts), so the modal
+    // opens ready. (When that's reverted, both start null and this is !ready.)
+    check('setup: opens ready (both models pre-committed for the demo)', matchSetupReady() && matchSetupSelection() !== null);
 
-    // Pick a DIFFERENT provider for White → clears White's model → not ready.
+    // Changing a provider clears THAT side's model → not ready until re-picked.
     const otherProv = provs.findIndex((p) => p.slug !== 'anthropic');
     commit(wp, otherProv);
     check('setup: changing provider clears that side’s model', !matchSetupReady());
-    // Re-pick a model under the new provider → ready again.
-    commit(wm, 0);
-    check('setup: re-picking a model restores ready', matchSetupReady());
+    commit(wm, 0); // re-pick a model under the new provider
+    check('setup: re-picking a model restores ready', matchSetupReady() && matchSetupSelection() !== null);
     // Picking a different model under the SAME provider keeps it ready.
-    if ((ui.component('setup-white-model') as Select).items.length > 1) commit(wm, 1);
+    if ((ui.component('setup-white-model') as Dropdown).items.length > 1) commit(wm, 1);
     check('setup: switching model under same provider stays ready', matchSetupReady());
+
+    // Open/close behavior: a closed dropdown opens on Enter; Esc closes it (so the
+    // modal's Esc-cancel only fires when no list is open); Enter then commits.
+    const enter = { name: 'enter', raw: '', sequence: '', ctrl: false, shift: false, meta: false, eventType: 'press' } as KeyEvent;
+    const esc = { name: 'escape', raw: '', sequence: '', ctrl: false, shift: false, meta: false, eventType: 'press' } as KeyEvent;
+    const fresh = ui.component('setup-black-provider') as Dropdown;
+    const openConsumed = fresh.onKey?.(enter);
+    check('dropdown: Enter opens the list (consumed)', openConsumed === true && fresh.open);
+    const escConsumed = fresh.onKey?.(esc);
+    check('dropdown: Esc closes an open list (consumed, shadows modal cancel)', escConsumed === true && !fresh.open);
+    check('dropdown: Esc on a CLOSED list is not consumed (modal handles it)', fresh.onKey?.(esc) === false);
   }
 
   // 11. Brand tints: colored marks derive a hue; the tuned 4 use their override.

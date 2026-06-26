@@ -27,16 +27,23 @@ function isSurface(n: Node): boolean {
 
 // Topmost node matching `pred` that contains the point, or null. Later nodes in
 // preorder paint on top, so the last match wins. A clipped node is only hit where
-// it's actually visible (inside its clip rect).
+// it's actually visible (inside its clip rect). Overlay subtrees paint above the
+// whole tree (see paint.ts), so any match inside one beats every non-overlay
+// match — mirrored here by tracking the two separately and preferring the overlay.
 function deepest(root: Node, x: number, y: number, pred: (n: Node) => boolean): Node | null {
-  let found: Node | null = null;
-  const walk = (n: Node): void => {
+  let base: Node | null = null;
+  let over: Node | null = null;
+  const walk = (n: Node, inOverlay: boolean): void => {
+    const here = inOverlay || n.overlay === true;
     const visible = n.layout && contains(n.layout, x, y) && (!n.clip || contains(n.clip, x, y));
-    if (visible && pred(n)) found = n;
-    for (const c of n.children ?? []) walk(c);
+    if (visible && pred(n)) {
+      if (here) over = n;
+      else base = n;
+    }
+    for (const c of n.children ?? []) walk(c, here);
   };
-  walk(root);
-  return found;
+  walk(root, false);
+  return over ?? base;
 }
 
 // Topmost INTERACTIVE node at the point (the routing target for onClick/onMouse/

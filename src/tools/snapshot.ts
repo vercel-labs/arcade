@@ -16,8 +16,9 @@ import { buildBar, buildGameOver, buildPromotion, type Mode } from '../arcade/ba
 import { buildShowcase, mountShowcase } from '../arcade/ui-showcase.ts';
 import { buildChessGameRoot, mountChessHud, refreshMoveHistory } from '../arcade/chess-hud.ts';
 import { buildMatchSetup, mountMatchSetup } from '../arcade/match-setup.ts';
+import { providers } from '../arcade/models.ts';
 import type { Color } from '../games/chess/types.ts';
-import { layout, paint, Screen, Select, type PaintState } from '../tui/index.ts';
+import { Dropdown, layout, paint, Screen, type PaintState } from '../tui/index.ts';
 
 type Rgb = [number, number, number];
 // One terminal cell rasterizes to CW×CH pixels; the 8x8 glyph stamps top-left.
@@ -297,13 +298,16 @@ function chessOverlaySnapshot(): void {
 
   const screen = new Screen(cols, rows);
   mountChessHud(screen);
-  // 'illegal' shows a game with a few plies played under the illegal-moves toggle
-  // (flagged red); 'short' a one-move list (no scrollbar, to inspect the panel
-  // edges); otherwise a long game so the scrollbar is visible (gapless-thumb check).
-  const sans = process.argv.includes('illegal')
+  // 'empty' shows the just-spawned panel (autoHeight → header only, no empty box);
+  // 'illegal' a game with illegal-toggle plies (flagged red); 'short' a few-move
+  // list (panel grown to fit, no scrollbar); otherwise a long game so the panel
+  // caps and the scrollbar is visible (gapless-thumb check).
+  const sans = process.argv.includes('empty')
+    ? []
+    : process.argv.includes('illegal')
     ? ['e4', 'Nbf6', 'Bcd3', 'Nxd5', 'Qe2', 'Nxc3']
     : process.argv.includes('short')
-      ? ['c4']
+      ? ['c4', 'c5', 'Nf3']
       : [
           'e4', 'c5', 'Nf3', 'Nc6', 'Bb5', 'Nd4', 'Nxd4', 'cxd4', 'Bxd7+', 'Qxd7', 'O-O', 'Qh3', 'gxh3', 'Bxh3', 'Qf3', 'Bg2',
           'Qxf7+', 'Kxf7', 'Kxg2', 'd3', 'cxd3', 'Nf6', 'e5', 'Ne4', 'e6+', 'Kxe6', 'dxe4', 'Rb8', 'e5', 'Kxe5', 'Re1+', 'Kf5',
@@ -361,8 +365,8 @@ function kingAnimSnapshot(): void {
 
 // The AI match setup modal composited over the chess scene via the real Screen
 // (so the provider/model Slots expand). Commits a model for each side so Start is
-// enabled and the brand-tinted summaries show.
-//   pnpm exec tsx src/tools/snapshot.ts setup [cols] [rows] [out.ppm]
+// enabled; pass `open` to also expand White's provider dropdown to show the list.
+//   pnpm exec tsx src/tools/snapshot.ts setup [cols] [rows] [out.ppm] [open]
 function setupSnapshot(): void {
   const cols = Number(process.argv[3]) || 120;
   const rows = Number(process.argv[4]) || 40;
@@ -372,10 +376,18 @@ function setupSnapshot(): void {
   new ChessGameScene().renderScene(target, 0.6);
   const screen = new Screen(cols, rows);
   mountMatchSetup(screen);
-  const enter = { name: 'enter', raw: '', sequence: '', ctrl: false, shift: false, meta: false, eventType: 'press' as const };
-  for (const id of ['setup-white-model', 'setup-black-model']) {
-    const s = screen.component(id) as Select | undefined;
-    if (s) { s.index = 0; s.onKey?.(enter); }
+  // The modal's module defaults already pre-commit a model per side (Start enabled).
+  // Optionally open a dropdown to show the expanded, scrollable picker floating
+  // over the rest of the modal. `open` opens White's provider list; `models`
+  // selects Google then opens White's MODEL list (long names wrap onto 2 lines).
+  if (process.argv.includes('models')) {
+    const wp = screen.component('setup-white-provider') as Dropdown | undefined;
+    const g = providers().findIndex((p) => p.slug === 'google');
+    if (g >= 0) wp?.pick(g); // switch White to Google (repopulates + clears its model)
+    (screen.component('setup-white-model') as Dropdown | undefined)?.onKey?.({ name: 'enter', raw: '', sequence: '', ctrl: false, shift: false, meta: false, eventType: 'press' });
+  } else if (process.argv.includes('open')) {
+    const enter = { name: 'enter', raw: '', sequence: '', ctrl: false, shift: false, meta: false, eventType: 'press' as const };
+    (screen.component('setup-white-provider') as Dropdown | undefined)?.onKey?.(enter);
   }
   const region = { x: 0, y: 0, w: cols, h: rows };
   screen.setRoot(buildMatchSetup(region, { onStart: noop, onCancel: noop }), region);

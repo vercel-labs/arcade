@@ -19,8 +19,12 @@ export type Row = string | Node;
 export interface ScrollBoxOpts {
   id: string;
   rows: Row[];
-  height: number; // visible rows
+  height: number; // visible rows — a hard cap; with autoHeight it's the MAX height
   width?: number;
+  // Grow with content: the box is only as tall as its rows until it reaches
+  // `height`, then it caps there and the scrollbar appears. Off (default) = always
+  // `height` rows tall (a fixed viewport), even when there are fewer/no rows.
+  autoHeight?: boolean;
 }
 
 const TRACK: RGB = defaultTheme.pillBg;
@@ -41,8 +45,14 @@ export class ScrollBox implements Component {
     this.height = opts.height;
   }
 
+  // Rows actually shown: the full list until it reaches the cap (autoHeight), then
+  // the cap. Fixed mode always shows `height` rows (the classic viewport).
+  private visibleHeight(): number {
+    return this.opts.autoHeight ? Math.min(this.rows.length, this.height) : this.height;
+  }
+
   private maxScroll(): number {
-    return Math.max(0, this.rows.length - this.height);
+    return Math.max(0, this.rows.length - this.visibleHeight());
   }
 
   private scrollBy(delta: number): void {
@@ -55,8 +65,8 @@ export class ScrollBox implements Component {
     if (this.maxScroll() === 0) return false;
     if (ev.name === 'up' || ev.name === 'k') this.scrollBy(-1);
     else if (ev.name === 'down' || ev.name === 'j') this.scrollBy(1);
-    else if (ev.name === 'pageup') this.scrollBy(-this.height);
-    else if (ev.name === 'pagedown') this.scrollBy(this.height);
+    else if (ev.name === 'pageup') this.scrollBy(-this.visibleHeight());
+    else if (ev.name === 'pagedown') this.scrollBy(this.visibleHeight());
     else return false;
     return true;
   }
@@ -82,9 +92,10 @@ export class ScrollBox implements Component {
   // line-spacing seams between rows in many terminals.
   private paintBar(surf: Surface, box: LayoutBox): void {
     const total = this.rows.length;
-    if (total <= this.height) return; // nothing to scroll
+    const vh = this.visibleHeight();
+    if (total <= vh) return; // nothing to scroll
     const x = box.x + box.w - 1;
-    const thumb = Math.max(1, Math.round((this.height / total) * box.h));
+    const thumb = Math.max(1, Math.round((vh / total) * box.h));
     const span = box.h - thumb;
     const top = box.y + (this.maxScroll() === 0 ? 0 : Math.round((this.scroll / this.maxScroll()) * span));
     for (let y = box.y; y < box.y + box.h; y++) {
@@ -94,7 +105,8 @@ export class ScrollBox implements Component {
   }
 
   build(): Node {
-    const end = Math.min(this.rows.length, this.scroll + this.height);
+    const vh = this.visibleHeight();
+    const end = Math.min(this.rows.length, this.scroll + vh);
     const lines: Node[] = [];
     for (let i = this.scroll; i < end; i++) {
       const row = this.rows[i];
@@ -102,7 +114,7 @@ export class ScrollBox implements Component {
     }
     return {
       ...Box(
-        { flexDirection: 'column', alignItems: 'stretch', width: this.opts.width, height: this.height, overflow: 'hidden' },
+        { flexDirection: 'column', alignItems: 'stretch', width: this.opts.width, height: vh, overflow: 'hidden' },
         lines,
       ),
       id: this.id,

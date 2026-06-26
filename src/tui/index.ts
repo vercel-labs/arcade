@@ -5,6 +5,7 @@ export { Box, Text, Button, Slot } from './nodes.ts';
 export { Modal } from './components/modal.ts';
 export { ASCIIFont, asciiFontLines } from './components/asciifont.ts';
 export { FrameBuffer, type FrameDraw } from './components/framebuffer.ts';
+export { Dropdown, type DropdownOpts } from './components/dropdown.ts';
 export { Input, type InputOpts } from './components/input.ts';
 export { Select, type SelectOpts } from './components/select.ts';
 export { type Row, ScrollBox, type ScrollBoxOpts } from './components/scrollbox.ts';

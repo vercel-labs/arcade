@@ -724,6 +724,8 @@ function onMouseImpl(e: MouseEvent): void {
   if (isPromoting() || gameOver || matchSetupOpen) {
     if (e.type === 'move') ui.hover(e.x, e.y);
     else if (e.type === 'down') ui.pointerDown(e.x, e.y);
+    else if (e.type === 'drag') ui.drag(e.x, e.y); // e.g. dragging a dropdown's scrollbar
+    else if (e.type === 'wheel') ui.wheel(e.x, e.y, e.wheel === -1 ? -1 : 1); // scroll an open dropdown
     else if (e.type === 'up') ui.pointerUp();
     return;
   }

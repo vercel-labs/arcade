@@ -5,7 +5,7 @@
 //
 //   pnpm exec tsx src/tools/components-test.ts
 
-import { Box, Input, Screen, Select, ScrollBox, Slider, Slot } from '../tui/index.ts';
+import { Box, Dropdown, Input, layout, Screen, Select, ScrollBox, Slider, Slot, Text } from '../tui/index.ts';
 import type { KeyEvent } from '../platform/input.ts';
 import type { Node } from '../tui/types.ts';
 
@@ -111,9 +111,82 @@ console.log('mouse (via Screen):');
   s3.mount(sb);
   s3.setRoot(Box({}, [Slot('sb')]) as Node, region);
   s3.wheel(1, 1, 1);
-  ok(sb.scroll === 1, 'ScrollBox: wheel down scrolls by 1');
+  ok(sb.scroll === 3, 'ScrollBox: wheel down scrolls by the wheel step (3)');
   s3.pointerDown(10, 4); // scrollbar column (x=9 = w-1), bottom → max scroll
   ok(sb.scroll === sb.rows.length - 4, 'ScrollBox: click bottom of scrollbar jumps to max scroll');
+
+  // ScrollBox autoHeight: the box is only as tall as its rows until it hits the
+  // cap, then it stops growing and the wheel scrolls (no fixed empty viewport).
+  const ag = new ScrollBox({ id: 'ag', width: 10, height: 4, rows: [], autoHeight: true });
+  ok(ag.build().style.height === 0, 'ScrollBox autoHeight: empty → 0 rows tall (no empty viewport)');
+  ag.rows = ['a', 'b'];
+  ok(ag.build().style.height === 2, 'ScrollBox autoHeight: grows to fit content (2 rows)');
+  ag.rows = ['a', 'b', 'c', 'd', 'e', 'f'];
+  ok(ag.build().style.height === 4, 'ScrollBox autoHeight: caps at its max height (4)');
+  ag.onMouse({ type: 'wheel', x: 0, y: 0, w: 10, h: 4, wheel: 1 });
+  ok(ag.scroll === 2, 'ScrollBox autoHeight: scrolls once content exceeds the cap (max scroll 6-4=2)');
+
+  // Dropdown: closed by default; clicking the field opens the list; clicking a
+  // list row commits it and collapses; blur (focus elsewhere) also collapses.
+  let picked = -1;
+  const dd = new Dropdown({ id: 'dd', items: ['a', 'b', 'c', 'd', 'e'], width: 12, rows: 3, onSelect: (i) => (picked = i) });
+  const s4 = new Screen(40, 10);
+  s4.mount(dd);
+  // Re-lay out after each state change (setRoot expands the Slot to the dropdown's
+  // current open/closed size) so the next hit-test sees the live geometry — the
+  // app re-renders every interaction; the bare harness must do it explicitly.
+  const relayout = (): void => s4.setRoot(Box({}, [Slot('dd')]) as Node, region);
+  relayout();
+  ok(!dd.open && dd.index === -1, 'Dropdown: starts closed with no committed selection');
+  s4.pointerDown(1, 1); // field row (local y=0) → open
+  ok(dd.open, 'Dropdown: clicking the field opens the list');
+  relayout(); // list now occupies rows 1..3
+  s4.pointerDown(1, 3); // list row (local y=2) → row index 1 (scroll 0) → commit
+  ok(dd.index === 1 && picked === 1 && !dd.open, 'Dropdown: clicking a list row commits it and closes');
+  relayout();
+  s4.pointerDown(1, 1); // reopen
+  ok(dd.open, 'Dropdown: reopens on a second field click');
+  dd.onBlur(); // focus moves away
+  ok(!dd.open, 'Dropdown: loses focus → collapses');
+
+  // Dropdown overlay: an open list is out of flow — its wrapper stays one row, a
+  // sibling below it doesn't move, and the floating list is laid out over them.
+  const big = new Dropdown({ id: 'big', items: Array.from({ length: 10 }, (_, i) => `i${i}`), width: 12, rows: 3 });
+  big.onKey(key('enter')); // open
+  const wrap = big.build();
+  const tree = Box({ flexDirection: 'column' }, [wrap, Text({ text: 'BELOW' })]);
+  layout(tree, region);
+  const list = (wrap.children ?? []).find((c) => c.overlay);
+  ok(wrap.layout?.h === 1, 'Dropdown overlay: open wrapper stays 1 row (list is out of flow)');
+  ok(tree.children?.[1].layout?.y === (wrap.layout?.y ?? 0) + 1, 'Dropdown overlay: sibling below is not pushed down');
+  ok(list?.layout?.y === (wrap.layout?.y ?? 0) + 1 && list?.layout?.h === 3, 'Dropdown overlay: floating list sits below the field, 3 rows tall');
+
+  // Dropdown scrolling: wheel + scrollbar move the VIEW (like ScrollBox), leaving
+  // the committed selection untouched; ↑/↓ would move the highlight instead.
+  const firstVisible = (): string | undefined => ((big.build().children ?? []).find((c) => c.overlay)?.children ?? [])[0]?.text;
+  list?.onMouse?.({ type: 'wheel', x: 0, y: 0, w: 12, h: 3, wheel: 1 });
+  ok(firstVisible() === 'i3' && big.index === -1, 'Dropdown: wheel scrolls the list view by the step (no commit)');
+  list?.onMouse?.({ type: 'down', x: 11, y: 2, w: 12, h: 3 }); // bottom of the scrollbar column → max scroll
+  ok(firstVisible() === 'i7', 'Dropdown: dragging the scrollbar jumps the view to the bottom');
+
+  // Dropdown wrapping: an option too long for the width wraps onto extra lines
+  // (no truncation), and the whole wrapped item highlights + selects as one block.
+  let wpicked = -1;
+  const wd = new Dropdown({ id: 'wd', items: ['Short', 'Gemini 3.1 Flash Image Preview'], width: 14, rows: 6, onSelect: (i) => (wpicked = i) });
+  wd.onKey(key('enter')); // open
+  const wlist = (): Node | undefined => (wd.build().children ?? []).find((c) => c.overlay);
+  const wlines = (): Node[] => wlist()?.children ?? [];
+  // 'Short' = 1 line; the long name wraps to ≥2 (width 14 → inner ≈ 11), so ≥3 total.
+  ok(wlines().length >= 3, `wrapping: long option spans multiple lines (${wlines().length} lines)`);
+  ok(wlines().every((n) => (n.text ?? '').length <= 11), 'wrapping: no line exceeds the inner width (nothing cut off)');
+  // Highlight the long (2nd) item; all of its lines should carry the accent bg.
+  wd.onKey(key('down')); // highlight item 1 (the long one)
+  const accentLines = wlines().filter((n) => n.style.background === 'accent');
+  ok(accentLines.length >= 2, `wrapping: the whole wrapped item highlights (${accentLines.length} accent lines)`);
+  // Clicking any line of the wrapped item commits that ITEM (index 1).
+  const wsel = wlist();
+  wsel?.onMouse?.({ type: 'down', x: 1, y: 2, w: 14, h: wlines().length }); // a lower line of the long item
+  ok(wpicked === 1 && wd.index === 1, 'wrapping: clicking a wrapped line selects the whole item');
 }
 
 // Propagation: a panel with a background absorbs the pointer (so a drag/scroll

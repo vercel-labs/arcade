@@ -86,7 +86,13 @@ function drawBorder(surf: Surface, lb: LayoutBox, e: Style, bg: RGB, bits: numbe
   }
 }
 
-function paintNode(node: Node, surf: Surface, st: PaintState, theme: Theme, inheritedBg: RGB | undefined): void {
+function paintNode(node: Node, surf: Surface, st: PaintState, theme: Theme, inheritedBg: RGB | undefined, overlays: Node[] | null): void {
+  // Defer overlay subtrees to a final pass so they float above later siblings.
+  // (overlays === null means we're already in that pass — paint inline.)
+  if (overlays && node.overlay) {
+    overlays.push(node);
+    return;
+  }
   const lb = node.layout;
   if (lb && lb.w > 0 && lb.h > 0) {
     surf.setClip(node.clip ?? null); // overflow clipping from an ancestor
@@ -128,10 +134,18 @@ function paintNode(node: Node, surf: Surface, st: PaintState, theme: Theme, inhe
     }
     inheritedBg = bg;
   }
-  for (const c of node.children ?? []) paintNode(c, surf, st, theme, inheritedBg);
+  for (const c of node.children ?? []) paintNode(c, surf, st, theme, inheritedBg, overlays);
 }
 
 export function paint(root: Node, surf: Surface, st: PaintState, theme: Theme = defaultTheme): void {
-  paintNode(root, surf, st, theme, undefined);
+  const overlays: Node[] = [];
+  paintNode(root, surf, st, theme, undefined, overlays);
+  // Second pass: overlays (dropdown lists, popovers) on top of the whole tree, in
+  // discovery order. Their own subtrees paint inline (overlays = null), and the
+  // clip carried by layout (an ancestor's overflow) still applies.
+  for (const o of overlays) {
+    surf.setClip(o.clip ?? null);
+    paintNode(o, surf, st, theme, undefined, null);
+  }
   surf.setClip(null); // don't leak a clip into later direct Surface writes
 }

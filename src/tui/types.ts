@@ -109,4 +109,9 @@ export interface Node {
   // paint after the node's own bg/border, clipped to the node. The box is the
   // content rect (inside border + padding), in absolute Surface cells.
   draw?: (surf: Surface, box: LayoutBox) => void;
+  // Portal: paint this subtree LAST (above everything) and hit-test it FIRST, so
+  // it floats over later siblings — a dropdown list, popover, tooltip. Pair with
+  // position:'absolute' so it's out of flow and doesn't resize its container; it
+  // can then extend past the container's bounds. Laid out in place like any node.
+  overlay?: boolean;
 }

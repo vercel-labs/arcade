@@ -6,3 +6,4 @@
 - Improve the AI-vs-AI modal: scrolling instead of up/down toggling, and ideally a new scrollable dropdown component for the TUI.
 - Add real-time audio: research how Vercel AI Gateway supports it, add banter wired to the wisp animation during play. Both players must share real-time audio capability (no real-time vs. traditional); gate available models behind a setup toggle.
 - Bug fix: up/down arrow keys in the chess game are still absorbed by the scrollable moves modal instead of panning the 3D scene.
+- Enhance dialogue: when illegal mode is off and a model hits a retry, show an indicator in all caps and a different font. When illegal mode is on and an illegal move is played, in addition to the move showing red in the move history, prefix the dialogue with "ILLEGAL MOVE!" in red all caps before the model's line.
