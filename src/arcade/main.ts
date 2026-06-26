@@ -12,6 +12,7 @@ import {
 } from '../engine/index.ts';
 import { PrismScene } from './prism.ts';
 import { SplashScene } from './splash.ts';
+import { clampScroll, drawMenu, layoutMenu, MENU_ITEMS, type MenuDir, menuMove, scrollToShow, tileAt } from './menu.ts';
 import { ChessScene } from './chess.ts';
 import { ChessGameScene } from './chess-game.ts';
 import { LogosScene } from './logos-scene.ts';
@@ -23,7 +24,7 @@ import { buildMatchSetup, matchSetupSelection, mountMatchSetup } from './match-s
 import { copyToClipboard } from '../platform/clipboard.ts';
 import { BLACK, type Color, type Move, WHITE } from '../games/chess/types.ts';
 import type { ChessResult } from '../games/chess/chess.ts';
-import type { RGB } from '../engine/index.ts';
+import type { RGB, RGBA } from '../engine/index.ts';
 import { Keymap, Renderer, Screen, type LayoutBox } from '../tui/index.ts';
 import { renderDemo } from '../demo/scene.ts';
 import * as term from '../platform/terminal.ts';
@@ -123,6 +124,9 @@ let liveHeld = false;
 // 'prism' underneath (so live lease + key context are already correct); this gate
 // just swaps the splash scene in for the first few seconds. Any key/click skips it.
 let splashing = true;
+// Wii-menu hub state: selected tile index + horizontal pan (cells). Reset on entry.
+let menuSel = 0;
+let menuScrollX = 0;
 
 // AI-vs-AI match. The two sides are chosen in the setup modal (provider → model).
 // `matchAbort` cancels the running turn-loop (pause / stop / navigate away).
@@ -177,7 +181,11 @@ function closeGameOver(): void {
 // transition (via fullRepaint).
 function syncLive(): void {
   const want =
-    mode === 'prism' || mode === 'demo' || mode === 'logos' || (mode === 'chess-game' && chessGame.isMatchActive());
+    mode === 'prism' ||
+    mode === 'menu' ||
+    mode === 'demo' ||
+    mode === 'logos' ||
+    (mode === 'chess-game' && chessGame.isMatchActive());
   if (want === liveHeld) return;
   if (want) r.requestLive();
   else r.dropLive();
@@ -398,7 +406,52 @@ function enterLogos(): void {
 function toPrism(): void {
   stopAiMatch();
   mode = 'prism';
+  ui.setRoot(null); // attract screen has no bar — clear any prior screen's overlay
   fullRepaint();
+}
+
+// The Wii-style menu hub. Reached from the prism attract screen (any key) and
+// returned to by a game's "back". No bar — the tiles are the navigation surface.
+function enterMenu(): void {
+  stopAiMatch();
+  mode = 'menu';
+  menuSel = 0;
+  menuScrollX = 0;
+  ui.setRoot(null);
+  fullRepaint();
+}
+
+// Launch the selected tile's screen (enabled tiles only; placeholders are no-ops).
+function launchSelected(): void {
+  const item = MENU_ITEMS[menuSel];
+  if (!item?.enabled) return;
+  if (item.id === 'chess') enterChessGame();
+  else if (item.id === 'logos') enterLogos();
+  else if (item.id === 'ui') enterUi();
+}
+
+// Move the menu cursor and keep the selection panned into view.
+function menuNav(dir: MenuDir): void {
+  const lay = layoutMenu(cols, rows);
+  menuSel = menuMove(menuSel, dir, lay);
+  menuScrollX = scrollToShow(menuSel, menuScrollX, lay);
+}
+
+// The prism attract prompt: a small, subtle, lowercase line near the bottom whose
+// opacity wavers (a slow sine, never fully gone) — the arcade "breathing" glow
+// rather than a hard blink. Drawn with alpha-blending over the scene so the waver
+// reads as real opacity.
+const ATTRACT_TEXT = 'press any key to start';
+function drawAttract(surf: Surface, cols: number, rows: number, t: number): void {
+  const pulse = 0.5 + 0.5 * Math.sin(t * Math.PI * 1.2); // ~0.6 Hz, 0..1
+  const alpha = 0.42 + 0.5 * pulse; // wavers ~0.42..0.92, always visible
+  const x0 = Math.max(0, Math.floor((cols - ATTRACT_TEXT.length) / 2));
+  const y = rows - 2;
+  const fg: RGBA = [205, 210, 230, alpha];
+  const bg: RGBA = [0, 0, 0, 0]; // keep the scene behind; only the glyph blends
+  for (let i = 0; i < ATTRACT_TEXT.length; i++) {
+    if (ATTRACT_TEXT[i] !== ' ') surf.setCellWithAlphaBlending(x0 + i, y, ATTRACT_TEXT[i], fg, bg);
+  }
 }
 
 // The component playground. (Re)mount the showcase instances each entry — the
@@ -419,7 +472,7 @@ const actions: BarActions = {
   demo: enterDemo,
   logos: enterLogos,
   ui: enterUi,
-  back: toPrism,
+  back: enterMenu,
   reset: () => activeOrbit()?.resetView(),
   mode: cycleMode,
   quit,
@@ -441,7 +494,14 @@ for (const c of [
   { id: 'view.setLuminance', title: 'Render: luminance', run: () => setRenderMode('luminance') },
   { id: 'view.setAscii', title: 'Render: ascii', run: () => setRenderMode('ascii') },
   { id: 'view.toggleJitter', title: 'Toggle glyph jitter', run: toggleJitter },
-  { id: 'nav.back', title: 'Back to prism', run: toPrism },
+  { id: 'nav.back', title: 'Back to menu', run: enterMenu },
+  { id: 'nav.toPrism', title: 'Back to prism', run: toPrism },
+  { id: 'nav.menu', title: 'Open menu', run: enterMenu },
+  { id: 'menu.left', title: 'Menu: left', run: () => menuNav('left') },
+  { id: 'menu.right', title: 'Menu: right', run: () => menuNav('right') },
+  { id: 'menu.up', title: 'Menu: up', run: () => menuNav('up') },
+  { id: 'menu.down', title: 'Menu: down', run: () => menuNav('down') },
+  { id: 'menu.select', title: 'Menu: launch selected', run: launchSelected },
   { id: 'nav.demo', title: 'Open demo', run: enterDemo },
   { id: 'nav.chess', title: 'Open chess showcase', run: enterChess },
   { id: 'nav.chessGame', title: 'Open chess game', run: enterChessGame },
@@ -479,10 +539,20 @@ keymap.bind('chess', { key: 'p', cmd: 'chess.toggleAI' });
 keymap.bind('chess', { key: 'h', cmd: 'chess.toggleHistory' });
 keymap.bind('chess', { key: 'n', cmd: 'chess.resetGame' });
 keymap.bind('chess', { key: 'i', cmd: 'chess.toggleIllegal' });
-keymap.bind('prism', { key: 'd', cmd: 'nav.demo' });
-keymap.bind('prism', { key: 'g', cmd: 'nav.chess' });
-keymap.bind('prism', { key: 'n', cmd: 'nav.chessGame' });
-keymap.bind('prism', { key: 'u', cmd: 'nav.ui' });
+// Menu hub: arrows move, Enter/Space launch, Escape returns to the prism attract
+// screen. Escape here shadows the global Escape→quit because the 'menu' base layer
+// is searched before 'global'.
+for (const b of [
+  { key: 'left', cmd: 'menu.left' },
+  { key: 'right', cmd: 'menu.right' },
+  { key: 'up', cmd: 'menu.up' },
+  { key: 'down', cmd: 'menu.down' },
+  { key: 'enter', cmd: 'menu.select' },
+  { key: 'space', cmd: 'menu.select' },
+  { key: 'escape', cmd: 'nav.toPrism' },
+]) {
+  keymap.bind('menu', b);
+}
 for (const layer of ['demo', 'logos', 'chess', 'ui']) keymap.bind(layer, { key: 'b', cmd: 'nav.back' });
 // Orbit/pan/reset bindings are shared by the chess turntables, the logos wisp
 // orbit, and the chess backdrop behind the UI playground (the commands resolve
@@ -718,6 +788,11 @@ function onKeyImpl(ev: KeyEvent): void {
     splashing = false;
     return;
   }
+  // Prism attract screen: any key starts (→ menu). ctrl+c still quits (falls to keymap).
+  if (mode === 'prism' && !(ev.ctrl && ev.name === 'c')) {
+    enterMenu();
+    return;
+  }
   // Focused widget first (the promotion picker's Tab/Enter/Space; future Inputs),
   // then a hovered scrollable (so ↑/↓/PageUp/PageDown scroll the move panel under
   // the cursor without a click to focus it), then the layered keymap. The keymap
@@ -734,6 +809,28 @@ function onMouseImpl(e: MouseEvent): void {
   // A click also skips the boot splash to the live prism.
   if (splashing && e.type === 'down') {
     splashing = false;
+    return;
+  }
+  // Prism attract: a click starts (→ menu).
+  if (mode === 'prism' && e.type === 'down') {
+    enterMenu();
+    return;
+  }
+  // Menu hub: hover highlights a tile, the wheel pans the shelf, a click launches.
+  if (mode === 'menu') {
+    const lay = layoutMenu(cols, rows);
+    if (e.type === 'move') {
+      const idx = tileAt(lay, menuScrollX, e.x - 1, e.y - 1);
+      if (idx != null) menuSel = idx;
+    } else if (e.type === 'wheel') {
+      menuScrollX = clampScroll(menuScrollX + (e.wheel === -1 ? -3 : 3), lay);
+    } else if (e.type === 'down') {
+      const idx = tileAt(lay, menuScrollX, e.x - 1, e.y - 1);
+      if (idx != null) {
+        menuSel = idx;
+        launchSelected();
+      }
+    }
     return;
   }
   // Modal popups (promotion picker, game-over result, match setup): clicks/hover
@@ -843,9 +940,32 @@ function tick(): void {
   }
 
   if (mode === 'prism') {
+    // Attract screen: live prism + a flashing "press any key" marquee, no bar.
     prism.renderScene(target, t);
-    syncBar();
-    r.write(UNIFIED ? ui.frameComposited((s) => presentSceneInto(s)) : presentScene() + ui.frame());
+    r.write(
+      UNIFIED
+        ? ui.frameComposited((s) => {
+            presentSceneInto(s);
+            drawAttract(s, cols, rows, t);
+          })
+        : presentScene(),
+    );
+    return;
+  }
+
+  if (mode === 'menu') {
+    // Wii-style hub: the prism keeps animating, dimmed, behind the tile shelf.
+    prism.renderScene(target, t);
+    const lay = layoutMenu(cols, rows);
+    menuScrollX = clampScroll(menuScrollX, lay);
+    r.write(
+      UNIFIED
+        ? ui.frameComposited((s) => {
+            presentSceneInto(s);
+            drawMenu(s, cols, rows, lay, menuSel, menuScrollX);
+          })
+        : presentScene(),
+    );
     return;
   }
 

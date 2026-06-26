@@ -7,7 +7,7 @@ import { Box, Button, Modal, Text, type Node, type Style } from '../tui/index.ts
 import { BISHOP, BLACK, type Color, KNIGHT, type PieceType, QUEEN, ROOK } from '../games/chess/types.ts';
 import type { RGB } from '../engine/index.ts';
 
-export type Mode = 'prism' | 'demo' | 'chess' | 'chess-game' | 'logos' | 'ui';
+export type Mode = 'prism' | 'menu' | 'demo' | 'chess' | 'chess-game' | 'logos' | 'ui';
 export type RenderMode = 'color' | 'ascii' | 'luminance';
 
 export interface BarActions {

@@ -13,3 +13,8 @@ coverage shape vectors matched by nearest neighbor.
 
 `src/engine/font8x8.ts` is generated (via `src/tools/gen-font.ts`) from the
 **font8x8** bitmap font by Daniel Hepper / Marcel Sondaar / IBM (Public Domain).
+
+The menu game-tile art in `public/assets/games/` is baked (via
+`src/tools/fetch-games.ts`) from **Noto Emoji** by Google
+([googlefonts/noto-emoji](https://github.com/googlefonts/noto-emoji),
+Apache-2.0 / OFL).

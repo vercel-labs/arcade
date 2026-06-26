@@ -6,10 +6,11 @@
 //   pnpm exec tsx src/tools/snapshot.ts ui [cols] [rows] [hover=<id>|focus=<id>] [out.ppm]
 //   pnpm exec tsx src/tools/snapshot.ts overlay [chess|chess-game|prism] [cols] [rows] [out.ppm]
 import { writeFileSync } from 'node:fs';
-import { bloom, downsample, RenderTarget, shapeGlyphToSurface, Surface } from '../engine/index.ts';
+import { bloom, downsample, halfBlockToSurface, RenderTarget, shapeGlyphToSurface, Surface } from '../engine/index.ts';
 import { FONT } from '../engine/font8x8.ts';
 import { PrismScene } from '../arcade/prism.ts';
 import { SplashScene } from '../arcade/splash.ts';
+import { clampScroll, drawMenu, layoutMenu } from '../arcade/menu.ts';
 import { ChessScene } from '../arcade/chess.ts';
 import { ChessGameScene } from '../arcade/chess-game.ts';
 import { LogosScene } from '../arcade/logos-scene.ts';
@@ -250,8 +251,57 @@ if (process.argv[2] === 'ui') {
   kingAnimSnapshot();
 } else if (process.argv[2] === 'splash') {
   splashSnapshot();
+} else if (process.argv[2] === 'menu') {
+  menuSnapshot();
+} else if (process.argv[2] === 'attract') {
+  attractSnapshot();
 } else {
   sceneSnapshot();
+}
+
+// The Wii-style menu hub over the dimmed prism (the live unified path: scene filled
+// into the Surface, then the shelf drawn on top).
+//   pnpm exec tsx src/tools/snapshot.ts menu [cols] [rows] [sel] [scrollX] [out.ppm]
+function menuSnapshot(): void {
+  const cols = Number(process.argv[3]) || 140;
+  const rows = Number(process.argv[4]) || 40;
+  const sel = Number(process.argv[5]) || 0;
+  const out = process.argv.find((a) => a.endsWith('.ppm')) ?? '.snapshots/menu.ppm';
+  const SS = 3;
+  const target = new RenderTarget(cols * SS, rows * 2 * SS);
+  new PrismScene().renderScene(target, 0.6);
+  const display = downsample(target, SS);
+  bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
+  const lay = layoutMenu(cols, rows);
+  const scrollX = clampScroll(Number(process.argv[6]) || 0, lay);
+  const surf = new Surface(cols, rows);
+  halfBlockToSurface(surf, display); // fill the scene so the menu's scrim can dim it
+  drawMenu(surf, cols, rows, lay, sel, scrollX);
+  surfaceToPpm(surf, cols, rows, out);
+}
+
+// The prism attract marquee. `t` honors the blink (visible at t=0, hidden at t≈0.8).
+//   pnpm exec tsx src/tools/snapshot.ts attract [cols] [rows] [t] [out.ppm]
+function attractSnapshot(): void {
+  const cols = Number(process.argv[3]) || 140;
+  const rows = Number(process.argv[4]) || 40;
+  const t = Number(process.argv[5]) || 0;
+  const out = process.argv.find((a) => a.endsWith('.ppm')) ?? '.snapshots/attract.ppm';
+  const SS = 3;
+  const target = new RenderTarget(cols * SS, rows * 2 * SS);
+  new PrismScene().renderScene(target, 0.6);
+  const display = downsample(target, SS);
+  bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
+  const surf = new Surface(cols, rows);
+  halfBlockToSurface(surf, display);
+  const text = 'press any key to start';
+  const alpha = 0.42 + 0.5 * (0.5 + 0.5 * Math.sin(t * Math.PI * 1.2)); // matches drawAttract
+  const x0 = Math.max(0, Math.floor((cols - text.length) / 2));
+  const y = rows - 2;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== ' ') surf.setCellWithAlphaBlending(x0 + i, y, text[i], [205, 210, 230, alpha], [0, 0, 0, 0]);
+  }
+  surfaceToPpm(surf, cols, rows, out);
 }
 
 // A single frame of the boot splash at time `t` (the intro animation). Mirrors the
