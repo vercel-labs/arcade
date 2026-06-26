@@ -5,6 +5,7 @@ import {
   dot3,
   glassMaterial,
   hslToRgb,
+  type Mat4,
   mat4Multiply,
   mat4MulDir,
   mat4MulVec4,
@@ -31,24 +32,48 @@ const camera: Camera = {
 };
 
 const mesh = tetrahedron();
-const ROT_SPEED = 0.45;
-const TILT = -0.28;
-const PLACE_Y = 0; // prism centered on screen
+// Exported so the splash intro can build models that converge on the live one.
+export const ROT_SPEED = 0.45;
+export const TILT = -0.28;
+export const PLACE_Y = 0; // prism centered on screen
 
 interface P2 {
   x: number;
   y: number;
 }
 
+// Drives the splash intro: the prism's look is ramped from a flat white triangle
+// (the Vercel mark) up to the live glass prism. Every field's "live" value
+// (white 0, beam/disp/rainbow 1, model = the default) reproduces the steady scene
+// exactly, so the splash's final frame IS the first live frame (seamless handoff).
+export interface PrismIntro {
+  model: Mat4; // full model transform — caller bakes grow / flatten / spin / tilt
+  white: number; // 0 = glass, 1 = pure-white filled triangle
+  beam: number; // 0..1 beam reach + intensity (slides in from the left)
+  disp: number; // 0..1 multiplier on the internal dispersion sheen
+  rainbow: number; // 0..1 rainbow length + intensity
+}
+
+function lerp(a: number, b: number, k: number): number {
+  return a + (b - a) * k;
+}
+
 export class PrismScene {
   // Draws the prism + beam + rainbow into the (supersampled) render target.
-  renderScene(target: RenderTarget, t: number): void {
+  // `intro` (splash only) ramps the look up from a flat white triangle; omitting
+  // it renders the live steady prism.
+  renderScene(target: RenderTarget, t: number, intro?: PrismIntro): void {
     target.clear(0, 0, 0);
     const W = target.width;
     const H = target.height;
     const aspect = W / H;
+    const white = intro?.white ?? 0;
+    const beamF = intro?.beam ?? 1;
+    const dispF = intro?.disp ?? 1;
+    const rainbowF = intro?.rainbow ?? 1;
     const { view, viewProjection } = cameraMatrices(camera, aspect);
-    const model = mat4Multiply(mat4Translate(0, PLACE_Y, 0), mat4Multiply(mat4RotY(t * ROT_SPEED), mat4RotX(TILT)));
+    const model =
+      intro?.model ?? mat4Multiply(mat4Translate(0, PLACE_Y, 0), mat4Multiply(mat4RotY(t * ROT_SPEED), mat4RotX(TILT)));
     const mvp = mat4Multiply(viewProjection, model);
 
     const project = (p: Vec3): P2 => {
@@ -129,20 +154,33 @@ export class PrismScene {
     const entry: P2 = { x: center.x + entryN.x * radius * 0.85, y: center.y + entryN.y * radius * 0.85 };
     const beamEnd: P2 = { x: center.x - entryN.x * radius * 0.1, y: center.y - entryN.y * radius * 0.1 };
 
-    drawRainbow(target, center, angle, W, radius * 0.12, Math.min(H * 0.5, W * Math.tan(spread)), 0.85);
-    drawBeam(target, { x: 0, y: entry.y - H * 0.08 }, beamEnd, 1.2);
+    // Rainbow grows out of the prism: both its length and brightness ramp with
+    // `rainbowF` (1 = the live fan).
+    if (rainbowF > 0.001) {
+      drawRainbow(target, center, angle, W * rainbowF, radius * 0.12, Math.min(H * 0.5, W * Math.tan(spread)), 0.85 * rainbowF);
+    }
+    // Beam slides in from the left: its leading edge advances from the screen
+    // edge toward the prism as `beamF` rises, and it brightens with it.
+    if (beamF > 0.001) {
+      const bStart: P2 = { x: 0, y: entry.y - H * 0.08 };
+      const reach = Math.min(1, beamF * 1.4);
+      const bEnd: P2 = { x: bStart.x + (beamEnd.x - bStart.x) * reach, y: bStart.y + (beamEnd.y - bStart.y) * reach };
+      drawBeam(target, bStart, bEnd, 1.2 * Math.min(1, beamF));
+    }
 
     rasterize(target, mesh, glassMaterial, {
       mvp,
       model,
       cameraPos: camera.eye,
-      edgeColor: { x: 215, y: 222, z: 240 },
+      // White phase: edges + body lerp to pure white and the fill is boosted so
+      // the flat triangle reads solid white; dispersion is suppressed until glass.
+      edgeColor: { x: lerp(215, 255, white), y: lerp(222, 255, white), z: lerp(240, 255, white) },
       edgeWidth: 0.03,
-      glassColor: { x: 180, y: 198, z: 225 },
-      bodyStrength: 0.42,
-      ambient: 0.42,
+      glassColor: { x: lerp(180, 255, white), y: lerp(198, 255, white), z: lerp(225, 255, white) },
+      bodyStrength: lerp(0.42, 1.8, white),
+      ambient: lerp(0.42, 1, white),
       fresnelPower: 2,
-      dispersion: 0.16,
+      dispersion: 0.16 * dispF * (1 - white),
     });
   }
 }

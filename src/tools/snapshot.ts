@@ -9,6 +9,7 @@ import { writeFileSync } from 'node:fs';
 import { bloom, downsample, RenderTarget, shapeGlyphToSurface, Surface } from '../engine/index.ts';
 import { FONT } from '../engine/font8x8.ts';
 import { PrismScene } from '../arcade/prism.ts';
+import { SplashScene } from '../arcade/splash.ts';
 import { ChessScene } from '../arcade/chess.ts';
 import { ChessGameScene } from '../arcade/chess-game.ts';
 import { LogosScene } from '../arcade/logos-scene.ts';
@@ -247,8 +248,32 @@ if (process.argv[2] === 'ui') {
   setupSnapshot();
 } else if (process.argv[2] === 'king-anim') {
   kingAnimSnapshot();
+} else if (process.argv[2] === 'splash') {
+  splashSnapshot();
 } else {
   sceneSnapshot();
+}
+
+// A single frame of the boot splash at time `t` (the intro animation). Mirrors the
+// prism still (downsample + bloom) so each phase can be rendered to a PNG.
+//   pnpm exec tsx src/tools/snapshot.ts splash [cols] [rows] [t] [out.ppm]
+function splashSnapshot(): void {
+  const cols = Number(process.argv[3]) || 110;
+  const rows = Number(process.argv[4]) || 44;
+  const t = Number(process.argv[5]) || 0.5;
+  const out = process.argv[6] ?? '.snapshots/prism.ppm';
+  const SS = 3;
+  const target = new RenderTarget(cols * SS, (rows - 1) * 2 * SS);
+  new SplashScene().renderScene(target, t);
+  const display = downsample(target, SS);
+  bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
+  const W = display.width;
+  const H = display.height;
+  const body = Buffer.alloc(W * H * 3);
+  const c = display.color;
+  for (let i = 0; i < W * H * 3; i++) body[i] = c[i] <= 0 ? 0 : c[i] >= 255 ? 255 : Math.round(c[i]);
+  writeFileSync(out, Buffer.concat([Buffer.from(`P6\n${W} ${H}\n255\n`, 'ascii'), body]));
+  console.log(`wrote ${out} (${W}x${H})`);
 }
 
 // The 'ui' component playground composited over the chess scene via the real

@@ -11,6 +11,7 @@ import {
   toShapeGlyph,
 } from '../engine/index.ts';
 import { PrismScene } from './prism.ts';
+import { SplashScene } from './splash.ts';
 import { ChessScene } from './chess.ts';
 import { ChessGameScene } from './chess-game.ts';
 import { LogosScene } from './logos-scene.ts';
@@ -63,6 +64,7 @@ let rows = process.stdout.rows ?? 24;
 let target = new RenderTarget(cols * SS, rows * 2 * SS);
 let display: RenderTarget | undefined;
 const prism = new PrismScene();
+const splash = new SplashScene();
 const chess = new ChessScene();
 const chessGame = new ChessGameScene();
 const logosScene = new LogosScene();
@@ -117,6 +119,10 @@ let hoverY = 0;
 let t = 0;
 // Whether we currently hold a live (continuous-animation) lease on the renderer.
 let liveHeld = false;
+// The boot splash plays before the live prism becomes interactive. `mode` stays
+// 'prism' underneath (so live lease + key context are already correct); this gate
+// just swaps the splash scene in for the first few seconds. Any key/click skips it.
+let splashing = true;
 
 // AI-vs-AI match. The two sides are chosen in the setup modal (provider → model).
 // `matchAbort` cancels the running turn-loop (pause / stop / navigate away).
@@ -706,6 +712,12 @@ function pointerNdc(x: number, y: number): { ndcX: number; ndcY: number; aspect:
 }
 
 function onKeyImpl(ev: KeyEvent): void {
+  // Any key skips the boot splash straight to the live prism (the wrapper requests
+  // a render, so the next tick falls through to the prism branch).
+  if (splashing) {
+    splashing = false;
+    return;
+  }
   // Focused widget first (the promotion picker's Tab/Enter/Space; future Inputs),
   // then a hovered scrollable (so ↑/↓/PageUp/PageDown scroll the move panel under
   // the cursor without a click to focus it), then the layered keymap. The keymap
@@ -719,6 +731,11 @@ function onKeyImpl(ev: KeyEvent): void {
 function onMouseImpl(e: MouseEvent): void {
   hoverX = e.x; // track the cursor so scroll keys can target what's under it
   hoverY = e.y;
+  // A click also skips the boot splash to the live prism.
+  if (splashing && e.type === 'down') {
+    splashing = false;
+    return;
+  }
   // Modal popups (promotion picker, game-over result, match setup): clicks/hover
   // go to the popup; the board and camera are frozen until it's dismissed.
   if (isPromoting() || gameOver || matchSetupOpen) {
@@ -811,6 +828,19 @@ const parse = createInputParser({
 
 function tick(): void {
   t += DT;
+
+  if (splashing) {
+    // Boot splash: no button bar (the ui root is unmounted until syncBar runs, so
+    // frameComposited paints scene-only). When it finishes, fall through to the
+    // live prism in this same frame — the differ swaps in the bar with no clear,
+    // so there's no black flash and the handoff is seamless.
+    if (!splash.done(t)) {
+      splash.renderScene(target, t);
+      r.write(UNIFIED ? ui.frameComposited((s) => presentSceneInto(s)) : presentScene());
+      return;
+    }
+    splashing = false;
+  }
 
   if (mode === 'prism') {
     prism.renderScene(target, t);
