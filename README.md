@@ -4,7 +4,7 @@
 
 Arcade is the first build-out of **Vercel Arcade**: a showcase where you can play classic games against frontier AI models (or watch the models play each other) entirely inside a terminal, rendered with truecolor characters. Everything here is pure TypeScript with **zero native dependencies**. The 3D renderer, the UI layer, and the game rules are all written from scratch.
 
-**Chess is the game currently in development.** The pieces are real 3D models, lit and rasterized in software, and presented as ASCII/half-blocks. You can already click a piece, see its legal moves, and play it out; the full rules engine is in place. (An earlier 3D dodge prototype has been removed — chess is the focus.)
+**Chess is the game currently in development.** The pieces are real 3D models, lit and rasterized in software, and presented as ASCII/half-blocks. You can already click a piece, see its legal moves, and play it out; the full rules engine is in place.
 
 > Internal design + product context lives in the Vercel Arcade Notion. This README covers the codebase.
 
@@ -15,17 +15,11 @@ pnpm install
 pnpm dev
 ```
 
-You boot into an animated prism screen (a _Dark Side of the Moon_ homage: a rotating glass prism splitting a beam into a rainbow). From the bottom button bar you can jump to:
-
-- **Chess Game**: the playable 3D board (see below).
-- **Chess**: a turntable showcase of the piece models.
-- **Demo**: a lit, spinning engine cube.
-- **Logos**: a showcase of the AI Gateway provider logos as 3D textured quads.
-- **mode**: cycle the render style between **ascii** (shape-matched glyphs) · **color** (half-block truecolor) · **luminance** (brightness ramp).
+You boot into an splash screen animation, starting with the Vercel triagnle and transitioning into an animated prism screen (a _Dark Side of the Moon_ homage: a rotating glass prism splitting a beam into a rainbow). Press any key and it will take you to the game menu. (chess is the only game supoprted at the moment, other menu options like UI, logos, audio are for debugging)
 
 **Chess Game controls:** click a piece to highlight its square + show legal-move dots, click a dot to slide it there. **Left-drag** orbits, **scroll** zooms, **arrow keys** pan, **Reset View** recenters. `q`/`Esc` quits.
 
-> Best in a truecolor terminal (Ghostty, iTerm2, Kitty, WezTerm, VS Code). Apple Terminal.app has weak mouse support.
+> Best in a truecolor terminal (Ghostty, iTerm2, Kitty, WezTerm, VS Code). MacOS's Terminal.app should still work.
 
 ## Architecture
 
@@ -71,7 +65,7 @@ The **chess rules engine** is implemented from scratch (0x88 board, full legal m
 - [x] 3D ASCII rendering engine
 - [x] Mini TUI library for in-terminal controls
 - [x] Chess: 3D board, interactive play, and a verified rules engine
-- [ ] **AI Gateway + AI SDK integration**: wire frontier models in to play **you vs AI** and **AI vs AI**. The game harness exposes the board so an agent can read the position and submit legal moves.
+- [x] **AI Gateway + AI SDK integration**: wire frontier models in to play **you vs AI** and **AI vs AI**. The game harness exposes the board so an agent can read the position and submit legal moves.
 - [ ] **Realtime audio "table talk"**: give the models a voice so they can banter/commentate as they play.
 - [ ] **More games**: poker and codenames next, reusing the same engine + harness.
 
@@ -80,7 +74,7 @@ The **chess rules engine** is implemented from scratch (0x88 board, full legal m
 | Command                                       | What it does                                  |
 | --------------------------------------------- | --------------------------------------------- |
 | `pnpm dev`                                    | Run the arcade                                |
-| `pnpm demo`                                   | Run the engine cube demo                      |
+| `pnpm demo`                                   | Run an engine cube demo                      |
 | `pnpm snapshot [cols] [rows] [t]`             | Render a frame to a `.ppm` image (for review) |
 | `pnpm watch`                                  | Run with auto-reload                          |
 | `pnpm type-check`                             | Type-check with `tsc`                         |
