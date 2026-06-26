@@ -181,8 +181,8 @@ console.log('mouse (via Screen):');
   ok(wlines().every((n) => (n.text ?? '').length <= 11), 'wrapping: no line exceeds the inner width (nothing cut off)');
   // Highlight the long (2nd) item; all of its lines should carry the accent bg.
   wd.onKey(key('down')); // highlight item 1 (the long one)
-  const accentLines = wlines().filter((n) => n.style.background === 'accent');
-  ok(accentLines.length >= 2, `wrapping: the whole wrapped item highlights (${accentLines.length} accent lines)`);
+  const litLines = wlines().filter((n) => n.style.background === 'pillHoverBg');
+  ok(litLines.length >= 2, `wrapping: the whole wrapped item highlights (${litLines.length} highlighted lines)`);
   // Clicking any line of the wrapped item commits that ITEM (index 1).
   const wsel = wlist();
   wsel?.onMouse?.({ type: 'down', x: 1, y: 2, w: 14, h: wlines().length }); // a lower line of the long item

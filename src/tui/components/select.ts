@@ -92,7 +92,8 @@ export class Select implements Component {
         width: this.opts.width,
         padding: [0, 1],
         color: selected ? (this.focused ? 'pillHoverFg' : 'fg') : 'muted',
-        background: selected ? (this.focused ? 'accent' : 'focusRing') : 'transparent',
+        // Selected row = near-white like a hovered bar button (not the blue accent).
+        background: selected ? (this.focused ? 'pillHoverBg' : 'focusRing') : 'transparent',
       };
       rows.push(Text({ text: this.items[i], style }));
     }

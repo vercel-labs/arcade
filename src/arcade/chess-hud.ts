@@ -81,7 +81,7 @@ export function shortModel(slug: string): string {
 // panel). No pill background so it looks like a heading, not a bar button.
 const HEADER_BTN: Style = {
   padding: [0, 0],
-  color: 'accent',
+  color: 'fg', // gray/white like the bar buttons (not a blue accent)
   bold: true,
   hover: { color: [255, 255, 255] },
 };
@@ -103,10 +103,10 @@ export function buildChessGameRoot(
   opts: { minimized: boolean; onToggle: () => void; onCopy: () => void; commentary: Commentary | null; t: number },
 ): Node {
   // Minimized: the header hugs just the "Moves" button (a tight button). Expanded:
-  // a fixed-width header row with a left group — "Moves" + a copy-PGN button one
-  // space to its right — and the ✕ minimize control at the right edge, aligned with
-  // the list below. The panel is left-anchored, so "Moves" keeps the same screen
-  // position across states.
+  // a fixed-width header row with "Moves" at the left edge and a right group — the
+  // copy-PGN button one space to the left of the ✕ minimize control — at the right
+  // edge, aligned with the list below. The panel is left-anchored, so "Moves" keeps
+  // the same screen position across states.
   let header: Node;
   if (opts.minimized) {
     header = Box({ flexDirection: 'row', alignItems: 'center' }, [
@@ -114,11 +114,11 @@ export function buildChessGameRoot(
     ]);
   } else {
     header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', width: HISTORY_WIDTH }, [
+      Button({ id: 'moves-toggle', label: 'Moves', onClick: opts.onToggle, style: HEADER_BTN }),
       Box({ flexDirection: 'row', alignItems: 'center', gap: 1 }, [
-        Button({ id: 'moves-toggle', label: 'Moves', onClick: opts.onToggle, style: HEADER_BTN }),
         Button({ id: 'moves-copy', label: COPY_GLYPH, onClick: opts.onCopy, style: CLOSE_BTN }),
+        Button({ id: 'moves-close', label: '✕', onClick: opts.onToggle, style: CLOSE_BTN }),
       ]),
-      Button({ id: 'moves-close', label: '✕', onClick: opts.onToggle, style: CLOSE_BTN }),
     ]);
   }
   // The move-list Slot stays in the tree in BOTH states — when minimized it's
@@ -128,15 +128,20 @@ export function buildChessGameRoot(
   // header from the list so the panel doesn't feel cramped. No drawn border — the
   // translucent fill alone separates the panel from the scene, so minimized it
   // reads as a button.
+  // The one-row spacer under the header only appears once moves exist — an empty
+  // panel hugs its header instead of showing a stray blank row.
+  const hasMoves = moveHistory.rows.length > 0;
   const children = opts.minimized
     ? [header, Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot('chess-history')])]
-    : [header, Box({ height: 1 }), Slot('chess-history')];
-  const panel = Box({ flexDirection: 'column', padding: [0, 1], background: [16, 18, 26, 0.9] }, children);
+    : hasMoves
+      ? [header, Box({ height: 1 }), Slot('chess-history')]
+      : [header, Slot('chess-history')];
+  const panel = Box({ flexDirection: 'column', padding: [0, 1], background: [22, 24, 32, 0.9] }, children);
 
   const c = opts.commentary && opts.t < opts.commentary.until ? opts.commentary : null;
   const label = c ? (c.model ? `${shortModel(c.model)}:  ${c.text}` : c.text) : '';
   const toast = c
-    ? Box({ padding: [0, 2], background: [10, 12, 20, 0.94] }, [Text({ text: label, style: { color: 'fg' } })])
+    ? Box({ padding: [0, 2], background: [22, 24, 32, 0.94] }, [Text({ text: label, style: { color: 'fg' } })])
     : null;
 
   return Box({ width: region.w, height: region.h, flexDirection: 'column' }, [

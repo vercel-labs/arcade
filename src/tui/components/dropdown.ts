@@ -36,7 +36,7 @@ export interface DropdownOpts {
 const CARET_CLOSED = '▾';
 const CARET_OPEN = '▴';
 const TRACK: RGB = defaultTheme.pillBg;
-const THUMB: RGB = defaultTheme.accent;
+const THUMB: RGB = [150, 154, 170]; // a light gray (not the blue accent)
 const WHEEL_STEP = 3; // lines per wheel notch (matches ScrollBox)
 
 // One rendered line of the open list: which item it belongs to, and its text
@@ -272,9 +272,10 @@ export class Dropdown implements Component {
       width: this.width,
       padding: [0, 1],
       bold: true,
-      color: this.open && committed ? 'pillHoverFg' : committed ? (this.opts.accentColor ?? 'fg') : 'muted',
-      background: this.open ? 'accent' : this.focused ? 'focusRing' : 'pillBg',
-      // Hover lift on the closed field (when open it's already the accent color).
+      // Gray/white like the bar buttons: muted placeholder, brand/light when set.
+      color: committed ? (this.opts.accentColor ?? 'fg') : 'muted',
+      // Resting gray; the lighter focus-gray when open or focused (matches buttons).
+      background: this.open || this.focused ? 'focusRing' : 'pillBg',
       hover: this.open ? undefined : { background: 'focusRing' },
     };
     // The field is the focusable, id-bearing node (clicking it focuses the
@@ -298,8 +299,9 @@ export class Dropdown implements Component {
         const on = item === this.highlight; // every line of the highlighted item lights up
         listRows.push(
           Text({
+            // Selected item reads like a hovered bar button: near-white bg, dark text.
             text,
-            style: { width: rowW, padding: [0, 1], color: on ? 'pillHoverFg' : 'fg', background: on ? 'accent' : 'pillBg' },
+            style: { width: rowW, padding: [0, 1], color: on ? 'pillHoverFg' : 'fg', background: on ? 'pillHoverBg' : 'pillBg' },
           }),
         );
       }

@@ -159,7 +159,7 @@ export function buildPromotion(color: Color, onPick: (t: PieceType) => void): No
       alignItems: 'stretch',
       gap: 1,
       padding: [1, 2],
-      background: [26, 28, 36],
+      background: [22, 24, 32], // unified popup/panel background
     },
     [
       Box({ justifyContent: 'center' }, [Text({ text: 'Promote to', style: { color: [222, 224, 234], bold: true } })]),
@@ -199,7 +199,7 @@ export function buildGameOver(
     });
 
   const card = Box(
-    { flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [1, 3], background: [26, 28, 36] },
+    { flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [1, 3], background: [22, 24, 32] }, // unified popup background
     [
       Box({ justifyContent: 'center' }, [Text({ text: opts.title, style: { color: opts.tint, bold: true } })]),
       Box({ justifyContent: 'center' }, [Text({ text: opts.subtitle, style: { color: [170, 174, 188] } })]),

@@ -28,7 +28,7 @@ export interface ScrollBoxOpts {
 }
 
 const TRACK: RGB = defaultTheme.pillBg;
-const THUMB: RGB = defaultTheme.accent;
+const THUMB: RGB = [150, 154, 170]; // a light gray (not the blue accent)
 const WHEEL_STEP = 3; // rows scrolled per wheel notch (1 felt sluggish)
 
 export class ScrollBox implements Component {
