@@ -19,3 +19,6 @@ public/assets/chess_pieces.obj
 public/assets/chess_pieces.glb
 public/assets/chess/
 public/assets/chess_decimated/
+
+# hands-free voice diagnostic logs (local only)
+.audio-logs/
