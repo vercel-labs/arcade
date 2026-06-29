@@ -16,6 +16,7 @@ import { clampScroll, drawMenu, layoutMenu, MENU_ITEMS, type MenuDir, menuMove, 
 import { ChessScene } from './chess.ts';
 import { ChessGameScene } from './chess-game.ts';
 import { LogosScene } from './logos-scene.ts';
+import { AudioScene } from './audio-scene.ts';
 import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/input.ts';
 import { buildBar, buildGameOver, buildPromotion, type BarActions, type Mode, type RenderMode } from './bars.ts';
 import { buildShowcase, mountShowcase } from './ui-showcase.ts';
@@ -23,6 +24,7 @@ import { buildChessGameRoot, type Commentary, mountChessHud, movesToPgn, refresh
 import { buildMatchSetup, matchSetupSelection, mountMatchSetup } from './match-setup.ts';
 import { copyToClipboard } from '../platform/clipboard.ts';
 import { BLACK, type Color, type Move, WHITE } from '../games/chess/types.ts';
+import { evaluate } from '../games/chess/eval.ts';
 import type { ChessResult } from '../games/chess/chess.ts';
 import type { RGB, RGBA } from '../engine/index.ts';
 import { Keymap, Renderer, Screen, type LayoutBox } from '../tui/index.ts';
@@ -69,6 +71,7 @@ const splash = new SplashScene();
 const chess = new ChessScene();
 const chessGame = new ChessGameScene();
 const logosScene = new LogosScene();
+const audioScene = new AudioScene();
 // The 2D UI overlay (button bar). Lays out + paints over the scene each frame.
 const ui = new Screen(cols, rows);
 // Render-on-demand loop. Animating screens hold a live lease; static screens
@@ -98,8 +101,9 @@ function orbitScene(): ChessScene | ChessGameScene | null {
 // backdrop is camera-controllable too, so dragging on the scene behind the panel
 // rotates it.) `orbitScene()` stays null for 'ui' so the tick uses the dedicated
 // 'ui' branch, which always recomposites for live component edits.
-function activeOrbit(): ChessScene | ChessGameScene | LogosScene | null {
+function activeOrbit(): ChessScene | ChessGameScene | LogosScene | AudioScene | null {
   if (mode === 'logos') return logosScene;
+  if (mode === 'audio') return audioScene;
   if (mode === 'ui') return chess;
   return orbitScene();
 }
@@ -148,6 +152,9 @@ let illegalAllowed = false;
 // Whether the move-history panel is collapsed to its "Moves" header button
 // (toggle with the 'h' key or by clicking the header / ✕). History persists.
 let historyMinimized = false;
+// Whether the right-edge eval bar is shown (toggle with the 'e' key or the bar
+// button). Default hidden; the score is recomputed from the live board each frame.
+let evalBarVisible = false;
 // The game-over result popup (chess-game only): set once the board is terminal,
 // cleared on a new game; `dismissed` suppresses re-showing after Close until the
 // board leaves the terminal state; `focused` is the focus-once edge.
@@ -185,6 +192,7 @@ function syncLive(): void {
     mode === 'menu' ||
     mode === 'demo' ||
     mode === 'logos' ||
+    mode === 'audio' ||
     (mode === 'chess-game' && chessGame.isMatchActive());
   if (want === liveHeld) return;
   if (want) r.requestLive();
@@ -376,6 +384,13 @@ function toggleIllegal(): void {
   r.requestRender();
 }
 
+// Show/hide the right-edge eval bar (bar button / 'e' key).
+function toggleEvalBar(): void {
+  evalBarVisible = !evalBarVisible;
+  forceFrame = true;
+  r.requestRender();
+}
+
 // The AI button / 'p' key: play (idle) → pause (running) → resume (paused).
 // Entering from elsewhere first opens the chess game.
 function aiButton(): void {
@@ -403,8 +418,18 @@ function enterLogos(): void {
   fullRepaint();
 }
 
+// The realtime voice screen: type-to-talk with a speech-to-speech model while its
+// provider wisp pulses. The session opens lazily on the first message.
+function enterAudio(): void {
+  stopAiMatch();
+  mode = 'audio';
+  audioScene.activate();
+  fullRepaint();
+}
+
 function toPrism(): void {
   stopAiMatch();
+  audioScene.deactivate(); // tear down any open voice session when leaving
   mode = 'prism';
   ui.setRoot(null); // attract screen has no bar — clear any prior screen's overlay
   fullRepaint();
@@ -414,6 +439,7 @@ function toPrism(): void {
 // returned to by a game's "back". No bar — the tiles are the navigation surface.
 function enterMenu(): void {
   stopAiMatch();
+  audioScene.deactivate(); // tear down any open voice session when leaving
   mode = 'menu';
   menuSel = 0;
   menuScrollX = 0;
@@ -427,6 +453,7 @@ function launchSelected(): void {
   if (!item?.enabled) return;
   if (item.id === 'chess') enterChessGame();
   else if (item.id === 'logos') enterLogos();
+  else if (item.id === 'audio') enterAudio();
   else if (item.id === 'ui') enterUi();
 }
 
@@ -479,6 +506,8 @@ const actions: BarActions = {
   aiMatch: aiButton,
   resetGame,
   illegalMoves: toggleIllegal,
+  evalBar: toggleEvalBar,
+  audioModel: () => audioScene.cycleModel(),
 };
 
 // Named commands + a layered keymap (the OpenTUI-style command surface). Each
@@ -503,6 +532,8 @@ for (const c of [
   { id: 'menu.down', title: 'Menu: down', run: () => menuNav('down') },
   { id: 'menu.select', title: 'Menu: launch selected', run: launchSelected },
   { id: 'nav.demo', title: 'Open demo', run: enterDemo },
+  { id: 'nav.audio', title: 'Open audio', run: enterAudio },
+  { id: 'audio.nextModel', title: 'Audio: next model', run: () => audioScene.cycleModel() },
   { id: 'nav.chess', title: 'Open chess showcase', run: enterChess },
   { id: 'nav.chessGame', title: 'Open chess game', run: enterChessGame },
   { id: 'nav.ui', title: 'Open UI playground', run: enterUi },
@@ -516,6 +547,7 @@ for (const c of [
   { id: 'chess.toggleHistory', title: 'Toggle move history', run: toggleHistory },
   { id: 'chess.resetGame', title: 'Reset game', run: resetGame },
   { id: 'chess.toggleIllegal', title: 'Toggle illegal moves', run: toggleIllegal },
+  { id: 'chess.toggleEvalBar', title: 'Toggle eval bar', run: toggleEvalBar },
   { id: 'chess.closeGameOver', title: 'Close result', run: closeGameOver },
   { id: 'chess.cancelSetup', title: 'Cancel match setup', run: closeMatchSetup },
 ]) {
@@ -539,6 +571,7 @@ keymap.bind('chess', { key: 'p', cmd: 'chess.toggleAI' });
 keymap.bind('chess', { key: 'h', cmd: 'chess.toggleHistory' });
 keymap.bind('chess', { key: 'n', cmd: 'chess.resetGame' });
 keymap.bind('chess', { key: 'i', cmd: 'chess.toggleIllegal' });
+keymap.bind('chess', { key: 'e', cmd: 'chess.toggleEvalBar' });
 // Menu hub: arrows move, Enter/Space launch, Escape returns to the prism attract
 // screen. Escape here shadows the global Escape→quit because the 'menu' base layer
 // is searched before 'global'.
@@ -569,6 +602,18 @@ for (const layer of ['chess', 'logos', 'ui']) {
   ]) {
     keymap.bind(layer, b);
   }
+}
+// Audio screen: type-to-talk owns letters (handled before the keymap), so only the
+// non-text keys are bound here — Escape returns to the menu and the arrows pan the
+// wisp camera. ('r'/reset stays on the bar button so it can still be typed.)
+keymap.bind('audio', { key: 'escape', cmd: 'nav.back' });
+for (const b of [
+  { key: 'left', cmd: 'chess.panLeft' },
+  { key: 'right', cmd: 'chess.panRight' },
+  { key: 'up', cmd: 'chess.panUp' },
+  { key: 'down', cmd: 'chess.panDown' },
+]) {
+  keymap.bind('audio', b);
 }
 // Promotion picker is modal: Escape cancels; the modal layer (pushed in syncBar)
 // swallows every other stray key so 'q' can't quit mid-choice.
@@ -712,13 +757,18 @@ function syncBar(): void {
       : matchPaused
         ? { label: 'resume ai', active: true }
         : { label: 'pause ai', active: true };
+    // White-POV centipawns for the eval bar (cheap 64-square scan; only when shown).
+    const evalCp = evalBarVisible ? evaluate(chessGame.state().board) : 0;
     ui.setRoot(
-      buildChessGameRoot({ x: 0, y: 0, w: cols, h: rows }, buildBar(mode, renderMode, actions, ai, illegalAllowed), {
+      buildChessGameRoot({ x: 0, y: 0, w: cols, h: rows }, buildBar(mode, renderMode, actions, ai, illegalAllowed, evalBarVisible), {
         minimized: historyMinimized,
         onToggle: toggleHistory,
         onCopy: copyMoves,
         commentary,
         t,
+        evalVisible: evalBarVisible,
+        evalCp,
+        evalResult: chessGame.state().result(),
       }),
       { x: 0, y: 0, w: cols, h: rows },
     );
@@ -791,6 +841,13 @@ function onKeyImpl(ev: KeyEvent): void {
   // Prism attract screen: any key starts (→ menu). ctrl+c still quits (falls to keymap).
   if (mode === 'prism' && !(ev.ctrl && ev.name === 'c')) {
     enterMenu();
+    return;
+  }
+  // Audio screen: type-to-talk. Printable keys + enter/backspace/tab feed the
+  // prompt; everything else (escape → back, arrows → pan) falls to the keymap.
+  if (mode === 'audio') {
+    if (audioScene.handleKey(ev)) return;
+    keymap.handle(ev);
     return;
   }
   // Focused widget first (the promotion picker's Tab/Enter/Space; future Inputs),
@@ -980,6 +1037,22 @@ function tick(): void {
     logosScene.renderScene(target, t);
     syncBar();
     r.write(UNIFIED ? ui.frameComposited((s) => presentSceneInto(s)) : presentScene() + ui.frame());
+    return;
+  }
+
+  if (mode === 'audio') {
+    // Live wisp + the conversation overlay (drawn over the composited frame, like
+    // the menu). The bar composites on top via syncBar's root.
+    audioScene.renderScene(target, t);
+    syncBar();
+    r.write(
+      UNIFIED
+        ? ui.frameComposited((s) => {
+            presentSceneInto(s);
+            audioScene.drawOverlay(s, cols, rows);
+          })
+        : presentScene() + ui.frame(),
+    );
     return;
   }
 

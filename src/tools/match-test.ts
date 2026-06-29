@@ -12,6 +12,7 @@ import type { GameState } from '../games/game.ts';
 import { type MatchScene, runMatch } from '../ai/match.ts';
 import { ModelPlayer } from '../ai/model-player.ts';
 import type { Player } from '../ai/player.ts';
+import { type RealtimeCodec, RealtimeSession, type RealtimeSocket } from '../ai/realtime-session.ts';
 import type { Move } from '../games/chess/types.ts';
 import { readFileSync } from 'node:fs';
 import { decodePng, RenderTarget, stringWidth } from '../engine/index.ts';
@@ -196,7 +197,7 @@ async function main(): Promise<void> {
   //    move-history ScrollBox expands and the commentary toast renders.
   {
     const noop = (): void => {};
-    const actions: BarActions = { chessGame: noop, demo: noop, logos: noop, ui: noop, back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop };
+    const actions: BarActions = { chessGame: noop, demo: noop, logos: noop, ui: noop, back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop, evalBar: noop, audioModel: noop };
     const ui = new Screen(80, 30);
     mountChessHud(ui);
     refreshMoveHistory(['e4', 'e5', 'Nf3', 'Nc6']);
@@ -208,6 +209,9 @@ async function main(): Promise<void> {
           onCopy: noop,
           commentary: { text: 'developing the knight', model: 'anthropic/claude-opus-4.8', until: 99 },
           t: 0,
+          evalVisible: false,
+          evalCp: 0,
+          evalResult: null,
         }),
         { x: 0, y: 0, w: 80, h: 30 },
       );
@@ -251,12 +255,12 @@ async function main(): Promise<void> {
   //     while legal moves stay light, and the red must vanish when nothing's flagged.
   {
     const noop = (): void => {};
-    const actions: BarActions = { chessGame: noop, demo: noop, logos: noop, ui: noop, back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop };
+    const actions: BarActions = { chessGame: noop, demo: noop, logos: noop, ui: noop, back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop, evalBar: noop, audioModel: noop };
     const ui = new Screen(80, 30);
     mountChessHud(ui);
     const render = (): void =>
       ui.setRoot(
-        buildChessGameRoot({ x: 0, y: 0, w: 80, h: 30 }, buildBar('chess-game', 'ascii', actions), { minimized: false, onToggle: noop, onCopy: noop, commentary: null, t: 0 }),
+        buildChessGameRoot({ x: 0, y: 0, w: 80, h: 30 }, buildBar('chess-game', 'ascii', actions), { minimized: false, onToggle: noop, onCopy: noop, commentary: null, t: 0, evalVisible: false, evalCp: 0, evalResult: null }),
         { x: 0, y: 0, w: 80, h: 30 },
       );
     // The illegal tint ([226,92,86]) emits a truecolor fg SGR (38;2;226;92;86) in
@@ -276,12 +280,12 @@ async function main(): Promise<void> {
   //     and the wheel step moves several rows per notch (snappier than 1).
   {
     const noop = (): void => {};
-    const actions: BarActions = { chessGame: noop, demo: noop, logos: noop, ui: noop, back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop };
+    const actions: BarActions = { chessGame: noop, demo: noop, logos: noop, ui: noop, back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop, evalBar: noop, audioModel: noop };
     const ui = new Screen(80, 30);
     mountChessHud(ui);
     refreshMoveHistory(Array.from({ length: 60 }, (_, i) => (i % 2 === 0 ? 'Nf3' : 'Nc6'))); // 30 rows → scrollable, snapped to bottom
     ui.setRoot(
-      buildChessGameRoot({ x: 0, y: 0, w: 80, h: 30 }, buildBar('chess-game', 'ascii', actions), { minimized: false, onToggle: noop, onCopy: noop, commentary: null, t: 0 }),
+      buildChessGameRoot({ x: 0, y: 0, w: 80, h: 30 }, buildBar('chess-game', 'ascii', actions), { minimized: false, onToggle: noop, onCopy: noop, commentary: null, t: 0, evalVisible: false, evalCp: 0, evalResult: null }),
       { x: 0, y: 0, w: 80, h: 30 },
     );
     ui.frameComposited(() => {}); // expand + layout
@@ -305,7 +309,7 @@ async function main(): Promise<void> {
     // camera pan still fires when the cursor is over a panel with nothing to scroll.
     refreshMoveHistory(['e4', 'e5']); // 1 row < viewport → maxScroll 0
     ui.setRoot(
-      buildChessGameRoot({ x: 0, y: 0, w: 80, h: 30 }, buildBar('chess-game', 'ascii', actions), { minimized: false, onToggle: noop, onCopy: noop, commentary: null, t: 0 }),
+      buildChessGameRoot({ x: 0, y: 0, w: 80, h: 30 }, buildBar('chess-game', 'ascii', actions), { minimized: false, onToggle: noop, onCopy: noop, commentary: null, t: 0, evalVisible: false, evalCp: 0, evalResult: null }),
       { x: 0, y: 0, w: 80, h: 30 },
     );
     ui.frameComposited(() => {});
@@ -583,6 +587,99 @@ async function main(): Promise<void> {
     check('legal mode: rejects the illegal move and falls back to a legal one', legalMove);
     const retryPrompt = JSON.stringify(strictModel.doGenerateCalls[1] ?? {});
     check('legal mode: the retry prompt lists the legal moves', /legal moves are/i.test(retryPrompt));
+  }
+
+  // 12. RealtimeSession drives the voice seam over a mock socket (no network): a
+  //     user text turn serializes to item-create + response-create client events,
+  //     and server transcript/audio/done/error frames fan out to the handlers
+  //     (base64 audio decoded to PCM bytes). This is the type-to-talk contract.
+  {
+    const sent: string[] = [];
+    const listeners: Record<string, (arg?: unknown) => void> = {};
+    const socket: RealtimeSocket = {
+      send: (d) => sent.push(d),
+      close: () => {},
+      on: (ev, cb) => {
+        listeners[ev] = cb;
+      },
+    };
+    // Identity codec: client events pass through; server frames are already in the
+    // normalized { type, delta } shape the session reads.
+    const codec: RealtimeCodec = { serializeClientEvent: (e) => e, parseServerEvent: (d) => d };
+    const got = { transcript: '', audio: [] as Buffer[], status: [] as string[], error: '', speech: [] as string[], userTranscript: '' };
+    const session = new RealtimeSession(codec, socket, {
+      onTranscript: (d) => {
+        got.transcript += d;
+      },
+      onAudio: (p) => got.audio.push(p),
+      onStatus: (s) => got.status.push(s),
+      onError: (m) => {
+        got.error = m;
+      },
+      onSpeechStarted: () => got.speech.push('started'),
+      onSpeechStopped: () => got.speech.push('stopped'),
+      onUserTranscript: (text) => {
+        got.userTranscript = text;
+      },
+    });
+
+    listeners.open?.(); // socket connects → flush queue + open status
+    await session.say('hello there');
+    check(
+      'realtime: say() sends item-create + response-create',
+      sent.length === 2 && sent[0].includes('conversation-item-create') && sent[0].includes('hello there') && sent[1].includes('response-create'),
+      `${sent.length} sent`,
+    );
+    check('realtime: say() reports responding', got.status.includes('responding'));
+
+    const pcm = Buffer.from([1, 2, 3, 4]);
+    listeners.message?.(JSON.stringify({ type: 'audio-transcript-delta', delta: 'Hel' }));
+    listeners.message?.(JSON.stringify({ type: 'audio-transcript-delta', delta: 'lo' }));
+    listeners.message?.(JSON.stringify({ type: 'audio-delta', delta: pcm.toString('base64') }));
+    listeners.message?.(JSON.stringify({ type: 'response-done' }));
+    check('realtime: transcript deltas accumulate', got.transcript === 'Hello', got.transcript);
+    check('realtime: audio-delta base64 → PCM bytes', got.audio.length === 1 && got.audio[0].equals(pcm));
+    check('realtime: response-done → done status', got.status.includes('done'));
+
+    // Full-duplex pieces: server VAD events drive barge-in / turn-taking, and the
+    // user's transcription surfaces the human side of the conversation.
+    listeners.message?.(JSON.stringify({ type: 'speech-started' }));
+    listeners.message?.(JSON.stringify({ type: 'input-transcription-completed', transcript: 'hi model' }));
+    listeners.message?.(JSON.stringify({ type: 'speech-stopped' }));
+    check('realtime: VAD speech-started/stopped → handlers', got.speech.includes('started') && got.speech.includes('stopped'));
+    check('realtime: input-transcription-completed → onUserTranscript', got.userTranscript === 'hi model');
+
+    // Client→server audio + config events (sent now that the socket is open).
+    const micPcm = Buffer.from([5, 6, 7, 8]);
+    session.updateSession({ turnDetection: { type: 'server-vad' }, inputAudioFormat: { type: 'audio/pcm', rate: 24000 } });
+    session.appendAudio(micPcm);
+    await new Promise((r) => setTimeout(r, 0)); // let the async sends flush
+    check('realtime: updateSession sends session-update', sent.some((s) => s.includes('session-update') && s.includes('server-vad')));
+    check('realtime: appendAudio sends input-audio-append (base64 PCM)', sent.some((s) => s.includes('input-audio-append') && s.includes(micPcm.toString('base64'))));
+
+    listeners.error?.({ message: 'boom' });
+    check('realtime: socket error → onError', got.error === 'boom');
+    listeners.close?.();
+    check('realtime: open/close → status transitions', got.status.includes('open') && got.status.includes('closed'));
+
+    listeners.message?.('not json{'); // a malformed frame must be ignored, not throw
+    check('realtime: non-JSON frame ignored', got.transcript === 'Hello');
+  }
+
+  // 12b. Regression for the "closed before the connection was established" bug:
+  //      a say() BEFORE the socket opens must queue (not send, which would throw),
+  //      then flush in order once 'open' fires.
+  {
+    const sent: string[] = [];
+    const listeners: Record<string, (arg?: unknown) => void> = {};
+    const socket: RealtimeSocket = { send: (d) => sent.push(d), close: () => {}, on: (ev, cb) => { listeners[ev] = cb; } };
+    const codec: RealtimeCodec = { serializeClientEvent: (e) => e, parseServerEvent: (d) => d };
+    const session = new RealtimeSession(codec, socket, {});
+    await session.say('queued hi'); // socket not open yet
+    check('realtime: sends queue until the socket opens', sent.length === 0, `${sent.length} sent early`);
+    listeners.open?.();
+    await new Promise((r) => setTimeout(r, 0)); // let flushOutbox drain
+    check('realtime: queued sends flush in order on open', sent.length === 2 && sent[0].includes('queued hi'), `${sent.length} flushed`);
   }
 
   console.log(failures === 0 ? '\nmatch: all checks pass ✓' : `\nmatch: ${failures} FAILED ✗`);

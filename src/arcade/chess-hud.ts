@@ -9,7 +9,9 @@
 // the "Moves" label keeps the same position in both states. Click it (or the ✕,
 // shown when expanded) to toggle.
 import { Box, Button, type Row, ScrollBox, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../tui/index.ts';
-import type { RGB } from '../engine/index.ts';
+import type { RGB, RGBA } from '../engine/index.ts';
+import type { ChessResult } from '../games/chess/chess.ts';
+import { WHITE } from '../games/chess/types.ts';
 
 const HISTORY_HEIGHT = 18; // MAX visible move rows — the panel grows to this, then scrolls
 const HISTORY_WIDTH = 22; // inner content width — header + list share it (fixed)
@@ -77,6 +79,72 @@ export function shortModel(slug: string): string {
   return slash >= 0 ? slug.slice(slash + 1) : slug;
 }
 
+// ── Eval bar ──────────────────────────────────────────────────────────────────
+// A chess.com-style vertical eval rail near the right edge. White fills from the
+// bottom, black from the top; the divider — always a clean straight line across
+// the full width — moves with the evaluation. Fed a white-POV centipawn score
+// (see games/chess/eval.ts) — presentation only. The rail is thin and floats with
+// a gap above and below (it doesn't run to the screen edges).
+const EVAL_RAIL_W = 2; // rail thickness (cells) — thin
+const EVAL_COL_W = 4; // column width, sized to hold the numeric label
+const EVAL_VPAD = 4; // rows of gap above and below the rail
+const EVAL_LIGHT: RGB = [232, 228, 216]; // white side (ivory, matches the set)
+const EVAL_DARK: RGB = [48, 46, 52]; // black side (charcoal)
+const EVAL_LABEL_BG: RGBA = [22, 24, 32, 0.9]; // matches the move panel
+
+// White's share of the bar (0..1) from a centipawn score. tanh squashes so a huge
+// material lead eases toward — but never pins — the end, like chess.com's curve.
+export function scoreToBar(cp: number): number {
+  return 0.5 + 0.5 * Math.tanh(cp / 400);
+}
+
+// White-POV pawn label, ≤4 chars so it fits the column ("+1.2", "−0.8", "+10").
+function evalLabel(cp: number): string {
+  const pawns = cp / 100;
+  const sign = pawns > 0 ? '+' : pawns < 0 ? '−' : '';
+  const mag = Math.abs(pawns);
+  return `${sign}${mag >= 10 ? Math.round(mag).toString() : mag.toFixed(1)}`;
+}
+
+// The eval rail: a numeric label, then a thin vertical bar, vertically centered so
+// equal gaps frame it top and bottom. The divider is a whole-cell boundary (never
+// a partial/half cell), so it always reads as a straight horizontal line. `result`
+// overrides the heuristic at game end: checkmate pins the bar to the winner ("#");
+// a draw centers it ("½").
+export function buildEvalBar(cp: number, result: ChessResult | null, height: number): Node {
+  const barH = Math.max(1, height - 2 * EVAL_VPAD - 1); // leave the gap + label row
+  // Fill fraction + label, with terminal overrides.
+  let frac: number;
+  let label: string;
+  if (result?.reason === 'checkmate') {
+    frac = result.winner === WHITE ? 1 : 0;
+    label = '#';
+  } else if (result) {
+    frac = 0.5;
+    label = '½';
+  } else {
+    frac = scoreToBar(cp);
+    label = evalLabel(cp);
+  }
+
+  // Whole-cell fill: the bottom `whiteRows` are white, the rest dark. The seam
+  // between them is a single straight line across the rail.
+  const whiteRows = Math.max(0, Math.min(barH, Math.round(frac * barH)));
+  const railRow = (color: RGB): Node =>
+    Box({ width: EVAL_COL_W, height: 1, justifyContent: 'center' }, [Box({ width: EVAL_RAIL_W, height: 1, background: color })]);
+  const rows: Node[] = [];
+  for (let r = barH - 1; r >= 0; r--) rows.push(railRow(r < whiteRows ? EVAL_LIGHT : EVAL_DARK));
+
+  return Box({ flexDirection: 'column', width: EVAL_COL_W, height, alignItems: 'center' }, [
+    Box({ flexGrow: 1 }), // top gap (balances the bottom — keeps the rail off the edge)
+    Box({ width: EVAL_COL_W, height: 1, justifyContent: 'center', background: EVAL_LABEL_BG }, [
+      Text({ text: label, style: { color: [210, 212, 222], bold: true } }),
+    ]),
+    ...rows,
+    Box({ flexGrow: 1 }), // bottom gap
+  ]);
+}
+
 // "Moves" header text reads as a label, but is a clickable button (toggles the
 // panel). No pill background so it looks like a heading, not a bar button.
 const HEADER_BTN: Style = {
@@ -92,7 +160,7 @@ const CLOSE_BTN: Style = {
   color: 'muted',
   hover: { color: [255, 255, 255] },
 };
-const COPY_GLYPH = '⧉'; // two overlapping squares — "copy"
+const COPY_GLYPH = '↥'; // up-from-bar "export" mark (copies PGN)
 
 // Build the full-screen chess-game overlay: the move panel pinned top-right
 // (collapsible — see `minimized`/`onToggle`), a commentary toast above the bar
@@ -100,7 +168,16 @@ const COPY_GLYPH = '⧉'; // two overlapping squares — "copy"
 export function buildChessGameRoot(
   region: LayoutBox,
   bar: Node,
-  opts: { minimized: boolean; onToggle: () => void; onCopy: () => void; commentary: Commentary | null; t: number },
+  opts: {
+    minimized: boolean;
+    onToggle: () => void;
+    onCopy: () => void;
+    commentary: Commentary | null;
+    t: number;
+    evalVisible: boolean;
+    evalCp: number;
+    evalResult: ChessResult | null;
+  },
 ): Node {
   // Minimized: the header hugs just the "Moves" button (a tight button). Expanded:
   // a fixed-width header row with "Moves" at the left edge and a right group — the
@@ -113,9 +190,11 @@ export function buildChessGameRoot(
       Button({ id: 'moves-toggle', label: 'Moves', onClick: opts.onToggle, style: HEADER_BTN }),
     ]);
   } else {
-    header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', width: HISTORY_WIDTH }, [
+    // Right padding gives the ✕ a 1-cell margin from the panel edge while the list
+    // (and its scrollbar) below stays full-width / flush right.
+    header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', width: HISTORY_WIDTH, padding: [0, 1, 0, 0] }, [
       Button({ id: 'moves-toggle', label: 'Moves', onClick: opts.onToggle, style: HEADER_BTN }),
-      Box({ flexDirection: 'row', alignItems: 'center', gap: 1 }, [
+      Box({ flexDirection: 'row', alignItems: 'center', gap: 2 }, [
         Button({ id: 'moves-copy', label: COPY_GLYPH, onClick: opts.onCopy, style: CLOSE_BTN }),
         Button({ id: 'moves-close', label: '✕', onClick: opts.onToggle, style: CLOSE_BTN }),
       ]),
@@ -124,19 +203,20 @@ export function buildChessGameRoot(
   // The move-list Slot stays in the tree in BOTH states — when minimized it's
   // wrapped in a 0×0 clipped box (hidden, but still "referenced") so the Screen
   // doesn't auto-unmount the ScrollBox; otherwise re-expanding would find it
-  // unmounted and render an empty panel. Expanded, a one-row spacer separates the
-  // header from the list so the panel doesn't feel cramped. No drawn border — the
-  // translucent fill alone separates the panel from the scene, so minimized it
-  // reads as a button.
-  // The one-row spacer under the header only appears once moves exist — an empty
-  // panel hugs its header instead of showing a stray blank row.
-  const hasMoves = moveHistory.rows.length > 0;
+  // unmounted and render an empty panel. No drawn border — the translucent fill
+  // alone separates the panel from the scene, so minimized it reads as a button.
+  // (The header sits directly above the list — no spacer row.)
   const children = opts.minimized
     ? [header, Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot('chess-history')])]
-    : hasMoves
-      ? [header, Box({ height: 1 }), Slot('chess-history')]
-      : [header, Slot('chess-history')];
-  const panel = Box({ flexDirection: 'column', padding: [0, 1], background: [22, 24, 32, 0.9] }, children);
+    : [header, Slot('chess-history')];
+  // Expanded: left padding indents the text, right padding 0 so the scrollbar sits
+  // flush against the modal's right edge (the header carries its own right margin
+  // for the ✕). Minimized: symmetric padding so the "Moves" chip has both margins.
+  const panel = Box({
+    flexDirection: 'column',
+    padding: opts.minimized ? [0, 1] : [0, 0, 0, 1],
+    background: [22, 24, 32, 0.9],
+  }, children);
 
   const c = opts.commentary && opts.t < opts.commentary.until ? opts.commentary : null;
   const label = c ? (c.model ? `${shortModel(c.model)}:  ${c.text}` : c.text) : '';
@@ -144,11 +224,17 @@ export function buildChessGameRoot(
     ? Box({ padding: [0, 2], background: [22, 24, 32, 0.94] }, [Text({ text: label, style: { color: 'fg' } })])
     : null;
 
-  return Box({ width: region.w, height: region.h, flexDirection: 'column' }, [
+  // The main column (panel + toast + bar). The eval rail, when shown, sits to its
+  // right at full height — clear of the top-left move panel.
+  const main = Box({ flexGrow: 1, flexDirection: 'column', height: region.h }, [
     Box({ flexDirection: 'row', justifyContent: 'start', padding: [1, 2] }, [panel]),
     Box({ flexGrow: 1 }), // spacer pushes the toast + bar to the bottom
     ...(toast ? [Box({ flexDirection: 'row', justifyContent: 'center', padding: [0, 0, 1, 0] }, [toast])] : []),
     bar,
     Box({ height: 1 }), // lift the bar off the very bottom edge
+  ]);
+  return Box({ width: region.w, height: region.h, flexDirection: 'row' }, [
+    main,
+    ...(opts.evalVisible ? [buildEvalBar(opts.evalCp, opts.evalResult, region.h)] : []),
   ]);
 }

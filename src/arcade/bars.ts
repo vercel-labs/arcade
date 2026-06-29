@@ -7,7 +7,7 @@ import { Box, Button, Modal, Text, type Node, type Style } from '../tui/index.ts
 import { BISHOP, BLACK, type Color, KNIGHT, type PieceType, QUEEN, ROOK } from '../games/chess/types.ts';
 import type { RGB } from '../engine/index.ts';
 
-export type Mode = 'prism' | 'menu' | 'demo' | 'chess' | 'chess-game' | 'logos' | 'ui';
+export type Mode = 'prism' | 'menu' | 'demo' | 'chess' | 'chess-game' | 'logos' | 'ui' | 'audio';
 export type RenderMode = 'color' | 'ascii' | 'luminance';
 
 export interface BarActions {
@@ -22,6 +22,8 @@ export interface BarActions {
   aiMatch(): void;
   resetGame(): void;
   illegalMoves(): void;
+  evalBar(): void;
+  audioModel(): void;
 }
 
 // A pill: muted slate normally, bright inverted on hover/press, with a distinct
@@ -54,6 +56,7 @@ export function buildBar(
   a: BarActions,
   ai: { label: string; active: boolean } = { label: 'play ai', active: false },
   illegalOn = false,
+  evalOn = false,
 ): Node {
   const modeLabel = `mode: ${centerField(renderMode, 9)}`;
   let buttons: Node[] = [];
@@ -80,6 +83,15 @@ export function buildBar(
       Button({ id: 'mode', label: modeLabel, onClick: a.mode, style: PILL }),
       Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
     ];
+  } else if (mode === 'audio') {
+    // The realtime voice screen: pick the speech-to-speech model (cycles; the
+    // current one shows in the scene overlay), reset the wisp camera, back, quit.
+    buttons = [
+      Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
+      Button({ id: 'audio-model', label: 'model ›', onClick: a.audioModel, style: PILL }),
+      Button({ id: 'reset', label: 'reset view', onClick: a.reset, style: PILL }),
+      Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
+    ];
   } else if (mode === 'chess-game') {
     // The playable board: the AI button plays (idle) → pauses (running) → resumes
     // (paused). Highlighted whenever a match exists (running or paused).
@@ -91,11 +103,16 @@ export function buildBar(
     const illegalStyle = illegalOn
       ? { ...PILL, background: [150, 58, 58] as RGB, color: [250, 232, 230] as RGB }
       : PILL;
+    // The eval-bar toggle: a cool slate highlight when the rail is shown.
+    const evalStyle = evalOn
+      ? { ...PILL, background: [60, 78, 112] as RGB, color: [230, 238, 250] as RGB }
+      : PILL;
     buttons = [
       Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
       Button({ id: 'ai', label: ai.label, onClick: a.aiMatch, style: aiStyle }),
       Button({ id: 'reset-game', label: 'reset game', onClick: a.resetGame, style: PILL }),
       Button({ id: 'illegal', label: `illegal: ${illegalOn ? 'on' : 'off'}`, onClick: a.illegalMoves, style: illegalStyle }),
+      Button({ id: 'eval-bar', label: evalOn ? 'hide eval bar' : 'show eval bar', onClick: a.evalBar, style: evalStyle }),
       Button({ id: 'reset', label: 'reset view', onClick: a.reset, style: PILL }),
       Button({ id: 'mode', label: modeLabel, onClick: a.mode, style: PILL }),
       Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
