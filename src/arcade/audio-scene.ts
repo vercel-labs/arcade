@@ -12,6 +12,7 @@ import { loadWisp, mulberry32, providerTint, type Wisp } from './wisp.ts';
 import { AudioPlayer, StreamPlayer } from '../ai/audio-out.ts';
 import { MicCapture, micAvailable } from '../ai/audio-in.ts';
 import { AudioLog } from '../ai/audio-log.ts';
+import { AecSidecar } from '../ai/aec-sidecar.ts';
 import {
   openRealtime,
   type RealtimeHandlers,
@@ -70,6 +71,11 @@ export class AudioScene {
   private mic = new MicCapture();
   private micStarted = false;
   private audioLog = new AudioLog(); // hands-free diagnostic timeline (→ .audio-logs/)
+  // macOS VoiceProcessingIO sidecar: when available it replaces both the mic (sox)
+  // and the playback (node-speaker) with one OS-AEC unit, so the model never hears
+  // its own speaker output. Falls back to sox + node-speaker when unavailable.
+  private aec = new AecSidecar();
+  private useAec = false;
 
   private streaming = false; // streamed output available
   private duplex = false; // mic + streaming + key → voice conversation
@@ -117,13 +123,25 @@ export class AudioScene {
     this.userTranscript = '';
     this.status = 'idle';
     this.streaming = this.streamPlayer.available();
-    this.duplex = this.streaming && micAvailable() && !!process.env.AI_GATEWAY_API_KEY;
-    this.mode = process.env.ARCADE_VOICE_MODE === 'handsfree' ? 'handsFree' : 'ptt';
+    this.useAec = this.aec.available(); // macOS VPIO sidecar owns mic + playback when present
+    // With the AEC sidecar, voice works regardless of sox/node-speaker (it provides
+    // both); otherwise we need a streaming player + a mic recorder.
+    this.duplex = (this.useAec || (this.streaming && micAvailable())) && !!process.env.AI_GATEWAY_API_KEY;
+    // Default to hands-free when AEC is available (its whole point is speakers); else
+    // push-to-talk. Explicit ARCADE_VOICE_MODE overrides.
+    this.mode =
+      process.env.ARCADE_VOICE_MODE === 'handsfree'
+        ? 'handsFree'
+        : process.env.ARCADE_VOICE_MODE === 'ptt'
+          ? 'ptt'
+          : this.useAec
+            ? 'handsFree'
+            : 'ptt';
     if (!process.env.AI_GATEWAY_API_KEY) {
       this.note = 'set AI_GATEWAY_API_KEY in .env.local to talk';
     } else if (this.duplex) {
-      this.note = '';
-      void this.ensureSession(); // hands-free: open the session + start the mic
+      this.note = this.useAec ? 'echo cancellation on' : '';
+      void this.ensureSession(); // open the session + start the mic
     } else if (this.streaming) {
       this.note = 'no microphone found — type a message and press enter';
     } else {
@@ -144,6 +162,7 @@ export class AudioScene {
     const logPath = this.audioLog.flush(); // write the hands-free timeline, if any
     if (logPath) this.note = `audio log → ${logPath}`;
     this.mic.stop();
+    this.aec.stop();
     this.micStarted = false;
     this.streamPlayer.interrupt();
     this.session?.close();
@@ -261,6 +280,10 @@ export class AudioScene {
   // hands-free uses server VAD to auto-segment turns — the echo gate in startMic
   // keeps the model's own playback out of that VAD so it doesn't interrupt itself.
   private sessionConfig(): RealtimeSessionConfig {
+    // OpenAI's server VAD is more trigger-happy on background noise than xAI's, so
+    // give it a higher activation threshold (needs clearer speech); other providers
+    // keep the default.
+    const threshold = this.provider === 'openai' ? 0.99 : 0.5;
     return {
       outputModalities: ['audio'],
       inputAudioFormat: { type: 'audio/pcm', rate: RATE },
@@ -269,31 +292,38 @@ export class AudioScene {
       outputAudioTranscription: {},
       turnDetection:
         this.mode === 'handsFree'
-          ? { type: 'server-vad', threshold: 0.5, silenceDurationMs: 600, prefixPaddingMs: 300 }
+          ? { type: 'server-vad', threshold, silenceDurationMs: 600, prefixPaddingMs: 300 }
           : { type: 'disabled' },
     };
   }
 
-  // Start the mic once the session is open and keep it running. In push-to-talk,
-  // audio is forwarded only while `listening` is toggled on; in hands-free it flows
-  // continuously through the echo gate (gateChunk). The stream stays warm either way.
+  // Start the mic once the session is open and keep it running. With the AEC sidecar
+  // it provides the (echo-cancelled) mic; otherwise sox does. Each captured chunk is
+  // routed by `forwardMic`. The stream stays warm across turns either way.
   private startMic(): void {
     if (this.micStarted) return;
     this.micStarted = true;
-    this.mic.start(
-      (pcm) => {
-        if (this.mode === 'handsFree') {
-          this.gateChunk(pcm);
-          return;
-        }
-        if (!this.listening) return;
-        this.sentWhileOpen = true;
-        this.session?.appendAudio(pcm);
-      },
-      (m) => {
-        this.note = `mic error: ${m}`;
-      },
-    );
+    const onChunk = (pcm: Buffer): void => this.forwardMic(pcm);
+    const onErr = (m: string): void => {
+      this.note = `mic error: ${m}`;
+    };
+    if (this.useAec) this.aec.start(onChunk, onErr);
+    else this.mic.start(onChunk, onErr);
+  }
+
+  // Decide whether a captured mic chunk goes to the model. Push-to-talk forwards only
+  // while `listening`. Hands-free forwards continuously — but without AEC it runs the
+  // software echo gate (gateChunk) to keep the model's own playback out of the VAD;
+  // with AEC the mic is already clean, so it forwards directly.
+  private forwardMic(pcm: Buffer): void {
+    if (this.mode === 'handsFree') {
+      if (this.useAec) this.session?.appendAudio(pcm);
+      else this.gateChunk(pcm);
+      return;
+    }
+    if (!this.listening) return;
+    this.sentWhileOpen = true;
+    this.session?.appendAudio(pcm);
   }
 
   // Hands-free echo gate. While the model's audio is playing, drop low-amplitude mic
@@ -321,6 +351,13 @@ export class AudioScene {
     if (decision !== 'drop-echo') this.session.appendAudio(pcm);
   }
 
+  // Stop the model's voice immediately (barge-in / cleanup): flush the AEC sidecar's
+  // playback ring, or kill the node-speaker stream when not using AEC.
+  private stopPlayback(): void {
+    if (this.useAec) this.aec.flushPlayback();
+    else this.streamPlayer.interrupt();
+  }
+
   // Spacebar toggle: open the mic (barging in over any current reply) or close it
   // and commit the captured audio as the user's turn.
   private toggleMic(): void {
@@ -329,7 +366,7 @@ export class AudioScene {
       // Turning on: cut off any in-progress reply so the user can talk over it and
       // the model's voice never reaches the mic, then start a clean input buffer.
       if (this.wisp.speaking || this.status === 'responding') {
-        this.streamPlayer.interrupt();
+        this.stopPlayback();
         this.session.cancelResponse();
         this.wisp.setSpeaking(false);
       }
@@ -355,8 +392,11 @@ export class AudioScene {
         if (s === 'done') {
           this.audioLog.said(this.transcript);
           this.audioLog.event('response-done');
-          if (!this.streaming) this.bufferPlayer.flush(() => this.wisp.setSpeaking(false));
-          else {
+          if (this.useAec) {
+            this.wisp.setSpeaking(false); // sidecar keeps playing its buffered tail
+          } else if (!this.streaming) {
+            this.bufferPlayer.flush(() => this.wisp.setSpeaking(false));
+          } else {
             this.streamPlayer.endReply(); // flush tail + close device (stops underflow spam)
             this.wisp.setSpeaking(false);
           }
@@ -369,9 +409,13 @@ export class AudioScene {
       onSpeechStarted: () => {
         this.audioLog.event('speech-started');
         if (this.mode !== 'handsFree') return;
-        this.streamPlayer.interrupt();
+        this.stopPlayback();
         this.wisp.setSpeaking(false);
+        // Reset BOTH sides for the new exchange — otherwise the previous turn's
+        // `you:` line lingers (stale) next to the new reply until a fresh
+        // transcription arrives.
         this.transcript = '';
+        this.userTranscript = '';
       },
       onSpeechStopped: () => {
         this.audioLog.event('speech-stopped');
@@ -385,7 +429,8 @@ export class AudioScene {
       },
       onAudio: (pcm) => {
         this.audioLog.out(pcm16Peak(pcm), (pcm.length / 2 / RATE) * 1000); // model's own output
-        if (this.streaming) this.streamPlayer.write(pcm);
+        if (this.useAec) this.aec.write(pcm); // sidecar plays it (and uses it as the AEC reference)
+        else if (this.streaming) this.streamPlayer.write(pcm);
         else this.bufferPlayer.push(pcm);
         this.wisp.setSpeaking(true);
       },
@@ -423,9 +468,11 @@ export class AudioScene {
           : this.status === 'responding'
             ? 'thinking…'
             : this.mode === 'handsFree' && this.duplex
-              ? '● hands-free — just talk'
+              ? '● just talk'
               : this.note || 'ready';
-    const modeTag = this.duplex ? `  ·  ${this.mode === 'handsFree' ? 'hands-free' : 'push-to-talk'}` : '';
+    const modeTag = this.duplex
+      ? `  ·  ${this.mode === 'handsFree' ? 'hands-free' : 'push-to-talk'}${this.useAec ? ' · aec' : ''}`
+      : '';
     surf.drawText(pad, rows - 7, trunc(`${this.modelId}   ·   ${state}${modeTag}`, w), [150, 200, 180], PANEL_BG, STYLE_BOLD);
     if (this.userTranscript) surf.drawText(pad, rows - 6, trunc(`you: ${this.userTranscript}`, w), [180, 200, 224], PANEL_BG);
     if (this.transcript) surf.drawText(pad, rows - 5, trunc(this.transcript, w), [220, 224, 234], PANEL_BG);

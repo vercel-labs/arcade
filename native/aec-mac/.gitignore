@@ -1,0 +1,4 @@
+# build artifacts + spike recordings
+aec-mac
+*.dSYM/
+*.wav

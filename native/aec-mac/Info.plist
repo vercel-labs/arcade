@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>dev.arcade.aec-mac</string>
+  <key>CFBundleName</key>
+  <string>aec-mac</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>arcade uses the microphone for echo-cancelled voice conversation.</string>
+</dict>
+</plist>
