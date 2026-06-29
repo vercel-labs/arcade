@@ -14,6 +14,7 @@ const noto = (cp: string): string => `https://cdn.jsdelivr.net/gh/googlefonts/no
 const ART: Record<string, string> = {
   chess: '265f', // ♟ chess pawn
   logos: '1f916', // 🤖 robot
+  audio: '1f3a4', // 🎤 microphone
   ui: '1f39b', // 🎛 control knobs
   poker: '1f0cf', // 🃏 joker
   codenames: '1f4dd', // 📝 memo

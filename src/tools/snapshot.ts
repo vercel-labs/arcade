@@ -14,9 +14,11 @@ import { clampScroll, drawMenu, layoutMenu } from '../arcade/menu.ts';
 import { ChessScene } from '../arcade/chess.ts';
 import { ChessGameScene } from '../arcade/chess-game.ts';
 import { LogosScene } from '../arcade/logos-scene.ts';
+import { AudioScene } from '../arcade/audio-scene.ts';
 import { buildBar, buildGameOver, buildPromotion, type Mode } from '../arcade/bars.ts';
 import { buildShowcase, mountShowcase } from '../arcade/ui-showcase.ts';
 import { buildChessGameRoot, mountChessHud, refreshMoveHistory } from '../arcade/chess-hud.ts';
+import { evaluate } from '../games/chess/eval.ts';
 import { buildMatchSetup, mountMatchSetup } from '../arcade/match-setup.ts';
 import { providers } from '../arcade/models.ts';
 import type { Color } from '../games/chess/types.ts';
@@ -79,6 +81,18 @@ function surfaceToPpm(
 // a real terminal). Covers the glyphs the TUI components actually emit. px/py are
 // 0..7 within the cell; mid = the central 2 rows/cols (3,4).
 function blockBits(ch: string, px: number, py: number): boolean {
+  // Braille (U+2800..28FF): a 2×4 dot grid. Map the 8×8 cell to dots — col by x<4,
+  // row by quarters of y — and test the dot's bit. Lets the menu's silhouettes show.
+  const cp = ch.codePointAt(0) ?? 0;
+  if (cp >= 0x2800 && cp <= 0x28ff) {
+    const col = px < 4 ? 0 : 1;
+    const row = py < 2 ? 0 : py < 4 ? 1 : py < 6 ? 2 : 3;
+    const dot = [
+      [0x01, 0x02, 0x04, 0x40],
+      [0x08, 0x10, 0x20, 0x80],
+    ][col][row];
+    return ((cp - 0x2800) & dot) !== 0;
+  }
   const midX = px === 3 || px === 4;
   const midY = py === 3 || py === 4;
   switch (ch) {
@@ -126,7 +140,7 @@ function blockBits(ch: string, px: number, py: number): boolean {
 }
 
 const noop = (): void => {};
-const barActions = { chessGame: noop, demo: noop, logos: noop, ui: noop, back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop };
+const barActions = { chessGame: noop, demo: noop, logos: noop, ui: noop, back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop, evalBar: noop, audioModel: noop };
 
 // Render a scene full-height, then composite that screen's button bar over it —
 // proving the bar sits ON TOP of the 3D scene (opaque pills overwrite it;
@@ -249,6 +263,8 @@ if (process.argv[2] === 'ui') {
   setupSnapshot();
 } else if (process.argv[2] === 'king-anim') {
   kingAnimSnapshot();
+} else if (process.argv[2] === 'audio') {
+  audioSnapshot();
 } else if (process.argv[2] === 'splash') {
   splashSnapshot();
 } else if (process.argv[2] === 'menu') {
@@ -257,6 +273,28 @@ if (process.argv[2] === 'ui') {
   attractSnapshot();
 } else {
   sceneSnapshot();
+}
+
+// The realtime audio scene: the active model's provider wisp in 3D (speaking, so
+// the flame is lively). Verifies the wisp loads + renders; the conversation
+// overlay is plain text drawn over the composite in the live app.
+//   pnpm exec tsx src/tools/snapshot.ts audio [cols] [rows] [out.ppm]
+function audioSnapshot(): void {
+  const cols = Number(process.argv[3]) || 140;
+  const rows = Number(process.argv[4]) || 50;
+  const out = process.argv[5] ?? '.snapshots/audio.ppm';
+  const SS = 3;
+  const scene = new AudioScene();
+  const target = new RenderTarget(cols * SS, rows * 2 * SS);
+  scene.renderScene(target, 0.7);
+  const display = downsample(target, SS);
+  const W = display.width;
+  const H = display.height;
+  const body = Buffer.alloc(W * H * 3);
+  const c = display.color;
+  for (let i = 0; i < W * H * 3; i++) body[i] = c[i] <= 0 ? 0 : c[i] >= 255 ? 255 : Math.round(c[i]);
+  writeFileSync(out, Buffer.concat([Buffer.from(`P6\n${W} ${H}\n255\n`, 'ascii'), body]));
+  console.log(`wrote ${out} (${W}x${H})`);
 }
 
 // The Wii-style menu hub over the dimmed prism (the live unified path: scene filled
@@ -352,7 +390,7 @@ function showcaseSnapshot(): void {
 // The chess-game match overlay composited over the board via the real Screen
 // (so the move-history Slot expands): the AI HUD wisps + bar 'play/stop ai'
 // button + the collapsible Moves panel. Pass 'min' to render the collapsed panel.
-//   pnpm exec tsx src/tools/snapshot.ts chess-overlay [cols] [rows] [min] [out.ppm]
+//   pnpm exec tsx src/tools/snapshot.ts chess-overlay [cols] [rows] [min] [eval] [out.ppm]
 function chessOverlaySnapshot(): void {
   const args = process.argv.slice(3);
   const cols = Number(args[0]) || 140;
@@ -391,14 +429,19 @@ function chessOverlaySnapshot(): void {
   // Flag the illegal-toggle plies (b8-knight to f6, c1-bishop to d3) red.
   const illegalFlags = process.argv.includes('illegal') ? [false, true, true, false, false, false] : [];
   refreshMoveHistory(sans, illegalFlags);
+  // 'eval' shows the right-edge eval bar, scored from the live board.
+  const evalVisible = process.argv.includes('eval');
   const region = { x: 0, y: 0, w: cols, h: rows };
   screen.setRoot(
-    buildChessGameRoot(region, buildBar('chess-game', 'ascii', barActions, { label: 'pause ai', active: true }), {
+    buildChessGameRoot(region, buildBar('chess-game', 'ascii', barActions, { label: 'pause ai', active: true }, false, evalVisible), {
       minimized,
       onToggle: noop,
       onCopy: noop,
       commentary: { text: 'developing toward the Ruy Lopez', model: 'openai/gpt-5.4', until: 99 },
       t,
+      evalVisible,
+      evalCp: evalVisible ? evaluate(cg.state().board) : 0,
+      evalResult: cg.state().result(),
     }),
     region,
   );
