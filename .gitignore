@@ -22,3 +22,4 @@ public/assets/chess_decimated/
 
 # hands-free voice diagnostic logs (local only)
 .audio-logs/
+.vercel
