@@ -43,6 +43,25 @@ game). Inside a library, modules import each other directly, not through the bar
 - `pnpm demo` — run the engine cube demo
 - `pnpm snapshot [cols] [rows] [t]` — render a frame to `.snapshots/prism.ppm`
 - `pnpm type-check` — `tsc --noEmit`
+- `pnpm test` — unit tests via `node:test` under `tsx` (no extra deps)
+
+## AI Gateway key (Vercel sign-in)
+
+Everything AI reads `process.env.AI_GATEWAY_API_KEY`. It's resolved once at
+startup by `ensureGatewayKey()` ([src/ai/gateway-key.ts](src/ai/gateway-key.ts)),
+with this precedence:
+
+1. An existing `AI_GATEWAY_API_KEY` (env or `.env.local`) wins — skips login.
+2. Otherwise a `vercel login`-style OAuth **device flow** (plain text, before the
+   alt-screen), then a **team picker**, then a key minted for that team via
+   `exchange: true` (get-or-create, billed to the team).
+
+Tokens persist at `~/.config/arcade/auth.json` (0600); the minted key is **not**
+stored — it's re-derived each launch. Reuses the Vercel CLI's public OAuth client
+(`CLIENT_ID` in [src/ai/vercel-auth.ts](src/ai/vercel-auth.ts)), the one allow-listed
+to mint gateway keys. In-app: `s` switch team, `o` (menu) sign out; flags
+`--login` / `--switch-team` / `--logout`. Auth lives in `src/ai/{vercel-auth,
+vercel-api,gateway-key}.ts`; `src/platform/open-browser.ts` opens the browser.
 
 ## Conventions
 

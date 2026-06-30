@@ -270,6 +270,8 @@ if (process.argv[2] === 'ui') {
   splashSnapshot();
 } else if (process.argv[2] === 'menu' || process.argv[2] === 'coverflow') {
   coverflowSnapshot();
+} else if (process.argv[2] === 'launch') {
+  launchSnapshot();
 } else if (process.argv[2] === 'attract') {
   attractSnapshot();
 } else {
@@ -325,6 +327,24 @@ function coverflowSnapshot(): void {
   }
   const hint = '< > select   enter play   esc back';
   surf.drawText(Math.max(0, Math.floor((cols - hint.length) / 2)), rows - 2, hint, [120, 126, 142], [8, 10, 16]);
+  surfaceToPpm(surf, cols, rows, out);
+  console.log(`wrote ${out} (${cols}x${rows})`);
+}
+
+// A frame of the launch flip-to-title splash for cover `index` at time `t` (s).
+//   pnpm exec tsx src/tools/snapshot.ts launch [cols] [rows] [index] [t] [out.ppm]
+function launchSnapshot(): void {
+  const cols = Number(process.argv[3]) || 150;
+  const rows = Number(process.argv[4]) || 44;
+  const index = Number(process.argv[5]) || 2;
+  const t = process.argv[6] !== undefined ? Number(process.argv[6]) : 0.5;
+  const out = process.argv.find((a) => a.endsWith('.ppm')) ?? '.snapshots/launch.ppm';
+  const SS = 3;
+  const target = new RenderTarget(cols * SS, rows * 2 * SS);
+  new CoverFlowScene().renderLaunch(target, index, t);
+  const display = downsample(target, SS);
+  const surf = new Surface(cols, rows);
+  halfBlockToSurface(surf, display);
   surfaceToPpm(surf, cols, rows, out);
   console.log(`wrote ${out} (${cols}x${rows})`);
 }

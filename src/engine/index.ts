@@ -31,6 +31,7 @@ export {
 export { hslToRgb, lerpRgb, parseColor, blendOver, type RGB, type RGBA } from './color.ts';
 export { decodePng, sampleTexture, type Texture } from './texture.ts';
 export { cellWidth, stringWidth } from './width.ts';
+export { FONT } from './font8x8.ts';
 export {
   Surface,
   type Cell,

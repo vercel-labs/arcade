@@ -13,7 +13,7 @@ import {
   toShapeGlyph,
 } from '../engine/index.ts';
 import { PrismScene } from './prism.ts';
-import { CoverFlowScene } from './coverflow.ts';
+import { CoverFlowScene, LAUNCH_TOTAL } from './coverflow.ts';
 import { SplashScene } from './splash.ts';
 import { MENU_ITEMS } from './menu.ts';
 import { ChessScene } from './chess.ts';
@@ -34,6 +34,7 @@ import { Keymap, Renderer, Screen, type LayoutBox } from '../tui/index.ts';
 import { renderDemo } from '../demo/scene.ts';
 import * as term from '../platform/terminal.ts';
 import { loadEnv } from '../ai/env.ts';
+import { ensureGatewayKey, isLoggedIn, signOut as signOutVercel, switchTeam } from '../ai/gateway-key.ts';
 import { runMatch } from '../ai/match.ts';
 import { ModelPlayer } from '../ai/model-player.ts';
 import type { Player } from '../ai/player.ts';
@@ -139,6 +140,12 @@ let menuSel = 0;
 let coverPos = 0;
 let menuHover = false; // mouse is over the focused cover (drives the hover highlight)
 const MENU_EASE = 0.24; // per-frame approach to the selected slot (~0.3s settle at 30fps)
+// Launch transition: clicking a cover plays the flip-to-title splash before the
+// game opens. `launching` gates menu input; `launchT` is the splash clock (s);
+// `launchSel` is the cover being launched.
+let launching = false;
+let launchT = 0;
+let launchSel = 0;
 
 // AI-vs-AI match. The two sides are chosen in the setup modal (provider → model).
 // `matchAbort` cancels the running turn-loop (pause / stop / navigate away).
@@ -231,6 +238,49 @@ function quit(): void {
   r.destroy();
   term.leave();
   process.exit(0);
+}
+
+// Whether the active gateway key came from interactive login (vs. the env var).
+// The in-app account actions only touch a login-sourced key; an explicit
+// AI_GATEWAY_API_KEY is left alone.
+let keyFromLogin = false;
+
+// Run an async plain-text flow outside the alt-screen: stop the frame loop,
+// detach the raw-mode input handler, restore the normal terminal, run `fn`, then
+// re-enter and repaint. The account actions (switch team / sign out) prompt on
+// stdout, so the renderer must be paused or it would clobber the prompt.
+async function withSuspendedTui(fn: () => Promise<void>): Promise<void> {
+  r.stop();
+  process.stdin.off('data', parse);
+  term.leave();
+  try {
+    await fn();
+  } finally {
+    term.enter();
+    process.stdin.on('data', parse);
+    r.start();
+    fullRepaint();
+  }
+}
+
+// In-app "switch team": re-pick the billing team (logging in first if needed)
+// and re-mint the key. Suspends the TUI for the plain-text picker.
+function accountSwitchTeam(): void {
+  void withSuspendedTui(async () => {
+    if (await switchTeam()) keyFromLogin = true;
+  });
+}
+
+// In-app "sign out": forget the stored session and re-gate AI. No-op when the
+// key came from the env (nothing of ours to clear).
+function accountSignOut(): void {
+  if (!keyFromLogin && !isLoggedIn()) return;
+  void withSuspendedTui(async () => {
+    const was = signOutVercel();
+    keyFromLogin = false;
+    process.stdout.write(was ? '\n  Signed out of Vercel.\n\n' : '\n  Not signed in.\n\n');
+    await new Promise((res) => setTimeout(res, 700)); // let the line be read before the wipe
+  });
 }
 
 function cycleMode(): void {
@@ -340,7 +390,7 @@ function startAiMatch(whiteSlug: string, blackSlug: string): void {
 // selects are (re)mounted for their Slots; pickers retain their last selection.
 function openMatchSetup(): void {
   if (!process.env.AI_GATEWAY_API_KEY) {
-    commentary = { text: 'Set AI_GATEWAY_API_KEY in .env.local to play (see .env.example)', model: '', until: t + 6 };
+    commentary = { text: 'Press s to sign in to Vercel and play (or set AI_GATEWAY_API_KEY)', model: '', until: t + 6 };
     r.requestRender();
     return;
   }
@@ -452,22 +502,33 @@ function enterMenu(): void {
   menuSel = 0;
   coverPos = 0;
   menuHover = false;
+  launching = false;
   ui.setRoot(null);
   fullRepaint();
 }
 
-// Launch the selected tile's screen (enabled tiles only; placeholders are no-ops).
+// Clicking/▶ a cover starts the flip-to-title launch splash (enabled covers only;
+// placeholders are no-ops). enterGame runs when the splash finishes.
 function launchSelected(): void {
+  if (launching) return;
   const item = MENU_ITEMS[menuSel];
   if (!item?.enabled) return;
-  if (item.id === 'chess') enterChessGame();
-  else if (item.id === 'logos') enterLogos();
-  else if (item.id === 'audio') enterAudio();
-  else if (item.id === 'ui') enterUi();
+  launching = true;
+  launchT = 0;
+  launchSel = menuSel;
+}
+
+// Open the actual game screen for a cover id (the destinations the splash hands off to).
+function enterGame(id: string): void {
+  if (id === 'chess') enterChessGame();
+  else if (id === 'logos') enterLogos();
+  else if (id === 'audio') enterAudio();
+  else if (id === 'ui') enterUi();
 }
 
 // Step the Cover Flow selection by ±1 (clamped). The carousel eases to it in tick.
 function menuNav(step: number): void {
+  if (launching) return; // input is locked while the launch splash plays
   menuSel = Math.max(0, Math.min(MENU_ITEMS.length - 1, menuSel + step));
 }
 
@@ -541,6 +602,8 @@ const actions: BarActions = {
 const keymap = new Keymap();
 for (const c of [
   { id: 'app.quit', title: 'Quit', run: quit },
+  { id: 'app.switchTeam', title: 'Switch Vercel team', run: accountSwitchTeam },
+  { id: 'app.signOut', title: 'Sign out of Vercel', run: accountSignOut },
   { id: 'view.cycleRenderMode', title: 'Cycle render style', run: cycleMode },
   { id: 'view.setColor', title: 'Render: color', run: () => setRenderMode('color') },
   { id: 'view.setLuminance', title: 'Render: luminance', run: () => setRenderMode('luminance') },
@@ -585,6 +648,7 @@ for (const b of [
   { key: 'l', cmd: 'view.setLuminance' },
   { key: 'a', cmd: 'view.setAscii' },
   { key: 'j', cmd: 'view.toggleJitter' },
+  { key: 's', cmd: 'app.switchTeam' }, // sign in / switch billing team
 ]) {
   keymap.bind('global', b);
 }
@@ -602,6 +666,7 @@ for (const b of [
   { key: 'enter', cmd: 'menu.select' },
   { key: 'space', cmd: 'menu.select' },
   { key: 'escape', cmd: 'nav.toPrism' },
+  { key: 'o', cmd: 'app.signOut' }, // account home: sign out (switch-team is global 's')
 ]) {
   keymap.bind('menu', b);
 }
@@ -896,6 +961,7 @@ function onMouseImpl(e: MouseEvent): void {
   // projected border) launches it, clicking off to a side steps that way, and
   // hovering the focused cover lights it up.
   if (mode === 'menu') {
+    if (launching) return; // ignore pointer input during the launch splash
     const rect = coverflow.coverScreenRect(menuSel - coverPos, cols, rows);
     const mx = e.x - 1;
     const my = e.y - 1;
@@ -1032,6 +1098,17 @@ function tick(): void {
   }
 
   if (mode === 'menu') {
+    // Launch splash: flip the clicked cover to its title, then open the game.
+    if (launching) {
+      launchT += DT;
+      coverflow.renderLaunch(target, launchSel, launchT);
+      r.write(UNIFIED ? ui.frameComposited((s) => presentSceneInto(s)) : presentScene());
+      if (launchT >= LAUNCH_TOTAL) {
+        launching = false;
+        enterGame(MENU_ITEMS[launchSel].id);
+      }
+      return;
+    }
     // Cover Flow hub: ease the carousel toward the selected slot (snap-to-slot),
     // render the 3D covers full-screen, then draw the title + hint chrome on top.
     coverPos += (menuSel - coverPos) * MENU_EASE;
@@ -1136,6 +1213,22 @@ process.stdout.on('resize', () => {
   // resize; the next tick repaints everything at the new geometry.
   fullRepaint();
 });
+
+// Resolve the AI Gateway key (env override → stored Vercel session → device
+// login + team pick), then launch. The interactive flow is plain text and runs
+// BEFORE term.enter(), so it reads like `vercel login` on the normal terminal;
+// once it returns, every model/voice call works via process.env.AI_GATEWAY_API_KEY.
+const argv = process.argv.slice(2);
+if (argv.includes('--logout')) {
+  const was = signOutVercel();
+  console.log(was ? 'Signed out of Vercel.' : 'Not signed in.');
+  process.exit(0);
+}
+const auth = await ensureGatewayKey({
+  forceLogin: argv.includes('--login'),
+  forceTeamPick: argv.includes('--switch-team'),
+});
+keyFromLogin = auth?.source === 'login';
 
 term.enter();
 process.stdin.on('data', parse);

@@ -14,6 +14,7 @@ import {
   type Camera,
   coverMaterial,
   decodePng,
+  FONT,
   type Mat4,
   mat4Multiply,
   mat4MulVec4,
@@ -38,11 +39,26 @@ const SIDE_DEPTH = 0.95; // how far neighbours recede from the camera
 const REFLECT = 0.4; // reflection brightness at the floor line
 const VISIBLE = 3; // covers drawn on each side of the focus (the "fan of ~5")
 const PAD = 0.07; // paper margin inside the bezel so the art doesn't hug the edge
-const HOVER_BRIGHT = 1.3; // face multiplier when the focused cover is moused over
+// Launch flip: clicking a cover flips the focused cover 0→180° about Y while
+// scaling it up — front art → back title — zooming until the bezel leaves frame,
+// then holding the full-screen title before the game opens.
+const LAUNCH_FLIP = 1.0; // seconds for the flip + zoom-in
+const LAUNCH_HOLD = 1.0; // seconds holding the full-screen title
+export const LAUNCH_TOTAL = LAUNCH_FLIP + LAUNCH_HOLD;
+const LAUNCH_SCALE_END = 3.8; // quad scale at full zoom (bezel pushed off-screen)
+const LAUNCH_TITLE_PX = 12; // texels per font pixel in the back-face title texture
+// Bezel thickness. A flat uv fraction goes sub-pixel on short covers and the
+// top/bottom edges then vanish into the half-block rows (while the verticals
+// survive), so we floor it to a minimum on-screen pixel thickness — applied to
+// all four sides equally, so the top/bottom are as visible as the sides and
+// never thicker, at any terminal height.
+const BASE_FRAME_UV = 0.016;
+const MIN_FRAME_PX = 5; // supersampled-pixel floor (~0.8 of a terminal cell)
+const MAX_FRAME_UV = 0.05; // cap (< PAD) so a tiny cover's bezel can't crowd the art
 
 const PAPER: Vec3 = { x: 20, y: 22, z: 30 }; // card stock behind transparent art
-const FRAME: Vec3 = { x: 70, y: 78, z: 100 }; // bezel
-const FRAME_HOT: Vec3 = { x: 185, y: 200, z: 235 }; // bezel when hovered (lit up)
+const FRAME: Vec3 = { x: 70, y: 78, z: 100 }; // bezel (cool grey)
+const FRAME_HOT: Vec3 = { x: 245, y: 248, z: 255 }; // bezel when hovered: bright white
 const LIGHT: Vec3 = normalize3({ x: 0.18, y: 0.32, z: 1 }); // key: front + a little above
 
 const CARD_MESH = quad(0.5);
@@ -55,11 +71,15 @@ const CORNERS: [number, number][] = [
   [-0.5, 0.5],
 ];
 
-// Camera sits in front, near cover-centre height, looking slightly down so the
-// floor (y=0) and the reflection below it stay in frame.
+// Camera sits in front at cover-centre height, looking dead level (eye.y ==
+// target.y). The level look is load-bearing: any downward pitch puts the top and
+// bottom of a head-on cover at different view-space depths, so its vertical edges
+// project as a faint slant that stair-steps by ±1 cell after the half-block
+// downsample. Level → constant screen-x along those edges → perfectly straight.
+// The floor (y=0) and reflection still sit below centre and stay in frame.
 const camera: Camera = {
-  eye: { x: 0, y: CARD_H * 1.15, z: 2.7 },
-  target: { x: 0, y: CARD_H * 0.92, z: 0 },
+  eye: { x: 0, y: CARD_H, z: 2.7 },
+  target: { x: 0, y: CARD_H, z: 0 },
   up: { x: 0, y: 1, z: 0 },
   fovy: (42 * Math.PI) / 180,
   near: 0.05,
@@ -85,6 +105,68 @@ function smoothstep(x: number): number {
   return t * t * (3 - 2 * t);
 }
 
+// Rasterize a game title into a square RGBA texture for the cover's back face:
+// white block letters (engine 8x8 font) centred on a transparent field, so the
+// cover material composites them over the dark paper. Mirrored in x because the
+// back face is viewed through a 180° Y flip (the mirror cancels, so it reads
+// correctly). Cached per title.
+const titleCache = new Map<string, Texture>();
+function titleTexture(title: string): Texture {
+  const hit = titleCache.get(title);
+  if (hit) return hit;
+  // Trim each glyph to its inked columns and lay them out with a 1-column gap.
+  const cols: boolean[][] = [];
+  for (const ch of title.toUpperCase()) {
+    const g = FONT[ch] ?? FONT[' '];
+    let lo = 8;
+    let hi = -1;
+    for (let x = 0; x < 8; x++) {
+      if (g.some((row) => row[x] === '1')) {
+        lo = Math.min(lo, x);
+        hi = Math.max(hi, x);
+      }
+    }
+    if (hi < 0) {
+      lo = 0;
+      hi = 1;
+    } // space → a narrow gap
+    for (let x = lo; x <= hi; x++) {
+      const col: boolean[] = [];
+      for (let r = 0; r < 8; r++) col.push(g[r][x] === '1');
+      cols.push(col);
+    }
+    cols.push([false, false, false, false, false, false, false, false]); // inter-glyph gap
+  }
+  cols.pop(); // drop the trailing gap
+
+  const PX = LAUNCH_TITLE_PX;
+  const textW = cols.length * PX;
+  const textH = 8 * PX;
+  const side = Math.max(textW, textH) + 12 * PX; // square + generous margin, so letters keep aspect
+  const ox = Math.floor((side - textW) / 2);
+  const oy = Math.floor((side - textH) / 2);
+  const data = new Uint8Array(side * side * 4); // transparent by default
+  for (let cx = 0; cx < cols.length; cx++) {
+    for (let r = 0; r < 8; r++) {
+      if (!cols[cx][r]) continue;
+      for (let py = 0; py < PX; py++) {
+        for (let px = 0; px < PX; px++) {
+          const X = side - 1 - (ox + cx * PX + px); // mirror x for the back face
+          const Y = oy + r * PX + py;
+          const i = (Y * side + X) * 4;
+          data[i] = 245;
+          data[i + 1] = 248;
+          data[i + 2] = 255;
+          data[i + 3] = 255;
+        }
+      }
+    }
+  }
+  const tex: Texture = { width: side, height: side, data };
+  titleCache.set(title, tex);
+  return tex;
+}
+
 // Place a cover whose signed distance from the focus is `d` (0 = centred). The
 // pose blends smoothly over the first slot (so the snap animation eases the focus
 // in/out of the head-on pose) then translates linearly for covers further out.
@@ -99,18 +181,34 @@ function coverModel(d: number): Mat4 {
   return mat4Multiply(mat4Translate(x, CARD_H, z), mat4Multiply(mat4RotY(rot), mat4Scale(SCALE, SCALE, 1)));
 }
 
+// Project a unit-quad local point (z=0) to render-target pixels.
+function quadPx(mvp: Mat4, lx: number, ly: number, W: number, H: number): { x: number; y: number } {
+  const p = mat4MulVec4(mvp, { x: lx, y: ly, z: 0, w: 1 });
+  const w = p.w || 1e-4;
+  return { x: ((p.x / w) * 0.5 + 0.5) * W, y: (1 - ((p.y / w) * 0.5 + 0.5)) * H };
+}
+
+// Bezel thickness (uv) that yields at least MIN_FRAME_PX on-screen pixels for the
+// cover's current projected height, so short covers keep visible top/bottom edges;
+// capped by MAX_FRAME_UV. Uses the vertical extent (the edges most at risk).
+function bezelWidth(mvp: Mat4, W: number, H: number): number {
+  const hpx = Math.abs(quadPx(mvp, 0, 0.5, W, H).y - quadPx(mvp, 0, -0.5, W, H).y) || 1;
+  return Math.min(MAX_FRAME_UV, Math.max(BASE_FRAME_UV, MIN_FRAME_PX / hpx));
+}
+
 function drawCover(target: RenderTarget, vp: Mat4, model: Mat4, tex: Texture, brightness: number, reflect: boolean, hot: boolean): void {
   // The reflection is the cover mirrored through the floor plane (y=0).
   const m = reflect ? mat4Multiply(mat4Scale(1, -1, 1), model) : model;
+  const mvp = mat4Multiply(vp, m);
   rasterize(target, CARD_MESH, coverMaterial, {
-    mvp: mat4Multiply(vp, m),
+    mvp,
     model: m,
     tex,
     paper: PAPER,
     lightDir: LIGHT,
     ambient: 0.32,
     brightness,
-    frameWidth: 0.018,
+    frameWidth: bezelWidth(mvp, target.width, target.height),
     frameColor: hot ? FRAME_HOT : FRAME,
     pad: PAD,
     fade: reflect ? 1 : 0,
@@ -140,9 +238,47 @@ export class CoverFlowScene {
       if (!tex) continue;
       const model = coverModel(i - pos);
       const hot = i === hoverIndex;
+      // Hover changes only the bezel (grey → bright white); the cover's content
+      // keeps its normal lit brightness.
       drawCover(target, viewProjection, model, tex, REFLECT, true, false);
-      drawCover(target, viewProjection, model, tex, hot ? HOVER_BRIGHT : 1, false, hot);
+      drawCover(target, viewProjection, model, tex, 1, false, hot);
     }
+  }
+
+  // The launch transition for cover `index`: flip the focused cover about Y from
+  // head-on (front art) through 180° (back title) while scaling it up, until the
+  // bezel leaves frame and the full-screen title holds. `t` is seconds since the
+  // click; frame 0 (t=0) matches the menu's focused cover for a seamless hand-off.
+  renderLaunch(target: RenderTarget, index: number, t: number): void {
+    drawBackdrop(target);
+    const item = MENU_ITEMS[index];
+    const art = coverTex(item.id);
+    if (!art) return;
+    const { viewProjection } = cameraMatrices(camera, target.width / target.height);
+
+    const p = smoothstep(Math.min(1, t / LAUNCH_FLIP)); // 0→1 over the flip, then held at 1
+    const angle = Math.PI * p; // flip about Y (left-to-right from the front)
+    const s = SCALE + (LAUNCH_SCALE_END - SCALE) * p;
+    const model = mat4Multiply(mat4Translate(0, CARD_H, 0), mat4Multiply(mat4RotY(angle), mat4Scale(s, s, 1)));
+    const mvp = mat4Multiply(viewProjection, model);
+
+    // Past 90° the back faces us: show the title instead of the art.
+    const tex = Math.abs(angle) > Math.PI / 2 ? titleTexture(item.title) : art;
+    rasterize(target, CARD_MESH, coverMaterial, {
+      mvp,
+      model,
+      tex,
+      paper: PAPER,
+      lightDir: LIGHT,
+      ambient: 0.85, // keep both faces readable through the flip (less orientation shading)
+      brightness: 1,
+      frameWidth: bezelWidth(mvp, target.width, target.height),
+      frameColor: FRAME,
+      pad: PAD,
+      fade: 0,
+      fadeY0: 0,
+      fadeY1: 0,
+    });
   }
 
   // The on-screen rectangle (0-based terminal cells) of the cover at signed

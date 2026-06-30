@@ -138,7 +138,7 @@ export class AudioScene {
             ? 'handsFree'
             : 'ptt';
     if (!process.env.AI_GATEWAY_API_KEY) {
-      this.note = 'set AI_GATEWAY_API_KEY in .env.local to talk';
+      this.note = 'sign in to Vercel to talk — press s on the menu';
     } else if (this.duplex) {
       this.note = this.useAec ? 'echo cancellation on' : '';
       void this.ensureSession(); // open the session + start the mic
@@ -249,7 +249,7 @@ export class AudioScene {
   // audio + transcript via the handlers).
   private async send(text: string): Promise<void> {
     if (!process.env.AI_GATEWAY_API_KEY) {
-      this.note = 'set AI_GATEWAY_API_KEY in .env.local to talk';
+      this.note = 'sign in to Vercel to talk — press s on the menu';
       return;
     }
     this.transcript = '';
