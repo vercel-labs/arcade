@@ -30,3 +30,7 @@ https://opentui.com/
 
 Terminal graphics protocol (pixels and images)
 https://sw.kovidgoyal.net/kitty/graphics-protocol/
+
+Game Gallery UI Inspo:
+https://www.reddit.com/r/ipod/comments/1szzieh/rotate_for_cover_flow/
+- old school ipod / itunes cover flow

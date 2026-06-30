@@ -5,14 +5,17 @@ import {
   luminanceToSurface,
   RenderTarget,
   shapeGlyphToSurface,
+  STYLE_BOLD,
+  STYLE_DIM,
   type Surface,
   toHalfBlock,
   toLuminance,
   toShapeGlyph,
 } from '../engine/index.ts';
 import { PrismScene } from './prism.ts';
+import { CoverFlowScene } from './coverflow.ts';
 import { SplashScene } from './splash.ts';
-import { clampScroll, drawMenu, layoutMenu, MENU_ITEMS, type MenuDir, menuMove, scrollToShow, tileAt } from './menu.ts';
+import { MENU_ITEMS } from './menu.ts';
 import { ChessScene } from './chess.ts';
 import { ChessGameScene } from './chess-game.ts';
 import { LogosScene } from './logos-scene.ts';
@@ -67,6 +70,7 @@ let rows = process.stdout.rows ?? 24;
 let target = new RenderTarget(cols * SS, rows * 2 * SS);
 let display: RenderTarget | undefined;
 const prism = new PrismScene();
+const coverflow = new CoverFlowScene();
 const splash = new SplashScene();
 const chess = new ChessScene();
 const chessGame = new ChessGameScene();
@@ -130,7 +134,11 @@ let liveHeld = false;
 let splashing = true;
 // Wii-menu hub state: selected tile index + horizontal pan (cells). Reset on entry.
 let menuSel = 0;
-let menuScrollX = 0;
+// Continuous Cover Flow carousel position, eased toward menuSel each frame (the
+// snap-to-slot). Integer = that cover centred head-on.
+let coverPos = 0;
+let menuHover = false; // mouse is over the focused cover (drives the hover highlight)
+const MENU_EASE = 0.24; // per-frame approach to the selected slot (~0.3s settle at 30fps)
 
 // AI-vs-AI match. The two sides are chosen in the setup modal (provider → model).
 // `matchAbort` cancels the running turn-loop (pause / stop / navigate away).
@@ -442,7 +450,8 @@ function enterMenu(): void {
   audioScene.deactivate(); // tear down any open voice session when leaving
   mode = 'menu';
   menuSel = 0;
-  menuScrollX = 0;
+  coverPos = 0;
+  menuHover = false;
   ui.setRoot(null);
   fullRepaint();
 }
@@ -457,11 +466,25 @@ function launchSelected(): void {
   else if (item.id === 'ui') enterUi();
 }
 
-// Move the menu cursor and keep the selection panned into view.
-function menuNav(dir: MenuDir): void {
-  const lay = layoutMenu(cols, rows);
-  menuSel = menuMove(menuSel, dir, lay);
-  menuScrollX = scrollToShow(menuSel, menuScrollX, lay);
+// Step the Cover Flow selection by ±1 (clamped). The carousel eases to it in tick.
+function menuNav(step: number): void {
+  menuSel = Math.max(0, Math.min(MENU_ITEMS.length - 1, menuSel + step));
+}
+
+// The Cover Flow chrome over the 3D covers: the focused game's title centred below
+// the carousel (dim "coming soon" tail for placeholders) and the control hint.
+function drawCoverChrome(surf: Surface, cols: number, rows: number, sel: number): void {
+  const item = MENU_ITEMS[sel];
+  const suffix = item.enabled ? '' : '   coming soon';
+  const tx = Math.max(0, Math.floor((cols - (item.title.length + suffix.length)) / 2));
+  const ty = rows - 4;
+  const chip: RGB = [10, 12, 18];
+  surf.drawText(tx, ty, item.title, [240, 244, 255], chip, STYLE_BOLD);
+  if (suffix) surf.drawText(tx + item.title.length, ty, suffix, [150, 156, 174], chip, STYLE_DIM);
+
+  const hint = '← → select   ⏎ play   esc back';
+  const hx = Math.max(0, Math.floor((cols - hint.length) / 2));
+  surf.drawText(hx, rows - 2, hint, [120, 126, 142], [8, 10, 16], STYLE_DIM);
 }
 
 // The prism attract prompt: a small, subtle, lowercase line near the bottom whose
@@ -526,10 +549,8 @@ for (const c of [
   { id: 'nav.back', title: 'Back to menu', run: enterMenu },
   { id: 'nav.toPrism', title: 'Back to prism', run: toPrism },
   { id: 'nav.menu', title: 'Open menu', run: enterMenu },
-  { id: 'menu.left', title: 'Menu: left', run: () => menuNav('left') },
-  { id: 'menu.right', title: 'Menu: right', run: () => menuNav('right') },
-  { id: 'menu.up', title: 'Menu: up', run: () => menuNav('up') },
-  { id: 'menu.down', title: 'Menu: down', run: () => menuNav('down') },
+  { id: 'menu.left', title: 'Menu: previous', run: () => menuNav(-1) },
+  { id: 'menu.right', title: 'Menu: next', run: () => menuNav(1) },
   { id: 'menu.select', title: 'Menu: launch selected', run: launchSelected },
   { id: 'nav.demo', title: 'Open demo', run: enterDemo },
   { id: 'nav.audio', title: 'Open audio', run: enterAudio },
@@ -578,8 +599,6 @@ keymap.bind('chess', { key: 'e', cmd: 'chess.toggleEvalBar' });
 for (const b of [
   { key: 'left', cmd: 'menu.left' },
   { key: 'right', cmd: 'menu.right' },
-  { key: 'up', cmd: 'menu.up' },
-  { key: 'down', cmd: 'menu.down' },
   { key: 'enter', cmd: 'menu.select' },
   { key: 'space', cmd: 'menu.select' },
   { key: 'escape', cmd: 'nav.toPrism' },
@@ -873,20 +892,22 @@ function onMouseImpl(e: MouseEvent): void {
     enterMenu();
     return;
   }
-  // Menu hub: hover highlights a tile, the wheel pans the shelf, a click launches.
+  // Cover Flow: the wheel steps selection; clicking the focused cover (its real
+  // projected border) launches it, clicking off to a side steps that way, and
+  // hovering the focused cover lights it up.
   if (mode === 'menu') {
-    const lay = layoutMenu(cols, rows);
+    const rect = coverflow.coverScreenRect(menuSel - coverPos, cols, rows);
+    const mx = e.x - 1;
+    const my = e.y - 1;
+    const inside = mx >= rect.x && mx < rect.x + rect.w && my >= rect.y && my < rect.y + rect.h;
     if (e.type === 'move') {
-      const idx = tileAt(lay, menuScrollX, e.x - 1, e.y - 1);
-      if (idx != null) menuSel = idx;
+      menuHover = inside;
     } else if (e.type === 'wheel') {
-      menuScrollX = clampScroll(menuScrollX + (e.wheel === -1 ? -3 : 3), lay);
+      menuNav(e.wheel === -1 ? -1 : 1);
     } else if (e.type === 'down') {
-      const idx = tileAt(lay, menuScrollX, e.x - 1, e.y - 1);
-      if (idx != null) {
-        menuSel = idx;
-        launchSelected();
-      }
+      if (inside) launchSelected();
+      else if (mx < rect.x) menuNav(-1);
+      else if (mx >= rect.x + rect.w) menuNav(1);
     }
     return;
   }
@@ -1011,15 +1032,16 @@ function tick(): void {
   }
 
   if (mode === 'menu') {
-    // Wii-style hub: the prism keeps animating, dimmed, behind the tile shelf.
-    prism.renderScene(target, t);
-    const lay = layoutMenu(cols, rows);
-    menuScrollX = clampScroll(menuScrollX, lay);
+    // Cover Flow hub: ease the carousel toward the selected slot (snap-to-slot),
+    // render the 3D covers full-screen, then draw the title + hint chrome on top.
+    coverPos += (menuSel - coverPos) * MENU_EASE;
+    if (Math.abs(menuSel - coverPos) < 0.0015) coverPos = menuSel;
+    coverflow.renderScene(target, coverPos, menuHover ? menuSel : -1);
     r.write(
       UNIFIED
         ? ui.frameComposited((s) => {
             presentSceneInto(s);
-            drawMenu(s, cols, rows, lay, menuSel, menuScrollX);
+            drawCoverChrome(s, cols, rows, menuSel);
           })
         : presentScene(),
     );

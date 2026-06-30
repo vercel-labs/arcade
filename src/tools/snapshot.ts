@@ -10,11 +10,12 @@ import { bloom, downsample, halfBlockToSurface, RenderTarget, shapeGlyphToSurfac
 import { FONT } from '../engine/font8x8.ts';
 import { PrismScene } from '../arcade/prism.ts';
 import { SplashScene } from '../arcade/splash.ts';
-import { clampScroll, drawMenu, layoutMenu } from '../arcade/menu.ts';
 import { ChessScene } from '../arcade/chess.ts';
 import { ChessGameScene } from '../arcade/chess-game.ts';
 import { LogosScene } from '../arcade/logos-scene.ts';
 import { AudioScene } from '../arcade/audio-scene.ts';
+import { CoverFlowScene } from '../arcade/coverflow.ts';
+import { MENU_ITEMS } from '../arcade/menu.ts';
 import { buildBar, buildGameOver, buildPromotion, type Mode } from '../arcade/bars.ts';
 import { buildShowcase, mountShowcase } from '../arcade/ui-showcase.ts';
 import { buildChessGameRoot, mountChessHud, refreshMoveHistory } from '../arcade/chess-hud.ts';
@@ -267,8 +268,8 @@ if (process.argv[2] === 'ui') {
   audioSnapshot();
 } else if (process.argv[2] === 'splash') {
   splashSnapshot();
-} else if (process.argv[2] === 'menu') {
-  menuSnapshot();
+} else if (process.argv[2] === 'menu' || process.argv[2] === 'coverflow') {
+  coverflowSnapshot();
 } else if (process.argv[2] === 'attract') {
   attractSnapshot();
 } else {
@@ -297,25 +298,35 @@ function audioSnapshot(): void {
   console.log(`wrote ${out} (${W}x${H})`);
 }
 
-// The Wii-style menu hub over the dimmed prism (the live unified path: scene filled
-// into the Surface, then the shelf drawn on top).
-//   pnpm exec tsx src/tools/snapshot.ts menu [cols] [rows] [sel] [scrollX] [out.ppm]
-function menuSnapshot(): void {
+// Cover Flow carousel of game covers. `pos` is the continuous carousel position
+// (fractional = mid-rotation, to check the slant + ease look).
+//   pnpm exec tsx src/tools/snapshot.ts coverflow [cols] [rows] [pos] [out.ppm]
+function coverflowSnapshot(): void {
   const cols = Number(process.argv[3]) || 140;
-  const rows = Number(process.argv[4]) || 40;
-  const sel = Number(process.argv[5]) || 0;
-  const out = process.argv.find((a) => a.endsWith('.ppm')) ?? '.snapshots/menu.ppm';
+  const rows = Number(process.argv[4]) || 44;
+  const pos = Number(process.argv[5]) || 0;
+  const out = process.argv.find((a) => a.endsWith('.ppm')) ?? '.snapshots/coverflow.ppm';
   const SS = 3;
+  // `hover` flag previews the focused cover's moused-over highlight.
+  const hover = process.argv.includes('hover');
+  const sel = Math.round(pos);
   const target = new RenderTarget(cols * SS, rows * 2 * SS);
-  new PrismScene().renderScene(target, 0.6);
+  new CoverFlowScene().renderScene(target, pos, hover ? sel : -1);
   const display = downsample(target, SS);
-  bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
-  const lay = layoutMenu(cols, rows);
-  const scrollX = clampScroll(Number(process.argv[6]) || 0, lay);
+  // Present through the live half-block → Surface path and draw the title + hint
+  // chrome so the snapshot previews exactly what the menu shows (drawCoverChrome
+  // in main.ts; ASCII glyphs here because the PPM writer only rasterizes blocks).
   const surf = new Surface(cols, rows);
-  halfBlockToSurface(surf, display); // fill the scene so the menu's scrim can dim it
-  drawMenu(surf, cols, rows, lay, sel, scrollX);
+  halfBlockToSurface(surf, display);
+  const item = MENU_ITEMS[sel];
+  if (item) {
+    const title = item.enabled ? item.title : `${item.title}   coming soon`;
+    surf.drawText(Math.max(0, Math.floor((cols - title.length) / 2)), rows - 4, title, [240, 244, 255], [10, 12, 18]);
+  }
+  const hint = '< > select   enter play   esc back';
+  surf.drawText(Math.max(0, Math.floor((cols - hint.length) / 2)), rows - 2, hint, [120, 126, 142], [8, 10, 16]);
   surfaceToPpm(surf, cols, rows, out);
+  console.log(`wrote ${out} (${cols}x${rows})`);
 }
 
 // The prism attract marquee. `t` honors the blink (visible at t=0, hidden at t≈0.8).
