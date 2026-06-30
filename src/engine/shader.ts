@@ -1,6 +1,9 @@
 import type { Vec3, Vec4 } from './math.ts';
 
-export interface RGBA {
+// A fragment-shader color: object form, rgb 0..255, alpha 0..1. Distinct from
+// color.ts's tuple `RGBA` (the public surface/texture color type) — named RGBA8
+// so the engine barrel doesn't collide on the name `RGBA`.
+export interface RGBA8 {
   r: number; // 0..255
   g: number;
   b: number;
@@ -39,8 +42,8 @@ export type CullMode = 'back' | 'front' | 'none';
  */
 export interface Material<U = unknown> {
   vertex(uniforms: U, vertex: VertexIn): Varying;
-  /** Return the fragment's RGBA, or null to discard the pixel. */
-  fragment(uniforms: U, varying: Varying): RGBA | null;
+  /** Return the fragment's color, or null to discard the pixel. */
+  fragment(uniforms: U, varying: Varying): RGBA8 | null;
   blend?: BlendMode;
   cull?: CullMode;
 }

@@ -36,7 +36,8 @@ const MAX_ANGLE = (60 * Math.PI) / 180; // a neighbour's turn away from head-on
 const SIDE_GAP = 0.95; // sideways offset a cover reaches as the first neighbour
 const SIDE_STEP = 0.62; // extra spacing for each slot further out
 const SIDE_DEPTH = 0.95; // how far neighbours recede from the camera
-const REFLECT = 0.4; // reflection brightness at the floor line
+const REFLECT = 0.46; // reflection brightness at the floor line
+const COVER_BRIGHT = 1.1; // overall lift on a cover's face content
 const VISIBLE = 3; // covers drawn on each side of the focus (the "fan of ~5")
 const PAD = 0.07; // paper margin inside the bezel so the art doesn't hug the edge
 // Launch flip: clicking a cover flips the focused cover 0→180° about Y while
@@ -53,11 +54,11 @@ const LAUNCH_TITLE_PX = 12; // texels per font pixel in the back-face title text
 // all four sides equally, so the top/bottom are as visible as the sides and
 // never thicker, at any terminal height.
 const BASE_FRAME_UV = 0.016;
-const MIN_FRAME_PX = 5; // supersampled-pixel floor (~0.8 of a terminal cell)
+const MIN_FRAME_PX = 7; // supersampled-pixel floor (>1 cell tall) so top/bottom edges fill a full row and read as bright as the sides
 const MAX_FRAME_UV = 0.05; // cap (< PAD) so a tiny cover's bezel can't crowd the art
 
-const PAPER: Vec3 = { x: 20, y: 22, z: 30 }; // card stock behind transparent art
-const FRAME: Vec3 = { x: 70, y: 78, z: 100 }; // bezel (cool grey)
+const PAPER: Vec3 = { x: 28, y: 30, z: 40 }; // card stock behind transparent art
+const FRAME: Vec3 = { x: 92, y: 101, z: 128 }; // bezel (cool grey)
 const FRAME_HOT: Vec3 = { x: 245, y: 248, z: 255 }; // bezel when hovered: bright white
 const LIGHT: Vec3 = normalize3({ x: 0.18, y: 0.32, z: 1 }); // key: front + a little above
 
@@ -206,7 +207,7 @@ function drawCover(target: RenderTarget, vp: Mat4, model: Mat4, tex: Texture, br
     tex,
     paper: PAPER,
     lightDir: LIGHT,
-    ambient: 0.32,
+    ambient: 0.38,
     brightness,
     frameWidth: bezelWidth(mvp, target.width, target.height),
     frameColor: hot ? FRAME_HOT : FRAME,
@@ -241,7 +242,7 @@ export class CoverFlowScene {
       // Hover changes only the bezel (grey → bright white); the cover's content
       // keeps its normal lit brightness.
       drawCover(target, viewProjection, model, tex, REFLECT, true, false);
-      drawCover(target, viewProjection, model, tex, 1, false, hot);
+      drawCover(target, viewProjection, model, tex, COVER_BRIGHT, false, hot);
     }
   }
 
@@ -318,7 +319,7 @@ function drawBackdrop(target: RenderTarget): void {
   for (let y = 0; y < H; y++) {
     const ny = y / (H - 1);
     const glow = Math.max(0, 1 - Math.abs(ny - 0.6) / 0.5);
-    const base = 6 + 16 * glow * glow;
+    const base = 9 + 18 * glow * glow;
     const r = base * 0.9;
     const g = base * 0.95;
     const b = base * 1.3;

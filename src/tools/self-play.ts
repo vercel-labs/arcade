@@ -8,7 +8,7 @@
 //   pnpm exec tsx src/tools/self-play.ts anthropic/claude-3-haiku openai/gpt-5.4-nano 16
 //
 // Needs AI_GATEWAY_API_KEY (from .env.local).
-import { loadEnv } from '../ai/env.ts';
+import { loadEnv } from '../auth/env.ts';
 
 loadEnv();
 

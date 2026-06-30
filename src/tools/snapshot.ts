@@ -314,12 +314,11 @@ function coverflowSnapshot(): void {
   const sel = Math.round(pos);
   const target = new RenderTarget(cols * SS, rows * 2 * SS);
   new CoverFlowScene().renderScene(target, pos, hover ? sel : -1);
-  const display = downsample(target, SS);
-  // Present through the live half-block → Surface path and draw the title + hint
-  // chrome so the snapshot previews exactly what the menu shows (drawCoverChrome
-  // in main.ts; ASCII glyphs here because the PPM writer only rasterizes blocks).
+  // Present through the live ASCII (shape-glyph) path — the app's default render
+  // mode — so the snapshot matches what the terminal actually shows, then draw the
+  // title + hint chrome on top (mirrors drawCoverChrome in main.ts).
   const surf = new Surface(cols, rows);
-  halfBlockToSurface(surf, display);
+  shapeGlyphToSurface(surf, target, cols, rows, { color: true });
   const item = MENU_ITEMS[sel];
   if (item) {
     const title = item.enabled ? item.title : `${item.title}   coming soon`;
@@ -342,9 +341,10 @@ function launchSnapshot(): void {
   const SS = 3;
   const target = new RenderTarget(cols * SS, rows * 2 * SS);
   new CoverFlowScene().renderLaunch(target, index, t);
-  const display = downsample(target, SS);
+  // ASCII (shape-glyph) path — the app's default render mode — so the snapshot
+  // matches the terminal.
   const surf = new Surface(cols, rows);
-  halfBlockToSurface(surf, display);
+  shapeGlyphToSurface(surf, target, cols, rows, { color: true });
   surfaceToPpm(surf, cols, rows, out);
   console.log(`wrote ${out} (${cols}x${rows})`);
 }

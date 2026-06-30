@@ -17,7 +17,7 @@
 //
 // Needs AI_GATEWAY_API_KEY (from .env.local). Try a key from the
 // ai-gateway-early-access-models team to reach internal-only providers.
-import { loadEnv } from '../ai/env.ts';
+import { loadEnv } from '../auth/env.ts';
 
 loadEnv();
 

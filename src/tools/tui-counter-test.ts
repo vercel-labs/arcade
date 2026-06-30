@@ -3,7 +3,7 @@
 // onFocus/onBlur) and key routing through the live instance. No TTY — pure
 // assertions, exit non-zero on failure.
 //
-//   pnpm exec tsx src/tools/component-test.ts
+//   pnpm exec tsx src/tools/tui-counter-test.ts
 
 import { Box, Button, Screen, Slot, type Component } from '../tui/index.ts';
 import type { KeyEvent } from '../platform/input.ts';

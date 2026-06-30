@@ -14,7 +14,7 @@
     "build:vercel": "node scripts/build-vercel-output.mjs",
     "watch": "tsx watch src/arcade/main.ts",
     "type-check": "tsc --noEmit",
-    "test": "node --import tsx --test src/ai/vercel-auth.test.ts src/ai/gateway-key.test.ts"
+    "test": "node --import tsx --test src/games/chess/perft.test.ts src/auth/vercel-auth.test.ts src/auth/gateway-key.test.ts"
   },
   "devDependencies": {
     "@types/node": "22.10.5",

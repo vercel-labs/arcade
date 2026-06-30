@@ -1,4 +1,4 @@
-import type { BlendMode, RGBA } from './shader.ts';
+import type { BlendMode, RGBA8 } from './shader.ts';
 
 // A render target in PIXEL resolution: an RGB float color buffer (values 0..255)
 // plus a per-pixel depth buffer. The half-block presenter maps two pixel rows
@@ -29,7 +29,7 @@ export class RenderTarget {
   // Depth-tested, blended write. Smaller depth is nearer (NDC z). Opaque writes
   // depth; add/alpha test against it (so they're occluded by nearer opaque
   // geometry) but don't write it, letting translucent layers accumulate.
-  plot(x: number, y: number, z: number, c: RGBA, blend: BlendMode): void {
+  plot(x: number, y: number, z: number, c: RGBA8, blend: BlendMode): void {
     const px = x | 0;
     const py = y | 0;
     if (px < 0 || px >= this.width || py < 0 || py >= this.height) return;

@@ -3,7 +3,7 @@
 // synthetic KeyEvents fed to each component's onKey (the same path the Screen
 // uses when the component is focused). No TTY — pure assertions.
 //
-//   pnpm exec tsx src/tools/components-test.ts
+//   pnpm exec tsx src/tools/tui-inputs-test.ts
 
 import { Box, Dropdown, Input, layout, Screen, Select, ScrollBox, Slider, Slot, Text } from '../tui/index.ts';
 import type { KeyEvent } from '../platform/input.ts';

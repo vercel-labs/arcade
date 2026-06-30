@@ -9,17 +9,19 @@ import {
 } from '../engine/index.ts';
 import { OrbitCamera } from './orbit.ts';
 import { loadWisp, mulberry32, providerTint, type Wisp } from './wisp.ts';
-import { AudioPlayer, StreamPlayer } from '../ai/audio-out.ts';
-import { MicCapture, micAvailable } from '../ai/audio-in.ts';
-import { AudioLog } from '../ai/audio-log.ts';
-import { AecSidecar } from '../ai/aec-sidecar.ts';
 import {
+  AudioPlayer,
+  StreamPlayer,
+  MicCapture,
+  micAvailable,
+  AudioLog,
+  AecSidecar,
   openRealtime,
   type RealtimeHandlers,
   type RealtimeSession,
   type RealtimeSessionConfig,
   type RealtimeStatus,
-} from '../ai/realtime-session.ts';
+} from '../voice/index.ts';
 import type { KeyEvent } from '../platform/input.ts';
 
 // The realtime audio screen: a live, full-duplex voice conversation with a

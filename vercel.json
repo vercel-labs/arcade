@@ -1,7 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "functions": {
-    "api/index.ts": { "maxDuration": 300 }
-  },
-  "rewrites": [{ "source": "/(.*)", "destination": "/api" }]
+  "buildCommand": "node scripts/build-vercel-output.mjs",
+  "installCommand": "echo skip-install"
 }

@@ -26,27 +26,25 @@ import { buildShowcase, mountShowcase } from './ui-showcase.ts';
 import { buildChessGameRoot, type Commentary, mountChessHud, movesToPgn, refreshMoveHistory } from './chess-hud.ts';
 import { buildMatchSetup, matchSetupSelection, mountMatchSetup } from './match-setup.ts';
 import { copyToClipboard } from '../platform/clipboard.ts';
-import { BLACK, type Color, type Move, WHITE } from '../games/chess/types.ts';
+import { BLACK, type Color, WHITE } from '../games/chess/types.ts';
 import { evaluate } from '../games/chess/eval.ts';
 import type { ChessResult } from '../games/chess/chess.ts';
 import type { RGB, RGBA } from '../engine/index.ts';
-import { Keymap, Renderer, Screen, type LayoutBox } from '../tui/index.ts';
+import { Renderer, Screen, type LayoutBox } from '../tui/index.ts';
+import { installKeymap } from './keybindings.ts';
 import { renderDemo } from '../demo/scene.ts';
 import * as term from '../platform/terminal.ts';
-import { loadEnv } from '../ai/env.ts';
-import { ensureGatewayKey, isLoggedIn, signOut as signOutVercel, switchTeam } from '../ai/gateway-key.ts';
-import { runMatch } from '../ai/match.ts';
-import { ModelPlayer } from '../ai/model-player.ts';
-import type { Player } from '../ai/player.ts';
+import { loadEnv, ensureGatewayKey, isLoggedIn, signOut as signOutVercel, switchTeam } from '../auth/index.ts';
+import { AiMatch } from './ai-match.ts';
 
 // Populate process.env from .env.local before anything reads AI_GATEWAY_API_KEY.
 loadEnv();
 
 const FPS = 30;
-const DT = 1 / FPS;
-// Cells-equivalent the arrow keys pan the chess camera per press (held keys
-// repeat). Tuned to feel like a firm nudge; pan() scales it by distance.
-const PAN_STEP = 10;
+// Animations advance by the renderer's real elapsed time (see tick), so they play
+// at wall-clock speed even when a large terminal drops the loop below FPS. The step
+// is clamped so a stall or an idle→interaction gap can't teleport the animation.
+const MAX_STEP = 0.1;
 // Supersample factor for the prism screen (antialiasing + sub-cell detail
 // for shape-matched glyph mode).
 const SS = 3;
@@ -139,7 +137,10 @@ let menuSel = 0;
 // snap-to-slot). Integer = that cover centred head-on.
 let coverPos = 0;
 let menuHover = false; // mouse is over the focused cover (drives the hover highlight)
-const MENU_EASE = 0.24; // per-frame approach to the selected slot (~0.3s settle at 30fps)
+// Carousel snap rate (continuous-time): each frame approaches the slot by
+// 1 - e^(-rate·dt). ~8.2 reproduces the old 0.24/frame feel at 30fps but stays
+// consistent at any framerate.
+const MENU_EASE_RATE = 8.2;
 // Launch transition: clicking a cover plays the flip-to-title splash before the
 // game opens. `launching` gates menu input; `launchT` is the splash clock (s);
 // `launchSel` is the cover being launched.
@@ -148,16 +149,11 @@ let launchT = 0;
 let launchSel = 0;
 
 // AI-vs-AI match. The two sides are chosen in the setup modal (provider → model).
-// `matchAbort` cancels the running turn-loop (pause / stop / navigate away).
-// `matchPlayers` are the two players for the current game — kept across a pause so
-// resume continues with them. `matchPaused` halts the loop on the current turn (no
-// thinking/moves) while keeping the match alive. `commentary` is the current
-// pre-move rationale toast, shown until `t` passes `until`. `matchSetupOpen` shows
-// the model picker; `setupFocused` is its focus-once edge.
+// The match turn-loop lifecycle lives in AiMatch (ai-match.ts); main owns the
+// surrounding UI state. `commentary` is the current pre-move rationale toast, shown
+// until `t` passes `until`. `matchSetupOpen` shows the model picker; `setupFocused`
+// is its focus-once edge.
 const COMMENTARY_SECS = 3.5;
-let matchAbort: AbortController | null = null;
-let matchPlayers: Player<Move>[] | null = null;
-let matchPaused = false;
 let commentary: Commentary | null = null;
 let matchSetupOpen = false;
 let setupFocused = false;
@@ -332,58 +328,23 @@ function copyMoves(): void {
 }
 
 // ── AI-vs-AI match driver ──────────────────────────────────────────────────────
-// Fully stop the match: cancel the loop, drop the players, and leave spectator
-// mode (the final position stays on the board). Safe to call when idle. Used by
-// reset-game and on navigating away — NOT by pause.
+// The turn-loop lifecycle lives in AiMatch; main injects the renderer/commentary/
+// illegal-moves seams and keeps the surrounding modal UI below.
+const aiMatch = new AiMatch({
+  chessGame,
+  syncLive,
+  requestRender: () => r.requestRender(),
+  onCommentary: (text, model) => {
+    commentary = { text, model, until: t + COMMENTARY_SECS };
+  },
+  allowIllegal: () => illegalAllowed,
+});
+
+// Fully stop the match and clear the commentary toast. Used by reset-game and on
+// navigating away (the enter*/toPrism/enterMenu transitions) — NOT by pause.
 function stopAiMatch(): void {
-  matchAbort?.abort();
-  matchAbort = null;
-  matchPlayers = null;
-  matchPaused = false;
+  aiMatch.stop();
   commentary = null;
-  chessGame.setMatchPaused(false);
-  chessGame.endMatch();
-}
-
-// Run the turn-loop for the current `matchPlayers` against the live board. A new
-// AbortController per run lets pause/stop cancel an in-flight model call. The loop
-// lives beside the render tick (it awaits the network + each move's settle); a
-// held live lease keeps frames flowing so the HUD wisps animate while we wait.
-// On exit: if paused, the match stays alive on the current turn; otherwise it
-// ended (terminal or stopped) and we leave spectator mode.
-function runMatchLoop(): void {
-  if (!matchPlayers) return;
-  const ctrl = new AbortController();
-  matchAbort = ctrl;
-  syncLive();
-  r.requestRender();
-  runMatch<Move>(chessGame, matchPlayers, {
-    signal: ctrl.signal,
-    onCommentary: (text, player) => {
-      commentary = { text, model: player.name, until: t + COMMENTARY_SECS };
-    },
-  })
-    .catch(() => {}) // aborted mid-decision (pause/stop) — fine
-    .finally(() => {
-      if (matchAbort === ctrl) matchAbort = null;
-      if (matchPaused) return; // paused: keep the match alive on the current turn
-      chessGame.endMatch(); // ended (terminal or stopped); final position stays up
-      matchPlayers = null;
-      syncLive();
-      r.requestRender();
-    });
-}
-
-// Start a fresh AI-vs-AI game from the initial position with the chosen models.
-function startAiMatch(whiteSlug: string, blackSlug: string): void {
-  const providerOf = (slug: string): string => slug.split('/')[0] ?? slug;
-  chessGame.beginMatch(providerOf(whiteSlug), providerOf(blackSlug));
-  matchPaused = false;
-  matchPlayers = [
-    new ModelPlayer<Move>({ model: whiteSlug, gameName: 'chess', allowIllegal: () => illegalAllowed }),
-    new ModelPlayer<Move>({ model: blackSlug, gameName: 'chess', allowIllegal: () => illegalAllowed }),
-  ];
-  runMatchLoop();
 }
 
 // Open the setup modal to pick the two models (needs a Gateway key). The four
@@ -413,25 +374,7 @@ function confirmMatchSetup(): void {
   const sel = matchSetupSelection();
   if (!sel) return;
   closeMatchSetup();
-  startAiMatch(sel.white, sel.black);
-}
-
-// Pause on whoever's turn it is: cancel the in-flight model call (stop thinking)
-// and halt the loop, but keep the match + HUD alive. The side-to-move wisp stops
-// pulsing to show it's idle.
-function pauseAiMatch(): void {
-  matchPaused = true;
-  chessGame.setMatchPaused(true);
-  matchAbort?.abort(); // cancel any in-flight thinking
-  matchAbort = null;
-  r.requestRender();
-}
-
-// Resume from the current turn: the same players continue against the live board.
-function resumeAiMatch(): void {
-  matchPaused = false;
-  chessGame.setMatchPaused(false);
-  runMatchLoop();
+  aiMatch.start(sel.white, sel.black);
 }
 
 // Toggle illegal-moves mode (bar button / 'i' key). Takes effect on the next AI
@@ -454,8 +397,8 @@ function toggleEvalBar(): void {
 function aiButton(): void {
   if (mode !== 'chess-game') enterChessGame();
   if (!chessGame.isMatchActive()) openMatchSetup();
-  else if (matchPaused) resumeAiMatch();
-  else pauseAiMatch();
+  else if (aiMatch.isPaused()) aiMatch.resume();
+  else aiMatch.pause();
   r.requestRender();
 }
 
@@ -599,113 +542,35 @@ const actions: BarActions = {
 // (mode). onKeyImpl collapses to `keymap.handle(ev)`. The id catalog
 // (`keymap.commands()`) is also the surface an AI agent will drive the app
 // through — a human key and an agent command id hit the same `run`.
-const keymap = new Keymap();
-for (const c of [
-  { id: 'app.quit', title: 'Quit', run: quit },
-  { id: 'app.switchTeam', title: 'Switch Vercel team', run: accountSwitchTeam },
-  { id: 'app.signOut', title: 'Sign out of Vercel', run: accountSignOut },
-  { id: 'view.cycleRenderMode', title: 'Cycle render style', run: cycleMode },
-  { id: 'view.setColor', title: 'Render: color', run: () => setRenderMode('color') },
-  { id: 'view.setLuminance', title: 'Render: luminance', run: () => setRenderMode('luminance') },
-  { id: 'view.setAscii', title: 'Render: ascii', run: () => setRenderMode('ascii') },
-  { id: 'view.toggleJitter', title: 'Toggle glyph jitter', run: toggleJitter },
-  { id: 'nav.back', title: 'Back to menu', run: enterMenu },
-  { id: 'nav.toPrism', title: 'Back to prism', run: toPrism },
-  { id: 'nav.menu', title: 'Open menu', run: enterMenu },
-  { id: 'menu.left', title: 'Menu: previous', run: () => menuNav(-1) },
-  { id: 'menu.right', title: 'Menu: next', run: () => menuNav(1) },
-  { id: 'menu.select', title: 'Menu: launch selected', run: launchSelected },
-  { id: 'nav.demo', title: 'Open demo', run: enterDemo },
-  { id: 'nav.audio', title: 'Open audio', run: enterAudio },
-  { id: 'audio.nextModel', title: 'Audio: next model', run: () => audioScene.cycleModel() },
-  { id: 'nav.chess', title: 'Open chess showcase', run: enterChess },
-  { id: 'nav.chessGame', title: 'Open chess game', run: enterChessGame },
-  { id: 'nav.ui', title: 'Open UI playground', run: enterUi },
-  { id: 'chess.resetView', title: 'Reset camera', run: () => activeOrbit()?.resetView() },
-  { id: 'chess.panLeft', title: 'Pan left', run: () => activeOrbit()?.pan(PAN_STEP, 0) },
-  { id: 'chess.panRight', title: 'Pan right', run: () => activeOrbit()?.pan(-PAN_STEP, 0) },
-  { id: 'chess.panUp', title: 'Pan up', run: () => activeOrbit()?.pan(0, PAN_STEP) },
-  { id: 'chess.panDown', title: 'Pan down', run: () => activeOrbit()?.pan(0, -PAN_STEP) },
-  { id: 'chess.cancelPromotion', title: 'Cancel promotion', run: cancelPromotion },
-  { id: 'chess.toggleAI', title: 'Play / pause AI', run: aiButton },
-  { id: 'chess.toggleHistory', title: 'Toggle move history', run: toggleHistory },
-  { id: 'chess.resetGame', title: 'Reset game', run: resetGame },
-  { id: 'chess.toggleIllegal', title: 'Toggle illegal moves', run: toggleIllegal },
-  { id: 'chess.toggleEvalBar', title: 'Toggle eval bar', run: toggleEvalBar },
-  { id: 'chess.closeGameOver', title: 'Close result', run: closeGameOver },
-  { id: 'chess.cancelSetup', title: 'Cancel match setup', run: closeMatchSetup },
-]) {
-  keymap.register(c);
-}
-// Global: work in every mode. (escape/ctrl+c/q all quit; the 'promoting' modal
-// layer shadows escape to cancel instead — see syncBar.)
-for (const b of [
-  { key: 'q', cmd: 'app.quit' },
-  { key: 'escape', cmd: 'app.quit' },
-  { key: 'ctrl+c', cmd: 'app.quit' },
-  { key: 'm', cmd: 'view.cycleRenderMode' },
-  { key: 'c', cmd: 'view.setColor' },
-  { key: 'l', cmd: 'view.setLuminance' },
-  { key: 'a', cmd: 'view.setAscii' },
-  { key: 'j', cmd: 'view.toggleJitter' },
-  { key: 's', cmd: 'app.switchTeam' }, // sign in / switch billing team
-]) {
-  keymap.bind('global', b);
-}
-keymap.bind('chess', { key: 'p', cmd: 'chess.toggleAI' });
-keymap.bind('chess', { key: 'h', cmd: 'chess.toggleHistory' });
-keymap.bind('chess', { key: 'n', cmd: 'chess.resetGame' });
-keymap.bind('chess', { key: 'i', cmd: 'chess.toggleIllegal' });
-keymap.bind('chess', { key: 'e', cmd: 'chess.toggleEvalBar' });
-// Menu hub: arrows move, Enter/Space launch, Escape returns to the prism attract
-// screen. Escape here shadows the global Escape→quit because the 'menu' base layer
-// is searched before 'global'.
-for (const b of [
-  { key: 'left', cmd: 'menu.left' },
-  { key: 'right', cmd: 'menu.right' },
-  { key: 'enter', cmd: 'menu.select' },
-  { key: 'space', cmd: 'menu.select' },
-  { key: 'escape', cmd: 'nav.toPrism' },
-  { key: 'o', cmd: 'app.signOut' }, // account home: sign out (switch-team is global 's')
-]) {
-  keymap.bind('menu', b);
-}
-for (const layer of ['demo', 'logos', 'chess', 'ui']) keymap.bind(layer, { key: 'b', cmd: 'nav.back' });
-// Orbit/pan/reset bindings are shared by the chess turntables, the logos wisp
-// orbit, and the chess backdrop behind the UI playground (the commands resolve
-// the active scene via activeOrbit()). In 'ui', a focused component consumes
-// arrows first (Screen.handleKey runs before the keymap), so these pan only when
-// the scene — not a widget — has focus.
-for (const layer of ['chess', 'logos', 'ui']) {
-  for (const b of [
-    { key: 'r', cmd: 'chess.resetView' },
-    { key: 'left', cmd: 'chess.panLeft' },
-    { key: 'right', cmd: 'chess.panRight' },
-    { key: 'up', cmd: 'chess.panUp' },
-    { key: 'down', cmd: 'chess.panDown' },
-  ]) {
-    keymap.bind(layer, b);
-  }
-}
-// Audio screen: type-to-talk owns letters (handled before the keymap), so only the
-// non-text keys are bound here — Escape returns to the menu and the arrows pan the
-// wisp camera. ('r'/reset stays on the bar button so it can still be typed.)
-keymap.bind('audio', { key: 'escape', cmd: 'nav.back' });
-for (const b of [
-  { key: 'left', cmd: 'chess.panLeft' },
-  { key: 'right', cmd: 'chess.panRight' },
-  { key: 'up', cmd: 'chess.panUp' },
-  { key: 'down', cmd: 'chess.panDown' },
-]) {
-  keymap.bind('audio', b);
-}
-// Promotion picker is modal: Escape cancels; the modal layer (pushed in syncBar)
-// swallows every other stray key so 'q' can't quit mid-choice.
-keymap.bind('promoting', { key: 'escape', cmd: 'chess.cancelPromotion' });
-// Game-over popup is modal too: Escape closes it (and the layer shadows 'q' etc.).
-keymap.bind('gameover', { key: 'escape', cmd: 'chess.closeGameOver' });
-// Match-setup modal: Escape cancels; the layer shadows stray keys.
-keymap.bind('setup', { key: 'escape', cmd: 'chess.cancelSetup' });
+// The command catalog + per-mode key bindings live in keybindings.ts; main owns
+// the handlers and the live keymap (setBase / handle / modal push-pop below).
+const keymap = installKeymap({
+  quit,
+  accountSwitchTeam,
+  accountSignOut,
+  cycleMode,
+  setRenderMode,
+  toggleJitter,
+  enterMenu,
+  toPrism,
+  menuNav,
+  launchSelected,
+  enterDemo,
+  enterAudio,
+  audioCycleModel: () => audioScene.cycleModel(),
+  enterChess,
+  enterChessGame,
+  enterUi,
+  activeOrbit,
+  cancelPromotion,
+  aiButton,
+  toggleHistory,
+  resetGame,
+  toggleIllegal,
+  toggleEvalBar,
+  closeGameOver,
+  closeMatchSetup,
+});
 
 // Point the keymap's base layer at the current mode (chess + chess-game share
 // the orbit bindings). The 'promoting' modal is pushed/popped separately.
@@ -838,7 +703,7 @@ function syncBar(): void {
     refreshMoveHistory(chessGame.moves(), chessGame.illegalFlags());
     const ai = !chessGame.isMatchActive()
       ? { label: 'play ai', active: false }
-      : matchPaused
+      : aiMatch.isPaused()
         ? { label: 'resume ai', active: true }
         : { label: 'pause ai', active: true };
     // White-POV centipawns for the eval bar (cheap 64-square scan; only when shown).
@@ -1067,8 +932,9 @@ const parse = createInputParser({
   },
 });
 
-function tick(): void {
-  t += DT;
+function tick(dt: number): void {
+  const step = Math.min(dt, MAX_STEP); // real seconds since the last rendered frame, clamped
+  t += step;
 
   if (splashing) {
     // Boot splash: no button bar (the ui root is unmounted until syncBar runs, so
@@ -1100,7 +966,7 @@ function tick(): void {
   if (mode === 'menu') {
     // Launch splash: flip the clicked cover to its title, then open the game.
     if (launching) {
-      launchT += DT;
+      launchT += step;
       coverflow.renderLaunch(target, launchSel, launchT);
       r.write(UNIFIED ? ui.frameComposited((s) => presentSceneInto(s)) : presentScene());
       if (launchT >= LAUNCH_TOTAL) {
@@ -1111,7 +977,7 @@ function tick(): void {
     }
     // Cover Flow hub: ease the carousel toward the selected slot (snap-to-slot),
     // render the 3D covers full-screen, then draw the title + hint chrome on top.
-    coverPos += (menuSel - coverPos) * MENU_EASE;
+    coverPos += (menuSel - coverPos) * (1 - Math.exp(-MENU_EASE_RATE * step));
     if (Math.abs(menuSel - coverPos) < 0.0015) coverPos = menuSel;
     coverflow.renderScene(target, coverPos, menuHover ? menuSel : -1);
     r.write(

@@ -26,13 +26,17 @@ src/
   tui/        reusable retained-mode UI library — flexbox layout, Surface compositing
   platform/   terminal control (alt screen, raw mode, SGR mouse) + input parsing
   games/      game harness (Game/State + registry) + the chess rules engine
+  ai/         game AI: Player interface + LLM-backed ModelPlayer + match loop
+  auth/       Vercel sign-in (OAuth device flow) + AI Gateway key resolution
+  voice/      realtime speech-to-speech session + mic/speaker I/O + echo cancel
   arcade/     THE app: orchestrator (main.ts) + chess screens + prism/logos scenes
   demo/       engine cube demo
   tools/      snapshot.ts (render a frame to an image)
 ```
 
 Import direction is one-way: `arcade/` consumes the libraries (`engine/` via the
-`engine/index.ts` barrel, `tui/` via `tui/index.ts`, plus `platform/` and `games/`).
+`engine/index.ts` barrel, `tui/` via `tui/index.ts`, `auth/` and `voice/` via their
+`index.ts` barrels, plus `platform/`, `games/`, and `ai/` à la carte).
 **The libraries never import app code** — keep it that way so they stay reusable (the goal
 is to grow `engine/` into a 3D game engine and `tui/` into the shared UI toolkit for every
 game). Inside a library, modules import each other directly, not through the barrel.
@@ -48,7 +52,7 @@ game). Inside a library, modules import each other directly, not through the bar
 ## AI Gateway key (Vercel sign-in)
 
 Everything AI reads `process.env.AI_GATEWAY_API_KEY`. It's resolved once at
-startup by `ensureGatewayKey()` ([src/ai/gateway-key.ts](src/ai/gateway-key.ts)),
+startup by `ensureGatewayKey()` ([src/auth/gateway-key.ts](src/auth/gateway-key.ts)),
 with this precedence:
 
 1. An existing `AI_GATEWAY_API_KEY` (env or `.env.local`) wins — skips login.
@@ -58,9 +62,9 @@ with this precedence:
 
 Tokens persist at `~/.config/arcade/auth.json` (0600); the minted key is **not**
 stored — it's re-derived each launch. Reuses the Vercel CLI's public OAuth client
-(`CLIENT_ID` in [src/ai/vercel-auth.ts](src/ai/vercel-auth.ts)), the one allow-listed
+(`CLIENT_ID` in [src/auth/vercel-auth.ts](src/auth/vercel-auth.ts)), the one allow-listed
 to mint gateway keys. In-app: `s` switch team, `o` (menu) sign out; flags
-`--login` / `--switch-team` / `--logout`. Auth lives in `src/ai/{vercel-auth,
+`--login` / `--switch-team` / `--logout`. Auth lives in `src/auth/{env,vercel-auth,
 vercel-api,gateway-key}.ts`; `src/platform/open-browser.ts` opens the browser.
 
 ## Conventions

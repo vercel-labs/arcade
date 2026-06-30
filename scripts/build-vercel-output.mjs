@@ -8,9 +8,18 @@
 // regenerates the whole tree from source on any machine — no shared .vercel, no
 // copy-paste.
 //
-// Usage:
+// Manual deploy:
 //   pnpm build:vercel
 //   vercel deploy --prebuilt --prod --scope <team>
+//
+// GitHub auto-deploy (the `ascii-prisms` project): vercel.json points Vercel's
+// build at this script (buildCommand) with install skipped (installCommand), so a
+// push that touches the prism builds the same output tree. To keep the arcade's
+// daily churn from redeploying the prism, set the project's Ignored Build Step
+// (Settings → Git) to the prism's exact dependency closure:
+//   git diff --quiet HEAD^ HEAD -- api src/engine src/arcade/prism.ts src/arcade/splash.ts
+// (Vercel: exit 0 → skip the build, exit 1 → build. So a commit that changes none
+// of those paths is skipped; one that touches the closure redeploys.)
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';

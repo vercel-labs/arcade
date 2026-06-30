@@ -12,7 +12,7 @@ import type { GameState } from '../games/game.ts';
 import { type MatchScene, runMatch } from '../ai/match.ts';
 import { ModelPlayer } from '../ai/model-player.ts';
 import type { Player } from '../ai/player.ts';
-import { type RealtimeCodec, RealtimeSession, type RealtimeSocket } from '../ai/realtime-session.ts';
+import { type RealtimeCodec, RealtimeSession, type RealtimeSocket } from '../voice/realtime-session.ts';
 import type { Move } from '../games/chess/types.ts';
 import { readFileSync } from 'node:fs';
 import { decodePng, RenderTarget, stringWidth } from '../engine/index.ts';
