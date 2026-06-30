@@ -1,0 +1,9 @@
+# build artifacts + recordings
+aec-win.exe
+*.obj
+*.exp
+*.lib
+*.pdb
+*.ilk
+*.wav
+build/
