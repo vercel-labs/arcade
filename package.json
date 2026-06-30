@@ -9,7 +9,6 @@
   },
   "scripts": {
     "dev": "tsx src/arcade/main.ts",
-    "demo": "tsx src/demo/main.ts",
     "snapshot": "tsx src/tools/snapshot.ts",
     "build:vercel": "node scripts/build-vercel-output.mjs",
     "watch": "tsx watch src/arcade/main.ts",
@@ -25,9 +24,11 @@
   "dependencies": {
     "@ai-sdk/gateway": "4.0.0-beta.113",
     "ai": "6.0.208",
-    "speaker": "0.5.5",
     "ws": "8.21.0",
     "zod": "4.4.3"
+  },
+  "optionalDependencies": {
+    "speaker": "0.5.5"
   },
   "pnpm": {
     "onlyBuiltDependencies": ["speaker"]
