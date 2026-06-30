@@ -25,6 +25,8 @@ export {
   type PieceUniforms,
   wispMaterial,
   type WispUniforms,
+  coverMaterial,
+  type CoverUniforms,
 } from './materials.ts';
 export { hslToRgb, lerpRgb, parseColor, blendOver, type RGB, type RGBA } from './color.ts';
 export { decodePng, sampleTexture, type Texture } from './texture.ts';

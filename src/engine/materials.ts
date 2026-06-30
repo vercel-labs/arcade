@@ -174,3 +174,84 @@ export const wispMaterial: Material<WispUniforms> = {
     return WISP_RGBA;
   },
 };
+
+export interface CoverUniforms {
+  mvp: Mat4;
+  model: Mat4;
+  tex: Texture; // the square cover art (RGBA)
+  paper: Vec3; // solid card color shown through transparent art (0..255)
+  lightDir: Vec3; // normalized, world space, points toward the key light
+  ambient: number; // 0..1 fill floor so a rotated cover never goes fully black
+  brightness: number; // overall multiplier (1 for a face, <1 for its reflection)
+  frameWidth: number; // bezel thickness in uv units (0 disables)
+  frameColor: Vec3; // bezel color (0..255)
+  pad: number; // inset the artwork by this many uv units (a paper margin inside the bezel)
+  fade: number; // 0 = no vertical fade; 1 = fade by world.y (the reflection)
+  fadeY0: number; // world.y fully faded (reflection's far bottom edge)
+  fadeY1: number; // world.y at full brightness (the floor line)
+}
+
+// A lit, textured billboard for Cover Flow style covers. The cover is the full
+// square texture composited over a solid `paper` color (so transparent-background
+// icons still read as a cohesive solid card), shaded by a single key light:
+// a head-on cover (normal +z) is fully lit and a cover rotated away dims by N·L,
+// which is what physically sells the carousel's rotation. A thin bezel keeps the
+// square silhouette legible when a cover is near edge-on, and an optional vertical
+// fade (world.y) renders the faded floor reflection. Opaque; the depth buffer
+// resolves overlap so covers can be submitted in any order.
+const COVER_RGBA = { r: 0, g: 0, b: 0, a: 1 };
+export const coverMaterial: Material<CoverUniforms> = {
+  cull: 'none', // the reflection mirrors winding; depth handles occlusion regardless
+  vertex(u, vin) {
+    const clip = mat4MulVec4(u.mvp, { x: vin.position.x, y: vin.position.y, z: vin.position.z, w: 1 });
+    const w = mat4MulVec4(u.model, { x: vin.position.x, y: vin.position.y, z: vin.position.z, w: 1 });
+    const normal = mat4MulDir(u.model, vin.normal);
+    return { clip, world: { x: w.x, y: w.y, z: w.z }, normal, uv: vin.uv, color: vin.color, bary: { x: 0, y: 0, z: 0 } };
+  },
+  fragment(u, vy) {
+    const uvx = vy.uv[0];
+    const uvy = vy.uv[1];
+    let r: number;
+    let g: number;
+    let b: number;
+    const border = Math.min(uvx, 1 - uvx, uvy, 1 - uvy);
+    if (border < u.frameWidth) {
+      r = u.frameColor.x;
+      g = u.frameColor.y;
+      b = u.frameColor.z;
+    } else {
+      // Inset the artwork by `pad` so it sits on a small paper margin rather than
+      // hugging the bezel; the margin band itself shows the paper color.
+      const iu = (uvx - u.pad) / (1 - 2 * u.pad);
+      const iv = (uvy - u.pad) / (1 - 2 * u.pad);
+      if (iu < 0 || iu > 1 || iv < 0 || iv > 1) {
+        r = u.paper.x;
+        g = u.paper.y;
+        b = u.paper.z;
+      } else {
+        const px = sampleTexture(u.tex, iu, iv); // rgb 0..255, a 0..1
+        const a = px[3];
+        r = u.paper.x + (px[0] - u.paper.x) * a;
+        g = u.paper.y + (px[1] - u.paper.y) * a;
+        b = u.paper.z + (px[2] - u.paper.z) * a;
+      }
+    }
+    let nx = vy.normal.x;
+    let ny = vy.normal.y;
+    let nz = vy.normal.z;
+    const inv = 1 / Math.sqrt(nx * nx + ny * ny + nz * nz);
+    nx *= inv;
+    ny *= inv;
+    nz *= inv;
+    const ndl = Math.max(0, nx * u.lightDir.x + ny * u.lightDir.y + nz * u.lightDir.z);
+    let bright = u.brightness * (u.ambient + (1 - u.ambient) * ndl);
+    if (u.fade) {
+      const f = (vy.world.y - u.fadeY0) / (u.fadeY1 - u.fadeY0);
+      bright *= f < 0 ? 0 : f > 1 ? 1 : f;
+    }
+    COVER_RGBA.r = r * bright;
+    COVER_RGBA.g = g * bright;
+    COVER_RGBA.b = b * bright;
+    return COVER_RGBA;
+  },
+};

@@ -11,6 +11,7 @@
     "dev": "tsx src/arcade/main.ts",
     "demo": "tsx src/demo/main.ts",
     "snapshot": "tsx src/tools/snapshot.ts",
+    "build:vercel": "node scripts/build-vercel-output.mjs",
     "watch": "tsx watch src/arcade/main.ts",
     "type-check": "tsc --noEmit"
   },
