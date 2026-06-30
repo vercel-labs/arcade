@@ -85,8 +85,8 @@ export function shortModel(slug: string): string {
 // the full width — moves with the evaluation. Fed a white-POV centipawn score
 // (see games/chess/eval.ts) — presentation only. The rail is thin and floats with
 // a gap above and below (it doesn't run to the screen edges).
-const EVAL_RAIL_W = 2; // rail thickness (cells) — thin
-const EVAL_COL_W = 4; // column width, sized to hold the numeric label
+const EVAL_RAIL_W = 3; // rail thickness (cells) — odd, so it has a true center column
+const EVAL_COL_W = 5; // column width, sized to hold the numeric label
 const EVAL_VPAD = 4; // rows of gap above and below the rail
 const EVAL_LIGHT: RGB = [232, 228, 216]; // white side (ivory, matches the set)
 const EVAL_DARK: RGB = [48, 46, 52]; // black side (charcoal)
@@ -112,7 +112,7 @@ function evalLabel(cp: number): string {
 // overrides the heuristic at game end: checkmate pins the bar to the winner ("#");
 // a draw centers it ("½").
 export function buildEvalBar(cp: number, result: ChessResult | null, height: number): Node {
-  const barH = Math.max(1, height - 2 * EVAL_VPAD - 1); // leave the gap + label row
+  const barH = Math.max(1, height - 2 * EVAL_VPAD - 2); // leave room for the label row + gap row
   // Fill fraction + label, with terminal overrides.
   let frac: number;
   let label: string;
@@ -128,7 +128,9 @@ export function buildEvalBar(cp: number, result: ChessResult | null, height: num
   }
 
   // Whole-cell fill: the bottom `whiteRows` are white, the rest dark. The seam
-  // between them is a single straight line across the rail.
+  // between them is a single straight line across the rail. The rail is centered
+  // in the column, so its middle column sits under the label's centered decimal
+  // point (the "+X.Y" label is 4 chars → its '.' lands on the column's center).
   const whiteRows = Math.max(0, Math.min(barH, Math.round(frac * barH)));
   const railRow = (color: RGB): Node =>
     Box({ width: EVAL_COL_W, height: 1, justifyContent: 'center' }, [Box({ width: EVAL_RAIL_W, height: 1, background: color })]);
@@ -140,6 +142,7 @@ export function buildEvalBar(cp: number, result: ChessResult | null, height: num
     Box({ width: EVAL_COL_W, height: 1, justifyContent: 'center', background: EVAL_LABEL_BG }, [
       Text({ text: label, style: { color: [210, 212, 222], bold: true } }),
     ]),
+    Box({ height: 1 }), // tiny gap between the number chip and the rail
     ...rows,
     Box({ flexGrow: 1 }), // bottom gap
   ]);
