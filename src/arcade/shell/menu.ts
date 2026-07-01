@@ -11,10 +11,10 @@ export interface MenuItem {
 
 export const MENU_ITEMS: MenuItem[] = [
   { id: 'chess', title: 'Chess', enabled: true },
+  { id: 'poker', title: 'Poker', enabled: true },
   { id: 'logos', title: 'Logos', enabled: true },
   { id: 'audio', title: 'Audio', enabled: true },
   { id: 'ui', title: 'UI', enabled: true },
-  { id: 'poker', title: 'Poker', enabled: true },
   { id: 'codenames', title: 'Codenames', enabled: false },
   { id: 'pacman', title: 'Pac-Man', enabled: false },
   { id: 'frogger', title: 'Frogger', enabled: false },

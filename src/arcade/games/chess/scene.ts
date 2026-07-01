@@ -171,6 +171,11 @@ export class ChessGameScene {
   // thinking. Set by the orchestrator; the board stays frozen either way.
   private matchPaused = false;
   private settleResolve: (() => void) | null = null;
+  // A human turn in progress: set by requestHumanMove (the HumanPlayer seam) while
+  // the match loop waits on this side, consumed by click()/choosePromotion when the
+  // player commits a move. Its presence is also what lets click() work despite
+  // spectator mode. Rejected (not resolved) if the turn is aborted (pause/stop).
+  private humanReq: { resolve: (m: Move) => void; reject: (e: Error) => void } | null = null;
   private moveLog: string[] = [];
   // Parallel to `moveLog`: whether each played move was illegal at the time (only
   // possible under the illegal-moves toggle). The move panel paints these red.
@@ -331,6 +336,7 @@ export class ChessGameScene {
   private resetBoard(): void {
     const pending = this.settleResolve;
     this.settleResolve = null;
+    this.humanReq = null; // any awaiter was already rejected by the abort that precedes a reset
     this.game = new ChessState();
     this.whiteJail = [];
     this.blackJail = [];
@@ -347,10 +353,12 @@ export class ChessGameScene {
   // the HUD, and switch to spectator mode. The driver then plays moves via
   // playMove(). `white`/`black` are provider keys (e.g. "anthropic", "openai")
   // derived from the model slugs.
-  beginMatch(white = 'anthropic', black = 'openai'): void {
+  // A side's provider key loads its HUD wisp; `null` means a human plays that side
+  // (no wisp — the mark space stays empty; the clickable board is their interface).
+  beginMatch(white: string | null = 'anthropic', black: string | null = 'openai'): void {
     this.resetBoard();
-    this.whiteWisp = this.loadHudWisp(white, 0);
-    this.blackWisp = this.loadHudWisp(black, 1.7);
+    this.whiteWisp = white ? this.loadHudWisp(white, 0) : null;
+    this.blackWisp = black ? this.loadHudWisp(black, 1.7) : null;
     this.matchActive = true;
     this.matchPaused = false;
     this.dirty = true;
@@ -439,6 +447,45 @@ export class ChessGameScene {
     this.dirty = true;
   }
 
+  // Await the human's move for the side to move — the HumanPlayer seam. While one
+  // is pending, board clicks select + move that side's pieces (see click()) even
+  // though the match is active; committing resolves this promise with the chosen
+  // Move and the driver then animates it via playMove(). Aborting the turn (pause /
+  // stop) rejects so `runMatch` unwinds like it does for a cancelled model call.
+  requestHumanMove(signal?: AbortSignal): Promise<Move> {
+    return new Promise<Move>((resolve, reject) => {
+      if (signal?.aborted) return reject(new Error('aborted'));
+      const onAbort = (): void => {
+        this.humanReq = null;
+        this.deselect();
+        this.dirty = true;
+        reject(new Error('aborted'));
+      };
+      signal?.addEventListener('abort', onAbort, { once: true });
+      this.humanReq = {
+        resolve: (m) => {
+          signal?.removeEventListener('abort', onAbort);
+          resolve(m);
+        },
+        reject: (e) => {
+          signal?.removeEventListener('abort', onAbort);
+          reject(e);
+        },
+      };
+      this.dirty = true;
+    });
+  }
+
+  // Commit the human's chosen move: clear the request + selection and hand the Move
+  // back to the awaiting HumanPlayer. The driver animates it via playMove() next —
+  // so this does NOT apply the move itself (that would double-play it).
+  private commitHumanMove(move: Move): void {
+    const req = this.humanReq;
+    this.humanReq = null;
+    this.deselect();
+    req?.resolve(move);
+  }
+
   // Programmatically play a move (the driver's entry point): runs the SAME phased
   // animation a click does, and resolves once the move has fully settled (applied
   // and painted). Promotions arrive fully specified in the Move, so they animate
@@ -469,7 +516,9 @@ export class ChessGameScene {
   }
 
   click(ndcX: number, ndcY: number, aspect: number): void {
-    if (this.matchActive) return; // spectator mode: the AI driver owns the board
+    // Spectator mode ignores clicks — UNLESS the match loop is awaiting THIS side's
+    // move (humanReq set), in which case the human drives the board like free play.
+    if (this.matchActive && !this.humanReq) return;
     if (this.anim || this.pendingPromo) return; // ignore input mid-move / mid-promotion
     const sq = this.squareAt(ndcX, ndcY, aspect);
     if (sq < 0) return this.deselect();
@@ -482,6 +531,8 @@ export class ChessGameScene {
         if (move.flags & FLAG_PROMO) {
           this.pendingPromo = { from: move.from, to: move.to, color: pieceColor(move.piece) };
           this.dirty = true;
+        } else if (this.humanReq) {
+          this.commitHumanMove(move); // human turn: hand the move to the match loop
         } else {
           this.startMove(move);
         }
@@ -525,8 +576,9 @@ export class ChessGameScene {
     this.pendingPromo = null;
     if (!pp) return;
     const move = this.game.legalActions().find((m) => m.from === pp.from && m.to === pp.to && m.promotion === type);
-    if (move) this.startMove(move);
-    else this.deselect();
+    if (!move) return this.deselect();
+    if (this.humanReq) this.commitHumanMove(move); // human turn: hand it to the match loop
+    else this.startMove(move);
   }
 
   // Abandon a pending promotion (the pawn stays put; selection clears).

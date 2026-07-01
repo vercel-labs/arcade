@@ -6,9 +6,17 @@
 // illegal-moves flag — and injects the seams below.
 import { runMatch } from '../../ai/match.ts';
 import { ModelPlayer } from '../../ai/model-player.ts';
+import { HumanPlayer } from '../../ai/human-player.ts';
 import type { Player } from '../../ai/player.ts';
 import type { ChessGameScene } from '../games/chess/scene.ts';
 import type { Move } from '../../rules/chess/types.ts';
+
+// One side of a match: an AI model (a Gateway slug) or a human at the keyboard.
+// The setup modal produces a pair of these; a human seat has no wisp and is played
+// through the board (see ChessGameScene.requestHumanMove).
+export type Seat = { kind: 'ai'; model: string } | { kind: 'human' };
+
+const providerOf = (slug: string): string => slug.split('/')[0] ?? slug;
 
 export interface AiMatchDeps {
   chessGame: ChessGameScene;
@@ -76,16 +84,28 @@ export class AiMatch {
       });
   }
 
-  // Start a fresh AI-vs-AI game from the initial position with the chosen models.
-  start(whiteSlug: string, blackSlug: string): void {
-    const providerOf = (slug: string): string => slug.split('/')[0] ?? slug;
-    this.deps.chessGame.beginMatch(providerOf(whiteSlug), providerOf(blackSlug));
+  // Start a fresh game from the initial position with the chosen seats. Each side is
+  // an AI model or a human; any mix works (AI-vs-AI, human-vs-AI, hotseat), since a
+  // HumanPlayer and a ModelPlayer are interchangeable in `runMatch`. Human sides get
+  // no wisp (beginMatch is passed null for them).
+  start(white: Seat, black: Seat): void {
+    this.deps.chessGame.beginMatch(
+      white.kind === 'ai' ? providerOf(white.model) : null,
+      black.kind === 'ai' ? providerOf(black.model) : null,
+    );
     this.paused = false;
-    this.players = [
-      new ModelPlayer<Move>({ model: whiteSlug, gameName: 'chess', allowIllegal: this.deps.allowIllegal }),
-      new ModelPlayer<Move>({ model: blackSlug, gameName: 'chess', allowIllegal: this.deps.allowIllegal }),
-    ];
+    this.players = [this.makePlayer(white), this.makePlayer(black)];
     this.runLoop();
+  }
+
+  // Build a side's player: an LLM-backed ModelPlayer, or a HumanPlayer whose move is
+  // awaited from the board (the loop passes the abort signal through so pausing a
+  // human's turn cancels the wait cleanly).
+  private makePlayer(seat: Seat): Player<Move> {
+    if (seat.kind === 'human') {
+      return new HumanPlayer<Move>({ name: 'you', awaitMove: (_state, ctx) => this.deps.chessGame.requestHumanMove(ctx?.signal) });
+    }
+    return new ModelPlayer<Move>({ model: seat.model, gameName: 'chess', allowIllegal: this.deps.allowIllegal });
   }
 
   // Swap one side's player mid-match (the in-game model switch): rebuild that

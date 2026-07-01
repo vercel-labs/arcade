@@ -25,7 +25,6 @@ import {
   mat4RotY,
   mat4Scale,
   mat4Translate,
-  type Mesh,
   normalize3,
   quad,
   rasterize,
@@ -37,6 +36,7 @@ import { OrbitCamera, type OrbitState } from '../../orbit.ts';
 import { mulberry32 } from '../../scenes/wisp.ts';
 import { type Card, fullDeck, shuffle, type Suit } from '../../../rules/poker/cards.ts';
 import { cardBackTexture, cardFaceTexture } from './card-textures.ts';
+import { chairMesh, chairModel, TABLE_MODEL, TABLE_RADIUS, tableMesh } from './table.ts';
 
 export type CardsMode = 'single' | 'hand' | 'deck';
 
@@ -49,17 +49,17 @@ const CARD_EPS = 0.007; // half-thickness: face at +eps, back at −eps (no z-fi
 const LIGHT = normalize3({ x: 0.12, y: 0.5, z: 1 });
 const WHITE: Vec3 = { x: 250, y: 249, z: 245 };
 const BACK_FIELD: Vec3 = { x: 156, y: 22, z: 30 };
-const FELT: Vec3 = { x: 20, y: 68, z: 46 };
 
-// A large flat felt quad for the table (hand/deck). quad() is white-vertexed, so a
-// recolored copy gives lambert a green to shade.
-function feltMesh(): Mesh {
-  const m = quad(0.5);
-  for (const v of m.vertices) v.color = { ...FELT };
-  return m;
-}
-const TABLE_MESH = feltMesh();
-const TABLE_MODEL = mat4Multiply(mat4Translate(0, -0.002, 0), mat4Multiply(mat4RotX(-Math.PI / 2), mat4Scale(26, 26, 1)));
+// Table/chair lighting (lambert): a soft key from above-front so the felt reads
+// green and the brown wood keeps form.
+const TABLE_LIGHT = normalize3({ x: 0.25, y: 0.9, z: 0.4 });
+const TABLE_AMBIENT = 0.74; // high floor so the wood/felt stay bright (esp. in ASCII mode)
+
+// HAND mode: the hero's two hole cards rest here (on the felt, in front of the
+// hero seat at +z). DECK mode: the stock sits just back of center, and cards are
+// dealt out to a ring of seats.
+const HAND_SEAT_Z = 2.6;
+const DECK_POS = { x: 0, z: -0.4 };
 
 const smooth = (x: number): number => {
   const t = x < 0 ? 0 : x > 1 ? 1 : x;
@@ -67,11 +67,12 @@ const smooth = (x: number): number => {
 };
 
 // Per-mode camera homes + how low the camera may drop (elevation floor). single is
-// free (see under the card); hand/deck are pinned above the table.
+// free (see under the card); hand/deck are pinned above the table. hand looks over
+// the hero's shoulder toward the felt; deck frames the whole table + chairs.
 const HOMES: Record<CardsMode, { home: OrbitState; elevMin: number; min: number; max: number }> = {
   single: { home: { azimuth: 0, elevation: 0.16, distance: 2.15, target: { x: 0, y: 0, z: 0 } }, elevMin: -1.4, min: 1.2, max: 8 },
-  hand: { home: { azimuth: 0, elevation: 0.72, distance: 3.4, target: { x: 0, y: 0, z: 0.3 } }, elevMin: 0.12, min: 1.8, max: 9 },
-  deck: { home: { azimuth: 0, elevation: 0.9, distance: 6.2, target: { x: 0, y: 0, z: 0 } }, elevMin: 0.12, min: 2.5, max: 16 },
+  hand: { home: { azimuth: 0, elevation: 0.56, distance: 7, target: { x: 0, y: 0, z: 1.2 } }, elevMin: 0.14, min: 3, max: 14 },
+  deck: { home: { azimuth: 0, elevation: 0.86, distance: 9.5, target: { x: 0, y: 0, z: 0 } }, elevMin: 0.14, min: 4, max: 22 },
 };
 
 // One card the player holds in HAND mode: its resting seat + how far it's revealed
@@ -195,7 +196,7 @@ export class CardsScene {
     if (this.dealing || this.shuffling) return;
     this.resetDeckDealState();
     const n = this.numPlayers;
-    const R = 1.5 + n * 0.16; // seat ring radius grows with the table
+    const R = TABLE_RADIUS * 0.6; // cards land on the felt in front of each seat (inside the rail)
     const plan: DealCard[] = [];
     let top = 0;
     for (let round = 0; round < 2; round++) {
@@ -324,13 +325,20 @@ export class CardsScene {
     });
   }
 
-  private drawTable(target: RenderTarget, vp: Mat4): void {
-    rasterize(target, TABLE_MESH, lambertMaterial, {
+  // The poker table (felt green, wood brown), felt at y=0. `seats` chairs are
+  // placed around the rail facing center — 1 (hero) for hand mode, N for deck.
+  private drawTable(target: RenderTarget, vp: Mat4, seats: number[]): void {
+    rasterize(target, tableMesh(), lambertMaterial, {
       mvp: mat4Multiply(vp, TABLE_MODEL),
       model: TABLE_MODEL,
-      lightDir: { x: 0, y: 1, z: 0 },
-      ambient: 0.7,
+      lightDir: TABLE_LIGHT,
+      ambient: TABLE_AMBIENT,
     });
+    const chair = chairMesh();
+    for (const a of seats) {
+      const model = chairModel(a);
+      rasterize(target, chair, lambertMaterial, { mvp: mat4Multiply(vp, model), model, lightDir: TABLE_LIGHT, ambient: TABLE_AMBIENT });
+    }
   }
 
   renderScene(target: RenderTarget, t = 0): void {
@@ -349,9 +357,9 @@ export class CardsScene {
   }
 
   private renderHand(target: RenderTarget, dt: number): void {
-    target.clear(7, 12, 10);
+    target.clear(6, 10, 8);
     const { vp } = this.viewProj(target);
-    this.drawTable(target, vp);
+    this.drawTable(target, vp, [0]); // one chair: the hero seat at +z (front)
     const az = this.cam.azimuth;
     // Advance each card toward its reveal target and draw it (later cards drawn
     // after earlier so a lifted card sits in front; depth resolves the rest).
@@ -371,7 +379,7 @@ export class CardsScene {
     // Lift ramps in with a linear term too, so a peeking (tilted) card rises off
     // the felt rather than pivoting its far edge down through it.
     const y = 0.02 + 0.3 * e + 0.42 * e * e;
-    const z = 0.3 + 0.5 * e; // pull toward the hero (camera) as it rises → centers in view
+    const z = HAND_SEAT_Z + 0.5 * e; // pull toward the hero (camera) as it rises → centers in view
     const yaw = az * e; // face the camera when up
     return mat4Multiply(
       mat4Translate(c.seatX, y, z),
@@ -380,9 +388,12 @@ export class CardsScene {
   }
 
   private renderDeck(target: RenderTarget, dt: number): void {
-    target.clear(7, 12, 10);
+    target.clear(6, 10, 8);
     const { vp } = this.viewProj(target);
-    this.drawTable(target, vp);
+    // One chair per player, evenly around the rail (seat 0 at +z, the front).
+    const seats: number[] = [];
+    for (let s = 0; s < this.numPlayers; s++) seats.push((s / this.numPlayers) * Math.PI * 2);
+    this.drawTable(target, vp, seats);
 
     if (this.shuffling) {
       this.shuffleT += dt / 0.9;
@@ -413,7 +424,7 @@ export class CardsScene {
         dx = side * 0.5 * s;
         dz = -0.25 * s * Math.sin((i / remaining) * Math.PI);
       }
-      this.drawCard(target, vp, mat4Multiply(mat4Translate(dx, y, -0.15 + dz), flatDown()), this.topBack(i));
+      this.drawCard(target, vp, mat4Multiply(mat4Translate(DECK_POS.x + dx, y, DECK_POS.z + dz), flatDown()), this.topBack(i));
     }
 
     // Cards at rest at their seats.
@@ -423,8 +434,8 @@ export class CardsScene {
     if (this.dealing && this.dealDone < this.deals.length) {
       const d = this.deals[this.dealDone];
       const p = smooth(this.dealT);
-      const x = 0 + (d.toX - 0) * p;
-      const z = -0.15 + (d.toZ - -0.15) * p;
+      const x = DECK_POS.x + (d.toX - DECK_POS.x) * p;
+      const z = DECK_POS.z + (d.toZ - DECK_POS.z) * p;
       const y = deckTopY + Math.sin(p * Math.PI) * 0.9 + 0.02; // parabolic hop
       const yaw = d.yaw * p;
       this.drawCard(target, vp, mat4Multiply(mat4Translate(x, y, z), mat4Multiply(mat4RotY(yaw), flatDown())), d.card);
@@ -470,8 +481,8 @@ export class CardsScene {
     for (let i = 0; i < this.hand.length; i++) {
       const c = this.hand[i];
       if (c.reveal < 0.5) {
-        // Flat footprint around the seat (centered at z≈0.3).
-        if (Math.abs(hitX - c.seatX) <= CARD_W / 2 + 0.12 && Math.abs(hitZ - 0.3) <= CARD_H / 2 + 0.12) best = i;
+        // Flat footprint around the seat (in front of the hero at HAND_SEAT_Z).
+        if (Math.abs(hitX - c.seatX) <= CARD_W / 2 + 0.12 && Math.abs(hitZ - HAND_SEAT_Z) <= CARD_H / 2 + 0.12) best = i;
       } else {
         // Lifted: proximity to the projected card center.
         const p = mat4MulPoint(mat4Multiply(vp, this.handModel(c, this.cam.azimuth)), { x: 0, y: 0, z: 0 });

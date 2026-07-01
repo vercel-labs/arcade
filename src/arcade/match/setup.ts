@@ -11,6 +11,7 @@ import { Box, Button, Dropdown, Modal, Slot, Text, type LayoutBox, type Node, ty
 import type { RGB } from '../../engine/index.ts';
 import { modelsFor, type ModelInfo, providers } from './models.ts';
 import { providerTint } from '../scenes/wisp.ts';
+import type { Seat } from './driver.ts';
 
 const PROVS = providers();
 const PROVIDER_LABELS = PROVS.map((p) => p.name);
@@ -25,6 +26,12 @@ interface Side {
   provider: string | null;
   models: ModelInfo[];
   modelId: string | null;
+  human: boolean; // this side is a human at the keyboard (hides the provider/model pickers)
+}
+
+// Flip a side between an AI (the dropdowns) and a human at the board.
+function setHuman(side: Side, human: boolean): void {
+  side.human = human;
 }
 
 function providerIndex(slug: string): number {
@@ -68,7 +75,7 @@ function makeSide(key: 'white' | 'black', idPrefix: string, defaultProvider: str
       side.modelId = side.models[i]?.id ?? null;
     },
   });
-  side = { key, provider: null, models: [], modelId: null, providerDropdown, modelDropdown };
+  side = { key, provider: null, models: [], modelId: null, human: false, providerDropdown, modelDropdown };
   pickProvider(side, defaultProvider); // populate the model list (modelId stays null)
   if (defaultModelId) {
     const i = side.models.findIndex((m) => m.id === defaultModelId);
@@ -90,15 +97,21 @@ export function mountMatchSetup(ui: Screen): void {
   }
 }
 
-// Both sides have a committed model — the only state in which Start is enabled.
+// Each side is ready when it's human OR has a committed model — the only state in
+// which Start is enabled (a human side needs no model).
+function sideReady(s: Side): boolean {
+  return s.human || s.modelId !== null;
+}
 export function matchSetupReady(): boolean {
-  return white.modelId !== null && black.modelId !== null;
+  return sideReady(white) && sideReady(black);
 }
 
-// The chosen model slugs, once ready (white, black).
-export function matchSetupSelection(): { white: string; black: string } | null {
-  if (!white.modelId || !black.modelId) return null;
-  return { white: white.modelId, black: black.modelId };
+// The chosen seats, once both sides are ready (human, or an AI model slug).
+export function matchSetupSelection(): { white: Seat; black: Seat } | null {
+  const seat = (s: Side): Seat | null => (s.human ? { kind: 'human' } : s.modelId ? { kind: 'ai', model: s.modelId } : null);
+  const w = seat(white);
+  const b = seat(black);
+  return w && b ? { white: w, black: b } : null;
 }
 
 const TITLE_TINT: Record<Side['key'], RGB> = { white: [232, 228, 216], black: [184, 126, 74] };
@@ -119,6 +132,16 @@ const CANCEL: Style = {
   hover: { background: [72, 76, 92] },
   focus: { background: [72, 76, 92] },
 };
+// The per-side AI|Human segmented control: two adjacent pills (gap 0), the active
+// one lit like Start, the inactive one dim (but hoverable/focusable).
+const SEG_ON: Style = { padding: [0, 2], background: [86, 64, 120], color: [238, 230, 250], bold: true };
+const SEG_OFF: Style = {
+  padding: [0, 2],
+  background: [40, 42, 52],
+  color: [150, 154, 166],
+  hover: { background: [60, 63, 76], color: [212, 214, 224] },
+  focus: { background: [60, 63, 76] },
+};
 
 // A side's brand hue (the provider's wisp color), as an RGB tuple for the field.
 function brandTint(side: Side): RGB {
@@ -127,17 +150,40 @@ function brandTint(side: Side): RGB {
   return [t.x | 0, t.y | 0, t.z | 0];
 }
 
-function column(side: Side, title: string): Node {
+// One side's column: the title, an optional AI|Human toggle (`showSeat` — the start
+// modal has it, the swap popup doesn't), then either the provider/model pickers (AI)
+// or a short "you play this side" note (human). `alignItems:'start'` on the row lets
+// the two columns differ in height when one is human.
+function column(side: Side, title: string, showSeat = false): Node {
   // Tint the provider field in the provider's brand hue (the same color its wisp
   // takes in-game), set fresh each frame since the provider can change.
   side.providerDropdown.setAccent(brandTint(side));
+  const base = side.providerDropdown.id.replace(/-provider$/, ''); // e.g. 'setup-white' — namespaces the toggle ids
+  const seat = showSeat
+    ? Box({ flexDirection: 'row', justifyContent: 'center', gap: 0 }, [
+        Button({ id: `${base}-ai`, label: 'AI', onClick: () => setHuman(side, false), style: side.human ? SEG_OFF : SEG_ON }),
+        Button({ id: `${base}-human`, label: 'Human', onClick: () => setHuman(side, true), style: side.human ? SEG_ON : SEG_OFF }),
+      ])
+    : null;
+  const body: Node[] = side.human
+    ? [
+        Text({ text: 'You play this side', style: { color: 'muted' } }),
+        // Keep the dropdown Slots in the tree (hidden, 0×0 clipped) so the Screen
+        // doesn't auto-unmount their components — toggling back to AI must find them
+        // still mounted, else the pickers come back empty.
+        Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot(side.providerDropdown.id), Slot(side.modelDropdown.id)]),
+      ]
+    : [
+        Text({ text: 'Provider', style: { color: 'muted' } }),
+        Slot(side.providerDropdown.id),
+        Text({ text: 'Model', style: { color: 'muted' } }),
+        Slot(side.modelDropdown.id),
+      ];
   return Box({ flexDirection: 'column', gap: 0, width: MODEL_W }, [
     Box({ justifyContent: 'center' }, [Text({ text: title, style: { color: TITLE_TINT[side.key], bold: true } })]),
-    Box({ height: 0 }), // a blank line under the title
-    Text({ text: 'Provider', style: { color: 'muted' } }),
-    Slot(side.providerDropdown.id),
-    Text({ text: 'Model', style: { color: 'muted' } }),
-    Slot(side.modelDropdown.id),
+    ...(seat ? [Box({ height: 0 }), seat] : []),
+    Box({ height: 0 }), // a blank line above the body
+    ...body,
   ]);
 }
 
@@ -151,8 +197,8 @@ export function buildMatchSetup(_region: LayoutBox, opts: { onStart: () => void;
   // alignItems:'start' would clip a list opening in the shorter column, so the
   // columns are top-aligned and the row grows to the taller (open) one.
   const card = Box({ flexDirection: 'column', gap: 1, padding: [1, 3], background: [22, 24, 32] }, [
-    Box({ justifyContent: 'center' }, [Text({ text: 'New AI match', style: { color: [222, 224, 234], bold: true } })]),
-    Box({ flexDirection: 'row', gap: 4, alignItems: 'start' }, [column(white, 'White'), column(black, 'Black')]),
+    Box({ justifyContent: 'center' }, [Text({ text: 'New match', style: { color: [222, 224, 234], bold: true } })]),
+    Box({ flexDirection: 'row', gap: 4, alignItems: 'start' }, [column(white, 'White', true), column(black, 'Black', true)]),
     Box({ flexDirection: 'row', justifyContent: 'center', gap: 2 }, [start, cancel]),
     Box({ justifyContent: 'center' }, [Text({ text: 'Tab move · Enter open/pick · ↑↓ scroll · Esc close', style: { color: 'muted' } })]),
   ]);

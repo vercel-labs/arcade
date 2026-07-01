@@ -35,7 +35,7 @@ import { Renderer, Screen, type LayoutBox } from '../tui/index.ts';
 import { installKeymap } from './shell/keybindings.ts';
 import * as term from '../platform/terminal.ts';
 import { loadEnv, ensureGatewayKey, isLoggedIn, signOut as signOutVercel, switchTeam } from '../auth/index.ts';
-import { AiMatch } from './match/driver.ts';
+import { AiMatch, type Seat } from './match/driver.ts';
 
 // Populate process.env from .env.local before anything reads AI_GATEWAY_API_KEY.
 loadEnv();
@@ -159,10 +159,10 @@ const COMMENTARY_SECS = 3.5;
 let commentary: Commentary | null = null;
 let matchSetupOpen = false;
 let setupFocused = false;
-// The current model slug per side while a match is live (null when idle) — the
-// source the wisp-swap popup seeds from, and what a swap updates. Set at start,
-// updated on swap, cleared on stop.
-let matchModels: { white: string; black: string } | null = null;
+// The seat per side while a match is live (null when idle) — human, or an AI model.
+// The source the wisp-swap popup seeds from (AI sides only), and what a swap
+// updates. Set at start, updated on swap, cleared on stop.
+let matchSeats: { white: Seat; black: Seat } | null = null;
 // The in-match model-swap popup (click a wisp): the side being edited and whether
 // the match was ALREADY paused when it opened (so closing restores that state
 // instead of unconditionally resuming). Null when closed. `wispSwapFocused` is the
@@ -350,7 +350,7 @@ const aiMatch = new AiMatch({
 function stopAiMatch(): void {
   aiMatch.stop();
   commentary = null;
-  matchModels = null;
+  matchSeats = null;
   if (wispSwap) closeWispSwap(); // a match ending under an open swap popup dismisses it
 }
 
@@ -375,13 +375,13 @@ function closeMatchSetup(): void {
   forceFrame = true;
 }
 
-// Start button: only fires when both sides have a model (the button is disabled
-// otherwise), so the selection is guaranteed.
+// Start button: only fires when both sides are ready (human, or a committed model),
+// so the selection is guaranteed.
 function confirmMatchSetup(): void {
   const sel = matchSetupSelection();
   if (!sel) return;
   closeMatchSetup();
-  matchModels = { white: sel.white, black: sel.black };
+  matchSeats = { white: sel.white, black: sel.black };
   aiMatch.start(sel.white, sel.black);
 }
 
@@ -392,9 +392,11 @@ function confirmMatchSetup(): void {
 // the prior run/pause state. The current model seeds the picker so Switch is live
 // immediately.
 function openWispSwap(color: Color): void {
-  if (!matchModels) return;
+  if (!matchSeats) return;
+  const seat = color === WHITE ? matchSeats.white : matchSeats.black;
+  if (seat.kind !== 'ai') return; // human sides have no wisp to click, nothing to swap
   const key = color === WHITE ? 'white' : 'black';
-  const slug = color === WHITE ? matchModels.white : matchModels.black;
+  const slug = seat.model;
   const wasPaused = aiMatch.isPaused();
   if (!wasPaused) aiMatch.pause(); // freeze the game during the switch
   wispSwap = { color, wasPaused };
@@ -421,17 +423,17 @@ function cancelWispSwap(): void {
 }
 
 // Switch button: swap the clicked side's player + HUD wisp to the chosen model,
-// record it in matchModels, then close (resuming if we auto-paused). Guarded on a
+// record it in matchSeats, then close (resuming if we auto-paused). Guarded on a
 // committed selection (the button is disabled otherwise).
 function confirmWispSwap(): void {
   const s = wispSwap;
   if (!s) return;
   const slug = swapSetupSelection();
-  if (!slug || !matchModels) return;
+  if (!slug || !matchSeats) return;
   aiMatch.setPlayer(s.color === WHITE ? 0 : 1, slug);
   chessGame.setSideProvider(s.color, slug.split('/')[0] ?? slug);
-  if (s.color === WHITE) matchModels.white = slug;
-  else matchModels.black = slug;
+  if (s.color === WHITE) matchSeats.white = { kind: 'ai', model: slug };
+  else matchSeats.black = { kind: 'ai', model: slug };
   closeWispSwap();
 }
 
@@ -1038,12 +1040,14 @@ function onMouseImpl(e: MouseEvent): void {
       const isClick = draggingCamera && Math.abs(e.x - downX) + Math.abs(e.y - downY) <= 1;
       if (isClick && mode === 'chess-game') {
         const { ndcX, ndcY, aspect } = pointerNdc(e.x, e.y);
-        // During a match the board is the AI's; a click on a side's HUD wisp opens
-        // its model-swap popup (everything else is inert). Otherwise it's a normal
-        // piece/destination click in a human game.
+        // In a match, a click on a side's HUD wisp opens its model-swap popup;
+        // otherwise the click goes to the board — which the scene ignores unless
+        // it's a human's turn (then it selects/moves). Outside a match it's a normal
+        // free-play piece/destination click.
         if (chessGame.isMatchActive()) {
           const side = chessGame.wispAt(ndcX, ndcY, aspect);
           if (side !== null) openWispSwap(side);
+          else chessGame.click(ndcX, ndcY, aspect);
         } else {
           chessGame.click(ndcX, ndcY, aspect);
         }

@@ -6,9 +6,8 @@
 // card's ink, so the club keeps the lobe gaps a procedural blob loses once the
 // terminal down-samples the card.
 //
-// The BACK reuses the bundled Bicycle scan, recolored purple→red at load: the
-// design is white line-art on a field, so a luminance ramp maps the field to a
-// deep card red and keeps the white filigree.
+// The BACK is a small procedural texture — a solid red field with a white
+// Vercel-style triangle — so a full deck of backs is cheap to sample (no image).
 
 import { readFileSync } from 'node:fs';
 import { decodePng, FONT, type RGB, type Texture } from '../../../engine/index.ts';
@@ -187,9 +186,44 @@ function drawCorner(put: Put, card: Card, ink: RGB): void {
   stampPip(put, card.suit, pipCx, pipCy, 11, pipHh, ink, false);
 }
 
+// ── court figures (J/Q/K, sampled from per-suit PNGs) ───────────────────────────
+// Each court PNG is a single upright monochrome figure on white, authored at the
+// court-box size below. Reduced to a coverage mask (reusing the suit-mask keying)
+// and stamped in the card's ink, so the figure's red/black matches the pips exactly.
+// The box is centred in the FW×FH face and clears the two corner indices.
+const COURT_DIR = 'public/assets/poker/face cards';
+const COURT_NAMES = ['jack', 'queen', 'king'] as const; // rank 10/11/12 → index rank−10
+const COURT_X = 38;
+const COURT_Y = 30;
+const COURT_W = 174; // uniform 1.074× of the source 162×270 (aspect preserved, no distortion)
+const COURT_H = 290;
+
+const courtCache = new Map<string, SuitMask>();
+
+function loadCourt(rank: number, suit: number): SuitMask {
+  const key = `${rank}:${suit}`;
+  let m = courtCache.get(key);
+  if (!m) {
+    m = buildSuitMask(decodePng(readFileSync(`${COURT_DIR}/${COURT_NAMES[rank - 10]} of ${SUIT_FILES[suit]}s.png`)));
+    courtCache.set(key, m);
+  }
+  return m;
+}
+
+// Fill the court box with the figure (1:1 when authored at box size, else scaled).
+function stampCourt(put: Put, rank: number, suit: number, rgb: RGB): void {
+  const m = loadCourt(rank, suit);
+  for (let j = 0; j < COURT_H; j++) {
+    for (let i = 0; i < COURT_W; i++) {
+      const a = sampleCov(m, ((i + 0.5) / COURT_W) * m.w - 0.5, ((j + 0.5) / COURT_H) * m.h - 0.5);
+      if (a > 0.01) put(COURT_X + i, COURT_Y + j, rgb, a);
+    }
+  }
+}
+
 // ── center pip layouts ──────────────────────────────────────────────────────────
 // [colFrac, rowFrac] of the card, per rank index (0=A … 9=Ten). Court cards get a
-// large letter instead (empty here).
+// figure instead (empty here).
 const L = 0.32;
 const C = 0.5;
 const R = 0.68;
@@ -209,11 +243,7 @@ const PIPS: [number, number][][] = [
 function drawCenter(put: Put, card: Card, ink: RGB): void {
   const layout = PIPS[card.rank];
   if (!layout) {
-    // Court card (J/Q/K): a large index letter with a suit pip beneath.
-    const label = RANK_LABELS[card.rank];
-    const gs = 12;
-    stampGlyph(put, label, (FW - 8 * gs) / 2, FH * 0.32, gs, ink);
-    stampPip(put, card.suit, FW / 2, FH * 0.66, 26, 32, ink, false);
+    stampCourt(put, card.rank, card.suit, ink); // court card (J/Q/K): the figure fills the court box
     return;
   }
   const big = card.rank === 0; // the Ace's single pip is oversized
@@ -250,24 +280,48 @@ export function cardFaceTexture(card: Card): Texture {
 
 let backTex: Texture | null = null;
 
-// The card back: the bundled Bicycle scan, recolored from purple to red by
-// luminance (white line-art stays white; the field becomes deep red). Contrast is
-// stretched so the mid purple lands as a saturated red rather than muddy pink.
-export function cardBackTexture(dir = 'public/assets/poker'): Texture {
+// The card back: a solid red field with a small white Vercel-style triangle
+// (apex up) in the middle. Tiny + procedural — no image decode, and the little
+// texture stays in cache, so drawing a whole deck of backs is cheap (the big
+// recolored-scan back was thrashing the cache each frame).
+const BACK_WHITE: RGB = [244, 242, 238];
+export function cardBackTexture(): Texture {
   if (backTex) return backTex;
-  const src = decodePng(readFileSync(`${dir}/playing-card-back.png`));
-  const out = new Uint8Array(src.width * src.height * 4);
-  for (let i = 0; i < src.width * src.height; i++) {
-    const r = src.data[i * 4];
-    const g = src.data[i * 4 + 1];
-    const b = src.data[i * 4 + 2];
-    const luma = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-    const t = Math.max(0, Math.min(1, (luma - 0.28) / 0.5)); // stretch contrast
-    out[i * 4] = BACK_RED[0] + (250 - BACK_RED[0]) * t;
-    out[i * 4 + 1] = BACK_RED[1] + (248 - BACK_RED[1]) * t;
-    out[i * 4 + 2] = BACK_RED[2] + (244 - BACK_RED[2]) * t;
-    out[i * 4 + 3] = 255;
+  const w = 120;
+  const h = 168;
+  const data = new Uint8Array(w * h * 4);
+  for (let i = 0; i < w * h; i++) {
+    data[i * 4] = BACK_RED[0];
+    data[i * 4 + 1] = BACK_RED[1];
+    data[i * 4 + 2] = BACK_RED[2];
+    data[i * 4 + 3] = 255;
   }
-  backTex = { width: src.width, height: src.height, data: out };
+  // Equilateral triangle centered on the card (the Vercel mark). The apex sits at
+  // the BOTTOM of the texture and the base at the top: laying the card flat mirrors
+  // the texture vertically, so it renders apex-UP like the Vercel logo. 2×2
+  // supersampling softens the edges.
+  const cx = w / 2;
+  const apexY = h * 0.68;
+  const baseY = h * 0.32;
+  const halfBase = w * 0.3;
+  const yLo = Math.min(apexY, baseY);
+  const yHi = Math.max(apexY, baseY);
+  const put: Put = (x, y, rgb, a) => blend(data, w, h, x, y, rgb, a);
+  for (let py = Math.floor(yLo) - 1; py <= Math.ceil(yHi) + 1; py++) {
+    for (let px = Math.floor(cx - halfBase) - 1; px <= Math.ceil(cx + halfBase) + 1; px++) {
+      let hits = 0;
+      for (let sy = 0; sy < 2; sy++) {
+        for (let sx = 0; sx < 2; sx++) {
+          const fx = px + 0.25 + sx * 0.5;
+          const fy = py + 0.25 + sy * 0.5;
+          if (fy < yLo || fy > yHi) continue;
+          const hw = (halfBase * Math.abs(fy - apexY)) / Math.abs(baseY - apexY); // 0 at apex → halfBase at base
+          if (Math.abs(fx - cx) <= hw) hits++;
+        }
+      }
+      if (hits) put(px, py, BACK_WHITE, hits / 4);
+    }
+  }
+  backTex = { width: w, height: h, data };
   return backTex;
 }
