@@ -74,6 +74,19 @@ to mint gateway keys. In-app: `s` switch team, `o` (menu) sign out; flags
 `--login` / `--switch-team` / `--logout`. Auth lives in `src/auth/{env,vercel-auth,
 vercel-api,gateway-key}.ts`; `src/platform/open-browser.ts` opens the browser.
 
+## Deploying the curl prism
+
+The `curl ascii-prisms.vercel.app` endpoint (the `ascii-prisms` project in the Vercel
+Labs team) **auto-deploys on push to `main`**. The handler is
+[api/index.ts](api/index.ts) → [src/prism/prism-stream.ts](src/prism/prism-stream.ts) —
+a self-contained function depending only on `src/prism` + `src/engine`, never the
+arcade. `vercel.json` builds it via [scripts/build-vercel-output.mjs](scripts/build-vercel-output.mjs)
+(esbuild bundles the graph into one `.mjs`, install skipped), and its `ignoreCommand`
+skips the rebuild unless the prism's closure changed (`api`, `src/prism`, `src/engine`,
+the build script, `vercel.json`) — so arcade-only commits don't redeploy the prism.
+Test the exact handler locally: `pnpm exec tsx src/tools/serve-prism.ts` then
+`curl -sN localhost:8080`.
+
 ## Conventions
 
 - Pin dependency versions (no `^`/`~`); prefer zero/few deps.
