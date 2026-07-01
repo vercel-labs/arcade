@@ -1,4 +1,6 @@
-.git
+# Do NOT ignore .git — vercel.json's ignoreCommand runs `git diff` during the build
+# to skip prism redeploys on arcade-only commits; removing .git breaks that ("Not a
+# git repository") and errors the deployment.
 .claude
 .snapshots
 .audio-logs
