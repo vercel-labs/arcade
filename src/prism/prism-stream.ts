@@ -75,13 +75,13 @@ function to256(frame: string): string {
   return frame.replace(TRUECOLOR_FG, (_m, r, g, b) => `\x1b[38;5;${rgbTo256(+r, +g, +b)}m`);
 }
 
-// A bottom-centered status hint that gently "breathes" (per the shared clock `t`):
-// a sine pulse in PURE GRAY over the last row, always faintly visible, never a hard
-// cutoff. Gray is the trick: in 256-color it maps to the 24-step grayscale ramp, so
-// the pulse stays smooth + neutral, instead of a tinted value snapping between cube
-// colors (which looked blue and choppy). Emits truecolor; the caller's to256 pass
-// downgrades it alongside the frame.
-function statusHint(prefix: string, url: string, suffix: string, cols: number, rows: number, t: number): string {
+// A centered status hint that gently "breathes" (per the shared clock `t`): a sine
+// pulse in PURE GRAY drawn on `row`, always faintly visible, never a hard cutoff.
+// Gray is the trick: in 256-color it maps to the 24-step grayscale ramp, so the pulse
+// stays smooth + neutral, instead of a tinted value snapping between cube colors
+// (which looked blue and choppy). Emits truecolor; the caller's to256 pass downgrades
+// it alongside the frame.
+function statusHint(prefix: string, url: string, suffix: string, cols: number, row: number, t: number): string {
   const width = prefix.length + url.length + suffix.length;
   if (cols < width + 2) return '';
   const pulse = 0.5 + 0.5 * Math.sin(t * 2.5); // ~2.5s period
@@ -93,7 +93,7 @@ function statusHint(prefix: string, url: string, suffix: string, cols: number, r
   const gray = `\x1b[38;2;${v};${v};${v}m`;
   // Only the URL is underlined + an OSC 8 hyperlink (clickable in terminals that
   // support it: iTerm2, Ghostty, WezTerm, kitty, VS Code…); the rest is plain text.
-  return `\x1b[${rows};${col}H${gray}${prefix}\x1b]8;;${url}\x07\x1b[4m${url}\x1b[24m\x1b]8;;\x07${suffix}\x1b[0m`;
+  return `\x1b[${row};${col}H${gray}${prefix}\x1b]8;;${url}\x07\x1b[4m${url}\x1b[24m\x1b]8;;\x07${suffix}\x1b[0m`;
 }
 
 // Plain-text options page (curl …/help).
@@ -209,18 +209,32 @@ function browserHtml(host: string): string {
   var fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
   term.open(document.getElementById('t'));
-  fit.fit();
-  var ctrl;
+  var ctrl, sentCols = 0, sentRows = 0;
   async function run(){
-    fit.fit();
+    try { fit.fit(); } catch (e) {}
+    sentCols = term.cols; sentRows = term.rows;
     ctrl = new AbortController();
-    var res = await fetch('/?stream&web=1&truecolor=1&cols=' + term.cols + '&rows=' + term.rows, { signal: ctrl.signal });
+    var res = await fetch('/?stream&web=1&truecolor=1&cols=' + sentCols + '&rows=' + sentRows, { signal: ctrl.signal });
     var reader = res.body.getReader();
     var dec = new TextDecoder();
     for(;;){ var r = await reader.read(); if (r.done) break; term.write(dec.decode(r.value, { stream:true })); }
   }
-  (async function(){ for(;;){ try { await run(); } catch (e) {} await new Promise(function(r){ setTimeout(r, 60); }); } })();
-  var rt; addEventListener('resize', function(){ clearTimeout(rt); rt = setTimeout(function(){ try { ctrl && ctrl.abort(); } catch (e) {} }, 150); });
+  // Ending the stream makes the loop re-run → refit + refetch at the current size.
+  function restart(){ try { ctrl && ctrl.abort(); } catch (e) {} }
+  // Refetch whenever the fitted size no longer matches what we streamed — covers window
+  // resizes AND the first-load race where fit() measured before layout/fonts settled and
+  // came up short, leaving an unfilled band at the bottom.
+  function reconcile(){ try { fit.fit(); } catch (e) {} if (term.cols !== sentCols || term.rows !== sentRows) restart(); }
+  var rt; addEventListener('resize', function(){ clearTimeout(rt); rt = setTimeout(restart, 150); });
+  // Kick off only after layout + fonts have settled so the FIRST fit is correct, then
+  // reconcile a couple of times shortly after in case cell metrics settle late.
+  (typeof document.fonts !== 'undefined' && document.fonts.ready || Promise.resolve()).then(function(){
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){
+      (async function(){ for(;;){ try { await run(); } catch (e) {} await new Promise(function(r){ setTimeout(r, 60); }); } })();
+      setTimeout(reconcile, 400);
+      setTimeout(reconcile, 1200);
+    }); });
+  });
 
   var modal = document.getElementById('modal');
   function showModal(v){ modal.hidden = !v; }
@@ -280,15 +294,15 @@ export async function streamPrism(req: IncomingMessage, res: ServerResponse): Pr
   }
 
   const cols = clampInt(url.searchParams.get('cols') ?? url.searchParams.get('c'), 20, 220, 80);
-  const rows = clampInt(url.searchParams.get('rows') ?? url.searchParams.get('r'), 10, 80, 24);
+  const rows = clampInt(url.searchParams.get('rows') ?? url.searchParams.get('r'), 10, 160, 24);
   // 256-color by default (works anywhere); opt into 24-bit with ?truecolor (or =1).
   const truecolor = url.searchParams.has('truecolor') && url.searchParams.get('truecolor') !== '0';
   // The breathing "/help" hint is for terminals; the browser page (?web) has the ⓘ modal.
-  // It gets its OWN reserved bottom row (the prism renders one row shorter), so the
-  // scene never overdraws it; that double-paint was the flicker.
+  // It sits one row up from the very bottom, with a blank gap row beneath it, and the
+  // prism renders two rows shorter so the scene never overdraws the hint or the gap.
   const showHint = !url.searchParams.has('web');
   const hintUrl = `https://${host}/help`;
-  const sceneRows = showHint ? rows - 1 : rows;
+  const sceneRows = showHint ? rows - 2 : rows;
 
   res.writeHead(200, {
     'Content-Type': 'text/plain; charset=utf-8',
@@ -329,7 +343,7 @@ export async function streamPrism(req: IncomingMessage, res: ServerResponse): Pr
     if (showHint) {
       // Hint is appended fresh each frame (it breathes); convert it to 256 separately
       // since the cached frame is already in its final color.
-      let h = statusHint('visit or curl ', hintUrl, ' for options', cols, rows, hintT);
+      let h = statusHint('visit or curl ', hintUrl, ' for options', cols, rows - 1, hintT);
       if (h && !truecolor) h = to256(h);
       out += h;
     }
