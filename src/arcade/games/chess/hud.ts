@@ -1,5 +1,6 @@
 // The chess-game UI overlay: a move-history panel (top-left) and a transient
-// pre-move commentary toast (bottom-center), composited over the 3D board with
+// pre-move commentary toast (bottom-left, aligned with the bar's left inset),
+// composited over the 3D board with
 // the standard bottom bar. The move list reuses the ScrollBox component; the
 // instance is module-level so its scroll state (and the history itself) survives
 // the per-frame rebuild and collapsing (mount it once via mountChessHud).
@@ -232,7 +233,7 @@ export function buildChessGameRoot(
   const main = Box({ flexGrow: 1, flexDirection: 'column', height: region.h }, [
     Box({ flexDirection: 'row', justifyContent: 'start', padding: [1, 2] }, [panel]),
     Box({ flexGrow: 1 }), // spacer pushes the toast + bar to the bottom
-    ...(toast ? [Box({ flexDirection: 'row', justifyContent: 'center', padding: [0, 0, 1, 0] }, [toast])] : []),
+    ...(toast ? [Box({ flexDirection: 'row', justifyContent: 'start', padding: [0, 0, 1, 2] }, [toast])] : []),
     bar,
     Box({ height: 1 }), // lift the bar off the very bottom edge
   ]);
