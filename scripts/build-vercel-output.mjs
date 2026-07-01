@@ -69,21 +69,35 @@ writeFileSync(
 );
 
 // Bundle api/index.ts (pure TS, zero npm deps in its import graph) into one .mjs.
-// Run from `root` with relative paths so the output is reproducible.
-execFileSync(
-  'npx',
-  [
-    '-y',
-    ESBUILD,
-    'api/index.ts',
-    '--bundle',
-    '--platform=node',
-    '--format=esm',
-    '--target=node22',
-    '--outfile=.vercel/output/functions/index.func/index.mjs',
-  ],
-  { stdio: 'inherit', cwd: root },
-);
+// Run from `root` with relative paths so the output is reproducible. esbuild is
+// fetched on demand via `pnpm dlx` (cached in the pnpm store, which Vercel
+// persists across builds) rather than installed as a dep — so a prism deploy
+// never drags in the arcade's runtime deps. The fetch is occasionally flaky on
+// CI, so retry a few times with backoff: a transient registry miss shouldn't fail
+// an unattended auto-deploy.
+const esbuildArgs = [
+  'dlx',
+  ESBUILD,
+  'api/index.ts',
+  '--bundle',
+  '--platform=node',
+  '--format=esm',
+  '--target=node22',
+  '--outfile=.vercel/output/functions/index.func/index.mjs',
+];
+// Portable synchronous sleep (no deps): Atomics.wait times out on an unshared lock.
+const sleepSync = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+let bundled = false;
+for (let attempt = 1; attempt <= 3 && !bundled; attempt++) {
+  try {
+    execFileSync('pnpm', esbuildArgs, { stdio: 'inherit', cwd: root });
+    bundled = true;
+  } catch (err) {
+    if (attempt === 3) throw err;
+    console.error(`\nesbuild bundle attempt ${attempt}/3 failed — retrying in ${attempt}s…`);
+    sleepSync(attempt * 1000);
+  }
+}
 
 console.log('\n✓ wrote .vercel/output (config.json, index.func/.vc-config.json, index.func/index.mjs)');
 console.log('  next: vercel deploy --prebuilt --prod --scope <team>');
