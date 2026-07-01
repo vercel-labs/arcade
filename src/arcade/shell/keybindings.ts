@@ -41,6 +41,7 @@ export interface KeyHandlers {
   toggleEvalBar(): void;
   closeGameOver(): void;
   closeMatchSetup(): void;
+  cancelWispSwap(): void;
 }
 
 // Cells-equivalent the arrow keys pan the chess camera per press (held keys
@@ -83,6 +84,7 @@ export function installKeymap(h: KeyHandlers): Keymap {
     { id: 'chess.toggleEvalBar', title: 'Toggle eval bar', run: h.toggleEvalBar },
     { id: 'chess.closeGameOver', title: 'Close result', run: h.closeGameOver },
     { id: 'chess.cancelSetup', title: 'Cancel match setup', run: h.closeMatchSetup },
+    { id: 'chess.cancelSwap', title: 'Cancel model swap', run: h.cancelWispSwap },
   ]) {
     keymap.register(c);
   }
@@ -119,13 +121,13 @@ export function installKeymap(h: KeyHandlers): Keymap {
   ]) {
     keymap.bind('menu', b);
   }
-  for (const layer of ['logos', 'chess', 'ui']) keymap.bind(layer, { key: 'b', cmd: 'nav.back' });
+  for (const layer of ['logos', 'chess', 'ui', 'cards']) keymap.bind(layer, { key: 'b', cmd: 'nav.back' });
   // Orbit/pan/reset bindings are shared by the chess turntables, the logos wisp
   // orbit, and the chess backdrop behind the UI playground (the commands resolve
   // the active scene via activeOrbit()). In 'ui', a focused component consumes
   // arrows first (Screen.handleKey runs before the keymap), so these pan only when
   // the scene — not a widget — has focus.
-  for (const layer of ['chess', 'logos', 'ui']) {
+  for (const layer of ['chess', 'logos', 'ui', 'cards']) {
     for (const b of [
       { key: 'r', cmd: 'chess.resetView' },
       { key: 'left', cmd: 'chess.panLeft' },
@@ -155,5 +157,7 @@ export function installKeymap(h: KeyHandlers): Keymap {
   keymap.bind('gameover', { key: 'escape', cmd: 'chess.closeGameOver' });
   // Match-setup modal: Escape cancels; the layer shadows stray keys.
   keymap.bind('setup', { key: 'escape', cmd: 'chess.cancelSetup' });
+  // In-match model-swap popup: Escape cancels (same modal treatment as setup).
+  keymap.bind('swap', { key: 'escape', cmd: 'chess.cancelSwap' });
   return keymap;
 }

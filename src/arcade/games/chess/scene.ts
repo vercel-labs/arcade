@@ -5,6 +5,7 @@ import {
   cameraMatrices,
   flatShade,
   mat4Identity,
+  mat4MulVec4,
   mat4Multiply,
   mat4RotY,
   mat4Scale,
@@ -43,7 +44,7 @@ import {
   WHITE,
 } from '../../../rules/chess/types.ts';
 import { OrbitCamera } from '../../orbit.ts';
-import { loadWisp, mulberry32, providerTint, type Wisp } from '../../scenes/wisp.ts';
+import { loadWisp, mulberry32, providerTint, type Wisp, WISP_SIZE } from '../../scenes/wisp.ts';
 
 const PIECE_NAMES = ['pawn', 'queen', 'bishop', 'rook', 'king', 'knight'];
 
@@ -68,9 +69,9 @@ const DOT_ON_DARK: Vec3 = { x: 126, y: 123, z: 116 };
 
 const KEY_DIR = normalize3({ x: -0.4, y: 0.85, z: 0.5 });
 const FILL_DIR = normalize3({ x: 0.6, y: 0.25, z: 0.35 });
-const AMBIENT = 0.42;
+const AMBIENT = 0.32;
 const KEY_STRENGTH = 0.7;
-const FILL_STRENGTH = 0.24;
+const FILL_STRENGTH = 0.18;
 
 const ANIM_FRAMES = 9; // ~0.3s at 30fps for a single animation phase
 // Match HUD: the wisp floats this far (world units) above a king's square center —
@@ -385,6 +386,56 @@ export class ChessGameScene {
   // side-to-move wisp breathes idle instead of pulsing.
   setMatchPaused(paused: boolean): void {
     this.matchPaused = paused;
+    this.dirty = true;
+  }
+
+  // The side whose HUD wisp sits under a normalized device coordinate (−1..1, +y
+  // up), or null. Projects each king's wisp center against the live camera (the
+  // same view-projection renderScene builds, reconstructed from `aspect`) and
+  // accepts a click within ~1.6× the wisp's projected radius — mirroring the logos
+  // scene's orb picking. Match-only: there are no wisps otherwise. Used by the
+  // orchestrator to raise the in-match model-swap popup for the clicked side.
+  wispAt(ndcX: number, ndcY: number, aspect: number): Color | null {
+    if (!this.matchActive) return null;
+    const eye = this.cam.eye();
+    const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 400 };
+    const { viewProjection: vp } = cameraMatrices(camera, aspect);
+    const { up } = this.cam.basis();
+    const size = WISP_SIZE * WISP_SCALE;
+    let best: Color | null = null;
+    let bestD = Infinity;
+    const test = (color: Color, wisp: Wisp | null): void => {
+      if (!wisp) return;
+      const k = this.kingWorldPos(color);
+      if (!k) return;
+      const P = { x: k.x, y: WISP_FLOAT, z: k.z };
+      const c = mat4MulVec4(vp, { x: P.x, y: P.y, z: P.z, w: 1 });
+      const cw = c.w || 1e-4;
+      const cx = c.x / cw;
+      const cy = c.y / cw;
+      // Clip-space radius from the center to a point one wisp-height up (matches
+      // the billboard's vertical half-extent), same measure the click is tested in.
+      const e = mat4MulVec4(vp, { x: P.x + up.x * size, y: P.y + up.y * size, z: P.z + up.z * size, w: 1 });
+      const ew = e.w || 1e-4;
+      const radius = Math.hypot(e.x / ew - cx, e.y / ew - cy);
+      const d = Math.hypot(ndcX - cx, ndcY - cy);
+      if (d < radius * 1.6 && d < bestD) {
+        bestD = d;
+        best = color;
+      }
+    };
+    test(WHITE, this.whiteWisp);
+    test(BLACK, this.blackWisp);
+    return best;
+  }
+
+  // Swap one side's HUD wisp to a new provider after an in-match model change
+  // (the wisp updates to the new brand's logo + hue). No-op for a side with no
+  // wisp loaded. Keeps the same ember phase per side so the pulse stays desynced.
+  setSideProvider(color: Color, provider: string): void {
+    const wisp = this.loadHudWisp(provider, color === WHITE ? 0 : 1.7);
+    if (color === WHITE) this.whiteWisp = wisp;
+    else this.blackWisp = wisp;
     this.dirty = true;
   }
 

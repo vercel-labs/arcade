@@ -19,7 +19,7 @@ const PROVIDER_W = 18;
 const MODEL_W = 26;
 
 interface Side {
-  readonly key: 'white' | 'black';
+  key: 'white' | 'black'; // drives the title tint; mutable so the swap side can be reused for either color
   readonly providerDropdown: Dropdown;
   readonly modelDropdown: Dropdown;
   provider: string | null;
@@ -43,12 +43,15 @@ function pickProvider(side: Side, slug: string): void {
   side.modelId = null;
 }
 
-function makeSide(key: 'white' | 'black', defaultProvider: string, defaultModelId?: string): Side {
+// `idPrefix` namespaces the two dropdown ids so several modals' sides can be
+// mounted without colliding in the Screen registry (the two start-modal sides +
+// the reusable swap side).
+function makeSide(key: 'white' | 'black', idPrefix: string, defaultProvider: string, defaultModelId?: string): Side {
   // onSelect closures reference `side`, assigned just below — they only fire on
   // later user interaction, so the forward reference is safe.
   let side: Side;
   const providerDropdown = new Dropdown({
-    id: `setup-${key}-provider`,
+    id: `${idPrefix}-provider`,
     items: PROVIDER_LABELS,
     width: PROVIDER_W,
     rows: LIST_ROWS,
@@ -56,7 +59,7 @@ function makeSide(key: 'white' | 'black', defaultProvider: string, defaultModelI
     onSelect: (i) => pickProvider(side, PROVS[i].slug),
   });
   const modelDropdown = new Dropdown({
-    id: `setup-${key}-model`,
+    id: `${idPrefix}-model`,
     items: [],
     width: MODEL_W,
     rows: LIST_ROWS,
@@ -77,8 +80,8 @@ function makeSide(key: 'white' | 'black', defaultProvider: string, defaultModelI
 // TEMP (demo): pre-commit a full matchup — Claude Haiku 4.5 vs GPT 5.4 Nano — so the
 // modal opens with Start already enabled. To go back to "pick a model yourself",
 // drop the third arg from each makeSide call (providers stay pre-selected).
-const white = makeSide('white', 'anthropic', 'anthropic/claude-haiku-4.5');
-const black = makeSide('black', 'openai', 'openai/gpt-5.4-nano');
+const white = makeSide('white', 'setup-white', 'anthropic', 'anthropic/claude-haiku-4.5');
+const black = makeSide('black', 'setup-black', 'openai', 'openai/gpt-5.4-nano');
 
 export function mountMatchSetup(ui: Screen): void {
   for (const s of [white, black]) {
@@ -151,6 +154,53 @@ export function buildMatchSetup(_region: LayoutBox, opts: { onStart: () => void;
     Box({ justifyContent: 'center' }, [Text({ text: 'New AI match', style: { color: [222, 224, 234], bold: true } })]),
     Box({ flexDirection: 'row', gap: 4, alignItems: 'start' }, [column(white, 'White'), column(black, 'Black')]),
     Box({ flexDirection: 'row', justifyContent: 'center', gap: 2 }, [start, cancel]),
+    Box({ justifyContent: 'center' }, [Text({ text: 'Tab move · Enter open/pick · ↑↓ scroll · Esc close', style: { color: 'muted' } })]),
+  ]);
+  return Modal(card);
+}
+
+// ── In-match model swap ─────────────────────────────────────────────────────────
+// A single reusable side for the click-a-wisp popup: the same provider→model
+// picker as one column of the start modal, retargeted per open to whichever side
+// was clicked and seeded with that side's current model. Distinct dropdown ids
+// (`setup-swap-*`) keep it from colliding with the two start-modal sides.
+const swap = makeSide('white', 'setup-swap', 'anthropic', 'anthropic/claude-haiku-4.5');
+
+export function mountSwapSetup(ui: Screen): void {
+  ui.mount(swap.providerDropdown);
+  ui.mount(swap.modelDropdown);
+}
+
+// Retarget the swap popup to a side and seed it with the side's current model.
+// Committing the provider (via its dropdown, so the field + model list update)
+// then the model reproduces the exact state a manual pick would leave — with the
+// current model pre-selected, so Switch is enabled immediately. `swap.provider`
+// is cleared first so re-picking the same provider still repopulates the list.
+export function openSwapSetup(color: 'white' | 'black', slug: string): void {
+  swap.key = color;
+  const provider = slug.split('/')[0] ?? slug;
+  swap.provider = null;
+  swap.providerDropdown.pick(providerIndex(provider)); // onSelect → pickProvider populates swap.models
+  const i = swap.models.findIndex((m) => m.id === slug);
+  if (i >= 0) swap.modelDropdown.pick(i);
+}
+
+// The swap popup's chosen model slug, or null when no model is committed yet.
+export function swapSetupSelection(): string | null {
+  return swap.modelId;
+}
+
+// The one-column swap modal: the clicked side's provider→model picker with
+// Switch (enabled once a model is committed) and Cancel. `title` is the side
+// label ("White"/"Black"); the column tints it via swap.key.
+export function buildSwapSetup(_region: LayoutBox, opts: { title: string; onConfirm: () => void; onCancel: () => void }): Node {
+  const ready = swap.modelId !== null;
+  const confirm = Button({ id: 'swap-confirm', label: 'Switch', onClick: ready ? opts.onConfirm : undefined, style: ready ? START_ON : START_OFF });
+  const cancel = Button({ id: 'swap-cancel', label: 'Cancel', onClick: opts.onCancel, style: CANCEL });
+  const card = Box({ flexDirection: 'column', gap: 1, padding: [1, 3], background: [22, 24, 32] }, [
+    Box({ justifyContent: 'center' }, [Text({ text: 'Switch model', style: { color: [222, 224, 234], bold: true } })]),
+    Box({ flexDirection: 'row', justifyContent: 'center' }, [column(swap, opts.title)]),
+    Box({ flexDirection: 'row', justifyContent: 'center', gap: 2 }, [confirm, cancel]),
     Box({ justifyContent: 'center' }, [Text({ text: 'Tab move · Enter open/pick · ↑↓ scroll · Esc close', style: { color: 'muted' } })]),
   ]);
   return Modal(card);

@@ -88,6 +88,15 @@ export class AiMatch {
     this.runLoop();
   }
 
+  // Swap one side's player mid-match (the in-game model switch): rebuild that
+  // side's ModelPlayer in place, so the next turn is decided by the new model.
+  // The caller pauses first (cancelling any in-flight thinking for a clean
+  // handoff) and resumes after. No-op when idle (no players yet).
+  setPlayer(index: number, model: string): void {
+    if (!this.players || index < 0 || index >= this.players.length) return;
+    this.players[index] = new ModelPlayer<Move>({ model, gameName: 'chess', allowIllegal: this.deps.allowIllegal });
+  }
+
   // Pause on whoever's turn it is: cancel the in-flight model call (stop thinking)
   // and halt the loop, but keep the match + HUD alive. The side-to-move wisp stops
   // pulsing to show it's idle.

@@ -34,3 +34,9 @@ https://sw.kovidgoyal.net/kitty/graphics-protocol/
 Game Gallery UI Inspo:
 https://www.reddit.com/r/ipod/comments/1szzieh/rotate_for_cover_flow/
 - old school ipod / itunes cover flow
+
+OpenSpiel (DeepMind) — game harness + imperfect-information poker
+https://github.com/google-deepmind/open_spiel
+- the Game/State contract src/rules mirrors; reference/open_spiel has the poker
+  sources (kuhn/leduc/universal_poker) + spiel.h for the chance-node +
+  InformationStateString / ObservationString seams behind ImperfectInfoState.

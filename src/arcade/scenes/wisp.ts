@@ -29,6 +29,12 @@ const EMBERS_PER = 24; // spark pool size; how many are alight scales with energ
 const EMBER_RATE = 9; // respawn attempts/sec at full energy
 const MARK_EDGE0 = 0.22; // mark extraction: bg→mark distance ramp (matches wispMaterial)
 const MARK_EDGE1 = 0.5;
+// Vertical hover drift: the whole orb (flame, mark, embers) bobs on a slow,
+// irregular curve so it floats like a will-o'-wisp instead of sitting pinned at a
+// fixed height. Amplitude is a small fraction of the orb's size, and it's driven
+// only by time + phase (not the pulse) — so each wisp drifts independently and a
+// "speaking" spike never lurches it.
+const BOB_AMP = 0.12; // peak drift as a fraction of the orb's world size
 
 interface Ember {
   x: number; // world offset from the wisp center
@@ -107,13 +113,18 @@ export class Wisp {
   renderWorld(target: RenderTarget, vp: Mat4, right: Vec3, up: Vec3, P: Vec3, W: number, H: number, t: number, dt: number, scale = 1): void {
     const f = this.frame(t, dt);
     const size = WISP_SIZE * scale;
-    const center = project(vp, P.x, P.y, P.z, W, H);
-    const edge = project(vp, P.x + up.x * size, P.y + up.y * size, P.z + up.z * size, W, H);
+    // Slow, irregular vertical bob (two detuned sines, ~7s and ~4s, desynced by
+    // phase) applied to the orb's anchor so flame, mark, and embers all hover as
+    // one. Off the raw input `P` (which callers may reuse) → a local center.
+    const bob = (Math.sin(t * 0.9 + this.phase) * 0.6 + Math.sin(t * 1.53 + this.phase * 2.1) * 0.4) * size * BOB_AMP;
+    const Pb: Vec3 = { x: P.x, y: P.y + bob, z: P.z };
+    const center = project(vp, Pb.x, Pb.y, Pb.z, W, H);
+    const edge = project(vp, Pb.x + up.x * size, Pb.y + up.y * size, Pb.z + up.z * size, W, H);
     const R = Math.max(8, Math.hypot(edge.x - center.x, edge.y - center.y));
     drawWisp(target, center.x, center.y, R, this.tint, t, this.phase, f.glow, f.flameEnergy, f.accent);
 
     whiten(this.tint, 0.65 * f.accent, MARK_TINT);
-    billboard(this.mesh.vertices, P, right, up, size);
+    billboard(this.mesh.vertices, Pb, right, up, size);
     rasterize(target, this.mesh, wispMaterial, {
       mvp: vp,
       logo: this.tex,
@@ -126,7 +137,7 @@ export class Wisp {
     });
 
     this.updateEmbers(dt, f.emberEnergy);
-    drawEmbers(target, P, this.embers, (x, y, z) => project(vp, x, y, z, W, H), R, t, f.glow, this.tint);
+    drawEmbers(target, Pb, this.embers, (x, y, z) => project(vp, x, y, z, W, H), R, t, f.glow, this.tint);
   }
 
   private spawnEmber(seeded: boolean, energy: number): Ember {

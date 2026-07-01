@@ -14,7 +14,7 @@ export const MENU_ITEMS: MenuItem[] = [
   { id: 'logos', title: 'Logos', enabled: true },
   { id: 'audio', title: 'Audio', enabled: true },
   { id: 'ui', title: 'UI', enabled: true },
-  { id: 'poker', title: 'Poker', enabled: false },
+  { id: 'poker', title: 'Poker', enabled: true },
   { id: 'codenames', title: 'Codenames', enabled: false },
   { id: 'pacman', title: 'Pac-Man', enabled: false },
   { id: 'frogger', title: 'Frogger', enabled: false },

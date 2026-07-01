@@ -17,13 +17,15 @@ import { CoverFlowScene, LAUNCH_TOTAL } from './shell/coverflow.ts';
 import { MENU_ITEMS } from './shell/menu.ts';
 import { ChessScene } from './games/chess/turntable.ts';
 import { ChessGameScene } from './games/chess/scene.ts';
+import { CardsScene } from './games/poker/cards-scene.ts';
+import { buildPokerRoot, mountPokerHud, pokerMode, setPokerHandlers } from './games/poker/hud.ts';
 import { LogosScene } from './scenes/logos-scene.ts';
 import { AudioScene } from './scenes/audio-scene.ts';
 import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/input.ts';
 import { buildBar, buildGameOver, buildPromotion, type BarActions, type Mode, type RenderMode } from './shell/bars.ts';
 import { buildShowcase, mountShowcase } from './scenes/ui-showcase.ts';
 import { buildChessGameRoot, type Commentary, mountChessHud, movesToPgn, refreshMoveHistory } from './games/chess/hud.ts';
-import { buildMatchSetup, matchSetupSelection, mountMatchSetup } from './match/setup.ts';
+import { buildMatchSetup, buildSwapSetup, matchSetupSelection, mountMatchSetup, mountSwapSetup, openSwapSetup, swapSetupSelection } from './match/setup.ts';
 import { copyToClipboard } from '../platform/clipboard.ts';
 import { BLACK, type Color, WHITE } from '../rules/chess/types.ts';
 import { evaluate } from '../rules/chess/eval.ts';
@@ -73,6 +75,7 @@ const chess = new ChessScene();
 const chessGame = new ChessGameScene();
 const logosScene = new LogosScene();
 const audioScene = new AudioScene();
+const cardsScene = new CardsScene();
 // The 2D UI overlay (button bar). Lays out + paints over the scene each frame.
 const ui = new Screen(cols, rows);
 // Render-on-demand loop. Animating screens hold a live lease; static screens
@@ -102,9 +105,10 @@ function orbitScene(): ChessScene | ChessGameScene | null {
 // backdrop is camera-controllable too, so dragging on the scene behind the panel
 // rotates it.) `orbitScene()` stays null for 'ui' so the tick uses the dedicated
 // 'ui' branch, which always recomposites for live component edits.
-function activeOrbit(): ChessScene | ChessGameScene | LogosScene | AudioScene | null {
+function activeOrbit(): ChessScene | ChessGameScene | LogosScene | AudioScene | CardsScene | null {
   if (mode === 'logos') return logosScene;
   if (mode === 'audio') return audioScene;
+  if (mode === 'cards') return cardsScene;
   if (mode === 'ui') return chess;
   return orbitScene();
 }
@@ -155,6 +159,16 @@ const COMMENTARY_SECS = 3.5;
 let commentary: Commentary | null = null;
 let matchSetupOpen = false;
 let setupFocused = false;
+// The current model slug per side while a match is live (null when idle) — the
+// source the wisp-swap popup seeds from, and what a swap updates. Set at start,
+// updated on swap, cleared on stop.
+let matchModels: { white: string; black: string } | null = null;
+// The in-match model-swap popup (click a wisp): the side being edited and whether
+// the match was ALREADY paused when it opened (so closing restores that state
+// instead of unconditionally resuming). Null when closed. `wispSwapFocused` is the
+// focus-once edge, like the setup modal.
+let wispSwap: { color: Color; wasPaused: boolean } | null = null;
+let wispSwapFocused = false;
 // When on, AI moves bypass the rules: the model's move is parsed loosely and
 // applied as-is. A thunk hands this live value to each ModelPlayer.
 let illegalAllowed = false;
@@ -336,6 +350,8 @@ const aiMatch = new AiMatch({
 function stopAiMatch(): void {
   aiMatch.stop();
   commentary = null;
+  matchModels = null;
+  if (wispSwap) closeWispSwap(); // a match ending under an open swap popup dismisses it
 }
 
 // Open the setup modal to pick the two models (needs a Gateway key). The four
@@ -365,7 +381,58 @@ function confirmMatchSetup(): void {
   const sel = matchSetupSelection();
   if (!sel) return;
   closeMatchSetup();
+  matchModels = { white: sel.white, black: sel.black };
   aiMatch.start(sel.white, sel.black);
+}
+
+// ── In-match model swap (click a wisp) ─────────────────────────────────────────
+// Clicking a side's HUD wisp during a match opens a single-side model picker for
+// it. The match freezes while the popup is up (we pause it if it wasn't already),
+// then Switch swaps that side's player + wisp and resumes; Cancel just restores
+// the prior run/pause state. The current model seeds the picker so Switch is live
+// immediately.
+function openWispSwap(color: Color): void {
+  if (!matchModels) return;
+  const key = color === WHITE ? 'white' : 'black';
+  const slug = color === WHITE ? matchModels.white : matchModels.black;
+  const wasPaused = aiMatch.isPaused();
+  if (!wasPaused) aiMatch.pause(); // freeze the game during the switch
+  wispSwap = { color, wasPaused };
+  wispSwapFocused = false;
+  mountSwapSetup(ui);
+  openSwapSetup(key, slug);
+  forceFrame = true;
+  r.requestRender();
+}
+
+// Close the popup, restoring the match's prior run/pause state (resume only if we
+// were the ones who paused it). Shared by Cancel and the match-ended path.
+function closeWispSwap(): void {
+  const s = wispSwap;
+  wispSwap = null;
+  wispSwapFocused = false;
+  if (s && !s.wasPaused && aiMatch.isPaused()) aiMatch.resume();
+  forceFrame = true;
+  r.requestRender();
+}
+
+function cancelWispSwap(): void {
+  closeWispSwap();
+}
+
+// Switch button: swap the clicked side's player + HUD wisp to the chosen model,
+// record it in matchModels, then close (resuming if we auto-paused). Guarded on a
+// committed selection (the button is disabled otherwise).
+function confirmWispSwap(): void {
+  const s = wispSwap;
+  if (!s) return;
+  const slug = swapSetupSelection();
+  if (!slug || !matchModels) return;
+  aiMatch.setPlayer(s.color === WHITE ? 0 : 1, slug);
+  chessGame.setSideProvider(s.color, slug.split('/')[0] ?? slug);
+  if (s.color === WHITE) matchModels.white = slug;
+  else matchModels.black = slug;
+  closeWispSwap();
 }
 
 // Toggle illegal-moves mode (bar button / 'i' key). Takes effect on the next AI
@@ -419,6 +486,46 @@ function enterAudio(): void {
   fullRepaint();
 }
 
+// The cards screen (poker card visuals): single / hand / deck sub-modes, driven by
+// the poker HUD panel. No game rules yet — a place to dial in the card look.
+function enterCards(): void {
+  stopAiMatch();
+  audioScene.deactivate();
+  mode = 'cards';
+  draggingCamera = false;
+  mountPokerHud(ui);
+  cardsScene.setMode(pokerMode()); // match the scene to the HUD's committed mode
+  fullRepaint();
+}
+
+// Wire the poker HUD's controls to the scene. Stored once; the dropdowns/buttons
+// call these on interaction.
+setPokerHandlers({
+  onMode: (m) => {
+    cardsScene.setMode(m);
+    forceFrame = true;
+    r.requestRender();
+  },
+  onCard: (c) => {
+    cardsScene.setCard(c);
+    forceFrame = true;
+    r.requestRender();
+  },
+  onShuffle: () => {
+    cardsScene.shuffle();
+    r.requestRender();
+  },
+  onDeal: () => {
+    cardsScene.deal();
+    r.requestRender();
+  },
+  onPlayers: (n) => {
+    cardsScene.setPlayers(n);
+    forceFrame = true;
+    r.requestRender();
+  },
+});
+
 function toPrism(): void {
   stopAiMatch();
   audioScene.deactivate(); // tear down any open voice session when leaving
@@ -457,6 +564,7 @@ function enterGame(id: string): void {
   if (id === 'chess') enterChessGame();
   else if (id === 'logos') enterLogos();
   else if (id === 'audio') enterAudio();
+  else if (id === 'poker') enterCards();
   else if (id === 'ui') enterUi();
 }
 
@@ -556,6 +664,7 @@ const keymap = installKeymap({
   toggleEvalBar,
   closeGameOver,
   closeMatchSetup,
+  cancelWispSwap,
 });
 
 // Point the keymap's base layer at the current mode (chess + chess-game share
@@ -614,6 +723,9 @@ function syncBar(): void {
   const popSetup = (): void => {
     if (keymap.hasContext('setup')) keymap.popContext('setup');
   };
+  const popSwap = (): void => {
+    if (keymap.hasContext('swap')) keymap.popContext('swap');
+  };
 
   const pc = promoColor();
   if (pc !== null) {
@@ -637,6 +749,8 @@ function syncBar(): void {
     }
   } else if (mode === 'chess-game' && gameOver) {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
+    popSetup();
+    popSwap();
     promoFocused = false;
     if (!keymap.hasContext('gameover')) keymap.pushContext('gameover', true);
     const { title, subtitle, tint } = gameOverText(gameOver);
@@ -649,6 +763,7 @@ function syncBar(): void {
   } else if (matchSetupOpen) {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     popGameOver();
+    popSwap();
     promoFocused = false;
     if (!keymap.hasContext('setup')) keymap.pushContext('setup', true);
     ui.setRoot(buildMatchSetup({ x: 0, y: 0, w: cols, h: rows }, { onStart: confirmMatchSetup, onCancel: closeMatchSetup }), {
@@ -662,9 +777,31 @@ function syncBar(): void {
       setupFocused = true;
       forceFrame = true;
     }
+  } else if (wispSwap) {
+    if (keymap.hasContext('promoting')) keymap.popContext('promoting');
+    popGameOver();
+    popSetup();
+    promoFocused = false;
+    if (!keymap.hasContext('swap')) keymap.pushContext('swap', true);
+    // Re-mount the swap dropdowns (a prior modal root may have dropped their Slots)
+    // before rebuilding the one-column picker for the clicked side.
+    mountSwapSetup(ui);
+    const title = wispSwap.color === WHITE ? 'White' : 'Black';
+    ui.setRoot(buildSwapSetup({ x: 0, y: 0, w: cols, h: rows }, { title, onConfirm: confirmWispSwap, onCancel: cancelWispSwap }), {
+      x: 0,
+      y: 0,
+      w: cols,
+      h: rows,
+    });
+    if (!wispSwapFocused) {
+      ui.setFocus('setup-swap-provider'); // start in the provider list
+      wispSwapFocused = true;
+      forceFrame = true;
+    }
   } else if (mode === 'ui') {
     popGameOver();
     popSetup();
+    popSwap();
     // The component playground: a full-screen tree (centered panel + the standard
     // bar) laid out over the scene, so Tab/typing reach the mounted components.
     ui.setRoot(buildShowcase({ x: 0, y: 0, w: cols, h: rows }, buildBar('ui', renderMode, actions)), {
@@ -677,6 +814,7 @@ function syncBar(): void {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     popGameOver();
     popSetup();
+    popSwap();
     promoFocused = false;
     // Re-mount the move-history panel: a modal popup (game-over result, promotion)
     // replaces the whole root, dropping the Slot — which auto-unmounts the
@@ -707,10 +845,19 @@ function syncBar(): void {
       }),
       { x: 0, y: 0, w: cols, h: rows },
     );
+  } else if (mode === 'cards') {
+    popGameOver();
+    popSetup();
+    popSwap();
+    // Re-mount the poker dropdowns (a prior modal root may have dropped their
+    // Slots), then build the control panel + bar over the scene.
+    mountPokerHud(ui);
+    ui.setRoot(buildPokerRoot({ x: 0, y: 0, w: cols, h: rows }, buildBar('cards', renderMode, actions)), { x: 0, y: 0, w: cols, h: rows });
   } else {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     popGameOver();
     popSetup();
+    popSwap();
     promoFocused = false;
     ui.setRoot(buildBar(mode, renderMode, actions), barRegion());
   }
@@ -828,9 +975,10 @@ function onMouseImpl(e: MouseEvent): void {
     }
     return;
   }
-  // Modal popups (promotion picker, game-over result, match setup): clicks/hover
-  // go to the popup; the board and camera are frozen until it's dismissed.
-  if (isPromoting() || gameOver || matchSetupOpen) {
+  // Modal popups (promotion picker, game-over result, match setup, wisp model
+  // swap): clicks/hover go to the popup; the board and camera are frozen until
+  // it's dismissed.
+  if (isPromoting() || gameOver || matchSetupOpen || wispSwap) {
     if (e.type === 'move') ui.hover(e.x, e.y);
     else if (e.type === 'down') ui.pointerDown(e.x, e.y);
     else if (e.type === 'drag') ui.drag(e.x, e.y); // e.g. dragging a dropdown's scrollbar
@@ -849,6 +997,11 @@ function onMouseImpl(e: MouseEvent): void {
     }
     if (e.type === 'move') {
       ui.hover(e.x, e.y);
+      // Cards screen: pointer-move drives the hand-peek hover (no click needed).
+      if (mode === 'cards') {
+        const { ndcX, ndcY, aspect } = pointerNdc(e.x, e.y);
+        cardsScene.hover(ndcX, ndcY, aspect);
+      }
       return;
     }
     if (e.type === 'down') {
@@ -885,11 +1038,23 @@ function onMouseImpl(e: MouseEvent): void {
       const isClick = draggingCamera && Math.abs(e.x - downX) + Math.abs(e.y - downY) <= 1;
       if (isClick && mode === 'chess-game') {
         const { ndcX, ndcY, aspect } = pointerNdc(e.x, e.y);
-        chessGame.click(ndcX, ndcY, aspect);
+        // During a match the board is the AI's; a click on a side's HUD wisp opens
+        // its model-swap popup (everything else is inert). Otherwise it's a normal
+        // piece/destination click in a human game.
+        if (chessGame.isMatchActive()) {
+          const side = chessGame.wispAt(ndcX, ndcY, aspect);
+          if (side !== null) openWispSwap(side);
+        } else {
+          chessGame.click(ndcX, ndcY, aspect);
+        }
       } else if (isClick && mode === 'logos') {
         // Click a wisp to play/pause its speaking pulse.
         const { ndcX, ndcY } = pointerNdc(e.x, e.y);
         logosScene.toggleAt(ndcX, ndcY);
+      } else if (isClick && mode === 'cards') {
+        // Click a hand card to lift it (hand mode); a no-op in single/deck.
+        const { ndcX, ndcY, aspect } = pointerNdc(e.x, e.y);
+        cardsScene.click(ndcX, ndcY, aspect);
       }
       draggingCamera = false;
       return;
@@ -1014,6 +1179,25 @@ function tick(dt: number): void {
     else r.write(presentScene(false, true) + ui.frame());
     forceFrame = false;
     if (chess.needsRender()) r.requestRender(); // keep animating while the camera settles
+    return;
+  }
+
+  if (mode === 'cards') {
+    // The cards screen: on-demand like the chess turntable (static between camera
+    // moves), but the card animations (hand peek/flip, deck shuffle/deal) keep the
+    // scene dirty and re-arm the loop until they settle.
+    syncBar();
+    const sceneDirty = forceFrame || cardsScene.needsRender();
+    if (sceneDirty) cardsScene.renderScene(target, t);
+    if (UNIFIED) {
+      if (sceneDirty || ui.dirty()) r.write(ui.frameComposited((s) => presentSceneInto(s, false, true), sceneDirty));
+    } else if (sceneDirty) {
+      r.write(presentScene(false, true) + ui.frame());
+    } else if (ui.dirty()) {
+      r.write(ui.frame());
+    }
+    forceFrame = false;
+    if (cardsScene.needsRender()) r.requestRender();
     return;
   }
 

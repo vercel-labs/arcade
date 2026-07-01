@@ -21,6 +21,9 @@ import { buildChessGameRoot, mountChessHud, refreshMoveHistory } from '../arcade
 import { evaluate } from '../rules/chess/eval.ts';
 import { buildMatchSetup, mountMatchSetup } from '../arcade/match/setup.ts';
 import { providers } from '../arcade/match/models.ts';
+import { CardsScene, type CardsMode } from '../arcade/games/poker/cards-scene.ts';
+import { buildPokerRoot, mountPokerHud } from '../arcade/games/poker/hud.ts';
+import { RANK_LABELS, type Suit, SUIT_LETTERS } from '../rules/poker/cards.ts';
 import type { Color } from '../rules/chess/types.ts';
 import { Dropdown, layout, paint, Screen, type PaintState } from '../tui/index.ts';
 
@@ -267,6 +270,8 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot coverflow|menu [cols] [rows] [pos] [hover] [out]   Cover Flow carousel
   pnpm snapshot launch [cols] [rows] [index] [t] [out]   Cover Flow flip-to-title splash
   pnpm snapshot attract [cols] [rows] [t] [out]    prism attract marquee
+  pnpm snapshot cards [single|hand|deck] [cols] [rows] [state] [out]   the cards screen
+      (single: a code like Kh/10s/As · hand: peek|up · deck: shuffle|deal)
 
 Convert + view:  sips -s format png .snapshots/<name>.ppm --out .snapshots/<name>.png -Z 1000`;
 
@@ -302,8 +307,83 @@ if (process.argv[2] === 'help' || process.argv[2] === '--help' || process.argv[2
   launchSnapshot();
 } else if (process.argv[2] === 'attract') {
   attractSnapshot();
+} else if (process.argv[2] === 'cards') {
+  cardsSnapshot();
 } else {
   sceneSnapshot();
+}
+
+// The cards screen in one of its three modes, presented through the app's default
+// ASCII (shape-glyph) path so the still matches the terminal.
+//   pnpm exec tsx src/tools/snapshot.ts cards [single|hand|deck] [cols] [rows] [state] [out.ppm]
+//     single state: a card code like "Kh", "10s", "As" (default "As")
+//     hand   state: "peek" | "up" (default: flat)
+//     deck   state: "shuffle" | "deal" (default: full stack)
+function cardsSnapshot(): void {
+  const args = process.argv.slice(3);
+  const mode = (['single', 'hand', 'deck'].includes(args[0]) ? args[0] : 'single') as CardsMode;
+  const cols = Number(args.find((a, i) => i > 0 && /^\d+$/.test(a))) || 150;
+  const rows = Number(args.filter((a) => /^\d+$/.test(a))[1]) || 46;
+  const out = args.find((a) => a.endsWith('.ppm')) ?? `.snapshots/cards-${mode}.ppm`;
+  const state = args.find((a) => !/^\d+$/.test(a) && !a.endsWith('.ppm') && a !== mode) ?? '';
+  const SS = 3;
+
+  const scene = new CardsScene();
+  scene.setMode(mode);
+  let frames = 1;
+  if (mode === 'single') {
+    const m = state.match(/^(10|[a2-9jqk])([shdc])$/i);
+    if (m) {
+      const rank = RANK_LABELS.findIndex((r) => r.toLowerCase() === m[1].toLowerCase());
+      const suit = SUIT_LETTERS.indexOf(m[2].toLowerCase() as (typeof SUIT_LETTERS)[number]);
+      if (rank >= 0 && suit >= 0) scene.setCard({ rank, suit: suit as Suit });
+    }
+  } else if (mode === 'hand') {
+    if (state === 'peek') {
+      scene.setHovered(0);
+      frames = 20;
+    } else if (state === 'up') {
+      scene.flipCard(0);
+      scene.flipCard(1);
+      frames = 40;
+    }
+  } else if (mode === 'deck') {
+    if (state === 'shuffle') {
+      scene.shuffle();
+      frames = 14; // ~mid riffle
+    } else if (state === 'deal') {
+      scene.deal();
+      frames = 60; // a few cards out
+    }
+  }
+
+  const target = new RenderTarget(cols * SS, rows * 2 * SS);
+  let t = 0.05;
+  for (let i = 0; i < frames; i++) {
+    scene.renderScene(target, t);
+    t += 1 / 30;
+  }
+  // `color` presents through the half-block path (truer color) instead of the
+  // default ASCII shape-glyph, for judging the card art.
+  if (args.includes('color')) {
+    writeDisplayPpm(downsample(target, SS), out);
+    return;
+  }
+  // `hud` composites the poker control panel + bar over the scene via a real
+  // Screen (so the dropdown Slots expand), like the setup / chess-overlay stills.
+  if (args.includes('hud')) {
+    const screen = new Screen(cols, rows);
+    mountPokerHud(screen);
+    (screen.component('poker-mode') as Dropdown | undefined)?.pick(['single', 'hand', 'deck'].indexOf(mode)); // match panel controls to the mode
+    const region = { x: 0, y: 0, w: cols, h: rows };
+    screen.setRoot(buildPokerRoot(region, buildBar('cards', 'ascii', barActions)), region);
+    const surf2 = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
+    surfaceToPpm(surf2, cols, rows, out);
+    return;
+  }
+  const surf = new Surface(cols, rows);
+  shapeGlyphToSurface(surf, target, cols, rows, { color: true, hybrid: true });
+  surfaceToPpm(surf, cols, rows, out);
 }
 
 // The realtime audio scene: the active model's provider wisp in 3D (speaking, so

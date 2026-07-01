@@ -198,8 +198,18 @@ export class ModelPlayer<A> implements Player<A> {
   }
 
   private buildPrompt(state: GameState<A>, mode: 'json' | 'text', feedback: string, opponentSaid?: string): string {
-    const withExtras = state as { fen?: () => string; moveHistory?: () => string };
-    const fen = typeof withExtras.fen === 'function' ? withExtras.fen() : null;
+    const withExtras = state as {
+      fen?: () => string;
+      moveHistory?: () => string;
+      informationStateString?: (player: number) => string;
+    };
+    // Imperfect-information games (poker) expose a PER-PLAYER view; use it so the
+    // model only ever sees its own hidden information (its hole cards + the public
+    // history). Perfect-information games (chess) don't implement it, so we fall
+    // back to the full-board `toString()` + FEN exactly as before.
+    const player = state.currentPlayer();
+    const view = typeof withExtras.informationStateString === 'function' && player >= 0 ? withExtras.informationStateString(player) : null;
+    const fen = view ? null : typeof withExtras.fen === 'function' ? withExtras.fen() : null;
     const history = typeof withExtras.moveHistory === 'function' ? withExtras.moveHistory() : '';
     // The format instruction differs by path: JSON keeps providers that need the
     // literal word "json" happy (some json_object modes require it); text asks for
@@ -211,7 +221,7 @@ export class ModelPlayer<A> implements Player<A> {
     return [
       `You are a strong ${this.gameName} player. It is your turn to move.`,
       fen ? `\n\nPosition (FEN): ${fen}` : '',
-      `\n\nBoard (uppercase = White, lowercase = Black):\n${state.toString()}`,
+      view ? `\n\nYour view of the game:\n${view}` : `\n\nBoard (uppercase = White, lowercase = Black):\n${state.toString()}`,
       history ? `\n\nThe moves played so far are: ${history}` : '',
       opponentSaid
         ? `\n\nYour opponent just said: "${opponentSaid}". You may react to it in your rationale, but choose your move on the merits of the position.`
