@@ -8,21 +8,20 @@
 import { writeFileSync } from 'node:fs';
 import { bloom, downsample, halfBlockToSurface, RenderTarget, shapeGlyphToSurface, Surface } from '../engine/index.ts';
 import { FONT } from '../engine/font8x8.ts';
-import { PrismScene } from '../arcade/prism.ts';
-import { SplashScene } from '../arcade/splash.ts';
-import { ChessScene } from '../arcade/chess.ts';
-import { ChessGameScene } from '../arcade/chess-game.ts';
-import { LogosScene } from '../arcade/logos-scene.ts';
-import { AudioScene } from '../arcade/audio-scene.ts';
-import { CoverFlowScene } from '../arcade/coverflow.ts';
-import { MENU_ITEMS } from '../arcade/menu.ts';
-import { buildBar, buildGameOver, buildPromotion, type Mode } from '../arcade/bars.ts';
-import { buildShowcase, mountShowcase } from '../arcade/ui-showcase.ts';
-import { buildChessGameRoot, mountChessHud, refreshMoveHistory } from '../arcade/chess-hud.ts';
-import { evaluate } from '../games/chess/eval.ts';
-import { buildMatchSetup, mountMatchSetup } from '../arcade/match-setup.ts';
-import { providers } from '../arcade/models.ts';
-import type { Color } from '../games/chess/types.ts';
+import { PrismScene, SplashScene } from '../prism/index.ts';
+import { ChessScene } from '../arcade/games/chess/turntable.ts';
+import { ChessGameScene } from '../arcade/games/chess/scene.ts';
+import { LogosScene } from '../arcade/scenes/logos-scene.ts';
+import { AudioScene } from '../arcade/scenes/audio-scene.ts';
+import { CoverFlowScene } from '../arcade/shell/coverflow.ts';
+import { MENU_ITEMS } from '../arcade/shell/menu.ts';
+import { buildBar, buildGameOver, buildPromotion, type Mode } from '../arcade/shell/bars.ts';
+import { buildShowcase, mountShowcase } from '../arcade/scenes/ui-showcase.ts';
+import { buildChessGameRoot, mountChessHud, refreshMoveHistory } from '../arcade/games/chess/hud.ts';
+import { evaluate } from '../rules/chess/eval.ts';
+import { buildMatchSetup, mountMatchSetup } from '../arcade/match/setup.ts';
+import { providers } from '../arcade/match/models.ts';
+import type { Color } from '../rules/chess/types.ts';
 import { Dropdown, layout, paint, Screen, type PaintState } from '../tui/index.ts';
 
 type Rgb = [number, number, number];
@@ -72,6 +71,19 @@ function surfaceToPpm(
       }
     }
   }
+  writeFileSync(out, Buffer.concat([Buffer.from(`P6\n${W} ${H}\n255\n`, 'ascii'), body]));
+  console.log(`wrote ${out} (${W}x${H})`);
+}
+
+// Rasterize a full-color display buffer (post downsample/bloom) straight to a
+// PPM — the emissive/scene path, no Surface glyphs. Shared by every scene
+// snapshot so the clamp + PPM header can't drift between them.
+function writeDisplayPpm(display: RenderTarget, out: string): void {
+  const W = display.width;
+  const H = display.height;
+  const body = Buffer.alloc(W * H * 3);
+  const c = display.color;
+  for (let i = 0; i < W * H * 3; i++) body[i] = c[i] <= 0 ? 0 : c[i] >= 255 ? 255 : Math.round(c[i]);
   writeFileSync(out, Buffer.concat([Buffer.from(`P6\n${W} ${H}\n255\n`, 'ascii'), body]));
   console.log(`wrote ${out} (${W}x${H})`);
 }
@@ -141,7 +153,7 @@ function blockBits(ch: string, px: number, py: number): boolean {
 }
 
 const noop = (): void => {};
-const barActions = { chessGame: noop, demo: noop, logos: noop, ui: noop, back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop, evalBar: noop, audioModel: noop };
+const barActions = { back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop, evalBar: noop, audioModel: noop };
 
 // Render a scene full-height, then composite that screen's button bar over it —
 // proving the bar sits ON TOP of the 3D scene (opaque pills overwrite it;
@@ -188,7 +200,7 @@ function uiSnapshot(): void {
   else if (k === 'focus') state.focusId = v;
   else if (k === 'pressed') state.pressedId = v;
 
-  const root = buildBar('prism', 'ascii', barActions);
+  const root = buildBar('chess-game', 'ascii', barActions);
   const surf = new Surface(cols, rows);
   layout(root, { x: 0, y: rows - 2, w: cols, h: 1 });
   paint(root, surf, state);
@@ -231,22 +243,38 @@ function sceneSnapshot(): void {
   // Bloom the emissive screens (prism + logo wisps); skip for solid chess geometry.
   if (!scene || scene === 'logos') bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
 
-  const W = display.width;
-  const H = display.height;
-  const header = `P6\n${W} ${H}\n255\n`;
-  const body = Buffer.alloc(W * H * 3);
-  const c = display.color;
-  for (let i = 0; i < W * H * 3; i++) {
-    const v = c[i];
-    body[i] = v <= 0 ? 0 : v >= 255 ? 255 : Math.round(v);
-  }
-  writeFileSync(out, Buffer.concat([Buffer.from(header, 'ascii'), body]));
-  console.log(`wrote ${out} (${W}x${H})`);
+  writeDisplayPpm(display, out);
 }
+
+// One line per subcommand; keep in sync as handlers are added/removed.
+const HELP = `snapshot — render one frame headlessly to a .ppm (convert with sips, then Read the PNG)
+
+  pnpm snapshot [cols] [rows] [t] [out.ppm]        prism scene (default; t = seconds)
+  pnpm snapshot <chess|chess-game|logos> [cols] [rows] [t] [out]   a named 3D scene
+      (chess-game also accepts 'match' to play a few opening plies first)
+
+  pnpm snapshot ui [cols] [rows] [hover=<id>|focus=<id>|pressed=<id>] [out]   button bar
+  pnpm snapshot overlay [chess|chess-game|prism] [cols] [rows] [out]   bar over a scene
+  pnpm snapshot unified [prism|chess|chess-game|logos] [cols] [rows] [out]   unified compositing path
+  pnpm snapshot showcase [cols] [rows] [focus=<id>] [out]   the UI component playground
+  pnpm snapshot modal [cols] [rows] [out]          promotion modal over chess
+  pnpm snapshot chess-overlay [cols] [rows] [min|empty|illegal|short] [eval] [out]   match HUD + moves panel
+  pnpm snapshot setup [cols] [rows] [out] [open|models]   AI match setup modal
+  pnpm snapshot gameover [cols] [rows] [out]       result popup over a finished board
+  pnpm snapshot king-anim [cols] [rows] [out]      king caught mid-castle (wisp tracking)
+  pnpm snapshot audio [cols] [rows] [out]          realtime audio scene (provider wisp)
+  pnpm snapshot splash [cols] [rows] [t] [out]     boot splash at time t
+  pnpm snapshot coverflow|menu [cols] [rows] [pos] [hover] [out]   Cover Flow carousel
+  pnpm snapshot launch [cols] [rows] [index] [t] [out]   Cover Flow flip-to-title splash
+  pnpm snapshot attract [cols] [rows] [t] [out]    prism attract marquee
+
+Convert + view:  sips -s format png .snapshots/<name>.ppm --out .snapshots/<name>.png -Z 1000`;
 
 // Dispatch at the bottom so the module-level consts above are initialized before
 // a subcommand function runs (function declarations hoist; const/let do not).
-if (process.argv[2] === 'ui') {
+if (process.argv[2] === 'help' || process.argv[2] === '--help' || process.argv[2] === '-h') {
+  console.log(HELP);
+} else if (process.argv[2] === 'ui') {
   uiSnapshot();
 } else if (process.argv[2] === 'overlay') {
   overlaySnapshot();
@@ -291,13 +319,7 @@ function audioSnapshot(): void {
   const target = new RenderTarget(cols * SS, rows * 2 * SS);
   scene.renderScene(target, 0.7);
   const display = downsample(target, SS);
-  const W = display.width;
-  const H = display.height;
-  const body = Buffer.alloc(W * H * 3);
-  const c = display.color;
-  for (let i = 0; i < W * H * 3; i++) body[i] = c[i] <= 0 ? 0 : c[i] >= 255 ? 255 : Math.round(c[i]);
-  writeFileSync(out, Buffer.concat([Buffer.from(`P6\n${W} ${H}\n255\n`, 'ascii'), body]));
-  console.log(`wrote ${out} (${W}x${H})`);
+  writeDisplayPpm(display, out);
 }
 
 // Cover Flow carousel of game covers. `pos` is the continuous carousel position
@@ -386,13 +408,7 @@ function splashSnapshot(): void {
   new SplashScene().renderScene(target, t);
   const display = downsample(target, SS);
   bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
-  const W = display.width;
-  const H = display.height;
-  const body = Buffer.alloc(W * H * 3);
-  const c = display.color;
-  for (let i = 0; i < W * H * 3; i++) body[i] = c[i] <= 0 ? 0 : c[i] >= 255 ? 255 : Math.round(c[i]);
-  writeFileSync(out, Buffer.concat([Buffer.from(`P6\n${W} ${H}\n255\n`, 'ascii'), body]));
-  console.log(`wrote ${out} (${W}x${H})`);
+  writeDisplayPpm(display, out);
 }
 
 // The 'ui' component playground composited over the chess scene via the real
@@ -502,14 +518,7 @@ function kingAnimSnapshot(): void {
   // Pump fewer than ANIM_FRAMES (9) so the king is caught mid-slide.
   for (let i = 0; i < 4; i++) cg.renderScene(target, i / 30);
   const display = downsample(target, SS);
-  const W = display.width;
-  const H = display.height;
-  const header = `P6\n${W} ${H}\n255\n`;
-  const body = Buffer.alloc(W * H * 3);
-  const c = display.color;
-  for (let i = 0; i < W * H * 3; i++) body[i] = c[i] <= 0 ? 0 : c[i] >= 255 ? 255 : Math.round(c[i]);
-  writeFileSync(out, Buffer.concat([Buffer.from(header, 'ascii'), body]));
-  console.log(`wrote ${out} (${W}x${H})`);
+  writeDisplayPpm(display, out);
 }
 
 // The AI match setup modal composited over the chess scene via the real Screen

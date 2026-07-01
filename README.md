@@ -34,7 +34,6 @@ src/
   platform/   terminal control (alt-screen, raw mode, SGR mouse) + input parsing
   games/      game harness (Game/State + registry) and the chess rules engine
   arcade/     THE app: orchestrator, prism scene, chess screens, logos showcase
-  demo/       engine cube demo
   tools/      snapshots, perft, mesh slicing/decimation, benchmarks
 ```
 
@@ -74,10 +73,11 @@ The **chess rules engine** is implemented from scratch (0x88 board, full legal m
 | Command                                       | What it does                                  |
 | --------------------------------------------- | --------------------------------------------- |
 | `pnpm dev`                                    | Run the arcade                                |
-| `pnpm demo`                                   | Run an engine cube demo                      |
 | `pnpm snapshot [cols] [rows] [t]`             | Render a frame to a `.ppm` image (for review) |
+| `pnpm snapshot:png …`                         | Render a frame and convert it to `.png`       |
 | `pnpm watch`                                  | Run with auto-reload                          |
 | `pnpm type-check`                             | Type-check with `tsc`                         |
+| `pnpm test`                                   | Run the unit suite (`src/**/*.test.ts`)       |
 | `pnpm exec tsx src/tools/perft.ts`            | Verify the chess move generator               |
 
 Credits for the techniques and assets this builds on are in [`NOTICE.md`](./NOTICE.md).

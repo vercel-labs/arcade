@@ -14,8 +14,8 @@ import {
   rasterize,
   type RenderTarget,
   type Vec3,
-} from '../engine/index.ts';
-import { OrbitCamera } from './orbit.ts';
+} from '../../../engine/index.ts';
+import { OrbitCamera } from '../../orbit.ts';
 
 // Left-to-right, matching the slice order.
 const PIECE_NAMES = ['pawn', 'queen', 'bishop', 'rook', 'king', 'knight'];

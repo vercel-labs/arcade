@@ -7,10 +7,10 @@
 // only once BOTH sides have a model committed; picking a different provider clears
 // that side's model (re-picking the same provider, or a different model under it,
 // leaves the provider intact).
-import { Box, Button, Dropdown, Modal, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../tui/index.ts';
-import type { RGB } from '../engine/index.ts';
+import { Box, Button, Dropdown, Modal, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../tui/index.ts';
+import type { RGB } from '../../engine/index.ts';
 import { modelsFor, type ModelInfo, providers } from './models.ts';
-import { providerTint } from './wisp.ts';
+import { providerTint } from '../scenes/wisp.ts';
 
 const PROVS = providers();
 const PROVIDER_LABELS = PROVS.map((p) => p.name);

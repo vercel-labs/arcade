@@ -4,7 +4,7 @@
 // will drive the app through — a human key and an agent command id hit the same
 // `run`. main.ts owns the handlers and the live keymap (it still drives setBase /
 // handle / push-pop modal contexts); this module just builds it once at startup.
-import { Keymap } from '../tui/index.ts';
+import { Keymap } from '../../tui/index.ts';
 import type { RenderMode } from './bars.ts';
 
 // The camera-controllable scene for the active mode (chess turntables, logos wisp
@@ -27,7 +27,6 @@ export interface KeyHandlers {
   toPrism(): void;
   menuNav(step: number): void;
   launchSelected(): void;
-  enterDemo(): void;
   enterAudio(): void;
   audioCycleModel(): void;
   enterChess(): void;
@@ -66,7 +65,6 @@ export function installKeymap(h: KeyHandlers): Keymap {
     { id: 'menu.left', title: 'Menu: previous', run: () => h.menuNav(-1) },
     { id: 'menu.right', title: 'Menu: next', run: () => h.menuNav(1) },
     { id: 'menu.select', title: 'Menu: launch selected', run: h.launchSelected },
-    { id: 'nav.demo', title: 'Open demo', run: h.enterDemo },
     { id: 'nav.audio', title: 'Open audio', run: h.enterAudio },
     { id: 'audio.nextModel', title: 'Audio: next model', run: h.audioCycleModel },
     { id: 'nav.chess', title: 'Open chess showcase', run: h.enterChess },
@@ -121,7 +119,7 @@ export function installKeymap(h: KeyHandlers): Keymap {
   ]) {
     keymap.bind('menu', b);
   }
-  for (const layer of ['demo', 'logos', 'chess', 'ui']) keymap.bind(layer, { key: 'b', cmd: 'nav.back' });
+  for (const layer of ['logos', 'chess', 'ui']) keymap.bind(layer, { key: 'b', cmd: 'nav.back' });
   // Orbit/pan/reset bindings are shared by the chess turntables, the logos wisp
   // orbit, and the chess backdrop behind the UI playground (the commands resolve
   // the active scene via activeOrbit()). In 'ui', a focused component consumes

@@ -12,30 +12,28 @@ import {
   toLuminance,
   toShapeGlyph,
 } from '../engine/index.ts';
-import { PrismScene } from './prism.ts';
-import { CoverFlowScene, LAUNCH_TOTAL } from './coverflow.ts';
-import { SplashScene } from './splash.ts';
-import { MENU_ITEMS } from './menu.ts';
-import { ChessScene } from './chess.ts';
-import { ChessGameScene } from './chess-game.ts';
-import { LogosScene } from './logos-scene.ts';
-import { AudioScene } from './audio-scene.ts';
+import { PrismScene, SplashScene } from '../prism/index.ts';
+import { CoverFlowScene, LAUNCH_TOTAL } from './shell/coverflow.ts';
+import { MENU_ITEMS } from './shell/menu.ts';
+import { ChessScene } from './games/chess/turntable.ts';
+import { ChessGameScene } from './games/chess/scene.ts';
+import { LogosScene } from './scenes/logos-scene.ts';
+import { AudioScene } from './scenes/audio-scene.ts';
 import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/input.ts';
-import { buildBar, buildGameOver, buildPromotion, type BarActions, type Mode, type RenderMode } from './bars.ts';
-import { buildShowcase, mountShowcase } from './ui-showcase.ts';
-import { buildChessGameRoot, type Commentary, mountChessHud, movesToPgn, refreshMoveHistory } from './chess-hud.ts';
-import { buildMatchSetup, matchSetupSelection, mountMatchSetup } from './match-setup.ts';
+import { buildBar, buildGameOver, buildPromotion, type BarActions, type Mode, type RenderMode } from './shell/bars.ts';
+import { buildShowcase, mountShowcase } from './scenes/ui-showcase.ts';
+import { buildChessGameRoot, type Commentary, mountChessHud, movesToPgn, refreshMoveHistory } from './games/chess/hud.ts';
+import { buildMatchSetup, matchSetupSelection, mountMatchSetup } from './match/setup.ts';
 import { copyToClipboard } from '../platform/clipboard.ts';
-import { BLACK, type Color, WHITE } from '../games/chess/types.ts';
-import { evaluate } from '../games/chess/eval.ts';
-import type { ChessResult } from '../games/chess/chess.ts';
+import { BLACK, type Color, WHITE } from '../rules/chess/types.ts';
+import { evaluate } from '../rules/chess/eval.ts';
+import type { ChessResult } from '../rules/chess/chess.ts';
 import type { RGB, RGBA } from '../engine/index.ts';
 import { Renderer, Screen, type LayoutBox } from '../tui/index.ts';
-import { installKeymap } from './keybindings.ts';
-import { renderDemo } from '../demo/scene.ts';
+import { installKeymap } from './shell/keybindings.ts';
 import * as term from '../platform/terminal.ts';
 import { loadEnv, ensureGatewayKey, isLoggedIn, signOut as signOutVercel, switchTeam } from '../auth/index.ts';
-import { AiMatch } from './ai-match.ts';
+import { AiMatch } from './match/driver.ts';
 
 // Populate process.env from .env.local before anything reads AI_GATEWAY_API_KEY.
 loadEnv();
@@ -194,14 +192,13 @@ function closeGameOver(): void {
   gameOverFocused = false;
   forceFrame = true;
 }
-// Continuously-animating screens (prism, demo, logos) hold a live lease;
+// Continuously-animating screens (prism, logos) hold a live lease;
 // the chess turntables are static and render on demand. Called on every screen
 // transition (via fullRepaint).
 function syncLive(): void {
   const want =
     mode === 'prism' ||
     mode === 'menu' ||
-    mode === 'demo' ||
     mode === 'logos' ||
     mode === 'audio' ||
     (mode === 'chess-game' && chessGame.isMatchActive());
@@ -287,12 +284,6 @@ function cycleMode(): void {
 function setRenderMode(next: RenderMode): void {
   if (renderMode === next) return;
   renderMode = next;
-  fullRepaint();
-}
-
-function enterDemo(): void {
-  stopAiMatch();
-  mode = 'demo';
   fullRepaint();
 }
 
@@ -522,10 +513,6 @@ function enterUi(): void {
 // closes each Button's onClick over these, so clicks and Enter dispatch the same
 // way the old onMouse id→action branch did.
 const actions: BarActions = {
-  chessGame: enterChessGame,
-  demo: enterDemo,
-  logos: enterLogos,
-  ui: enterUi,
   back: enterMenu,
   reset: () => activeOrbit()?.resetView(),
   mode: cycleMode,
@@ -555,7 +542,6 @@ const keymap = installKeymap({
   toPrism,
   menuNav,
   launchSelected,
-  enterDemo,
   enterAudio,
   audioCycleModel: () => audioScene.cycleModel(),
   enterChess,
@@ -730,7 +716,7 @@ function syncBar(): void {
   }
 }
 
-// Presents the engine `target` (prism / demo cube / chess) in the active
+// Presents the engine `target` (prism / chess) in the active
 // color/glyph mode. `withBloom` is the glowy post-process — on for the light
 // effects, off for solid geometry like the chess pieces.
 function presentScene(withBloom = true, hybridShadow = false): string {
@@ -910,7 +896,7 @@ function onMouseImpl(e: MouseEvent): void {
     }
     return;
   }
-  if (mode === 'prism' || mode === 'demo') {
+  if (mode === 'prism') {
     if (e.type === 'move') ui.hover(e.x, e.y);
     else if (e.type === 'down') ui.pointerDown(e.x, e.y);
     else if (e.type === 'up') ui.pointerUp();
@@ -920,7 +906,7 @@ function onMouseImpl(e: MouseEvent): void {
 
 // Wrap the handlers so every input requests a render — essential for the
 // on-demand chess screens (idle until interacted with), harmless for the
-// continuously-live prism/demo/logos screens.
+// continuously-live prism/logos screens.
 const parse = createInputParser({
   onKey(ev) {
     onKeyImpl(ev);
@@ -988,13 +974,6 @@ function tick(dt: number): void {
           })
         : presentScene(),
     );
-    return;
-  }
-
-  if (mode === 'demo') {
-    renderDemo(target, t);
-    syncBar();
-    r.write(UNIFIED ? ui.frameComposited((s) => presentSceneInto(s)) : presentScene() + ui.frame());
     return;
   }
 

@@ -1,6 +1,6 @@
 import { generateText, type LanguageModel, Output } from 'ai';
 import { z } from 'zod';
-import type { GameState } from '../games/game.ts';
+import type { GameState } from '../rules/game.ts';
 import type { Player, TurnContext } from './player.ts';
 
 // Forced structured output: the model returns a move + a one-line rationale, so

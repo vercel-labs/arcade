@@ -1,8 +1,8 @@
 # Verifying / viewing visual output
 
-This project renders to the terminal. `pnpm dev` (and `pnpm demo`) are **full-screen,
-raw-mode, animated TTY apps**: they switch to the alternate screen, hide the cursor,
-take over stdin, and loop forever. That has two consequences for an agent trying to
+This project renders to the terminal. `pnpm dev` is a **full-screen,
+raw-mode, animated TTY app**: it switches to the alternate screen, hides the cursor,
+takes over stdin, and loops forever. That has two consequences for an agent trying to
 "see" the output:
 
 1. Capturing the process's stdout gives you a stream of **ANSI escape codes**, not an
@@ -31,11 +31,35 @@ sips -s format png .snapshots/prism.ppm --out .snapshots/prism.png -Z 1000
 #    /Users/<you>/Repos/arcade/.snapshots/prism.png
 ```
 
-The Read tool renders PNGs visually, so after step 3 you can see colors, glow, the
+**Shortcut:** `pnpm snapshot:png` does steps 1 and 2 in one go — it passes every arg
+straight through to `pnpm snapshot`, then converts whatever `.ppm` it wrote to a sibling
+`.png` and prints the path:
+
+```bash
+pnpm snapshot:png 140 50 0.7      # → .snapshots/prism.png, ready to Read
+```
+
+The Read tool renders PNGs visually, so afterward you can see colors, glow, the
 prism, the rainbow — and critique it against the reference images in
 `docs/INSPO.MD` / the Pictures folder, instead of guessing from code.
 
 `.snapshots/` is gitignored.
+
+## More than the prism: scenes, UI, and overlays
+
+`pnpm snapshot` (the default, no subcommand) renders the prism. Subcommands render the
+other scenes and specific UI states — the chess board, the AI-match HUD, the setup modal,
+the game-over card, the Cover Flow menu, and more. Run `pnpm snapshot help` for the full,
+authoritative list (it's generated from the tool itself, so it never goes stale). A few:
+
+```bash
+pnpm snapshot:png chess-game 140 50 0.6 match   # a live board mid-opening
+pnpm snapshot:png chess-overlay 140 50 eval     # match HUD + moves panel + eval bar
+pnpm snapshot:png setup 120 40                  # the AI match-setup modal
+pnpm snapshot:png gameover 140 50               # the result popup
+pnpm snapshot:png coverflow 140 44 1            # Cover Flow carousel at position 1
+pnpm snapshot:png ui 110 44 hover=reset         # the button bar, one pill hovered
+```
 
 ### Inspecting an animation
 
@@ -52,14 +76,14 @@ Then Read each PNG.
 
 ## Permissions
 
-`.claude/settings.json` allowlists `pnpm snapshot`, `pnpm exec tsx src/tools/snapshot.ts`,
-and `sips`, so these run without a prompt.
+`.claude/settings.json` allowlists `pnpm snapshot` (which also covers `pnpm snapshot:png`),
+`pnpm exec tsx src/tools/snapshot.ts`, and `sips`, so these run without a prompt.
 
 ## What the live terminal experience is
 
 `pnpm dev` boots the **prism screen** (a Dark Side of the Moon homage: a rotating glass
 prism splitting a white beam into a rainbow on black); from the button bar you jump to the
-**chess** screens, the engine **demo**, or the **logos** showcase. It's drawn with the
+**chess** screens or the **logos** showcase. It's drawn with the
 upper half-block `▀` at 24-bit color, so it needs a **truecolor terminal** (iTerm2,
 Ghostty, Kitty, WezTerm, VS Code). The snapshot PNG and the terminal look essentially
 identical — each PNG pixel is one half-block.

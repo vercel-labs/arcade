@@ -1,30 +1,27 @@
-// Headless behavior checks for the Phase 7 stateful components: typing into an
-// Input, navigating a Select, nudging a Slider, scrolling a ScrollBox. Keys are
-// synthetic KeyEvents fed to each component's onKey (the same path the Screen
-// uses when the component is focused). No TTY — pure assertions.
-//
-//   pnpm exec tsx src/tools/tui-inputs-test.ts
-
-import { Box, Dropdown, Input, layout, Screen, Select, ScrollBox, Slider, Slot, Text } from '../tui/index.ts';
+// Behavior checks for the stateful components: typing into an Input, navigating a
+// Select, nudging a Slider, scrolling a ScrollBox, and mouse routing through the
+// real Screen. Keys are synthetic KeyEvents fed to each component's onKey (the
+// same path the Screen uses when focused). No TTY — pure assertions.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { Box, Text, Slot } from './nodes.ts';
+import { Dropdown } from './components/dropdown.ts';
+import { Input } from './components/input.ts';
+import { Select } from './components/select.ts';
+import { ScrollBox } from './components/scrollbox.ts';
+import { Slider } from './components/slider.ts';
+import { layout } from './layout.ts';
+import { Screen } from './screen.ts';
 import type { KeyEvent } from '../platform/input.ts';
-import type { Node } from '../tui/types.ts';
+import type { Node } from './types.ts';
 
-let failures = 0;
-function ok(cond: boolean, msg: string): void {
-  if (!cond) {
-    failures++;
-    console.error(`  ✗ ${msg}`);
-  } else {
-    console.log(`  ✓ ${msg}`);
-  }
-}
+const ok = (cond: boolean, msg: string): void => assert.ok(cond, msg);
 
 // A printable character event (raw preserves case); name is the lowercase form.
 const ch = (c: string): KeyEvent => ({ name: c.toLowerCase(), raw: c, sequence: c, ctrl: false, shift: c !== c.toLowerCase(), meta: false, eventType: 'press' });
 const key = (name: string): KeyEvent => ({ name, raw: '', sequence: '', ctrl: false, shift: false, meta: false, eventType: 'press' });
 
-console.log('Input:');
-{
+test('Input: typing, editing, onChange/onEnter', () => {
   const changes: string[] = [];
   let entered: string | null = null;
   const input = new Input({ id: 'i', onChange: (v) => changes.push(v), onEnter: (v) => (entered = v) });
@@ -37,10 +34,9 @@ console.log('Input:');
   input.onKey(key('enter'));
   ok(entered === 'N3', 'Enter fires onEnter with the value');
   ok(input.onKey(key('tab')) === false, 'Tab is not consumed (falls through to focus cycling)');
-}
+});
 
-console.log('Select:');
-{
+test('Select: navigation, clamping, onSelect', () => {
   let chosen = -1;
   const sel = new Select({ id: 's', items: ['a', 'b', 'c'], onSelect: (i) => (chosen = i) });
   ok(sel.index === 0, 'starts at index 0');
@@ -52,33 +48,30 @@ console.log('Select:');
   sel.onKey(key('enter'));
   ok(chosen === 2, 'Enter fires onSelect with the current index');
   ok(sel.onKey(key('tab')) === false, 'Tab falls through');
-}
+});
 
-console.log('Slider:');
-{
+test('Slider: step nudges + clamp', () => {
   const slider = new Slider({ id: 'sl', value: 0.5, step: 0.1 });
   slider.onKey(key('right'));
   ok(Math.abs(slider.value - 0.6) < 1e-9, "right nudges +step → 0.6");
   for (let i = 0; i < 10; i++) slider.onKey(key('left'));
   ok(slider.value === 0, 'left clamps at 0');
-}
+});
 
-console.log('ScrollBox:');
-{
+test('ScrollBox: scroll + clamp', () => {
   const sb = new ScrollBox({ id: 'sb', height: 3, rows: ['a', 'b', 'c', 'd', 'e'] });
   ok(sb.scroll === 0, 'starts at top');
   for (let i = 0; i < 5; i++) sb.onKey(key('down'));
   ok(sb.scroll === 2, 'down clamps at maxScroll (rows-height = 2)');
   sb.onKey(key('up'));
   ok(sb.scroll === 1, 'up scrolls back');
-}
+});
 
 // Mouse routing through the real Screen: pointerDown hit-tests + captures, drag
 // routes to the captured node, wheel routes to the hovered node — with local
 // coordinates. Each component is mounted alone at the top-left so its layout box
 // is at (0,0) and screen cell N maps to local N-1.
-console.log('mouse (via Screen):');
-{
+test('mouse (via Screen): capture, wheel, overlays, wrapping', () => {
   const region = { x: 0, y: 0, w: 40, h: 8 };
 
   // Slider: click sets value from x; drag updates it continuously.
@@ -187,15 +180,14 @@ console.log('mouse (via Screen):');
   const wsel = wlist();
   wsel?.onMouse?.({ type: 'down', x: 1, y: 2, w: 14, h: wlines().length }); // a lower line of the long item
   ok(wpicked === 1 && wd.index === 1, 'wrapping: clicking a wrapped line selects the whole item');
-}
+});
 
 // Propagation: a panel with a background absorbs the pointer (so a drag/scroll
 // there doesn't reach the scene behind it), while a transparent area passes
 // through. pointerDown returns non-null = "absorbed"; wheel returns true = "block
 // scene zoom". The panel (bg) occupies cells (0,0)-(19,4); the rest is the
 // transparent root.
-console.log('propagation (panel blocks scene):');
-{
+test('propagation: panel blocks scene, transparent area passes through', () => {
   const s = new Screen(40, 10);
   const tree = Box({ width: 40, height: 10 }, [Box({ width: 20, height: 5, background: [10, 10, 10] }, [])]) as Node;
   s.setRoot(tree, { x: 0, y: 0, w: 40, h: 10 });
@@ -205,10 +197,4 @@ console.log('propagation (panel blocks scene):');
   s.pointerUp();
   ok(s.wheel(3, 3, 1) === true, 'wheel over the panel is blocked from the scene');
   ok(s.wheel(30, 8, 1) === false, 'wheel over the transparent area reaches the scene');
-}
-
-if (failures > 0) {
-  console.error(`\n${failures} assertion(s) failed`);
-  process.exit(1);
-}
-console.log('\nall component-behavior assertions passed');
+});

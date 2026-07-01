@@ -19,8 +19,8 @@ import {
   scale3,
   type Vec3,
   type VertexIn,
-} from '../engine/index.ts';
-import { ChessState } from '../games/chess/chess.ts';
+} from '../../../engine/index.ts';
+import { ChessState } from '../../../rules/chess/chess.ts';
 import {
   BISHOP,
   BLACK,
@@ -41,9 +41,9 @@ import {
   ROOK,
   square,
   WHITE,
-} from '../games/chess/types.ts';
-import { OrbitCamera } from './orbit.ts';
-import { loadWisp, mulberry32, providerTint, type Wisp } from './wisp.ts';
+} from '../../../rules/chess/types.ts';
+import { OrbitCamera } from '../../orbit.ts';
+import { loadWisp, mulberry32, providerTint, type Wisp } from '../../scenes/wisp.ts';
 
 const PIECE_NAMES = ['pawn', 'queen', 'bishop', 'rook', 'king', 'knight'];
 
@@ -68,9 +68,9 @@ const DOT_ON_DARK: Vec3 = { x: 126, y: 123, z: 116 };
 
 const KEY_DIR = normalize3({ x: -0.4, y: 0.85, z: 0.5 });
 const FILL_DIR = normalize3({ x: 0.6, y: 0.25, z: 0.35 });
-const AMBIENT = 0.32;
+const AMBIENT = 0.42;
 const KEY_STRENGTH = 0.7;
-const FILL_STRENGTH = 0.18;
+const FILL_STRENGTH = 0.24;
 
 const ANIM_FRAMES = 9; // ~0.3s at 30fps for a single animation phase
 // Match HUD: the wisp floats this far (world units) above a king's square center —

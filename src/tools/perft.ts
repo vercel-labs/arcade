@@ -3,8 +3,8 @@
 // (src/games/chess/perft.test.ts) — this is the human-readable view.
 //
 //   pnpm exec tsx src/tools/perft.ts
-import { Board } from '../games/chess/board.ts';
-import { perft, PERFT_CASES } from '../games/chess/perft.ts';
+import { Board } from '../rules/chess/board.ts';
+import { perft, PERFT_CASES } from '../rules/chess/perft.ts';
 
 let allOk = true;
 for (const { name, fen, expected } of PERFT_CASES) {

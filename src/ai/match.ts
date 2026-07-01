@@ -1,4 +1,4 @@
-import type { GameState } from '../games/game.ts';
+import type { GameState } from '../rules/game.ts';
 import type { Player, TurnContext } from './player.ts';
 
 // The rendering surface a match drives: the live game state plus a way to play

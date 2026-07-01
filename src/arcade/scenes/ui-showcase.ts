@@ -4,7 +4,7 @@
 // component state, focus routing, alpha-composited panels, and the FrameBuffer
 // draw hook, all over a real 3D backdrop.
 
-import { hslToRgb } from '../engine/index.ts';
+import { hslToRgb } from '../../engine/index.ts';
 import {
   ASCIIFont,
   Box,
@@ -18,7 +18,7 @@ import {
   type LayoutBox,
   type Node,
   type Screen,
-} from '../tui/index.ts';
+} from '../../tui/index.ts';
 
 // Long-lived component instances. Module-level so their state (caret, selection,
 // slider value, scroll) persists across visits to the screen; mountShowcase

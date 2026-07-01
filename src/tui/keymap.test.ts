@@ -1,22 +1,12 @@
-// Headless checks for the Phase 5 keyboard stack: the input parser's KeyEvent
-// classification and the layered Keymap (precedence, modal swallowing, the
-// named-command surface). No TTY, no snapshot — pure assertions, exit non-zero
-// on failure. This is the "no test runner" stand-in the plan calls for.
-//
-//   pnpm exec tsx src/tools/keymap-test.ts
-
+// Checks for the keyboard stack: the input parser's KeyEvent classification and
+// the layered Keymap (precedence, modal swallowing, the named-command surface).
+// No TTY — pure assertions.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
 import { createInputParser, type KeyEvent } from '../platform/input.ts';
-import { Keymap, eventToChord } from '../tui/index.ts';
+import { Keymap, eventToChord } from './keymap.ts';
 
-let failures = 0;
-function ok(cond: boolean, msg: string): void {
-  if (!cond) {
-    failures++;
-    console.error(`  ✗ ${msg}`);
-  } else {
-    console.log(`  ✓ ${msg}`);
-  }
-}
+const ok = (cond: boolean, msg: string): void => assert.ok(cond, msg);
 
 // Drive a raw byte string through the parser, collecting the KeyEvents it emits.
 function parseKeys(raw: string): KeyEvent[] {
@@ -26,8 +16,7 @@ function parseKeys(raw: string): KeyEvent[] {
   return out;
 }
 
-console.log('input parser → KeyEvent:');
-{
+test('input parser → KeyEvent', () => {
   const [q] = parseKeys('q');
   ok(q.name === 'q' && !q.shift && !q.ctrl && q.raw === 'q', "'q' → name q");
   const [Q] = parseKeys('Q');
@@ -49,19 +38,18 @@ console.log('input parser → KeyEvent:');
   ok(eventToChord(ctrlc) === 'ctrl+c', 'eventToChord(ctrl-c) === "ctrl+c"');
   ok(eventToChord(Q) === 'q', 'eventToChord(Q) === "q" (shift folded for letters)');
   ok(eventToChord(stab) === 'shift+tab', 'eventToChord(shift-tab) === "shift+tab"');
-}
+});
 
-console.log('keymap precedence + modal:');
-{
+test('keymap precedence + modal', () => {
   const fired: string[] = [];
   const km = new Keymap();
-  for (const id of ['app.quit', 'view.cycleRenderMode', 'nav.demo', 'chess.resetView', 'chess.cancelPromotion']) {
+  for (const id of ['app.quit', 'view.cycleRenderMode', 'nav.chess', 'chess.resetView', 'chess.cancelPromotion']) {
     km.register({ id, run: () => fired.push(id) });
   }
   km.bind('global', { key: 'q', cmd: 'app.quit' });
   km.bind('global', { key: 'escape', cmd: 'app.quit' });
   km.bind('global', { key: 'm', cmd: 'view.cycleRenderMode' });
-  km.bind('prism', { key: 'd', cmd: 'nav.demo' });
+  km.bind('prism', { key: 'd', cmd: 'nav.chess' });
   km.bind('chess', { key: 'r', cmd: 'chess.resetView' });
   km.bind('promoting', { key: 'escape', cmd: 'chess.cancelPromotion' });
 
@@ -69,7 +57,7 @@ console.log('keymap precedence + modal:');
 
   km.setBase('prism');
   fired.length = 0;
-  ok(send('d') && fired[0] === 'nav.demo', "prism: 'd' → nav.demo");
+  ok(send('d') && fired[0] === 'nav.chess', "prism: 'd' → nav.chess");
   fired.length = 0;
   ok(send('m') && fired[0] === 'view.cycleRenderMode', "prism: 'm' → global cycle");
   fired.length = 0;
@@ -94,10 +82,4 @@ console.log('keymap precedence + modal:');
   ok(send('q') && fired[0] === 'app.quit', "after pop: 'q' → quit again");
 
   ok(km.commands().length === 5, 'commands() catalog lists all 5 registered ids');
-}
-
-if (failures > 0) {
-  console.error(`\n${failures} assertion(s) failed`);
-  process.exit(1);
-}
-console.log('\nall keymap/input assertions passed');
+});

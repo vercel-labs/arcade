@@ -27,7 +27,7 @@ import {
   type RenderTarget,
   type Texture,
   type Vec3,
-} from '../engine/index.ts';
+} from '../../engine/index.ts';
 import { MENU_ITEMS } from './menu.ts';
 
 const CARD_H = 0.55; // half the cover edge (square, so edge = 2·CARD_H)

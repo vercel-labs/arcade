@@ -7,24 +7,24 @@
 //
 //   pnpm exec tsx src/tools/match-test.ts
 import { MockLanguageModelV3 } from 'ai/test';
-import { ChessState } from '../games/chess/chess.ts';
-import type { GameState } from '../games/game.ts';
+import { ChessState } from '../rules/chess/chess.ts';
+import type { GameState } from '../rules/game.ts';
 import { type MatchScene, runMatch } from '../ai/match.ts';
 import { ModelPlayer } from '../ai/model-player.ts';
 import type { Player } from '../ai/player.ts';
 import { type RealtimeCodec, RealtimeSession, type RealtimeSocket } from '../voice/realtime-session.ts';
-import type { Move } from '../games/chess/types.ts';
+import type { Move } from '../rules/chess/types.ts';
 import { readFileSync } from 'node:fs';
 import { decodePng, RenderTarget, stringWidth } from '../engine/index.ts';
 import { Dropdown, Screen } from '../tui/index.ts';
-import { ChessGameScene } from '../arcade/chess-game.ts';
-import { buildBar, buildGameOver, type BarActions } from '../arcade/bars.ts';
-import { buildChessGameRoot, mountChessHud, moveHistory, movesToPgn, refreshMoveHistory } from '../arcade/chess-hud.ts';
-import { BISHOP, BLACK, FLAG_CAPTURE, KING, pieceColor, pieceType, QUEEN, ROOK, square, WHITE } from '../games/chess/types.ts';
-import { modelsFor, providers } from '../arcade/models.ts';
-import { matchSetupReady, matchSetupSelection, mountMatchSetup } from '../arcade/match-setup.ts';
-import { deriveTint, providerTint } from '../arcade/wisp.ts';
-import { BRAND_HUE } from '../arcade/logos.ts';
+import { ChessGameScene } from '../arcade/games/chess/scene.ts';
+import { buildBar, buildGameOver, type BarActions } from '../arcade/shell/bars.ts';
+import { buildChessGameRoot, mountChessHud, moveHistory, movesToPgn, refreshMoveHistory } from '../arcade/games/chess/hud.ts';
+import { BISHOP, BLACK, FLAG_CAPTURE, KING, pieceColor, pieceType, QUEEN, ROOK, square, WHITE } from '../rules/chess/types.ts';
+import { modelsFor, providers } from '../arcade/match/models.ts';
+import { matchSetupReady, matchSetupSelection, mountMatchSetup } from '../arcade/match/setup.ts';
+import { deriveTint, providerTint } from '../arcade/scenes/wisp.ts';
+import { BRAND_HUE } from '../arcade/scenes/logos.ts';
 import type { KeyEvent } from '../platform/input.ts';
 
 let failures = 0;
@@ -197,7 +197,7 @@ async function main(): Promise<void> {
   //    move-history ScrollBox expands and the commentary toast renders.
   {
     const noop = (): void => {};
-    const actions: BarActions = { chessGame: noop, demo: noop, logos: noop, ui: noop, back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop, evalBar: noop, audioModel: noop };
+    const actions: BarActions = { back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop, evalBar: noop, audioModel: noop };
     const ui = new Screen(80, 30);
     mountChessHud(ui);
     refreshMoveHistory(['e4', 'e5', 'Nf3', 'Nc6']);
@@ -255,7 +255,7 @@ async function main(): Promise<void> {
   //     while legal moves stay light, and the red must vanish when nothing's flagged.
   {
     const noop = (): void => {};
-    const actions: BarActions = { chessGame: noop, demo: noop, logos: noop, ui: noop, back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop, evalBar: noop, audioModel: noop };
+    const actions: BarActions = { back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop, evalBar: noop, audioModel: noop };
     const ui = new Screen(80, 30);
     mountChessHud(ui);
     const render = (): void =>
@@ -280,7 +280,7 @@ async function main(): Promise<void> {
   //     and the wheel step moves several rows per notch (snappier than 1).
   {
     const noop = (): void => {};
-    const actions: BarActions = { chessGame: noop, demo: noop, logos: noop, ui: noop, back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop, evalBar: noop, audioModel: noop };
+    const actions: BarActions = { back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop, evalBar: noop, audioModel: noop };
     const ui = new Screen(80, 30);
     mountChessHud(ui);
     refreshMoveHistory(Array.from({ length: 60 }, (_, i) => (i % 2 === 0 ? 'Nf3' : 'Nc6'))); // 30 rows → scrollable, snapped to bottom

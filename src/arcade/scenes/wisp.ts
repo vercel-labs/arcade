@@ -17,7 +17,7 @@ import {
   type Texture,
   type Vec3,
   wispMaterial,
-} from '../engine/index.ts';
+} from '../../engine/index.ts';
 import { BRAND_HUE } from './logos.ts';
 
 // Billboard half-extent in world units (a bit bigger than a chess piece).

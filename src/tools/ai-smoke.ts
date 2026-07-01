@@ -6,9 +6,9 @@
 //   pnpm exec tsx src/tools/ai-smoke.ts            (uses anthropic/claude-sonnet-4.6)
 //   pnpm exec tsx src/tools/ai-smoke.ts openai/gpt-5.4
 import { loadEnv } from '../auth/env.ts';
-import { ChessState } from '../games/chess/chess.ts';
+import { ChessState } from '../rules/chess/chess.ts';
 import { ModelPlayer } from '../ai/model-player.ts';
-import type { Move } from '../games/chess/types.ts';
+import type { Move } from '../rules/chess/types.ts';
 
 loadEnv();
 

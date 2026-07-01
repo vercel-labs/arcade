@@ -23,10 +23,10 @@ loadEnv();
 
 import { APICallError, generateText, Output } from 'ai';
 import { z } from 'zod';
-import { ChessState } from '../games/chess/chess.ts';
-import type { Move } from '../games/chess/types.ts';
+import { ChessState } from '../rules/chess/chess.ts';
+import type { Move } from '../rules/chess/types.ts';
 import { ModelPlayer } from '../ai/model-player.ts';
-import { modelsFor, providers } from '../arcade/models.ts';
+import { modelsFor, providers } from '../arcade/match/models.ts';
 
 const CONCURRENCY = 6;
 const TIMEOUT_MS = 30_000;

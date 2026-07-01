@@ -18,10 +18,10 @@ AI yet.
 
 ## Adding a game
 
-Make a folder `games/<name>/` and implement `Game` + `GameState`. Call
+Make a folder `rules/<name>/` and implement `Game` + `GameState`. Call
 `registerGame('<name>', () => yourGame)`. No central edits needed.
 
-## Chess (`games/chess/`)
+## Chess (`rules/chess/`)
 
 Implemented from scratch (zero deps), 0x88 board:
 

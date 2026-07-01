@@ -1,4 +1,4 @@
-// Public API of the engine. App code (arcade/, demo/) imports from here;
+// Public API of the engine. App code (arcade/) imports from here;
 // modules inside the engine import each other directly to avoid cycles.
 export * from './math.ts';
 export * from './shader.ts';

@@ -8,7 +8,7 @@
 // Re-run to refresh the catalog when the gateway adds models/providers. The JSON
 // and PNGs are committed so the app loads instantly and offline.
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { logoUrl } from '../arcade/logos.ts';
+import { logoUrl } from '../arcade/scenes/logos.ts';
 
 const MODELS_URL = 'https://ai-gateway.vercel.sh/v1/models';
 const ASSET_DIR = 'public/assets';

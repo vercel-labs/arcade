@@ -1,7 +1,7 @@
 // Run the EXACT production prism handler locally over HTTP, so you can test the
 // deployed experience — help page, ?truecolor, the browser xterm.js page, frame
 // caching — before shipping. The handler is shared with the Vercel function
-// (src/arcade/prism-stream.ts ← api/index.ts); this just wraps it in a plain
+// (src/prism/prism-stream.ts ← api/index.ts); this just wraps it in a plain
 // Node http server. Output-only (no input), looped.
 //
 //   pnpm exec tsx src/tools/serve-prism.ts [port]
@@ -13,7 +13,7 @@
 // curl doesn't report terminal size, so cols/rows come from the query (with a
 // sensible default). Runs on any long-lived host (Fly, Railway, a VM) too.
 import { createServer } from 'node:http';
-import { streamPrism } from '../arcade/prism-stream.ts';
+import { streamPrism } from '../prism/index.ts';
 
 const PORT = Number(process.argv[2]) || 8080;
 

@@ -1,4 +1,4 @@
-import type { GameState } from '../games/game.ts';
+import type { GameState } from '../rules/game.ts';
 
 // Per-turn context handed to a player when it's asked to move. Bundles the abort
 // signal with the seams a real-time / voice player needs: an `emit` sink to

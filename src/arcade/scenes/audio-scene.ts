@@ -6,8 +6,8 @@ import {
   STYLE_BOLD,
   STYLE_DIM,
   type Surface,
-} from '../engine/index.ts';
-import { OrbitCamera } from './orbit.ts';
+} from '../../engine/index.ts';
+import { OrbitCamera } from '../orbit.ts';
 import { loadWisp, mulberry32, providerTint, type Wisp } from './wisp.ts';
 import {
   AudioPlayer,
@@ -21,8 +21,8 @@ import {
   type RealtimeSession,
   type RealtimeSessionConfig,
   type RealtimeStatus,
-} from '../voice/index.ts';
-import type { KeyEvent } from '../platform/input.ts';
+} from '../../voice/index.ts';
+import type { KeyEvent } from '../../platform/input.ts';
 
 // The realtime audio screen: a live, full-duplex voice conversation with a
 // speech-to-speech model while its provider wisp pulses as it talks. When a mic

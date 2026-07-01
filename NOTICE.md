@@ -17,7 +17,10 @@ coverage shape vectors matched by nearest neighbor.
 The menu game-tile art in `public/assets/games/` is baked (via
 `src/tools/fetch-games.ts`) from **Noto Emoji** by Google
 ([googlefonts/noto-emoji](https://github.com/googlefonts/noto-emoji),
-Apache-2.0 / OFL).
+Apache-2.0 / OFL). The poker tile (`public/assets/games/poker.png`) is the
+ace-of-spades playing-card glyph from **Noto Sans Symbols2** by Google (OFL),
+via [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:PLAYING_CARD_ACE_OF_SPADES.svg),
+with the enclosed card face filled white and padded to a square.
 
 The chess static evaluation (`src/games/chess/eval.ts`) uses the **PeSTO**
 piece-square tables by Ronald Friederich (RofChade), via the

@@ -4,7 +4,7 @@
 //
 //   pnpm exec tsx src/tools/bench.ts [cols] [rows] [frames]
 import { downsample, RenderTarget, toHalfBlock, toLuminance, toShapeGlyph } from '../engine/index.ts';
-import { ChessGameScene } from '../arcade/chess-game.ts';
+import { ChessGameScene } from '../arcade/games/chess/scene.ts';
 
 const cols = Number(process.argv[2]) || 140;
 const rows = Number(process.argv[3]) || 50;

@@ -17,7 +17,7 @@
 // push that touches the prism builds the same output tree. To keep the arcade's
 // daily churn from redeploying the prism, set the project's Ignored Build Step
 // (Settings → Git) to the prism's exact dependency closure:
-//   git diff --quiet HEAD^ HEAD -- api src/engine src/arcade/prism.ts src/arcade/splash.ts
+//   git diff --quiet HEAD^ HEAD -- api src/engine src/prism
 // (Vercel: exit 0 → skip the build, exit 1 → build. So a commit that changes none
 // of those paths is skipped; one that touches the closure redeploys.)
 import { execFileSync } from 'node:child_process';

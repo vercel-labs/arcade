@@ -4,11 +4,11 @@
 // lease keeps frames flowing so the HUD wisps animate while we wait. main.ts owns
 // the surrounding UI — the setup modal, the commentary toast, and the
 // illegal-moves flag — and injects the seams below.
-import { runMatch } from '../ai/match.ts';
-import { ModelPlayer } from '../ai/model-player.ts';
-import type { Player } from '../ai/player.ts';
-import type { ChessGameScene } from './chess-game.ts';
-import type { Move } from '../games/chess/types.ts';
+import { runMatch } from '../../ai/match.ts';
+import { ModelPlayer } from '../../ai/model-player.ts';
+import type { Player } from '../../ai/player.ts';
+import type { ChessGameScene } from '../games/chess/scene.ts';
+import type { Move } from '../../rules/chess/types.ts';
 
 export interface AiMatchDeps {
   chessGame: ChessGameScene;

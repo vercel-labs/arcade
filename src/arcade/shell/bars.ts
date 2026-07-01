@@ -3,18 +3,14 @@
 // pill padding is style padding, and hover colors are a style overlay. Per-button
 // onClick closures replace the id→action if/else that used to live in onMouse.
 
-import { Box, Button, Modal, Text, type Node, type Style } from '../tui/index.ts';
-import { BISHOP, BLACK, type Color, KNIGHT, type PieceType, QUEEN, ROOK } from '../games/chess/types.ts';
-import type { RGB } from '../engine/index.ts';
+import { Box, Button, Modal, Text, type Node, type Style } from '../../tui/index.ts';
+import { BISHOP, BLACK, type Color, KNIGHT, type PieceType, QUEEN, ROOK } from '../../rules/chess/types.ts';
+import type { RGB } from '../../engine/index.ts';
 
-export type Mode = 'prism' | 'menu' | 'demo' | 'chess' | 'chess-game' | 'logos' | 'ui' | 'audio';
+export type Mode = 'prism' | 'menu' | 'chess' | 'chess-game' | 'logos' | 'ui' | 'audio';
 export type RenderMode = 'color' | 'ascii' | 'luminance';
 
 export interface BarActions {
-  chessGame(): void;
-  demo(): void;
-  logos(): void;
-  ui(): void;
   back(): void;
   reset(): void;
   mode(): void;
@@ -61,16 +57,7 @@ export function buildBar(
   const modeLabel = `mode: ${centerField(renderMode, 9)}`;
   let buttons: Node[] = [];
 
-  if (mode === 'prism') {
-    buttons = [
-      Button({ id: 'chess-game', label: 'chess game', onClick: a.chessGame, style: PILL }),
-      Button({ id: 'demo', label: 'demo', onClick: a.demo, style: PILL }),
-      Button({ id: 'logos', label: 'logos', onClick: a.logos, style: PILL }),
-      Button({ id: 'ui', label: 'ui', onClick: a.ui, style: PILL }),
-      Button({ id: 'mode', label: modeLabel, onClick: a.mode, style: PILL }),
-      Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
-    ];
-  } else if (mode === 'demo' || mode === 'ui') {
+  if (mode === 'ui') {
     buttons = [
       Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
       Button({ id: 'mode', label: modeLabel, onClick: a.mode, style: PILL }),
@@ -126,7 +113,12 @@ export function buildBar(
     ];
   }
 
-  return Box({ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 2 }, buttons);
+  // Left-anchored with a 2-cell inset so the row lines up with the move panel's
+  // left edge (chess-hud's panel wrapper uses padding [1, 2]) — and so the wide
+  // chess-game bar, which overflows and can't center, still starts at that same
+  // margin instead of hugging x=0. Every screen's bar flows through here, so they
+  // all share the inset.
+  return Box({ flexDirection: 'row', justifyContent: 'start', alignItems: 'center', gap: 2, padding: [0, 0, 0, 2] }, buttons);
 }
 
 // Piece colors for the promotion popup — the side's set color, lifted a touch so

@@ -8,10 +8,10 @@
 // translucent fill — no line border), and expands back. It's left-anchored, so
 // the "Moves" label keeps the same position in both states. Click it (or the ✕,
 // shown when expanded) to toggle.
-import { Box, Button, type Row, ScrollBox, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../tui/index.ts';
-import type { RGB, RGBA } from '../engine/index.ts';
-import type { ChessResult } from '../games/chess/chess.ts';
-import { WHITE } from '../games/chess/types.ts';
+import { Box, Button, type Row, ScrollBox, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
+import type { RGB, RGBA } from '../../../engine/index.ts';
+import type { ChessResult } from '../../../rules/chess/chess.ts';
+import { WHITE } from '../../../rules/chess/types.ts';
 
 const HISTORY_HEIGHT = 18; // MAX visible move rows — the panel grows to this, then scrolls
 const HISTORY_WIDTH = 22; // inner content width — header + list share it (fixed)

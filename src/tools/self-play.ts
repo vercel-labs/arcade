@@ -12,9 +12,9 @@ import { loadEnv } from '../auth/env.ts';
 
 loadEnv();
 
-import { ChessState } from '../games/chess/chess.ts';
+import { ChessState } from '../rules/chess/chess.ts';
 import { ModelPlayer } from '../ai/model-player.ts';
-import type { Move } from '../games/chess/types.ts';
+import type { Move } from '../rules/chess/types.ts';
 
 const FALLBACK_NOTE = '(no valid reply — fell back to a legal move)';
 const illegal = process.argv.includes('--illegal'); // apply moves with no rules

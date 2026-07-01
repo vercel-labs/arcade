@@ -25,29 +25,36 @@ src/
   engine/     reusable software 3D renderer — knows nothing about the arcade (a library)
   tui/        reusable retained-mode UI library — flexbox layout, Surface compositing
   platform/   terminal control (alt screen, raw mode, SGR mouse) + input parsing
-  games/      game harness (Game/State + registry) + the chess rules engine
+  rules/      game harness (Game/State + registry) + the chess rules engine
+  prism/      the prism screen — a self-contained visual (scene + splash + curl/HTTP
+              stream handler); depends only on engine/, shared by arcade + api/ + tools/
   ai/         game AI: Player interface + LLM-backed ModelPlayer + match loop
   auth/       Vercel sign-in (OAuth device flow) + AI Gateway key resolution
   voice/      realtime speech-to-speech session + mic/speaker I/O + echo cancel
-  arcade/     THE app: orchestrator (main.ts) + chess screens + prism/logos scenes
-  demo/       engine cube demo
-  tools/      snapshot.ts (render a frame to an image)
+  arcade/     THE app: orchestrator (main.ts) + per-game/scene/shell presentation
+    games/<game>/   per-game presentation (chess: scene, hud, turntable)
+    match/          AI-vs-AI plumbing (driver, setup modal, model catalog)
+    scenes/         ambient / attract-mode visuals (prism aside): logos, audio, wisp
+    shell/          launcher + window chrome (cover flow, menu, bars, keybindings)
+  tools/      snapshot.ts (render a frame to an image) + dev scripts
 ```
 
 Import direction is one-way: `arcade/` consumes the libraries (`engine/` via the
-`engine/index.ts` barrel, `tui/` via `tui/index.ts`, `auth/` and `voice/` via their
-`index.ts` barrels, plus `platform/`, `games/`, and `ai/` à la carte).
+`engine/index.ts` barrel, `tui/` via `tui/index.ts`, `auth/`, `voice/`, and `prism/` via
+their `index.ts` barrels, plus `platform/`, `rules/`, and `ai/` à la carte).
 **The libraries never import app code** — keep it that way so they stay reusable (the goal
 is to grow `engine/` into a 3D game engine and `tui/` into the shared UI toolkit for every
 game). Inside a library, modules import each other directly, not through the barrel.
+`prism/` is library-tier for the same reason: it's the deploy unit behind `api/` (the
+`curl`-able stream), so it must not depend on the arcade.
 
 ## Commands
 
-- `pnpm dev` — run the arcade (prism screen → chess / demo / logos)
-- `pnpm demo` — run the engine cube demo
-- `pnpm snapshot [cols] [rows] [t]` — render a frame to `.snapshots/prism.ppm`
+- `pnpm dev` — run the arcade (prism screen → chess / logos)
+- `pnpm snapshot [cols] [rows] [t]` — render a frame to `.snapshots/prism.ppm` (`pnpm snapshot help` lists all subcommands)
+- `pnpm snapshot:png …` — same, then convert the `.ppm` to a `.png` in one step
 - `pnpm type-check` — `tsc --noEmit`
-- `pnpm test` — unit tests via `node:test` under `tsx` (no extra deps)
+- `pnpm test` — unit tests via `node:test` under `tsx` (auto-discovers `src/**/*.test.ts`; no extra deps)
 
 ## AI Gateway key (Vercel sign-in)
 

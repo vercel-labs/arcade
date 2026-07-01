@@ -4,7 +4,7 @@
 // 256x256 RGBA PNGs served from a public, hotlinkable Vercel Blob CDN; bake them
 // locally with src/tools/fetch-logo.ts so the arcade stays offline.
 
-import type { RGB } from '../engine/index.ts';
+import type { RGB } from '../../engine/index.ts';
 
 const LOGO_CDN =
   'https://7nyt0uhk7sse4zvn.public.blob.vercel-storage.com/docs-assets/static/docs/ai-gateway/logos';
