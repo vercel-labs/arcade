@@ -38,6 +38,24 @@ export const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0
 const algSquare = (a: string): number => square(a.charCodeAt(0) - 97, Number(a[1]) - 1);
 const CHAR_TYPE: Record<string, PieceType> = { n: KNIGHT, b: BISHOP, r: ROOK, q: QUEEN, k: KING, p: PAWN };
 
+// Could a piece of `type` move from→to on an EMPTY board (geometry only, blockers
+// ignored — illegal mode teleports through pieces)? Used by the loose parser to
+// prefer the source piece whose movement pattern actually reaches the square when
+// the SAN under-specifies which piece moves.
+function reachesGeom(type: PieceType, from: number, to: number): boolean {
+  const df = Math.abs(fileOf(to) - fileOf(from));
+  const dr = Math.abs(rankOf(to) - rankOf(from));
+  switch (type) {
+    case KNIGHT: return (df === 1 && dr === 2) || (df === 2 && dr === 1);
+    case BISHOP: return df === dr && df !== 0;
+    case ROOK: return (df === 0) !== (dr === 0);
+    case QUEEN: return (df === dr && df !== 0) || ((df === 0) !== (dr === 0));
+    case KING: return df <= 1 && dr <= 1 && (df !== 0 || dr !== 0);
+    case PAWN: return df <= 1 && dr >= 1; // permissive; findSource already file-filters pushes
+    default: return false;
+  }
+}
+
 // How a finished game ended (for a result/game-over display).
 export type ChessReason = 'checkmate' | 'stalemate' | 'fifty-move' | 'repetition' | 'insufficient-material';
 export interface ChessResult {
@@ -188,9 +206,15 @@ export class ChessState implements GameState<Move> {
 
   // A source piece of (color, type) for the side to move, narrowed by any
   // disambiguation. Pawn moves without a file hint take the destination file (a
-  // push); otherwise the first matching piece wins (illegal mode is permissive).
+  // push). Among the remaining candidates, prefer one that can actually reach
+  // `to` with its piece's geometry — so a bare "Nf6" binds to the knight that can
+  // make the move, not merely the first in scan order (which is always the
+  // queenside one and would mislabel g8→f6 as "Nbf6"). A genuinely non-geometric
+  // teleport (nothing reaches `to`) still falls back to the first match, keeping
+  // illegal mode permissive; explicit disambiguation ("Nbf6", UCI) is unaffected.
   private findSource(color: Color, type: PieceType, disFile: string | undefined, disRank: string | undefined, to: number): number {
     const sq = this.board.squares;
+    let fallback = -1;
     for (let s = 0; s < 128; s++) {
       if (s & 0x88) continue;
       const p = sq[s];
@@ -198,9 +222,10 @@ export class ChessState implements GameState<Move> {
       if (disFile && FILES[fileOf(s)] !== disFile) continue;
       if (disRank && rankOf(s) + 1 !== Number(disRank)) continue;
       if (type === PAWN && !disFile && fileOf(s) !== fileOf(to)) continue;
-      return s;
+      if (reachesGeom(type, s, to)) return s;
+      if (fallback < 0) fallback = s;
     }
-    return -1;
+    return fallback;
   }
 
   // Assemble a Move that relocates `moving` from→to (capturing whatever's on `to`,

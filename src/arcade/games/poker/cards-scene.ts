@@ -20,7 +20,6 @@ import {
   lambertMaterial,
   type Mat4,
   mat4Multiply,
-  mat4RotX,
   mat4RotY,
   mat4Translate,
   normalize3,
@@ -33,7 +32,7 @@ import { OrbitCamera, type OrbitState } from '../../orbit.ts';
 import { mulberry32 } from '../../scenes/wisp.ts';
 import { type Card, fullDeck, shuffle } from '../../../rules/poker/cards.ts';
 import { cardBackTexture } from './card-textures.ts';
-import { CARD_H, CARD_SCALE, CARD_W, drawCard, flatDown } from './card-render.ts';
+import { CARD_H, CARD_SCALE, CARD_W, drawCard, drawPeekCard, flatDown, type PeekPose, peekCardCenter } from './card-render.ts';
 import { chairMesh, chairModel, TABLE_MODEL, TABLE_RADIUS, tableMesh } from './table.ts';
 
 export type CardsMode = 'single' | 'hand' | 'deck';
@@ -62,7 +61,7 @@ const smooth = (x: number): number => {
 const HOMES: Record<CardsMode, { home: OrbitState; elevMin: number; min: number; max: number }> = {
   single: { home: { azimuth: 0, elevation: 0.16, distance: 2.15, target: { x: 0, y: 0, z: 0 } }, elevMin: -1.4, min: 1.2, max: 8 },
   hand: { home: { azimuth: 0, elevation: 0.56, distance: 7, target: { x: 0, y: 0, z: 1.2 } }, elevMin: 0.14, min: 3, max: 14 },
-  deck: { home: { azimuth: 0, elevation: 0.86, distance: 9.5, target: { x: 0, y: 0, z: 0 } }, elevMin: 0.14, min: 4, max: 22 },
+  deck: { home: { azimuth: 0, elevation: 0.86, distance: 13, target: { x: 0, y: 0, z: 0 } }, elevMin: 0.14, min: 4, max: 28 },
 };
 
 // One card the player holds in HAND mode: its resting seat + how far it's revealed
@@ -72,7 +71,8 @@ const PEEK = 0.6;
 interface HandCard {
   card: Card;
   seatX: number;
-  reveal: number; // animated 0..1
+  reveal: number; // animated 0..1 (driven by a spring, so it can briefly overshoot)
+  vel: number; // reveal velocity, for the spring settle
   up: boolean; // clicked fully up
 }
 
@@ -120,8 +120,8 @@ export class CardsScene {
   private resetHand(): void {
     const d = shuffle(fullDeck(), this.rng);
     this.hand = [
-      { card: d[0], seatX: -0.62, reveal: 0, up: false },
-      { card: d[1], seatX: 0.62, reveal: 0, up: false },
+      { card: d[0], seatX: -0.62, reveal: 0, vel: 0, up: false },
+      { card: d[1], seatX: 0.62, reveal: 0, vel: 0, up: false },
     ];
     this.hovered = -1;
   }
@@ -258,7 +258,7 @@ export class CardsScene {
 
   isAnimating(): boolean {
     if (this.shuffling || this.dealing) return true;
-    for (const c of this.hand) if (Math.abs(c.reveal - this.revealTarget(c)) > 0.001) return true;
+    for (const c of this.hand) if (Math.abs(c.reveal - this.revealTarget(c)) > 0.001 || Math.abs(c.vel) > 0.001) return true;
     return false;
   }
   needsRender(): boolean {
@@ -319,30 +319,32 @@ export class CardsScene {
     const { vp } = this.viewProj(target);
     this.drawTable(target, vp, [0]); // one chair: the hero seat at +z (front)
     const az = this.cam.azimuth;
-    // Advance each card toward its reveal target and draw it (later cards drawn
-    // after earlier so a lifted card sits in front; depth resolves the rest).
+    // Advance each card toward its reveal target on a spring and draw it bent (later
+    // cards drawn after earlier so a lifted card sits in front; depth resolves the
+    // rest). The spring gives the peek a little flex — it springs up and settles with
+    // a small overshoot rather than sliding in linearly.
     for (const c of this.hand) {
-      const targetR = this.revealTarget(c);
-      if (c.reveal < targetR) c.reveal = Math.min(targetR, c.reveal + dt * 5);
-      else if (c.reveal > targetR) c.reveal = Math.max(targetR, c.reveal - dt * 5);
-      this.drawCard(target, vp, this.handModel(c, az), c.card);
+      this.stepReveal(c, this.revealTarget(c), dt);
+      drawPeekCard(target, vp, this.peekPose(c, az), c.card, this.back);
     }
   }
 
-  // A hand card's model: laid flat & face-down at reveal 0, tipped up at PEEK,
-  // lifted upright and yawed to face the camera at reveal 1.
-  private handModel(c: HandCard, az: number): Mat4 {
-    const e = smooth(c.reveal);
-    const rx = (Math.PI / 2) * (1 - e); // 90° flat (face down) → 0° upright
-    // Lift ramps in with a linear term too, so a peeking (tilted) card rises off
-    // the felt rather than pivoting its far edge down through it.
-    const y = 0.02 + 0.3 * e + 0.42 * e * e;
-    const z = HAND_SEAT_Z + 0.5 * e; // pull toward the hero (camera) as it rises → centers in view
-    const yaw = az * e; // face the camera when up
-    return mat4Multiply(
-      mat4Translate(c.seatX, y, z),
-      mat4Multiply(mat4RotY(yaw), mat4Multiply(mat4RotX(rx), CARD_SCALE)),
-    );
+  // A lightly-damped spring on `reveal`: stiffness pulls toward the target, damping
+  // bleeds velocity. Semi-implicit Euler (velocity first) stays stable at the frame's
+  // dt; the card can never curl below the felt, so reveal is clamped at 0.
+  private stepReveal(c: HandCard, target: number, dt: number): void {
+    const K = 190; // stiffness → ~0.4s settle
+    const D = 19; // damping (ζ≈0.7: a subtle single bounce, no ringing)
+    c.vel += (K * (target - c.reveal) - D * c.vel) * dt;
+    c.reveal += c.vel * dt;
+    if (c.reveal < 0) {
+      c.reveal = 0;
+      if (c.vel < 0) c.vel = 0;
+    }
+  }
+
+  private peekPose(c: HandCard, az: number): PeekPose {
+    return { seatX: c.seatX, seatZ: HAND_SEAT_Z, reveal: c.reveal, peek: PEEK, az };
   }
 
   private renderDeck(target: RenderTarget, dt: number): void {
@@ -442,8 +444,8 @@ export class CardsScene {
         // Flat footprint around the seat (in front of the hero at HAND_SEAT_Z).
         if (Math.abs(hitX - c.seatX) <= CARD_W / 2 + 0.12 && Math.abs(hitZ - HAND_SEAT_Z) <= CARD_H / 2 + 0.12) best = i;
       } else {
-        // Lifted: proximity to the projected card center.
-        const p = mat4MulPoint(mat4Multiply(vp, this.handModel(c, this.cam.azimuth)), { x: 0, y: 0, z: 0 });
+        // Peeking / lifted: proximity to the projected (bent) card center.
+        const p = mat4MulPoint(vp, peekCardCenter(this.peekPose(c, this.cam.azimuth)));
         if (p && Math.abs(p.x - ndcX) < 0.35 && Math.abs(p.y - ndcY) < 0.45) best = i;
       }
     }

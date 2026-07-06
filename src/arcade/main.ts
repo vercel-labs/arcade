@@ -37,7 +37,7 @@ import type { ChessResult } from '../rules/chess/chess.ts';
 import type { RGB, RGBA } from '../engine/index.ts';
 import { Box, Button, Renderer, Screen, type LayoutBox, type Node, type Style } from '../tui/index.ts';
 import { installKeymap } from './shell/keybindings.ts';
-import { buildTeamSwitch, mountTeamSwitch, setTeamSwitchHandlers, setTeamSwitchTeams, type TeamSwitchView } from './shell/team-switch.ts';
+import { buildTeamSwitch, markSwitchSucceeded, mountTeamSwitch, setTeamSwitchHandlers, setTeamSwitchTeams, type TeamSwitchView } from './shell/team-switch.ts';
 import * as term from '../platform/terminal.ts';
 import { availableTeams, ensureGatewayKey, isLoggedIn, loadEnv, signOut as signOutVercel, switchTeam, type Team, useTeam } from '../auth/index.ts';
 import { AiMatch, type Seat } from './match/driver.ts';
@@ -340,9 +340,11 @@ async function loadTeams(): Promise<void> {
   r.requestRender();
 }
 
-// Commit a picked team: re-mint the key for it (silently — the TUI is live) and
-// close. The re-minted key lands in process.env, so subsequent model/voice calls
-// bill the new team. On failure the modal stays open showing the error.
+// Commit a picked team: show a "switching…" state, re-mint the key for it (silently
+// — the TUI is live), and on success mark the row with a ✓ and stay open so the
+// switch reads as confirmed (the user closes with the ✕ / Esc). The re-minted key
+// lands in process.env, so subsequent model/voice calls bill the new team. On failure
+// the modal stays open showing the error.
 function pickTeamChoice(team: Team): void {
   if (!teamModalOpen) return;
   teamView = { kind: 'switching', team: team.name };
@@ -351,11 +353,12 @@ function pickTeamChoice(team: Team): void {
     try {
       await useTeam(team);
       keyFromLogin = true;
-      closeTeamSwitch();
+      markSwitchSucceeded(team); // ✓ on the switched row
+      teamView = { kind: 'loaded' }; // back to the list (now showing the ✓), modal stays open
     } catch (err) {
       teamView = { kind: 'error', message: err instanceof Error ? err.message : String(err) };
-      r.requestRender();
     }
+    r.requestRender();
   })();
 }
 
@@ -883,6 +886,7 @@ const actions: BarActions = {
   audioModel: () => audioScene.cycleModel(),
   pokerAI: pokerButton,
   pokerNewMatch,
+  pokerSeat: () => pokerScene.focusHero(),
 };
 
 // Named commands + a layered keymap (the OpenTUI-style command surface). Each
@@ -1070,7 +1074,7 @@ function syncBar(): void {
     const region = { x: 0, y: 0, w: cols, h: rows };
     if (teamModalOpen) {
       if (!keymap.hasContext('teamswitch')) keymap.pushContext('teamswitch', true);
-      ui.setRoot(buildTeamSwitch(teamView, { onCancel: closeTeamSwitch, onSignIn: teamSwitchSignIn }), region);
+      ui.setRoot(buildTeamSwitch(teamView, { onClose: closeTeamSwitch, onSignIn: teamSwitchSignIn }), region);
       // Focus the list once it's populated so ↑↓/Enter drive it (the Slot isn't in
       // the loading/switching trees, so wait for 'loaded').
       if (teamView.kind === 'loaded' && !teamModalFocused) {
@@ -1345,10 +1349,13 @@ function onMouseImpl(e: MouseEvent): void {
     }
     if (e.type === 'move') {
       ui.hover(e.x, e.y);
-      // Cards screen: pointer-move drives the hand-peek hover (no click needed).
+      // Cards screen / poker table: pointer-move drives the hole-card peek hover.
       if (mode === 'cards') {
         const { ndcX, ndcY, aspect } = pointerNdc(e.x, e.y);
         cardsScene.hover(ndcX, ndcY, aspect);
+      } else if (mode === 'poker') {
+        const { ndcX, ndcY, aspect } = pointerNdc(e.x, e.y);
+        pokerScene.hoverCard(ndcX, ndcY, aspect);
       }
       return;
     }
@@ -1405,6 +1412,10 @@ function onMouseImpl(e: MouseEvent): void {
         // Click a hand card to lift it (hand mode); a no-op in single/deck.
         const { ndcX, ndcY, aspect } = pointerNdc(e.x, e.y);
         cardsScene.click(ndcX, ndcY, aspect);
+      } else if (isClick && mode === 'poker') {
+        // Click one of your own hole cards to lift it fully face-on.
+        const { ndcX, ndcY, aspect } = pointerNdc(e.x, e.y);
+        pokerScene.clickCard(ndcX, ndcY, aspect);
       }
       draggingCamera = false;
       return;
