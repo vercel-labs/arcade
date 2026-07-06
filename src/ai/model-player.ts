@@ -3,13 +3,25 @@ import { z } from 'zod';
 import type { GameState } from '../rules/game.ts';
 import type { Player, TurnContext } from './player.ts';
 
+// How a game's moves are written, woven into the prompt + schema so the SAME
+// ModelPlayer serves any harness game. Chess is the default (SAN); poker passes its
+// own ("fold / call / raise <n> / …").
+export interface MoveNotation {
+  /** A short name for the move format, e.g. "standard algebraic notation". */
+  description: string;
+  /** A few example moves, e.g. `"Nf3", "e4", "O-O"`. */
+  examples: string;
+}
+const CHESS_NOTATION: MoveNotation = { description: 'standard algebraic notation', examples: '"Nf3", "e4", "O-O", "exd5"' };
+
 // Forced structured output: the model returns a move + a one-line rationale, so
-// we never scrape prose. The move is still validated against the harness's legal
-// list (the model can hallucinate a legal-looking-but-illegal move) before play.
-const moveSchema = z.object({
-  move: z.string().describe('Your chosen move in standard algebraic notation, e.g. "Nf3", "e4", "O-O", "exd5".'),
-  rationale: z.string().describe('One short sentence explaining the move, for spectators.'),
-});
+// we never scrape prose. The move is still validated (parsed against the harness)
+// before play; a legal-looking-but-illegal move is re-prompted.
+const buildSchema = (notation: MoveNotation) =>
+  z.object({
+    move: z.string().describe(`Your chosen move in ${notation.description}, e.g. ${notation.examples}.`),
+    rationale: z.string().describe('One short sentence explaining the move, for spectators.'),
+  });
 
 export interface ModelPlayerOpts {
   /**
@@ -26,6 +38,11 @@ export interface ModelPlayerOpts {
   maxRetries?: number;
   /** Game name woven into the prompt ("chess"). */
   gameName?: string;
+  /**
+   * How this game's moves are written (schema + prompt). Defaults to chess SAN, so
+   * chess callers are unchanged; poker passes its own action vocabulary.
+   */
+  moveNotation?: MoveNotation;
   /**
    * Optional persona, sent as the system prompt — gives the player an identity
    * and speaking style (e.g. "You are an aggressive attacker who trash-talks").
@@ -69,6 +86,8 @@ export class ModelPlayer<A> implements Player<A> {
   private banter: boolean;
   private onAttempt?: ModelPlayerOpts['onAttempt'];
   private allowIllegal?: () => boolean;
+  private notation: MoveNotation;
+  private schema: ReturnType<typeof buildSchema>;
 
   constructor(opts: ModelPlayerOpts) {
     this.model = opts.model;
@@ -79,6 +98,8 @@ export class ModelPlayer<A> implements Player<A> {
     this.banter = opts.banter ?? false;
     this.onAttempt = opts.onAttempt;
     this.allowIllegal = opts.allowIllegal;
+    this.notation = opts.moveNotation ?? CHESS_NOTATION;
+    this.schema = buildSchema(this.notation);
   }
 
   async chooseAction(state: GameState<A>, ctx?: TurnContext): Promise<{ action: A; rationale?: string }> {
@@ -110,7 +131,7 @@ export class ModelPlayer<A> implements Player<A> {
           model: this.model,
           system: this.persona,
           abortSignal: signal,
-          output: Output.object({ schema: moveSchema }),
+          output: Output.object({ schema: this.schema }),
           prompt: this.buildPrompt(state, 'json', feedback, opponentSaid),
         });
         move = output.move;
@@ -166,12 +187,12 @@ export class ModelPlayer<A> implements Player<A> {
   // legal moves so a confused model can pick a valid one instead of guessing.
   private retryNote(answer: string, useLoose: boolean, legalSan: string[]): string {
     if (useLoose) {
-      return `\nI couldn't read a move from "${answer}". Reply with one move, e.g. "Nf3", "e4", "Bxf7", or "O-O".`;
+      return `\nI couldn't read a move from "${answer}". Reply with one move, e.g. ${this.notation.examples}.`;
     }
     return (
       `\nYour previous answer "${answer}" was not a legal move here. ` +
       `The legal moves are: ${legalSan.join(', ')}. ` +
-      `Reply with exactly one of them, in standard algebraic notation.`
+      `Reply with exactly one of them, in ${this.notation.description}.`
     );
   }
 
@@ -216,8 +237,8 @@ export class ModelPlayer<A> implements Player<A> {
     // a parseable trailing MOVE: line.
     const format =
       mode === 'json'
-        ? `\n\nReply as JSON with a "move" field (standard algebraic notation, e.g. "Nf3", "e4", "O-O") and a one-sentence "rationale" field.`
-        : `\n\nThink briefly if you wish, then end your reply with a line in exactly this form:\nMOVE: <your move in standard algebraic notation, e.g. Nf3 or e4 or O-O>`;
+        ? `\n\nReply as JSON with a "move" field (${this.notation.description}, e.g. ${this.notation.examples}) and a one-sentence "rationale" field.`
+        : `\n\nThink briefly if you wish, then end your reply with a line in exactly this form:\nMOVE: <your move in ${this.notation.description}, e.g. ${this.notation.examples}>`;
     return [
       `You are a strong ${this.gameName} player. It is your turn to move.`,
       fen ? `\n\nPosition (FEN): ${fen}` : '',

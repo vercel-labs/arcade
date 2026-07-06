@@ -23,3 +23,6 @@ public/assets/chess_decimated/
 # hands-free voice diagnostic logs (local only)
 .audio-logs/
 .vercel
+
+# git worktrees created by the agent harness (local only)
+.claude/worktrees/

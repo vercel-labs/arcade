@@ -27,6 +27,25 @@ export const isRed = (c: Card): boolean => c.suit === HEARTS || c.suit === DIAMO
 // "As", "Td", "Kh" — rank label ("10" for tens) + suit letter.
 export const cardLabel = (c: Card): string => `${RANK_LABELS[c.rank]}${SUIT_LETTERS[c.suit]}`;
 
+// The Ace-high comparison value of a rank index, 2..14 (2=deuce … 14=Ace). The
+// `rank` index itself has NO ordering semantics (Ace is index 0), so anything that
+// compares cards — the poker hand evaluator, straights, kickers — must go through
+// this rather than using `rank` directly. The wheel (A-2-3-4-5) treats the Ace as
+// 1; that special case lives in the evaluator, not here.
+export const rankValue = (c: Card): number => (c.rank === 0 ? 14 : c.rank + 1);
+
+// Parse "As", "Td"/"10d", "Kh" back into a Card (inverse of cardLabel), or null if
+// it isn't a valid code. Case-insensitive. Handy for fixed test fixtures.
+export function parseCard(s: string): Card | null {
+  const m = s.trim().match(/^(10|[a2-9tjqk])([shdc])$/i);
+  if (!m) return null;
+  const label = m[1].toUpperCase() === 'T' ? '10' : m[1].toUpperCase();
+  const rank = RANK_LABELS.indexOf(label as (typeof RANK_LABELS)[number]);
+  const suit = SUIT_LETTERS.indexOf(m[2].toLowerCase() as (typeof SUIT_LETTERS)[number]);
+  if (rank < 0 || suit < 0) return null;
+  return { rank, suit: suit as Suit };
+}
+
 // A fresh ordered 52-card deck (suit-major: spades A..K, then hearts, …).
 export function fullDeck(): Card[] {
   const deck: Card[] = [];

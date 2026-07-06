@@ -280,15 +280,13 @@ export function cardFaceTexture(card: Card): Texture {
 
 let backTex: Texture | null = null;
 
-// The card back: a solid red field with a small white Vercel-style triangle
-// (apex up) in the middle. Tiny + procedural — no image decode, and the little
-// texture stays in cache, so drawing a whole deck of backs is cheap (the big
-// recolored-scan back was thrashing the cache each frame).
+// The card back: a red field with a small white EQUILATERAL Vercel triangle (apex
+// up) centered on the card. Procedural + small, so a whole deck of backs is cheap.
 const BACK_WHITE: RGB = [244, 242, 238];
 export function cardBackTexture(): Texture {
   if (backTex) return backTex;
-  const w = 120;
-  const h = 168;
+  const w = 200;
+  const h = 280;
   const data = new Uint8Array(w * h * 4);
   for (let i = 0; i < w * h; i++) {
     data[i * 4] = BACK_RED[0];
@@ -296,26 +294,27 @@ export function cardBackTexture(): Texture {
     data[i * 4 + 2] = BACK_RED[2];
     data[i * 4 + 3] = 255;
   }
-  // Equilateral triangle centered on the card (the Vercel mark). The apex sits at
-  // the BOTTOM of the texture and the base at the top: laying the card flat mirrors
-  // the texture vertically, so it renders apex-UP like the Vercel logo. 2×2
-  // supersampling softens the edges.
-  const cx = w / 2;
-  const apexY = h * 0.68;
-  const baseY = h * 0.32;
-  const halfBase = w * 0.3;
-  const yLo = Math.min(apexY, baseY);
-  const yHi = Math.max(apexY, baseY);
   const put: Put = (x, y, rgb, a) => blend(data, w, h, x, y, rgb, a);
-  for (let py = Math.floor(yLo) - 1; py <= Math.ceil(yHi) + 1; py++) {
+  const cx = w / 2;
+
+  // Small EQUILATERAL triangle (apex up), centered a touch above the middle. The
+  // texture is 5:7 and maps 1:1 onto the card, so equal pixel spans are equilateral.
+  const halfBase = w * 0.14;
+  const triH = halfBase * Math.sqrt(3); // height of an equilateral triangle with base 2·halfBase
+  const midY = h * 0.47;
+  const apexY = midY - triH / 2;
+  const baseY = midY + triH / 2;
+
+  // 2×2 supersampled fill.
+  for (let py = Math.floor(apexY) - 1; py <= Math.ceil(baseY) + 1; py++) {
     for (let px = Math.floor(cx - halfBase) - 1; px <= Math.ceil(cx + halfBase) + 1; px++) {
       let hits = 0;
       for (let sy = 0; sy < 2; sy++) {
         for (let sx = 0; sx < 2; sx++) {
           const fx = px + 0.25 + sx * 0.5;
           const fy = py + 0.25 + sy * 0.5;
-          if (fy < yLo || fy > yHi) continue;
-          const hw = (halfBase * Math.abs(fy - apexY)) / Math.abs(baseY - apexY); // 0 at apex → halfBase at base
+          if (fy < apexY || fy > baseY) continue;
+          const hw = (halfBase * (fy - apexY)) / (baseY - apexY);
           if (Math.abs(fx - cx) <= hw) hits++;
         }
       }

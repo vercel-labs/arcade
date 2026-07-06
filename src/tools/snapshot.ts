@@ -23,6 +23,11 @@ import { buildMatchSetup, mountMatchSetup } from '../arcade/match/setup.ts';
 import { providers } from '../arcade/match/models.ts';
 import { CardsScene, type CardsMode } from '../arcade/games/poker/cards-scene.ts';
 import { buildPokerRoot, mountPokerHud } from '../arcade/games/poker/hud.ts';
+import { PokerGameScene, type PokerSeatView } from '../arcade/games/poker/poker-scene.ts';
+import { buildPokerGameRoot, mountPokerGameHud, refreshPokerLog } from '../arcade/games/poker/poker-hud.ts';
+import { buildPokerSetup, mountPokerSetup } from '../arcade/match/poker-setup.ts';
+import { HoldemState } from '../rules/poker/holdem.ts';
+import { mulberry32 } from '../arcade/scenes/wisp.ts';
 import { RANK_LABELS, type Suit, SUIT_LETTERS } from '../rules/poker/cards.ts';
 import type { Color } from '../rules/chess/types.ts';
 import { Box, Button, Dropdown, layout, paint, Screen, type PaintState } from '../tui/index.ts';
@@ -163,7 +168,7 @@ function blockBits(ch: string, px: number, py: number): boolean {
 }
 
 const noop = (): void => {};
-const barActions = { back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop, evalBar: noop, audioModel: noop };
+const barActions = { back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop, evalBar: noop, audioModel: noop, pokerAI: noop, pokerNewMatch: noop };
 
 // Render a scene full-height, then composite that screen's button bar over it —
 // proving the bar sits ON TOP of the 3D scene (opaque pills overwrite it;
@@ -280,6 +285,7 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot attract [cols] [rows] [t] [out]    prism attract marquee
   pnpm snapshot cards [single|hand|deck] [cols] [rows] [state] [out]   the cards screen
       (single: a code like Kh/10s/As · hand: peek|up · deck: shuffle|deal)
+  pnpm snapshot poker [cols] [rows] [preflop|flop|river|showdown] [players=N] [color] [out]   the poker table
 
 Convert + view:  sips -s format png .snapshots/<name>.ppm --out .snapshots/<name>.png -Z 1000`;
 
@@ -319,8 +325,109 @@ if (process.argv[2] === 'help' || process.argv[2] === '--help' || process.argv[2
   attractSnapshot();
 } else if (process.argv[2] === 'cards') {
   cardsSnapshot();
+} else if (process.argv[2] === 'poker') {
+  pokerSnapshot();
 } else {
   sceneSnapshot();
+}
+
+// The poker table with a dealt hand at a chosen street, presented through the app's
+// default ASCII path (plus the projected stack/pot overlay).
+//   pnpm exec tsx src/tools/snapshot.ts poker [cols] [rows] [preflop|flop|river|showdown] [players=N] [color] [out.ppm]
+function pokerSnapshot(): void {
+  const args = process.argv.slice(3);
+  const cols = Number(args.find((a) => /^\d+$/.test(a))) || 150;
+  const rows = Number(args.filter((a) => /^\d+$/.test(a))[1]) || 46;
+  const street = (['preflop', 'flop', 'river', 'showdown'].find((s) => args.includes(s)) ?? 'flop') as string;
+  const players = Number(args.find((a) => /^players=\d+$/.test(a))?.split('=')[1]) || 2;
+  const out = args.find((a) => a.endsWith('.ppm')) ?? `.snapshots/poker-${street}.ppm`;
+  const SS = 3;
+
+  const scene = new PokerGameScene();
+  const seatViews: PokerSeatView[] = [{ kind: 'human', label: 'You' }];
+  const provs = providers().map((p) => p.slug);
+  for (let s = 1; s < players; s++) seatViews.push({ kind: 'ai', label: `AI ${s}`, provider: provs[(s - 1) % provs.length] });
+  scene.beginSession(seatViews);
+
+  const state = new HoldemState({ stacks: new Array(players).fill(1000), button: 0, smallBlind: 10, bigBlind: 20, rng: mulberry32(0x90ce7) });
+  scene.beginHand(state);
+  // Drive a few scripted actions to reach the requested street (everyone calls/checks).
+  const advanceTo = (target: number): void => {
+    let guard = 0;
+    while (state.street() < target && !state.isTerminal() && guard++ < 100) {
+      const toCall = state.toCall(state.toActSeat());
+      state.applyAction(toCall > 0 ? { type: 'call' } : { type: 'check' });
+    }
+  };
+  if (street === 'flop') advanceTo(1);
+  else if (street === 'river') advanceTo(3);
+  else if (street === 'showdown') {
+    let guard = 0;
+    while (!state.isTerminal() && guard++ < 200) {
+      const toCall = state.toCall(state.toActSeat());
+      state.applyAction(toCall > 0 ? { type: 'call' } : { type: 'check' });
+    }
+  }
+
+  const target = new RenderTarget(cols * SS, rows * 2 * SS);
+  let t = 0.05;
+  for (let i = 0; i < 6; i++) {
+    scene.renderScene(target, t);
+    t += 1 / 30;
+  }
+  if (args.includes('color')) {
+    writeDisplayPpm(downsample(target, SS), out);
+    return;
+  }
+  const region = { x: 0, y: 0, w: cols, h: rows };
+  // `setup` composites the poker setup modal over the table (like the chess setup still).
+  if (args.includes('setup')) {
+    const screen = new Screen(cols, rows);
+    mountPokerSetup(screen);
+    screen.setRoot(buildPokerSetup(region, { onStart: noop, onCancel: noop }), region);
+    const surf2 = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
+    surfaceToPpm(surf2, cols, rows, out);
+    return;
+  }
+  // `hud` composites the betting HUD over the table with the hero to act (Fold /
+  // Call / raise slider / All-in visible). Fire a human-move request to flip the
+  // scene into "hero to act" so the controls render.
+  if (args.includes('hud')) {
+    void scene.requestHumanMove(); // sets heroToAct (fire-and-forget in this still)
+    const screen = new Screen(cols, rows);
+    mountPokerGameHud(screen);
+    const st = state;
+    refreshPokerLog(st.history());
+    const hero = {
+      toAct: true,
+      toCall: st.toCall(0),
+      minRaiseTo: st.minRaiseTo(0),
+      maxRaiseTo: st.maxRaiseTo(0),
+      stack: st.stackOf(0),
+      pot: st.potTotal(),
+      canRaise: st.maxRaiseTo(0) > st.currentBetAmount(),
+    };
+    screen.setRoot(
+      buildPokerGameRoot(region, buildBar('poker', 'ascii', barActions, { label: 'pause', active: true }), {
+        hero,
+        blinds: '10/20',
+        commentary: null,
+        t: 0,
+        status: 'Your move',
+      }),
+      region,
+    );
+    const surf2 = screen.snapshot((s) => {
+      shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true });
+      scene.drawOverlay(s, cols, rows);
+    });
+    surfaceToPpm(surf2, cols, rows, out);
+    return;
+  }
+  const surf = new Surface(cols, rows);
+  shapeGlyphToSurface(surf, target, cols, rows, { color: true, hybrid: true });
+  scene.drawOverlay(surf, cols, rows);
+  surfaceToPpm(surf, cols, rows, out);
 }
 
 // The cards screen in one of its three modes, presented through the app's default
@@ -348,6 +455,7 @@ function cardsSnapshot(): void {
       const suit = SUIT_LETTERS.indexOf(m[2].toLowerCase() as (typeof SUIT_LETTERS)[number]);
       if (rank >= 0 && suit >= 0) scene.setCard({ rank, suit: suit as Suit });
     }
+    if (args.includes('back')) scene.orbit(-262, 0); // ~180° azimuth → view the card's back, upright
   } else if (mode === 'hand') {
     if (state === 'peek') {
       scene.setHovered(0);

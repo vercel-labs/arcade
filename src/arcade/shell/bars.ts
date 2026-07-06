@@ -7,7 +7,7 @@ import { Box, Button, Modal, Text, type Node, type Style } from '../../tui/index
 import { BISHOP, BLACK, type Color, KNIGHT, type PieceType, QUEEN, ROOK } from '../../rules/chess/types.ts';
 import type { RGB } from '../../engine/index.ts';
 
-export type Mode = 'prism' | 'menu' | 'chess' | 'chess-game' | 'logos' | 'ui' | 'audio' | 'cards';
+export type Mode = 'prism' | 'menu' | 'chess' | 'chess-game' | 'logos' | 'ui' | 'audio' | 'cards' | 'poker';
 export type RenderMode = 'color' | 'ascii' | 'luminance';
 
 export interface BarActions {
@@ -20,6 +20,8 @@ export interface BarActions {
   illegalMoves(): void;
   evalBar(): void;
   audioModel(): void;
+  pokerAI(): void;
+  pokerNewMatch(): void;
 }
 
 // A pill: muted slate normally, bright inverted on hover/press, with a distinct
@@ -116,6 +118,18 @@ export function buildBar(
     // panel; the bar just carries nav / camera reset / render mode / quit.
     buttons = [
       Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
+      Button({ id: 'reset', label: 'reset view', onClick: a.reset, style: PILL }),
+      Button({ id: 'mode', label: modeLabel, onClick: a.mode, style: PILL }),
+      Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
+    ];
+  } else if (mode === 'poker') {
+    // The poker table: play (idle → opens setup) → pause (running) → resume (paused);
+    // highlighted while a session exists. Betting lives in the HUD, not the bar.
+    const aiStyle = ai.active ? { ...PILL, background: [86, 64, 120] as RGB, color: [238, 230, 250] as RGB } : PILL;
+    buttons = [
+      Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
+      Button({ id: 'poker-ai', label: ai.label, onClick: a.pokerAI, style: aiStyle }),
+      Button({ id: 'poker-new', label: 'new match', onClick: a.pokerNewMatch, style: PILL }),
       Button({ id: 'reset', label: 'reset view', onClick: a.reset, style: PILL }),
       Button({ id: 'mode', label: modeLabel, onClick: a.mode, style: PILL }),
       Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),

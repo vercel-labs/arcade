@@ -12,6 +12,7 @@ export interface MenuItem {
 export const MENU_ITEMS: MenuItem[] = [
   { id: 'chess', title: 'Chess', enabled: true },
   { id: 'poker', title: 'Poker', enabled: true },
+  { id: 'poker-test', title: 'Poker-Test', enabled: true },
   { id: 'logos', title: 'Logos', enabled: true },
   { id: 'audio', title: 'Audio', enabled: true },
   { id: 'ui', title: 'UI', enabled: true },

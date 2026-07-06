@@ -19,6 +19,10 @@ import { ChessScene } from './games/chess/turntable.ts';
 import { ChessGameScene } from './games/chess/scene.ts';
 import { CardsScene } from './games/poker/cards-scene.ts';
 import { buildPokerRoot, mountPokerHud, pokerMode, setPokerHandlers } from './games/poker/hud.ts';
+import { PokerGameScene } from './games/poker/poker-scene.ts';
+import { buildPokerGameRoot, type HeroContext, mountPokerGameHud, refreshPokerLog, setPokerGameHandlers } from './games/poker/poker-hud.ts';
+import { PokerMatch } from './match/poker-driver.ts';
+import { buildPokerSetup, mountPokerSetup, pokerSetupSelection } from './match/poker-setup.ts';
 import { LogosScene } from './scenes/logos-scene.ts';
 import { AudioScene } from './scenes/audio-scene.ts';
 import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/input.ts';
@@ -77,6 +81,7 @@ const chessGame = new ChessGameScene();
 const logosScene = new LogosScene();
 const audioScene = new AudioScene();
 const cardsScene = new CardsScene();
+const pokerScene = new PokerGameScene();
 // The 2D UI overlay (button bar). Lays out + paints over the scene each frame.
 const ui = new Screen(cols, rows);
 // Render-on-demand loop. Animating screens hold a live lease; static screens
@@ -106,10 +111,11 @@ function orbitScene(): ChessScene | ChessGameScene | null {
 // backdrop is camera-controllable too, so dragging on the scene behind the panel
 // rotates it.) `orbitScene()` stays null for 'ui' so the tick uses the dedicated
 // 'ui' branch, which always recomposites for live component edits.
-function activeOrbit(): ChessScene | ChessGameScene | LogosScene | AudioScene | CardsScene | null {
+function activeOrbit(): ChessScene | ChessGameScene | LogosScene | AudioScene | CardsScene | PokerGameScene | null {
   if (mode === 'logos') return logosScene;
   if (mode === 'audio') return audioScene;
   if (mode === 'cards') return cardsScene;
+  if (mode === 'poker') return pokerScene;
   if (mode === 'ui') return chess;
   return orbitScene();
 }
@@ -177,6 +183,10 @@ let matchSeats: { white: Seat; black: Seat } | null = null;
 // focus-once edge, like the setup modal.
 let wispSwap: { color: Color; wasPaused: boolean } | null = null;
 let wispSwapFocused = false;
+// The poker setup modal (pick opponents + models), gated on a Gateway key like the
+// chess match setup. `pokerSetupFocused` is its focus-once edge.
+let pokerSetupOpen = false;
+let pokerSetupFocused = false;
 // When on, AI moves bypass the rules: the model's move is parsed loosely and
 // applied as-is. A thunk hands this live value to each ModelPlayer.
 let illegalAllowed = false;
@@ -223,7 +233,8 @@ function syncLive(): void {
     mode === 'menu' ||
     mode === 'logos' ||
     mode === 'audio' ||
-    (mode === 'chess-game' && chessGame.isMatchActive());
+    (mode === 'chess-game' && chessGame.isMatchActive()) ||
+    (mode === 'poker' && pokerScene.isActive());
   if (want === liveHeld) return;
   if (want) r.requestLive();
   else r.dropLive();
@@ -529,6 +540,136 @@ function confirmWispSwap(): void {
   closeWispSwap();
 }
 
+// ── Poker session ───────────────────────────────────────────────────────────────
+// The multi-hand poker driver (rotating button/blinds, carried stacks). main owns
+// the surrounding UI — the setup modal, the commentary toast, the betting HUD.
+const pokerMatch = new PokerMatch({
+  scene: pokerScene,
+  syncLive,
+  requestRender: () => r.requestRender(),
+  onCommentary: (text, model) => {
+    commentary = { text, model, until: t + COMMENTARY_SECS };
+  },
+  onHandOver: () => {
+    forceFrame = true;
+    r.requestRender();
+  },
+});
+
+// Wire the hero's betting controls to the scene (main owns the scene; the HUD owns
+// the buttons/slider). Each commits the hero's action to the match loop, then asks
+// for a repaint so the controls hide until the hero's next turn.
+setPokerGameHandlers({
+  onFold: () => {
+    pokerScene.commitHumanAction({ type: 'fold' });
+    forceFrame = true;
+    r.requestRender();
+  },
+  onCheckCall: () => {
+    const st = pokerScene.state();
+    const action = st.toCall(st.toActSeat()) > 0 ? ({ type: 'call' } as const) : ({ type: 'check' } as const);
+    pokerScene.commitHumanAction(action);
+    forceFrame = true;
+    r.requestRender();
+  },
+  onBetRaise: (amount) => {
+    pokerScene.commitHumanAction({ type: 'raise', to: amount });
+    forceFrame = true;
+    r.requestRender();
+  },
+  onAllin: () => {
+    pokerScene.commitHumanAction({ type: 'allin' });
+    forceFrame = true;
+    r.requestRender();
+  },
+  onSliderChange: () => {
+    forceFrame = true;
+    r.requestRender();
+  },
+});
+
+// Stop the poker session (navigating away / new match). Safe when idle.
+function stopPokerMatch(): void {
+  pokerMatch.stop();
+  commentary = null;
+}
+
+// Open the poker setup modal (needs a Gateway key, like the chess match setup).
+function openPokerSetup(): void {
+  if (!process.env.AI_GATEWAY_API_KEY) {
+    commentary = { text: 'Press s to sign in to Vercel and play (or set AI_GATEWAY_API_KEY)', model: '', until: t + 6 };
+    r.requestRender();
+    return;
+  }
+  mountPokerSetup(ui);
+  pokerSetupOpen = true;
+  pokerSetupFocused = false;
+  forceFrame = true;
+  r.requestRender();
+}
+
+function closePokerSetup(): void {
+  pokerSetupOpen = false;
+  pokerSetupFocused = false;
+  forceFrame = true;
+  r.requestRender();
+}
+
+// Start button: begin a session with the chosen seats (guaranteed present).
+function confirmPokerSetup(): void {
+  const seats = pokerSetupSelection();
+  if (!seats) return;
+  closePokerSetup();
+  pokerMatch.start(seats);
+}
+
+// The poker AI button / 'p' key: play (idle → open setup) → pause (running) → resume.
+function pokerButton(): void {
+  if (mode !== 'poker') enterPoker();
+  if (!pokerMatch.isRunning()) openPokerSetup();
+  else if (pokerMatch.isPaused()) pokerMatch.resume();
+  else pokerMatch.pause();
+  r.requestRender();
+}
+
+// New match: stop the current session and re-open the setup modal.
+function pokerNewMatch(): void {
+  if (mode !== 'poker') return;
+  stopPokerMatch();
+  openPokerSetup();
+}
+
+// Build the hero's decision context for the HUD from the live hand (seat 0 = hero).
+function pokerHero(): HeroContext {
+  const idle: HeroContext = { toAct: false, toCall: 0, minRaiseTo: 0, maxRaiseTo: 0, stack: 0, pot: 0, canRaise: false };
+  if (mode !== 'poker' || !pokerScene.isActive()) return idle;
+  let st;
+  try {
+    st = pokerScene.state();
+  } catch {
+    return idle;
+  }
+  return {
+    toAct: pokerScene.heroToAct(),
+    toCall: st.toCall(0),
+    minRaiseTo: st.minRaiseTo(0),
+    maxRaiseTo: st.maxRaiseTo(0),
+    stack: st.stackOf(0),
+    pot: st.potTotal(),
+    canRaise: st.maxRaiseTo(0) > st.currentBetAmount(),
+  };
+}
+
+// A short status line for the HUD when no commentary/turn prompt is showing.
+function pokerStatus(): string {
+  if (mode !== 'poker') return '';
+  if (!pokerScene.isActive()) return 'Press play to start a match';
+  if (!pokerMatch.isRunning()) return 'Session over — new match to play again';
+  if (pokerMatch.isPaused()) return 'Paused';
+  if (pokerScene.heroToAct()) return 'Your move';
+  return '';
+}
+
 // Toggle illegal-moves mode (bar button / 'i' key). Takes effect on the next AI
 // move (the ModelPlayers read it live via a thunk).
 function toggleIllegal(): void {
@@ -592,6 +733,17 @@ function enterCards(): void {
   fullRepaint();
 }
 
+// The poker game screen: a 3D table where you play no-limit Hold'em against AI
+// models. Entering shows the idle felt; the 'play' button opens the setup modal.
+function enterPoker(): void {
+  stopAiMatch();
+  audioScene.deactivate();
+  mode = 'poker';
+  draggingCamera = false;
+  mountPokerGameHud(ui);
+  fullRepaint();
+}
+
 // Wire the poker HUD's controls to the scene. Stored once; the dropdowns/buttons
 // call these on interaction.
 setPokerHandlers({
@@ -622,6 +774,7 @@ setPokerHandlers({
 
 function toPrism(): void {
   stopAiMatch();
+  stopPokerMatch();
   audioScene.deactivate(); // tear down any open voice session when leaving
   mode = 'prism';
   ui.setRoot(null); // attract screen has no bar — clear any prior screen's overlay
@@ -632,6 +785,7 @@ function toPrism(): void {
 // returned to by a game's "back". No bar — the tiles are the navigation surface.
 function enterMenu(): void {
   stopAiMatch();
+  stopPokerMatch();
   audioScene.deactivate(); // tear down any open voice session when leaving
   mode = 'menu';
   menuSel = 0;
@@ -659,7 +813,8 @@ function enterGame(id: string): void {
   if (id === 'chess') enterChessGame();
   else if (id === 'logos') enterLogos();
   else if (id === 'audio') enterAudio();
-  else if (id === 'poker') enterCards();
+  else if (id === 'poker') enterPoker();
+  else if (id === 'poker-test') enterCards();
   else if (id === 'ui') enterUi();
 }
 
@@ -725,6 +880,8 @@ const actions: BarActions = {
   illegalMoves: toggleIllegal,
   evalBar: toggleEvalBar,
   audioModel: () => audioScene.cycleModel(),
+  pokerAI: pokerButton,
+  pokerNewMatch,
 };
 
 // Named commands + a layered keymap (the OpenTUI-style command surface). Each
@@ -762,13 +919,16 @@ const keymap = installKeymap({
   closeGameOver,
   closeMatchSetup,
   cancelWispSwap,
+  pokerButton,
+  pokerNewMatch,
+  closePokerSetup,
 });
 
 // Point the keymap's base layer at the current mode (chess + chess-game share
 // the orbit bindings). The 'promoting' modal is pushed/popped separately.
 function syncContext(): void {
   const layer: string = mode === 'chess' || mode === 'chess-game' ? 'chess' : mode;
-  keymap.setBase(layer);
+  keymap.setBase(layer); // 'poker' maps straight through to the poker layer
 }
 
 // Toggle per-frame glyph jitter; forceFrame so an idle chess turntable repaints.
@@ -814,6 +974,9 @@ function syncBar(): void {
     gameOver = null;
   }
   if (mode !== 'chess-game') matchSetupOpen = false; // the picker only lives in the chess view
+  if (mode !== 'poker') pokerSetupOpen = false; // the poker picker only lives in the poker view
+  // The poker-setup modal layer is popped whenever its modal isn't open (any branch).
+  if (!pokerSetupOpen && keymap.hasContext('poker-setup')) keymap.popContext('poker-setup');
   const popGameOver = (): void => {
     if (keymap.hasContext('gameover')) keymap.popContext('gameover');
   };
@@ -918,6 +1081,25 @@ function syncBar(): void {
       if (keymap.hasContext('teamswitch')) keymap.popContext('teamswitch');
       ui.setRoot(buildMenuOverlay(), region);
     }
+  } else if (pokerSetupOpen) {
+    if (keymap.hasContext('promoting')) keymap.popContext('promoting');
+    popGameOver();
+    popSetup();
+    popSwap();
+    promoFocused = false;
+    if (!keymap.hasContext('poker-setup')) keymap.pushContext('poker-setup', true);
+    mountPokerSetup(ui); // a prior modal root may have dropped the Slots
+    ui.setRoot(buildPokerSetup({ x: 0, y: 0, w: cols, h: rows }, { onStart: confirmPokerSetup, onCancel: closePokerSetup }), {
+      x: 0,
+      y: 0,
+      w: cols,
+      h: rows,
+    });
+    if (!pokerSetupFocused) {
+      ui.setFocus('poker-oppcount'); // start on the opponent-count picker
+      pokerSetupFocused = true;
+      forceFrame = true;
+    }
   } else if (mode === 'ui') {
     popGameOver();
     popSetup();
@@ -973,6 +1155,35 @@ function syncBar(): void {
     // Slots), then build the control panel + bar over the scene.
     mountPokerHud(ui);
     ui.setRoot(buildPokerRoot({ x: 0, y: 0, w: cols, h: rows }, buildBar('cards', renderMode, actions)), { x: 0, y: 0, w: cols, h: rows });
+  } else if (mode === 'poker') {
+    popGameOver();
+    popSetup();
+    popSwap();
+    // Re-mount the poker HUD components (a prior modal root may have dropped their
+    // Slots), refresh the action log, then build the table HUD + bar over the scene.
+    mountPokerGameHud(ui);
+    let logRows: readonly string[] = [];
+    try {
+      logRows = pokerScene.isActive() ? pokerScene.state().history() : [];
+    } catch {
+      logRows = [];
+    }
+    refreshPokerLog(logRows);
+    const ai = !pokerMatch.isRunning()
+      ? { label: 'play', active: false }
+      : pokerMatch.isPaused()
+        ? { label: 'resume', active: true }
+        : { label: 'pause', active: true };
+    ui.setRoot(
+      buildPokerGameRoot({ x: 0, y: 0, w: cols, h: rows }, buildBar('poker', renderMode, actions, ai), {
+        hero: pokerHero(),
+        blinds: '10/20',
+        commentary,
+        t,
+        status: pokerStatus(),
+      }),
+      { x: 0, y: 0, w: cols, h: rows },
+    );
   } else {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     popGameOver();
@@ -1114,7 +1325,7 @@ function onMouseImpl(e: MouseEvent): void {
   // Modal popups (promotion picker, game-over result, match setup, wisp model
   // swap): clicks/hover go to the popup; the board and camera are frozen until
   // it's dismissed.
-  if (isPromoting() || gameOver || matchSetupOpen || wispSwap) {
+  if (isPromoting() || gameOver || matchSetupOpen || wispSwap || pokerSetupOpen) {
     if (e.type === 'move') ui.hover(e.x, e.y);
     else if (e.type === 'down') ui.pointerDown(e.x, e.y);
     else if (e.type === 'drag') ui.drag(e.x, e.y); // e.g. dragging a dropdown's scrollbar
@@ -1339,6 +1550,33 @@ function tick(dt: number): void {
     }
     forceFrame = false;
     if (cardsScene.needsRender()) r.requestRender();
+    return;
+  }
+
+  if (mode === 'poker') {
+    // The poker table: an active session animates the wisps continuously (a held
+    // live lease keeps frames flowing while the driver awaits the network); between
+    // moves it's dirty-gated like the cards screen. The stack/pot labels are drawn
+    // as a projected overlay in the scene layer (like the audio conversation).
+    syncBar();
+    const sceneDirty = forceFrame || pokerScene.needsRender();
+    if (sceneDirty) pokerScene.renderScene(target, t);
+    if (UNIFIED) {
+      if (sceneDirty || ui.dirty()) {
+        r.write(
+          ui.frameComposited((s) => {
+            presentSceneInto(s, false, true);
+            pokerScene.drawOverlay(s, cols, rows);
+          }, sceneDirty),
+        );
+      }
+    } else if (sceneDirty) {
+      r.write(presentScene(false, true) + ui.frame());
+    } else if (ui.dirty()) {
+      r.write(ui.frame());
+    }
+    forceFrame = false;
+    if (pokerScene.needsRender()) r.requestRender();
     return;
   }
 
