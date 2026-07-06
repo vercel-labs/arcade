@@ -20,6 +20,8 @@ export interface KeyHandlers {
   quit(): void;
   accountSwitchTeam(): void;
   accountSignOut(): void;
+  openTeamSwitch(): void;
+  closeTeamSwitch(): void;
   cycleMode(): void;
   setRenderMode(m: RenderMode): void;
   toggleJitter(): void;
@@ -55,6 +57,8 @@ export function installKeymap(h: KeyHandlers): Keymap {
     { id: 'app.quit', title: 'Quit', run: h.quit },
     { id: 'app.switchTeam', title: 'Switch Vercel team', run: h.accountSwitchTeam },
     { id: 'app.signOut', title: 'Sign out of Vercel', run: h.accountSignOut },
+    { id: 'menu.teamSwitch', title: 'Switch Vercel team', run: h.openTeamSwitch },
+    { id: 'menu.closeTeamSwitch', title: 'Close team switcher', run: h.closeTeamSwitch },
     { id: 'view.cycleRenderMode', title: 'Cycle render style', run: h.cycleMode },
     { id: 'view.setColor', title: 'Render: color', run: () => h.setRenderMode('color') },
     { id: 'view.setLuminance', title: 'Render: luminance', run: () => h.setRenderMode('luminance') },
@@ -117,6 +121,7 @@ export function installKeymap(h: KeyHandlers): Keymap {
     { key: 'enter', cmd: 'menu.select' },
     { key: 'space', cmd: 'menu.select' },
     { key: 'escape', cmd: 'nav.toPrism' },
+    { key: 's', cmd: 'menu.teamSwitch' }, // shadow global 's': open the in-screen modal team picker
     { key: 'o', cmd: 'app.signOut' }, // account home: sign out (switch-team is global 's')
   ]) {
     keymap.bind('menu', b);
@@ -159,5 +164,7 @@ export function installKeymap(h: KeyHandlers): Keymap {
   keymap.bind('setup', { key: 'escape', cmd: 'chess.cancelSetup' });
   // In-match model-swap popup: Escape cancels (same modal treatment as setup).
   keymap.bind('swap', { key: 'escape', cmd: 'chess.cancelSwap' });
+  // Menu team-switch modal: Escape closes it; the modal layer shadows stray keys.
+  keymap.bind('teamswitch', { key: 'escape', cmd: 'menu.closeTeamSwitch' });
   return keymap;
 }

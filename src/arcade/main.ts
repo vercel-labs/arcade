@@ -31,10 +31,11 @@ import { BLACK, type Color, WHITE } from '../rules/chess/types.ts';
 import { evaluate } from '../rules/chess/eval.ts';
 import type { ChessResult } from '../rules/chess/chess.ts';
 import type { RGB, RGBA } from '../engine/index.ts';
-import { Renderer, Screen, type LayoutBox } from '../tui/index.ts';
+import { Box, Button, Renderer, Screen, type LayoutBox, type Node, type Style } from '../tui/index.ts';
 import { installKeymap } from './shell/keybindings.ts';
+import { buildTeamSwitch, mountTeamSwitch, setTeamSwitchHandlers, setTeamSwitchTeams, type TeamSwitchView } from './shell/team-switch.ts';
 import * as term from '../platform/terminal.ts';
-import { loadEnv, ensureGatewayKey, isLoggedIn, signOut as signOutVercel, switchTeam } from '../auth/index.ts';
+import { availableTeams, ensureGatewayKey, isLoggedIn, loadEnv, signOut as signOutVercel, switchTeam, type Team, useTeam } from '../auth/index.ts';
 import { AiMatch, type Seat } from './match/driver.ts';
 
 // Populate process.env from .env.local before anything reads AI_GATEWAY_API_KEY.
@@ -149,6 +150,13 @@ const MENU_EASE_RATE = 8.2;
 let launching = false;
 let launchT = 0;
 let launchSel = 0;
+// The menu's settings gear opens a modal team-switch picker. `teamModalOpen` gates
+// menu input (like the chess modals); `teamModalFocused` is the focus-once edge for
+// the team list; `teamView` drives the modal's contents (loading → the list →
+// switching, or the signed-out / error states).
+let teamModalOpen = false;
+let teamModalFocused = false;
+let teamView: TeamSwitchView = { kind: 'loading' };
 
 // AI-vs-AI match. The two sides are chosen in the setup modal (provider → model).
 // The match turn-loop lifecycle lives in AiMatch (ai-match.ts); main owns the
@@ -288,6 +296,90 @@ function accountSignOut(): void {
     process.stdout.write(was ? '\n  Signed out of Vercel.\n\n' : '\n  Not signed in.\n\n');
     await new Promise((res) => setTimeout(res, 700)); // let the line be read before the wipe
   });
+}
+
+// ── Settings gear: switch Vercel team (menu screen) ─────────────────────────────
+// The gear top-right of the Cover Flow menu opens an in-screen modal team picker —
+// the alt-screen-friendly counterpart to the plain-text `switchTeam()`. Opening
+// kicks off an async team fetch; the menu holds a live render lease, so the
+// loading → list → switching transitions paint as they land.
+function openTeamSwitch(): void {
+  if (mode !== 'menu' || teamModalOpen) return;
+  teamModalOpen = true;
+  teamModalFocused = false;
+  teamView = isLoggedIn() ? { kind: 'loading' } : { kind: 'signedOut' };
+  mountTeamSwitch(ui);
+  forceFrame = true;
+  r.requestRender();
+  if (isLoggedIn()) void loadTeams();
+}
+
+async function loadTeams(): Promise<void> {
+  try {
+    const res = await availableTeams();
+    if (!res) teamView = { kind: 'signedOut' };
+    else if (res.teams.length === 0) teamView = { kind: 'error', message: 'No teams on this account.' };
+    else {
+      setTeamSwitchTeams(res.teams, res.current);
+      teamView = { kind: 'loaded' };
+    }
+  } catch (err) {
+    teamView = { kind: 'error', message: err instanceof Error ? err.message : String(err) };
+  }
+  r.requestRender();
+}
+
+// Commit a picked team: re-mint the key for it (silently — the TUI is live) and
+// close. The re-minted key lands in process.env, so subsequent model/voice calls
+// bill the new team. On failure the modal stays open showing the error.
+function pickTeamChoice(team: Team): void {
+  if (!teamModalOpen) return;
+  teamView = { kind: 'switching', team: team.name };
+  r.requestRender();
+  void (async () => {
+    try {
+      await useTeam(team);
+      keyFromLogin = true;
+      closeTeamSwitch();
+    } catch (err) {
+      teamView = { kind: 'error', message: err instanceof Error ? err.message : String(err) };
+      r.requestRender();
+    }
+  })();
+}
+
+function closeTeamSwitch(): void {
+  if (!teamModalOpen) return;
+  teamModalOpen = false;
+  teamModalFocused = false;
+  forceFrame = true;
+  r.requestRender();
+}
+
+// The signed-out modal's "Sign in" button: close the popup and fall back to the
+// existing plain-text device-login + team-pick flow (it suspends the TUI).
+function teamSwitchSignIn(): void {
+  closeTeamSwitch();
+  accountSwitchTeam();
+}
+
+setTeamSwitchHandlers({ onPick: pickTeamChoice });
+
+// The menu's UI overlay: a settings gear pinned top-right over the Cover Flow
+// scene. The root is transparent so clicks off the gear fall through to the
+// carousel (only the gear pill is a hit surface). The team-switch modal replaces
+// this whole root while open (see syncBar), matching the chess modals.
+const GEAR: Style = {
+  padding: [0, 1],
+  background: [28, 30, 40],
+  color: [200, 205, 220],
+  hover: { background: [238, 240, 248], color: [16, 16, 24] },
+  focus: { background: [86, 90, 108], color: [248, 248, 252] },
+  pressed: { background: [255, 255, 255], color: [12, 12, 18] },
+};
+function buildMenuOverlay(): Node {
+  const gear = Button({ id: 'menu-settings', label: '⚙', onClick: openTeamSwitch, style: GEAR });
+  return Box({ width: cols, height: rows }, [Box({ position: 'absolute', top: 0, right: 1 }, [gear])]);
 }
 
 function cycleMode(): void {
@@ -559,6 +651,7 @@ function launchSelected(): void {
   launching = true;
   launchT = 0;
   launchSel = menuSel;
+  ui.setRoot(null); // hide the settings gear during the flip-to-title launch splash
 }
 
 // Open the actual game screen for a cover id (the destinations the splash hands off to).
@@ -645,6 +738,8 @@ const keymap = installKeymap({
   quit,
   accountSwitchTeam,
   accountSignOut,
+  openTeamSwitch,
+  closeTeamSwitch,
   cycleMode,
   setRenderMode,
   toggleJitter,
@@ -799,6 +894,29 @@ function syncBar(): void {
       ui.setFocus('setup-swap-provider'); // start in the provider list
       wispSwapFocused = true;
       forceFrame = true;
+    }
+  } else if (mode === 'menu') {
+    popGameOver();
+    popSetup();
+    popSwap();
+    // The Cover Flow menu: a settings gear overlay, or — while open — the team-switch
+    // modal replacing the whole root (like the chess modals). Keep the team list
+    // instance mounted either way so its rows survive the rebuild.
+    mountTeamSwitch(ui);
+    const region = { x: 0, y: 0, w: cols, h: rows };
+    if (teamModalOpen) {
+      if (!keymap.hasContext('teamswitch')) keymap.pushContext('teamswitch', true);
+      ui.setRoot(buildTeamSwitch(teamView, { onCancel: closeTeamSwitch, onSignIn: teamSwitchSignIn }), region);
+      // Focus the list once it's populated so ↑↓/Enter drive it (the Slot isn't in
+      // the loading/switching trees, so wait for 'loaded').
+      if (teamView.kind === 'loaded' && !teamModalFocused) {
+        ui.setFocus('team-switch-list');
+        teamModalFocused = true;
+        forceFrame = true;
+      }
+    } else {
+      if (keymap.hasContext('teamswitch')) keymap.popContext('teamswitch');
+      ui.setRoot(buildMenuOverlay(), region);
     }
   } else if (mode === 'ui') {
     popGameOver();
@@ -962,18 +1080,34 @@ function onMouseImpl(e: MouseEvent): void {
   // hovering the focused cover lights it up.
   if (mode === 'menu') {
     if (launching) return; // ignore pointer input during the launch splash
+    // Team-switch modal up: the carousel is frozen behind the scrim; route pointer
+    // input to the popup (like the chess modal block below).
+    if (teamModalOpen) {
+      if (e.type === 'move') ui.hover(e.x, e.y);
+      else if (e.type === 'down') ui.pointerDown(e.x, e.y);
+      else if (e.type === 'drag') ui.drag(e.x, e.y);
+      else if (e.type === 'wheel') ui.wheel(e.x, e.y, e.wheel === -1 ? -1 : 1);
+      else if (e.type === 'up') ui.pointerUp();
+      return;
+    }
     const rect = coverflow.coverScreenRect(menuSel - coverPos, cols, rows);
     const mx = e.x - 1;
     const my = e.y - 1;
     const inside = mx >= rect.x && mx < rect.x + rect.w && my >= rect.y && my < rect.y + rect.h;
     if (e.type === 'move') {
+      ui.hover(e.x, e.y); // light the settings gear when the cursor is over it
       menuHover = inside;
     } else if (e.type === 'wheel') {
       menuNav(e.wheel === -1 ? -1 : 1);
     } else if (e.type === 'down') {
+      // A hit on the gear (a UI surface) opens the modal; a miss falls through to
+      // carousel navigation.
+      if (ui.pointerDown(e.x, e.y)) return;
       if (inside) launchSelected();
       else if (mx < rect.x) menuNav(-1);
       else if (mx >= rect.x + rect.w) menuNav(1);
+    } else if (e.type === 'up') {
+      ui.pointerUp();
     }
     return;
   }
@@ -1132,16 +1266,19 @@ function tick(dt: number): void {
     }
     // Cover Flow hub: ease the carousel toward the selected slot (snap-to-slot),
     // render the 3D covers full-screen, then draw the title + hint chrome on top.
+    // syncBar builds the settings-gear overlay (or the open team-switch modal) that
+    // frameComposited then paints above the chrome.
     coverPos += (menuSel - coverPos) * (1 - Math.exp(-MENU_EASE_RATE * step));
     if (Math.abs(menuSel - coverPos) < 0.0015) coverPos = menuSel;
     coverflow.renderScene(target, coverPos, menuHover ? menuSel : -1);
+    syncBar();
     r.write(
       UNIFIED
         ? ui.frameComposited((s) => {
             presentSceneInto(s);
             drawCoverChrome(s, cols, rows, menuSel);
           })
-        : presentScene(),
+        : presentScene() + ui.frame(),
     );
     return;
   }
