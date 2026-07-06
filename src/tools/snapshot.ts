@@ -25,7 +25,8 @@ import { CardsScene, type CardsMode } from '../arcade/games/poker/cards-scene.ts
 import { buildPokerRoot, mountPokerHud } from '../arcade/games/poker/hud.ts';
 import { RANK_LABELS, type Suit, SUIT_LETTERS } from '../rules/poker/cards.ts';
 import type { Color } from '../rules/chess/types.ts';
-import { Dropdown, layout, paint, Screen, type PaintState } from '../tui/index.ts';
+import { Box, Button, Dropdown, layout, paint, Screen, type PaintState } from '../tui/index.ts';
+import { buildTeamSwitch, mountTeamSwitch, setTeamSwitchTeams } from '../arcade/shell/team-switch.ts';
 
 type Rgb = [number, number, number];
 // One terminal cell rasterizes to CW×CH pixels; the 8x8 glyph stamps top-left.
@@ -150,6 +151,12 @@ function blockBits(ch: string, px: number, py: number): boolean {
     case '╯':
     case '┘':
       return (midY && px <= 4) || (midX && py <= 4);
+    case '⚙': {
+      // No gear in the 8×8 font — approximate it as a hubbed ring (annulus) so the
+      // settings snapshot shows a recognizable knob rather than a blank pill.
+      const r2 = (px - 3.5) ** 2 + (py - 3.5) ** 2;
+      return r2 <= 10 && r2 >= 2;
+    }
     default:
       return false;
   }
@@ -268,6 +275,7 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot audio [cols] [rows] [out]          realtime audio scene (provider wisp)
   pnpm snapshot splash [cols] [rows] [t] [out]     boot splash at time t
   pnpm snapshot coverflow|menu [cols] [rows] [pos] [hover] [out]   Cover Flow carousel
+  pnpm snapshot settings [cols] [rows] [open] [out]   menu settings gear (open → team-switch modal)
   pnpm snapshot launch [cols] [rows] [index] [t] [out]   Cover Flow flip-to-title splash
   pnpm snapshot attract [cols] [rows] [t] [out]    prism attract marquee
   pnpm snapshot cards [single|hand|deck] [cols] [rows] [state] [out]   the cards screen
@@ -301,6 +309,8 @@ if (process.argv[2] === 'help' || process.argv[2] === '--help' || process.argv[2
   audioSnapshot();
 } else if (process.argv[2] === 'splash') {
   splashSnapshot();
+} else if (process.argv[2] === 'settings') {
+  settingsSnapshot();
 } else if (process.argv[2] === 'menu' || process.argv[2] === 'coverflow') {
   coverflowSnapshot();
 } else if (process.argv[2] === 'launch') {
@@ -430,6 +440,52 @@ function coverflowSnapshot(): void {
   surf.drawText(Math.max(0, Math.floor((cols - hint.length) / 2)), rows - 2, hint, [120, 126, 142], [8, 10, 16]);
   surfaceToPpm(surf, cols, rows, out);
   console.log(`wrote ${out} (${cols}x${rows})`);
+}
+
+// The menu's settings gear over the Cover Flow scene, or — with `open` — the
+// team-switch modal it opens (composited via a real Screen so the list Slot
+// expands, seeded with sample teams and a current selection). Mirrors the live
+// menu chrome (title + hint) so placement reads in context.
+//   pnpm exec tsx src/tools/snapshot.ts settings [cols] [rows] [open] [out.ppm]
+function settingsSnapshot(): void {
+  const args = process.argv.slice(3);
+  const cols = Number(args[0]) || 150;
+  const rows = Number(args[1]) || 46;
+  const open = args.includes('open');
+  const out = args.find((a) => a.endsWith('.ppm')) ?? '.snapshots/settings.ppm';
+  const SS = 3;
+  const sel = 0;
+
+  const target = new RenderTarget(cols * SS, rows * 2 * SS);
+  new CoverFlowScene().renderScene(target, 0, -1);
+
+  const screen = new Screen(cols, rows);
+  mountTeamSwitch(screen);
+  const region = { x: 0, y: 0, w: cols, h: rows };
+  if (open) {
+    const teams = [
+      { id: 't1', slug: 'acme', name: 'Acme Corp' },
+      { id: 't2', slug: 'vercel-labs', name: 'Vercel Labs' },
+      { id: 't3', slug: 'personal', name: 'personal' },
+    ];
+    setTeamSwitchTeams(teams, teams[1]); // current = Vercel Labs (● marked, preselected)
+    screen.setRoot(buildTeamSwitch({ kind: 'loaded' }, { onCancel: noop, onSignIn: noop }), region);
+  } else {
+    const gear = { padding: [0, 1] as [number, number], background: [28, 30, 40] as Rgb, color: [200, 205, 220] as Rgb };
+    const overlay = Box({ width: cols, height: rows }, [Box({ position: 'absolute', top: 0, right: 1 }, [Button({ id: 'menu-settings', label: '⚙', style: gear })])]);
+    screen.setRoot(overlay, region);
+  }
+  const surf = screen.snapshot((s) => {
+    shapeGlyphToSurface(s, target, cols, rows, { color: true });
+    const item = MENU_ITEMS[sel];
+    if (item) {
+      const title = item.enabled ? item.title : `${item.title}   coming soon`;
+      s.drawText(Math.max(0, Math.floor((cols - title.length) / 2)), rows - 4, title, [240, 244, 255], [10, 12, 18]);
+    }
+    const hint = '< > select   enter play   esc back';
+    s.drawText(Math.max(0, Math.floor((cols - hint.length) / 2)), rows - 2, hint, [120, 126, 142], [8, 10, 16]);
+  });
+  surfaceToPpm(surf, cols, rows, out);
 }
 
 // A frame of the launch flip-to-title splash for cover `index` at time `t` (s).

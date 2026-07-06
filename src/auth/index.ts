@@ -4,10 +4,13 @@
 // vercel-api.ts are internal plumbing for gateway-key and are not re-exported.
 export { loadEnv } from './env.ts';
 export {
+  availableTeams,
   ensureGatewayKey,
   isLoggedIn,
   signOut,
   switchTeam,
+  useTeam,
   type EnsureOpts,
   type EnsureResult,
 } from './gateway-key.ts';
+export type { Team } from './vercel-api.ts';

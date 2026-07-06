@@ -88,6 +88,28 @@ export async function switchTeam(): Promise<EnsureResult | null> {
   }
 }
 
+// The teams the signed-in user can switch between, plus the team currently billed.
+// For the in-app modal team picker (the menu's settings gear), which needs the raw
+// list to render — unlike switchTeam(), it neither prompts nor prints. Returns null
+// when there's no usable session (not signed in), so the caller can offer sign-in.
+export async function availableTeams(): Promise<{ teams: Team[]; current: Team | null } | null> {
+  if (!isLoggedIn()) return null;
+  const auth = await ensureSession(false);
+  const teams = await listTeams(auth.access_token);
+  return { teams, current: auth.team ?? null };
+}
+
+// Commit a team chosen in the in-app modal: persist it and re-mint the key, all
+// silently — the alt-screen TUI is live, so nothing here may touch stdout. Throws
+// on failure (the caller surfaces it in the modal).
+export async function useTeam(team: Team): Promise<EnsureResult> {
+  const auth = await ensureSession(false);
+  auth.team = team;
+  writeAuth(auth);
+  const key = await mintKey(auth, team, true);
+  return { key, source: 'login', team };
+}
+
 // Delete the stored session and drop the key from this process so AI re-gates.
 // Returns whether a session was actually present.
 export function signOut(): boolean {
@@ -204,15 +226,19 @@ async function ensureUsername(auth: StoredAuth): Promise<string | undefined> {
   return undefined; // anonymous fetch failed — fall back to the bare name
 }
 
-async function mintKey(auth: StoredAuth, team: Team): Promise<string> {
+// `quiet` skips the success lines — set when minting from inside the live TUI
+// (the in-app modal), where any stdout write would corrupt the alt-screen.
+async function mintKey(auth: StoredAuth, team: Team, quiet = false): Promise<string> {
   const username = await ensureUsername(auth);
   // Name only takes effect on the create branch of exchange (get-or-create); an
   // existing key keeps its original name. Matches the playground's "(<user>)" form.
   const name = username ? `${KEY_NAME} (${username})` : KEY_NAME;
   const key = await createGatewayKey(auth.access_token, team.id, name);
   process.env[ENV_KEY] = key;
-  out(green(`  ✓ AI Gateway ready — billed to ${team.name}.`));
-  out();
+  if (!quiet) {
+    out(green(`  ✓ AI Gateway ready — billed to ${team.name}.`));
+    out();
+  }
   return key;
 }
 
