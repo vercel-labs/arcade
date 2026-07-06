@@ -31,7 +31,7 @@ import { mulberry32 } from '../arcade/scenes/wisp.ts';
 import { RANK_LABELS, type Suit, SUIT_LETTERS } from '../rules/poker/cards.ts';
 import type { Color } from '../rules/chess/types.ts';
 import { Box, Button, Dropdown, layout, paint, Screen, type PaintState } from '../tui/index.ts';
-import { buildTeamSwitch, mountTeamSwitch, setTeamSwitchTeams } from '../arcade/shell/team-switch.ts';
+import { buildTeamSwitch, markSwitchSucceeded, mountTeamSwitch, setTeamSwitchTeams } from '../arcade/shell/team-switch.ts';
 
 type Rgb = [number, number, number];
 // One terminal cell rasterizes to CW×CH pixels; the 8x8 glyph stamps top-left.
@@ -162,13 +162,20 @@ function blockBits(ch: string, px: number, py: number): boolean {
       const r2 = (px - 3.5) ** 2 + (py - 3.5) ** 2;
       return r2 <= 10 && r2 >= 2;
     }
+    case '✓':
+      // Checkmark: a short down-stroke (lower-left) meeting a long up-stroke.
+      return (px >= 1 && px <= 3 && Math.abs(py - (px + 2)) <= 0.6) || (px >= 3 && px <= 6 && Math.abs(py - (8 - px)) <= 0.6);
+    case '✕':
+    case '✗':
+      // Cross: the two diagonals of the cell.
+      return Math.abs(px - py) <= 1 || Math.abs(px + py - 7) <= 1;
     default:
       return false;
   }
 }
 
 const noop = (): void => {};
-const barActions = { back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop, evalBar: noop, audioModel: noop, pokerAI: noop, pokerNewMatch: noop };
+const barActions = { back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop, evalBar: noop, audioModel: noop, pokerAI: noop, pokerNewMatch: noop, pokerSeat: noop };
 
 // Render a scene full-height, then composite that screen's button bar over it —
 // proving the bar sits ON TOP of the 3D scene (opaque pills overwrite it;
@@ -280,7 +287,7 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot audio [cols] [rows] [out]          realtime audio scene (provider wisp)
   pnpm snapshot splash [cols] [rows] [t] [out]     boot splash at time t
   pnpm snapshot coverflow|menu [cols] [rows] [pos] [hover] [out]   Cover Flow carousel
-  pnpm snapshot settings [cols] [rows] [open [loading]] [out]   menu settings gear (open → team-switch modal)
+  pnpm snapshot settings [cols] [rows] [open [loading|switched]] [out]   menu settings gear (open → team-switch modal)
   pnpm snapshot launch [cols] [rows] [index] [t] [out]   Cover Flow flip-to-title splash
   pnpm snapshot attract [cols] [rows] [t] [out]    prism attract marquee
   pnpm snapshot cards [single|hand|deck] [cols] [rows] [state] [out]   the cards screen
@@ -586,8 +593,9 @@ function settingsSnapshot(): void {
       { id: 't10', slug: 'nova', name: 'Nova' },
     ];
     setTeamSwitchTeams(teams, teams[1]); // current = Vercel Labs (● marked, preselected)
+    if (args.includes('switched')) markSwitchSucceeded(teams[3]); // ✓ on a just-switched team
     const view = args.includes('loading') ? { kind: 'loading' as const } : { kind: 'loaded' as const };
-    screen.setRoot(buildTeamSwitch(view, { onCancel: noop, onSignIn: noop }), region);
+    screen.setRoot(buildTeamSwitch(view, { onClose: noop, onSignIn: noop }), region);
   } else {
     const gear = { padding: [0, 1] as [number, number], background: [28, 30, 40] as Rgb, color: [200, 205, 220] as Rgb };
     const overlay = Box({ width: cols, height: rows }, [Box({ position: 'absolute', top: 1, right: 2 }, [Button({ id: 'menu-settings', label: '⚙ settings', style: gear })])]);

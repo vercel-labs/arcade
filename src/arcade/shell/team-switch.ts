@@ -12,9 +12,13 @@ const LIST_ROWS = 7; // fixed viewport height; longer team lists scroll past thi
 const CARD_W = LIST_W + 6; // card outer width (content = LIST_W within the [1,3] padding)
 
 // The teams backing the current list contents (index-aligned with the Select's
-// rows), and the pick handler main.ts wires in once at startup.
+// rows), and the pick handler main.ts wires in once at startup. `currentId` is the
+// billed team (● marker); `succeededId` is a team we just switched to (✓ marker),
+// which supersedes the dot so the switch reads as confirmed.
 let teams: Team[] = [];
 let onPick: (team: Team) => void = () => {};
+let currentId: string | null = null;
+let succeededId: string | null = null;
 
 const list = new Select({
   id: 'team-switch-list',
@@ -35,11 +39,11 @@ export function setTeamSwitchHandlers(h: { onPick: (team: Team) => void }): void
   onPick = h.onPick;
 }
 
-// One row label: the currently billed team gets a ● marker, others a blank gutter
-// (so names stay aligned); a dim-free "(slug)" tail disambiguates when the slug
+// One row label: a ✓ for a just-switched team, else ● for the billed team, else a
+// blank gutter (so names stay aligned); a "(slug)" tail disambiguates when the slug
 // differs from the name. Truncated to the list width so long names can't overflow.
-function label(team: Team, current: Team | null): string {
-  const mark = current && team.id === current.id ? '● ' : '  ';
+function labelOf(team: Team): string {
+  const mark = team.id === succeededId ? '✓ ' : team.id === currentId ? '● ' : '  ';
   const tail = team.slug && team.slug !== team.name ? ` (${team.slug})` : '';
   return truncate(`${mark}${team.name}${tail}`, LIST_W - 2); // -2 for the row's [0,1] padding
 }
@@ -49,14 +53,32 @@ function truncate(s: string, max: number): string {
   return cps.length <= max ? s : `${cps.slice(0, Math.max(0, max - 1)).join('')}…`;
 }
 
+// Recompute the row labels in place (preserving selection + scroll) after a marker
+// changes — unlike setItems, which resets them.
+function relabel(): void {
+  list.items = teams.map(labelOf);
+}
+
 // Feed the loaded teams into the list and preselect the current one so it's the
-// highlighted row when the modal opens. setItems resets index+scroll to the top,
-// so the current-team index is applied after.
+// highlighted row when the modal opens. Clears any prior ✓ (this is a fresh open).
+// setItems resets index+scroll, so the current-team index is applied after.
 export function setTeamSwitchTeams(next: Team[], current: Team | null): void {
   teams = next;
-  list.setItems(next.map((t) => label(t, current)));
+  currentId = current?.id ?? null;
+  succeededId = null;
+  list.setItems(next.map(labelOf));
   const ci = current ? next.findIndex((t) => t.id === current.id) : -1;
   if (ci >= 0) list.index = ci;
+}
+
+// Mark a team as just-switched-to: it becomes the billed team and gets the ✓
+// success marker. Keeps the current selection/scroll so the row stays put.
+export function markSwitchSucceeded(team: Team): void {
+  currentId = team.id;
+  succeededId = team.id;
+  relabel();
+  const i = teams.findIndex((t) => t.id === team.id);
+  if (i >= 0) list.index = i;
 }
 
 // The modal's visual states: loading the list, the loaded list, an in-flight
@@ -78,12 +100,14 @@ const PRIMARY: Style = {
   focus: { background: [110, 84, 150] },
   pressed: { background: [120, 124, 142] },
 };
-const CANCEL: Style = {
-  padding: [0, 2],
-  background: [40, 42, 52],
-  color: [212, 214, 224],
-  hover: { background: [72, 76, 92] },
-  focus: { background: [72, 76, 92] },
+// The close (✕) button in the card's top-right: quiet by default, reddening on
+// hover like a window close control.
+const CLOSE: Style = {
+  padding: [0, 1],
+  color: [150, 154, 166],
+  hover: { background: [180, 60, 60], color: [255, 255, 255] },
+  focus: { background: [72, 76, 92], color: [230, 232, 240] },
+  pressed: { background: [220, 90, 90], color: [255, 255, 255] },
 };
 
 const center = (n: Node): Node => Box({ justifyContent: 'center' }, [n]);
@@ -103,31 +127,38 @@ function listBody(): Node {
 }
 
 // Build the centered team-switch modal for the given view. The card is a fixed
-// size across every view (see statusBody/listBody). `onCancel` closes it;
-// `onSignIn` (signed-out view only) kicks off the plain-text device login flow.
-export function buildTeamSwitch(view: TeamSwitchView, opts: { onCancel: () => void; onSignIn: () => void }): Node {
-  const footer: Node[] = [Button({ id: 'team-cancel', label: 'Cancel', onClick: opts.onCancel, style: CANCEL })];
-
+// size across every view (see statusBody/listBody). `onClose` (the ✕ / Esc) closes
+// it; `onSignIn` (signed-out view only) kicks off the plain-text device login flow.
+// There's no Cancel button — closing is the ✕ in the top-right corner or Esc.
+export function buildTeamSwitch(view: TeamSwitchView, opts: { onClose: () => void; onSignIn: () => void }): Node {
   let body: Node;
   let hint = 'Esc close';
+  let footer: Node | null = null;
   if (view.kind === 'loading') body = statusBody('Loading teams…', 'muted');
-  else if (view.kind === 'switching') body = statusBody(`Switching to ${view.team}…`, 'muted');
   else if (view.kind === 'error') body = statusBody(truncate(view.message, LIST_W), 'danger');
   else if (view.kind === 'signedOut') {
     body = statusBody('Not signed in to Vercel.', 'muted');
-    footer.unshift(Button({ id: 'team-signin', label: 'Sign in', onClick: opts.onSignIn, style: PRIMARY }));
+    footer = Box({ flexDirection: 'row', justifyContent: 'center' }, [Button({ id: 'team-signin', label: 'Sign in', onClick: opts.onSignIn, style: PRIMARY })]);
   } else {
-    // loaded: switching happens on a row click / Enter (Select.onSelect), so there's
-    // no separate confirm button — just the list and its control hint.
+    // loaded / switching: the list stays visible (so the switched row's ✓ shows in
+    // place). Switching happens on a row click / Enter (Select.onSelect).
     body = listBody();
-    hint = '↑↓ move · ⏎ switch · Esc';
+    hint = view.kind === 'switching' ? `Switching to ${view.team}…` : '↑↓ move · ⏎ switch · Esc';
   }
+
+  // The ✕ close button, inset one cell from the card's top-right corner. Absolute
+  // children resolve against the content box (inside the card's [1,3] padding), so
+  // `top: 0` already leaves the one-row top padding above it, and `right: -2` pulls it
+  // out through two of the three right-padding cells to leave exactly one cell to the
+  // card's right edge.
+  const close = Box({ position: 'absolute', top: 0, right: -2 }, [Button({ id: 'team-close', label: '✕', onClick: opts.onClose, style: CLOSE })]);
 
   const card = Box({ ...CARD, width: CARD_W }, [
     center(Text({ text: 'Switch team', style: { color: [222, 224, 234], bold: true } })),
     body,
     center(Text({ text: hint, style: { color: 'muted' } })),
-    Box({ flexDirection: 'row', justifyContent: 'center', gap: 2 }, footer),
+    ...(footer ? [footer] : []),
+    close,
   ]);
   return Modal(card);
 }

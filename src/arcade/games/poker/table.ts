@@ -24,7 +24,7 @@ const WOOD_BROWN: Vec3 = { x: 132, y: 88, z: 52 };
 // ~4.5-unit outer radius — a felt that comfortably holds the deck + a deal ring.
 const TABLE_FELT_Y = 26;
 const TABLE_OUTER = 34.8;
-const TABLE_SCALE = 0.13;
+const TABLE_SCALE = 0.16; // ~5.6-unit felt: room for the deck, the board, and up to 6 seats' hole cards
 export const TABLE_RADIUS = TABLE_OUTER * TABLE_SCALE; // world outer radius (~4.52)
 export const FLOOR_Y = -TABLE_FELT_Y * TABLE_SCALE; // felt dropped to y=0 → floor/base sits here (~−3.38)
 

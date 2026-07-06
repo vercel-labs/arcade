@@ -22,6 +22,7 @@ export interface BarActions {
   audioModel(): void;
   pokerAI(): void;
   pokerNewMatch(): void;
+  pokerSeat(): void;
 }
 
 // A pill: muted slate normally, bright inverted on hover/press, with a distinct
@@ -130,6 +131,9 @@ export function buildBar(
       Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
       Button({ id: 'poker-ai', label: ai.label, onClick: a.pokerAI, style: aiStyle }),
       Button({ id: 'poker-new', label: 'new match', onClick: a.pokerNewMatch, style: PILL }),
+      // "my hand" flies the camera to the hero's seat; "reset view" returns to the
+      // centred whole-table overview (both orbit/zoom about the table centre otherwise).
+      Button({ id: 'poker-seat', label: 'my hand', onClick: a.pokerSeat, style: PILL }),
       Button({ id: 'reset', label: 'reset view', onClick: a.reset, style: PILL }),
       Button({ id: 'mode', label: modeLabel, onClick: a.mode, style: PILL }),
       Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),

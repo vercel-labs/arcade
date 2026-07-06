@@ -197,7 +197,7 @@ async function main(): Promise<void> {
   //    move-history ScrollBox expands and the commentary toast renders.
   {
     const noop = (): void => {};
-    const actions: BarActions = { back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop, evalBar: noop, audioModel: noop, pokerAI: noop, pokerNewMatch: noop };
+    const actions: BarActions = { back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop, evalBar: noop, audioModel: noop, pokerAI: noop, pokerNewMatch: noop, pokerSeat: noop };
     const ui = new Screen(80, 30);
     mountChessHud(ui);
     refreshMoveHistory(['e4', 'e5', 'Nf3', 'Nc6']);
@@ -255,7 +255,7 @@ async function main(): Promise<void> {
   //     while legal moves stay light, and the red must vanish when nothing's flagged.
   {
     const noop = (): void => {};
-    const actions: BarActions = { back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop, evalBar: noop, audioModel: noop, pokerAI: noop, pokerNewMatch: noop };
+    const actions: BarActions = { back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop, evalBar: noop, audioModel: noop, pokerAI: noop, pokerNewMatch: noop, pokerSeat: noop };
     const ui = new Screen(80, 30);
     mountChessHud(ui);
     const render = (): void =>
@@ -280,7 +280,7 @@ async function main(): Promise<void> {
   //     and the wheel step moves several rows per notch (snappier than 1).
   {
     const noop = (): void => {};
-    const actions: BarActions = { back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop, evalBar: noop, audioModel: noop, pokerAI: noop, pokerNewMatch: noop };
+    const actions: BarActions = { back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop, evalBar: noop, audioModel: noop, pokerAI: noop, pokerNewMatch: noop, pokerSeat: noop };
     const ui = new Screen(80, 30);
     mountChessHud(ui);
     refreshMoveHistory(Array.from({ length: 60 }, (_, i) => (i % 2 === 0 ? 'Nf3' : 'Nc6'))); // 30 rows → scrollable, snapped to bottom
@@ -567,6 +567,27 @@ async function main(): Promise<void> {
     const uci = new ChessState();
     uci.applyAction(uci.actionFromStringLoose('a1a5')!); // rook teleports through its own pawn
     check('loose: UCI a1a5 teleports the rook to a5', pieceType(uci.board.squares[a5]) === ROOK && uci.board.squares[square(0, 0)] === 0);
+
+    // An under-specified "Nf6" must bind to the knight that can REACH f6 (g8), not
+    // the first knight in board-scan order (b8) — otherwise g8→f6 silently becomes
+    // a b8 teleport that renders as a phantom "Nbf6".
+    const g8 = square(6, 7);
+    const f6 = square(5, 5);
+    const b8 = square(1, 7);
+    const blk = new ChessState();
+    blk.applyAction(blk.actionFromString('e4')!); // now Black to move
+    const nf6 = blk.actionFromStringLoose('Nf6');
+    check('loose: bare "Nf6" binds the reachable knight g8, not first-in-scan b8', nf6 !== null && nf6.from === g8 && nf6.to === f6, JSON.stringify(nf6 && { from: nf6.from, to: nf6.to }));
+    check('loose: "Nf6" records as Nf6, not a phantom Nbf6', blk.actionToString(nf6!) === 'Nf6', blk.actionToString(nf6!));
+
+    const wht = new ChessState();
+    const nf3 = wht.actionFromStringLoose('Nf3'); // White from the start: g1, not b1
+    check('loose: bare "Nf3" binds g1 (the knight that reaches f3), not b1', nf3 !== null && nf3.from === square(6, 0) && nf3.to === square(5, 2), JSON.stringify(nf3 && { from: nf3.from, to: nf3.to }));
+
+    const tele = new ChessState();
+    tele.applyAction(tele.actionFromString('e4')!);
+    const nbf6 = tele.actionFromStringLoose('Nbf6'); // explicit file → still an intentional b8 teleport
+    check('loose: explicit "Nbf6" still teleports the b8 knight (disambiguation wins)', nbf6 !== null && nbf6.from === b8 && nbf6.to === f6, JSON.stringify(nbf6 && { from: nbf6.from, to: nbf6.to }));
 
     check('loose: unparseable input is null', new ChessState().actionFromStringLoose('hello there') === null);
   }
