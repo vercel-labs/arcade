@@ -389,8 +389,9 @@ const GEAR: Style = {
   pressed: { background: [255, 255, 255], color: [12, 12, 18] },
 };
 function buildMenuOverlay(): Node {
-  const gear = Button({ id: 'menu-settings', label: '⚙', onClick: openTeamSwitch, style: GEAR });
-  return Box({ width: cols, height: rows }, [Box({ position: 'absolute', top: 0, right: 1 }, [gear])]);
+  const gear = Button({ id: 'menu-settings', label: '⚙ settings', onClick: openTeamSwitch, style: GEAR });
+  // Inset from the top-right corner by a row / a couple of columns so it breathes.
+  return Box({ width: cols, height: rows }, [Box({ position: 'absolute', top: 1, right: 2 }, [gear])]);
 }
 
 function cycleMode(): void {

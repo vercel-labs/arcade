@@ -280,7 +280,7 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot audio [cols] [rows] [out]          realtime audio scene (provider wisp)
   pnpm snapshot splash [cols] [rows] [t] [out]     boot splash at time t
   pnpm snapshot coverflow|menu [cols] [rows] [pos] [hover] [out]   Cover Flow carousel
-  pnpm snapshot settings [cols] [rows] [open] [out]   menu settings gear (open → team-switch modal)
+  pnpm snapshot settings [cols] [rows] [open [loading]] [out]   menu settings gear (open → team-switch modal)
   pnpm snapshot launch [cols] [rows] [index] [t] [out]   Cover Flow flip-to-title splash
   pnpm snapshot attract [cols] [rows] [t] [out]    prism attract marquee
   pnpm snapshot cards [single|hand|deck] [cols] [rows] [state] [out]   the cards screen
@@ -571,16 +571,26 @@ function settingsSnapshot(): void {
   mountTeamSwitch(screen);
   const region = { x: 0, y: 0, w: cols, h: rows };
   if (open) {
+    // A long list (more than the viewport) so the still shows the fixed-height,
+    // scrollable list — the current team ● marked and preselected.
     const teams = [
       { id: 't1', slug: 'acme', name: 'Acme Corp' },
       { id: 't2', slug: 'vercel-labs', name: 'Vercel Labs' },
       { id: 't3', slug: 'personal', name: 'personal' },
+      { id: 't4', slug: 'skunkworks', name: 'Skunkworks' },
+      { id: 't5', slug: 'moonshot', name: 'Moonshot Inc' },
+      { id: 't6', slug: 'nightly', name: 'Nightly' },
+      { id: 't7', slug: 'orbit', name: 'Orbit' },
+      { id: 't8', slug: 'zephyr', name: 'Zephyr' },
+      { id: 't9', slug: 'atlas', name: 'Atlas' },
+      { id: 't10', slug: 'nova', name: 'Nova' },
     ];
     setTeamSwitchTeams(teams, teams[1]); // current = Vercel Labs (● marked, preselected)
-    screen.setRoot(buildTeamSwitch({ kind: 'loaded' }, { onCancel: noop, onSignIn: noop }), region);
+    const view = args.includes('loading') ? { kind: 'loading' as const } : { kind: 'loaded' as const };
+    screen.setRoot(buildTeamSwitch(view, { onCancel: noop, onSignIn: noop }), region);
   } else {
     const gear = { padding: [0, 1] as [number, number], background: [28, 30, 40] as Rgb, color: [200, 205, 220] as Rgb };
-    const overlay = Box({ width: cols, height: rows }, [Box({ position: 'absolute', top: 0, right: 1 }, [Button({ id: 'menu-settings', label: '⚙', style: gear })])]);
+    const overlay = Box({ width: cols, height: rows }, [Box({ position: 'absolute', top: 1, right: 2 }, [Button({ id: 'menu-settings', label: '⚙ settings', style: gear })])]);
     screen.setRoot(overlay, region);
   }
   const surf = screen.snapshot((s) => {

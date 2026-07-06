@@ -8,7 +8,8 @@ import { Box, Button, Modal, Select, Slot, Text, type Node, type Screen, type St
 import type { Team } from '../../auth/index.ts';
 
 const LIST_W = 34;
-const LIST_ROWS = 7; // visible rows; longer team lists scroll past this
+const LIST_ROWS = 7; // fixed viewport height; longer team lists scroll past this
+const CARD_W = LIST_W + 6; // card outer width (content = LIST_W within the [1,3] padding)
 
 // The teams backing the current list contents (index-aligned with the Select's
 // rows), and the pick handler main.ts wires in once at startup.
@@ -86,36 +87,46 @@ const CANCEL: Style = {
 };
 
 const center = (n: Node): Node => Box({ justifyContent: 'center' }, [n]);
-const note = (text: string, color: Style['color'] = 'muted'): Node => center(Text({ text, style: { color } }));
 
-// Build the centered team-switch modal for the given view. `onCancel` closes it;
-// `onSignIn` (used only in the signed-out view) kicks off the plain-text device
-// login flow.
+// A status line centered in the body's fixed footprint (loading / switching /
+// signed-out / error), so those views are the exact size of the loaded list — no
+// resize flicker when the teams land.
+function statusBody(text: string, color: Style['color']): Node {
+  return Box({ width: LIST_W, height: LIST_ROWS, justifyContent: 'center', alignItems: 'center' }, [Text({ text, style: { color } })]);
+}
+
+// The loaded list in a fixed-height, clipped viewport: the space is allocated up
+// front (empty rows below a short list), and a long list scrolls within it — the
+// modal looks identical whether the account has two teams or twenty.
+function listBody(): Node {
+  return Box({ width: LIST_W, height: LIST_ROWS, overflow: 'hidden' }, [Slot('team-switch-list')]);
+}
+
+// Build the centered team-switch modal for the given view. The card is a fixed
+// size across every view (see statusBody/listBody). `onCancel` closes it;
+// `onSignIn` (signed-out view only) kicks off the plain-text device login flow.
 export function buildTeamSwitch(view: TeamSwitchView, opts: { onCancel: () => void; onSignIn: () => void }): Node {
-  const cancel = Button({ id: 'team-cancel', label: 'Cancel', onClick: opts.onCancel, style: CANCEL });
+  const footer: Node[] = [Button({ id: 'team-cancel', label: 'Cancel', onClick: opts.onCancel, style: CANCEL })];
 
-  const body: Node[] = [];
-  const footer: Node[] = [cancel];
-
-  if (view.kind === 'loading') {
-    body.push(note('Loading teams…'));
-  } else if (view.kind === 'switching') {
-    body.push(note(`Switching to ${view.team}…`));
-  } else if (view.kind === 'error') {
-    body.push(note(view.message, 'danger'));
-  } else if (view.kind === 'signedOut') {
-    body.push(note('Not signed in to Vercel.'));
-    footer.unshift(Button({ id: 'team-signin', label: 'Sign in with Vercel', onClick: opts.onSignIn, style: PRIMARY }));
+  let body: Node;
+  let hint = 'Esc close';
+  if (view.kind === 'loading') body = statusBody('Loading teams…', 'muted');
+  else if (view.kind === 'switching') body = statusBody(`Switching to ${view.team}…`, 'muted');
+  else if (view.kind === 'error') body = statusBody(truncate(view.message, LIST_W), 'danger');
+  else if (view.kind === 'signedOut') {
+    body = statusBody('Not signed in to Vercel.', 'muted');
+    footer.unshift(Button({ id: 'team-signin', label: 'Sign in', onClick: opts.onSignIn, style: PRIMARY }));
   } else {
-    // loaded: the scrollable team list + a control hint. Switching happens on a
-    // row click / Enter (Select.onSelect), so there's no separate confirm button.
-    body.push(Slot('team-switch-list'));
-    body.push(note('↑↓ move · Enter switch · Esc close'));
+    // loaded: switching happens on a row click / Enter (Select.onSelect), so there's
+    // no separate confirm button — just the list and its control hint.
+    body = listBody();
+    hint = '↑↓ move · ⏎ switch · Esc';
   }
 
-  const card = Box(CARD, [
+  const card = Box({ ...CARD, width: CARD_W }, [
     center(Text({ text: 'Switch team', style: { color: [222, 224, 234], bold: true } })),
-    ...body,
+    body,
+    center(Text({ text: hint, style: { color: 'muted' } })),
     Box({ flexDirection: 'row', justifyContent: 'center', gap: 2 }, footer),
   ]);
   return Modal(card);
