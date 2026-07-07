@@ -29,6 +29,7 @@ import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/i
 import { buildBar, buildGameOver, buildPromotion, type BarActions, type Mode, type RenderMode } from './shell/bars.ts';
 import { buildShowcase, mountShowcase } from './scenes/ui-showcase.ts';
 import { buildChessGameRoot, type Commentary, mountChessHud, movesToPgn, refreshMoveHistory } from './games/chess/hud.ts';
+import { clearChat, pushChatMessage } from './games/chess/chat.ts';
 import { buildMatchSetup, buildSwapSetup, matchSetupSelection, mountMatchSetup, mountSwapSetup, openSwapSetup, swapSetupSelection } from './match/setup.ts';
 import { copyToClipboard } from '../platform/clipboard.ts';
 import { BLACK, type Color, WHITE } from '../rules/chess/types.ts';
@@ -193,6 +194,9 @@ let illegalAllowed = false;
 // Whether the move-history panel is collapsed to its "Moves" header button
 // (toggle with the 'h' key or by clicking the header / ✕). History persists.
 let historyMinimized = false;
+// Whether the right-edge model-DM chat panel is shown (toggle with the 't' key or
+// the bar button). On by default; the thread itself persists while hidden.
+let chatVisible = true;
 // Whether the right-edge eval bar is shown (toggle with the 'e' key or the bar
 // button). Default hidden; the score is recomputed from the live board each frame.
 let evalBarVisible = false;
@@ -356,10 +360,19 @@ function pickTeamChoice(team: Team): void {
       markSwitchSucceeded(team); // ✓ on the switched row
       teamView = { kind: 'loaded' }; // back to the list (now showing the ✓), modal stays open
     } catch (err) {
-      teamView = { kind: 'error', message: err instanceof Error ? err.message : String(err) };
+      // The list is still loaded, so offer "← back" to it (canReturn).
+      teamView = { kind: 'error', message: err instanceof Error ? err.message : String(err), canReturn: true };
     }
     r.requestRender();
   })();
+}
+
+// The switch-error "← back": return to the loaded team list (still in memory).
+function teamSwitchBack(): void {
+  if (!teamModalOpen) return;
+  teamView = { kind: 'loaded' };
+  forceFrame = true;
+  r.requestRender();
 }
 
 function closeTeamSwitch(): void {
@@ -429,6 +442,13 @@ function toggleHistory(): void {
   forceFrame = true;
 }
 
+// Show/hide the model-DM chat panel (bound to 't', and the panel's own header/✕).
+function toggleChat(): void {
+  chatVisible = !chatVisible;
+  forceFrame = true;
+  r.requestRender();
+}
+
 // Copy the move history to the clipboard as PGN (the panel's copy button). The
 // result token reflects the current outcome (or * for an unfinished game).
 function copyMoves(): void {
@@ -446,8 +466,11 @@ const aiMatch = new AiMatch({
   chessGame,
   syncLive,
   requestRender: () => r.requestRender(),
+  // A model's pre-move rationale is a chat line, not a toast — append it to the
+  // persistent thread (the bottom toast is reserved for app/system notices).
   onCommentary: (text, model) => {
-    commentary = { text, model, until: t + COMMENTARY_SECS };
+    pushChatMessage({ text, model });
+    r.requestRender();
   },
   allowIllegal: () => illegalAllowed,
 });
@@ -489,6 +512,7 @@ function confirmMatchSetup(): void {
   if (!sel) return;
   closeMatchSetup();
   matchSeats = { white: sel.white, black: sel.black };
+  clearChat(); // fresh thread for the new game
   aiMatch.start(sel.white, sel.black);
 }
 
@@ -705,6 +729,7 @@ function resetGame(): void {
   if (mode !== 'chess-game') return;
   stopAiMatch();
   chessGame.resetGame();
+  clearChat(); // empty the DM thread for the fresh game
   syncLive(); // release the live lease the match held
   forceFrame = true;
   r.requestRender();
@@ -918,6 +943,7 @@ const keymap = installKeymap({
   cancelPromotion,
   aiButton,
   toggleHistory,
+  toggleChat,
   resetGame,
   toggleIllegal,
   toggleEvalBar,
@@ -1074,7 +1100,7 @@ function syncBar(): void {
     const region = { x: 0, y: 0, w: cols, h: rows };
     if (teamModalOpen) {
       if (!keymap.hasContext('teamswitch')) keymap.pushContext('teamswitch', true);
-      ui.setRoot(buildTeamSwitch(teamView, { onClose: closeTeamSwitch, onSignIn: teamSwitchSignIn }), region);
+      ui.setRoot(buildTeamSwitch(teamView, { onClose: closeTeamSwitch, onSignIn: teamSwitchSignIn, onBack: teamSwitchBack }), region);
       // Focus the list once it's populated so ↑↓/Enter drive it (the Slot isn't in
       // the loading/switching trees, so wait for 'loaded').
       if (teamView.kind === 'loaded' && !teamModalFocused) {
@@ -1149,6 +1175,8 @@ function syncBar(): void {
         evalVisible: evalBarVisible,
         evalCp,
         evalResult: chessGame.state().result(),
+        chatVisible,
+        onToggleChat: toggleChat,
       }),
       { x: 0, y: 0, w: cols, h: rows },
     );

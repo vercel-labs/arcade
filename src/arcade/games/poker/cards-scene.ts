@@ -32,7 +32,8 @@ import { OrbitCamera, type OrbitState } from '../../orbit.ts';
 import { mulberry32 } from '../../scenes/wisp.ts';
 import { type Card, fullDeck, shuffle } from '../../../rules/poker/cards.ts';
 import { cardBackTexture } from './card-textures.ts';
-import { CARD_H, CARD_SCALE, CARD_W, drawCard, drawPeekCard, flatDown, type PeekPose, peekCardCenter } from './card-render.ts';
+import { CARD_SCALE, CARD_W, drawCard, flatDown } from './card-render.ts';
+import { HandPeek } from './card-peek.ts';
 import { chairMesh, chairModel, TABLE_MODEL, TABLE_RADIUS, tableMesh } from './table.ts';
 
 export type CardsMode = 'single' | 'hand' | 'deck';
@@ -64,17 +65,8 @@ const HOMES: Record<CardsMode, { home: OrbitState; elevMin: number; min: number;
   deck: { home: { azimuth: 0, elevation: 0.86, distance: 13, target: { x: 0, y: 0, z: 0 } }, elevMin: 0.14, min: 4, max: 28 },
 };
 
-// One card the player holds in HAND mode: its resting seat + how far it's revealed
-// (0 flat & face-down, PEEK tipped up, 1 lifted face-on) and whether it's committed
-// up (clicked) so hover-out doesn't drop it.
-const PEEK = 0.6;
-interface HandCard {
-  card: Card;
-  seatX: number;
-  reveal: number; // animated 0..1 (driven by a spring, so it can briefly overshoot)
-  vel: number; // reveal velocity, for the spring settle
-  up: boolean; // clicked fully up
-}
+// HAND mode's two hole cards (hover to peek, click to lift) live in the shared
+// HandPeek — the same interaction the poker game reuses.
 
 // A card mid-deal: source (deck) → destination seat slot, animated by `t`.
 interface DealCard {
@@ -95,8 +87,7 @@ export class CardsScene {
   private single: Card = { rank: 0, suit: 0 };
 
   // hand
-  private hand: HandCard[] = [];
-  private hovered = -1;
+  private handPeek = new HandPeek(HAND_SEAT_Z);
 
   // deck
   private deck: Card[] = [];
@@ -119,11 +110,10 @@ export class CardsScene {
 
   private resetHand(): void {
     const d = shuffle(fullDeck(), this.rng);
-    this.hand = [
-      { card: d[0], seatX: -0.62, reveal: 0, vel: 0, up: false },
-      { card: d[1], seatX: 0.62, reveal: 0, vel: 0, up: false },
-    ];
-    this.hovered = -1;
+    this.handPeek.reset([
+      { card: d[0], seatX: -0.62 },
+      { card: d[1], seatX: 0.62 },
+    ]);
   }
 
   mode(): CardsMode {
@@ -206,35 +196,23 @@ export class CardsScene {
     this.dirty = true;
   }
 
-  // ── hand interaction ──
+  // ── hand interaction (delegated to the shared HandPeek) ──
   hover(ndcX: number, ndcY: number, aspect: number): void {
     if (this.curMode !== 'hand') return;
-    const h = this.pickHand(ndcX, ndcY, aspect);
-    if (h !== this.hovered) {
-      this.hovered = h;
-      this.dirty = true;
-    }
+    if (this.handPeek.hover(this.cam, ndcX, ndcY, aspect)) this.dirty = true;
   }
   click(ndcX: number, ndcY: number, aspect: number): void {
     if (this.curMode !== 'hand') return;
-    const h = this.pickHand(ndcX, ndcY, aspect);
-    if (h < 0) return;
-    this.hand[h].up = !this.hand[h].up;
-    this.dirty = true;
+    if (this.handPeek.click(this.cam, ndcX, ndcY, aspect)) this.dirty = true;
   }
   // Flip a hand card up/down by index — the keyboard (and headless) equivalent of
   // clicking it.
   flipCard(i: number): void {
-    const c = this.hand[i];
-    if (!c) return;
-    c.up = !c.up;
-    this.dirty = true;
+    if (this.handPeek.flipCard(i)) this.dirty = true;
   }
   // Set the hovered hand card by index (−1 = none); the peek animation follows.
   setHovered(i: number): void {
-    if (i === this.hovered) return;
-    this.hovered = i;
-    this.dirty = true;
+    if (this.handPeek.setHovered(i)) this.dirty = true;
   }
 
   // ── camera ──
@@ -258,16 +236,10 @@ export class CardsScene {
 
   isAnimating(): boolean {
     if (this.shuffling || this.dealing) return true;
-    for (const c of this.hand) if (Math.abs(c.reveal - this.revealTarget(c)) > 0.001 || Math.abs(c.vel) > 0.001) return true;
-    return false;
+    return this.handPeek.animating();
   }
   needsRender(): boolean {
     return this.dirty || this.isAnimating();
-  }
-
-  private revealTarget(c: HandCard): number {
-    if (c.up) return 1;
-    return this.hand[this.hovered] === c ? PEEK : 0;
   }
 
   // Camera + projection for the current frame.
@@ -318,33 +290,9 @@ export class CardsScene {
     target.clear(6, 10, 8);
     const { vp } = this.viewProj(target);
     this.drawTable(target, vp, [0]); // one chair: the hero seat at +z (front)
-    const az = this.cam.azimuth;
-    // Advance each card toward its reveal target on a spring and draw it bent (later
-    // cards drawn after earlier so a lifted card sits in front; depth resolves the
-    // rest). The spring gives the peek a little flex — it springs up and settles with
-    // a small overshoot rather than sliding in linearly.
-    for (const c of this.hand) {
-      this.stepReveal(c, this.revealTarget(c), dt);
-      drawPeekCard(target, vp, this.peekPose(c, az), c.card, this.back);
-    }
-  }
-
-  // A lightly-damped spring on `reveal`: stiffness pulls toward the target, damping
-  // bleeds velocity. Semi-implicit Euler (velocity first) stays stable at the frame's
-  // dt; the card can never curl below the felt, so reveal is clamped at 0.
-  private stepReveal(c: HandCard, target: number, dt: number): void {
-    const K = 190; // stiffness → ~0.4s settle
-    const D = 19; // damping (ζ≈0.7: a subtle single bounce, no ringing)
-    c.vel += (K * (target - c.reveal) - D * c.vel) * dt;
-    c.reveal += c.vel * dt;
-    if (c.reveal < 0) {
-      c.reveal = 0;
-      if (c.vel < 0) c.vel = 0;
-    }
-  }
-
-  private peekPose(c: HandCard, az: number): PeekPose {
-    return { seatX: c.seatX, seatZ: HAND_SEAT_Z, reveal: c.reveal, peek: PEEK, az };
+    // Advance the peek/lift springs, then draw both cards bent to their reveal.
+    this.handPeek.step(dt);
+    this.handPeek.draw(target, vp, this.cam.azimuth, this.back);
   }
 
   private renderDeck(target: RenderTarget, dt: number): void {
@@ -411,53 +359,4 @@ export class CardsScene {
     const M = mat4Multiply(mat4Translate(d.toX, 0.02, d.toZ), mat4Multiply(mat4RotY(d.yaw), flatDown()));
     this.drawCard(target, vp, M, d.card, bright);
   }
-
-  // Ray-pick a hand card: cast through the table (flat cards) or match the nearest
-  // lifted card in screen space (raised cards leave the table plane).
-  private pickHand(ndcX: number, ndcY: number, aspect: number): number {
-    const eye = this.cam.eye();
-    const { forward, right, up } = this.cam.basis();
-    const tan = Math.tan(FOVY / 2);
-    const dir = normalize3({
-      x: forward.x + right.x * ndcX * tan * aspect + up.x * ndcY * tan,
-      y: forward.y + right.y * ndcX * tan * aspect + up.y * ndcY * tan,
-      z: forward.z + right.z * ndcX * tan * aspect + up.z * ndcY * tan,
-    });
-    // Table-plane hit (for flat / peeking cards).
-    let hitX = Infinity;
-    let hitZ = Infinity;
-    if (Math.abs(dir.y) > 1e-4) {
-      const tHit = -eye.y / dir.y;
-      if (tHit > 0) {
-        hitX = eye.x + dir.x * tHit;
-        hitZ = eye.z + dir.z * tHit;
-      }
-    }
-    // VP built with the pointer's aspect (equals the render aspect) so the raised
-    // proximity test lands where the card is drawn.
-    const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 200 };
-    const vp = cameraMatrices(camera, aspect).viewProjection;
-    let best = -1;
-    for (let i = 0; i < this.hand.length; i++) {
-      const c = this.hand[i];
-      if (c.reveal < 0.5) {
-        // Flat footprint around the seat (in front of the hero at HAND_SEAT_Z).
-        if (Math.abs(hitX - c.seatX) <= CARD_W / 2 + 0.12 && Math.abs(hitZ - HAND_SEAT_Z) <= CARD_H / 2 + 0.12) best = i;
-      } else {
-        // Peeking / lifted: proximity to the projected (bent) card center.
-        const p = mat4MulPoint(vp, peekCardCenter(this.peekPose(c, this.cam.azimuth)));
-        if (p && Math.abs(p.x - ndcX) < 0.35 && Math.abs(p.y - ndcY) < 0.45) best = i;
-      }
-    }
-    return best;
-  }
-}
-
-// Project a point through an mvp to NDC (x,y in −1..1), or null if behind.
-function mat4MulPoint(m: Mat4, p: Vec3): { x: number; y: number } | null {
-  const x = m[0] * p.x + m[4] * p.y + m[8] * p.z + m[12];
-  const y = m[1] * p.x + m[5] * p.y + m[9] * p.z + m[13];
-  const w = m[3] * p.x + m[7] * p.y + m[11] * p.z + m[15];
-  if (w <= 1e-4) return null;
-  return { x: x / w, y: y / w };
 }

@@ -88,7 +88,9 @@ export type TeamSwitchView =
   | { kind: 'loaded' }
   | { kind: 'switching'; team: string }
   | { kind: 'signedOut' }
-  | { kind: 'error'; message: string };
+  // `canReturn` (a switch that failed with the list still loaded) shows a "← back"
+  // to the list instead of the plain close hint.
+  | { kind: 'error'; message: string; canReturn?: boolean };
 
 const CARD: Style = { flexDirection: 'column', gap: 1, padding: [1, 3], background: [22, 24, 32] };
 const PRIMARY: Style = {
@@ -109,6 +111,14 @@ const CLOSE: Style = {
   focus: { background: [72, 76, 92], color: [230, 232, 240] },
   pressed: { background: [220, 90, 90], color: [255, 255, 255] },
 };
+// The "← back" control on a switch error: a quiet text button (like the close hint it
+// replaces) that returns to the team list.
+const BACK: Style = {
+  color: [170, 174, 186],
+  hover: { color: [235, 237, 245] },
+  focus: { background: [72, 76, 92], color: [235, 237, 245] },
+  pressed: { color: [255, 255, 255] },
+};
 
 const center = (n: Node): Node => Box({ justifyContent: 'center' }, [n]);
 
@@ -128,22 +138,29 @@ function listBody(): Node {
 
 // Build the centered team-switch modal for the given view. The card is a fixed
 // size across every view (see statusBody/listBody). `onClose` (the ✕ / Esc) closes
-// it; `onSignIn` (signed-out view only) kicks off the plain-text device login flow.
-// There's no Cancel button — closing is the ✕ in the top-right corner or Esc.
-export function buildTeamSwitch(view: TeamSwitchView, opts: { onClose: () => void; onSignIn: () => void }): Node {
+// it; `onSignIn` (signed-out view only) kicks off the plain-text device login flow;
+// `onBack` (a failed switch) returns to the team list. There's no Cancel button.
+export function buildTeamSwitch(view: TeamSwitchView, opts: { onClose: () => void; onSignIn: () => void; onBack: () => void }): Node {
   let body: Node;
   let hint = 'Esc close';
   let footer: Node | null = null;
   if (view.kind === 'loading') body = statusBody('Loading teams…', 'muted');
-  else if (view.kind === 'error') body = statusBody(truncate(view.message, LIST_W), 'danger');
-  else if (view.kind === 'signedOut') {
+  else if (view.kind === 'error') {
+    body = statusBody(truncate(view.message, LIST_W), 'danger');
+    // A switch that failed still has the list loaded → offer "← back" to it instead of
+    // the plain close hint. A load failure (no list) keeps the close hint.
+    if (view.canReturn) {
+      hint = '';
+      footer = Box({ flexDirection: 'row', justifyContent: 'start' }, [Button({ id: 'team-back', label: '← back', onClick: opts.onBack, style: BACK })]);
+    }
+  } else if (view.kind === 'signedOut') {
     body = statusBody('Not signed in to Vercel.', 'muted');
     footer = Box({ flexDirection: 'row', justifyContent: 'center' }, [Button({ id: 'team-signin', label: 'Sign in', onClick: opts.onSignIn, style: PRIMARY })]);
   } else {
     // loaded / switching: the list stays visible (so the switched row's ✓ shows in
-    // place). Switching happens on a row click / Enter (Select.onSelect).
+    // place). Switching is quick, so no transient "switching…" label — just the list.
     body = listBody();
-    hint = view.kind === 'switching' ? `Switching to ${view.team}…` : '↑↓ move · ⏎ switch · Esc';
+    hint = '↑↓ move · ⏎ switch · Esc';
   }
 
   // The ✕ close button, inset one cell from the card's top-right corner. Absolute
@@ -156,7 +173,7 @@ export function buildTeamSwitch(view: TeamSwitchView, opts: { onClose: () => voi
   const card = Box({ ...CARD, width: CARD_W }, [
     center(Text({ text: 'Switch team', style: { color: [222, 224, 234], bold: true } })),
     body,
-    center(Text({ text: hint, style: { color: 'muted' } })),
+    ...(hint ? [center(Text({ text: hint, style: { color: 'muted' } }))] : []),
     ...(footer ? [footer] : []),
     close,
   ]);

@@ -20,6 +20,7 @@ import { Dropdown, Screen } from '../tui/index.ts';
 import { ChessGameScene } from '../arcade/games/chess/scene.ts';
 import { buildBar, buildGameOver, type BarActions } from '../arcade/shell/bars.ts';
 import { buildChessGameRoot, mountChessHud, moveHistory, movesToPgn, refreshMoveHistory } from '../arcade/games/chess/hud.ts';
+import { ChatBox, wrapText } from '../arcade/games/chess/chat.ts';
 import { BISHOP, BLACK, FLAG_CAPTURE, KING, pieceColor, pieceType, QUEEN, ROOK, square, WHITE } from '../rules/chess/types.ts';
 import { modelsFor, providers } from '../arcade/match/models.ts';
 import { matchSetupReady, matchSetupSelection, mountMatchSetup } from '../arcade/match/setup.ts';
@@ -212,6 +213,8 @@ async function main(): Promise<void> {
           evalVisible: false,
           evalCp: 0,
           evalResult: null,
+          chatVisible: false,
+          onToggleChat: noop,
         }),
         { x: 0, y: 0, w: 80, h: 30 },
       );
@@ -260,7 +263,7 @@ async function main(): Promise<void> {
     mountChessHud(ui);
     const render = (): void =>
       ui.setRoot(
-        buildChessGameRoot({ x: 0, y: 0, w: 80, h: 30 }, buildBar('chess-game', 'ascii', actions), { minimized: false, onToggle: noop, onCopy: noop, commentary: null, t: 0, evalVisible: false, evalCp: 0, evalResult: null }),
+        buildChessGameRoot({ x: 0, y: 0, w: 80, h: 30 }, buildBar('chess-game', 'ascii', actions), { minimized: false, onToggle: noop, onCopy: noop, commentary: null, t: 0, evalVisible: false, evalCp: 0, evalResult: null, chatVisible: false, onToggleChat: noop }),
         { x: 0, y: 0, w: 80, h: 30 },
       );
     // The illegal tint ([226,92,86]) emits a truecolor fg SGR (38;2;226;92;86) in
@@ -285,7 +288,7 @@ async function main(): Promise<void> {
     mountChessHud(ui);
     refreshMoveHistory(Array.from({ length: 60 }, (_, i) => (i % 2 === 0 ? 'Nf3' : 'Nc6'))); // 30 rows → scrollable, snapped to bottom
     ui.setRoot(
-      buildChessGameRoot({ x: 0, y: 0, w: 80, h: 30 }, buildBar('chess-game', 'ascii', actions), { minimized: false, onToggle: noop, onCopy: noop, commentary: null, t: 0, evalVisible: false, evalCp: 0, evalResult: null }),
+      buildChessGameRoot({ x: 0, y: 0, w: 80, h: 30 }, buildBar('chess-game', 'ascii', actions), { minimized: false, onToggle: noop, onCopy: noop, commentary: null, t: 0, evalVisible: false, evalCp: 0, evalResult: null, chatVisible: false, onToggleChat: noop }),
       { x: 0, y: 0, w: 80, h: 30 },
     );
     ui.frameComposited(() => {}); // expand + layout
@@ -309,11 +312,42 @@ async function main(): Promise<void> {
     // camera pan still fires when the cursor is over a panel with nothing to scroll.
     refreshMoveHistory(['e4', 'e5']); // 1 row < viewport → maxScroll 0
     ui.setRoot(
-      buildChessGameRoot({ x: 0, y: 0, w: 80, h: 30 }, buildBar('chess-game', 'ascii', actions), { minimized: false, onToggle: noop, onCopy: noop, commentary: null, t: 0, evalVisible: false, evalCp: 0, evalResult: null }),
+      buildChessGameRoot({ x: 0, y: 0, w: 80, h: 30 }, buildBar('chess-game', 'ascii', actions), { minimized: false, onToggle: noop, onCopy: noop, commentary: null, t: 0, evalVisible: false, evalCp: 0, evalResult: null, chatVisible: false, onToggleChat: noop }),
       { x: 0, y: 0, w: 80, h: 30 },
     );
     ui.frameComposited(() => {});
     check('short panel does not consume scroll keys (pan passes through)', !ui.tryScrollKey(8, 8, upKey));
+  }
+
+  // 7c. The model chat (Twitch-style): word-wrap, one entry per message, and
+  //     follow-scroll (sticks to the newest until the reader scrolls up, then holds).
+  {
+    check('wrapText wraps on word boundaries', wrapText('one two three four', 9).join('|') === 'one two|three|four', wrapText('one two three four', 9).join('|'));
+    check('wrapText hard-splits an oversized token', wrapText('abcdefghij', 4).join('|') === 'abcd|efgh|ij', wrapText('abcdefghij', 4).join('|'));
+
+    // Each message is its own block in the built tree (Twitch shows the name every line).
+    const blocksOf = (box: ChatBox): number => (box.build().children?.[0].children ?? []).length;
+    const chat = new ChatBox();
+    chat.setViewport(40);
+    chat.push({ text: 'a', model: 'openai/gpt-5.4' });
+    chat.push({ text: 'b', model: 'anthropic/claude-opus-4.8' });
+    chat.push({ text: 'c', model: 'openai/gpt-5.4' });
+    check('each message renders as its own block', blocksOf(chat) === 3, String(blocksOf(chat)));
+
+    const feed = new ChatBox();
+    feed.setViewport(4); // tiny viewport → content overflows immediately
+    for (let i = 0; i < 12; i++) feed.push({ text: `line ${i}`, model: i % 2 ? 'anthropic/y' : 'openai/x' });
+    feed.build();
+    const bottom = feed.scroll;
+    check('follow pins the view to the newest line', bottom > 0, String(bottom));
+    const up = { name: 'up', raw: '', sequence: '', ctrl: false, shift: false, meta: false, eventType: 'press' } as const;
+    feed.onKey(up);
+    feed.build();
+    const scrolled = feed.scroll;
+    check('scrolling up leaves the bottom', scrolled < bottom, `${bottom}→${scrolled}`);
+    feed.push({ text: 'newest', model: 'openai/x' });
+    feed.build();
+    check('a new line does NOT yank a scrolled-up reader down', feed.scroll === scrolled, `${scrolled}→${feed.scroll}`);
   }
 
   // 8. movesToPgn produces pasteable PGN movetext with a result token.

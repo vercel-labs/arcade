@@ -23,7 +23,8 @@ export interface AiMatchDeps {
   // Update the renderer's live lease (a running match needs frames flowing).
   syncLive(): void;
   requestRender(): void;
-  // Surface a pre-move rationale toast (main builds the timed Commentary object).
+  // Surface a pre-move rationale (main routes it into the chat thread) — the model
+  // slug tags the line with its name + creator color.
   onCommentary(text: string, model: string): void;
   // Live illegal-moves flag, read per move by each ModelPlayer.
   allowIllegal(): boolean;

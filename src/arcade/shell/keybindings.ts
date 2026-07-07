@@ -38,6 +38,7 @@ export interface KeyHandlers {
   cancelPromotion(): void;
   aiButton(): void;
   toggleHistory(): void;
+  toggleChat(): void;
   resetGame(): void;
   toggleIllegal(): void;
   toggleEvalBar(): void;
@@ -86,6 +87,7 @@ export function installKeymap(h: KeyHandlers): Keymap {
     { id: 'chess.cancelPromotion', title: 'Cancel promotion', run: h.cancelPromotion },
     { id: 'chess.toggleAI', title: 'Play / pause AI', run: h.aiButton },
     { id: 'chess.toggleHistory', title: 'Toggle move history', run: h.toggleHistory },
+    { id: 'chess.toggleChat', title: 'Toggle chat', run: h.toggleChat },
     { id: 'chess.resetGame', title: 'Reset game', run: h.resetGame },
     { id: 'chess.toggleIllegal', title: 'Toggle illegal moves', run: h.toggleIllegal },
     { id: 'chess.toggleEvalBar', title: 'Toggle eval bar', run: h.toggleEvalBar },
@@ -115,6 +117,7 @@ export function installKeymap(h: KeyHandlers): Keymap {
   }
   keymap.bind('chess', { key: 'p', cmd: 'chess.toggleAI' });
   keymap.bind('chess', { key: 'h', cmd: 'chess.toggleHistory' });
+  keymap.bind('chess', { key: 't', cmd: 'chess.toggleChat' });
   keymap.bind('chess', { key: 'n', cmd: 'chess.resetGame' });
   keymap.bind('chess', { key: 'i', cmd: 'chess.toggleIllegal' });
   keymap.bind('chess', { key: 'e', cmd: 'chess.toggleEvalBar' });

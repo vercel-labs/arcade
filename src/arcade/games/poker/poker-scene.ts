@@ -35,7 +35,8 @@ import type { RGB } from '../../../engine/index.ts';
 import type { Card } from '../../../rules/poker/cards.ts';
 import type { HoldemState, PokerAction } from '../../../rules/poker/holdem.ts';
 import { cardBackTexture } from './card-textures.ts';
-import { CARD_H, CARD_SCALE, CARD_W, drawCard, drawPeekCard, flatDown, flatUp, type PeekPose, peekCardCenter } from './card-render.ts';
+import { CARD_SCALE, CARD_W, drawCard, flatDown, flatUp } from './card-render.ts';
+import { HandPeek } from './card-peek.ts';
 import { chairMesh, chairModel, TABLE_MODEL, TABLE_RADIUS, tableMesh } from './table.ts';
 
 const FOVY = (46 * Math.PI) / 180;
@@ -61,19 +62,6 @@ const CARD_LIFT = 0.08; // rest cards clear of the felt — enough that far seat
 const WISP_FLOAT = 2.2; // world height a seat's wisp floats above the felt
 const WISP_SCALE = 0.5;
 const ANIM_BEAT = 8; // frames a played action lingers before the loop continues (~0.27s)
-const PEEK = 0.6; // reveal value the hero's hole card bends to on hover (see card-render)
-// A small extra fan (each card) as they lift fully face-on, so a lifted pair reads as
-// two distinct cards rather than a tight block.
-const HERO_LIFT_SPREAD = 0.12;
-
-// The hero's private view of one of its two hole cards: how far it's revealed
-// (0 face-down on the felt, PEEK arched to peek, 1 lifted face-on) plus the spring
-// velocity and a committed-up flag, exactly like the cards sandbox's hand mode.
-interface HeroCard {
-  reveal: number;
-  vel: number;
-  up: boolean;
-}
 
 // The deck lives at the centre-back of the felt for the whole hand: the opening deal
 // flies two cards out to each seat, and each community street (flop/turn/river) is
@@ -127,13 +115,10 @@ export class PokerGameScene {
   private active = false; // a session is running (drives live rendering + wisps)
   private paused = false;
 
-  // The hero's two hole cards' peek/lift state (home-game style: face-down until you
-  // peek them) + which one the pointer is hovering (−1 none).
-  private heroCards: HeroCard[] = [
-    { reveal: 0, vel: 0, up: false },
-    { reveal: 0, vel: 0, up: false },
-  ];
-  private heroHovered = -1;
+  // The hero's own hole cards are face-down (home-game style); hovering peeks one and
+  // clicking lifts it — the exact interaction from the cards sandbox's hand mode, reused
+  // verbatim via HandPeek so it behaves identically.
+  private heroPeek = new HandPeek(HOLE_R);
 
   // Opening-deal animation state (see startDeal).
   private deals: DealCard[] = [];
@@ -190,13 +175,13 @@ export class PokerGameScene {
   beginHand(state: HoldemState): void {
     this.hand = state;
     this.beat = 0;
-    // Fresh hole cards → lay the hero's own back down, face hidden until it peeks.
-    for (const c of this.heroCards) {
-      c.reveal = 0;
-      c.vel = 0;
-      c.up = false;
-    }
-    this.heroHovered = -1;
+    // Fresh hole cards → seat the hero's own face-down, hidden until it peeks. Two
+    // cards, tucked at ±HOLE_GAP along the hero seat's tangent (seat 0 is at +z).
+    const hole = state.holeOf(0);
+    this.heroPeek.reset([
+      { card: hole[0], seatX: -HOLE_GAP },
+      { card: hole[1], seatX: HOLE_GAP },
+    ]);
     this.boardShown = 0;
     this.boardT = -1;
     this.dealtFromDeck = 0;
@@ -343,122 +328,27 @@ export class PokerGameScene {
   }
 
   needsRender(): boolean {
-    return this.dirty || (this.active && !this.paused) || this.beat > 0 || this.dealing || this.boardT >= 0 || this.heroAnimating();
+    return this.dirty || (this.active && !this.paused) || this.beat > 0 || this.dealing || this.boardT >= 0 || this.heroPeek.animating();
   }
 
   // ── Hero hole-card peek / lift ─────────────────────────────────────────────────
   // The hero's own cards lie face-down like a real home game; the hero peeks them by
   // hovering (a natural bend, shared with the cards sandbox) and clicks to lift one
   // fully face-on. Only wired when seat 0 is the human hero.
+  // The hero can peek its own cards once they're dealt (a human seat 0, not folded, and
+  // the opening deal has finished).
   private heroPeekable(): boolean {
     return !this.dealing && this.hand !== null && this.seats[0]?.kind === 'human' && !this.hand.isFolded(0);
   }
 
-  // Seat 0 is at +z (a = 0), so a hole card lies with its length along world z and its
-  // near edge toward the hero — exactly the frame the bend renderer expects.
-  private heroPeekPose(k: number): PeekPose {
-    const c = this.seatPos(0, HOLE_R);
-    const reveal = this.heroCards[k].reveal;
-    const side = k === 0 ? -1 : 1;
-    const liftF = Math.max(0, Math.min(1, (reveal - PEEK) / (1 - PEEK))); // 0 through the peek, 1 fully lifted
-    const seatX = c.x + side * (HOLE_GAP + HERO_LIFT_SPREAD * liftF); // fan apart only as they stand up
-    return { seatX, seatZ: c.z, reveal, peek: PEEK, az: this.cam.azimuth };
-  }
-
-  // At showdown the hero's cards flip up like everyone's; otherwise a lifted (clicked)
-  // card sits face-on, a hovered card arches to peek, and the rest lie face-down.
-  private heroRevealTarget(k: number): number {
-    if (this.hand && this.hand.showdownSeats().includes(0)) return 1;
-    if (this.heroCards[k].up) return 1;
-    return this.heroHovered === k ? PEEK : 0;
-  }
-
-  private heroAnimating(): boolean {
-    if (!this.heroPeekable()) return false;
-    for (let k = 0; k < this.heroCards.length; k++) {
-      const c = this.heroCards[k];
-      if (Math.abs(c.reveal - this.heroRevealTarget(k)) > 0.001 || Math.abs(c.vel) > 0.001) return true;
-    }
-    return false;
-  }
-
-  // Lightly-damped spring toward each card's reveal target (matches the sandbox feel:
-  // a quick flex into the peek, settling with a hint of overshoot; never below the felt).
-  private stepHeroCards(dt: number): void {
-    if (!this.heroPeekable()) return;
-    for (let k = 0; k < this.heroCards.length; k++) {
-      const c = this.heroCards[k];
-      c.vel += (190 * (this.heroRevealTarget(k) - c.reveal) - 19 * c.vel) * dt;
-      c.reveal += c.vel * dt;
-      if (c.reveal < 0) {
-        c.reveal = 0;
-        if (c.vel < 0) c.vel = 0;
-      }
-    }
-  }
-
-  // Pointer-move: arch whichever hero card is under the cursor (−1 none). Uses the
-  // resting footprint only, so the pick is independent of how far the card has arched
-  // — hovering it stays a stable hit rather than flickering as the reveal animates.
+  // Pointer-move / click, delegated to the shared HandPeek (identical to the sandbox).
   hoverCard(ndcX: number, ndcY: number, aspect: number): void {
-    const h = this.pickHeroCard(ndcX, ndcY, aspect, false);
-    if (h !== this.heroHovered) {
-      this.heroHovered = h;
-      this.dirty = true;
-    }
+    if (!this.heroPeekable()) return;
+    if (this.heroPeek.hover(this.cam, ndcX, ndcY, aspect)) this.dirty = true;
   }
-
-  // Click: lift the hovered hero card fully face-on (toggle back down on a second
-  // click). Also matches a fully-lifted card by its projected position, so you can
-  // click it back down even though it's left the felt.
   clickCard(ndcX: number, ndcY: number, aspect: number): void {
-    const h = this.pickHeroCard(ndcX, ndcY, aspect, true);
-    if (h < 0) return;
-    this.heroCards[h].up = !this.heroCards[h].up;
-    this.dirty = true;
-  }
-
-  // Ray-pick a hero hole card by its resting footprint on the felt (reveal-independent,
-  // so hover never flickers). When `allowLifted`, also accept a hit near a lifted card's
-  // projected center so a click can lower it after it's risen off the table.
-  private pickHeroCard(ndcX: number, ndcY: number, aspect: number, allowLifted: boolean): number {
-    if (!this.heroPeekable()) return -1;
-    const eye = this.cam.eye();
-    const { forward, right, up } = this.cam.basis();
-    const tan = Math.tan(FOVY / 2);
-    const dir = normalize3({
-      x: forward.x + right.x * ndcX * tan * aspect + up.x * ndcY * tan,
-      y: forward.y + right.y * ndcX * tan * aspect + up.y * ndcY * tan,
-      z: forward.z + right.z * ndcX * tan * aspect + up.z * ndcY * tan,
-    });
-    let hitX = Infinity;
-    let hitZ = Infinity;
-    if (Math.abs(dir.y) > 1e-4) {
-      const tHit = (CARD_LIFT - eye.y) / dir.y;
-      if (tHit > 0) {
-        hitX = eye.x + dir.x * tHit;
-        hitZ = eye.z + dir.z * tHit;
-      }
-    }
-    const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 200 };
-    const { viewProjection: vp } = cameraMatrices(camera, aspect);
-    const c = this.seatPos(0, HOLE_R);
-    let best = -1;
-    for (let k = 0; k < this.heroCards.length; k++) {
-      const seatX = c.x + (k === 0 ? -HOLE_GAP : HOLE_GAP);
-      // Resting footprint — the stable, reveal-independent test.
-      if (Math.abs(hitX - seatX) <= CARD_W / 2 + 0.14 && Math.abs(hitZ - c.z) <= CARD_H / 2 + 0.14) best = k;
-      else if (allowLifted && this.heroCards[k].reveal >= 0.5) {
-        const center = peekCardCenter(this.heroPeekPose(k));
-        const p = mat4MulVec4(vp, { x: center.x, y: center.y, z: center.z, w: 1 });
-        if (p.w > 1e-4) {
-          const px = p.x / p.w;
-          const py = p.y / p.w;
-          if (Math.abs(px - ndcX) < 0.35 && Math.abs(py - ndcY) < 0.45) best = k;
-        }
-      }
-    }
-    return best;
+    if (!this.heroPeekable()) return;
+    if (this.heroPeek.click(this.cam, ndcX, ndcY, aspect)) this.dirty = true;
   }
 
   // ── Geometry ───────────────────────────────────────────────────────────────────
@@ -491,7 +381,7 @@ export class PokerGameScene {
     const hand = this.hand;
     if (hand) {
       this.advanceDeals(dt, hand);
-      this.stepHeroCards(dt);
+      if (this.heroPeekable()) this.heroPeek.step(dt); // settle the hero's peek/lift spring
       this.drawDeck(target, vp); // the stock stays on the felt all hand
       this.drawCommunity(target, vp, hand); // board cards that have landed + the one flipping out
       // While the opening deal plays, hole cards fly from the deck to each seat; once
@@ -610,16 +500,17 @@ export class PokerGameScene {
 
   private drawHoleCards(target: RenderTarget, vp: Mat4, hand: HoldemState): void {
     const reveal = new Set(hand.showdownSeats());
-    const heroPeek = this.seats[0]?.kind === 'human'; // the human hero peeks its own; AI seat 0 stays hidden
+    // The human hero peeks its own cards (shared HandPeek) during play; at showdown they
+    // flip up flat like everyone else's. An AI seat 0 stays hidden until showdown.
+    const heroPeek = this.seats[0]?.kind === 'human';
     for (let s = 0; s < this.seats.length; s++) {
       if (hand.isFolded(s)) continue;
       const hole = hand.holeOf(s);
-      // The human hero's own cards: face-down until it peeks/lifts them (home-game style).
-      if (s === 0 && heroPeek) {
-        for (let k = 0; k < hole.length; k++) drawPeekCard(target, vp, this.heroPeekPose(k), hole[k] as Card, this.back);
+      if (s === 0 && heroPeek && !reveal.has(0)) {
+        this.heroPeek.draw(target, vp, this.cam.azimuth, this.back);
         continue;
       }
-      const faceUp = reveal.has(s); // every other seat is hidden until showdown
+      const faceUp = reveal.has(s); // every other seat (and the hero at showdown) reveals here
       const a = this.seatAngle(s);
       const c = this.seatPos(s, HOLE_R);
       // Two cards, offset along the seat's tangent (perpendicular to the radial).

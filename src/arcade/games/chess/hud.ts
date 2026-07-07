@@ -13,6 +13,7 @@ import { Box, Button, type Row, ScrollBox, Slot, Text, type LayoutBox, type Node
 import type { RGB, RGBA } from '../../../engine/index.ts';
 import type { ChessResult } from '../../../rules/chess/chess.ts';
 import { WHITE } from '../../../rules/chess/types.ts';
+import { CHAT_WIDTH, chatBox, mountChat, PANEL_PAD_L, PANEL_PAD_R } from './chat.ts';
 
 const HISTORY_HEIGHT = 18; // MAX visible move rows — the panel grows to this, then scrolls
 const HISTORY_WIDTH = 22; // inner content width — header + list share it (fixed)
@@ -25,6 +26,7 @@ export const moveHistory = new ScrollBox({ id: 'chess-history', width: HISTORY_W
 
 export function mountChessHud(ui: Screen): void {
   ui.mount(moveHistory);
+  mountChat(ui);
 }
 
 // A commentary toast: a model's short rationale shown briefly before its move.
@@ -138,7 +140,7 @@ export function buildEvalBar(cp: number, result: ChessResult | null, height: num
   const rows: Node[] = [];
   for (let r = barH - 1; r >= 0; r--) rows.push(railRow(r < whiteRows ? EVAL_LIGHT : EVAL_DARK));
 
-  return Box({ flexDirection: 'column', width: EVAL_COL_W, height, alignItems: 'center' }, [
+  return Box({ flexDirection: 'column', width: EVAL_COL_W, flexShrink: 0, height, alignItems: 'center' }, [
     Box({ flexGrow: 1 }), // top gap (balances the bottom — keeps the rail off the edge)
     Box({ width: EVAL_COL_W, height: 1, justifyContent: 'center', background: EVAL_LABEL_BG }, [
       Text({ text: label, style: { color: [210, 212, 222], bold: true } }),
@@ -166,6 +168,19 @@ const CLOSE_BTN: Style = {
 };
 const COPY_GLYPH = '↥'; // up-from-bar "export" mark (copies PGN)
 
+// The "open chat" affordance: a top-right pill (chat glyph + label), styled like
+// the menu's settings gear, shown only while the chat panel is hidden. Clicking it
+// reveals the panel; the panel's own ✕ (also top-right) hides it again.
+const CHAT_ICON = '💬';
+const CHAT_PILL: Style = {
+  padding: [0, 1],
+  background: [28, 30, 40],
+  color: [200, 205, 220],
+  hover: { background: [238, 240, 248], color: [16, 16, 24] },
+  focus: { background: [86, 90, 108], color: [248, 248, 252] },
+  pressed: { background: [255, 255, 255], color: [12, 12, 18] },
+};
+
 // Build the full-screen chess-game overlay: the move panel pinned top-right
 // (collapsible — see `minimized`/`onToggle`), a commentary toast above the bar
 // (when active), then the bar.
@@ -181,6 +196,8 @@ export function buildChessGameRoot(
     evalVisible: boolean;
     evalCp: number;
     evalResult: ChessResult | null;
+    chatVisible: boolean;
+    onToggleChat: () => void;
   },
 ): Node {
   // Minimized: the header hugs just the "Moves" button (a tight button). Expanded:
@@ -237,8 +254,36 @@ export function buildChessGameRoot(
     bar,
     Box({ height: 1 }), // lift the bar off the very bottom edge
   ]);
-  return Box({ width: region.w, height: region.h, flexDirection: 'row' }, [
+  const row = Box({ width: region.w, height: region.h, flexDirection: 'row' }, [
     main,
     ...(opts.evalVisible ? [buildEvalBar(opts.evalCp, opts.evalResult, region.h)] : []),
+    ...(opts.chatVisible ? [buildChatPanel(region.h, opts.onToggleChat)] : []),
+  ]);
+  // Chat shown → the panel carries its own top-right ✕. Chat hidden → float the
+  // "open chat" pill in the top-right corner (over the scene, like the menu gear).
+  if (opts.chatVisible) return row;
+  const opener = Box({ position: 'absolute', top: 1, right: 2 }, [
+    Button({ id: 'chat-open', label: `${CHAT_ICON} chat`, onClick: opts.onToggleChat, style: CHAT_PILL }),
+  ]);
+  return Box({ width: region.w, height: region.h }, [row, opener]);
+}
+
+// The right-edge chat panel: a "Chat" header (clickable → hide, plus a ✕) over the
+// scrollable ChatBox Slot, full region height with a translucent fill matching the
+// move panel. Sizes the ChatBox viewport from the available height each frame.
+const CHAT_PAD_V = 1; // top/bottom inset
+const CHAT_HEADER_H = 2; // header row + a gap row
+function buildChatPanel(height: number, onToggle: () => void): Node {
+  chatBox.setViewport(Math.max(1, height - 2 * CHAT_PAD_V - CHAT_HEADER_H));
+  const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', width: CHAT_WIDTH - PANEL_PAD_L - PANEL_PAD_R, padding: [0, 2, 0, 0] }, [
+    Button({ id: 'chat-toggle', label: `${CHAT_ICON} Chat`, onClick: onToggle, style: HEADER_BTN }),
+    Button({ id: 'chat-close', label: '✕', onClick: onToggle, style: CLOSE_BTN }),
+  ]);
+  // flexShrink 0: the wide chess-game bar in the main column overflows its row, so
+  // without this the panel would be squeezed below CHAT_WIDTH and clip its bubbles.
+  return Box({ flexDirection: 'column', width: CHAT_WIDTH, flexShrink: 0, height, padding: [CHAT_PAD_V, PANEL_PAD_R, CHAT_PAD_V, PANEL_PAD_L], background: [22, 24, 32, 0.9] }, [
+    header,
+    Box({ height: 1 }), // gap between header and the thread
+    Slot('chess-chat'),
   ]);
 }

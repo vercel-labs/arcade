@@ -97,6 +97,8 @@ export function buildBar(
     const evalStyle = evalOn
       ? { ...PILL, background: [60, 78, 112] as RGB, color: [230, 238, 250] as RGB }
       : PILL;
+    // The chat panel is toggled by a top-right icon (see hud.ts buildChessGameRoot),
+    // not a bar button — keeping the bar focused on board/game controls.
     buttons = [
       Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
       Button({ id: 'ai', label: ai.label, onClick: a.aiMatch, style: aiStyle }),

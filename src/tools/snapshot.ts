@@ -18,6 +18,7 @@ import { MENU_ITEMS } from '../arcade/shell/menu.ts';
 import { buildBar, buildGameOver, buildPromotion, type Mode } from '../arcade/shell/bars.ts';
 import { buildShowcase, mountShowcase } from '../arcade/scenes/ui-showcase.ts';
 import { buildChessGameRoot, mountChessHud, refreshMoveHistory } from '../arcade/games/chess/hud.ts';
+import { type ChatMessage, clearChat, pushChatMessage } from '../arcade/games/chess/chat.ts';
 import { evaluate } from '../rules/chess/eval.ts';
 import { buildMatchSetup, mountMatchSetup } from '../arcade/match/setup.ts';
 import { providers } from '../arcade/match/models.ts';
@@ -162,6 +163,10 @@ function blockBits(ch: string, px: number, py: number): boolean {
       const r2 = (px - 3.5) ** 2 + (py - 3.5) ** 2;
       return r2 <= 10 && r2 >= 2;
     }
+    case '💬':
+      // No emoji in the 8×8 font — approximate the speech balloon as a filled
+      // rounded bubble body with a small tail at the bottom-left.
+      return (px >= 1 && px <= 6 && py >= 0 && py <= 4) || (py === 5 && px >= 1 && px <= 2);
     case '✓':
       // Checkmark: a short down-stroke (lower-left) meeting a long up-stroke.
       return (px >= 1 && px <= 3 && Math.abs(py - (px + 2)) <= 0.6) || (px >= 3 && px <= 6 && Math.abs(py - (8 - px)) <= 0.6);
@@ -594,8 +599,12 @@ function settingsSnapshot(): void {
     ];
     setTeamSwitchTeams(teams, teams[1]); // current = Vercel Labs (● marked, preselected)
     if (args.includes('switched')) markSwitchSucceeded(teams[3]); // ✓ on a just-switched team
-    const view = args.includes('loading') ? { kind: 'loading' as const } : { kind: 'loaded' as const };
-    screen.setRoot(buildTeamSwitch(view, { onClose: noop, onSignIn: noop }), region);
+    const view = args.includes('loading')
+      ? { kind: 'loading' as const }
+      : args.includes('error')
+        ? { kind: 'error' as const, message: 'Could not create AI Gateway key (403 forbidden)', canReturn: true }
+        : { kind: 'loaded' as const };
+    screen.setRoot(buildTeamSwitch(view, { onClose: noop, onSignIn: noop, onBack: noop }), region);
   } else {
     const gear = { padding: [0, 1] as [number, number], background: [28, 30, 40] as Rgb, color: [200, 205, 220] as Rgb };
     const overlay = Box({ width: cols, height: rows }, [Box({ position: 'absolute', top: 1, right: 2 }, [Button({ id: 'menu-settings', label: '⚙ settings', style: gear })])]);
@@ -740,6 +749,19 @@ function chessOverlaySnapshot(): void {
   refreshMoveHistory(sans, illegalFlags);
   // 'eval' shows the right-edge eval bar, scored from the live board.
   const evalVisible = process.argv.includes('eval');
+  // 'chat' shows the right-edge model-DM chat panel, seeded with a few bubbles.
+  const chatVisible = process.argv.includes('chat');
+  if (chatVisible) {
+    clearChat();
+    const seed: ChatMessage[] = [
+      { text: 'e4 - grabbing the center. Classic and principled.', model: 'openai/gpt-5.4' },
+      { text: 'c5, the Sicilian. I refuse to play symmetrically against you today.', model: 'anthropic/claude-opus-4.8' },
+      { text: "Nf3, developing and eyeing d4. Let's open this up.", model: 'openai/gpt-5.4' },
+      { text: 'Nc6. Fighting for the center squares, holding my ground.', model: 'anthropic/claude-opus-4.8' },
+      { text: 'Bb5 — a Rossolimo. Pinning your knight and slowing the queenside.', model: 'openai/gpt-5.4' },
+    ];
+    for (const m of seed) pushChatMessage(m);
+  }
   const region = { x: 0, y: 0, w: cols, h: rows };
   screen.setRoot(
     buildChessGameRoot(region, buildBar('chess-game', 'ascii', barActions, { label: 'pause ai', active: true }, false, evalVisible), {
@@ -751,6 +773,8 @@ function chessOverlaySnapshot(): void {
       evalVisible,
       evalCp: evalVisible ? evaluate(cg.state().board) : 0,
       evalResult: cg.state().result(),
+      chatVisible,
+      onToggleChat: noop,
     }),
     region,
   );
