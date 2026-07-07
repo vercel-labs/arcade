@@ -24,10 +24,12 @@ export interface ChatMessage {
 
 // ── Layout ────────────────────────────────────────────────────────────────────
 const SCROLLBAR_W = 1;
-// Panel width (cells) — narrow, like a live-chat rail. It's widened by SCROLLBAR_W
-// so reserving the scrollbar's column doesn't eat into the text region: the bar
-// gets its own column at the far right and text never wraps under it.
-export const CHAT_WIDTH = 34 + SCROLLBAR_W;
+const RIGHT_GAP = 1; // clear column(s) between the text and the scrollbar
+// Panel width (cells) — narrow, like a live-chat rail. Widened by the scrollbar
+// column PLUS a gap column so reserving them doesn't eat into the text region: the
+// bar gets its own column at the far right, with a blank column before it, and text
+// never wraps under or flush against it.
+export const CHAT_WIDTH = 34 + SCROLLBAR_W + RIGHT_GAP;
 // Panel insets: a touch more on the left; ZERO on the right so the scrollbar sits
 // flush at the panel edge (a right inset leaves a translucent strip that shows the
 // moving scene through it, reading as a jagged edge). Mirrors the moves panel.
@@ -35,7 +37,7 @@ export const PANEL_PAD_L = 2;
 export const PANEL_PAD_R = 0;
 const MSG_GAP = 1; // blank rows between messages
 const VIEW_W = CHAT_WIDTH - PANEL_PAD_L - PANEL_PAD_R; // viewport width inside the panel
-const CONTENT_W = VIEW_W - SCROLLBAR_W; // text wrap width — the scrollbar owns the last column
+const CONTENT_W = VIEW_W - SCROLLBAR_W - RIGHT_GAP; // text wrap width — a gap col, then the scrollbar
 
 const MSG_FG: RGB = [224, 226, 234]; // dialogue + colon — normal white
 const TRACK: RGB = [44, 46, 56];
