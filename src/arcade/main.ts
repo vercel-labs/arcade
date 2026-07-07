@@ -201,6 +201,9 @@ let chatVisible = false;
 // Whether the right-edge eval bar is shown (toggle with the 'e' key or the bar
 // button). Default hidden; the score is recomputed from the live board each frame.
 let evalBarVisible = false;
+// Whether the poker hand/board panel (top-right) is expanded. Open by default; the ✕
+// collapses it to a small "hand" pill, which re-opens it. Persists across hands.
+let handPanelOpen = true;
 // The game-over result popup (chess-game only): set once the board is terminal,
 // cleared on a new game; `dismissed` suppresses re-showing after Close until the
 // board leaves the terminal state; `focused` is the focus-once edge.
@@ -446,6 +449,13 @@ function toggleHistory(): void {
 // Show/hide the model-DM chat panel (bound to 't', and the panel's own header/✕).
 function toggleChat(): void {
   chatVisible = !chatVisible;
+  forceFrame = true;
+  r.requestRender();
+}
+
+// Expand/collapse the poker hand/board panel (the panel's ✕ and the collapsed pill).
+function toggleHandPanel(): void {
+  handPanelOpen = !handPanelOpen;
   forceFrame = true;
   r.requestRender();
 }
@@ -1216,6 +1226,9 @@ function syncBar(): void {
         commentary,
         t,
         status: pokerStatus(),
+        handBoard: pokerScene.heroPanel(),
+        handOpen: handPanelOpen,
+        onToggleHand: toggleHandPanel,
       }),
       { x: 0, y: 0, w: cols, h: rows },
     );

@@ -6,6 +6,9 @@
 // handlers; this module owns the controls and maps the slider to a chip amount.
 
 import { Box, Button, type Row, ScrollBox, Slider, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
+import type { RGB } from '../../../engine/index.ts';
+import { type Card, isRed, RANK_LABELS } from '../../../rules/poker/cards.ts';
+import type { HeroPanelView } from './poker-scene.ts';
 import { shortModel } from '../chess/hud.ts';
 
 const LOG_WIDTH = 30;
@@ -94,7 +97,9 @@ function bettingControls(hero: HeroContext): Node {
 
   const rows: Node[] = [Box({ flexDirection: 'row', gap: 2 }, buttons)];
   // A raise/bet control only when the hero has chips beyond the call and there's a
-  // real range (min < max). When min == max, only an all-in is possible.
+  // real range (min < max). When min == max, only an all-in is possible. The live
+  // amount rides ON the confirm button ("Raise to 790" / "Bet 790") — no separate
+  // floating amount label, no bare verb-only button.
   if (hero.canRaise) {
     const amount = sliderAmount(hero);
     const verb = hero.toCall > 0 ? 'Raise to' : 'Bet';
@@ -102,8 +107,7 @@ function bettingControls(hero: HeroContext): Node {
     const raiseRow: Node[] = [];
     if (hasRange) {
       raiseRow.push(Slot('poker-bet'));
-      raiseRow.push(Text({ text: `${verb} ${amount}`, style: { color: [222, 224, 234] } }));
-      raiseRow.push(Button({ id: 'poker-raise', label: verb, onClick: () => H?.onBetRaise(amount), style: RAISE }));
+      raiseRow.push(Button({ id: 'poker-raise', label: `${verb} ${amount}`, onClick: () => H?.onBetRaise(amount), style: RAISE }));
     }
     raiseRow.push(Button({ id: 'poker-allin', label: `All-in ${hero.maxRaiseTo}`, onClick: () => H?.onAllin(), style: RAISE }));
     rows.push(Box({ flexDirection: 'row', gap: 2, alignItems: 'center' }, raiseRow));
@@ -111,13 +115,80 @@ function bettingControls(hero: HeroContext): Node {
   return Box({ flexDirection: 'column', gap: 1, padding: [1, 2], background: [16, 18, 26, 0.92] }, rows);
 }
 
+// ── Top-right hand/board panel ───────────────────────────────────────────────────
+// A compact card in the top-right corner showing the hero's two hole cards and the five
+// community slots. Hole cards read ?? until the hero peeks them (then rank + suit icon);
+// board slots read ? until the flop/turn/river deals them. Collapsible (✕ → a small pill).
+const SUIT_ICON = ['♠', '♥', '♦', '♣'] as const; // indexed by Suit (spades, hearts, diamonds, clubs)
+const CARD_FACE: RGB = [230, 230, 236]; // light card stock
+const CARD_RED: RGB = [196, 30, 40]; // ♥ / ♦
+const CARD_BLACK: RGB = [20, 20, 28]; // ♠ / ♣
+const CELL_DOWN: RGB = [44, 46, 56]; // face-down / undealt slot
+const CELL_DOWN_FG: RGB = [126, 130, 148];
+const ROW_LABEL_W = 6; // fixed so the "You"/"Board" rows' cells line up
+
+// One mini-card cell: light stock with rank + suit icon (red for ♥/♦), or a muted slate
+// placeholder (`??` for an un-peeked hole card, `?` for an undealt board slot).
+function cardCell(card: Card | null, placeholder: string): Node {
+  if (!card) return Box({ padding: [0, 1], background: CELL_DOWN }, [Text({ text: placeholder, style: { color: CELL_DOWN_FG, bold: true } })]);
+  const label = `${RANK_LABELS[card.rank]}${SUIT_ICON[card.suit]}`;
+  return Box({ padding: [0, 1], background: CARD_FACE }, [Text({ text: label, style: { color: isRed(card) ? CARD_RED : CARD_BLACK, bold: true } })]);
+}
+
+const HAND_CLOSE: Style = {
+  padding: [0, 1],
+  color: [150, 154, 166],
+  hover: { background: [180, 60, 60], color: [255, 255, 255] },
+  focus: { background: [72, 76, 92], color: [230, 232, 240] },
+  pressed: { background: [220, 90, 90], color: [255, 255, 255] },
+};
+const HAND_PILL: Style = {
+  padding: [0, 2],
+  background: [40, 42, 52],
+  color: [212, 214, 224],
+  bold: true,
+  hover: { background: [86, 90, 108], color: [248, 248, 252] },
+  focus: { background: [86, 90, 108], color: [248, 248, 252] },
+  pressed: { background: [120, 124, 142], color: [12, 12, 18] },
+};
+
+const rowLabel = (t: string): Node => Box({ width: ROW_LABEL_W }, [Text({ text: t, style: { color: 'muted' } })]);
+
+// The expanded panel: "Hand" header (+ ✕), a row for the hero's hole cards, a row for the
+// board. `onToggle` collapses it to the opener pill.
+function handBoardPanel(v: HeroPanelView, onToggle: () => void): Node {
+  const handCells = v.hand.map((h) => cardCell(h.seen ? h.card : null, '??'));
+  const boardCells = Array.from({ length: 5 }, (_, i) => cardCell(i < v.boardShown && i < v.board.length ? v.board[i] : null, '?'));
+  const title = Text({ text: 'Hand', style: { color: [222, 224, 234], bold: true } });
+  const you = Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [rowLabel('You'), ...handCells]);
+  const board = Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [rowLabel('Board'), ...boardCells]);
+  // The ✕ sits in the card's top-right CORNER, not beside the title: absolute children
+  // resolve inside the [1,2] padding, so top:0 leaves the top padding-row above it and
+  // right:-1 pulls it out into the right padding to leave one cell from the edge; the
+  // row gap keeps space below. (Same corner-close pattern as the team-switch modal.)
+  const close = Box({ position: 'absolute', top: 0, right: -1 }, [Button({ id: 'hand-close', label: '✕', onClick: onToggle, style: HAND_CLOSE })]);
+  return Box({ flexDirection: 'column', gap: 1, padding: [1, 2], background: [22, 24, 32, 0.92] }, [title, you, board, close]);
+}
+
+// The collapsed state: a small pill in the same corner that re-opens the panel.
+const openerPill = (onToggle: () => void): Node => Button({ id: 'hand-open', label: '🂠 hand', onClick: onToggle, style: HAND_PILL });
+
 // Build the full-screen poker overlay: the info panel (pot + action log) pinned
-// top-left, a commentary toast + the hero betting controls above the bar, then the
-// bar. `bar` is buildBar('poker', …) from main.
+// top-left, the hand/board panel top-right, a commentary toast + the hero betting
+// controls above the bar, then the bar. `bar` is buildBar('poker', …) from main.
 export function buildPokerGameRoot(
   region: LayoutBox,
   bar: Node,
-  opts: { hero: HeroContext; blinds: string; commentary: PokerCommentary | null; t: number; status: string },
+  opts: {
+    hero: HeroContext;
+    blinds: string;
+    commentary: PokerCommentary | null;
+    t: number;
+    status: string;
+    handBoard: HeroPanelView | null; // null when no hand is in play (panel hidden)
+    handOpen: boolean; // expanded vs. collapsed to the opener pill
+    onToggleHand: () => void;
+  },
 ): Node {
   const panel = Box({ flexDirection: 'column', gap: 0, padding: [0, 1], background: [22, 24, 32, 0.9] }, [
     Box({ flexDirection: 'row', justifyContent: 'between', width: LOG_WIDTH }, [
@@ -135,7 +206,7 @@ export function buildPokerGameRoot(
 
   const controls = opts.hero.toAct ? bettingControls(opts.hero) : null;
 
-  return Box({ width: region.w, height: region.h, flexDirection: 'column' }, [
+  const col = Box({ width: region.w, height: region.h, flexDirection: 'column' }, [
     Box({ flexDirection: 'row', justifyContent: 'start', padding: [1, 0, 0, 2] }, [panel]),
     Box({ flexGrow: 1 }),
     ...(toast ? [Box({ flexDirection: 'row', justifyContent: 'start', padding: [0, 0, 1, 2] }, [toast])] : []),
@@ -143,4 +214,12 @@ export function buildPokerGameRoot(
     bar,
     Box({ height: 1 }),
   ]);
+
+  // The hand/board panel floats in the top-right corner (over the scene, like the chess
+  // chat pill), so it doesn't reflow the columns. Only while a hand is in play.
+  if (!opts.handBoard) return col;
+  const corner = Box({ position: 'absolute', top: 1, right: 2 }, [
+    opts.handOpen ? handBoardPanel(opts.handBoard, opts.onToggleHand) : openerPill(opts.onToggleHand),
+  ]);
+  return Box({ width: region.w, height: region.h }, [col, corner]);
 }

@@ -33,9 +33,15 @@ interface PeekCard {
   up: boolean; // clicked fully up
 }
 
+// A card counts as "seen" once it has bent up past this reveal — below PEEK (0.6), so a
+// deliberate hover-peek latches it, not just a cursor grazing by. Drives the game HUD's
+// hand readout (a face-down card the hero has glimpsed shows its rank/suit there).
+const SEEN_AT = 0.35;
+
 export class HandPeek {
   private cards: PeekCard[] = [];
   private hovered = -1;
+  private seenFlags: boolean[] = []; // per card: has it been peeked/lifted at least once
 
   // `seatZ` is where the cards rest along the seat's radial (HAND_SEAT_Z in the sandbox,
   // the hole-card radius in the game); the felt plane is y=0.
@@ -45,9 +51,15 @@ export class HandPeek {
   reset(cards: readonly { card: Card; seatX: number }[]): void {
     this.cards = cards.map((c) => ({ card: c.card, seatX: c.seatX, reveal: 0, vel: 0, up: false }));
     this.hovered = -1;
+    this.seenFlags = cards.map(() => false);
   }
   count(): number {
     return this.cards.length;
+  }
+  // Whether card i has been peeked/lifted at least once this hand (latched in step once
+  // its reveal crosses SEEN_AT). The game HUD uses this to reveal a glimpsed hole card.
+  seen(i: number): boolean {
+    return this.seenFlags[i] ?? false;
   }
 
   private revealTarget(i: number): number {
@@ -82,6 +94,7 @@ export class HandPeek {
           c.reveal = 0;
           if (c.vel < 0) c.vel = 0;
         }
+        if (c.reveal > SEEN_AT) this.seenFlags[i] = true; // latch: the hero has glimpsed it
       }
     }
   }

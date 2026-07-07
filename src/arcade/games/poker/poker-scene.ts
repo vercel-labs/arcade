@@ -100,6 +100,15 @@ export interface PokerSeatView {
   provider?: string;
 }
 
+// The hero info-panel view (top-right HUD): the two hole cards, each with a `seen` flag
+// (peeked/lifted at least once, or forced open at showdown), the community cards, and
+// how many of them have landed on the felt so far. null when no hand is in play.
+export interface HeroPanelView {
+  hand: { card: Card; seen: boolean }[];
+  board: readonly Card[];
+  boardShown: number;
+}
+
 // Text tints for the overlay.
 const FG: RGB = [232, 236, 246];
 const MUTED: RGB = [150, 156, 174];
@@ -309,6 +318,19 @@ export class PokerGameScene {
     const req = this.humanReq;
     this.humanReq = null;
     req?.reject(new Error('aborted'));
+  }
+
+  // The data behind the top-right hand/board panel. A hole card reads as "seen" once the
+  // hero has peeked/lifted it (latched by HandPeek), or at showdown; `boardShown` is the
+  // count already dealt onto the felt, so the panel reveals the flop/turn/river in step
+  // with the table animation. Only a human seat 0 ever reveals its own hole cards here.
+  heroPanel(): HeroPanelView | null {
+    if (!this.active || !this.hand) return null;
+    const isHuman = this.seats[0]?.kind === 'human';
+    const shown = new Set(this.hand.showdownSeats());
+    const hole = this.hand.holeOf(0);
+    const hand = hole.map((card, i) => ({ card, seen: isHuman && (this.heroPeek.seen(i) || shown.has(0)) }));
+    return { hand, board: this.hand.boardCards(), boardShown: this.boardShown };
   }
 
   // ── Camera passthrough ─────────────────────────────────────────────────────────

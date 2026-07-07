@@ -383,9 +383,25 @@ function pokerSnapshot(): void {
 
   const target = new RenderTarget(cols * SS, rows * 2 * SS);
   let t = 0.05;
-  for (let i = 0; i < 6; i++) {
+  const step = (): void => {
     scene.renderScene(target, t);
     t += 1 / 30;
+  };
+  // Settle the animations so a street snapshot shows the fully-dealt board: the opening
+  // hole-card deal (up to ~12 cards) runs first, then the community cards fly out.
+  for (let i = 0; i < 220; i++) step();
+  // `peek` reveals the hero's own hole cards in the top-right hand panel by hovering each
+  // (the panel latches a card as "seen" once it has bent up past the peek threshold).
+  if (args.includes('peek')) {
+    const hp = (scene as unknown as { heroPeek?: { setHovered(i: number): void } }).heroPeek;
+    if (hp) {
+      hp.setHovered(0);
+      for (let i = 0; i < 12; i++) step();
+      hp.setHovered(1);
+      for (let i = 0; i < 12; i++) step();
+      hp.setHovered(-1);
+      for (let i = 0; i < 6; i++) step();
+    }
   }
   if (args.includes('color')) {
     writeDisplayPpm(downsample(target, SS), out);
@@ -426,6 +442,9 @@ function pokerSnapshot(): void {
         commentary: null,
         t: 0,
         status: 'Your move',
+        handBoard: scene.heroPanel(),
+        handOpen: true,
+        onToggleHand: noop,
       }),
       region,
     );
