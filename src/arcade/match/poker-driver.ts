@@ -19,7 +19,7 @@ export type PokerSeatSpec = { kind: 'human' } | { kind: 'ai'; model: string };
 const STARTING_STACK = 1000;
 const SMALL_BLIND = 10;
 const BIG_BLIND = 20;
-const HAND_GAP_MS = 2400; // pause between hands so the result reads before the next deal
+const HAND_GAP_MS = 3200; // pause between hands so the showdown reveal + result read before the next deal
 
 // How poker moves are written, for the model prompt/schema (see ModelPlayer).
 const POKER_NOTATION: MoveNotation = {

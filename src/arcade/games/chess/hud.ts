@@ -198,6 +198,7 @@ export function buildChessGameRoot(
     evalResult: ChessResult | null;
     chatVisible: boolean;
     onToggleChat: () => void;
+    chatActive: boolean; // an AI match is in progress (suppresses the chat's empty placeholder)
   },
 ): Node {
   // Minimized: the header hugs just the "Moves" button (a tight button). Expanded:
@@ -257,7 +258,7 @@ export function buildChessGameRoot(
   const row = Box({ width: region.w, height: region.h, flexDirection: 'row' }, [
     main,
     ...(opts.evalVisible ? [buildEvalBar(opts.evalCp, opts.evalResult, region.h)] : []),
-    ...(opts.chatVisible ? [buildChatPanel(region.h, opts.onToggleChat)] : []),
+    ...(opts.chatVisible ? [buildChatPanel(region.h, opts.onToggleChat, opts.chatActive)] : []),
   ]);
   // Chat shown → the panel carries its own top-right ✕. Chat hidden → float the
   // "open chat" pill in the top-right corner (over the scene, like the menu gear).
@@ -273,8 +274,9 @@ export function buildChessGameRoot(
 // move panel. Sizes the ChatBox viewport from the available height each frame.
 const CHAT_PAD_V = 1; // top/bottom inset
 const CHAT_HEADER_H = 2; // header row + a gap row
-function buildChatPanel(height: number, onToggle: () => void): Node {
+function buildChatPanel(height: number, onToggle: () => void, active: boolean): Node {
   chatBox.setViewport(Math.max(1, height - 2 * CHAT_PAD_V - CHAT_HEADER_H));
+  chatBox.setActive(active);
   const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', width: CHAT_WIDTH - PANEL_PAD_L - PANEL_PAD_R, padding: [0, 2, 0, 0] }, [
     Button({ id: 'chat-toggle', label: `${CHAT_ICON} Chat`, onClick: onToggle, style: HEADER_BTN }),
     Button({ id: 'chat-close', label: '✕', onClick: onToggle, style: CLOSE_BTN }),

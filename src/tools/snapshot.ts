@@ -749,9 +749,10 @@ function chessOverlaySnapshot(): void {
   refreshMoveHistory(sans, illegalFlags);
   // 'eval' shows the right-edge eval bar, scored from the live board.
   const evalVisible = process.argv.includes('eval');
-  // 'chat' shows the right-edge model-DM chat panel, seeded with a few bubbles.
+  // 'chat' shows the right-edge model-DM chat panel, seeded with a few messages;
+  // add 'empty' to leave it empty (shows the centered placeholder).
   const chatVisible = process.argv.includes('chat');
-  if (chatVisible) {
+  if (chatVisible && !process.argv.includes('empty')) {
     clearChat();
     const seed: ChatMessage[] = [
       { text: 'e4 - grabbing the center. Classic and principled.', model: 'openai/gpt-5.4' },
@@ -775,6 +776,7 @@ function chessOverlaySnapshot(): void {
       evalResult: cg.state().result(),
       chatVisible,
       onToggleChat: noop,
+      chatActive: false,
     }),
     region,
   );

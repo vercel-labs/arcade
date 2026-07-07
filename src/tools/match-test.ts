@@ -215,6 +215,7 @@ async function main(): Promise<void> {
           evalResult: null,
           chatVisible: false,
           onToggleChat: noop,
+          chatActive: false,
         }),
         { x: 0, y: 0, w: 80, h: 30 },
       );
@@ -263,7 +264,7 @@ async function main(): Promise<void> {
     mountChessHud(ui);
     const render = (): void =>
       ui.setRoot(
-        buildChessGameRoot({ x: 0, y: 0, w: 80, h: 30 }, buildBar('chess-game', 'ascii', actions), { minimized: false, onToggle: noop, onCopy: noop, commentary: null, t: 0, evalVisible: false, evalCp: 0, evalResult: null, chatVisible: false, onToggleChat: noop }),
+        buildChessGameRoot({ x: 0, y: 0, w: 80, h: 30 }, buildBar('chess-game', 'ascii', actions), { minimized: false, onToggle: noop, onCopy: noop, commentary: null, t: 0, evalVisible: false, evalCp: 0, evalResult: null, chatVisible: false, onToggleChat: noop, chatActive: false }),
         { x: 0, y: 0, w: 80, h: 30 },
       );
     // The illegal tint ([226,92,86]) emits a truecolor fg SGR (38;2;226;92;86) in
@@ -288,7 +289,7 @@ async function main(): Promise<void> {
     mountChessHud(ui);
     refreshMoveHistory(Array.from({ length: 60 }, (_, i) => (i % 2 === 0 ? 'Nf3' : 'Nc6'))); // 30 rows → scrollable, snapped to bottom
     ui.setRoot(
-      buildChessGameRoot({ x: 0, y: 0, w: 80, h: 30 }, buildBar('chess-game', 'ascii', actions), { minimized: false, onToggle: noop, onCopy: noop, commentary: null, t: 0, evalVisible: false, evalCp: 0, evalResult: null, chatVisible: false, onToggleChat: noop }),
+      buildChessGameRoot({ x: 0, y: 0, w: 80, h: 30 }, buildBar('chess-game', 'ascii', actions), { minimized: false, onToggle: noop, onCopy: noop, commentary: null, t: 0, evalVisible: false, evalCp: 0, evalResult: null, chatVisible: false, onToggleChat: noop, chatActive: false }),
       { x: 0, y: 0, w: 80, h: 30 },
     );
     ui.frameComposited(() => {}); // expand + layout
@@ -312,7 +313,7 @@ async function main(): Promise<void> {
     // camera pan still fires when the cursor is over a panel with nothing to scroll.
     refreshMoveHistory(['e4', 'e5']); // 1 row < viewport → maxScroll 0
     ui.setRoot(
-      buildChessGameRoot({ x: 0, y: 0, w: 80, h: 30 }, buildBar('chess-game', 'ascii', actions), { minimized: false, onToggle: noop, onCopy: noop, commentary: null, t: 0, evalVisible: false, evalCp: 0, evalResult: null, chatVisible: false, onToggleChat: noop }),
+      buildChessGameRoot({ x: 0, y: 0, w: 80, h: 30 }, buildBar('chess-game', 'ascii', actions), { minimized: false, onToggle: noop, onCopy: noop, commentary: null, t: 0, evalVisible: false, evalCp: 0, evalResult: null, chatVisible: false, onToggleChat: noop, chatActive: false }),
       { x: 0, y: 0, w: 80, h: 30 },
     );
     ui.frameComposited(() => {});

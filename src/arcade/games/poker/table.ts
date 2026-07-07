@@ -53,7 +53,12 @@ export function tableMesh(): Mesh {
   return m;
 }
 
-const CHAIR_SCALE = 0.33;
+// Scaled so the tall backrest (local y up to ~9.7) clears the felt: with the base on
+// the floor (~y=−4.16) the backrest top lands at ~+0.9 — visibly above the table edge
+// — while the seat (local y≈3.7) tucks to ~−2.3, under the felt. This makes the
+// furniture read at a believable ratio against the enlarged table rather than the old
+// 0.33, where the whole chair (backrest included) sat below the surface.
+const CHAIR_SCALE = 0.5;
 const CHAIR_MIN_Y = -0.47; // chair local min y (so its base can be set on the floor)
 
 let chairCache: Mesh | null = null;

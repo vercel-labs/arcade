@@ -60,8 +60,13 @@ const BOARD_Z = 0.5; // community row sits a touch toward the hero, clear of the
 const CARD_LIFT = 0.08; // rest cards clear of the felt — enough that far seats' cards, seen at a
 // grazing angle across the larger table, don't z-fight the felt and drop out
 const WISP_FLOAT = 2.2; // world height a seat's wisp floats above the felt
-const WISP_SCALE = 0.5;
-const ANIM_BEAT = 8; // frames a played action lingers before the loop continues (~0.27s)
+const WISP_SCALE = 1.0; // orb ~0.85 world radius; centred at WISP_FLOAT so its base (~y1.35) still clears the raised backrests
+// How long (seconds) a settled action or street-change lingers before the loop asks for
+// the next decision. ACTION_SETTLE is the short beat after an ordinary bet/call/fold;
+// STREET_HOLD is an extra pause tacked onto the community-deal time when the flop/turn/
+// river turns, so the new board lands and reads before play resumes (see playMove).
+const ACTION_SETTLE = 0.28;
+const STREET_HOLD = 0.55;
 
 // The deck lives at the centre-back of the felt for the whole hand: the opening deal
 // flies two cards out to each seat, and each community street (flop/turn/river) is
@@ -70,8 +75,8 @@ const ANIM_BEAT = 8; // frames a played action lingers before the loop continues
 const DECK_POS = { x: 0, z: -1.4 }; // centre-back; clear of the board row and the seats
 const DECK_FULL = 34; // backs in a full stack (visual only); it shrinks as cards are dealt
 const DECK_THICK = 0.02; // stacked back thickness
-const DEAL_STEP = 0.22; // seconds each card takes to fly to its seat (matches the sandbox's pace)
-const COMMUNITY_STEP = 0.28; // a community card takes a touch longer (it flips face-up mid-flight)
+const DEAL_STEP = 0.3; // seconds each card takes to fly to its seat — an unhurried, dealt-by-hand pace
+const COMMUNITY_STEP = 0.34; // a community card takes a touch longer (it flips face-up mid-flight)
 const DEAL_HOP = 0.85; // height of a dealt card's arc
 const DEAL_CARD: Card = { rank: 0, suit: 0 }; // dealt face-down, so identity is irrelevant
 
@@ -134,7 +139,8 @@ export class PokerGameScene {
   // shrinking centre stack.
   private dealtFromDeck = 0;
 
-  // A played action lingers for a few frames so it's watchable; `beat` counts down.
+  // A played action lingers so it's watchable; `beat` is a seconds countdown (ticked by
+  // dt in renderScene), long enough to cover a street's community deal when one turns.
   private beat = 0;
   private settleResolve: (() => void) | null = null;
   // The hero's pending move request (the HumanPlayer seam), or null.
@@ -247,8 +253,14 @@ export class PokerGameScene {
   playMove(action: PokerAction): Promise<void> {
     if (!this.hand) return Promise.resolve();
     return new Promise<void>((resolve) => {
+      const boardBefore = this.hand!.boardCards().length;
       this.hand!.applyAction(action);
-      this.beat = ANIM_BEAT;
+      const newCards = this.hand!.boardCards().length - boardBefore;
+      // If this action turned a street (flop/turn/river, or a multi-street all-in runout),
+      // hold long enough for the new board card(s) to deal out of the deck — COMMUNITY_STEP
+      // each — plus STREET_HOLD to take them in, before the loop asks for the next move.
+      // Otherwise just the short per-action settle. This gates runMatch (it awaits us).
+      this.beat = newCards > 0 ? newCards * COMMUNITY_STEP + STREET_HOLD : ACTION_SETTLE;
       this.dirty = true;
       this.settleResolve = resolve;
     });
@@ -393,10 +405,11 @@ export class PokerGameScene {
     // Wisps above each AI seat, pulsing the seat to act (idle when paused/over).
     if (this.active) this.drawWisps(target, vp, t, dt);
 
-    // Tick the played-action beat; when it lapses, wake playMove's awaiter.
+    // Tick the played-action beat (seconds); when it lapses, wake playMove's awaiter.
     if (this.beat > 0) {
-      this.beat--;
-      if (this.beat === 0) {
+      this.beat -= dt;
+      if (this.beat <= 0) {
+        this.beat = 0;
         const done = this.settleResolve;
         this.settleResolve = null;
         done?.();

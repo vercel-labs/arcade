@@ -40,6 +40,8 @@ const VIEW_W = CHAT_WIDTH - PANEL_PAD_L - PANEL_PAD_R; // viewport width inside 
 const CONTENT_W = VIEW_W - SCROLLBAR_W - RIGHT_GAP; // text wrap width — a gap col, then the scrollbar
 
 const MSG_FG: RGB = [224, 226, 234]; // dialogue + colon — normal white
+const PLACEHOLDER = 'ai dialogue will appear here';
+const PLACEHOLDER_FG: RGB = [120, 124, 140]; // muted
 const TRACK: RGB = [44, 46, 56];
 const THUMB: RGB = [150, 154, 170];
 const WHEEL_STEP = 3;
@@ -128,9 +130,15 @@ export class ChatBox implements Component {
   messages: ChatMessage[] = [];
   private follow = true; // stick to newest until the reader scrolls up
   private viewport = 10; // rows; set each frame from the panel height
+  private active = false; // whether an AI match is in progress (set each frame)
 
   setViewport(h: number): void {
     this.viewport = Math.max(1, h);
+  }
+
+  // A match in progress suppresses the empty-state placeholder (dialogue is coming).
+  setActive(active: boolean): void {
+    this.active = active;
   }
 
   // Follow is governed by scroll position, NOT by arrival: a new line only pulls the
@@ -201,6 +209,17 @@ export class ChatBox implements Component {
   }
 
   build(): Node {
+    // Empty state (no dialogue yet and no match running): a muted hint centered in
+    // the viewport. A match in progress suppresses it — its dialogue is imminent.
+    if (this.messages.length === 0 && !this.active) {
+      const lines = wrapInline(PLACEHOLDER, CONTENT_W, CONTENT_W);
+      return {
+        ...Box({ width: VIEW_W, height: this.viewport, flexDirection: 'column', justifyContent: 'center', alignItems: 'center' },
+          lines.map((l) => Text({ text: l, style: { color: PLACEHOLDER_FG } }))),
+        id: this.id,
+        focusable: true,
+      };
+    }
     const items = render(this.messages);
     const content = this.contentHeight(items);
     const max = Math.max(0, content - this.viewport);

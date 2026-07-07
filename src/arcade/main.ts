@@ -195,8 +195,9 @@ let illegalAllowed = false;
 // (toggle with the 'h' key or by clicking the header / ✕). History persists.
 let historyMinimized = false;
 // Whether the right-edge model-DM chat panel is shown (toggle with the 't' key or
-// the bar button). On by default; the thread itself persists while hidden.
-let chatVisible = true;
+// the top-right chat icon). Hidden by default; the thread persists while hidden, so
+// opening it later shows the full backlog.
+let chatVisible = false;
 // Whether the right-edge eval bar is shown (toggle with the 'e' key or the bar
 // button). Default hidden; the score is recomputed from the live board each frame.
 let evalBarVisible = false;
@@ -1177,6 +1178,7 @@ function syncBar(): void {
         evalResult: chessGame.state().result(),
         chatVisible,
         onToggleChat: toggleChat,
+        chatActive: chessGame.isMatchActive(),
       }),
       { x: 0, y: 0, w: cols, h: rows },
     );
@@ -1323,7 +1325,13 @@ function onMouseImpl(e: MouseEvent): void {
   // projected border) launches it, clicking off to a side steps that way, and
   // hovering the focused cover lights it up.
   if (mode === 'menu') {
-    if (launching) return; // ignore pointer input during the launch splash
+    if (launching) {
+      // A click during the flip-to-title splash skips it: jump the clock to the end so
+      // the next frame's handoff (the render loop's LAUNCH_TOTAL check) opens the game
+      // immediately. Non-click pointer input is still ignored while the splash plays.
+      if (e.type === 'down') launchT = LAUNCH_TOTAL;
+      return;
+    }
     // Team-switch modal up: the carousel is frozen behind the scrim; route pointer
     // input to the popup (like the chess modal block below).
     if (teamModalOpen) {
