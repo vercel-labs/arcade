@@ -40,7 +40,7 @@ const VIEW_W = CHAT_WIDTH - PANEL_PAD_L - PANEL_PAD_R; // viewport width inside 
 const CONTENT_W = VIEW_W - SCROLLBAR_W - RIGHT_GAP; // text wrap width — a gap col, then the scrollbar
 
 const MSG_FG: RGB = [224, 226, 234]; // dialogue + colon — normal white
-const PLACEHOLDER = 'ai dialogue will appear here';
+const DEFAULT_PLACEHOLDER = 'ai dialogue will appear here';
 const PLACEHOLDER_FG: RGB = [120, 124, 140]; // muted
 const TRACK: RGB = [44, 46, 56];
 const THUMB: RGB = [150, 154, 170];
@@ -125,12 +125,18 @@ function messageNode(r: Rendered): Node {
 
 // ── The component ─────────────────────────────────────────────────────────────
 export class ChatBox implements Component {
-  readonly id = 'chess-chat';
   scroll = 0;
   messages: ChatMessage[] = [];
   private follow = true; // stick to newest until the reader scrolls up
   private viewport = 10; // rows; set each frame from the panel height
   private active = false; // whether an AI match is in progress (set each frame)
+
+  // `id` + `placeholder` are per-instance so the same component serves several games
+  // (chess DMs, poker table talk) with distinct Slot ids and empty-state hints.
+  constructor(
+    readonly id: string = 'chess-chat',
+    private readonly placeholder: string = DEFAULT_PLACEHOLDER,
+  ) {}
 
   setViewport(h: number): void {
     this.viewport = Math.max(1, h);
@@ -212,7 +218,7 @@ export class ChatBox implements Component {
     // Empty state (no dialogue yet and no match running): a muted hint centered in
     // the viewport. A match in progress suppresses it — its dialogue is imminent.
     if (this.messages.length === 0 && !this.active) {
-      const lines = wrapInline(PLACEHOLDER, CONTENT_W, CONTENT_W);
+      const lines = wrapInline(this.placeholder, CONTENT_W, CONTENT_W);
       return {
         ...Box({ width: VIEW_W, height: this.viewport, flexDirection: 'column', justifyContent: 'center', alignItems: 'center' },
           lines.map((l) => Text({ text: l, style: { color: PLACEHOLDER_FG } }))),

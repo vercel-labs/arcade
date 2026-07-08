@@ -9,6 +9,7 @@ import { Box, Button, type Row, ScrollBox, Slider, Slot, Text, type LayoutBox, t
 import type { RGB } from '../../../engine/index.ts';
 import { type Card, isRed, RANK_LABELS } from '../../../rules/poker/cards.ts';
 import type { HeroPanelView } from './poker-scene.ts';
+import { ChatBox, type ChatMessage, CHAT_WIDTH, PANEL_PAD_L, PANEL_PAD_R } from '../chess/chat.ts';
 import { shortModel } from '../chess/hud.ts';
 
 const LOG_WIDTH = 30;
@@ -47,10 +48,23 @@ export function setPokerGameHandlers(h: PokerGameHandlers): void {
 
 export const betSlider = new Slider({ id: 'poker-bet', width: 24, value: 0.5, step: 0.02, onChange: () => H?.onSliderChange() });
 export const actionLog = new ScrollBox({ id: 'poker-log', width: LOG_WIDTH, height: LOG_HEIGHT, rows: [], autoHeight: true });
+// The chat thread (reuses the chess ChatBox with its own Slot id; same default empty-state
+// hint as chess). Each AI's pre-move line is pushed here as in-character table talk that
+// never reveals its hole cards.
+const pokerChat = new ChatBox('poker-chat');
 
 export function mountPokerGameHud(ui: Screen): void {
   ui.mount(betSlider);
   ui.mount(actionLog);
+  ui.mount(pokerChat);
+}
+
+// A model's table-talk line → the thread. clear resets it for a fresh session.
+export function pushPokerChat(msg: ChatMessage): void {
+  pokerChat.push(msg);
+}
+export function clearPokerChat(): void {
+  pokerChat.clear();
 }
 
 // The raise-TO total the slider currently selects, mapped from its 0..1 value onto
@@ -115,10 +129,16 @@ function bettingControls(hero: HeroContext): Node {
   return Box({ flexDirection: 'column', gap: 1, padding: [1, 2], background: [16, 18, 26, 0.92] }, rows);
 }
 
-// ── Top-right hand/board panel ───────────────────────────────────────────────────
-// A compact card in the top-right corner showing the hero's two hole cards and the five
-// community slots. Hole cards read ?? until the hero peeks them (then rank + suit icon);
-// board slots read ? until the flop/turn/river deals them. Collapsible (✕ → a small pill).
+// ── Right rail: table-talk chat (top) + your hand/board (bottom-right) ──────────────
+// A full-height column pinned to the right edge (like the chess chat rail). The table-
+// talk thread fills the top; the hand/board panel sits in the bottom-right corner, always
+// present while a hand is in play. Hole cards read ?? until the hero peeks them (then rank
+// + suit icon), board slots read ? until the flop/turn/river deals them.
+const RAIL_W = CHAT_WIDTH; // rail width = chat width, so the hand panel lines up beneath it
+const CHAT_PAD_V = 1; // chat panel top/bottom inset
+const CHAT_HEADER_H = 2; // header row + a gap row
+const HAND_PANEL_H = 7; // title + You row + Board row + 2 gaps + [1] top/bottom padding
+
 const SUIT_ICON = ['♠', '♥', '♦', '♣'] as const; // indexed by Suit (spades, hearts, diamonds, clubs)
 const CARD_FACE: RGB = [230, 230, 236]; // light card stock
 const CARD_RED: RGB = [196, 30, 40]; // ♥ / ♦
@@ -128,21 +148,25 @@ const CELL_DOWN_FG: RGB = [126, 130, 148];
 const ROW_LABEL_W = 6; // fixed so the "You"/"Board" rows' cells line up
 
 // One mini-card cell: light stock with rank + suit icon (red for ♥/♦), or a muted slate
-// placeholder (`??` for an un-peeked hole card, `?` for an undealt board slot).
+// placeholder (`??` for an un-peeked hole card, `?` for an undealt board slot). Ten is
+// rendered "T" (poker shorthand) so every card is exactly two chars → a tidy fixed grid.
 function cardCell(card: Card | null, placeholder: string): Node {
   if (!card) return Box({ padding: [0, 1], background: CELL_DOWN }, [Text({ text: placeholder, style: { color: CELL_DOWN_FG, bold: true } })]);
-  const label = `${RANK_LABELS[card.rank]}${SUIT_ICON[card.suit]}`;
-  return Box({ padding: [0, 1], background: CARD_FACE }, [Text({ text: label, style: { color: isRed(card) ? CARD_RED : CARD_BLACK, bold: true } })]);
+  const rank = RANK_LABELS[card.rank] === '10' ? 'T' : RANK_LABELS[card.rank];
+  return Box({ padding: [0, 1], background: CARD_FACE }, [Text({ text: `${rank}${SUIT_ICON[card.suit]}`, style: { color: isRed(card) ? CARD_RED : CARD_BLACK, bold: true } })]);
 }
 
-const HAND_CLOSE: Style = {
+const rowLabel = (t: string): Node => Box({ width: ROW_LABEL_W }, [Text({ text: t, style: { color: 'muted' } })]);
+
+// The chat ✕ (collapse) and the reopen pill, mirroring the chess chat affordances.
+const CHAT_CLOSE: Style = {
   padding: [0, 1],
   color: [150, 154, 166],
   hover: { background: [180, 60, 60], color: [255, 255, 255] },
   focus: { background: [72, 76, 92], color: [230, 232, 240] },
   pressed: { background: [220, 90, 90], color: [255, 255, 255] },
 };
-const HAND_PILL: Style = {
+const CHAT_PILL: Style = {
   padding: [0, 2],
   background: [40, 42, 52],
   color: [212, 214, 224],
@@ -152,30 +176,64 @@ const HAND_PILL: Style = {
   pressed: { background: [120, 124, 142], color: [12, 12, 18] },
 };
 
-const rowLabel = (t: string): Node => Box({ width: ROW_LABEL_W }, [Text({ text: t, style: { color: 'muted' } })]);
-
-// The expanded panel: "Hand" header (+ ✕), a row for the hero's hole cards, a row for the
-// board. `onToggle` collapses it to the opener pill.
-function handBoardPanel(v: HeroPanelView, onToggle: () => void): Node {
-  const handCells = v.hand.map((h) => cardCell(h.seen ? h.card : null, '??'));
-  const boardCells = Array.from({ length: 5 }, (_, i) => cardCell(i < v.boardShown && i < v.board.length ? v.board[i] : null, '?'));
-  const title = Text({ text: 'Hand', style: { color: [222, 224, 234], bold: true } });
+// The hand/board card pinned to the bottom-right (rail-width so it lines up under the
+// chat): a "Your hand" title, the hole-card row, and the five board slots. ALWAYS shown
+// in poker mode — before a hand is dealt it's all placeholders (?? hole cards, ? board),
+// so "your hand" is a permanent fixture rather than appearing only mid-hand.
+function handBoardPanel(v: HeroPanelView | null): Node {
+  const hand = v?.hand ?? [];
+  const board = v?.board ?? [];
+  const shown = v?.boardShown ?? 0;
+  const handCells = [0, 1].map((i) => cardCell(hand[i]?.seen ? hand[i].card : null, '??'));
+  const boardCells = Array.from({ length: 5 }, (_, i) => cardCell(i < shown && i < board.length ? board[i] : null, '?'));
+  const title = Text({ text: 'Your hand', style: { color: [222, 224, 234], bold: true } });
   const you = Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [rowLabel('You'), ...handCells]);
-  const board = Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [rowLabel('Board'), ...boardCells]);
-  // The ✕ sits in the card's top-right CORNER, not beside the title: absolute children
-  // resolve inside the [1,2] padding, so top:0 leaves the top padding-row above it and
-  // right:-1 pulls it out into the right padding to leave one cell from the edge; the
-  // row gap keeps space below. (Same corner-close pattern as the team-switch modal.)
-  const close = Box({ position: 'absolute', top: 0, right: -1 }, [Button({ id: 'hand-close', label: '✕', onClick: onToggle, style: HAND_CLOSE })]);
-  return Box({ flexDirection: 'column', gap: 1, padding: [1, 2], background: [22, 24, 32, 0.92] }, [title, you, board, close]);
+  const board2 = Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [rowLabel('Board'), ...boardCells]);
+  return Box({ flexDirection: 'column', gap: 1, width: RAIL_W, padding: [1, 2], background: [22, 24, 32, 0.92] }, [title, you, board2]);
 }
 
-// The collapsed state: a small pill in the same corner that re-opens the panel.
-const openerPill = (onToggle: () => void): Node => Button({ id: 'hand-open', label: '🂠 hand', onClick: onToggle, style: HAND_PILL });
+const DIVIDER: RGB = [70, 74, 90]; // the rule between the chat panel and the hand panel
 
-// Build the full-screen poker overlay: the info panel (pot + action log) pinned
-// top-left, the hand/board panel top-right, a commentary toast + the hero betting
-// controls above the bar, then the bar. `bar` is buildBar('poker', …) from main.
+// The chat panel: a "Chat" header with a ✕ (collapse) at its far right, over the scrollable
+// thread, sized to `height` so it fills the rail above the hand. The header's right padding
+// insets the ✕ from the terminal edge to match the chess chat's spacing. `active` suppresses
+// the empty placeholder; `onToggle` collapses it to the reopen pill.
+function chatPanel(height: number, active: boolean, onToggle: () => void): Node {
+  pokerChat.setViewport(Math.max(1, height - 2 * CHAT_PAD_V - CHAT_HEADER_H));
+  pokerChat.setActive(active);
+  const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', width: RAIL_W - PANEL_PAD_L - PANEL_PAD_R, padding: [0, 2, 0, 0] }, [
+    Text({ text: 'Chat', style: { color: [222, 224, 234], bold: true } }),
+    Button({ id: 'poker-chat-close', label: '✕', onClick: onToggle, style: CHAT_CLOSE }),
+  ]);
+  return Box({ flexDirection: 'column', width: RAIL_W, height, padding: [CHAT_PAD_V, PANEL_PAD_R, CHAT_PAD_V, PANEL_PAD_L], background: [22, 24, 32, 0.9] }, [
+    header,
+    Box({ height: 1 }),
+    Slot('poker-chat'),
+  ]);
+}
+
+// The collapsed chat: a small pill hugging the rail's top-RIGHT corner (right-aligned, with
+// the same 2-cell edge inset as the ✕) that reopens the panel.
+const chatOpener = (onToggle: () => void): Node =>
+  Box({ flexDirection: 'row', justifyContent: 'end', width: RAIL_W, padding: [CHAT_PAD_V, 2, 0, 0] }, [Button({ id: 'poker-chat-open', label: '💬 chat', onClick: onToggle, style: CHAT_PILL })]);
+
+// The right rail: the chat (or, collapsed, its reopen pill) on top, the hand panel ALWAYS
+// pinned to the bottom-right. The hand is a permanent fixture; the chat is the collapsible
+// one. When expanded, a one-line rule separates the chat from the hand section below.
+function buildRightRail(height: number, handBoard: HeroPanelView | null, chatOpen: boolean, active: boolean, onToggleChat: () => void): Node {
+  const hand = handBoardPanel(handBoard);
+  if (!chatOpen) {
+    const top = Box({ flexDirection: 'column', width: RAIL_W, height: Math.max(1, height - HAND_PANEL_H) }, [chatOpener(onToggleChat)]);
+    return Box({ flexDirection: 'column', width: RAIL_W, height, flexShrink: 0 }, [top, hand]);
+  }
+  const topH = Math.max(1, height - HAND_PANEL_H - 1); // -1 for the divider row
+  const divider = Box({ width: RAIL_W, height: 1 }, [Text({ text: '─'.repeat(RAIL_W), style: { color: DIVIDER } })]);
+  return Box({ flexDirection: 'column', width: RAIL_W, height, flexShrink: 0 }, [chatPanel(topH, active, onToggleChat), divider, hand]);
+}
+
+// Build the full-screen poker overlay: a left/main column (info panel top-left, commentary
+// toast + betting controls above the bar) beside a full-height right rail (table-talk chat
+// on top, the hand/board panel bottom-right). `bar` is buildBar('poker', …) from main.
 export function buildPokerGameRoot(
   region: LayoutBox,
   bar: Node,
@@ -185,9 +243,10 @@ export function buildPokerGameRoot(
     commentary: PokerCommentary | null;
     t: number;
     status: string;
-    handBoard: HeroPanelView | null; // null when no hand is in play (panel hidden)
-    handOpen: boolean; // expanded vs. collapsed to the opener pill
-    onToggleHand: () => void;
+    handBoard: HeroPanelView | null; // the hero's hand/board, or null when no hand is in play
+    active: boolean; // a session is running (suppresses the chat's empty placeholder)
+    chatOpen: boolean; // table-talk panel expanded vs. collapsed to its reopen pill
+    onToggleChat: () => void;
   },
 ): Node {
   const panel = Box({ flexDirection: 'column', gap: 0, padding: [0, 1], background: [22, 24, 32, 0.9] }, [
@@ -206,7 +265,9 @@ export function buildPokerGameRoot(
 
   const controls = opts.hero.toAct ? bettingControls(opts.hero) : null;
 
-  const col = Box({ width: region.w, height: region.h, flexDirection: 'column' }, [
+  // The main column takes the width left of the rail (flexGrow); the bar lives here, so it
+  // spans only the main column — the rail is clear of it, exactly like the chess layout.
+  const main = Box({ flexGrow: 1, flexDirection: 'column', height: region.h }, [
     Box({ flexDirection: 'row', justifyContent: 'start', padding: [1, 0, 0, 2] }, [panel]),
     Box({ flexGrow: 1 }),
     ...(toast ? [Box({ flexDirection: 'row', justifyContent: 'start', padding: [0, 0, 1, 2] }, [toast])] : []),
@@ -215,11 +276,8 @@ export function buildPokerGameRoot(
     Box({ height: 1 }),
   ]);
 
-  // The hand/board panel floats in the top-right corner (over the scene, like the chess
-  // chat pill), so it doesn't reflow the columns. Only while a hand is in play.
-  if (!opts.handBoard) return col;
-  const corner = Box({ position: 'absolute', top: 1, right: 2 }, [
-    opts.handOpen ? handBoardPanel(opts.handBoard, opts.onToggleHand) : openerPill(opts.onToggleHand),
-  ]);
-  return Box({ width: region.w, height: region.h }, [col, corner]);
+  // The right rail (chat + hand) only exists once a session is running — before a match
+  // starts there's no chat and no hand, so the main column takes the full width.
+  const rail = opts.active ? [buildRightRail(region.h, opts.handBoard, opts.chatOpen, opts.active, opts.onToggleChat)] : [];
+  return Box({ width: region.w, height: region.h, flexDirection: 'row' }, [main, ...rail]);
 }

@@ -81,7 +81,16 @@ export class PokerMatch {
     if (seat.kind === 'human') {
       return new HumanPlayer<PokerAction>({ name: 'you', awaitMove: (_s, ctx) => this.deps.scene.requestHumanMove(ctx?.signal) });
     }
-    return new ModelPlayer<PokerAction>({ model: seat.model, gameName: "no-limit Texas Hold'em poker", moveNotation: POKER_NOTATION });
+    return new ModelPlayer<PokerAction>({
+      model: seat.model,
+      gameName: "no-limit Texas Hold'em poker",
+      moveNotation: POKER_NOTATION,
+      // The rationale is spoken TABLE TALK, not analysis: banter about the action, your
+      // read or confidence, or a little needle at an opponent — one short casual line.
+      // Crucially it must never reveal your own hole cards (this is live poker).
+      rationaleGuide:
+        'a single short line of casual table talk said out loud to the other players — react to the action, hint at your confidence, or needle an opponent, in your own voice. NEVER state or reveal your own hole cards or exact hand.',
+    });
   }
 
   private aliveCount(): number {

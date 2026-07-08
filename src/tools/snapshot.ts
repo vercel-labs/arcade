@@ -25,7 +25,7 @@ import { providers } from '../arcade/match/models.ts';
 import { CardsScene, type CardsMode } from '../arcade/games/poker/cards-scene.ts';
 import { buildPokerRoot, mountPokerHud } from '../arcade/games/poker/hud.ts';
 import { PokerGameScene, type PokerSeatView } from '../arcade/games/poker/poker-scene.ts';
-import { buildPokerGameRoot, mountPokerGameHud, refreshPokerLog } from '../arcade/games/poker/poker-hud.ts';
+import { buildPokerGameRoot, clearPokerChat, mountPokerGameHud, pushPokerChat, refreshPokerLog } from '../arcade/games/poker/poker-hud.ts';
 import { buildPokerSetup, mountPokerSetup } from '../arcade/match/poker-setup.ts';
 import { HoldemState } from '../rules/poker/holdem.ts';
 import { mulberry32 } from '../arcade/scenes/wisp.ts';
@@ -426,6 +426,14 @@ function pokerSnapshot(): void {
     mountPokerGameHud(screen);
     const st = state;
     refreshPokerLog(st.history());
+    // Seed a few table-talk lines so the right-rail chat renders populated.
+    clearPokerChat();
+    for (const m of [
+      { text: "checking to the raiser - let's see what you've got.", model: 'openai/gpt-5.4' },
+      { text: 'feeling good about this one. bumping it up.', model: 'anthropic/claude-opus-4.8' },
+      { text: "that's a big number. giving it a think.", model: 'google/gemini-3-pro' },
+    ])
+      pushPokerChat(m);
     const hero = {
       toAct: true,
       toCall: st.toCall(0),
@@ -443,8 +451,9 @@ function pokerSnapshot(): void {
         t: 0,
         status: 'Your move',
         handBoard: scene.heroPanel(),
-        handOpen: true,
-        onToggleHand: noop,
+        active: true,
+        chatOpen: !args.includes('chatclosed'),
+        onToggleChat: noop,
       }),
       region,
     );

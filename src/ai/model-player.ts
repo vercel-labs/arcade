@@ -14,13 +14,17 @@ export interface MoveNotation {
 }
 const CHESS_NOTATION: MoveNotation = { description: 'standard algebraic notation', examples: '"Nf3", "e4", "O-O", "exd5"' };
 
+// The default rationale: a spectator-facing explanation (chess). Poker overrides this
+// via `rationaleGuide` to get in-character table talk that never reveals hole cards.
+const DEFAULT_RATIONALE = 'One short sentence explaining the move, for spectators.';
+
 // Forced structured output: the model returns a move + a one-line rationale, so
 // we never scrape prose. The move is still validated (parsed against the harness)
 // before play; a legal-looking-but-illegal move is re-prompted.
-const buildSchema = (notation: MoveNotation) =>
+const buildSchema = (notation: MoveNotation, rationale: string = DEFAULT_RATIONALE) =>
   z.object({
     move: z.string().describe(`Your chosen move in ${notation.description}, e.g. ${notation.examples}.`),
-    rationale: z.string().describe('One short sentence explaining the move, for spectators.'),
+    rationale: z.string().describe(rationale),
   });
 
 export interface ModelPlayerOpts {
@@ -56,6 +60,13 @@ export interface ModelPlayerOpts {
    */
   banter?: boolean;
   /**
+   * Redefines what the `rationale` field is (its schema description + a prompt
+   * note), replacing the default "explain the move for spectators". Poker uses this
+   * for in-character TABLE TALK: casual chatter about the action / one's read that
+   * must never reveal the speaker's own hole cards. A full instruction sentence.
+   */
+  rationaleGuide?: string;
+  /**
    * Observability hook fired once per generation attempt — for diagnostics
    * (src/tools/self-play.ts), not used in the app. `raw` is the model's move
    * string / reply / error message; `result` is how it resolved.
@@ -84,6 +95,7 @@ export class ModelPlayer<A> implements Player<A> {
   private gameName: string;
   private persona?: string;
   private banter: boolean;
+  private rationaleGuide?: string;
   private onAttempt?: ModelPlayerOpts['onAttempt'];
   private allowIllegal?: () => boolean;
   private notation: MoveNotation;
@@ -96,10 +108,11 @@ export class ModelPlayer<A> implements Player<A> {
     this.gameName = opts.gameName ?? 'a turn-based game';
     this.persona = opts.persona;
     this.banter = opts.banter ?? false;
+    this.rationaleGuide = opts.rationaleGuide;
     this.onAttempt = opts.onAttempt;
     this.allowIllegal = opts.allowIllegal;
     this.notation = opts.moveNotation ?? CHESS_NOTATION;
-    this.schema = buildSchema(this.notation);
+    this.schema = buildSchema(this.notation, opts.rationaleGuide);
   }
 
   async chooseAction(state: GameState<A>, ctx?: TurnContext): Promise<{ action: A; rationale?: string }> {
@@ -249,6 +262,9 @@ export class ModelPlayer<A> implements Player<A> {
         : '',
       `\n\nChoose the strongest legal move.`,
       format,
+      // Reinforce a custom rationale meaning (e.g. poker table talk) beyond the schema
+      // field description, since models often weight prose instructions more heavily.
+      this.rationaleGuide ? `\n\nYour "rationale" is not analysis — it is ${this.rationaleGuide}` : '',
       feedback,
     ].join('');
   }

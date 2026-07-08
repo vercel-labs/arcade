@@ -20,7 +20,7 @@ import { ChessGameScene } from './games/chess/scene.ts';
 import { CardsScene } from './games/poker/cards-scene.ts';
 import { buildPokerRoot, mountPokerHud, pokerMode, setPokerHandlers } from './games/poker/hud.ts';
 import { PokerGameScene } from './games/poker/poker-scene.ts';
-import { buildPokerGameRoot, type HeroContext, mountPokerGameHud, refreshPokerLog, setPokerGameHandlers } from './games/poker/poker-hud.ts';
+import { buildPokerGameRoot, clearPokerChat, type HeroContext, mountPokerGameHud, pushPokerChat, refreshPokerLog, setPokerGameHandlers } from './games/poker/poker-hud.ts';
 import { PokerMatch } from './match/poker-driver.ts';
 import { buildPokerSetup, mountPokerSetup, pokerSetupSelection } from './match/poker-setup.ts';
 import { LogosScene } from './scenes/logos-scene.ts';
@@ -167,10 +167,9 @@ let teamView: TeamSwitchView = { kind: 'loading' };
 
 // AI-vs-AI match. The two sides are chosen in the setup modal (provider → model).
 // The match turn-loop lifecycle lives in AiMatch (ai-match.ts); main owns the
-// surrounding UI state. `commentary` is the current pre-move rationale toast, shown
-// until `t` passes `until`. `matchSetupOpen` shows the model picker; `setupFocused`
-// is its focus-once edge.
-const COMMENTARY_SECS = 3.5;
+// surrounding UI state. `commentary` is a transient system/notice toast, shown until
+// `t` passes `until` (model dialogue now flows to the chat threads, not the toast).
+// `matchSetupOpen` shows the model picker; `setupFocused` is its focus-once edge.
 let commentary: Commentary | null = null;
 let matchSetupOpen = false;
 let setupFocused = false;
@@ -201,9 +200,10 @@ let chatVisible = false;
 // Whether the right-edge eval bar is shown (toggle with the 'e' key or the bar
 // button). Default hidden; the score is recomputed from the live board each frame.
 let evalBarVisible = false;
-// Whether the poker hand/board panel (top-right) is expanded. Open by default; the ✕
-// collapses it to a small "hand" pill, which re-opens it. Persists across hands.
-let handPanelOpen = true;
+// Whether the poker chat panel is expanded. The rail (chat + hand) only appears once a
+// match starts, and the chat starts COLLAPSED (just the "chat" pill) — clicking it (or its
+// ✕) toggles. Reset to collapsed on each new match; persists while a match runs.
+let pokerChatOpen = false;
 // The game-over result popup (chess-game only): set once the board is terminal,
 // cleared on a new game; `dismissed` suppresses re-showing after Close until the
 // board leaves the terminal state; `focused` is the focus-once edge.
@@ -453,9 +453,9 @@ function toggleChat(): void {
   r.requestRender();
 }
 
-// Expand/collapse the poker hand/board panel (the panel's ✕ and the collapsed pill).
-function toggleHandPanel(): void {
-  handPanelOpen = !handPanelOpen;
+// Expand/collapse the poker table-talk panel (its ✕ and the collapsed reopen pill).
+function togglePokerChat(): void {
+  pokerChatOpen = !pokerChatOpen;
   forceFrame = true;
   r.requestRender();
 }
@@ -586,8 +586,11 @@ const pokerMatch = new PokerMatch({
   scene: pokerScene,
   syncLive,
   requestRender: () => r.requestRender(),
+  // A model's pre-move line is in-character TABLE TALK — append it to the poker
+  // thread (like the chess DMs), not the bottom toast (reserved for system notices).
   onCommentary: (text, model) => {
-    commentary = { text, model, until: t + COMMENTARY_SECS };
+    pushPokerChat({ text, model });
+    r.requestRender();
   },
   onHandOver: () => {
     forceFrame = true;
@@ -659,6 +662,8 @@ function confirmPokerSetup(): void {
   const seats = pokerSetupSelection();
   if (!seats) return;
   closePokerSetup();
+  clearPokerChat(); // fresh chat thread for the new session
+  pokerChatOpen = false; // the chat starts collapsed (just the pill) each new match
   pokerMatch.start(seats);
 }
 
@@ -1227,8 +1232,9 @@ function syncBar(): void {
         t,
         status: pokerStatus(),
         handBoard: pokerScene.heroPanel(),
-        handOpen: handPanelOpen,
-        onToggleHand: toggleHandPanel,
+        active: pokerScene.isActive(),
+        chatOpen: pokerChatOpen,
+        onToggleChat: togglePokerChat,
       }),
       { x: 0, y: 0, w: cols, h: rows },
     );
