@@ -233,8 +233,6 @@ function boardStrip(v: TableView | null): Node {
   ]);
 }
 
-const DIVIDER: RGB = [70, 74, 90]; // the rule between the chat panel and the hand panel
-
 // The chat panel: a "Chat" header with a ✕ (collapse) at its far right, over the scrollable
 // thread, sized to `height` so it fills the rail above the hand. The header's right padding
 // insets the ✕ from the terminal edge to match the chess chat's spacing. `active` suppresses
@@ -260,7 +258,7 @@ const chatOpener = (onToggle: () => void): Node =>
 
 // The right rail: the chat (or, collapsed, its reopen pill) on top, the community board
 // strip ALWAYS pinned to the bottom-right. The board is a permanent fixture; the chat is
-// the collapsible one. When expanded, a one-line rule separates the chat from the board.
+// the collapsible one. When expanded, a one-row gap separates the chat from the board.
 function buildRightRail(height: number, table: TableView | null, chatOpen: boolean, active: boolean, onToggleChat: () => void): Node {
   // Content-sized board panel, pinned to the rail's right edge (transparent to its left).
   const board = Box({ flexDirection: 'row', justifyContent: 'end', width: RAIL_W }, [boardStrip(table)]);
@@ -268,9 +266,9 @@ function buildRightRail(height: number, table: TableView | null, chatOpen: boole
     const top = Box({ flexDirection: 'column', width: RAIL_W, height: Math.max(1, height - BOARD_PANEL_H) }, [chatOpener(onToggleChat)]);
     return Box({ flexDirection: 'column', width: RAIL_W, height, flexShrink: 0 }, [top, board]);
   }
-  const topH = Math.max(1, height - BOARD_PANEL_H - 1); // -1 for the divider row
-  const divider = Box({ width: RAIL_W, height: 1 }, [Text({ text: '─'.repeat(RAIL_W), style: { color: DIVIDER } })]);
-  return Box({ flexDirection: 'column', width: RAIL_W, height, flexShrink: 0 }, [chatPanel(topH, active, onToggleChat), divider, board]);
+  const topH = Math.max(1, height - BOARD_PANEL_H - 1); // -1 for the one-row gap
+  const gap = Box({ width: RAIL_W, height: 1 }); // blank spacer between chat and board (no rule)
+  return Box({ flexDirection: 'column', width: RAIL_W, height, flexShrink: 0 }, [chatPanel(topH, active, onToggleChat), gap, board]);
 }
 
 // Build the full-screen poker overlay, WSOP-style: the pot pill top-left and the stacked
