@@ -225,22 +225,23 @@ function playerStrips(seats: readonly SeatCardView[], ended: boolean): Node {
 }
 
 // ── Board panel (bottom-left, above the player strips) ───────────────────────────
-// The five community cards, the exact same width as a player strip so it stacks flush
-// above them. Three rows tall: a blank row, a content row (the "Board" label with the
-// five card slots to its right), then a blank row — the content vertically centred.
-// Undealt slots read a muted "··" and are replaced in place by the flop / turn / river,
-// so every cell stays the same width (a tidy, non-reflowing grid).
+// Styled exactly like a player strip so it reads as one of the stack: two rows, the same
+// STRIP_W width. Top row: the "Board" label top-left with the street (Pre-flop / Flop /
+// Turn / River) pinned top-right, mirroring a seat's name + position badge. Bottom row:
+// the five community slots, mirroring a seat's two hole cards. Undealt slots read a muted
+// "··" (two chars, so the grid never reflows) and are replaced in place as streets deal.
+const STREET_LABEL: Record<string, string> = { preflop: 'Pre-flop', flop: 'Flop', turn: 'Turn', river: 'River', showdown: 'Showdown' };
 function boardPanel(v: TableView | null): Node {
   const board = v?.board ?? [];
   const shown = v?.boardShown ?? 0;
-  const cells = Array.from({ length: 5 }, (_, i) => cardCell(i < shown && i < board.length ? board[i] : null, '··'));
-  const middle = Box({ flexDirection: 'row', gap: 1, alignItems: 'center', width: STRIP_W }, [
+  const street = v ? (STREET_LABEL[v.street] ?? v.street) : '';
+  const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', width: STRIP_W }, [
     Text({ text: 'Board', style: { color: [222, 224, 234], bold: true } }),
-    ...cells,
+    Text({ text: street, style: { color: 'muted', bold: true } }),
   ]);
-  // No explicit width: the STRIP_W content row + [0,1] padding sizes it to STRIP_W + 2,
-  // the exact same total width as a player strip so it stacks flush above them.
-  return Box({ flexDirection: 'column', justifyContent: 'center', height: 3, padding: [0, 1], background: [22, 24, 32, 0.92] }, [middle]);
+  const cells = Array.from({ length: 5 }, (_, i) => cardCell(i < shown && i < board.length ? board[i] : null, '··'));
+  const cardRow = Box({ flexDirection: 'row', gap: 1, alignItems: 'center', width: STRIP_W }, cells);
+  return Box({ flexDirection: 'column', gap: 0, padding: [0, 1], background: [22, 24, 32, 0.92] }, [header, cardRow]);
 }
 
 // The chat panel: a "Chat" header with a ✕ (collapse) at its far right, over the scrollable
