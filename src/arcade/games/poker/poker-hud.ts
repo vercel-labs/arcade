@@ -220,13 +220,14 @@ function playerStrips(seats: readonly SeatCardView[], ended: boolean): Node {
 }
 
 // ── Board strip (bottom-right) ───────────────────────────────────────────────────
-// The five community cards, rail-width so it lines up under the chat. Undealt slots read
-// ♠ (a face-down emblem back) and reveal in step with the felt as the streets deal out.
+// The five community cards, sized to their content (not the full rail width) and pinned
+// to the rail's right edge by buildRightRail. Undealt slots read ♠ (a face-down emblem
+// back) and reveal in step with the felt as the streets deal out.
 function boardStrip(v: TableView | null): Node {
   const board = v?.board ?? [];
   const shown = v?.boardShown ?? 0;
   const cells = Array.from({ length: 5 }, (_, i) => cardCell(i < shown && i < board.length ? board[i] : null, '♠'));
-  return Box({ flexDirection: 'column', gap: 1, width: RAIL_W, padding: [1, 2], background: [22, 24, 32, 0.92] }, [
+  return Box({ flexDirection: 'column', gap: 1, padding: [1, 2], background: [22, 24, 32, 0.92] }, [
     Text({ text: 'Board', style: { color: [222, 224, 234], bold: true } }),
     Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, cells),
   ]);
@@ -261,7 +262,8 @@ const chatOpener = (onToggle: () => void): Node =>
 // strip ALWAYS pinned to the bottom-right. The board is a permanent fixture; the chat is
 // the collapsible one. When expanded, a one-line rule separates the chat from the board.
 function buildRightRail(height: number, table: TableView | null, chatOpen: boolean, active: boolean, onToggleChat: () => void): Node {
-  const board = boardStrip(table);
+  // Content-sized board panel, pinned to the rail's right edge (transparent to its left).
+  const board = Box({ flexDirection: 'row', justifyContent: 'end', width: RAIL_W }, [boardStrip(table)]);
   if (!chatOpen) {
     const top = Box({ flexDirection: 'column', width: RAIL_W, height: Math.max(1, height - BOARD_PANEL_H) }, [chatOpener(onToggleChat)]);
     return Box({ flexDirection: 'column', width: RAIL_W, height, flexShrink: 0 }, [top, board]);
