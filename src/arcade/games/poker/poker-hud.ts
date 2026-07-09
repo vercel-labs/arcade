@@ -175,11 +175,12 @@ function potPill(pot: number, blinds: string): Node {
 }
 
 // ── Player strips (bottom-left) ──────────────────────────────────────────────────
-const NAME_W = 18; // fixed name/action column so every strip aligns
+const STRIP_W = 30; // strip content width, so the SB/BB position badge pins to the right
 const NAME_DEFAULT: RGB = [224, 226, 236];
+const CHIP_FG: RGB = [236, 238, 246]; // chip count
 const ACTION_FG: RGB = [232, 214, 150]; // warm "last action" text
-const MADE_FG: RGB = [176, 182, 200]; // the made-hand stat on the right
-const WIN_FG: RGB = [150, 226, 150]; // "WON n" at showdown
+const MADE_FG: RGB = [176, 182, 200]; // the made-hand shown at the end
+const WIN_FG: RGB = [150, 226, 150]; // the winner's made-hand at showdown
 const DIM_FG: RGB = [116, 120, 136]; // folded seats
 
 function seatTint(provider?: string): RGB {
@@ -188,27 +189,34 @@ function seatTint(provider?: string): RGB {
   return [t.x | 0, t.y | 0, t.z | 0];
 }
 
-// One player strip, WSOP-structured: the two hole cards on the left (hidden → ??), then a
-// name-over-action column, then the made-hand on the right. The seat to act gets a lit
-// background + a ▸ marker; folded seats dim; the dealer seat is tagged Ⓓ.
-function playerStrip(s: SeatCardView): Node {
-  const marker = Text({ text: s.toAct ? '▸' : ' ', style: { color: s.toAct ? ACTION_FG : 'muted', bold: true } });
-  const cells = [0, 1].map((i) => cardCell(s.cards[i] ?? null, '??'));
-  const nameRow = Box({ flexDirection: 'row', gap: 0 }, [
+// One player strip, two rows. Top: name (far left) with the chip count directly to its
+// right, and the blind/button position (SB / BB / BTN) pinned to the far right. Bottom:
+// the two hole cards (hidden → ??) with a single info field to their right — the last
+// action DURING play, switching to the made-hand once the hand is over (comparing who
+// won). The seat to act gets a lit background; folded seats dim.
+function playerStrip(s: SeatCardView, ended: boolean): Node {
+  const left = Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [
     Text({ text: s.name, style: { color: s.folded ? DIM_FG : seatTint(s.provider), bold: true } }),
-    ...(s.isButton ? [Text({ text: ' Ⓓ', style: { color: 'muted', bold: true } })] : []),
+    Text({ text: withCommas(s.stack), style: { color: s.folded ? DIM_FG : CHIP_FG, bold: true } }),
   ]);
-  const actionText = s.award > 0 ? `WON ${withCommas(s.award)}` : s.allIn ? 'ALL IN' : (s.lastAction ?? '');
-  const actionColor = s.award > 0 ? WIN_FG : s.folded ? DIM_FG : ACTION_FG;
-  const col = Box({ flexDirection: 'column', gap: 0, width: NAME_W }, [nameRow, Text({ text: actionText, style: { color: actionColor, bold: s.award > 0 } })]);
-  const made = s.madeHand ? [Text({ text: s.madeHand, style: { color: MADE_FG } })] : [];
+  const badge = Text({ text: s.pos, style: { color: 'muted', bold: true } });
+  const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', width: STRIP_W }, [left, badge]);
+
+  const cells = [0, 1].map((i) => cardCell(s.cards[i] ?? null, '??'));
+  // A single info field: the action while the hand plays, the made-hand once it ends.
+  const text = ended ? s.madeHand : s.allIn ? 'ALL IN' : (s.lastAction ?? '');
+  const color = ended ? (s.award > 0 ? WIN_FG : s.folded ? DIM_FG : MADE_FG) : s.folded ? DIM_FG : ACTION_FG;
+  const info = text ? [Text({ text, style: { color, bold: ended && s.award > 0 } })] : [];
+  const cardRow = Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [...cells, ...info]);
+
   const bg: [number, number, number, number] = s.toAct ? [46, 52, 72, 0.96] : [22, 24, 32, 0.9];
-  return Box({ flexDirection: 'row', gap: 1, alignItems: 'center', padding: [0, 1], background: bg }, [marker, ...cells, col, ...made]);
+  return Box({ flexDirection: 'column', gap: 0, padding: [0, 1], background: bg }, [header, cardRow]);
 }
 
-// The stacked strips, one per seat (seat order, top to bottom).
-function playerStrips(seats: readonly SeatCardView[]): Node {
-  return Box({ flexDirection: 'column', gap: 1 }, seats.map(playerStrip));
+// The stacked strips, one per seat (seat order, top to bottom). `ended` swaps the info
+// field from live actions to made-hands.
+function playerStrips(seats: readonly SeatCardView[], ended: boolean): Node {
+  return Box({ flexDirection: 'column', gap: 1 }, seats.map((s) => playerStrip(s, ended)));
 }
 
 // ── Board strip (bottom-right) ───────────────────────────────────────────────────
@@ -283,7 +291,7 @@ export function buildPokerGameRoot(
   },
 ): Node {
   const pot = opts.table ? potPill(opts.table.pot, opts.blinds) : null;
-  const strips = opts.table && opts.table.seats.length ? playerStrips(opts.table.seats) : null;
+  const strips = opts.table && opts.table.seats.length ? playerStrips(opts.table.seats, opts.table.ended) : null;
 
   const c = opts.commentary && opts.t < opts.commentary.until ? opts.commentary : null;
   const label = c ? (c.model ? `${shortModel(c.model)}:  ${c.text}` : c.text) : opts.status;

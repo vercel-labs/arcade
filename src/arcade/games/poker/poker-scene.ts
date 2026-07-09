@@ -6,9 +6,9 @@
 // in the driver (match/poker-driver.ts); this scene renders whatever HoldemState it
 // is handed and animates the moves played into it.
 //
-// Numbers (stacks, pot, bets) are drawn as a projected 2D overlay (drawOverlay) over
-// the composited frame — the same approach as the audio scene — rather than baked
-// into 3D, so the felt stays clean and the labels stay legible.
+// The table state (pot, per-seat stacks / actions / hands) is presented entirely by the
+// 2D HUD overlay (games/poker/poker-hud.ts) — a WSOP-style broadcast layout — so the
+// felt itself stays clean, with no projected labels baked over the 3D.
 
 import {
   type Camera,
@@ -25,9 +25,6 @@ import {
   normalize3,
   rasterize,
   type RenderTarget,
-  STYLE_BOLD,
-  STYLE_DIM,
-  type Surface,
   type Texture,
   type Vec3,
 } from '../../../engine/index.ts';
@@ -122,7 +119,7 @@ export interface SeatCardView {
   stack: number;
   lastAction: string | null;
   toAct: boolean; // this seat is the one to act right now
-  isButton: boolean; // holds the dealer button this hand
+  pos: '' | 'BTN' | 'SB' | 'BB'; // blind/button position this hand (BTN only shown 3+ handed)
   madeHand: string; // e.g. "Two Pair" (only for revealed, unfolded seats post-flop)
   award: number; // chips won this hand (>0 once the hand is decided)
 }
@@ -136,14 +133,8 @@ export interface TableView {
   board: readonly Card[];
   boardShown: number;
   street: string;
+  ended: boolean; // the hand is over (show made-hands instead of actions)
 }
-
-// Text tints for the overlay.
-const FG: RGB = [232, 236, 246];
-const MUTED: RGB = [150, 156, 174];
-const GOLD: RGB = [240, 214, 130];
-const WIN: RGB = [150, 226, 150];
-const CHIP_BG: RGB = [12, 16, 20];
 
 // A played action → its short WSOP-style label for the seat's HUD row. Amounts are
 // totals (raise TO, bet amount), matching how HoldemState reads the action.
@@ -171,12 +162,6 @@ export class PokerGameScene {
   private idleDeck: DeckShuffle;
   private dirty = true;
   private lastT = -1;
-  // The view-projection built by the last renderScene, reused by drawOverlay (same
-  // camera + same effective aspect) so the frame's camera matrices are built once.
-  private overlayVp: Mat4 | null = null;
-  // Reused per-seat award lookup for the overlay, cleared each draw — avoids allocating
-  // a Map every frame a hand is on screen (it's only populated once the hand is terminal).
-  private awardScratch = new Map<number, number>();
 
   private hand: HoldemState | null = null;
   private seats: PokerSeatView[] = [];
@@ -406,6 +391,8 @@ export class PokerGameScene {
     const spectator = !this.seats.some((s) => s.kind === 'human');
     const shown = hand ? new Set(hand.showdownSeats()) : new Set<number>();
     const button = hand?.button ?? -1;
+    const sb = hand?.smallBlindSeat() ?? -1;
+    const bb = hand?.bigBlindSeat() ?? -1;
     const toAct = hand ? hand.toActSeat() : -1;
     const awards = new Map<number, number>();
     if (hand) for (const a of hand.awards()) awards.set(a.seat, (awards.get(a.seat) ?? 0) + a.amount);
@@ -416,6 +403,9 @@ export class PokerGameScene {
       const hole = hand ? hand.holeOf(i) : [];
       const cards: (Card | null)[] = revealed ? [hole[0] ?? null, hole[1] ?? null] : [null, null];
       const folded = hand ? hand.isFolded(i) : false;
+      // Position badge: BB / SB take priority (so heads-up, where the button IS the SB,
+      // reads as SB + BB); the button only shows as BTN when it's neither blind (3+ handed).
+      const pos: SeatCardView['pos'] = i === bb ? 'BB' : i === sb ? 'SB' : i === button ? 'BTN' : '';
       return {
         seat: i,
         name: s.label,
@@ -427,7 +417,7 @@ export class PokerGameScene {
         stack: hand ? hand.stackOf(i) : 0,
         lastAction: this.lastAction[i] ?? null,
         toAct: i === toAct,
-        isButton: i === button,
+        pos,
         madeHand: revealed && !folded && hand ? hand.handName(i) : '',
         award: awards.get(i) ?? 0,
       };
@@ -438,6 +428,7 @@ export class PokerGameScene {
       board: hand ? hand.boardCards() : [],
       boardShown: this.boardShown,
       street: hand ? hand.streetName() : '',
+      ended: hand ? hand.isTerminal() : false,
     };
   }
 
@@ -516,7 +507,6 @@ export class PokerGameScene {
     const eye = this.cam.eye();
     const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 200 };
     const { viewProjection: vp } = cameraMatrices(camera, target.width / target.height);
-    this.overlayVp = vp; // drawOverlay (same frame) reuses this instead of rebuilding it
 
     // Table + chairs: one per seat during a session, else a default idle ring.
     // Frame (rail/apron/legs) is plain matte; the felt gets the stipple material.
@@ -706,62 +696,6 @@ export class PokerGameScene {
       wisp.setSpeaking(turn === s);
       wisp.renderWorld(target, vp, right, up, { x: c.x, y: WISP_FLOAT, z: c.z }, W, H, t, dt, WISP_SCALE);
     }
-  }
-
-  // ── 2D overlay: pot + per-seat stack/bet/status labels (projected) ─────────────
-  drawOverlay(surf: Surface, cols: number, rows: number): void {
-    const hand = this.hand;
-    if (!hand) return;
-    // Reuse the view-projection renderScene built this frame: the same camera, and the
-    // 3D target's aspect (cols·SS)/(rows·2·SS) reduces to cols/(2·rows), so it's the
-    // identical matrix. Fall back to building it if drawOverlay ever runs without a
-    // preceding renderScene (e.g. a forced repaint before the first render).
-    let vp = this.overlayVp;
-    if (!vp) {
-      const eye = this.cam.eye();
-      const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 200 };
-      vp = cameraMatrices(camera, cols / (2 * rows)).viewProjection;
-    }
-
-    // Pot, centered above the board.
-    const potCell = this.project(vp, { x: 0, y: 0.1, z: -1.4 }, cols, rows);
-    if (potCell) this.centerLabel(surf, potCell.x, potCell.y, `pot ${hand.potTotal()}`, GOLD, cols);
-
-    const toAct = hand.toActSeat();
-    const awardBy = this.awardScratch;
-    awardBy.clear();
-    if (hand.isTerminal()) for (const a of hand.awards()) awardBy.set(a.seat, (awardBy.get(a.seat) ?? 0) + a.amount);
-
-    for (let s = 0; s < this.seats.length; s++) {
-      const seat = this.seats[s];
-      // Label sits just behind the seat's cards, toward its chair.
-      const p = this.seatPos(s, TABLE_RADIUS + 0.5);
-      const cell = this.project(vp, { x: p.x, y: 0.5, z: p.z }, cols, rows);
-      if (!cell) continue;
-      const name = seat.kind === 'human' ? 'You' : seat.label;
-      const status = hand.isFolded(s) ? 'folded' : hand.isAllIn(s) ? 'all-in' : '';
-      const bet = hand.committedOf(s);
-      const won = awardBy.get(s) ?? 0;
-      let line = `${name}  ${hand.stackOf(s)}`;
-      if (status) line += `  (${status})`;
-      else if (bet > 0) line += `  bet ${bet}`;
-      const isTurn = s === toAct && !this.paused;
-      const tint = won > 0 ? WIN : hand.isFolded(s) ? MUTED : isTurn ? GOLD : FG;
-      this.centerLabel(surf, cell.x, cell.y, `${isTurn ? '▸ ' : ''}${line}${s === hand.button ? '  •BTN' : ''}`, tint, cols);
-      if (won > 0) this.centerLabel(surf, cell.x, cell.y + 1, `+${won}`, WIN, cols);
-    }
-  }
-
-  private centerLabel(surf: Surface, cx: number, cy: number, text: string, fg: RGB, cols: number): void {
-    const x = Math.max(0, Math.min(cols - text.length, Math.round(cx - text.length / 2)));
-    const y = Math.round(cy);
-    surf.drawText(x, y, text, fg, CHIP_BG, fg === MUTED ? STYLE_DIM : STYLE_BOLD);
-  }
-
-  private project(vp: Mat4, p: Vec3, cols: number, rows: number): { x: number; y: number } | null {
-    const c = mat4MulVec4(vp, { x: p.x, y: p.y, z: p.z, w: 1 });
-    if (c.w <= 1e-4) return null;
-    return { x: ((c.x / c.w) * 0.5 + 0.5) * cols, y: (1 - ((c.y / c.w) * 0.5 + 0.5)) * rows };
   }
 
   // ── Wisp picking (click an AI seat's wisp to swap its model) ───────────────────

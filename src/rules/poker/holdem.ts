@@ -69,6 +69,8 @@ export class HoldemState implements ImperfectInfoState<PokerAction> {
   private currentBet = 0; // highest committedRound this street (amount to match)
   private minRaise: number; // minimum raise INCREMENT for the next full raise
   private toAct = 0; // seat to act, or -1 when the hand is over
+  private sbSeat = -1; // small-blind seat this hand (for the HUD position badges)
+  private bbSeat = -1; // big-blind seat this hand
 
   private log: string[] = []; // public action history, street-tagged
   private loggedStreet = -1; // last street a log entry was tagged with
@@ -131,6 +133,8 @@ export class HoldemState implements ImperfectInfoState<PokerAction> {
       bbSeat = this.nextActive((sbSeat + 1) % this.n);
       first = this.nextActive((bbSeat + 1) % this.n);
     }
+    this.sbSeat = sbSeat;
+    this.bbSeat = bbSeat;
     this.commit(sbSeat, this.sb);
     this.commit(bbSeat, this.bb);
     this.currentBet = Math.max(this.committedRound[sbSeat], this.committedRound[bbSeat]);
@@ -583,6 +587,12 @@ export class HoldemState implements ImperfectInfoState<PokerAction> {
   }
   toActSeat(): number {
     return this.toAct;
+  }
+  smallBlindSeat(): number {
+    return this.sbSeat;
+  }
+  bigBlindSeat(): number {
+    return this.bbSeat;
   }
   currentBetAmount(): number {
     return this.currentBet;

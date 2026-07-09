@@ -1616,8 +1616,8 @@ function tick(dt: number): void {
   if (mode === 'poker') {
     // The poker table: an active session animates the wisps continuously (a held
     // live lease keeps frames flowing while the driver awaits the network); between
-    // moves it's dirty-gated like the cards screen. The stack/pot labels are drawn
-    // as a projected overlay in the scene layer (like the audio conversation).
+    // moves it's dirty-gated like the cards screen. Pot / per-seat state is drawn by
+    // the TUI HUD overlay (poker-hud.ts), so the felt itself carries no labels.
     syncBar();
     const sceneDirty = forceFrame || pokerScene.needsRender();
     if (sceneDirty) pokerScene.renderScene(target, t);
@@ -1626,7 +1626,6 @@ function tick(dt: number): void {
         r.write(
           ui.frameComposited((s) => {
             presentSceneInto(s, false, true);
-            pokerScene.drawOverlay(s, cols, rows);
           }, sceneDirty),
         );
       }

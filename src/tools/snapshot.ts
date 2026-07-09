@@ -491,14 +491,12 @@ function pokerSnapshot(): void {
     );
     const surf2 = screen.snapshot((s) => {
       shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true });
-      scene.drawOverlay(s, cols, rows);
     });
     surfaceToPpm(surf2, cols, rows, out);
     return;
   }
   const surf = new Surface(cols, rows);
   shapeGlyphToSurface(surf, target, cols, rows, { color: true, hybrid: true });
-  scene.drawOverlay(surf, cols, rows);
   surfaceToPpm(surf, cols, rows, out);
 }
 
