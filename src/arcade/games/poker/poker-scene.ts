@@ -79,6 +79,9 @@ const DEAL_STEP = 0.3; // seconds each card takes to fly to its seat — an unhu
 const COMMUNITY_STEP = 0.34; // a community card takes a touch longer (it flips face-up mid-flight)
 const DEAL_HOP = 0.85; // height of a dealt card's arc
 const DEAL_CARD: Card = { rank: 0, suit: 0 }; // dealt face-down, so identity is irrelevant
+// After the opening deal lands, hold this long before the first action is requested, so
+// every seat's cards are clearly on the felt (and the hero can peek) before play begins.
+const DEAL_HOLD = 2.0;
 
 // ── Object permanence: fold → muck, and the between-hands gather + reshuffle ─────
 // Cards never teleport. A fold slides its two cards into a loose burn pile beside the
@@ -264,6 +267,11 @@ export class PokerGameScene {
   // dt in renderScene), long enough to cover a street's community deal when one turns.
   private beat = 0;
   private settleResolve: (() => void) | null = null;
+  // The post-deal pause before play: set to DEAL_HOLD when the opening deal lands, ticked
+  // down in renderScene; awaitDeal() resolves when it lapses so the driver holds the first
+  // action until every card is dealt and the pause has passed. −1 = not counting.
+  private dealHold = -1;
+  private dealResolve: (() => void) | null = null;
   // The hero's pending move request (the HumanPlayer seam), or null.
   private humanReq: { resolve: (a: PokerAction) => void; reject: (e: Error) => void } | null = null;
 
@@ -326,6 +334,7 @@ export class PokerGameScene {
     this.paused = false;
     this.rejectHuman();
     this.cancelInterlude(); // resolve any pending interlude so the driver never hangs
+    this.cancelDeal();
     this.muck = [];
     this.hand = null;
     this.cam = this.makeIdleCamera(); // back to the idle framing on the shuffling deck
@@ -347,6 +356,7 @@ export class PokerGameScene {
     this.boardShown = 0;
     this.boardT = -1;
     this.dealtFromDeck = 0;
+    this.dealHold = -1; // (re)armed when this hand's opening deal lands
     this.lastAction = new Array(state.n).fill(null);
     this.muck = []; // the gather already emptied it; clear defensively for the fresh hand
     this.clearInterlude();
@@ -569,7 +579,7 @@ export class PokerGameScene {
   }
 
   needsRender(): boolean {
-    return this.dirty || (this.active && !this.paused) || this.beat > 0 || this.dealing || this.boardT >= 0 || this.heroPeek.animating() || this.interludeActive() || this.isIdle();
+    return this.dirty || (this.active && !this.paused) || this.beat > 0 || this.dealHold > 0 || this.dealing || this.boardT >= 0 || this.heroPeek.animating() || this.interludeActive() || this.isIdle();
   }
 
   // ── Hero hole-card peek / lift ─────────────────────────────────────────────────
@@ -665,6 +675,16 @@ export class PokerGameScene {
         done?.();
       }
     }
+    // Tick the post-deal pause; when it lapses, release awaitDeal so play can begin.
+    if (this.dealHold > 0) {
+      this.dealHold -= dt;
+      if (this.dealHold <= 0) {
+        this.dealHold = -1;
+        const done = this.dealResolve;
+        this.dealResolve = null;
+        done?.();
+      }
+    }
     this.dirty = false;
   }
 
@@ -681,6 +701,7 @@ export class PokerGameScene {
       if (this.dealDone >= this.deals.length) {
         this.dealing = false;
         this.dealT = 0;
+        this.dealHold = DEAL_HOLD; // all cards down → start the pre-play pause
       }
       return;
     }
@@ -842,6 +863,25 @@ export class PokerGameScene {
       const M = mat4Multiply(mat4Translate(x, y, z), mat4Multiply(mat4RotY(yaw), flatDown()));
       drawCard(target, vp, M, DEAL_CARD, this.back);
     }
+  }
+
+  // ── Opening-deal gate ──────────────────────────────────────────────────────────
+  // Resolve once the opening deal has fully landed AND the post-deal pause has elapsed.
+  // The driver awaits this before starting the turn loop, so no seat acts until every
+  // card is on the felt and the table has settled for a beat.
+  awaitDeal(): Promise<void> {
+    if (!this.dealing && this.dealHold <= 0) return Promise.resolve(); // already settled
+    return new Promise<void>((resolve) => {
+      this.dealResolve = resolve;
+    });
+  }
+
+  // Drop a pending deal-gate wait (pause / stop) so the driver's await never hangs.
+  cancelDeal(): void {
+    this.dealHold = -1;
+    const done = this.dealResolve;
+    this.dealResolve = null;
+    done?.();
   }
 
   // ── Between-hands interlude: gather → shuffle ×2 → (driver deals next) ───────────

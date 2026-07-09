@@ -115,7 +115,15 @@ export class PokerMatch {
     const state = new HoldemState({ stacks: this.stacks.slice(), button: this.button, smallBlind: SMALL_BLIND, bigBlind: BIG_BLIND });
     this.deps.scene.beginHand(state);
     this.deps.onHandOver(); // refresh HUD for the fresh hand
-    this.runCurrentHand();
+    // Hold the first action until every card is dealt and the table has settled for a beat.
+    this.deps.scene
+      .awaitDeal()
+      .then(() => {
+        // `abort === null` guards against a stale resolve (e.g. cancelled by pause then
+        // resumed, which starts the loop itself) double-starting the turn loop.
+        if (this.running && !this.paused && this.abort === null) this.runCurrentHand();
+      })
+      .catch(() => {});
   }
 
   // Run the turn-loop over the scene's current hand (used to start a hand and to
@@ -175,6 +183,7 @@ export class PokerMatch {
       this.handTimer = null;
     }
     this.deps.scene.cancelInterlude(); // drop any in-flight gather/reshuffle
+    this.deps.scene.cancelDeal(); // and any pending post-deal wait
     this.deps.requestRender();
   }
 
@@ -204,6 +213,7 @@ export class PokerMatch {
     this.running = false;
     this.paused = false;
     this.deps.scene.cancelInterlude();
+    this.deps.scene.cancelDeal();
     this.deps.scene.endSession();
   }
 
