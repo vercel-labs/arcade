@@ -209,7 +209,9 @@ function playerStrip(s: SeatCardView, ended: boolean): Node {
   const text = ended ? s.madeHand : s.allIn ? 'ALL IN' : (s.lastAction ?? '');
   const color = win ? WIN_INK : ended ? (s.folded ? DIM_FG : MADE_FG) : s.folded ? DIM_FG : ACTION_FG;
   const info = text ? [Text({ text, style: { color, bold: win } })] : [];
-  const cardRow = Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [...cells, ...info]);
+  // Fixed width (matching the header), so every strip is the same width and the right
+  // edges line up flush — a content-sized row makes longer actions jut out (jagged).
+  const cardRow = Box({ flexDirection: 'row', gap: 1, alignItems: 'center', width: STRIP_W }, [...cells, ...info]);
 
   // Winner → gold; the seat to act → lit; everyone else → the base slate.
   const bg: [number, number, number, number] = win ? [...WIN_BG, 1] : s.toAct ? [46, 52, 72, 0.96] : [22, 24, 32, 0.9];
@@ -236,7 +238,9 @@ function boardPanel(v: TableView | null): Node {
     Text({ text: 'Board', style: { color: [222, 224, 234], bold: true } }),
     ...cells,
   ]);
-  return Box({ flexDirection: 'column', justifyContent: 'center', width: STRIP_W, height: 3, padding: [0, 1], background: [22, 24, 32, 0.92] }, [middle]);
+  // No explicit width: the STRIP_W content row + [0,1] padding sizes it to STRIP_W + 2,
+  // the exact same total width as a player strip so it stacks flush above them.
+  return Box({ flexDirection: 'column', justifyContent: 'center', height: 3, padding: [0, 1], background: [22, 24, 32, 0.92] }, [middle]);
 }
 
 // The chat panel: a "Chat" header with a ✕ (collapse) at its far right, over the scrollable
@@ -257,16 +261,11 @@ function chatPanel(height: number, active: boolean, onToggle: () => void): Node 
   ]);
 }
 
-// The collapsed chat: a small pill hugging the rail's top-RIGHT corner (right-aligned, with
-// the same 2-cell edge inset as the ✕) that reopens the panel.
-const chatOpener = (onToggle: () => void): Node =>
-  Box({ flexDirection: 'row', justifyContent: 'end', width: RAIL_W, padding: [CHAT_PAD_V, 2, 0, 0] }, [Button({ id: 'poker-chat-open', label: '💬 chat', onClick: onToggle, style: CHAT_PILL })]);
-
-// The right rail: the chat fills the full height (or, collapsed, its reopen pill hugs the
-// top-right corner). The board no longer lives here — it moved bottom-left above the strips.
-function buildRightRail(height: number, chatOpen: boolean, active: boolean, onToggleChat: () => void): Node {
-  const body = chatOpen ? chatPanel(height, active, onToggleChat) : chatOpener(onToggleChat);
-  return Box({ flexDirection: 'column', width: RAIL_W, height, flexShrink: 0 }, [body]);
+// The right rail: the table-talk chat, full height, pinned to the right edge. Present only
+// when the chat is OPEN — collapsed, the rail reserves no width (so the bottom-right controls
+// can reach the true corner) and its reopen pill lives in the top-right of the main area.
+function buildRightRail(height: number, active: boolean, onToggleChat: () => void): Node {
+  return Box({ flexDirection: 'column', width: RAIL_W, height, flexShrink: 0 }, [chatPanel(height, active, onToggleChat)]);
 }
 
 // Build the full-screen poker overlay, WSOP-style: the pot pill top-left and the stacked
@@ -300,36 +299,45 @@ export function buildPokerGameRoot(
 
   const controls = opts.hero.toAct ? bettingControls(opts.hero) : null;
 
-  // The bottom band spans the main column: the status/commentary toast, the board, and the
-  // player strips stack up bottom-LEFT; the betting controls sit bottom-RIGHT with a margin
-  // from the rail (not tucked flush against it). alignItems:'end' bottom-aligns the two.
+  // The rail (full-height chat) only reserves width when the chat is OPEN. Collapsed, main
+  // takes the whole width so the bottom-right controls reach the true corner. `mainW` is the
+  // width the top/bottom bands span (so their flexGrow spacers have slack to distribute).
+  const railOpen = opts.active && opts.chatOpen;
+  const mainW = region.w - (railOpen ? RAIL_W : 0);
+
+  // Top band: pot pill top-LEFT; when the chat is collapsed, its reopen pill sits top-RIGHT.
+  const reopenPill =
+    opts.active && !opts.chatOpen ? Button({ id: 'poker-chat-open', label: '💬 chat', onClick: opts.onToggleChat, style: CHAT_PILL }) : null;
+  const topBand = Box({ flexDirection: 'row', alignItems: 'start', width: mainW, padding: [1, 2, 0, 2] }, [
+    ...(pot ? [pot] : []),
+    Box({ flexGrow: 1 }),
+    ...(reopenPill ? [reopenPill] : []),
+  ]);
+
+  // Bottom band: the status/commentary toast, the board, and the player strips stack up
+  // bottom-LEFT; the betting controls sit in the bottom-RIGHT corner with a small margin
+  // (not tucked flush). alignItems:'end' bottom-aligns the two clusters.
   const leftCluster = Box({ flexDirection: 'column', gap: 1, alignItems: 'start' }, [
     ...(toast ? [toast] : []),
     ...(board ? [board] : []),
     ...(strips ? [strips] : []),
   ]);
-  // Width the band to the main column (full width minus the rail) so the flexGrow spacer
-  // actually has slack to distribute — rows here are otherwise content-sized.
-  const mainW = region.w - (opts.active ? RAIL_W : 0);
   const bottomBand = Box({ flexDirection: 'row', alignItems: 'end', width: mainW, padding: [0, 0, 1, 2] }, [
     leftCluster,
     Box({ flexGrow: 1 }),
-    ...(controls ? [Box({ padding: [0, 4, 0, 0] }, [controls])] : []),
+    ...(controls ? [Box({ padding: [0, 2, 0, 0] }, [controls])] : []),
   ]);
 
   // The main column takes the width left of the rail (flexGrow); the bar lives here, so it
   // spans only the main column — the rail is clear of it, exactly like the chess layout.
-  // Pot pill pinned top-left; the bottom band rides just above the bar.
   const main = Box({ flexGrow: 1, flexDirection: 'column', height: region.h }, [
-    ...(pot ? [Box({ flexDirection: 'row', justifyContent: 'start', padding: [1, 0, 0, 2] }, [pot])] : []),
+    topBand,
     Box({ flexGrow: 1 }),
     bottomBand,
     bar,
     Box({ height: 1 }),
   ]);
 
-  // The right rail (chat) only exists once a session is running — before a match starts
-  // there's no chat, so the main column takes the full width.
-  const rail = opts.active ? [buildRightRail(region.h, opts.chatOpen, opts.active, opts.onToggleChat)] : [];
+  const rail = railOpen ? [buildRightRail(region.h, opts.active, opts.onToggleChat)] : [];
   return Box({ width: region.w, height: region.h, flexDirection: 'row' }, [main, ...rail]);
 }
