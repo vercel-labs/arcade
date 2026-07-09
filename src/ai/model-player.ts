@@ -67,6 +67,13 @@ export interface ModelPlayerOpts {
    */
   rationaleGuide?: string;
   /**
+   * Optional extra context woven into the move prompt for the seat to act, read
+   * live per turn (a thunk, so it reflects the latest state). Poker uses it to inject
+   * chip standings + the seat's private opponent notes; games that don't set it are
+   * unaffected. Returns '' when there is nothing to add.
+   */
+  contextProvider?: (player: number) => string;
+  /**
    * Observability hook fired once per generation attempt — for diagnostics
    * (src/tools/self-play.ts), not used in the app. `raw` is the model's move
    * string / reply / error message; `result` is how it resolved.
@@ -96,6 +103,7 @@ export class ModelPlayer<A> implements Player<A> {
   private persona?: string;
   private banter: boolean;
   private rationaleGuide?: string;
+  private contextProvider?: (player: number) => string;
   private onAttempt?: ModelPlayerOpts['onAttempt'];
   private allowIllegal?: () => boolean;
   private notation: MoveNotation;
@@ -109,6 +117,7 @@ export class ModelPlayer<A> implements Player<A> {
     this.persona = opts.persona;
     this.banter = opts.banter ?? false;
     this.rationaleGuide = opts.rationaleGuide;
+    this.contextProvider = opts.contextProvider;
     this.onAttempt = opts.onAttempt;
     this.allowIllegal = opts.allowIllegal;
     this.notation = opts.moveNotation ?? CHESS_NOTATION;
@@ -245,6 +254,8 @@ export class ModelPlayer<A> implements Player<A> {
     const view = typeof withExtras.informationStateString === 'function' && player >= 0 ? withExtras.informationStateString(player) : null;
     const fen = view ? null : typeof withExtras.fen === 'function' ? withExtras.fen() : null;
     const history = typeof withExtras.moveHistory === 'function' ? withExtras.moveHistory() : '';
+    // Optional per-turn extra context for the seat to act (poker: chip standings + notes).
+    const extra = player >= 0 ? (this.contextProvider?.(player) ?? '') : '';
     // The format instruction differs by path: JSON keeps providers that need the
     // literal word "json" happy (some json_object modes require it); text asks for
     // a parseable trailing MOVE: line.
@@ -257,6 +268,7 @@ export class ModelPlayer<A> implements Player<A> {
       fen ? `\n\nPosition (FEN): ${fen}` : '',
       view ? `\n\nYour view of the game:\n${view}` : `\n\nBoard (uppercase = White, lowercase = Black):\n${state.toString()}`,
       history ? `\n\nThe moves played so far are: ${history}` : '',
+      extra ? `\n\n${extra}` : '',
       opponentSaid
         ? `\n\nYour opponent just said: "${opponentSaid}". You may react to it in your rationale, but choose your move on the merits of the position.`
         : '',
@@ -264,7 +276,7 @@ export class ModelPlayer<A> implements Player<A> {
       format,
       // Reinforce a custom rationale meaning (e.g. poker table talk) beyond the schema
       // field description, since models often weight prose instructions more heavily.
-      this.rationaleGuide ? `\n\nYour "rationale" is not analysis — it is ${this.rationaleGuide}` : '',
+      this.rationaleGuide ? `\n\nYour "rationale" is not analysis. It is ${this.rationaleGuide}` : '',
       feedback,
     ].join('');
   }

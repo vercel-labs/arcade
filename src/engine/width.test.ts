@@ -24,7 +24,7 @@ test('other special-cased single-cell glyphs stay narrow', () => {
 
 test('genuinely wide + zero-width codepoints are unchanged', () => {
   assert.equal(cellWidth('世'.codePointAt(0)!), 2); // CJK
-  assert.equal(cellWidth('💬'.codePointAt(0)!), 2); // emoji (chat pill icon)
+  assert.equal(cellWidth('💬'.codePointAt(0)!), 2); // emoji
   assert.equal(cellWidth('a'.codePointAt(0)!), 1);
   assert.equal(cellWidth(0x0301), 0); // combining acute accent
 });

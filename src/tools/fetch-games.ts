@@ -17,12 +17,7 @@ const ART: Record<string, string> = {
   audio: '1f3a4', // 🎤 microphone
   ui: '1f3a8', // 🎨 artist palette
   codenames: '1f575', // 🕵 detective
-  // poker: not a Noto emoji — its cover is the OFL ace-of-spades playing-card
-  // glyph (Noto Sans Symbols2, via Wikimedia Commons "File:PLAYING CARD ACE OF
-  // SPADES.svg"). That glyph is ink-only on transparency, so the enclosed card
-  // face was flood-filled white and the portrait card padded onto a transparent
-  // square (the cover face is square). The result is committed directly to
-  // public/assets/games/poker.png and is NOT managed by this tool.
+  poker: '2660', // ♠ black spade suit
   // pacman: not a Noto emoji — its cover is the classic sprite from Wikimedia
   // Commons (File:Original PacMan.png, transparent, "PD shape"), committed
   // directly to public/assets/games/pacman.png and NOT managed by this tool.

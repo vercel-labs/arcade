@@ -46,8 +46,10 @@ export interface KeyHandlers {
   closeMatchSetup(): void;
   cancelWispSwap(): void;
   pokerButton(): void;
-  pokerNewMatch(): void;
   closePokerSetup(): void;
+  closePokerMenu(): void;
+  closePokerNotes(): void;
+  closeChessMenu(): void;
 }
 
 // Cells-equivalent the arrow keys pan the chess camera per press (held keys
@@ -95,8 +97,10 @@ export function installKeymap(h: KeyHandlers): Keymap {
     { id: 'chess.cancelSetup', title: 'Cancel match setup', run: h.closeMatchSetup },
     { id: 'chess.cancelSwap', title: 'Cancel model swap', run: h.cancelWispSwap },
     { id: 'poker.toggleAI', title: 'Poker: play / pause', run: h.pokerButton },
-    { id: 'poker.newMatch', title: 'Poker: new match', run: h.pokerNewMatch },
     { id: 'poker.cancelSetup', title: 'Cancel poker setup', run: h.closePokerSetup },
+    { id: 'poker.closeMenu', title: 'Close poker menu', run: h.closePokerMenu },
+    { id: 'poker.closeNotes', title: 'Close poker notes', run: h.closePokerNotes },
+    { id: 'chess.closeMenu', title: 'Close chess menu', run: h.closeChessMenu },
   ]) {
     keymap.register(c);
   }
@@ -121,11 +125,10 @@ export function installKeymap(h: KeyHandlers): Keymap {
   keymap.bind('chess', { key: 'n', cmd: 'chess.resetGame' });
   keymap.bind('chess', { key: 'i', cmd: 'chess.toggleIllegal' });
   keymap.bind('chess', { key: 'e', cmd: 'chess.toggleEvalBar' });
-  // Poker: play/pause + new match. Betting is via the on-screen controls (Tab to a
-  // Fold/Call/Raise button or the bet slider, then Enter/←→), so no letter keys are
-  // bound for it (they'd clash with the global render-mode letters).
+  // Poker: play/pause. Betting is via the on-screen controls (Tab to a Fold/Call/Raise
+  // button or the bet slider, then Enter/←→), so no letter keys are bound for it (they'd
+  // clash with the global render-mode letters). Home/restart/mode/quit live in the ☰ menu.
   keymap.bind('poker', { key: 'p', cmd: 'poker.toggleAI' });
-  keymap.bind('poker', { key: 'n', cmd: 'poker.newMatch' });
   // Menu hub: arrows move, Enter/Space launch, Escape returns to the prism loading
   // screen. Escape here shadows the global Escape→quit because the 'menu' base layer
   // is searched before 'global'.
@@ -182,5 +185,10 @@ export function installKeymap(h: KeyHandlers): Keymap {
   keymap.bind('teamswitch', { key: 'escape', cmd: 'menu.closeTeamSwitch' });
   // Poker setup modal: Escape cancels; the layer shadows stray keys.
   keymap.bind('poker-setup', { key: 'escape', cmd: 'poker.cancelSetup' });
+  // Poker in-game menu popup: Escape closes it; the layer shadows stray keys.
+  keymap.bind('poker-menu', { key: 'escape', cmd: 'poker.closeMenu' });
+  keymap.bind('poker-notes', { key: 'escape', cmd: 'poker.closeNotes' });
+  // Chess in-game menu popup: Escape closes it; the layer shadows stray keys.
+  keymap.bind('chess-menu', { key: 'escape', cmd: 'chess.closeMenu' });
   return keymap;
 }

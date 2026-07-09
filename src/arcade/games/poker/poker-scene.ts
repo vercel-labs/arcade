@@ -52,8 +52,6 @@ const CAM_HOME_DIST = 13;
 const CAM_MIN_DIST = 3;
 const CAM_MAX_DIST = 24;
 const OVERVIEW_TARGET: Vec3 = { x: 0, y: 0, z: 0 }; // the table-top center — orbit pivots here
-const HERO_TARGET: Vec3 = { x: 0, y: 0.35, z: HOLE_R - 0.2 }; // over the hero's own cards ("my hand" view)
-const HERO_VIEW_DIST = 6; // how close the "my hand" view sits
 
 const BOARD_SPACING = CARD_W * 1.12; // gap between community cards
 const BOARD_Z = 0.5; // community row sits a touch toward the hero, clear of the centre deck
@@ -554,14 +552,6 @@ export class PokerGameScene {
   // Reset to the whole-table overview, orbiting/zooming about the table centre.
   resetView(): void {
     this.cam.reset();
-    this.dirty = true;
-  }
-  // Jump to a close over-the-shoulder pose on the hero's own cards ("my hand" button).
-  focusHero(): void {
-    this.cam.azimuth = 0;
-    this.cam.elevation = 0.6;
-    this.cam.distance = HERO_VIEW_DIST;
-    this.cam.target = { ...HERO_TARGET };
     this.dirty = true;
   }
   orbit(dx: number, dy: number): void {

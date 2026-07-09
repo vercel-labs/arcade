@@ -16,13 +16,7 @@ export interface BarActions {
   mode(): void;
   quit(): void;
   aiMatch(): void;
-  resetGame(): void;
-  illegalMoves(): void;
-  evalBar(): void;
   audioModel(): void;
-  pokerAI(): void;
-  pokerNewMatch(): void;
-  pokerSeat(): void;
 }
 
 // A pill: muted slate normally, bright inverted on hover/press, with a distinct
@@ -43,10 +37,16 @@ const PILL: Style = {
 // Center a string within a fixed-width field. Keeps the mode button a stable
 // width as the render-mode name changes, without the label drifting left (the
 // old padEnd left-anchored the text inside the pill).
-function centerField(s: string, width: number): string {
+export function centerField(s: string, width: number): string {
   const pad = Math.max(0, width - s.length);
   const left = Math.floor(pad / 2);
   return ' '.repeat(left) + s + ' '.repeat(pad - left);
+}
+
+// The mode-cycle button label ("mode:  ascii"), centered so the pill/menu row keeps a
+// stable width as the render-mode name changes. Shared by the bar and the game menu.
+export function modeLabel(renderMode: RenderMode): string {
+  return `mode: ${centerField(renderMode, 9)}`;
 }
 
 export function buildBar(
@@ -54,23 +54,20 @@ export function buildBar(
   renderMode: RenderMode,
   a: BarActions,
   ai: { label: string; active: boolean } = { label: 'play ai', active: false },
-  illegalOn = false,
-  evalOn = false,
 ): Node {
-  const modeLabel = `mode: ${centerField(renderMode, 9)}`;
   let buttons: Node[] = [];
 
   if (mode === 'ui') {
     buttons = [
       Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
-      Button({ id: 'mode', label: modeLabel, onClick: a.mode, style: PILL }),
+      Button({ id: 'mode', label: modeLabel(renderMode), onClick: a.mode, style: PILL }),
       Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
     ];
   } else if (mode === 'logos') {
     buttons = [
       Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
       Button({ id: 'reset', label: 'reset view', onClick: a.reset, style: PILL }),
-      Button({ id: 'mode', label: modeLabel, onClick: a.mode, style: PILL }),
+      Button({ id: 'mode', label: modeLabel(renderMode), onClick: a.mode, style: PILL }),
       Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
     ];
   } else if (mode === 'audio') {
@@ -85,35 +82,22 @@ export function buildBar(
   } else if (mode === 'chess-game') {
     // The playable board: the AI button plays (idle) → pauses (running) → resumes
     // (paused). Highlighted whenever a match exists (running or paused).
+    // Like poker: the felt keeps only the two in-flow controls — play/pause AI and
+    // reset view. Everything system-level (home / new game / mode / eval bar / illegal /
+    // quit) lives in the ☰ menu popup (top-right, see hud.ts buildChessGameRoot), and
+    // the chat panel is a top-right pill — so the bar stays two buttons, not eight.
     const aiStyle = ai.active
       ? { ...PILL, background: [86, 64, 120] as RGB, color: [238, 230, 250] as RGB }
       : PILL;
-    // The illegal-moves toggle: when on, AI moves bypass the rules. A warm red
-    // highlight signals "no rules" is live.
-    const illegalStyle = illegalOn
-      ? { ...PILL, background: [150, 58, 58] as RGB, color: [250, 232, 230] as RGB }
-      : PILL;
-    // The eval-bar toggle: a cool slate highlight when the rail is shown.
-    const evalStyle = evalOn
-      ? { ...PILL, background: [60, 78, 112] as RGB, color: [230, 238, 250] as RGB }
-      : PILL;
-    // The chat panel is toggled by a top-right icon (see hud.ts buildChessGameRoot),
-    // not a bar button — keeping the bar focused on board/game controls.
     buttons = [
-      Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
       Button({ id: 'ai', label: ai.label, onClick: a.aiMatch, style: aiStyle }),
-      Button({ id: 'reset-game', label: 'reset game', onClick: a.resetGame, style: PILL }),
-      Button({ id: 'illegal', label: `illegal: ${illegalOn ? 'on' : 'off'}`, onClick: a.illegalMoves, style: illegalStyle }),
-      Button({ id: 'eval-bar', label: evalOn ? 'hide eval bar' : 'show eval bar', onClick: a.evalBar, style: evalStyle }),
       Button({ id: 'reset', label: 'reset view', onClick: a.reset, style: PILL }),
-      Button({ id: 'mode', label: modeLabel, onClick: a.mode, style: PILL }),
-      Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
     ];
   } else if (mode === 'chess') {
     buttons = [
       Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
       Button({ id: 'reset', label: 'reset view', onClick: a.reset, style: PILL }),
-      Button({ id: 'mode', label: modeLabel, onClick: a.mode, style: PILL }),
+      Button({ id: 'mode', label: modeLabel(renderMode), onClick: a.mode, style: PILL }),
       Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
     ];
   } else if (mode === 'cards') {
@@ -122,24 +106,14 @@ export function buildBar(
     buttons = [
       Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
       Button({ id: 'reset', label: 'reset view', onClick: a.reset, style: PILL }),
-      Button({ id: 'mode', label: modeLabel, onClick: a.mode, style: PILL }),
+      Button({ id: 'mode', label: modeLabel(renderMode), onClick: a.mode, style: PILL }),
       Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
     ];
   } else if (mode === 'poker') {
-    // The poker table: play (idle → opens setup) → pause (running) → resume (paused);
-    // highlighted while a session exists. Betting lives in the HUD, not the bar.
-    const aiStyle = ai.active ? { ...PILL, background: [86, 64, 120] as RGB, color: [238, 230, 250] as RGB } : PILL;
-    buttons = [
-      Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
-      Button({ id: 'poker-ai', label: ai.label, onClick: a.pokerAI, style: aiStyle }),
-      Button({ id: 'poker-new', label: 'new match', onClick: a.pokerNewMatch, style: PILL }),
-      // "my hand" flies the camera to the hero's seat; "reset view" returns to the
-      // centred whole-table overview (both orbit/zoom about the table centre otherwise).
-      Button({ id: 'poker-seat', label: 'my hand', onClick: a.pokerSeat, style: PILL }),
-      Button({ id: 'reset', label: 'reset view', onClick: a.reset, style: PILL }),
-      Button({ id: 'mode', label: modeLabel, onClick: a.mode, style: PILL }),
-      Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
-    ];
+    // The poker table has NO bottom bar: everything system-level (home / restart / mode /
+    // quit) lives in the ☰ menu popup (top-right), play/pause is the 'p' key, and betting
+    // lives in the HUD — so the felt stays a clean broadcast overlay, not a toolbar.
+    buttons = [];
   }
 
   // Left-anchored with a 2-cell inset so the row lines up with the move panel's
@@ -246,5 +220,57 @@ export function buildGameOver(
       btn('over-close', 'Close', onClose, false),
     ],
   );
+  return Modal(card);
+}
+
+// The poker in-game menu (Wii + / PS-button style): a centered popup with the
+// system actions that used to crowd the bottom bar. Opened by the ☰ pill top-right,
+// dismissed by the ✕ in its header (or Escape). "Mode" cycles the render mode in
+// place and keeps the menu open; the rest act and close. Same Modal + card styling
+// as buildGameOver / buildPromotion so every popup reads as one family.
+const MENU_CLOSE: Style = {
+  padding: [0, 1],
+  color: [150, 154, 166],
+  hover: { background: [180, 60, 60], color: [255, 255, 255] },
+  focus: { background: [72, 76, 92], color: [230, 232, 240] },
+  pressed: { background: [220, 90, 90], color: [255, 255, 255] },
+};
+export interface MenuItem {
+  id: string;
+  label: string;
+  onClick: () => void;
+}
+
+// The in-game menu popup (Wii + / PS-button style): a "menu" title + ✕, then a stack of
+// uniform slate buttons — hover is the only lit state (no highlighted primary). Generic
+// over the `items` the caller supplies, so poker and chess share it (each passes its own
+// home / new game / mode / … list). Same Modal + card styling as buildGameOver.
+export function buildGameMenu(opts: { items: MenuItem[]; onClose: () => void }): Node {
+  const btn = (item: MenuItem): Node =>
+    Button({
+      id: item.id,
+      label: item.label,
+      onClick: item.onClick,
+      style: {
+        padding: [0, 2],
+        background: [40, 42, 52],
+        color: [212, 214, 224],
+        bold: true,
+        hover: { background: [72, 76, 92] },
+        focus: { background: [72, 76, 92] },
+        pressed: { background: [120, 124, 142] },
+      },
+    });
+
+  const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', gap: 3 }, [
+    Text({ text: 'menu', style: { color: [222, 224, 234], bold: true } }),
+    Button({ id: 'game-menu-close', label: '✕', onClick: opts.onClose, style: MENU_CLOSE }),
+  ]);
+
+  const card = Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [1, 3], background: [22, 24, 32] }, [
+    header,
+    Box({ height: 0 }), // small gap before the actions
+    ...opts.items.map(btn),
+  ]);
   return Modal(card);
 }

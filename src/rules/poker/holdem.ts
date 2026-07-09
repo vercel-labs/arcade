@@ -46,6 +46,22 @@ export interface HoldemOpts {
   rng?: () => number; // injected for reproducible deals (defaults to Math.random)
 }
 
+// A finished hand's PUBLIC record — everything a table observer legitimately saw, and
+// nothing hidden. Feeds the opponent-notes reflection (src/arcade/match/poker-memory.ts):
+// the street-tagged action log, cards revealed at showdown (never a mucked/folded hand),
+// per-seat net chip result, and the seat positions. Seats are indices; the caller maps
+// them to player labels. Only meaningful once the hand is over.
+export interface HandPublicRecord {
+  button: number;
+  sb: number; // small-blind seat
+  bb: number; // big-blind seat
+  street: string; // the final street the hand reached (e.g. "river", "flop")
+  board: Card[]; // community cards that were dealt
+  log: string[]; // public action history, street-tagged ("[flop] P0 checks")
+  shown: { seat: number; cards: Card[] }[]; // hole cards seen at showdown (empty if uncontested)
+  results: { seat: number; delta: number }[]; // net chips won/lost this hand, per seat
+}
+
 export class HoldemState implements ImperfectInfoState<PokerAction> {
   readonly n: number;
   private sb: number;
@@ -558,6 +574,26 @@ export class HoldemState implements ImperfectInfoState<PokerAction> {
 
   observationString(player: number): string {
     return this.informationStateString(player);
+  }
+
+  // The finished hand's public record (see HandPublicRecord). Cards are revealed only on a
+  // real showdown (two or more players still in at the end); an uncontested pot reveals
+  // nothing, exactly as at a live table. Safe to call only once `isTerminal()`.
+  publicRecord(): HandPublicRecord {
+    const contenders: number[] = [];
+    for (let s = 0; s < this.n; s++) if (!this.folded[s]) contenders.push(s);
+    const shown = contenders.length > 1 ? contenders.map((s) => ({ seat: s, cards: this.hole[s].slice() })) : [];
+    const payoffs = this.returns();
+    return {
+      button: this.button,
+      sb: this.sbSeat,
+      bb: this.bbSeat,
+      street: STREET_NAMES[this.streetNo],
+      board: this.community.slice(),
+      log: this.log.slice(),
+      shown,
+      results: payoffs.map((delta, seat) => ({ seat, delta })),
+    };
   }
 
   // ── Public read accessors for the presentation layer ───────────────────────────

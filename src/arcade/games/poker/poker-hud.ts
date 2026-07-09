@@ -6,7 +6,7 @@
 // mounted via Slot, rebuilt into a full-screen tree each frame. main owns the scene +
 // driver and wires the handlers; this module owns the controls + the table furniture.
 
-import { Box, Button, Slider, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
+import { Box, Button, Modal, Slider, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
 import type { RGB } from '../../../engine/index.ts';
 import { type Card, isRed, RANK_LABELS } from '../../../rules/poker/cards.ts';
 import type { SeatCardView, TableView } from './poker-scene.ts';
@@ -150,8 +150,11 @@ const CHAT_CLOSE: Style = {
   focus: { background: [72, 76, 92], color: [230, 232, 240] },
   pressed: { background: [220, 90, 90], color: [255, 255, 255] },
 };
+// The two top-right pills: a hamburger glyph + "menu", and plain "chat" text (no icon —
+// a width-2 speech-bubble glyph left a stray continuation cell past the pill edge).
+const MENU_ICON = '☰'; // U+2630 — three stacked lines
 const CHAT_PILL: Style = {
-  padding: [0, 2],
+  padding: [0, 1],
   background: [40, 42, 52],
   color: [212, 214, 224],
   bold: true,
@@ -159,6 +162,64 @@ const CHAT_PILL: Style = {
   focus: { background: [86, 90, 108], color: [248, 248, 252] },
   pressed: { background: [120, 124, 142], color: [12, 12, 18] },
 };
+
+// ── Notes modal (opponent reads) ─────────────────────────────────────────────────
+// A centered modal listing one AI seat's private reads on every other player, paged
+// through the seats with ‹ ›. Opened from the top-right "notes" pill; available in both
+// the human-plays and all-AI-spectate modes.
+const NOTES_NAV: Style = {
+  padding: [0, 1],
+  background: [40, 42, 52],
+  color: [212, 214, 224],
+  bold: true,
+  hover: { background: [86, 90, 108], color: [248, 248, 252] },
+  focus: { background: [86, 90, 108], color: [248, 248, 252] },
+  pressed: { background: [120, 124, 142], color: [12, 12, 18] },
+};
+const NOTES_DIM: Style = { padding: [0, 1], color: [96, 100, 116] }; // disabled ‹ › (single observer)
+
+// One player's block in the modal: the subject's name, then its notes as bullets (or a
+// muted placeholder when the observer has no read yet).
+function notesEntry(label: string, notes: string[]): Node {
+  const head = Text({ text: label, style: { color: [232, 214, 150], bold: true } });
+  const body = notes.length
+    ? notes.map((n) => Text({ text: `• ${n}`, style: { color: [206, 210, 222] } }))
+    : [Text({ text: '· no reads yet', style: { color: [116, 120, 136] } })];
+  return Box({ flexDirection: 'column', gap: 0 }, [head, ...body]);
+}
+
+// Build the notes modal for the given observer. `entries` are its reads on every other
+// seat (label + notes). `canCycle` enables the ‹ › pager (more than one AI seat).
+export function buildPokerNotesModal(opts: {
+  observerLabel: string;
+  entries: { label: string; notes: string[] }[];
+  canCycle: boolean;
+  onPrev: () => void;
+  onNext: () => void;
+  onClose: () => void;
+}): Node {
+  const prev = opts.canCycle
+    ? Button({ id: 'poker-notes-prev', label: '‹', onClick: opts.onPrev, style: NOTES_NAV })
+    : Text({ text: '‹', style: NOTES_DIM });
+  const next = opts.canCycle
+    ? Button({ id: 'poker-notes-next', label: '›', onClick: opts.onNext, style: NOTES_NAV })
+    : Text({ text: '›', style: NOTES_DIM });
+  const title = Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [
+    prev,
+    Text({ text: `${opts.observerLabel}'s reads`, style: { color: [222, 224, 234], bold: true } }),
+    next,
+  ]);
+  const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', gap: 3, width: 46 }, [
+    title,
+    Button({ id: 'poker-notes-close', label: '✕', onClick: opts.onClose, style: CHAT_CLOSE }),
+  ]);
+  const card = Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [1, 3], background: [22, 24, 32] }, [
+    header,
+    Box({ height: 0 }),
+    ...opts.entries.map((e) => notesEntry(e.label, e.notes)),
+  ]);
+  return Modal(card);
+}
 
 // ── Pot pill (top-left) ────────────────────────────────────────────────────────────
 const POT_BG: RGB = [150, 116, 40]; // WSOP gold
@@ -286,6 +347,8 @@ export function buildPokerGameRoot(
     active: boolean; // a session is running (suppresses the chat's empty placeholder)
     chatOpen: boolean; // table-talk panel expanded vs. collapsed to its reopen pill
     onToggleChat: () => void;
+    onOpenMenu: () => void; // ☰ pill → the in-game menu popup (home / restart / mode / quit)
+    onOpenNotes: () => void; // "notes" pill → the opponent-notes modal
   },
 ): Node {
   const pot = opts.table ? potPill(opts.table.pot, opts.blinds) : null;
@@ -306,13 +369,22 @@ export function buildPokerGameRoot(
   const railOpen = opts.active && opts.chatOpen;
   const mainW = region.w - (railOpen ? RAIL_W : 0);
 
-  // Top band: pot pill top-LEFT; when the chat is collapsed, its reopen pill sits top-RIGHT.
-  const reopenPill =
-    opts.active && !opts.chatOpen ? Button({ id: 'poker-chat-open', label: '💬 chat', onClick: opts.onToggleChat, style: CHAT_PILL }) : null;
+  // Top band: pot pill top-LEFT; a right cluster top-RIGHT holding the ☰ menu pill and,
+  // when the chat is collapsed, the chat pill to its right (menu left, chat right). When
+  // the chat is OPEN the rail is a separate column and this band spans only `mainW`, so the
+  // menu pill lands flush against the left edge of the chat panel — exactly where we want
+  // it. The chat pill's ✕ (in the open panel's header) handles collapse, so it drops here.
+  const menuPill = Button({ id: 'poker-menu', label: `${MENU_ICON} menu`, onClick: opts.onOpenMenu, style: CHAT_PILL });
+  // The notes pill sits between menu and chat, shown whenever a session is live (both when
+  // the human plays and when spectating an all-AI table).
+  const notesPill = opts.active ? Button({ id: 'poker-notes', label: 'notes', onClick: opts.onOpenNotes, style: CHAT_PILL }) : null;
+  const chatPill =
+    opts.active && !opts.chatOpen ? Button({ id: 'poker-chat-open', label: 'chat', onClick: opts.onToggleChat, style: CHAT_PILL }) : null;
+  const rightCluster = Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [menuPill, ...(notesPill ? [notesPill] : []), ...(chatPill ? [chatPill] : [])]);
   const topBand = Box({ flexDirection: 'row', alignItems: 'start', width: mainW, padding: [1, 2, 0, 2] }, [
     ...(pot ? [pot] : []),
     Box({ flexGrow: 1 }),
-    ...(reopenPill ? [reopenPill] : []),
+    rightCluster,
   ]);
 
   // Bottom band: the status/commentary toast, the board, and the player strips stack up

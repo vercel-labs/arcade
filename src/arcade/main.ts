@@ -20,13 +20,13 @@ import { ChessGameScene } from './games/chess/scene.ts';
 import { CardsScene } from './games/poker/cards-scene.ts';
 import { buildPokerRoot, mountPokerHud, pokerMode, setPokerHandlers } from './games/poker/hud.ts';
 import { PokerGameScene } from './games/poker/poker-scene.ts';
-import { buildPokerGameRoot, clearPokerChat, type HeroContext, mountPokerGameHud, pushPokerChat, setPokerGameHandlers } from './games/poker/poker-hud.ts';
+import { buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, type HeroContext, mountPokerGameHud, pushPokerChat, setPokerGameHandlers } from './games/poker/poker-hud.ts';
 import { PokerMatch } from './match/poker-driver.ts';
 import { buildPokerSetup, mountPokerSetup, pokerSetupSelection } from './match/poker-setup.ts';
 import { LogosScene } from './scenes/logos-scene.ts';
 import { AudioScene } from './scenes/audio-scene.ts';
 import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/input.ts';
-import { buildBar, buildGameOver, buildPromotion, type BarActions, type Mode, type RenderMode } from './shell/bars.ts';
+import { buildBar, buildGameMenu, buildGameOver, buildPromotion, modeLabel, type BarActions, type MenuItem, type Mode, type RenderMode } from './shell/bars.ts';
 import { buildShowcase, mountShowcase } from './scenes/ui-showcase.ts';
 import { buildChessGameRoot, type Commentary, mountChessHud, movesToPgn, refreshMoveHistory } from './games/chess/hud.ts';
 import { clearChat, pushChatMessage } from './games/chess/chat.ts';
@@ -190,6 +190,12 @@ let wispSwapFocused = false;
 // chess match setup. `pokerSetupFocused` is its focus-once edge.
 let pokerSetupOpen = false;
 let pokerSetupFocused = false;
+// The poker in-game menu popup (☰ pill → home / new game / mode / quit).
+let pokerMenuOpen = false;
+// The poker opponent-notes modal (notes pill → each AI seat's private reads). `pokerNotesIdx`
+// selects which AI seat's notebook is shown; ‹ › page through them.
+let pokerNotesOpen = false;
+let pokerNotesIdx = 0;
 // When on, AI moves bypass the rules: the model's move is parsed loosely and
 // applied as-is. A thunk hands this live value to each ModelPlayer.
 let illegalAllowed = false;
@@ -200,9 +206,12 @@ let historyMinimized = false;
 // the top-right chat icon). Hidden by default; the thread persists while hidden, so
 // opening it later shows the full backlog.
 let chatVisible = false;
-// Whether the right-edge eval bar is shown (toggle with the 'e' key or the bar
-// button). Default hidden; the score is recomputed from the live board each frame.
+// Whether the right-edge eval bar is shown (toggle with the 'e' key or the ☰ menu).
+// Default hidden; the score is recomputed from the live board each frame.
 let evalBarVisible = false;
+// The chess in-game menu popup (☰ pill → home / new game / mode / eval bar / illegal /
+// quit), mirroring the poker menu.
+let chessMenuOpen = false;
 // Whether the poker chat panel is expanded. The rail (chat + hand) only appears once a
 // match starts, and the chat starts COLLAPSED (just the "chat" pill) — clicking it (or its
 // ✕) toggles. Reset to collapsed on each new match; persists while a match runs.
@@ -679,10 +688,59 @@ function pokerButton(): void {
   r.requestRender();
 }
 
-// New match: stop the current session and re-open the setup modal.
-function pokerNewMatch(): void {
+// The ☰ in-game menu popup (home / new game / mode / quit).
+function openPokerMenu(): void {
   if (mode !== 'poker') return;
-  stopPokerMatch();
+  pokerMenuOpen = true;
+  forceFrame = true;
+  r.requestRender();
+}
+function closePokerMenu(): void {
+  pokerMenuOpen = false;
+  forceFrame = true;
+  r.requestRender();
+}
+
+// The "notes" pill popup: each AI seat's private opponent reads, paged with ‹ ›.
+function openPokerNotes(): void {
+  if (mode !== 'poker' || !pokerMatch.isRunning()) return;
+  const observers = pokerMatch.noteObservers();
+  if (!observers.length) return; // no AI seats → nothing to show
+  if (pokerNotesIdx >= observers.length) pokerNotesIdx = 0;
+  pokerNotesOpen = true;
+  forceFrame = true;
+  r.requestRender();
+}
+function closePokerNotes(): void {
+  pokerNotesOpen = false;
+  forceFrame = true;
+  r.requestRender();
+}
+function cyclePokerNotes(delta: number): void {
+  const n = pokerMatch.noteObservers().length;
+  if (n > 0) pokerNotesIdx = (pokerNotesIdx + delta + n) % n;
+  forceFrame = true;
+  r.requestRender();
+}
+
+// The chess ☰ in-game menu popup (home / new game / mode / eval bar / illegal / quit).
+function openChessMenu(): void {
+  if (mode !== 'chess-game') return;
+  chessMenuOpen = true;
+  forceFrame = true;
+  r.requestRender();
+}
+function closeChessMenu(): void {
+  chessMenuOpen = false;
+  forceFrame = true;
+  r.requestRender();
+}
+
+// New game (menu): tear the current session down to the idle empty table (the looping
+// shuffling deck), then open the setup modal to pick opponents for a fresh match.
+function pokerNewGame(): void {
+  closePokerMenu();
+  stopPokerMatch(); // scene.endSession() → idle framing on the shuffling deck
   openPokerSetup();
 }
 
@@ -711,7 +769,7 @@ function pokerHero(): HeroContext {
 function pokerStatus(): string {
   if (mode !== 'poker') return '';
   if (!pokerScene.isActive()) return 'Press play to start a match';
-  if (!pokerMatch.isRunning()) return 'Session over — new match to play again';
+  if (!pokerMatch.isRunning()) return 'Session over — restart from the ☰ menu to play again';
   if (pokerMatch.isPaused()) return 'Paused';
   if (pokerScene.heroToAct()) return 'Your move';
   return '';
@@ -790,6 +848,9 @@ function enterPoker(): void {
   draggingCamera = false;
   mountPokerGameHud(ui);
   fullRepaint();
+  // No play button on the felt anymore, so the setup modal is the entry point: open it
+  // on entry when idle. (Cancel to just watch the empty table; ☰ → Restart game reopens.)
+  if (!pokerMatch.isRunning()) openPokerSetup();
 }
 
 // Wire the poker HUD's controls to the scene. Stored once; the dropdowns/buttons
@@ -924,13 +985,7 @@ const actions: BarActions = {
   mode: cycleMode,
   quit,
   aiMatch: aiButton,
-  resetGame,
-  illegalMoves: toggleIllegal,
-  evalBar: toggleEvalBar,
   audioModel: () => audioScene.cycleModel(),
-  pokerAI: pokerButton,
-  pokerNewMatch,
-  pokerSeat: () => pokerScene.focusHero(),
 };
 
 // Named commands + a layered keymap (the OpenTUI-style command surface). Each
@@ -970,8 +1025,10 @@ const keymap = installKeymap({
   closeMatchSetup,
   cancelWispSwap,
   pokerButton,
-  pokerNewMatch,
   closePokerSetup,
+  closePokerMenu,
+  closePokerNotes,
+  closeChessMenu,
 });
 
 // Point the keymap's base layer at the current mode (chess + chess-game share
@@ -1025,8 +1082,14 @@ function syncBar(): void {
   }
   if (mode !== 'chess-game') matchSetupOpen = false; // the picker only lives in the chess view
   if (mode !== 'poker') pokerSetupOpen = false; // the poker picker only lives in the poker view
-  // The poker-setup modal layer is popped whenever its modal isn't open (any branch).
+  if (mode !== 'poker') pokerMenuOpen = false; // the in-game menu only lives in the poker view
+  if (mode !== 'poker') pokerNotesOpen = false; // ditto for the notes modal
+  if (mode !== 'chess-game') chessMenuOpen = false; // ditto for the chess menu
+  // The poker/chess modal layers are popped whenever their modal isn't open (any branch).
   if (!pokerSetupOpen && keymap.hasContext('poker-setup')) keymap.popContext('poker-setup');
+  if (!pokerMenuOpen && keymap.hasContext('poker-menu')) keymap.popContext('poker-menu');
+  if (!pokerNotesOpen && keymap.hasContext('poker-notes')) keymap.popContext('poker-notes');
+  if (!chessMenuOpen && keymap.hasContext('chess-menu')) keymap.popContext('chess-menu');
   const popGameOver = (): void => {
     if (keymap.hasContext('gameover')) keymap.popContext('gameover');
   };
@@ -1162,6 +1225,25 @@ function syncBar(): void {
       w: cols,
       h: rows,
     });
+  } else if (chessMenuOpen) {
+    if (keymap.hasContext('promoting')) keymap.popContext('promoting');
+    popGameOver();
+    popSetup();
+    popSwap();
+    promoFocused = false;
+    // The chess in-game menu popup. Home/new game/quit act and dismiss; mode/eval bar/
+    // illegal toggle in place (menu stays open, label reflects the new state). Escape
+    // (chess-menu layer) and the header ✕ close it. No default focus (uniform buttons).
+    if (!keymap.hasContext('chess-menu')) keymap.pushContext('chess-menu', true);
+    const items: MenuItem[] = [
+      { id: 'chess-menu-home', label: 'home', onClick: enterMenu },
+      { id: 'chess-menu-new', label: 'new game', onClick: () => { resetGame(); closeChessMenu(); } },
+      { id: 'chess-menu-mode', label: modeLabel(renderMode), onClick: cycleMode },
+      { id: 'chess-menu-eval', label: evalBarVisible ? 'hide eval bar' : 'show eval bar', onClick: toggleEvalBar },
+      { id: 'chess-menu-illegal', label: `illegal: ${illegalAllowed ? 'on' : 'off'}`, onClick: toggleIllegal },
+      { id: 'chess-menu-quit', label: 'quit', onClick: quit },
+    ];
+    ui.setRoot(buildGameMenu({ items, onClose: closeChessMenu }), { x: 0, y: 0, w: cols, h: rows });
   } else if (mode === 'chess-game') {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     popGameOver();
@@ -1185,7 +1267,7 @@ function syncBar(): void {
     // White-POV centipawns for the eval bar (cheap 64-square scan; only when shown).
     const evalCp = evalBarVisible ? evaluate(chessGame.state().board) : 0;
     ui.setRoot(
-      buildChessGameRoot({ x: 0, y: 0, w: cols, h: rows }, buildBar(mode, renderMode, actions, ai, illegalAllowed, evalBarVisible), {
+      buildChessGameRoot({ x: 0, y: 0, w: cols, h: rows }, buildBar(mode, renderMode, actions, ai), {
         minimized: historyMinimized,
         onToggle: toggleHistory,
         onCopy: copyMoves,
@@ -1196,6 +1278,7 @@ function syncBar(): void {
         evalResult: chessGame.state().result(),
         chatVisible,
         onToggleChat: toggleChat,
+        onOpenMenu: openChessMenu,
         chatActive: chessGame.isMatchActive(),
       }),
       { x: 0, y: 0, w: cols, h: rows },
@@ -1208,20 +1291,57 @@ function syncBar(): void {
     // Slots), then build the control panel + bar over the scene.
     mountPokerHud(ui);
     ui.setRoot(buildPokerRoot({ x: 0, y: 0, w: cols, h: rows }, buildBar('cards', renderMode, actions)), { x: 0, y: 0, w: cols, h: rows });
+  } else if (pokerNotesOpen) {
+    if (keymap.hasContext('promoting')) keymap.popContext('promoting');
+    popGameOver();
+    popSetup();
+    popSwap();
+    promoFocused = false;
+    // The opponent-notes modal, over the poker view. ‹ › page through the AI seats; the
+    // header ✕ and Escape (poker-notes layer) close it.
+    if (!keymap.hasContext('poker-notes')) keymap.pushContext('poker-notes', true);
+    const observers = pokerMatch.noteObservers();
+    const observer = observers[Math.min(pokerNotesIdx, observers.length - 1)];
+    ui.setRoot(
+      buildPokerNotesModal({
+        observerLabel: observer?.label ?? '—',
+        entries: observer ? pokerMatch.notesView(observer.seat) : [],
+        canCycle: observers.length > 1,
+        onPrev: () => cyclePokerNotes(-1),
+        onNext: () => cyclePokerNotes(1),
+        onClose: closePokerNotes,
+      }),
+      { x: 0, y: 0, w: cols, h: rows },
+    );
+  } else if (pokerMenuOpen) {
+    if (keymap.hasContext('promoting')) keymap.popContext('promoting');
+    popGameOver();
+    popSetup();
+    popSwap();
+    promoFocused = false;
+    // The in-game menu popup, over the poker view. Home/Quit/Restart act and dismiss;
+    // Mode cycles the render mode in place (menu stays open). Escape (poker-menu layer)
+    // and the header ✕ close it.
+    if (!keymap.hasContext('poker-menu')) keymap.pushContext('poker-menu', true);
+    // No default focus: every button shares one style, so pre-focusing one would read as
+    // "a different color". Hover (mouse) lights a button; Tab still reaches them.
+    const items: MenuItem[] = [
+      { id: 'poker-menu-home', label: 'home', onClick: enterMenu },
+      { id: 'poker-menu-new', label: 'new game', onClick: pokerNewGame },
+      { id: 'poker-menu-mode', label: modeLabel(renderMode), onClick: cycleMode },
+      { id: 'poker-menu-quit', label: 'quit', onClick: quit },
+    ];
+    ui.setRoot(buildGameMenu({ items, onClose: closePokerMenu }), { x: 0, y: 0, w: cols, h: rows });
   } else if (mode === 'poker') {
     popGameOver();
     popSetup();
     popSwap();
     // Re-mount the poker HUD components (a prior modal root may have dropped their
-    // Slots), then build the WSOP table HUD + bar over the scene.
+    // Slots), then build the WSOP table HUD over the scene. The poker bar is empty (no
+    // transport pill) — play/pause is the 'p' key, the rest lives in the ☰ menu.
     mountPokerGameHud(ui);
-    const ai = !pokerMatch.isRunning()
-      ? { label: 'play', active: false }
-      : pokerMatch.isPaused()
-        ? { label: 'resume', active: true }
-        : { label: 'pause', active: true };
     ui.setRoot(
-      buildPokerGameRoot({ x: 0, y: 0, w: cols, h: rows }, buildBar('poker', renderMode, actions, ai), {
+      buildPokerGameRoot({ x: 0, y: 0, w: cols, h: rows }, buildBar('poker', renderMode, actions), {
         hero: pokerHero(),
         blinds: '10/20',
         commentary,
@@ -1231,6 +1351,8 @@ function syncBar(): void {
         active: pokerScene.isActive(),
         chatOpen: pokerChatOpen,
         onToggleChat: togglePokerChat,
+        onOpenMenu: openPokerMenu,
+        onOpenNotes: openPokerNotes,
       }),
       { x: 0, y: 0, w: cols, h: rows },
     );

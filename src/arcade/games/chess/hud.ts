@@ -171,7 +171,6 @@ const COPY_GLYPH = '↥'; // up-from-bar "export" mark (copies PGN)
 // The "open chat" affordance: a top-right pill (chat glyph + label), styled like
 // the menu's settings gear, shown only while the chat panel is hidden. Clicking it
 // reveals the panel; the panel's own ✕ (also top-right) hides it again.
-const CHAT_ICON = '💬';
 const CHAT_PILL: Style = {
   padding: [0, 1],
   background: [28, 30, 40],
@@ -198,6 +197,7 @@ export function buildChessGameRoot(
     evalResult: ChessResult | null;
     chatVisible: boolean;
     onToggleChat: () => void;
+    onOpenMenu: () => void; // ☰ pill → the in-game menu popup (home / new game / mode / …)
     chatActive: boolean; // an AI match is in progress (suppresses the chat's empty placeholder)
   },
 ): Node {
@@ -260,13 +260,16 @@ export function buildChessGameRoot(
     ...(opts.evalVisible ? [buildEvalBar(opts.evalCp, opts.evalResult, region.h)] : []),
     ...(opts.chatVisible ? [buildChatPanel(region.h, opts.onToggleChat, opts.chatActive)] : []),
   ]);
-  // Chat shown → the panel carries its own top-right ✕. Chat hidden → float the
-  // "open chat" pill in the top-right corner (over the scene, like the menu gear).
-  if (opts.chatVisible) return row;
-  const opener = Box({ position: 'absolute', top: 1, right: 2 }, [
-    Button({ id: 'chat-open', label: `${CHAT_ICON} chat`, onClick: opts.onToggleChat, style: CHAT_PILL }),
+  // The ☰ menu pill lives to the LEFT of the chat (mirroring poker). Chat hidden → a
+  // top-right cluster [☰ menu][chat]. Chat shown → the chat panel carries its own ✕, so
+  // the cluster is just the menu pill, floated flush against the panel's left edge (past
+  // the eval rail too, when it's showing).
+  const railW = (opts.chatVisible ? CHAT_WIDTH : 0) + (opts.evalVisible ? EVAL_COL_W : 0);
+  const cluster = Box({ position: 'absolute', top: 1, right: opts.chatVisible ? railW + 1 : 2, flexDirection: 'row', gap: 1 }, [
+    Button({ id: 'chess-menu', label: '☰ menu', onClick: opts.onOpenMenu, style: CHAT_PILL }),
+    ...(opts.chatVisible ? [] : [Button({ id: 'chat-open', label: 'chat', onClick: opts.onToggleChat, style: CHAT_PILL })]),
   ]);
-  return Box({ width: region.w, height: region.h }, [row, opener]);
+  return Box({ width: region.w, height: region.h }, [row, cluster]);
 }
 
 // The right-edge chat panel: a "Chat" header (clickable → hide, plus a ✕) over the
@@ -278,7 +281,7 @@ function buildChatPanel(height: number, onToggle: () => void, active: boolean): 
   chatBox.setViewport(Math.max(1, height - 2 * CHAT_PAD_V - CHAT_HEADER_H));
   chatBox.setActive(active);
   const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', width: CHAT_WIDTH - PANEL_PAD_L - PANEL_PAD_R, padding: [0, 2, 0, 0] }, [
-    Button({ id: 'chat-toggle', label: `${CHAT_ICON} Chat`, onClick: onToggle, style: HEADER_BTN }),
+    Button({ id: 'chat-toggle', label: 'Chat', onClick: onToggle, style: HEADER_BTN }),
     Button({ id: 'chat-close', label: '✕', onClick: onToggle, style: CLOSE_BTN }),
   ]);
   // flexShrink 0: the wide chess-game bar in the main column overflows its row, so

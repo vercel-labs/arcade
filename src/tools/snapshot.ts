@@ -15,7 +15,7 @@ import { LogosScene } from '../arcade/scenes/logos-scene.ts';
 import { AudioScene } from '../arcade/scenes/audio-scene.ts';
 import { CoverFlowScene } from '../arcade/shell/coverflow.ts';
 import { MENU_ITEMS } from '../arcade/shell/menu.ts';
-import { buildBar, buildGameOver, buildPromotion, type Mode } from '../arcade/shell/bars.ts';
+import { buildBar, buildGameMenu, buildGameOver, buildPromotion, type Mode } from '../arcade/shell/bars.ts';
 import { buildShowcase, mountShowcase } from '../arcade/scenes/ui-showcase.ts';
 import { buildChessGameRoot, mountChessHud, refreshMoveHistory } from '../arcade/games/chess/hud.ts';
 import { type ChatMessage, clearChat, pushChatMessage } from '../arcade/games/chess/chat.ts';
@@ -25,7 +25,7 @@ import { providers } from '../arcade/match/models.ts';
 import { CardsScene, type CardsMode } from '../arcade/games/poker/cards-scene.ts';
 import { buildPokerRoot, mountPokerHud } from '../arcade/games/poker/hud.ts';
 import { PokerGameScene, type PokerSeatView } from '../arcade/games/poker/poker-scene.ts';
-import { buildPokerGameRoot, clearPokerChat, mountPokerGameHud, pushPokerChat } from '../arcade/games/poker/poker-hud.ts';
+import { buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, mountPokerGameHud, pushPokerChat } from '../arcade/games/poker/poker-hud.ts';
 import { buildPokerSetup, mountPokerSetup } from '../arcade/match/poker-setup.ts';
 import { HoldemState } from '../rules/poker/holdem.ts';
 import { mulberry32 } from '../arcade/scenes/wisp.ts';
@@ -163,10 +163,9 @@ function blockBits(ch: string, px: number, py: number): boolean {
       const r2 = (px - 3.5) ** 2 + (py - 3.5) ** 2;
       return r2 <= 10 && r2 >= 2;
     }
-    case '💬':
-      // No emoji in the 8×8 font — approximate the speech balloon as a filled
-      // rounded bubble body with a small tail at the bottom-left.
-      return (px >= 1 && px <= 6 && py >= 0 && py <= 4) || (py === 5 && px >= 1 && px <= 2);
+    case '☰':
+      // Hamburger (menu pill): three evenly-spaced horizontal lines.
+      return (py === 1 || py === 4 || py === 6) && px >= 1 && px <= 6;
     case '✓':
       // Checkmark: a short down-stroke (lower-left) meeting a long up-stroke.
       return (px >= 1 && px <= 3 && Math.abs(py - (px + 2)) <= 0.6) || (px >= 3 && px <= 6 && Math.abs(py - (8 - px)) <= 0.6);
@@ -180,7 +179,7 @@ function blockBits(ch: string, px: number, py: number): boolean {
 }
 
 const noop = (): void => {};
-const barActions = { back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, resetGame: noop, illegalMoves: noop, evalBar: noop, audioModel: noop, pokerAI: noop, pokerNewMatch: noop, pokerSeat: noop };
+const barActions = { back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, audioModel: noop };
 
 // Render a scene full-height, then composite that screen's button bar over it —
 // proving the bar sits ON TOP of the 3D scene (opaque pills overwrite it;
@@ -285,7 +284,7 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot unified [prism|chess|chess-game|logos] [cols] [rows] [out]   unified compositing path
   pnpm snapshot showcase [cols] [rows] [focus=<id>] [out]   the UI component playground
   pnpm snapshot modal [cols] [rows] [out]          promotion modal over chess
-  pnpm snapshot chess-overlay [cols] [rows] [min|empty|illegal|short] [eval] [out]   match HUD + moves panel
+  pnpm snapshot chess-overlay [cols] [rows] [min|empty|illegal|short] [eval] [chat] [menu] [out]   match HUD + moves panel (menu → ☰ popup)
   pnpm snapshot setup [cols] [rows] [out] [open|models]   AI match setup modal
   pnpm snapshot gameover [cols] [rows] [out]       result popup over a finished board
   pnpm snapshot king-anim [cols] [rows] [out]      king caught mid-castle (wisp tracking)
@@ -297,7 +296,7 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot prism-prompt [cols] [rows] [t] [out]    prism loading screen + press-any-key marquee
   pnpm snapshot cards [single|hand|deck] [cols] [rows] [state] [out]   the cards screen
       (single: a code like Kh/10s/As · hand: peek|up · deck: shuffle|deal)
-  pnpm snapshot poker [cols] [rows] [preflop|flop|river|showdown] [players=N] [hud] [spectate] [muck|gather|shuffle] [color] [out]   the poker table
+  pnpm snapshot poker [cols] [rows] [preflop|flop|river|showdown] [players=N] [hud|setup|menu|notes] [spectate] [muck|gather|shuffle] [color] [out]   the poker table
       (muck: fold seats to a burn pile, needs players≥3 · gather/shuffle: the between-hands interlude, mid-sweep / mid-shuffle)
 
 Convert + view:  sips -s format png .snapshots/<name>.ppm --out .snapshots/<name>.png -Z 1000`;
@@ -473,6 +472,48 @@ function pokerSnapshot(): void {
     surfaceToPpm(surf2, cols, rows, out);
     return;
   }
+  // `menu` composites the in-game ☰ menu popup over the table.
+  if (args.includes('menu')) {
+    const screen = new Screen(cols, rows);
+    screen.setRoot(
+      buildGameMenu({
+        items: [
+          { id: 'poker-menu-home', label: 'home', onClick: noop },
+          { id: 'poker-menu-new', label: 'new game', onClick: noop },
+          { id: 'poker-menu-mode', label: 'mode:   ascii', onClick: noop },
+          { id: 'poker-menu-quit', label: 'quit', onClick: noop },
+        ],
+        onClose: noop,
+      }),
+      region,
+    );
+    const surf2 = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
+    surfaceToPpm(surf2, cols, rows, out);
+    return;
+  }
+  // `notes` composites the opponent-notes modal over the table, with sample reads so the
+  // ‹ › pager + per-player bullets render.
+  if (args.includes('notes')) {
+    const screen = new Screen(cols, rows);
+    screen.setRoot(
+      buildPokerNotesModal({
+        observerLabel: 'claude-opus-4.8',
+        entries: [
+          { label: 'the human', notes: ['Bets big when weak, checks the nuts.', 'Folds to any turn raise.'] },
+          { label: 'gpt-5.4', notes: ['Shoves almost every hand — call lighter.'] },
+          { label: 'gemini-3-pro', notes: [] },
+        ],
+        canCycle: true,
+        onPrev: noop,
+        onNext: noop,
+        onClose: noop,
+      }),
+      region,
+    );
+    const surf2 = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
+    surfaceToPpm(surf2, cols, rows, out);
+    return;
+  }
   // `hud` composites the betting HUD over the table with the hero to act (Fold /
   // Call / raise slider / All-in visible). Fire a human-move request to flip the
   // scene into "hero to act" so the controls render.
@@ -508,6 +549,8 @@ function pokerSnapshot(): void {
         active: true,
         chatOpen: !args.includes('chatclosed'),
         onToggleChat: noop,
+        onOpenMenu: noop,
+        onOpenNotes: noop,
       }),
       region,
     );
@@ -844,8 +887,28 @@ function chessOverlaySnapshot(): void {
     for (const m of seed) pushChatMessage(m);
   }
   const region = { x: 0, y: 0, w: cols, h: rows };
+  // 'menu' shows the in-game ☰ menu popup over the board (the shared buildGameMenu).
+  if (process.argv.includes('menu')) {
+    screen.setRoot(
+      buildGameMenu({
+        items: [
+          { id: 'chess-menu-home', label: 'home', onClick: noop },
+          { id: 'chess-menu-new', label: 'new game', onClick: noop },
+          { id: 'chess-menu-mode', label: 'mode:   ascii', onClick: noop },
+          { id: 'chess-menu-eval', label: evalVisible ? 'hide eval bar' : 'show eval bar', onClick: noop },
+          { id: 'chess-menu-illegal', label: 'illegal: off', onClick: noop },
+          { id: 'chess-menu-quit', label: 'quit', onClick: noop },
+        ],
+        onClose: noop,
+      }),
+      region,
+    );
+    const surf2 = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
+    surfaceToPpm(surf2, cols, rows, out);
+    return;
+  }
   screen.setRoot(
-    buildChessGameRoot(region, buildBar('chess-game', 'ascii', barActions, { label: 'pause ai', active: true }, false, evalVisible), {
+    buildChessGameRoot(region, buildBar('chess-game', 'ascii', barActions, { label: 'pause ai', active: true }), {
       minimized,
       onToggle: noop,
       onCopy: noop,
@@ -856,6 +919,7 @@ function chessOverlaySnapshot(): void {
       evalResult: cg.state().result(),
       chatVisible,
       onToggleChat: noop,
+      onOpenMenu: noop,
       chatActive: false,
     }),
     region,
