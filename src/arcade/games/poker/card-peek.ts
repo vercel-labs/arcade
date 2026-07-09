@@ -138,6 +138,14 @@ export class HandPeek {
 
   // Ray-pick: through the felt for a flat/peeking card, else proximity to the projected
   // (bent) card center once it's lifted off the table.
+  //
+  // Nearest-hit, not last-match: each candidate scores its cursor distance normalized to
+  // its own hitbox (0 = dead center, 1 = at the edge), and the smallest wins. A raised
+  // card's hitbox is deliberately fat so hover doesn't flicker as it arches up, which
+  // makes it overlap its flat neighbour — so raised hits are ranked *after* any flat
+  // footprint hit (score biased by +1). Without this, whichever card had the higher
+  // index won every overlap tie: gliding onto the lower-index (left) card left the
+  // still-raised right card previewed until the cursor fully cleared its inflated box.
   private pick(cam: OrbitCamera, ndcX: number, ndcY: number, aspect: number): number {
     const eye = cam.eye();
     const { forward, right, up } = cam.basis();
@@ -160,14 +168,31 @@ export class HandPeek {
     const camera: Camera = { eye, target: cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 200 };
     const vp = cameraMatrices(camera, aspect).viewProjection;
     let best = -1;
+    let bestScore = Infinity;
     for (let i = 0; i < this.cards.length; i++) {
       const c = this.cards[i];
+      let score = Infinity;
       if (c.reveal < 0.5) {
-        if (Math.abs(hitX - c.seatX) <= CARD_W / 2 + 0.12 && Math.abs(hitZ - this.seatZ) <= CARD_H / 2 + 0.12) best = i;
+        // Flat: normalized distance inside the resting footprint (score in [0,1]).
+        const hw = CARD_W / 2 + 0.12;
+        const hh = CARD_H / 2 + 0.12;
+        const nx = Math.abs(hitX - c.seatX) / hw;
+        const nz = Math.abs(hitZ - this.seatZ) / hh;
+        if (nx <= 1 && nz <= 1) score = Math.max(nx, nz);
       } else {
+        // Raised: normalized distance to the projected bent center, ranked below any
+        // flat hit (+1) so the fat box can't outrank a footprint the cursor is inside.
         const center = peekCardCenter(this.peekPose(i, cam.azimuth));
         const p = mat4MulVec4(vp, { x: center.x, y: center.y, z: center.z, w: 1 });
-        if (p.w > 1e-4 && Math.abs(p.x / p.w - ndcX) < 0.35 && Math.abs(p.y / p.w - ndcY) < 0.45) best = i;
+        if (p.w > 1e-4) {
+          const nx = Math.abs(p.x / p.w - ndcX) / 0.35;
+          const ny = Math.abs(p.y / p.w - ndcY) / 0.45;
+          if (nx < 1 && ny < 1) score = 1 + Math.max(nx, ny);
+        }
+      }
+      if (score < bestScore) {
+        bestScore = score;
+        best = i;
       }
     }
     return best;
