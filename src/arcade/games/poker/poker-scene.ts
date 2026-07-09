@@ -31,7 +31,7 @@ import {
 import { OrbitCamera } from '../../orbit.ts';
 import { loadWisp, mulberry32, providerTint, type Wisp, WISP_SIZE } from '../../scenes/wisp.ts';
 import type { RGB } from '../../../engine/index.ts';
-import type { Card } from '../../../rules/poker/cards.ts';
+import { type Card, RANK_LABELS } from '../../../rules/poker/cards.ts';
 import type { HoldemState, PokerAction } from '../../../rules/poker/holdem.ts';
 import { cardBackTexture } from './card-textures.ts';
 import { CARD_SCALE, CARD_W, drawCard, flatDown, flatUp } from './card-render.ts';
@@ -136,6 +136,11 @@ export interface TableView {
   ended: boolean; // the hand is over (show made-hands instead of actions)
 }
 
+// Card → compact text for the event log, e.g. "Q♥" / "10♦".
+const SUIT_GLYPH = ['♠', '♥', '♦', '♣'] as const; // indexed by Suit
+const fmtCard = (c: Card): string => `${RANK_LABELS[c.rank]}${SUIT_GLYPH[c.suit]}`;
+const fmtCards = (cards: readonly Card[]): string => cards.map(fmtCard).join(' ');
+
 // A played action → its short WSOP-style label for the seat's HUD row. Amounts are
 // totals (raise TO, bet amount), matching how HoldemState reads the action.
 function actionLabel(a: PokerAction): string {
@@ -193,6 +198,10 @@ export class PokerGameScene {
   // HUD row. Reset every hand; cleared for all seats when a new street begins.
   private lastAction: (string | null)[] = [];
 
+  // Sink for neutral game-event notices (new hand, flop/turn/river, who won) → the chat
+  // panel as grey lines. Betting actions are NOT sent here (they live on the seat strips).
+  private events: ((text: string) => void) | null = null;
+
   // A played action lingers so it's watchable; `beat` is a seconds countdown (ticked by
   // dt in renderScene), long enough to cover a street's community deal when one turns.
   private beat = 0;
@@ -218,6 +227,29 @@ export class PokerGameScene {
   // see the bend). The user can still orbit/zoom from here.
   private makeIdleCamera(): OrbitCamera {
     return new OrbitCamera({ azimuth: 0, elevation: 0.62, distance: 9.5, target: { x: 0, y: 0.1, z: 0 } }, CAM_MIN_DIST, CAM_MAX_DIST);
+  }
+
+  // Wire the game-event sink (main pushes these into the chat as grey lines).
+  setEventSink(fn: (text: string) => void): void {
+    this.events = fn;
+  }
+  private seatName(seat: number): string {
+    return this.seats[seat]?.label ?? `Seat ${seat + 1}`;
+  }
+  // The end-of-hand notice: who won, how much, and (at a real showdown) with what hand.
+  private handResult(hand: HoldemState): string {
+    const by = new Map<number, number>();
+    for (const a of hand.awards()) by.set(a.seat, (by.get(a.seat) ?? 0) + a.amount);
+    const winners = [...by.entries()].filter(([, amt]) => amt > 0);
+    if (winners.length === 0) return 'Hand over';
+    const shown = new Set(hand.showdownSeats());
+    if (winners.length === 1) {
+      const [seat, amt] = winners[0];
+      const hn = shown.has(seat) ? hand.handName(seat) : '';
+      return `${this.seatName(seat)} wins ${amt}${hn ? ` with ${hn.toLowerCase()}` : ''}`;
+    }
+    const total = winners.reduce((s, [, amt]) => s + amt, 0);
+    return `${winners.map(([seat]) => this.seatName(seat)).join(' and ')} split ${total}`;
   }
 
   // ── Session / hand lifecycle ─────────────────────────────────────────────────
@@ -255,6 +287,7 @@ export class PokerGameScene {
     this.boardT = -1;
     this.dealtFromDeck = 0;
     this.lastAction = new Array(state.n).fill(null);
+    this.events?.(`New hand · ${this.seatName(state.button)} on the button`);
     this.startDeal();
     this.dirty = true;
   }
@@ -320,11 +353,21 @@ export class PokerGameScene {
       const boardBefore = this.hand!.boardCards().length;
       const seat = this.hand!.toActSeat();
       const streetBefore = this.hand!.street();
+      const wasTerminal = this.hand!.isTerminal();
       this.hand!.applyAction(action);
       // A new betting round clears every seat's shown action; then record this actor's.
       if (this.hand!.street() !== streetBefore) this.lastAction.fill(null);
       if (seat >= 0) this.lastAction[seat] = actionLabel(action);
-      const newCards = this.hand!.boardCards().length - boardBefore;
+      const board = this.hand!.boardCards();
+      const newCards = board.length - boardBefore;
+      // Announce any streets this action turned (flop/turn/river, including a multi-street
+      // all-in runout that reveals several at once) and, if the hand just ended, who won.
+      if (this.events && newCards > 0) {
+        if (boardBefore < 3 && board.length >= 3) this.events(`Flop  ${fmtCards(board.slice(0, 3))}`);
+        if (boardBefore < 4 && board.length >= 4) this.events(`Turn  ${fmtCards(board.slice(3, 4))}`);
+        if (boardBefore < 5 && board.length >= 5) this.events(`River  ${fmtCards(board.slice(4, 5))}`);
+      }
+      if (this.events && !wasTerminal && this.hand!.isTerminal()) this.events(this.handResult(this.hand!));
       // If this action turned a street (flop/turn/river, or a multi-street all-in runout),
       // hold long enough for the new board card(s) to deal out of the deck — COMMUNITY_STEP
       // each — plus STREET_HOLD to take them in, before the loop asks for the next move.

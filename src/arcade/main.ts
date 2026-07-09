@@ -83,6 +83,9 @@ const logosScene = new LogosScene();
 const audioScene = new AudioScene();
 const cardsScene = new CardsScene();
 const pokerScene = new PokerGameScene();
+// Game events (new hand, flop/turn/river, who won) go into the table-talk thread as grey
+// lines. Betting actions are NOT here — those live on the bottom-left seat strips.
+pokerScene.setEventSink((text) => pushPokerChat({ text, model: '', event: true }));
 // The 2D UI overlay (button bar). Lays out + paints over the scene each frame.
 const ui = new Screen(cols, rows);
 // Render-on-demand loop. Animating screens hold a live lease; static screens

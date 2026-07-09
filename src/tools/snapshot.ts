@@ -384,6 +384,9 @@ function pokerSnapshot(): void {
   // seat 1 is the human hero (only their own cards show).
   const spectate = args.includes('spectate');
   const scene = new PokerGameScene();
+  // Route game events into the chat thread (grey lines) so the `hud` snapshot shows them.
+  clearPokerChat();
+  scene.setEventSink((text) => pushPokerChat({ text, model: '', event: true }));
   const provs = providers().map((p) => p.slug);
   const seatViews: PokerSeatView[] = [];
   for (let s = 0; s < players; s++) {
@@ -458,8 +461,7 @@ function pokerSnapshot(): void {
     const screen = new Screen(cols, rows);
     mountPokerGameHud(screen);
     const st = state;
-    // Seed a few table-talk lines so the right-rail chat renders populated.
-    clearPokerChat();
+    // Seed a few table-talk lines so the right-rail chat renders alongside the game events.
     for (const m of [
       { text: "checking to the raiser - let's see what you've got.", model: 'openai/gpt-5.4' },
       { text: 'feeling good about this one. bumping it up.', model: 'anthropic/claude-opus-4.8' },

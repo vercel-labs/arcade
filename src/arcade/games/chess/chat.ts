@@ -16,10 +16,13 @@ import type { KeyEvent } from '../../../platform/input.ts';
 import type { LayoutBox, PointerHit } from '../../../tui/types.ts';
 import { providerTint } from '../../scenes/wisp.ts';
 
-// One chat line: a model's rationale, tagged with its slug (drives the name + color).
+// One chat line. Normally a model's rationale, tagged with its slug (drives the name +
+// color). When `event` is set it's a neutral game-event notice (e.g. "Flop  Q♥ 9♦ 5♣"),
+// rendered as a nameless grey line — `model` is ignored.
 export interface ChatMessage {
   text: string;
   model: string; // model slug, e.g. "openai/gpt-5.4"
+  event?: boolean; // a grey system/game-event line (no name, no color)
 }
 
 // ── Layout ────────────────────────────────────────────────────────────────────
@@ -40,6 +43,7 @@ const VIEW_W = CHAT_WIDTH - PANEL_PAD_L - PANEL_PAD_R; // viewport width inside 
 const CONTENT_W = VIEW_W - SCROLLBAR_W - RIGHT_GAP; // text wrap width — a gap col, then the scrollbar
 
 const MSG_FG: RGB = [224, 226, 234]; // dialogue + colon — normal white
+const EVENT_FG: RGB = [138, 142, 156]; // grey — game-event notices
 const DEFAULT_PLACEHOLDER = 'ai dialogue will appear here';
 const PLACEHOLDER_FG: RGB = [120, 124, 140]; // muted
 const TRACK: RGB = [44, 46, 56];
@@ -95,30 +99,36 @@ export function wrapText(s: string, width: number): string[] {
 
 // A message's rendered form: the colored bold name, and its dialogue split into
 // lines (line 0 shares the row with the "name: " prefix; the rest are flush-left).
+// `event` lines have no name — the whole text wraps full-width in grey.
 interface Rendered {
   name: string;
   color: RGB;
   lines: string[];
+  event: boolean;
 }
 
 function render(messages: ChatMessage[]): Rendered[] {
   return messages.map((m) => {
+    if (m.event) return { name: '', color: EVENT_FG, lines: wrapInline(m.text, CONTENT_W, CONTENT_W), event: true };
     const name = shortModel(m.model);
     const prefixW = name.length + 2; // "name" + ": "
-    return { name, color: creatorColor(m.model), lines: wrapInline(m.text, CONTENT_W, CONTENT_W - prefixW) };
+    return { name, color: creatorColor(m.model), lines: wrapInline(m.text, CONTENT_W, CONTENT_W - prefixW), event: false };
   });
 }
 
-// One message: "<name>: <dialogue…>" on the first row (name bold + colored, colon
-// and text white), wrapped continuation rows flush-left, then a blank spacer.
+// A model message renders "<name>: <dialogue…>" (name bold + colored, text white) with
+// flush-left continuation rows. An event renders its grey text with no name prefix. Both
+// end with a blank spacer row.
 function messageNode(r: Rendered): Node {
-  const rows: Node[] = [
-    Box({ flexDirection: 'row', width: CONTENT_W }, [
-      Text({ text: r.name, style: { color: r.color, bold: true } }),
-      Text({ text: `: ${r.lines[0] ?? ''}`, style: { color: MSG_FG } }),
-    ]),
-  ];
-  for (let i = 1; i < r.lines.length; i++) rows.push(Text({ text: r.lines[i], style: { color: MSG_FG } }));
+  const rows: Node[] = r.event
+    ? r.lines.map((l) => Text({ text: l, style: { color: r.color } }))
+    : [
+        Box({ flexDirection: 'row', width: CONTENT_W }, [
+          Text({ text: r.name, style: { color: r.color, bold: true } }),
+          Text({ text: `: ${r.lines[0] ?? ''}`, style: { color: MSG_FG } }),
+        ]),
+        ...r.lines.slice(1).map((l) => Text({ text: l, style: { color: MSG_FG } })),
+      ];
   rows.push(Box({ height: MSG_GAP }));
   return Box({ flexDirection: 'column', width: CONTENT_W }, rows);
 }
