@@ -297,7 +297,8 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot prism-prompt [cols] [rows] [t] [out]    prism loading screen + press-any-key marquee
   pnpm snapshot cards [single|hand|deck] [cols] [rows] [state] [out]   the cards screen
       (single: a code like Kh/10s/As · hand: peek|up · deck: shuffle|deal)
-  pnpm snapshot poker [cols] [rows] [preflop|flop|river|showdown] [players=N] [hud] [spectate] [color] [out]   the poker table
+  pnpm snapshot poker [cols] [rows] [preflop|flop|river|showdown] [players=N] [hud] [spectate] [muck|gather|shuffle] [color] [out]   the poker table
+      (muck: fold seats to a burn pile, needs players≥3 · gather/shuffle: the between-hands interlude, mid-sweep / mid-shuffle)
 
 Convert + view:  sips -s format png .snapshots/<name>.ppm --out .snapshots/<name>.png -Z 1000`;
 
@@ -416,6 +417,17 @@ function pokerSnapshot(): void {
       void scene.playMove(toCall > 0 ? { type: 'call' } : { type: 'check' });
     }
   }
+  // `muck` (needs players≥3): fold seats down to two, so the burn pile has several
+  // rotated cards to show. Folds go through playMove so each mucks its cards.
+  if (args.includes('muck')) {
+    const live = (): number => {
+      let c = 0;
+      for (let i = 0; i < players; i++) if (!state.isFolded(i)) c++;
+      return c;
+    };
+    let guard = 0;
+    while (live() > 2 && !state.isTerminal() && guard++ < 50) void scene.playMove({ type: 'fold' });
+  }
 
   const target = new RenderTarget(cols * SS, rows * 2 * SS);
   let t = 0.05;
@@ -426,6 +438,14 @@ function pokerSnapshot(): void {
   // Settle the animations so a street snapshot shows the fully-dealt board: the opening
   // hole-card deal (up to ~12 cards) runs first, then the community cards fly out.
   for (let i = 0; i < 220; i++) step();
+  // `gather` / `shuffle`: kick off the between-hands interlude and step partway in —
+  // `gather` stops mid-sweep (cards flying into the deck), `shuffle` steps deeper so the
+  // deck is mid riffle/bridge. Same frame source, different depth.
+  if (args.includes('gather') || args.includes('shuffle')) {
+    void scene.runInterlude();
+    const frames = args.includes('shuffle') ? 60 : 8;
+    for (let i = 0; i < frames; i++) step();
+  }
   // `peek` reveals the hero's own hole cards in the top-right hand panel by hovering each
   // (the panel latches a card as "seen" once it has bent up past the peek threshold).
   if (args.includes('peek')) {

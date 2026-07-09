@@ -80,6 +80,21 @@ const COMMUNITY_STEP = 0.34; // a community card takes a touch longer (it flips 
 const DEAL_HOP = 0.85; // height of a dealt card's arc
 const DEAL_CARD: Card = { rank: 0, suit: 0 }; // dealt face-down, so identity is irrelevant
 
+// ── Object permanence: fold → muck, and the between-hands gather + reshuffle ─────
+// Cards never teleport. A fold slides its two cards into a loose burn pile beside the
+// deck; the end of a hand gathers every card on the felt back into the deck, which then
+// riffle-shuffles twice before the next deal (see runInterlude).
+const MUCK_POS = { x: 1.7, z: DECK_POS.z }; // burn pile, beside the deck (clear of the board row + seat cards)
+const MUCK_STEP = 0.42; // seconds a folded card takes to slide into the muck
+const MUCK_HOP = 0.28; // small arc height as a card slides to the muck
+const MUCK_JITTER_POS = 0.16; // world jitter of a mucked card off the pile centre
+const MUCK_JITTER_YAW = 0.34; // radians of random rotation per mucked card (a messy pile)
+const MUCK_STACK = 0.014; // y increment per mucked card so later folds sit on top
+const GATHER_STEP = 0.5; // seconds one gathered card takes to reach the deck
+const GATHER_STAGGER = 0.05; // per-card start delay, so cards sweep in rather than all at once
+const SHUFFLE_CYCLES = 2; // riffle+bridge passes between hands (the user asked for two)
+const SHUFFLE_SPEED = 1.5; // interlude shuffle playback speed (mild speed-up so it reads without dragging)
+
 // Idle: with no session running the table isn't bare — it shows a ring of
 // chairs and a centre deck that riffle-shuffles on a loop (see DeckShuffle).
 const IDLE_SEATS = 4; // chairs shown around the empty table
@@ -95,6 +110,34 @@ interface DealCard {
   toZ: number;
   yaw: number;
 }
+
+// A folded card sliding into (then resting in) the muck pile. `from*` is its seat rest
+// pose; `to*`/`yaw` its jittered spot on the pile; `t` the 0..1 slide progress.
+interface MuckCard {
+  fromX: number;
+  fromZ: number;
+  fromYaw: number;
+  toX: number;
+  toZ: number;
+  yaw: number;
+  lift: number; // resting y (stacked so later folds sit on top)
+  t: number;
+}
+
+// One card being gathered back into the deck at the end of a hand. It flies from its
+// felt rest pose (`from*`, face-up or face-down) to the deck, flattening face-down and
+// squaring to the deck's orientation; `delay` staggers the sweep.
+interface GatherCard {
+  fromX: number;
+  fromZ: number;
+  fromYaw: number;
+  faceUp: boolean;
+  delay: number;
+}
+
+// Shortest signed angle into (−π, π] — so a card yawing to a new facing spins the short
+// way rather than unwinding a full turn.
+const wrapPi = (a: number): number => ((a + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
 
 // A seat's session-level identity (persists across hands): whether it's the human
 // hero or an AI, its display label, and (AI) its provider for the wisp.
@@ -198,6 +241,21 @@ export class PokerGameScene {
   // HUD row. Reset every hand; cleared for all seats when a new street begins.
   private lastAction: (string | null)[] = [];
 
+  // Folded cards resting in / sliding to the burn pile (object permanence — a fold
+  // mucks its cards rather than vanishing them). Swept into the deck by the gather.
+  private muck: MuckCard[] = [];
+  private muckRng = mulberry32(0x1053e); // stable per-card jitter (positions baked at push time)
+
+  // The between-hands interlude: gather every felt card into the deck, then shuffle it
+  // twice, before the next deal. `gather` is the in-flight sweep (null when not gathering);
+  // `shuffleClock` ≥ 0 means the bounded riffle/bridge is playing (see runInterlude).
+  private handDeck: DeckShuffle;
+  private gather: GatherCard[] | null = null;
+  private gatherT = 0;
+  private shuffleClock = -1;
+  private shuffleCyclesLeft = 0;
+  private interludeResolve: (() => void) | null = null;
+
   // Sink for neutral game-event notices (new hand, flop/turn/river, who won) → the chat
   // panel as grey lines. Betting actions are NOT sent here (they live on the seat strips).
   private events: ((text: string) => void) | null = null;
@@ -212,6 +270,7 @@ export class PokerGameScene {
   constructor() {
     this.back = cardBackTexture();
     this.idleDeck = new DeckShuffle(this.back, { x: 0, z: 0 }); // dead centre of the felt
+    this.handDeck = new DeckShuffle(this.back, DECK_POS); // the between-hands shuffle, at the game deck
     this.cam = this.makeIdleCamera(); // the scene opens idle → frame the shuffling deck
   }
 
@@ -266,6 +325,8 @@ export class PokerGameScene {
     this.active = false;
     this.paused = false;
     this.rejectHuman();
+    this.cancelInterlude(); // resolve any pending interlude so the driver never hangs
+    this.muck = [];
     this.hand = null;
     this.cam = this.makeIdleCamera(); // back to the idle framing on the shuffling deck
     this.dirty = true;
@@ -287,6 +348,8 @@ export class PokerGameScene {
     this.boardT = -1;
     this.dealtFromDeck = 0;
     this.lastAction = new Array(state.n).fill(null);
+    this.muck = []; // the gather already emptied it; clear defensively for the fresh hand
+    this.clearInterlude();
     this.events?.(`New hand · ${this.seatName(state.button)} on the button`);
     this.startDeal();
     this.dirty = true;
@@ -358,6 +421,8 @@ export class PokerGameScene {
       // A new betting round clears every seat's shown action; then record this actor's.
       if (this.hand!.street() !== streetBefore) this.lastAction.fill(null);
       if (seat >= 0) this.lastAction[seat] = actionLabel(action);
+      // A fold mucks its cards to the burn pile (object permanence — they slide off, not vanish).
+      if (action.type === 'fold' && seat >= 0) this.muckSeat(seat);
       const board = this.hand!.boardCards();
       const newCards = board.length - boardBefore;
       // Announce any streets this action turned (flop/turn/river, including a multi-street
@@ -504,7 +569,7 @@ export class PokerGameScene {
   }
 
   needsRender(): boolean {
-    return this.dirty || (this.active && !this.paused) || this.beat > 0 || this.dealing || this.boardT >= 0 || this.heroPeek.animating() || this.isIdle();
+    return this.dirty || (this.active && !this.paused) || this.beat > 0 || this.dealing || this.boardT >= 0 || this.heroPeek.animating() || this.interludeActive() || this.isIdle();
   }
 
   // ── Hero hole-card peek / lift ─────────────────────────────────────────────────
@@ -568,14 +633,23 @@ export class PokerGameScene {
 
     const hand = this.hand;
     if (hand) {
-      this.advanceDeals(dt, hand);
-      if (this.heroPeekable()) this.heroPeek.step(dt); // settle the hero's peek/lift spring
-      this.drawDeck(target, vp); // the stock stays on the felt all hand
-      this.drawCommunity(target, vp, hand); // board cards that have landed + the one flipping out
-      // While the opening deal plays, hole cards fly from the deck to each seat; once
-      // they've all landed the hand renders at rest (hero peekable).
-      if (this.dealing) this.drawOpeningFlights(target, vp);
-      else this.drawHoleCards(target, vp, hand);
+      if (this.interludeActive()) {
+        // Between hands: the felt's cards gather into the deck and it shuffles twice.
+        // The normal deck/community/hole draws are suppressed (those cards are in flight).
+        this.advanceInterlude(dt);
+        this.drawInterlude(target, vp);
+      } else {
+        this.advanceDeals(dt, hand);
+        if (this.heroPeekable()) this.heroPeek.step(dt); // settle the hero's peek/lift spring
+        this.drawDeck(target, vp); // the stock stays on the felt all hand
+        this.drawCommunity(target, vp, hand); // board cards that have landed + the one flipping out
+        // While the opening deal plays, hole cards fly from the deck to each seat; once
+        // they've all landed the hand renders at rest (hero peekable).
+        if (this.dealing) this.drawOpeningFlights(target, vp);
+        else this.drawHoleCards(target, vp, hand);
+        this.advanceMuck(dt);
+        if (this.muck.length) this.drawMuck(target, vp); // folded cards resting in the burn pile
+      }
     }
 
     // Wisps above each AI seat, pulsing the seat to act (idle when paused/over).
@@ -724,6 +798,162 @@ export class PokerGameScene {
         drawCard(target, vp, M, hole[k] as Card, this.back);
       }
     }
+  }
+
+  // ── Fold → muck pile (object permanence) ───────────────────────────────────────
+  // Push a folded seat's two cards onto the burn pile: they slide from their seat rest
+  // pose to a jittered, rotated spot beside the deck (a loose pile, not a neat stack).
+  private muckSeat(seat: number): void {
+    if (!this.hand) return;
+    const a = this.seatAngle(seat);
+    const c = this.seatPos(seat, HOLE_R);
+    const tx = Math.cos(a);
+    const tz = -Math.sin(a);
+    for (let k = 0; k < 2; k++) {
+      const off = k === 0 ? -HOLE_GAP : HOLE_GAP;
+      const idx = this.muck.length;
+      this.muck.push({
+        fromX: c.x + tx * off,
+        fromZ: c.z + tz * off,
+        fromYaw: a,
+        toX: MUCK_POS.x + (this.muckRng() * 2 - 1) * MUCK_JITTER_POS,
+        toZ: MUCK_POS.z + (this.muckRng() * 2 - 1) * MUCK_JITTER_POS,
+        yaw: (this.muckRng() * 2 - 1) * MUCK_JITTER_YAW,
+        lift: CARD_LIFT + idx * MUCK_STACK,
+        t: 0,
+      });
+    }
+    this.dirty = true;
+  }
+
+  private advanceMuck(dt: number): void {
+    for (const m of this.muck) if (m.t < 1) m.t = Math.min(1, m.t + dt / MUCK_STEP);
+  }
+
+  // Draw the burn pile: each card slides (with a small hop) from its seat pose to its
+  // jittered resting spot, face-down the whole way.
+  private drawMuck(target: RenderTarget, vp: Mat4): void {
+    for (const m of this.muck) {
+      const p = smooth(m.t);
+      const x = m.fromX + (m.toX - m.fromX) * p;
+      const z = m.fromZ + (m.toZ - m.fromZ) * p;
+      const y = m.lift + Math.sin(p * Math.PI) * MUCK_HOP;
+      const yaw = m.fromYaw + wrapPi(m.yaw - m.fromYaw) * p;
+      const M = mat4Multiply(mat4Translate(x, y, z), mat4Multiply(mat4RotY(yaw), flatDown()));
+      drawCard(target, vp, M, DEAL_CARD, this.back);
+    }
+  }
+
+  // ── Between-hands interlude: gather → shuffle ×2 → (driver deals next) ───────────
+  // Snapshot every card on the felt (live hole cards, the community board, and the muck)
+  // as a gather sweep into the deck, then hand off to the bounded shuffle. Resolves once
+  // the deck is squared, so the driver can deal the next hand. Called on the terminal
+  // hand, whose HoldemState is still `this.hand` (the HUD keeps showing the result).
+  runInterlude(): Promise<void> {
+    const hand = this.hand;
+    if (!hand) return Promise.resolve();
+    const g: GatherCard[] = [];
+    const push = (fromX: number, fromZ: number, fromYaw: number, faceUp: boolean): void => {
+      g.push({ fromX, fromZ, fromYaw, faceUp, delay: g.length * GATHER_STAGGER });
+    };
+    // Live seats' hole cards (folded seats are already in the muck), face-up if shown.
+    const reveal = hand.showdownSeats();
+    for (let s = 0; s < this.seats.length; s++) {
+      if (hand.isFolded(s)) continue;
+      const a = this.seatAngle(s);
+      const c = this.seatPos(s, HOLE_R);
+      const tx = Math.cos(a);
+      const tz = -Math.sin(a);
+      const faceUp = reveal.includes(s);
+      for (let k = 0; k < 2; k++) {
+        const off = k === 0 ? -HOLE_GAP : HOLE_GAP;
+        push(c.x + tx * off, c.z + tz * off, a, faceUp);
+      }
+    }
+    // The community board (face-up), then the muck (face-down).
+    for (let i = 0; i < this.boardShown; i++) push(this.boardSlotX(i), BOARD_Z, 0, true);
+    for (const m of this.muck) push(m.toX, m.toZ, m.yaw, false);
+    this.muck = [];
+    this.gather = g;
+    this.gatherT = 0;
+    this.shuffleClock = -1;
+    this.shuffleCyclesLeft = SHUFFLE_CYCLES;
+    this.dirty = true;
+    return new Promise<void>((resolve) => {
+      this.interludeResolve = resolve;
+    });
+  }
+
+  // Abort the interlude (pause / stop): drop the animation and resolve any waiter so the
+  // driver's `await` never hangs.
+  cancelInterlude(): void {
+    const done = this.interludeResolve;
+    this.clearInterlude();
+    done?.();
+    this.dirty = true;
+  }
+
+  private clearInterlude(): void {
+    this.gather = null;
+    this.gatherT = 0;
+    this.shuffleClock = -1;
+    this.shuffleCyclesLeft = 0;
+    this.interludeResolve = null;
+  }
+
+  private interludeActive(): boolean {
+    return this.gather !== null || this.shuffleClock >= 0;
+  }
+
+  // Advance the interlude clock: run the gather to completion, then the bounded shuffle;
+  // when the last shuffle cycle squares up, resolve the waiter.
+  private advanceInterlude(dt: number): void {
+    if (this.gather !== null) {
+      this.gatherT += dt;
+      const last = (this.gather.length ? (this.gather.length - 1) * GATHER_STAGGER : 0) + GATHER_STEP;
+      if (this.gatherT >= last) {
+        this.gather = null;
+        this.shuffleClock = 0; // squared deck → begin the riffle/bridge
+      }
+      return;
+    }
+    if (this.shuffleClock < 0) return;
+    this.shuffleClock += dt * SHUFFLE_SPEED;
+    const loop = this.handDeck.loop;
+    while (this.shuffleClock >= loop && this.shuffleCyclesLeft > 0) {
+      this.shuffleClock -= loop;
+      this.shuffleCyclesLeft--;
+    }
+    if (this.shuffleCyclesLeft <= 0) {
+      const done = this.interludeResolve;
+      this.clearInterlude();
+      done?.(); // the deck is squared — let the driver deal the next hand
+    }
+  }
+
+  // Draw the interlude: the gather sweep (cards flying into a growing deck), then the
+  // bounded shuffle at the deck position.
+  private drawInterlude(target: RenderTarget, vp: Mat4): void {
+    if (this.gather !== null) {
+      this.drawDeck(target, vp); // the leftover stock is the base the cards land on
+      const baseTopY = this.deckTopY();
+      for (let i = 0; i < this.gather.length; i++) {
+        const gc = this.gather[i];
+        const p = smooth((this.gatherT - gc.delay) / GATHER_STEP);
+        const landY = baseTopY + i * DECK_THICK;
+        const x = gc.fromX + (DECK_POS.x - gc.fromX) * p;
+        const z = gc.fromZ + (DECK_POS.z - gc.fromZ) * p;
+        const y = CARD_LIFT + (landY - CARD_LIFT) * p + Math.sin(p * Math.PI) * DEAL_HOP * 0.6;
+        const yaw = gc.fromYaw + wrapPi(0 - gc.fromYaw) * p;
+        const rx0 = gc.faceUp ? -Math.PI / 2 : Math.PI / 2; // flatUp vs flatDown tilt
+        const rx = rx0 + (Math.PI / 2 - rx0) * p; // flatten to face-down
+        const M = mat4Multiply(mat4Translate(x, y, z), mat4Multiply(mat4RotY(yaw), mat4Multiply(mat4RotX(rx), CARD_SCALE)));
+        drawCard(target, vp, M, DEAL_CARD, this.back);
+      }
+      return;
+    }
+    this.handDeck.setClock(Math.max(0, this.shuffleClock));
+    this.handDeck.draw(target, vp);
   }
 
   private drawWisps(target: RenderTarget, vp: Mat4, t: number, dt: number): void {

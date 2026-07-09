@@ -19,7 +19,7 @@ export type PokerSeatSpec = { kind: 'human' } | { kind: 'ai'; model: string };
 const STARTING_STACK = 1000;
 const SMALL_BLIND = 10;
 const BIG_BLIND = 20;
-const HAND_GAP_MS = 3200; // pause between hands so the showdown reveal + result read before the next deal
+const RESULT_HOLD_MS = 1400; // pause on the terminal hand so the showdown reveal + result read, before the gather/reshuffle interlude takes over the rest of the gap
 
 // How poker moves are written, for the model prompt/schema (see ModelPlayer).
 const POKER_NOTATION: MoveNotation = {
@@ -145,12 +145,21 @@ export class PokerMatch {
       .catch(() => {}); // aborted mid-decision — fine
   }
 
+  // After a short hold to read the result, run the scene's gather + reshuffle interlude,
+  // then deal the next hand. The interlude animates the finished hand's cards back into
+  // the deck and shuffles it twice (cards never teleport); it resolves when squared.
   private scheduleNext(): void {
     if (this.handTimer) clearTimeout(this.handTimer);
     this.handTimer = setTimeout(() => {
       this.handTimer = null;
-      if (this.running && !this.paused) this.dealHand();
-    }, HAND_GAP_MS);
+      if (!this.running || this.paused) return;
+      this.deps.scene
+        .runInterlude()
+        .then(() => {
+          if (this.running && !this.paused) this.dealHand();
+        })
+        .catch(() => {});
+    }, RESULT_HOLD_MS);
   }
 
   // Pause on whoever's turn it is: cancel any in-flight thinking / human wait and the
@@ -165,6 +174,7 @@ export class PokerMatch {
       clearTimeout(this.handTimer);
       this.handTimer = null;
     }
+    this.deps.scene.cancelInterlude(); // drop any in-flight gather/reshuffle
     this.deps.requestRender();
   }
 
@@ -193,6 +203,7 @@ export class PokerMatch {
     }
     this.running = false;
     this.paused = false;
+    this.deps.scene.cancelInterlude();
     this.deps.scene.endSession();
   }
 

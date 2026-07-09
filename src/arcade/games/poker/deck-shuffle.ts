@@ -103,6 +103,19 @@ export class DeckShuffle {
     this.clock = (this.clock + dt) % LOOP;
   }
 
+  // One full riffle→bridge→cascade→rest cycle, in seconds. Lets a caller run the
+  // shuffle a bounded number of cycles (e.g. the between-hands interlude) by owning
+  // its own clock and counting `loop`-length passes, rather than looping forever.
+  get loop(): number {
+    return LOOP;
+  }
+
+  // Drive the animation to an explicit clock (0 = squared, start of the cut). Used when
+  // an external owner (the between-hands interlude) times the shuffle instead of step().
+  setClock(t: number): void {
+    this.clock = t;
+  }
+
   // Which phase the clock is in, and 0..1 progress through it.
   private phase(): { name: string; p: number } {
     let t = this.clock;
