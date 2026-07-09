@@ -822,11 +822,11 @@ function toPrism(): void {
   stopPokerMatch();
   audioScene.deactivate(); // tear down any open voice session when leaving
   mode = 'prism';
-  ui.setRoot(null); // attract screen has no bar — clear any prior screen's overlay
+  ui.setRoot(null); // the prism screen has no bar — clear any prior screen's overlay
   fullRepaint();
 }
 
-// The Wii-style menu hub. Reached from the prism attract screen (any key) and
+// The Wii-style menu hub. Reached from the prism loading screen (any key) and
 // returned to by a game's "back". No bar — the tiles are the navigation surface.
 function enterMenu(): void {
   stopAiMatch();
@@ -885,20 +885,20 @@ function drawCoverChrome(surf: Surface, cols: number, rows: number, sel: number)
   surf.drawText(hx, rows - 2, hint, [120, 126, 142], [8, 10, 16], STYLE_DIM);
 }
 
-// The prism attract prompt: a small, subtle, lowercase line near the bottom whose
+// The prism loading-screen prompt: a small, subtle, lowercase line near the bottom whose
 // opacity wavers (a slow sine, never fully gone) — the arcade "breathing" glow
 // rather than a hard blink. Drawn with alpha-blending over the scene so the waver
 // reads as real opacity.
-const ATTRACT_TEXT = 'press any key to start';
-function drawAttract(surf: Surface, cols: number, rows: number, t: number): void {
+const PRISM_PROMPT_TEXT = 'press any key to start';
+function drawPrismPrompt(surf: Surface, cols: number, rows: number, t: number): void {
   const pulse = 0.5 + 0.5 * Math.sin(t * Math.PI * 1.2); // ~0.6 Hz, 0..1
   const alpha = 0.42 + 0.5 * pulse; // wavers ~0.42..0.92, always visible
-  const x0 = Math.max(0, Math.floor((cols - ATTRACT_TEXT.length) / 2));
+  const x0 = Math.max(0, Math.floor((cols - PRISM_PROMPT_TEXT.length) / 2));
   const y = rows - 2;
   const fg: RGBA = [205, 210, 230, alpha];
   const bg: RGBA = [0, 0, 0, 0]; // keep the scene behind; only the glyph blends
-  for (let i = 0; i < ATTRACT_TEXT.length; i++) {
-    if (ATTRACT_TEXT[i] !== ' ') surf.setCellWithAlphaBlending(x0 + i, y, ATTRACT_TEXT[i], fg, bg);
+  for (let i = 0; i < PRISM_PROMPT_TEXT.length; i++) {
+    if (PRISM_PROMPT_TEXT[i] !== ' ') surf.setCellWithAlphaBlending(x0 + i, y, PRISM_PROMPT_TEXT[i], fg, bg);
   }
 }
 
@@ -1305,7 +1305,7 @@ function onKeyImpl(ev: KeyEvent): void {
     splashing = false;
     return;
   }
-  // Prism attract screen: any key starts (→ menu). ctrl+c still quits (falls to keymap).
+  // Prism loading screen: any key starts (→ menu). ctrl+c still quits (falls to keymap).
   if (mode === 'prism' && !(ev.ctrl && ev.name === 'c')) {
     enterMenu();
     return;
@@ -1335,7 +1335,7 @@ function onMouseImpl(e: MouseEvent): void {
     splashing = false;
     return;
   }
-  // Prism attract: a click starts (→ menu).
+  // Prism loading screen: a click starts (→ menu).
   if (mode === 'prism' && e.type === 'down') {
     enterMenu();
     return;
@@ -1517,13 +1517,13 @@ function tick(dt: number): void {
   }
 
   if (mode === 'prism') {
-    // Attract screen: live prism + a flashing "press any key" marquee, no bar.
+    // Prism loading screen: live prism + a breathing "press any key" prompt, no bar.
     prism.renderScene(target, t);
     r.write(
       UNIFIED
         ? ui.frameComposited((s) => {
             presentSceneInto(s);
-            drawAttract(s, cols, rows, t);
+            drawPrismPrompt(s, cols, rows, t);
           })
         : presentScene(),
     );

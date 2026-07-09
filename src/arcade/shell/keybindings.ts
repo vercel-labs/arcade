@@ -126,7 +126,7 @@ export function installKeymap(h: KeyHandlers): Keymap {
   // bound for it (they'd clash with the global render-mode letters).
   keymap.bind('poker', { key: 'p', cmd: 'poker.toggleAI' });
   keymap.bind('poker', { key: 'n', cmd: 'poker.newMatch' });
-  // Menu hub: arrows move, Enter/Space launch, Escape returns to the prism attract
+  // Menu hub: arrows move, Enter/Space launch, Escape returns to the prism loading
   // screen. Escape here shadows the global Escape→quit because the 'menu' base layer
   // is searched before 'global'.
   for (const b of [

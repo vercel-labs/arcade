@@ -249,6 +249,136 @@ export function peekCardCenter(pose: PeekPose): Vec3 {
   };
 }
 
+// ── Bending a card for the shuffle (curl lift + concave-down bridge slope) ────
+//
+// The deck-shuffle bends whole cards with the same strip-marching technique as the
+// peek, from a one-sided tangent profile of magnitude `curl` over the card's length
+// s ∈ [0,1]; `dome` picks which end is steep:
+//   • dome = false — θ(s) = curl·s: flat (pinned) at s=0, steepest at s=1. The card
+//     lies flat and its far short edge flexes UP — a thumb lifting one half of the
+//     deck by its inner edge (the riffle lift). Concave up.
+//   • dome = true  — θ(s) = curl·(1 − s): steepest at s=0, levelling to flat at s=1.
+//     The card climbs from its pinned outer edge to a raised, LEVEL inner edge — one
+//     SLOPE of an arch whose apex is at that inner edge. Two mirrored slopes meeting
+//     inner-edge-to-inner-edge make the bridge, apex over the seam between them.
+// `depth` offsets the whole card outward along its own surface normal (not straight up),
+// so a stack of cards on the same slope become CONCENTRIC layers — an outward offset of
+// a concave-down curve never self-intersects, so no card can phase through another, and
+// at the apex the inner edges fan into a neat layered stack. At curl = 0 the march is a
+// straight flat line (θ ≡ 0), depth becomes a plain +Y lift, and the card degenerates to
+// a flat quad at y + depth — so the flat-card path just adds depth to y and agrees. The
+// card's length runs along local z (face down / back up, matching flatDown), yawed about
+// Y, so mirroring the yaw (±90°) mirrors which short edge is the raised inner one.
+
+const ARCH_SEGS = 10; // lengthwise subdivisions of an arched card (fewer than the peek: many bend at once)
+
+// Placement of one bent card: center on the felt (x,y,z), yaw about Y, the bend (`curl`
+// magnitude + `dome` direction — see the header), and `depth`, an outward normal offset
+// used to stack cards into concentric, non-crossing layers along the bridge slope.
+export interface ArchPlace {
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  curl: number;
+  dome: boolean;
+  depth: number;
+}
+
+// One sheet of an arched card, baked to world space (positions + normals), so the
+// material draws it with an identity model — mirrors `bentSheet`. `side` = +1 face
+// (offset +eps along the surface normal), −1 back (offset −eps, u mirrored).
+function archSheet(place: ArchPlace, side: 1 | -1): Mesh {
+  const { x, y, z, yaw, curl, dome, depth } = place;
+  const cy = Math.cos(yaw);
+  const sy = Math.sin(yaw);
+  const seg = CARD_H / ARCH_SEGS;
+  // One-sided tangent of magnitude `curl`; `dome` flips which end is steep (see header).
+  const theta = (t: number): number => curl * (dome ? 1 - t : t);
+
+  // March the centerline, accumulating (localZ, localY) from the tangent angle: the s=0
+  // end stays at localY 0 (pinned) and the far end lifts (dome = false) or the near end
+  // lifts to a level apex (dome = true).
+  const zC: number[] = [0];
+  const yC: number[] = [0];
+  for (let i = 1; i <= ARCH_SEGS; i++) {
+    const th = theta((i - 0.5) / ARCH_SEGS);
+    zC[i] = zC[i - 1] + seg * Math.cos(th);
+    yC[i] = yC[i - 1] + seg * Math.sin(th);
+  }
+  const zMid = (zC[0] + zC[ARCH_SEGS]) / 2; // center the strip on its own length
+
+  const vertices: VertexIn[] = [];
+  for (let i = 0; i <= ARCH_SEGS; i++) {
+    const th = theta(i / ARCH_SEGS);
+    // Surface normal from the tangent: at θ=0 the face sheet (+1) points −Y (down)
+    // and the back sheet (−1) points +Y (up) — a back-up card, as in the deck.
+    const nLy = -Math.cos(th) * side;
+    const nLz = Math.sin(th) * side;
+    // Shift the centerline outward along its up-normal (−sinθ, cosθ) by `depth`, so a
+    // stack of cards on the same slope nests as concentric offset curves (never cross).
+    const lz = zC[i] - zMid - depth * Math.sin(th);
+    const ly = yC[i] + depth * Math.cos(th);
+    const v = i / ARCH_SEGS;
+    for (let j = 0; j <= 1; j++) {
+      const lx = (j - 0.5) * CARD_W;
+      // Yaw the local (x,z) about Y, then translate to the placement point.
+      const px = lx * cy + lz * sy;
+      const pz = -lx * sy + lz * cy;
+      const nx = nLz * sy;
+      const nz = nLz * cy;
+      const wx = x + px + nx * BEND_EPS;
+      const wy = y + ly + nLy * BEND_EPS;
+      const wz = z + pz + nz * BEND_EPS;
+      const u = side === 1 ? j : 1 - j;
+      vertices.push({ position: { x: wx, y: wy, z: wz }, normal: { x: nx, y: nLy, z: nz }, uv: [u, v], color: WHITE });
+    }
+  }
+
+  const indices: number[] = [];
+  for (let i = 0; i < ARCH_SEGS; i++) {
+    const a = i * 2;
+    indices.push(a, a + 1, a + 3, a, a + 3, a + 2);
+  }
+  return { vertices, indices };
+}
+
+// Draw a double-sided card bent per `place` (curl/dome/depth), centered at (x,y,z) and
+// yawed about Y. At curl = 0 this is a flat, face-down card lifted by `depth` in Y.
+export function drawArchCard(target: RenderTarget, vp: Mat4, place: ArchPlace, card: Card, back: Texture, bright = 1): void {
+  const id = mat4Identity();
+  rasterize(target, archSheet(place, 1), coverMaterial, {
+    mvp: vp,
+    model: id,
+    tex: cardFaceTexture(card),
+    paper: WHITE,
+    lightDir: LIGHT,
+    ambient: 0.62,
+    brightness: bright,
+    frameWidth: 0.012,
+    frameColor: WHITE,
+    pad: 0.012,
+    fade: 0,
+    fadeY0: 0,
+    fadeY1: 0,
+  });
+  rasterize(target, archSheet(place, -1), coverMaterial, {
+    mvp: vp,
+    model: id,
+    tex: back,
+    paper: BACK_FIELD,
+    lightDir: LIGHT,
+    ambient: 0.62,
+    brightness: bright,
+    frameWidth: 0.03,
+    frameColor: WHITE,
+    pad: 0.02,
+    fade: 0,
+    fadeY0: 0,
+    fadeY1: 0,
+  });
+}
+
 // A card lying flat on the table, face DOWN (back up): rotate the upright quad +90°
 // about X so its face (+z) points down and its back points up.
 export function flatDown(): Mat4 {

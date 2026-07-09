@@ -20,6 +20,7 @@ import {
   mat4RotX,
   mat4RotY,
   mat4Translate,
+  type Mesh,
   normalize3,
   rasterize,
   type RenderTarget,
@@ -37,6 +38,7 @@ import type { HoldemState, PokerAction } from '../../../rules/poker/holdem.ts';
 import { cardBackTexture } from './card-textures.ts';
 import { CARD_SCALE, CARD_W, drawCard, flatDown, flatUp } from './card-render.ts';
 import { HandPeek } from './card-peek.ts';
+import { DeckShuffle } from './deck-shuffle.ts';
 import { chairMesh, chairModel, TABLE_MODEL, TABLE_RADIUS, tableMesh } from './table.ts';
 
 const FOVY = (46 * Math.PI) / 180;
@@ -80,6 +82,10 @@ const COMMUNITY_STEP = 0.34; // a community card takes a touch longer (it flips 
 const DEAL_HOP = 0.85; // height of a dealt card's arc
 const DEAL_CARD: Card = { rank: 0, suit: 0 }; // dealt face-down, so identity is irrelevant
 
+// Idle: with no session running the table isn't bare — it shows a ring of
+// chairs and a centre deck that riffle-shuffles on a loop (see DeckShuffle).
+const IDLE_SEATS = 4; // chairs shown around the empty table
+
 const smooth = (x: number): number => {
   const t = x < 0 ? 0 : x > 1 ? 1 : x;
   return t * t * (3 - 2 * t);
@@ -119,6 +125,8 @@ const CHIP_BG: RGB = [12, 16, 20];
 export class PokerGameScene {
   private cam: OrbitCamera;
   private back: Texture;
+  // The idle deck at the felt centre, shuffling on a loop while idle (no session).
+  private idleDeck: DeckShuffle;
   private dirty = true;
   private lastT = -1;
 
@@ -157,7 +165,8 @@ export class PokerGameScene {
 
   constructor() {
     this.back = cardBackTexture();
-    this.cam = this.makeCamera();
+    this.idleDeck = new DeckShuffle(this.back, { x: 0, z: 0 }); // dead centre of the felt
+    this.cam = this.makeIdleCamera(); // the scene opens idle → frame the shuffling deck
   }
 
   private makeCamera(): OrbitCamera {
@@ -165,6 +174,13 @@ export class PokerGameScene {
     // Min distance matches the cards sandbox's hand mode so you can zoom right in to
     // peek at your own hole cards; the look-at leans toward them as you zoom (zoomBy).
     return new OrbitCamera({ azimuth: 0, elevation: 0.7, distance: CAM_HOME_DIST, target: { ...OVERVIEW_TARGET } }, CAM_MIN_DIST, CAM_MAX_DIST);
+  }
+
+  // The idle framing: close in on the centre deck at a low, side-on tilt so the
+  // riffle bow and bridge arch read as real card flex (the overview is too far/flat to
+  // see the bend). The user can still orbit/zoom from here.
+  private makeIdleCamera(): OrbitCamera {
+    return new OrbitCamera({ azimuth: 0, elevation: 0.62, distance: 9.5, target: { x: 0, y: 0.1, z: 0 } }, CAM_MIN_DIST, CAM_MAX_DIST);
   }
 
   // ── Session / hand lifecycle ─────────────────────────────────────────────────
@@ -182,6 +198,7 @@ export class PokerGameScene {
     this.paused = false;
     this.rejectHuman();
     this.hand = null;
+    this.cam = this.makeIdleCamera(); // back to the idle framing on the shuffling deck
     this.dirty = true;
   }
 
@@ -362,7 +379,7 @@ export class PokerGameScene {
   }
 
   needsRender(): boolean {
-    return this.dirty || (this.active && !this.paused) || this.beat > 0 || this.dealing || this.boardT >= 0 || this.heroPeek.animating();
+    return this.dirty || (this.active && !this.paused) || this.beat > 0 || this.dealing || this.boardT >= 0 || this.heroPeek.animating() || this.isIdle();
   }
 
   // ── Hero hole-card peek / lift ─────────────────────────────────────────────────
@@ -386,6 +403,11 @@ export class PokerGameScene {
   }
 
   // ── Geometry ───────────────────────────────────────────────────────────────────
+  // No session running (before the first match, and between sessions) → show the
+  // idle table (chair ring + shuffling deck) rather than a bare felt.
+  private isIdle(): boolean {
+    return !this.active && this.hand === null;
+  }
   private seatAngle(seat: number): number {
     const n = this.seats.length || 1;
     return (seat / n) * Math.PI * 2; // seat 0 at +z (front / hero)
@@ -404,12 +426,16 @@ export class PokerGameScene {
     const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 200 };
     const { viewProjection: vp } = cameraMatrices(camera, target.width / target.height);
 
-    // Table + a chair per seat.
+    // Table + chairs: one per seat during a session, else a default idle ring.
     rasterize(target, tableMesh(), lambertMaterial, { mvp: mat4Multiply(vp, TABLE_MODEL), model: TABLE_MODEL, lightDir: TABLE_LIGHT, ambient: TABLE_AMBIENT });
     const chair = chairMesh();
-    for (let s = 0; s < this.seats.length; s++) {
-      const model = chairModel(this.seatAngle(s));
-      rasterize(target, chair, lambertMaterial, { mvp: mat4Multiply(vp, model), model, lightDir: TABLE_LIGHT, ambient: TABLE_AMBIENT });
+    if (this.isIdle()) {
+      // Idle state: a ring of chairs around a centre deck shuffling on a loop.
+      this.idleDeck.step(dt);
+      this.drawChairRing(target, vp, chair, IDLE_SEATS);
+      this.idleDeck.draw(target, vp);
+    } else {
+      this.drawChairRing(target, vp, chair, this.seats.length);
     }
 
     const hand = this.hand;
@@ -476,6 +502,15 @@ export class PokerGameScene {
   }
   private deckTopY(): number {
     return this.deckRemaining() * DECK_THICK + CARD_LIFT;
+  }
+
+  // Draw `n` chairs evenly around the rail (chair k at angle (k/n)·2π; seat 0 at +z),
+  // reusing one chair mesh. Shared by the live seat ring and the idle ring.
+  private drawChairRing(target: RenderTarget, vp: Mat4, chair: Mesh, n: number): void {
+    for (let k = 0; k < n; k++) {
+      const model = chairModel((k / n) * Math.PI * 2);
+      rasterize(target, chair, lambertMaterial, { mvp: mat4Multiply(vp, model), model, lightDir: TABLE_LIGHT, ambient: TABLE_AMBIENT });
+    }
   }
 
   // The persistent stock at the centre-back of the felt (shrinks as cards are dealt).

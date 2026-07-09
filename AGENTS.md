@@ -34,7 +34,7 @@ src/
   arcade/     THE app: orchestrator (main.ts) + per-game/scene/shell presentation
     games/<game>/   per-game presentation (chess: scene, hud, turntable)
     match/          AI-vs-AI plumbing (driver, setup modal, model catalog)
-    scenes/         ambient / attract-mode visuals (prism aside): logos, audio, wisp
+    scenes/         ambient / idle-loop visuals (prism aside): logos, audio, wisp
     shell/          launcher + window chrome (cover flow, menu, bars, keybindings)
   tools/      snapshot.ts (render a frame to an image) + dev scripts
 ```

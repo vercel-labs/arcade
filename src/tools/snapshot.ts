@@ -294,7 +294,7 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot coverflow|menu [cols] [rows] [pos] [hover] [out]   Cover Flow carousel
   pnpm snapshot settings [cols] [rows] [open [loading|switched]] [out]   menu settings gear (open → team-switch modal)
   pnpm snapshot launch [cols] [rows] [index] [t] [out]   Cover Flow flip-to-title splash
-  pnpm snapshot attract [cols] [rows] [t] [out]    prism attract marquee
+  pnpm snapshot prism-prompt [cols] [rows] [t] [out]    prism loading screen + press-any-key marquee
   pnpm snapshot cards [single|hand|deck] [cols] [rows] [state] [out]   the cards screen
       (single: a code like Kh/10s/As · hand: peek|up · deck: shuffle|deal)
   pnpm snapshot poker [cols] [rows] [preflop|flop|river|showdown] [players=N] [color] [out]   the poker table
@@ -333,8 +333,8 @@ if (process.argv[2] === 'help' || process.argv[2] === '--help' || process.argv[2
   coverflowSnapshot();
 } else if (process.argv[2] === 'launch') {
   launchSnapshot();
-} else if (process.argv[2] === 'attract') {
-  attractSnapshot();
+} else if (process.argv[2] === 'prism-prompt') {
+  prismPromptSnapshot();
 } else if (process.argv[2] === 'cards') {
   cardsSnapshot();
 } else if (process.argv[2] === 'poker') {
@@ -346,6 +346,9 @@ if (process.argv[2] === 'help' || process.argv[2] === '--help' || process.argv[2
 // The poker table with a dealt hand at a chosen street, presented through the app's
 // default ASCII path (plus the projected stack/pot overlay).
 //   pnpm exec tsx src/tools/snapshot.ts poker [cols] [rows] [preflop|flop|river|showdown] [players=N] [color] [out.ppm]
+//   pnpm exec tsx src/tools/snapshot.ts poker idle [cols] [rows] [<t>] [color] [out.ppm]
+//     idle: no session running — 4 chairs + the centre deck at loop time <t>
+//           seconds (a decimal, e.g. 1.0 for the riffle; default 1.0).
 function pokerSnapshot(): void {
   const args = process.argv.slice(3);
   const cols = Number(args.find((a) => /^\d+$/.test(a))) || 150;
@@ -354,6 +357,28 @@ function pokerSnapshot(): void {
   const players = Number(args.find((a) => /^players=\d+$/.test(a))?.split('=')[1]) || 2;
   const out = args.find((a) => a.endsWith('.ppm')) ?? `.snapshots/poker-${street}.ppm`;
   const SS = 3;
+
+  // Idle: construct the scene WITHOUT a session, advance the shuffle-loop clock
+  // to time `t` (a decimal arg), and snapshot the empty-table state (4 chairs + deck).
+  if (args.includes('idle')) {
+    const tTarget = Number(args.find((a) => /^\d+\.\d+$/.test(a))) || 1.0;
+    const idleScene = new PokerGameScene();
+    const idleOut = args.find((a) => a.endsWith('.ppm')) ?? '.snapshots/poker-idle.ppm';
+    const buf = new RenderTarget(cols * SS, rows * 2 * SS);
+    let t = 0;
+    for (let acc = 0; acc <= tTarget + 1e-9; acc += 1 / 30) {
+      idleScene.renderScene(buf, t);
+      t += 1 / 30;
+    }
+    if (args.includes('color')) {
+      writeDisplayPpm(downsample(buf, SS), idleOut);
+    } else {
+      const surf = new Surface(cols, rows);
+      shapeGlyphToSurface(surf, buf, cols, rows, { color: true, hybrid: true });
+      surfaceToPpm(surf, cols, rows, idleOut);
+    }
+    return;
+  }
 
   const scene = new PokerGameScene();
   const seatViews: PokerSeatView[] = [{ kind: 'human', label: 'You' }];
@@ -670,13 +695,13 @@ function launchSnapshot(): void {
   console.log(`wrote ${out} (${cols}x${rows})`);
 }
 
-// The prism attract marquee. `t` honors the blink (visible at t=0, hidden at t≈0.8).
-//   pnpm exec tsx src/tools/snapshot.ts attract [cols] [rows] [t] [out.ppm]
-function attractSnapshot(): void {
+// The prism loading screen (prism + the press-any-key marquee). `t` honors the blink (visible at t=0, hidden at t≈0.8).
+//   pnpm exec tsx src/tools/snapshot.ts prism-prompt [cols] [rows] [t] [out.ppm]
+function prismPromptSnapshot(): void {
   const cols = Number(process.argv[3]) || 140;
   const rows = Number(process.argv[4]) || 40;
   const t = Number(process.argv[5]) || 0;
-  const out = process.argv.find((a) => a.endsWith('.ppm')) ?? '.snapshots/attract.ppm';
+  const out = process.argv.find((a) => a.endsWith('.ppm')) ?? '.snapshots/prism-prompt.ppm';
   const SS = 3;
   const target = new RenderTarget(cols * SS, rows * 2 * SS);
   new PrismScene().renderScene(target, 0.6);
@@ -685,7 +710,7 @@ function attractSnapshot(): void {
   const surf = new Surface(cols, rows);
   halfBlockToSurface(surf, display);
   const text = 'press any key to start';
-  const alpha = 0.42 + 0.5 * (0.5 + 0.5 * Math.sin(t * Math.PI * 1.2)); // matches drawAttract
+  const alpha = 0.42 + 0.5 * (0.5 + 0.5 * Math.sin(t * Math.PI * 1.2)); // matches drawPrismPrompt
   const x0 = Math.max(0, Math.floor((cols - text.length) / 2));
   const y = rows - 2;
   for (let i = 0; i < text.length; i++) {

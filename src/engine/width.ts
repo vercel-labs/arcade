@@ -55,6 +55,11 @@ export function cellWidth(cp: number): number {
   // text-presentation single-cell in terminals — used for the panel's ✕ close
   // button. Without this they'd be mis-sized as wide and the header loses a cell.
   if (cp >= 0x2713 && cp <= 0x2718) return 1;
+  // Card suit pips (♠♡♢♣♤♥♦♧, U+2660–2667) are text-presentation single-cell too —
+  // used by the poker hand/board panel. Measured as wide, the light card cell reserves
+  // a cell the terminal never draws, desyncing the surface and leaving a stale
+  // placeholder-background remnant to the side of a revealed card.
+  if (cp >= 0x2660 && cp <= 0x2667) return 1;
   if (isWide(cp)) return 2;
   return 1;
 }
