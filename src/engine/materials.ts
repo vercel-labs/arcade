@@ -18,12 +18,101 @@ export const lambertMaterial: Material<LambertUniforms> = {
     const normal = mat4MulDir(u.model, vin.normal);
     return { clip, world: vin.position, normal, uv: vin.uv, color: vin.color, bary: { x: 0, y: 0, z: 0 } };
   },
+  // Allocation-free fragment (runs once per covered pixel — the table + chair ring
+  // cover most of the screen). Same math as normalize3 + dot3, without the per-pixel
+  // Vec3 and result-object temporaries: reuse LAMBERT_RGBA and inline the normalize
+  // (Math.hypot + the || 1 zero-length guard, matching normalize3 exactly).
   fragment(u, vy) {
-    const n = normalize3(vy.normal);
-    const intensity = Math.max(u.ambient, dot3(n, u.lightDir));
-    return { r: vy.color.x * intensity, g: vy.color.y * intensity, b: vy.color.z * intensity, a: 1 };
+    const nx = vy.normal.x;
+    const ny = vy.normal.y;
+    const nz = vy.normal.z;
+    const l = Math.hypot(nx, ny, nz) || 1;
+    const ndl = (nx / l) * u.lightDir.x + (ny / l) * u.lightDir.y + (nz / l) * u.lightDir.z;
+    const intensity = Math.max(u.ambient, ndl);
+    LAMBERT_RGBA.r = vy.color.x * intensity;
+    LAMBERT_RGBA.g = vy.color.y * intensity;
+    LAMBERT_RGBA.b = vy.color.z * intensity;
+    return LAMBERT_RGBA;
   },
 };
+const LAMBERT_RGBA = { r: 0, g: 0, b: 0, a: 1 };
+
+export interface FeltUniforms {
+  mvp: Mat4;
+  model: Mat4;
+  lightDir: Vec3; // normalized, world space, points toward the light
+  ambient: number; // 0..1 floor
+  stipple: Vec3; // fleck color (0..255), added on top of the lit base
+  stippleFreq: number; // stipple lattice cells per OBJECT-space unit
+  stippleDensity: number; // 0..1 — fraction of lattice cells that carry a fleck
+  stippleGain: number; // fleck strength (peaks at the cell centre, falls to 0 at its rim)
+  stippleRadius: number; // fleck disc radius in lattice-cell units (<= 0.5)
+}
+
+// Matte diffuse surface (per-vertex base color × N·L) sprinkled with a sparse,
+// SURFACE-LOCKED ASCII stipple. A flat, uniformly-lit matte plane has one
+// brightness across every cell, so the shape-glyph presenter matches it to blank
+// space — a big felt reads as a dead black hole (which is exactly why the poker
+// felt used to be painted black). The stipple scatters faint flecks keyed to
+// OBJECT-space x/z (so they stick to the surface as the camera orbits instead of
+// crawling), giving occasional cells one small bright region that the matcher
+// resolves to a low-coverage glyph ('.'/','/'`'/'o'). Density/gain stay low so the
+// surface reads as textured felt, not a starfield. Non-flat use is fine too — the
+// lattice is 2D in the mesh's x/z, so it tiles any surface facing roughly up.
+const FELT_RGBA = { r: 0, g: 0, b: 0, a: 1 };
+export const feltMaterial: Material<FeltUniforms> = {
+  cull: 'none',
+  vertex(u, vin) {
+    const clip = mat4MulVec4(u.mvp, { x: vin.position.x, y: vin.position.y, z: vin.position.z, w: 1 });
+    const normal = mat4MulDir(u.model, vin.normal);
+    // world = OBJECT-space position: the stipple lattice lives in the mesh's own
+    // frame, so it's invariant to the model/camera transform (no swim, no crawl).
+    return { clip, world: vin.position, normal, uv: vin.uv, color: vin.color, bary: { x: 0, y: 0, z: 0 } };
+  },
+  fragment(u, vy) {
+    const nx = vy.normal.x;
+    const ny = vy.normal.y;
+    const nz = vy.normal.z;
+    const l = Math.hypot(nx, ny, nz) || 1;
+    const ndl = (nx / l) * u.lightDir.x + (ny / l) * u.lightDir.y + (nz / l) * u.lightDir.z;
+    const intensity = Math.max(u.ambient, ndl);
+    let r = vy.color.x * intensity;
+    let g = vy.color.y * intensity;
+    let b = vy.color.z * intensity;
+    // Surface-locked stipple: hash the lattice cell under this point; a fraction
+    // `stippleDensity` of cells carry a fleck, brightest at the cell centre and
+    // fading to nothing at radius `stippleRadius` — a soft round speck.
+    const fx = vy.world.x * u.stippleFreq;
+    const fz = vy.world.z * u.stippleFreq;
+    const ix = Math.floor(fx);
+    const iz = Math.floor(fz);
+    if (feltHash(ix, iz) < u.stippleDensity) {
+      const dx = fx - ix - 0.5;
+      const dz = fz - iz - 0.5;
+      const rr = u.stippleRadius * u.stippleRadius;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < rr) {
+        const k = (1 - d2 / rr) * u.stippleGain;
+        r += u.stipple.x * k;
+        g += u.stipple.y * k;
+        b += u.stipple.z * k;
+      }
+    }
+    FELT_RGBA.r = r;
+    FELT_RGBA.g = g;
+    FELT_RGBA.b = b;
+    return FELT_RGBA;
+  },
+};
+
+// Cheap, stable 2D integer hash → [0,1). Deterministic per lattice cell, so the
+// stipple is fixed to the surface and never shimmers frame to frame.
+function feltHash(ix: number, iz: number): number {
+  let h = (Math.imul(ix, 374761393) + Math.imul(iz, 668265263)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177) | 0;
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
 
 export interface PieceUniforms {
   mvp: Mat4;

@@ -33,10 +33,17 @@ const LIGHT = normalize3({ x: 0.12, y: 0.5, z: 1 });
 const WHITE: Vec3 = { x: 250, y: 249, z: 245 };
 const BACK_FIELD: Vec3 = { x: 156, y: 22, z: 30 };
 
+// Constant per-card transforms, built once and reused (read-only) every frame rather
+// than reallocated per card: the two sheet offsets (face +eps, back −eps + flip) and
+// the identity used by the bent-strip draws (their geometry is baked to world space).
+const FACE_OFFSET: Mat4 = mat4Translate(0, 0, CARD_EPS);
+const BACK_OFFSET: Mat4 = mat4Multiply(mat4Translate(0, 0, -CARD_EPS), mat4RotY(Math.PI));
+const IDENTITY: Mat4 = mat4Identity();
+
 // Draw a double-sided card at model matrix `M` (already scaled to the card quad).
 // `back` is the shared card-back texture. `bright` dims/brightens both faces.
 export function drawCard(target: RenderTarget, vp: Mat4, M: Mat4, card: Card, back: Texture, bright = 1): void {
-  const faceModel = mat4Multiply(M, mat4Translate(0, 0, CARD_EPS));
+  const faceModel = mat4Multiply(M, FACE_OFFSET);
   rasterize(target, CARD_MESH, coverMaterial, {
     mvp: mat4Multiply(vp, faceModel),
     model: faceModel,
@@ -54,7 +61,7 @@ export function drawCard(target: RenderTarget, vp: Mat4, M: Mat4, card: Card, ba
     fadeY0: 0,
     fadeY1: 0,
   });
-  const backModel = mat4Multiply(M, mat4Multiply(mat4Translate(0, 0, -CARD_EPS), mat4RotY(Math.PI)));
+  const backModel = mat4Multiply(M, BACK_OFFSET);
   rasterize(target, CARD_MESH, coverMaterial, {
     mvp: mat4Multiply(vp, backModel),
     model: backModel,
@@ -131,11 +138,39 @@ function peekParams(pose: PeekPose): { phi: number; kappa: number; yaw: number; 
   };
 }
 
+// A bent-strip mesh has constant topology ((segs+1)×2 vertices, 2 triangles/segment),
+// so we build one scratch mesh per strip length once and rewrite its vertex fields in
+// place each draw — `bentSheet`/`archSheet` are called twice per card (face + back) and
+// the idle shuffle bends up to 28 cards per frame, so a fresh Mesh + hundreds of little
+// vertex objects each call was steady per-frame GC churn. `rasterize` consumes a mesh
+// synchronously and never retains it, so a single scratch per topology is safe to reuse
+// across every card in a frame. `zC`/`yC` are the reused centerline-march scratch.
+interface StripScratch {
+  mesh: Mesh;
+  zC: number[];
+  yC: number[];
+}
+function makeStrip(segs: number): StripScratch {
+  const vertices: VertexIn[] = [];
+  for (let i = 0; i <= segs; i++) {
+    for (let j = 0; j <= 1; j++) {
+      vertices.push({ position: { x: 0, y: 0, z: 0 }, normal: { x: 0, y: 0, z: 0 }, uv: [0, 0], color: WHITE });
+    }
+  }
+  const indices: number[] = [];
+  for (let i = 0; i < segs; i++) {
+    const a = i * 2;
+    indices.push(a, a + 1, a + 3, a, a + 3, a + 2);
+  }
+  return { mesh: { vertices, indices }, zC: new Array(segs + 1), yC: new Array(segs + 1) };
+}
+
 // Build the bent card as a strip of `BEND_SEGS` quads in world space (positions and
 // normals baked, so the material's model matrix is identity). `side` = +1 builds the
 // face sheet (offset +eps along the surface normal, upright uv); −1 the back sheet
 // (offset −eps, u mirrored). Winding is irrelevant — `coverMaterial` disables culling
-// and the depth buffer resolves which sheet shows.
+// and the depth buffer resolves which sheet shows. Writes into the shared bend scratch.
+const bendScratch = makeStrip(BEND_SEGS);
 function bentSheet(pose: PeekPose, side: 1 | -1): Mesh {
   const { phi, kappa, yaw, liftY, liftZ } = peekParams(pose);
   const cy = Math.cos(yaw);
@@ -146,15 +181,16 @@ function bentSheet(pose: PeekPose, side: 1 | -1): Mesh {
 
   // March the centerline from the pinned far edge (s=0) to the near edge (s=1),
   // accumulating (localZ, localY) from the tangent angle theta(s) = phi + kappa·s.
-  const zC: number[] = [0];
-  const yC: number[] = [0];
+  const { zC, yC } = bendScratch;
+  zC[0] = 0;
+  yC[0] = 0;
   for (let i = 1; i <= BEND_SEGS; i++) {
     const th = phi + kappa * ((i - 0.5) / BEND_SEGS);
     zC[i] = zC[i - 1] + seg * Math.cos(th);
     yC[i] = yC[i - 1] + seg * Math.sin(th);
   }
 
-  const vertices: VertexIn[] = [];
+  const vs = bendScratch.mesh.vertices;
   for (let i = 0; i <= BEND_SEGS; i++) {
     const th = phi + kappa * (i / BEND_SEGS);
     // Surface normal from the tangent: (0,−cosθ,sinθ) is face-down at θ=0 and turns
@@ -177,22 +213,24 @@ function bentSheet(pose: PeekPose, side: 1 | -1): Mesh {
       const wy = BEND_BASE_Y + liftY + yC[i] + nLy * BEND_EPS;
       const wz = farZ + liftZ + pz + nz * BEND_EPS;
       const u = side === 1 ? j : 1 - j; // mirror u on the back
-      vertices.push({ position: { x: wx, y: wy, z: wz }, normal: { x: nx, y: nLy, z: nz }, uv: [u, v], color: WHITE });
+      const vtx = vs[i * 2 + j];
+      vtx.position.x = wx;
+      vtx.position.y = wy;
+      vtx.position.z = wz;
+      vtx.normal.x = nx;
+      vtx.normal.y = nLy;
+      vtx.normal.z = nz;
+      vtx.uv[0] = u;
+      vtx.uv[1] = v;
     }
   }
-
-  const indices: number[] = [];
-  for (let i = 0; i < BEND_SEGS; i++) {
-    const a = i * 2;
-    indices.push(a, a + 1, a + 3, a, a + 3, a + 2);
-  }
-  return { vertices, indices };
+  return bendScratch.mesh;
 }
 
 // Draw a hand card as a bent, double-sided strip for the whole peek→lift range. At
 // rest (reveal 0) the strip is simply flat and face-down, matching the resting card.
 export function drawPeekCard(target: RenderTarget, vp: Mat4, pose: PeekPose, card: Card, back: Texture, bright = 1): void {
-  const id = mat4Identity();
+  const id = IDENTITY;
   const face = bentSheet(pose, 1);
   rasterize(target, face, coverMaterial, {
     mvp: vp,
@@ -287,7 +325,9 @@ export interface ArchPlace {
 
 // One sheet of an arched card, baked to world space (positions + normals), so the
 // material draws it with an identity model — mirrors `bentSheet`. `side` = +1 face
-// (offset +eps along the surface normal), −1 back (offset −eps, u mirrored).
+// (offset +eps along the surface normal), −1 back (offset −eps, u mirrored). Writes
+// into the shared arch scratch (see makeStrip).
+const archScratch = makeStrip(ARCH_SEGS);
 function archSheet(place: ArchPlace, side: 1 | -1): Mesh {
   const { x, y, z, yaw, curl, dome, depth } = place;
   const cy = Math.cos(yaw);
@@ -299,8 +339,9 @@ function archSheet(place: ArchPlace, side: 1 | -1): Mesh {
   // March the centerline, accumulating (localZ, localY) from the tangent angle: the s=0
   // end stays at localY 0 (pinned) and the far end lifts (dome = false) or the near end
   // lifts to a level apex (dome = true).
-  const zC: number[] = [0];
-  const yC: number[] = [0];
+  const { zC, yC } = archScratch;
+  zC[0] = 0;
+  yC[0] = 0;
   for (let i = 1; i <= ARCH_SEGS; i++) {
     const th = theta((i - 0.5) / ARCH_SEGS);
     zC[i] = zC[i - 1] + seg * Math.cos(th);
@@ -308,7 +349,7 @@ function archSheet(place: ArchPlace, side: 1 | -1): Mesh {
   }
   const zMid = (zC[0] + zC[ARCH_SEGS]) / 2; // center the strip on its own length
 
-  const vertices: VertexIn[] = [];
+  const vs = archScratch.mesh.vertices;
   for (let i = 0; i <= ARCH_SEGS; i++) {
     const th = theta(i / ARCH_SEGS);
     // Surface normal from the tangent: at θ=0 the face sheet (+1) points −Y (down)
@@ -331,22 +372,24 @@ function archSheet(place: ArchPlace, side: 1 | -1): Mesh {
       const wy = y + ly + nLy * BEND_EPS;
       const wz = z + pz + nz * BEND_EPS;
       const u = side === 1 ? j : 1 - j;
-      vertices.push({ position: { x: wx, y: wy, z: wz }, normal: { x: nx, y: nLy, z: nz }, uv: [u, v], color: WHITE });
+      const vtx = vs[i * 2 + j];
+      vtx.position.x = wx;
+      vtx.position.y = wy;
+      vtx.position.z = wz;
+      vtx.normal.x = nx;
+      vtx.normal.y = nLy;
+      vtx.normal.z = nz;
+      vtx.uv[0] = u;
+      vtx.uv[1] = v;
     }
   }
-
-  const indices: number[] = [];
-  for (let i = 0; i < ARCH_SEGS; i++) {
-    const a = i * 2;
-    indices.push(a, a + 1, a + 3, a, a + 3, a + 2);
-  }
-  return { vertices, indices };
+  return archScratch.mesh;
 }
 
 // Draw a double-sided card bent per `place` (curl/dome/depth), centered at (x,y,z) and
 // yawed about Y. At curl = 0 this is a flat, face-down card lifted by `depth` in Y.
 export function drawArchCard(target: RenderTarget, vp: Mat4, place: ArchPlace, card: Card, back: Texture, bright = 1): void {
-  const id = mat4Identity();
+  const id = IDENTITY;
   rasterize(target, archSheet(place, 1), coverMaterial, {
     mvp: vp,
     model: id,
@@ -380,12 +423,16 @@ export function drawArchCard(target: RenderTarget, vp: Mat4, place: ArchPlace, c
 }
 
 // A card lying flat on the table, face DOWN (back up): rotate the upright quad +90°
-// about X so its face (+z) points down and its back points up.
+// about X so its face (+z) points down and its back points up. Both flat orientations
+// are constant, so build them once and hand back the shared matrix (callers only ever
+// read it, composing it into a translate via mat4Multiply).
+const FLAT_DOWN: Mat4 = mat4Multiply(mat4RotX(Math.PI / 2), CARD_SCALE);
+const FLAT_UP: Mat4 = mat4Multiply(mat4RotX(-Math.PI / 2), CARD_SCALE);
 export function flatDown(): Mat4 {
-  return mat4Multiply(mat4RotX(Math.PI / 2), CARD_SCALE);
+  return FLAT_DOWN;
 }
 
 // A card lying flat on the table, face UP.
 export function flatUp(): Mat4 {
-  return mat4Multiply(mat4RotX(-Math.PI / 2), CARD_SCALE);
+  return FLAT_UP;
 }

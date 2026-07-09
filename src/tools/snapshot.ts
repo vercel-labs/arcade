@@ -25,7 +25,7 @@ import { providers } from '../arcade/match/models.ts';
 import { CardsScene, type CardsMode } from '../arcade/games/poker/cards-scene.ts';
 import { buildPokerRoot, mountPokerHud } from '../arcade/games/poker/hud.ts';
 import { PokerGameScene, type PokerSeatView } from '../arcade/games/poker/poker-scene.ts';
-import { buildPokerGameRoot, clearPokerChat, mountPokerGameHud, pushPokerChat, refreshPokerLog } from '../arcade/games/poker/poker-hud.ts';
+import { buildPokerGameRoot, clearPokerChat, mountPokerGameHud, pushPokerChat } from '../arcade/games/poker/poker-hud.ts';
 import { buildPokerSetup, mountPokerSetup } from '../arcade/match/poker-setup.ts';
 import { HoldemState } from '../rules/poker/holdem.ts';
 import { mulberry32 } from '../arcade/scenes/wisp.ts';
@@ -297,7 +297,7 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot prism-prompt [cols] [rows] [t] [out]    prism loading screen + press-any-key marquee
   pnpm snapshot cards [single|hand|deck] [cols] [rows] [state] [out]   the cards screen
       (single: a code like Kh/10s/As · hand: peek|up · deck: shuffle|deal)
-  pnpm snapshot poker [cols] [rows] [preflop|flop|river|showdown] [players=N] [color] [out]   the poker table
+  pnpm snapshot poker [cols] [rows] [preflop|flop|river|showdown] [players=N] [hud] [spectate] [color] [out]   the poker table
 
 Convert + view:  sips -s format png .snapshots/<name>.ppm --out .snapshots/<name>.png -Z 1000`;
 
@@ -380,20 +380,28 @@ function pokerSnapshot(): void {
     return;
   }
 
+  // `spectate` → every seat is an AI (all hole cards visible, no hero controls); otherwise
+  // seat 1 is the human hero (only their own cards show).
+  const spectate = args.includes('spectate');
   const scene = new PokerGameScene();
-  const seatViews: PokerSeatView[] = [{ kind: 'human', label: 'You' }];
   const provs = providers().map((p) => p.slug);
-  for (let s = 1; s < players; s++) seatViews.push({ kind: 'ai', label: `AI ${s}`, provider: provs[(s - 1) % provs.length] });
+  const seatViews: PokerSeatView[] = [];
+  for (let s = 0; s < players; s++) {
+    if (s === 0 && !spectate) seatViews.push({ kind: 'human', label: 'You' });
+    else seatViews.push({ kind: 'ai', label: `AI ${s + 1}`, provider: provs[s % provs.length] });
+  }
   scene.beginSession(seatViews);
 
   const state = new HoldemState({ stacks: new Array(players).fill(1000), button: 0, smallBlind: 10, bigBlind: 20, rng: mulberry32(0x90ce7) });
   scene.beginHand(state);
   // Drive a few scripted actions to reach the requested street (everyone calls/checks).
+  // Route through scene.playMove (not state.applyAction) so each seat's last action is
+  // captured for its HUD strip; the returned promise is fire-and-forget in this still.
   const advanceTo = (target: number): void => {
     let guard = 0;
     while (state.street() < target && !state.isTerminal() && guard++ < 100) {
       const toCall = state.toCall(state.toActSeat());
-      state.applyAction(toCall > 0 ? { type: 'call' } : { type: 'check' });
+      void scene.playMove(toCall > 0 ? { type: 'call' } : { type: 'check' });
     }
   };
   if (street === 'flop') advanceTo(1);
@@ -402,7 +410,7 @@ function pokerSnapshot(): void {
     let guard = 0;
     while (!state.isTerminal() && guard++ < 200) {
       const toCall = state.toCall(state.toActSeat());
-      state.applyAction(toCall > 0 ? { type: 'call' } : { type: 'check' });
+      void scene.playMove(toCall > 0 ? { type: 'call' } : { type: 'check' });
     }
   }
 
@@ -446,11 +454,10 @@ function pokerSnapshot(): void {
   // Call / raise slider / All-in visible). Fire a human-move request to flip the
   // scene into "hero to act" so the controls render.
   if (args.includes('hud')) {
-    void scene.requestHumanMove(); // sets heroToAct (fire-and-forget in this still)
+    if (!spectate) void scene.requestHumanMove(); // sets heroToAct (fire-and-forget in this still)
     const screen = new Screen(cols, rows);
     mountPokerGameHud(screen);
     const st = state;
-    refreshPokerLog(st.history());
     // Seed a few table-talk lines so the right-rail chat renders populated.
     clearPokerChat();
     for (const m of [
@@ -460,7 +467,7 @@ function pokerSnapshot(): void {
     ])
       pushPokerChat(m);
     const hero = {
-      toAct: true,
+      toAct: !spectate,
       toCall: st.toCall(0),
       minRaiseTo: st.minRaiseTo(0),
       maxRaiseTo: st.maxRaiseTo(0),
@@ -474,8 +481,8 @@ function pokerSnapshot(): void {
         blinds: '10/20',
         commentary: null,
         t: 0,
-        status: 'Your move',
-        handBoard: scene.heroPanel(),
+        status: spectate ? 'Spectating' : 'Your move',
+        table: scene.tableView(),
         active: true,
         chatOpen: !args.includes('chatclosed'),
         onToggleChat: noop,

@@ -123,6 +123,13 @@ function drawTriangle<U>(
       w2 /= area;
 
       const z = w0 * a.z + w1 * b.z + w2 * c.z;
+      // Early-Z: an opaque fragment behind what's already in the depth buffer would be
+      // discarded by target.plot() anyway, so skip the (often textured) fragment shader
+      // and the perspective interpolate for it. Behaviour-identical — same `z >= depth`
+      // reject plot() applies — it just runs before the shader instead of after, which
+      // cuts overdraw on stacked geometry (e.g. the deck stock) when drawn front-to-back.
+      // Only opaque: add/alpha must still test-and-blend against nearer opaque geometry.
+      if (blend === 'opaque' && z >= target.depth[y * W + x]) continue;
       const invw = w0 * a.invw + w1 * b.invw + w2 * c.invw;
       const varying = interpolate(a, b, c, w0, w1, w2, invw);
       const out = material.fragment(uniforms, varying);

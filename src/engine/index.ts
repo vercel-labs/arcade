@@ -19,6 +19,8 @@ export { cameraMatrices, type Camera, type CameraMatrices } from './camera.ts';
 export {
   lambertMaterial,
   type LambertUniforms,
+  feltMaterial,
+  type FeltUniforms,
   glassMaterial,
   type GlassUniforms,
   pieceMaterial,

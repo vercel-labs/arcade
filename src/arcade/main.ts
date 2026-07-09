@@ -20,7 +20,7 @@ import { ChessGameScene } from './games/chess/scene.ts';
 import { CardsScene } from './games/poker/cards-scene.ts';
 import { buildPokerRoot, mountPokerHud, pokerMode, setPokerHandlers } from './games/poker/hud.ts';
 import { PokerGameScene } from './games/poker/poker-scene.ts';
-import { buildPokerGameRoot, clearPokerChat, type HeroContext, mountPokerGameHud, pushPokerChat, refreshPokerLog, setPokerGameHandlers } from './games/poker/poker-hud.ts';
+import { buildPokerGameRoot, clearPokerChat, type HeroContext, mountPokerGameHud, pushPokerChat, setPokerGameHandlers } from './games/poker/poker-hud.ts';
 import { PokerMatch } from './match/poker-driver.ts';
 import { buildPokerSetup, mountPokerSetup, pokerSetupSelection } from './match/poker-setup.ts';
 import { LogosScene } from './scenes/logos-scene.ts';
@@ -1210,15 +1210,8 @@ function syncBar(): void {
     popSetup();
     popSwap();
     // Re-mount the poker HUD components (a prior modal root may have dropped their
-    // Slots), refresh the action log, then build the table HUD + bar over the scene.
+    // Slots), then build the WSOP table HUD + bar over the scene.
     mountPokerGameHud(ui);
-    let logRows: readonly string[] = [];
-    try {
-      logRows = pokerScene.isActive() ? pokerScene.state().history() : [];
-    } catch {
-      logRows = [];
-    }
-    refreshPokerLog(logRows);
     const ai = !pokerMatch.isRunning()
       ? { label: 'play', active: false }
       : pokerMatch.isPaused()
@@ -1231,7 +1224,7 @@ function syncBar(): void {
         commentary,
         t,
         status: pokerStatus(),
-        handBoard: pokerScene.heroPanel(),
+        table: pokerScene.tableView(),
         active: pokerScene.isActive(),
         chatOpen: pokerChatOpen,
         onToggleChat: togglePokerChat,

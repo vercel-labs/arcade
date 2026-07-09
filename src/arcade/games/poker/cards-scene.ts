@@ -17,6 +17,7 @@
 import {
   type Camera,
   cameraMatrices,
+  feltMaterial,
   lambertMaterial,
   type Mat4,
   mat4Multiply,
@@ -34,7 +35,7 @@ import { type Card, fullDeck, shuffle } from '../../../rules/poker/cards.ts';
 import { cardBackTexture } from './card-textures.ts';
 import { CARD_SCALE, CARD_W, drawCard, flatDown } from './card-render.ts';
 import { HandPeek } from './card-peek.ts';
-import { chairMesh, chairModel, TABLE_MODEL, TABLE_RADIUS, tableMesh } from './table.ts';
+import { chairMesh, chairModel, FELT_STIPPLE, feltMesh, frameMesh, TABLE_MODEL, TABLE_RADIUS } from './table.ts';
 
 export type CardsMode = 'single' | 'hand' | 'deck';
 
@@ -258,12 +259,9 @@ export class CardsScene {
   // The poker table (felt green, wood brown), felt at y=0. `seats` chairs are
   // placed around the rail facing center — 1 (hero) for hand mode, N for deck.
   private drawTable(target: RenderTarget, vp: Mat4, seats: number[]): void {
-    rasterize(target, tableMesh(), lambertMaterial, {
-      mvp: mat4Multiply(vp, TABLE_MODEL),
-      model: TABLE_MODEL,
-      lightDir: TABLE_LIGHT,
-      ambient: TABLE_AMBIENT,
-    });
+    const tableMvp = mat4Multiply(vp, TABLE_MODEL);
+    rasterize(target, frameMesh(), lambertMaterial, { mvp: tableMvp, model: TABLE_MODEL, lightDir: TABLE_LIGHT, ambient: TABLE_AMBIENT });
+    rasterize(target, feltMesh(), feltMaterial, { mvp: tableMvp, model: TABLE_MODEL, lightDir: TABLE_LIGHT, ambient: TABLE_AMBIENT, ...FELT_STIPPLE });
     const chair = chairMesh();
     for (const a of seats) {
       const model = chairModel(a);

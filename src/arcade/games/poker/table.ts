@@ -12,12 +12,31 @@
 import { readFileSync } from 'node:fs';
 import { flatShade, type Mat4, mat4Multiply, mat4RotY, mat4Scale, mat4Translate, type Mesh, parseObj, type Vec3 } from '../../../engine/index.ts';
 
-// TEMP: felt painted pure black so the ASCII (shape-glyph) present path draws no
-// glyphs on it — a calm, characterless surface that stops the shimmer around the
-// card borders. The brown rail still frames the oval so it reads as a table. Swap
-// back to a (muted) green like { x: 30, y: 110, z: 64 } to restore the felt.
-const FELT_GREEN: Vec3 = { x: 0, y: 0, z: 0 };
+// A very dark green felt: flat and uniformly lit, its base brightness is low
+// enough that the shape-glyph presenter matches it to blank cells (no card-border
+// shimmer), so the surface reads as a calm near-black green. The felt is drawn
+// with `feltMaterial`, which scatters a sparse, surface-locked stipple of faint
+// brighter-green flecks over it — occasional cells catch a fleck and resolve to a
+// low-coverage glyph ('.'/','/'o'), giving the felt texture without the shimmer.
+// (It used to be pure black precisely because a flat green shape-matched to
+// blanks; the stipple is what makes the green legible.) The brown rail frames the
+// oval; it's a separate mesh drawn with plain lambert (no stipple).
+const FELT_GREEN: Vec3 = { x: 12, y: 46, z: 28 };
 const WOOD_BROWN: Vec3 = { x: 132, y: 88, z: 52 };
+
+// Stipple config for the felt's `feltMaterial` (see engine/materials.ts): a sparse
+// scatter of faint brighter-green flecks, keyed to the table's OBJECT space (felt
+// radius ~34.8) so the dots stay fixed to the surface as the overview orbits.
+// Tuned so a handful of cells catch a fleck and resolve to a low-coverage glyph.
+// Exported so every scene drawing this table shares one felt texture; spread it
+// into feltMaterial's uniforms alongside the scene's own lightDir/ambient.
+export const FELT_STIPPLE = {
+  stipple: { x: 40, y: 120, z: 78 } as Vec3, // fleck color (0..255)
+  stippleFreq: 1.2, // ~1.2 lattice cells per object unit
+  stippleDensity: 0.1, // ~10% of cells carry a fleck
+  stippleGain: 1.1, // fleck peak brightness, added over the lit base
+  stippleRadius: 0.27, // fleck disc radius in lattice-cell units (< 0.5)
+};
 
 // Table local-space landmarks (see header) and the scale that maps it into the
 // card world. Cards are ~1.0×1.4; scaling the ~34.8-radius table by 0.13 gives a
@@ -31,26 +50,43 @@ export const FLOOR_Y = -TABLE_FELT_Y * TABLE_SCALE; // felt dropped to y=0 → f
 // Scale the table, then drop it so the felt plane lands on y=0.
 export const TABLE_MODEL: Mat4 = mat4Multiply(mat4Translate(0, -TABLE_FELT_Y * TABLE_SCALE, 0), mat4Scale(TABLE_SCALE, TABLE_SCALE, TABLE_SCALE));
 
-let tableCache: Mesh | null = null;
-export function tableMesh(): Mesh {
-  if (tableCache) return tableCache;
+// The felt plane and the frame (rail/apron/legs) are split into two meshes that
+// SHARE one vertex array (disjoint index lists) so they can take different
+// materials: the felt gets `feltMaterial` (stipple), the frame plain lambert.
+let feltCache: Mesh | null = null;
+let frameCache: Mesh | null = null;
+function buildTable(): void {
   const m = flatShade(parseObj(readFileSync('public/assets/poker/poker-table.obj', 'utf8')));
-  // Color per triangle: the flat, up-facing felt plane (near y≈26) green; every
-  // other face (rail, apron, legs) dark brown.
   const v = m.vertices;
+  const feltIdx: number[] = [];
+  const frameIdx: number[] = [];
+  // Per triangle: the flat, up-facing plane near y≈26 is the felt (green); every
+  // other face (rail, apron, legs) is the frame (dark brown).
   for (let i = 0; i < m.indices.length; i += 3) {
-    const a = v[m.indices[i]];
-    const b = v[m.indices[i + 1]];
-    const c = v[m.indices[i + 2]];
+    const i0 = m.indices[i];
+    const i1 = m.indices[i + 1];
+    const i2 = m.indices[i + 2];
+    const a = v[i0];
+    const b = v[i1];
+    const c = v[i2];
     const yc = (a.position.y + b.position.y + c.position.y) / 3;
     const isFelt = a.normal.y > 0.85 && yc > 25.5 && yc < 26.5;
     const col = isFelt ? FELT_GREEN : WOOD_BROWN;
     a.color = { ...col };
     b.color = { ...col };
     c.color = { ...col };
+    (isFelt ? feltIdx : frameIdx).push(i0, i1, i2);
   }
-  tableCache = m;
-  return m;
+  feltCache = { vertices: v, indices: feltIdx };
+  frameCache = { vertices: v, indices: frameIdx };
+}
+export function feltMesh(): Mesh {
+  if (!feltCache) buildTable();
+  return feltCache!;
+}
+export function frameMesh(): Mesh {
+  if (!frameCache) buildTable();
+  return frameCache!;
 }
 
 // Scaled so the tall backrest (local y up to ~9.7) clears the felt: with the base on

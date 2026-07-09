@@ -13,6 +13,7 @@
 import {
   type Camera,
   cameraMatrices,
+  feltMaterial,
   lambertMaterial,
   type Mat4,
   mat4Multiply,
@@ -39,7 +40,7 @@ import { cardBackTexture } from './card-textures.ts';
 import { CARD_SCALE, CARD_W, drawCard, flatDown, flatUp } from './card-render.ts';
 import { HandPeek } from './card-peek.ts';
 import { DeckShuffle } from './deck-shuffle.ts';
-import { chairMesh, chairModel, TABLE_MODEL, TABLE_RADIUS, tableMesh } from './table.ts';
+import { chairMesh, chairModel, FELT_STIPPLE, feltMesh, frameMesh, TABLE_MODEL, TABLE_RADIUS } from './table.ts';
 
 const FOVY = (46 * Math.PI) / 180;
 const TABLE_LIGHT = normalize3({ x: 0.25, y: 0.9, z: 0.4 });
@@ -106,13 +107,35 @@ export interface PokerSeatView {
   provider?: string;
 }
 
-// The hero info-panel view (top-right HUD): the two hole cards, each with a `seen` flag
-// (peeked/lifted at least once, or forced open at showdown), the community cards, and
-// how many of them have landed on the felt so far. null when no hand is in play.
-export interface HeroPanelView {
-  hand: { card: Card; seen: boolean }[];
+// One seat's row in the WSOP-style table HUD: its identity, the two hole cards (each
+// null when hidden — face-down for opponents you can't see), the last action it took
+// this street ("CHECK" / "RAISE TO 240" / null before it acts), live chip state, and
+// the made-hand name once the board allows (revealed seats only).
+export interface SeatCardView {
+  seat: number;
+  name: string;
+  provider?: string;
+  kind: 'human' | 'ai';
+  cards: (Card | null)[]; // exactly 2; null = hidden / not shown to the viewer
+  folded: boolean;
+  allIn: boolean;
+  stack: number;
+  lastAction: string | null;
+  toAct: boolean; // this seat is the one to act right now
+  isButton: boolean; // holds the dealer button this hand
+  madeHand: string; // e.g. "Two Pair" (only for revealed, unfolded seats post-flop)
+  award: number; // chips won this hand (>0 once the hand is decided)
+}
+
+// The whole-table HUD view: every seat's row plus the shared pot / board. Card
+// visibility is decided in the scene (spectator → all hands; you-playing → only your
+// own seat, plus anyone at showdown). null when no session is running.
+export interface TableView {
+  seats: SeatCardView[];
+  pot: number;
   board: readonly Card[];
   boardShown: number;
+  street: string;
 }
 
 // Text tints for the overlay.
@@ -122,6 +145,25 @@ const GOLD: RGB = [240, 214, 130];
 const WIN: RGB = [150, 226, 150];
 const CHIP_BG: RGB = [12, 16, 20];
 
+// A played action → its short WSOP-style label for the seat's HUD row. Amounts are
+// totals (raise TO, bet amount), matching how HoldemState reads the action.
+function actionLabel(a: PokerAction): string {
+  switch (a.type) {
+    case 'fold':
+      return 'FOLD';
+    case 'check':
+      return 'CHECK';
+    case 'call':
+      return 'CALL';
+    case 'bet':
+      return `BET ${a.amount}`;
+    case 'raise':
+      return `RAISE TO ${a.to}`;
+    case 'allin':
+      return 'ALL IN';
+  }
+}
+
 export class PokerGameScene {
   private cam: OrbitCamera;
   private back: Texture;
@@ -129,6 +171,12 @@ export class PokerGameScene {
   private idleDeck: DeckShuffle;
   private dirty = true;
   private lastT = -1;
+  // The view-projection built by the last renderScene, reused by drawOverlay (same
+  // camera + same effective aspect) so the frame's camera matrices are built once.
+  private overlayVp: Mat4 | null = null;
+  // Reused per-seat award lookup for the overlay, cleared each draw — avoids allocating
+  // a Map every frame a hand is on screen (it's only populated once the hand is terminal).
+  private awardScratch = new Map<number, number>();
 
   private hand: HoldemState | null = null;
   private seats: PokerSeatView[] = [];
@@ -155,6 +203,10 @@ export class PokerGameScene {
   // Cards removed from the deck so far this hand (hole + community) — drives the
   // shrinking centre stack.
   private dealtFromDeck = 0;
+
+  // Each seat's last action this street ("CHECK" / "RAISE TO 240" / null), shown on its
+  // HUD row. Reset every hand; cleared for all seats when a new street begins.
+  private lastAction: (string | null)[] = [];
 
   // A played action lingers so it's watchable; `beat` is a seconds countdown (ticked by
   // dt in renderScene), long enough to cover a street's community deal when one turns.
@@ -217,6 +269,7 @@ export class PokerGameScene {
     this.boardShown = 0;
     this.boardT = -1;
     this.dealtFromDeck = 0;
+    this.lastAction = new Array(state.n).fill(null);
     this.startDeal();
     this.dirty = true;
   }
@@ -280,7 +333,12 @@ export class PokerGameScene {
     if (!this.hand) return Promise.resolve();
     return new Promise<void>((resolve) => {
       const boardBefore = this.hand!.boardCards().length;
+      const seat = this.hand!.toActSeat();
+      const streetBefore = this.hand!.street();
       this.hand!.applyAction(action);
+      // A new betting round clears every seat's shown action; then record this actor's.
+      if (this.hand!.street() !== streetBefore) this.lastAction.fill(null);
+      if (seat >= 0) this.lastAction[seat] = actionLabel(action);
       const newCards = this.hand!.boardCards().length - boardBefore;
       // If this action turned a street (flop/turn/river, or a multi-street all-in runout),
       // hold long enough for the new board card(s) to deal out of the deck — COMMUNITY_STEP
@@ -337,17 +395,50 @@ export class PokerGameScene {
     req?.reject(new Error('aborted'));
   }
 
-  // The data behind the top-right hand/board panel. A hole card reads as "seen" once the
-  // hero has peeked/lifted it (latched by HandPeek), or at showdown; `boardShown` is the
-  // count already dealt onto the felt, so the panel reveals the flop/turn/river in step
-  // with the table animation. Only a human seat 0 ever reveals its own hole cards here.
-  heroPanel(): HeroPanelView | null {
-    if (!this.active || !this.hand) return null;
-    const isHuman = this.seats[0]?.kind === 'human';
-    const shown = new Set(this.hand.showdownSeats());
-    const hole = this.hand.holeOf(0);
-    const hand = hole.map((card, i) => ({ card, seen: isHuman && (this.heroPeek.seen(i) || shown.has(0)) }));
-    return { hand, board: this.hand.boardCards(), boardShown: this.boardShown };
+  // The data behind the WSOP-style table HUD (per-seat rows + the shared pot/board).
+  // Card visibility: SPECTATE (no human at the table) reveals every hand; otherwise only
+  // the human's own seat is shown, plus anyone forced open at a real showdown. `boardShown`
+  // tracks the flop/turn/river landing on the felt so the board strip reveals in step with
+  // the table animation. null when no session is running.
+  tableView(): TableView | null {
+    if (!this.active) return null;
+    const hand = this.hand;
+    const spectator = !this.seats.some((s) => s.kind === 'human');
+    const shown = hand ? new Set(hand.showdownSeats()) : new Set<number>();
+    const button = hand?.button ?? -1;
+    const toAct = hand ? hand.toActSeat() : -1;
+    const awards = new Map<number, number>();
+    if (hand) for (const a of hand.awards()) awards.set(a.seat, (awards.get(a.seat) ?? 0) + a.amount);
+
+    const seats: SeatCardView[] = this.seats.map((s, i) => {
+      const isSelf = s.kind === 'human';
+      const revealed = !!hand && (spectator || isSelf || shown.has(i));
+      const hole = hand ? hand.holeOf(i) : [];
+      const cards: (Card | null)[] = revealed ? [hole[0] ?? null, hole[1] ?? null] : [null, null];
+      const folded = hand ? hand.isFolded(i) : false;
+      return {
+        seat: i,
+        name: s.label,
+        provider: s.provider,
+        kind: s.kind,
+        cards,
+        folded,
+        allIn: hand ? hand.isAllIn(i) : false,
+        stack: hand ? hand.stackOf(i) : 0,
+        lastAction: this.lastAction[i] ?? null,
+        toAct: i === toAct,
+        isButton: i === button,
+        madeHand: revealed && !folded && hand ? hand.handName(i) : '',
+        award: awards.get(i) ?? 0,
+      };
+    });
+    return {
+      seats,
+      pot: hand ? hand.potTotal() : 0,
+      board: hand ? hand.boardCards() : [],
+      boardShown: this.boardShown,
+      street: hand ? hand.streetName() : '',
+    };
   }
 
   // ── Camera passthrough ─────────────────────────────────────────────────────────
@@ -425,9 +516,13 @@ export class PokerGameScene {
     const eye = this.cam.eye();
     const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 200 };
     const { viewProjection: vp } = cameraMatrices(camera, target.width / target.height);
+    this.overlayVp = vp; // drawOverlay (same frame) reuses this instead of rebuilding it
 
     // Table + chairs: one per seat during a session, else a default idle ring.
-    rasterize(target, tableMesh(), lambertMaterial, { mvp: mat4Multiply(vp, TABLE_MODEL), model: TABLE_MODEL, lightDir: TABLE_LIGHT, ambient: TABLE_AMBIENT });
+    // Frame (rail/apron/legs) is plain matte; the felt gets the stipple material.
+    const tableMvp = mat4Multiply(vp, TABLE_MODEL);
+    rasterize(target, frameMesh(), lambertMaterial, { mvp: tableMvp, model: TABLE_MODEL, lightDir: TABLE_LIGHT, ambient: TABLE_AMBIENT });
+    rasterize(target, feltMesh(), feltMaterial, { mvp: tableMvp, model: TABLE_MODEL, lightDir: TABLE_LIGHT, ambient: TABLE_AMBIENT, ...FELT_STIPPLE });
     const chair = chairMesh();
     if (this.isIdle()) {
       // Idle state: a ring of chairs around a centre deck shuffling on a loop.
@@ -514,9 +609,13 @@ export class PokerGameScene {
   }
 
   // The persistent stock at the centre-back of the felt (shrinks as cards are dealt).
+  // Drawn top-down (nearest card first) so the rasterizer's early-Z rejects the
+  // occluded interior of the lower backs instead of shading them — the stock is a tall
+  // stack of near-coincident quads, almost all overdraw. Opaque + depth-tested, so the
+  // draw order doesn't change the final image (nearest wins regardless).
   private drawDeck(target: RenderTarget, vp: Mat4): void {
     const rem = this.deckRemaining();
-    for (let i = 0; i < rem; i++) {
+    for (let i = rem - 1; i >= 0; i--) {
       const M = mat4Multiply(mat4Translate(DECK_POS.x, i * DECK_THICK + CARD_LIFT, DECK_POS.z), flatDown());
       drawCard(target, vp, M, DEAL_CARD, this.back);
     }
@@ -569,18 +668,18 @@ export class PokerGameScene {
   }
 
   private drawHoleCards(target: RenderTarget, vp: Mat4, hand: HoldemState): void {
-    const reveal = new Set(hand.showdownSeats());
+    const reveal = hand.showdownSeats(); // small array (≤ seats) — membership via includes, no per-frame Set
     // The human hero peeks its own cards (shared HandPeek) during play; at showdown they
     // flip up flat like everyone else's. An AI seat 0 stays hidden until showdown.
     const heroPeek = this.seats[0]?.kind === 'human';
     for (let s = 0; s < this.seats.length; s++) {
       if (hand.isFolded(s)) continue;
       const hole = hand.holeOf(s);
-      if (s === 0 && heroPeek && !reveal.has(0)) {
+      if (s === 0 && heroPeek && !reveal.includes(0)) {
         this.heroPeek.draw(target, vp, this.cam.azimuth, this.back);
         continue;
       }
-      const faceUp = reveal.has(s); // every other seat (and the hero at showdown) reveals here
+      const faceUp = reveal.includes(s); // every other seat (and the hero at showdown) reveals here
       const a = this.seatAngle(s);
       const c = this.seatPos(s, HOLE_R);
       // Two cards, offset along the seat's tangent (perpendicular to the radial).
@@ -613,17 +712,24 @@ export class PokerGameScene {
   drawOverlay(surf: Surface, cols: number, rows: number): void {
     const hand = this.hand;
     if (!hand) return;
-    const eye = this.cam.eye();
-    const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 200 };
-    // A cell is two stacked half-block pixels → aspect halves the row count.
-    const { viewProjection: vp } = cameraMatrices(camera, cols / (2 * rows));
+    // Reuse the view-projection renderScene built this frame: the same camera, and the
+    // 3D target's aspect (cols·SS)/(rows·2·SS) reduces to cols/(2·rows), so it's the
+    // identical matrix. Fall back to building it if drawOverlay ever runs without a
+    // preceding renderScene (e.g. a forced repaint before the first render).
+    let vp = this.overlayVp;
+    if (!vp) {
+      const eye = this.cam.eye();
+      const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 200 };
+      vp = cameraMatrices(camera, cols / (2 * rows)).viewProjection;
+    }
 
     // Pot, centered above the board.
     const potCell = this.project(vp, { x: 0, y: 0.1, z: -1.4 }, cols, rows);
     if (potCell) this.centerLabel(surf, potCell.x, potCell.y, `pot ${hand.potTotal()}`, GOLD, cols);
 
     const toAct = hand.toActSeat();
-    const awardBy = new Map<number, number>();
+    const awardBy = this.awardScratch;
+    awardBy.clear();
     if (hand.isTerminal()) for (const a of hand.awards()) awardBy.set(a.seat, (awardBy.get(a.seat) ?? 0) + a.amount);
 
     for (let s = 0; s < this.seats.length; s++) {

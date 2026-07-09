@@ -1,19 +1,18 @@
-// The poker game HUD: a small info panel (pot + action log) top-left, a commentary
-// toast above the bar, and — on the hero's turn — the betting controls (Fold /
-// Check|Call, a raise-amount Slider with Bet/Raise + All-in). Mirrors the chess HUD
-// (games/chess/hud.ts): persistent component instances mounted via Slot, rebuilt
-// into a full-screen tree each frame. main owns the scene + driver and wires the
-// handlers; this module owns the controls and maps the slider to a chip amount.
+// The poker game HUD: a WSOP-style broadcast overlay — a gold pot pill top-left, a
+// stacked player strip per seat bottom-left ([cards] · name over last action · made
+// hand), and a community-board strip bottom-right. On the hero's turn it also shows
+// the betting controls (Fold / Check|Call, a raise-amount Slider with Bet/Raise +
+// All-in). Mirrors the chess HUD (games/chess/hud.ts): persistent component instances
+// mounted via Slot, rebuilt into a full-screen tree each frame. main owns the scene +
+// driver and wires the handlers; this module owns the controls + the table furniture.
 
-import { Box, Button, type Row, ScrollBox, Slider, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
+import { Box, Button, Slider, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
 import type { RGB } from '../../../engine/index.ts';
 import { type Card, isRed, RANK_LABELS } from '../../../rules/poker/cards.ts';
-import type { HeroPanelView } from './poker-scene.ts';
+import type { SeatCardView, TableView } from './poker-scene.ts';
+import { providerTint } from '../../scenes/wisp.ts';
 import { ChatBox, type ChatMessage, CHAT_WIDTH, PANEL_PAD_L, PANEL_PAD_R } from '../chess/chat.ts';
 import { shortModel } from '../chess/hud.ts';
-
-const LOG_WIDTH = 30;
-const LOG_HEIGHT = 14;
 
 // The hero's decision context for this frame (from the live HoldemState). When
 // `toAct` is false the betting controls are hidden.
@@ -47,7 +46,6 @@ export function setPokerGameHandlers(h: PokerGameHandlers): void {
 }
 
 export const betSlider = new Slider({ id: 'poker-bet', width: 24, value: 0.5, step: 0.02, onChange: () => H?.onSliderChange() });
-export const actionLog = new ScrollBox({ id: 'poker-log', width: LOG_WIDTH, height: LOG_HEIGHT, rows: [], autoHeight: true });
 // The chat thread (reuses the chess ChatBox with its own Slot id; same default empty-state
 // hint as chess). Each AI's pre-move line is pushed here as in-character table talk that
 // never reveals its hole cards.
@@ -55,7 +53,6 @@ const pokerChat = new ChatBox('poker-chat');
 
 export function mountPokerGameHud(ui: Screen): void {
   ui.mount(betSlider);
-  ui.mount(actionLog);
   ui.mount(pokerChat);
 }
 
@@ -75,17 +72,6 @@ export function sliderAmount(hero: HeroContext): number {
   const step = 10; // round to the small blind
   const snapped = Math.round(raw / step) * step;
   return Math.max(hero.minRaiseTo, Math.min(hero.maxRaiseTo, snapped));
-}
-
-// Action-history strings → log rows, then refresh the panel (auto-following the tail
-// only when already scrolled to the bottom, like the chess move panel).
-export function refreshPokerLog(entries: readonly string[]): void {
-  const rows: Row[] = entries.map((e) => Box({ width: LOG_WIDTH }, [Text({ text: e, style: { color: 'fg' } })]));
-  const prevMax = Math.max(0, actionLog.rows.length - LOG_HEIGHT);
-  const atBottom = actionLog.scroll >= prevMax;
-  actionLog.rows = rows;
-  const newMax = Math.max(0, rows.length - LOG_HEIGHT);
-  actionLog.scroll = atBottom ? newMax : Math.min(actionLog.scroll, newMax);
 }
 
 const BTN: Style = {
@@ -129,15 +115,15 @@ function bettingControls(hero: HeroContext): Node {
   return Box({ flexDirection: 'column', gap: 1, padding: [1, 2], background: [16, 18, 26, 0.92] }, rows);
 }
 
-// ── Right rail: table-talk chat (top) + your hand/board (bottom-right) ──────────────
+// ── Right rail: table-talk chat (top) + the community board (bottom-right) ──────────
 // A full-height column pinned to the right edge (like the chess chat rail). The table-
-// talk thread fills the top; the hand/board panel sits in the bottom-right corner, always
-// present while a hand is in play. Hole cards read ?? until the hero peeks them (then rank
-// + suit icon), board slots read ? until the flop/turn/river deals them.
-const RAIL_W = CHAT_WIDTH; // rail width = chat width, so the hand panel lines up beneath it
+// talk thread fills the top; the community-board strip sits in the bottom-right corner
+// (the WSOP reference's board position), always present while a session runs. Board
+// slots read ♠ (a face-down emblem back) until the flop/turn/river deals them.
+const RAIL_W = CHAT_WIDTH; // rail width = chat width, so the board strip lines up beneath it
 const CHAT_PAD_V = 1; // chat panel top/bottom inset
 const CHAT_HEADER_H = 2; // header row + a gap row
-const HAND_PANEL_H = 7; // title + You row + Board row + 2 gaps + [1] top/bottom padding
+const BOARD_PANEL_H = 5; // "Board" title + the card row + [1] top/bottom padding + a gap
 
 const SUIT_ICON = ['♠', '♥', '♦', '♣'] as const; // indexed by Suit (spades, hearts, diamonds, clubs)
 const CARD_FACE: RGB = [230, 230, 236]; // light card stock
@@ -145,18 +131,18 @@ const CARD_RED: RGB = [196, 30, 40]; // ♥ / ♦
 const CARD_BLACK: RGB = [20, 20, 28]; // ♠ / ♣
 const CELL_DOWN: RGB = [44, 46, 56]; // face-down / undealt slot
 const CELL_DOWN_FG: RGB = [126, 130, 148];
-const ROW_LABEL_W = 6; // fixed so the "You"/"Board" rows' cells line up
+
+// Thousands separators for chip amounts (POT 1,240) — a tiny formatter, locale-free.
+const withCommas = (n: number): string => n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
 // One mini-card cell: light stock with rank + suit icon (red for ♥/♦), or a muted slate
-// placeholder (`??` for an un-peeked hole card, `?` for an undealt board slot). Ten is
+// placeholder (`??` for a hidden hole card, `♠` for an undealt board slot). Ten is
 // rendered "T" (poker shorthand) so every card is exactly two chars → a tidy fixed grid.
 function cardCell(card: Card | null, placeholder: string): Node {
   if (!card) return Box({ padding: [0, 1], background: CELL_DOWN }, [Text({ text: placeholder, style: { color: CELL_DOWN_FG, bold: true } })]);
   const rank = RANK_LABELS[card.rank] === '10' ? 'T' : RANK_LABELS[card.rank];
   return Box({ padding: [0, 1], background: CARD_FACE }, [Text({ text: `${rank}${SUIT_ICON[card.suit]}`, style: { color: isRed(card) ? CARD_RED : CARD_BLACK, bold: true } })]);
 }
-
-const rowLabel = (t: string): Node => Box({ width: ROW_LABEL_W }, [Text({ text: t, style: { color: 'muted' } })]);
 
 // The chat ✕ (collapse) and the reopen pill, mirroring the chess chat affordances.
 const CHAT_CLOSE: Style = {
@@ -176,20 +162,66 @@ const CHAT_PILL: Style = {
   pressed: { background: [120, 124, 142], color: [12, 12, 18] },
 };
 
-// The hand/board card pinned to the bottom-right (rail-width so it lines up under the
-// chat): a "Your hand" title, the hole-card row, and the five board slots. ALWAYS shown
-// in poker mode — before a hand is dealt it's all placeholders (?? hole cards, ? board),
-// so "your hand" is a permanent fixture rather than appearing only mid-hand.
-function handBoardPanel(v: HeroPanelView | null): Node {
-  const hand = v?.hand ?? [];
+// ── Pot pill (top-left) ────────────────────────────────────────────────────────────
+const POT_BG: RGB = [150, 116, 40]; // WSOP gold
+const POT_FG: RGB = [24, 18, 6]; // dark ink on the gold pill
+// The gold pot pill: a spade emblem + "POT  1,240", with the blinds as a muted line
+// beneath. Mirrors the reference's top-left pot readout.
+function potPill(pot: number, blinds: string): Node {
+  return Box({ flexDirection: 'column', gap: 0 }, [
+    Box({ padding: [0, 2], background: POT_BG }, [Text({ text: `♠ POT  ${withCommas(pot)}`, style: { color: POT_FG, bold: true } })]),
+    Box({ padding: [0, 1] }, [Text({ text: `blinds ${blinds}`, style: { color: 'muted' } })]),
+  ]);
+}
+
+// ── Player strips (bottom-left) ──────────────────────────────────────────────────
+const NAME_W = 18; // fixed name/action column so every strip aligns
+const NAME_DEFAULT: RGB = [224, 226, 236];
+const ACTION_FG: RGB = [232, 214, 150]; // warm "last action" text
+const MADE_FG: RGB = [176, 182, 200]; // the made-hand stat on the right
+const WIN_FG: RGB = [150, 226, 150]; // "WON n" at showdown
+const DIM_FG: RGB = [116, 120, 136]; // folded seats
+
+function seatTint(provider?: string): RGB {
+  if (!provider) return NAME_DEFAULT;
+  const t = providerTint(provider);
+  return [t.x | 0, t.y | 0, t.z | 0];
+}
+
+// One player strip, WSOP-structured: the two hole cards on the left (hidden → ??), then a
+// name-over-action column, then the made-hand on the right. The seat to act gets a lit
+// background + a ▸ marker; folded seats dim; the dealer seat is tagged Ⓓ.
+function playerStrip(s: SeatCardView): Node {
+  const marker = Text({ text: s.toAct ? '▸' : ' ', style: { color: s.toAct ? ACTION_FG : 'muted', bold: true } });
+  const cells = [0, 1].map((i) => cardCell(s.cards[i] ?? null, '??'));
+  const nameRow = Box({ flexDirection: 'row', gap: 0 }, [
+    Text({ text: s.name, style: { color: s.folded ? DIM_FG : seatTint(s.provider), bold: true } }),
+    ...(s.isButton ? [Text({ text: ' Ⓓ', style: { color: 'muted', bold: true } })] : []),
+  ]);
+  const actionText = s.award > 0 ? `WON ${withCommas(s.award)}` : s.allIn ? 'ALL IN' : (s.lastAction ?? '');
+  const actionColor = s.award > 0 ? WIN_FG : s.folded ? DIM_FG : ACTION_FG;
+  const col = Box({ flexDirection: 'column', gap: 0, width: NAME_W }, [nameRow, Text({ text: actionText, style: { color: actionColor, bold: s.award > 0 } })]);
+  const made = s.madeHand ? [Text({ text: s.madeHand, style: { color: MADE_FG } })] : [];
+  const bg: [number, number, number, number] = s.toAct ? [46, 52, 72, 0.96] : [22, 24, 32, 0.9];
+  return Box({ flexDirection: 'row', gap: 1, alignItems: 'center', padding: [0, 1], background: bg }, [marker, ...cells, col, ...made]);
+}
+
+// The stacked strips, one per seat (seat order, top to bottom).
+function playerStrips(seats: readonly SeatCardView[]): Node {
+  return Box({ flexDirection: 'column', gap: 1 }, seats.map(playerStrip));
+}
+
+// ── Board strip (bottom-right) ───────────────────────────────────────────────────
+// The five community cards, rail-width so it lines up under the chat. Undealt slots read
+// ♠ (a face-down emblem back) and reveal in step with the felt as the streets deal out.
+function boardStrip(v: TableView | null): Node {
   const board = v?.board ?? [];
   const shown = v?.boardShown ?? 0;
-  const handCells = [0, 1].map((i) => cardCell(hand[i]?.seen ? hand[i].card : null, '??'));
-  const boardCells = Array.from({ length: 5 }, (_, i) => cardCell(i < shown && i < board.length ? board[i] : null, '?'));
-  const title = Text({ text: 'Your hand', style: { color: [222, 224, 234], bold: true } });
-  const you = Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [rowLabel('You'), ...handCells]);
-  const board2 = Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [rowLabel('Board'), ...boardCells]);
-  return Box({ flexDirection: 'column', gap: 1, width: RAIL_W, padding: [1, 2], background: [22, 24, 32, 0.92] }, [title, you, board2]);
+  const cells = Array.from({ length: 5 }, (_, i) => cardCell(i < shown && i < board.length ? board[i] : null, '♠'));
+  return Box({ flexDirection: 'column', gap: 1, width: RAIL_W, padding: [1, 2], background: [22, 24, 32, 0.92] }, [
+    Text({ text: 'Board', style: { color: [222, 224, 234], bold: true } }),
+    Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, cells),
+  ]);
 }
 
 const DIVIDER: RGB = [70, 74, 90]; // the rule between the chat panel and the hand panel
@@ -217,23 +249,24 @@ function chatPanel(height: number, active: boolean, onToggle: () => void): Node 
 const chatOpener = (onToggle: () => void): Node =>
   Box({ flexDirection: 'row', justifyContent: 'end', width: RAIL_W, padding: [CHAT_PAD_V, 2, 0, 0] }, [Button({ id: 'poker-chat-open', label: '💬 chat', onClick: onToggle, style: CHAT_PILL })]);
 
-// The right rail: the chat (or, collapsed, its reopen pill) on top, the hand panel ALWAYS
-// pinned to the bottom-right. The hand is a permanent fixture; the chat is the collapsible
-// one. When expanded, a one-line rule separates the chat from the hand section below.
-function buildRightRail(height: number, handBoard: HeroPanelView | null, chatOpen: boolean, active: boolean, onToggleChat: () => void): Node {
-  const hand = handBoardPanel(handBoard);
+// The right rail: the chat (or, collapsed, its reopen pill) on top, the community board
+// strip ALWAYS pinned to the bottom-right. The board is a permanent fixture; the chat is
+// the collapsible one. When expanded, a one-line rule separates the chat from the board.
+function buildRightRail(height: number, table: TableView | null, chatOpen: boolean, active: boolean, onToggleChat: () => void): Node {
+  const board = boardStrip(table);
   if (!chatOpen) {
-    const top = Box({ flexDirection: 'column', width: RAIL_W, height: Math.max(1, height - HAND_PANEL_H) }, [chatOpener(onToggleChat)]);
-    return Box({ flexDirection: 'column', width: RAIL_W, height, flexShrink: 0 }, [top, hand]);
+    const top = Box({ flexDirection: 'column', width: RAIL_W, height: Math.max(1, height - BOARD_PANEL_H) }, [chatOpener(onToggleChat)]);
+    return Box({ flexDirection: 'column', width: RAIL_W, height, flexShrink: 0 }, [top, board]);
   }
-  const topH = Math.max(1, height - HAND_PANEL_H - 1); // -1 for the divider row
+  const topH = Math.max(1, height - BOARD_PANEL_H - 1); // -1 for the divider row
   const divider = Box({ width: RAIL_W, height: 1 }, [Text({ text: '─'.repeat(RAIL_W), style: { color: DIVIDER } })]);
-  return Box({ flexDirection: 'column', width: RAIL_W, height, flexShrink: 0 }, [chatPanel(topH, active, onToggleChat), divider, hand]);
+  return Box({ flexDirection: 'column', width: RAIL_W, height, flexShrink: 0 }, [chatPanel(topH, active, onToggleChat), divider, board]);
 }
 
-// Build the full-screen poker overlay: a left/main column (info panel top-left, commentary
-// toast + betting controls above the bar) beside a full-height right rail (table-talk chat
-// on top, the hand/board panel bottom-right). `bar` is buildBar('poker', …) from main.
+// Build the full-screen poker overlay, WSOP-style: the pot pill top-left and the stacked
+// player strips bottom-left (with the commentary toast + betting controls above the bar),
+// beside a full-height right rail (table-talk chat on top, the community board bottom-
+// right). `bar` is buildBar('poker', …) from main.
 export function buildPokerGameRoot(
   region: LayoutBox,
   bar: Node,
@@ -243,19 +276,14 @@ export function buildPokerGameRoot(
     commentary: PokerCommentary | null;
     t: number;
     status: string;
-    handBoard: HeroPanelView | null; // the hero's hand/board, or null when no hand is in play
+    table: TableView | null; // every seat's row + pot/board, or null when no session is running
     active: boolean; // a session is running (suppresses the chat's empty placeholder)
     chatOpen: boolean; // table-talk panel expanded vs. collapsed to its reopen pill
     onToggleChat: () => void;
   },
 ): Node {
-  const panel = Box({ flexDirection: 'column', gap: 0, padding: [0, 1], background: [22, 24, 32, 0.9] }, [
-    Box({ flexDirection: 'row', justifyContent: 'between', width: LOG_WIDTH }, [
-      Text({ text: `Pot ${opts.hero.pot}`, style: { color: [240, 214, 130], bold: true } }),
-      Text({ text: `blinds ${opts.blinds}`, style: { color: 'muted' } }),
-    ]),
-    Slot('poker-log'),
-  ]);
+  const pot = opts.table ? potPill(opts.table.pot, opts.blinds) : null;
+  const strips = opts.table && opts.table.seats.length ? playerStrips(opts.table.seats) : null;
 
   const c = opts.commentary && opts.t < opts.commentary.until ? opts.commentary : null;
   const label = c ? (c.model ? `${shortModel(c.model)}:  ${c.text}` : c.text) : opts.status;
@@ -267,17 +295,19 @@ export function buildPokerGameRoot(
 
   // The main column takes the width left of the rail (flexGrow); the bar lives here, so it
   // spans only the main column — the rail is clear of it, exactly like the chess layout.
+  // Pot pill pinned top-left; player strips + toast + controls stack up from the bar.
   const main = Box({ flexGrow: 1, flexDirection: 'column', height: region.h }, [
-    Box({ flexDirection: 'row', justifyContent: 'start', padding: [1, 0, 0, 2] }, [panel]),
+    ...(pot ? [Box({ flexDirection: 'row', justifyContent: 'start', padding: [1, 0, 0, 2] }, [pot])] : []),
     Box({ flexGrow: 1 }),
+    ...(strips ? [Box({ flexDirection: 'row', justifyContent: 'start', padding: [0, 0, 1, 2] }, [strips])] : []),
     ...(toast ? [Box({ flexDirection: 'row', justifyContent: 'start', padding: [0, 0, 1, 2] }, [toast])] : []),
     ...(controls ? [Box({ flexDirection: 'row', justifyContent: 'start', padding: [0, 0, 1, 2] }, [controls])] : []),
     bar,
     Box({ height: 1 }),
   ]);
 
-  // The right rail (chat + hand) only exists once a session is running — before a match
-  // starts there's no chat and no hand, so the main column takes the full width.
-  const rail = opts.active ? [buildRightRail(region.h, opts.handBoard, opts.chatOpen, opts.active, opts.onToggleChat)] : [];
+  // The right rail (chat + board) only exists once a session is running — before a match
+  // starts there's no chat and no board, so the main column takes the full width.
+  const rail = opts.active ? [buildRightRail(region.h, opts.table, opts.chatOpen, opts.active, opts.onToggleChat)] : [];
   return Box({ width: region.w, height: region.h, flexDirection: 'row' }, [main, ...rail]);
 }

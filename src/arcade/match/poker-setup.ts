@@ -66,9 +66,12 @@ function makeSide(idPrefix: string, defaultProvider: string, defaultModelId: str
   return side;
 }
 
-// Default opponents, pre-committed so Start is enabled immediately (demo-friendly);
-// re-pick any provider/model to change them.
+// Per-seat model configs, pre-committed so Start is enabled immediately (demo-friendly);
+// re-pick any provider/model to change them. Index 0 is seat 1's config — used only in
+// SPECTATE mode (where seat 1 is an AI too); in HERO mode you play seat 1 and indices
+// 1..MAX_OPP are your opponents (seats 2..6).
 const DEFAULT_MODELS = [
+  ['google', 'google/gemini-2.5-flash'],
   ['anthropic', 'anthropic/claude-haiku-4.5'],
   ['openai', 'openai/gpt-5.4-nano'],
   ['google', 'google/gemini-2.5-flash'],
@@ -77,7 +80,7 @@ const DEFAULT_MODELS = [
 ] as const;
 const sides: AiSide[] = DEFAULT_MODELS.map(([prov, model], i) => makeSide(`poker-opp${i}`, prov, model));
 
-// How many opponents are shown (1..MAX_OPP).
+// How many opponents (seats besides seat 1): 1..MAX_OPP → a 2..6 seat table.
 const countDropdown = new Dropdown({
   id: 'poker-oppcount',
   items: Array.from({ length: MAX_OPP }, (_, i) => String(i + 1)),
@@ -88,25 +91,48 @@ function oppCount(): number {
   return (countDropdown.index < 0 ? 0 : countDropdown.index) + 1;
 }
 
+// Hero (you play seat 1) vs. Spectate (all AI — seat 1 is a model too, and every hand
+// is visible). Drives whether seat 1 gets its own model column.
+const modeDropdown = new Dropdown({
+  id: 'poker-setup-mode',
+  items: ['You play', 'Spectate (AI vs AI)'],
+  width: 20,
+  index: 0,
+});
+function spectating(): boolean {
+  return modeDropdown.index === 1;
+}
+
+// The AI-config indices shown as columns: opponents 1..oppCount always, plus seat 1's
+// config (index 0) when spectating.
+function shownIndices(): number[] {
+  const idx: number[] = [];
+  if (spectating()) idx.push(0);
+  for (let i = 1; i <= oppCount(); i++) idx.push(i);
+  return idx;
+}
+
 export function mountPokerSetup(ui: Screen): void {
   ui.mount(countDropdown);
+  ui.mount(modeDropdown);
   for (const s of sides) {
     ui.mount(s.providerDropdown);
     ui.mount(s.modelDropdown);
   }
 }
 
-// Ready when every shown opponent has a committed model.
+// Ready when every shown seat's config has a committed model.
 export function pokerSetupReady(): boolean {
-  return sides.slice(0, oppCount()).every((s) => s.modelId !== null);
+  return shownIndices().every((i) => sides[i].modelId !== null);
 }
 
-// The chosen seats: the human hero (seat 0) + each shown opponent's model, or null
-// if any shown opponent lacks a model.
+// The chosen seats. HERO: seat 1 is the human, seats 2..N are the shown opponents.
+// SPECTATE: every seat is an AI (seat 1 uses index 0's config). null if any shown
+// config lacks a model.
 export function pokerSetupSelection(): PokerSeatSpec[] | null {
   if (!pokerSetupReady()) return null;
-  const seats: PokerSeatSpec[] = [{ kind: 'human' }];
-  for (const s of sides.slice(0, oppCount())) seats.push({ kind: 'ai', model: s.modelId! });
+  const seats: PokerSeatSpec[] = [spectating() ? { kind: 'ai', model: sides[0].modelId! } : { kind: 'human' }];
+  for (let i = 1; i <= oppCount(); i++) seats.push({ kind: 'ai', model: sides[i].modelId! });
   return seats;
 }
 
@@ -134,7 +160,8 @@ function brandTint(side: AiSide): RGB {
   return [t.x | 0, t.y | 0, t.z | 0];
 }
 
-// One opponent column: a title tinted in the provider's brand hue + the two pickers.
+// One seat's column: a "Seat N" title tinted in the provider's brand hue + the two
+// pickers. `seatNo` is the 1-based table seat this config fills.
 function column(side: AiSide, seatNo: number): Node {
   side.providerDropdown.setAccent(brandTint(side));
   return Box({ flexDirection: 'column', gap: 0, width: MODEL_W }, [
@@ -147,23 +174,30 @@ function column(side: AiSide, seatNo: number): Node {
   ]);
 }
 
-// Build the centered poker setup modal. Opponents beyond the chosen count keep their
+// Build the centered poker setup modal. Seat configs not currently shown keep their
 // dropdown Slots mounted (hidden in a 0×0 box) so the Screen doesn't unmount them.
 export function buildPokerSetup(_region: LayoutBox, opts: { onStart: () => void; onCancel: () => void }): Node {
-  const count = oppCount();
   const ready = pokerSetupReady();
   const start = Button({ id: 'poker-start', label: 'Start game', onClick: ready ? opts.onStart : undefined, style: ready ? START_ON : START_OFF });
   const cancel = Button({ id: 'poker-cancel', label: 'Cancel', onClick: opts.onCancel, style: CANCEL });
 
-  const shown = sides.slice(0, count).map((s, i) => column(s, i + 1));
-  const hidden = sides.slice(count).map((s) => Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot(s.providerDropdown.id), Slot(s.modelDropdown.id)]));
+  const shownIdx = shownIndices();
+  const shownSet = new Set(shownIdx);
+  const shown = shownIdx.map((i) => column(sides[i], i + 1)); // config i fills table seat i+1
+  const hidden = sides
+    .map((s, i) => ({ s, i }))
+    .filter(({ i }) => !shownSet.has(i))
+    .map(({ s }) => Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot(s.providerDropdown.id), Slot(s.modelDropdown.id)]));
 
+  const seatHint = spectating() ? 'All seats are AI' : 'You play seat 1';
   const card = Box({ flexDirection: 'column', gap: 1, padding: [1, 3], background: [22, 24, 32] }, [
     Box({ justifyContent: 'center' }, [Text({ text: 'New poker match', style: { color: [222, 224, 234], bold: true } })]),
     Box({ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 2 }, [
+      Text({ text: 'Mode', style: { color: 'muted' } }),
+      Slot('poker-setup-mode'),
       Text({ text: 'Opponents', style: { color: 'muted' } }),
       Slot('poker-oppcount'),
-      Text({ text: 'You play seat 1', style: { color: 'muted' } }),
+      Text({ text: seatHint, style: { color: 'muted' } }),
     ]),
     Box({ flexDirection: 'row', gap: 3, alignItems: 'start', justifyContent: 'center' }, [...shown, ...hidden]),
     Box({ flexDirection: 'row', justifyContent: 'center', gap: 2 }, [start, cancel]),
