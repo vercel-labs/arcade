@@ -180,8 +180,11 @@ const NAME_DEFAULT: RGB = [224, 226, 236];
 const CHIP_FG: RGB = [236, 238, 246]; // chip count
 const ACTION_FG: RGB = [232, 214, 150]; // warm "last action" text
 const MADE_FG: RGB = [176, 182, 200]; // the made-hand shown at the end
-const WIN_FG: RGB = [150, 226, 150]; // the winner's made-hand at showdown
 const DIM_FG: RGB = [116, 120, 136]; // folded seats
+// The winner's strip goes gold (matching the pot pill) with dark ink, so at the end of a
+// hand the eye lands on who won while the revealed state lingers before the reshuffle.
+const WIN_BG: RGB = [150, 116, 40];
+const WIN_INK: RGB = [26, 20, 6];
 
 function seatTint(provider?: string): RGB {
   if (!provider) return NAME_DEFAULT;
@@ -195,21 +198,23 @@ function seatTint(provider?: string): RGB {
 // action DURING play, switching to the made-hand once the hand is over (comparing who
 // won). The seat to act gets a lit background; folded seats dim.
 function playerStrip(s: SeatCardView, ended: boolean): Node {
+  const win = ended && s.award > 0; // the hand is over and this seat took (a share of) the pot
   const left = Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [
-    Text({ text: s.name, style: { color: s.folded ? DIM_FG : seatTint(s.provider), bold: true } }),
-    Text({ text: withCommas(s.stack), style: { color: s.folded ? DIM_FG : CHIP_FG, bold: true } }),
+    Text({ text: s.name, style: { color: win ? WIN_INK : s.folded ? DIM_FG : seatTint(s.provider), bold: true } }),
+    Text({ text: withCommas(s.stack), style: { color: win ? WIN_INK : s.folded ? DIM_FG : CHIP_FG, bold: true } }),
   ]);
-  const badge = Text({ text: s.pos, style: { color: 'muted', bold: true } });
+  const badge = Text({ text: s.pos, style: { color: win ? WIN_INK : 'muted', bold: true } });
   const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', width: STRIP_W }, [left, badge]);
 
   const cells = [0, 1].map((i) => cardCell(s.cards[i] ?? null, '??'));
   // A single info field: the action while the hand plays, the made-hand once it ends.
   const text = ended ? s.madeHand : s.allIn ? 'ALL IN' : (s.lastAction ?? '');
-  const color = ended ? (s.award > 0 ? WIN_FG : s.folded ? DIM_FG : MADE_FG) : s.folded ? DIM_FG : ACTION_FG;
-  const info = text ? [Text({ text, style: { color, bold: ended && s.award > 0 } })] : [];
+  const color = win ? WIN_INK : ended ? (s.folded ? DIM_FG : MADE_FG) : s.folded ? DIM_FG : ACTION_FG;
+  const info = text ? [Text({ text, style: { color, bold: win } })] : [];
   const cardRow = Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [...cells, ...info]);
 
-  const bg: [number, number, number, number] = s.toAct ? [46, 52, 72, 0.96] : [22, 24, 32, 0.9];
+  // Winner → gold; the seat to act → lit; everyone else → the base slate.
+  const bg: [number, number, number, number] = win ? [...WIN_BG, 1] : s.toAct ? [46, 52, 72, 0.96] : [22, 24, 32, 0.9];
   return Box({ flexDirection: 'column', gap: 0, padding: [0, 1], background: bg }, [header, cardRow]);
 }
 

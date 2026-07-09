@@ -19,7 +19,7 @@ export type PokerSeatSpec = { kind: 'human' } | { kind: 'ai'; model: string };
 const STARTING_STACK = 1000;
 const SMALL_BLIND = 10;
 const BIG_BLIND = 20;
-const RESULT_HOLD_MS = 1400; // pause on the terminal hand so the showdown reveal + result read, before the gather/reshuffle interlude takes over the rest of the gap
+const RESULT_HOLD_MS = 3000; // linger on the revealed hand — cards shown, chips won, winner's strip gold — before the gather/reshuffle interlude (no winner splash; the lingered state IS the celebration)
 
 // How poker moves are written, for the model prompt/schema (see ModelPlayer).
 const POKER_NOTATION: MoveNotation = {
