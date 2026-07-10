@@ -8,6 +8,7 @@ export { AudioPlayer, StreamPlayer, audioAvailable, toWav } from './audio-out.ts
 export { MicCapture, micAvailable } from './audio-in.ts';
 export { AudioLog } from './audio-log.ts';
 export { AecSidecar } from './aec-sidecar.ts';
+export { AUDIO_RATE, pcm16Peak, VoiceDuplex, type VoiceDuplexHandlers, type VoiceMode } from './voice-duplex.ts';
 export {
   openRealtime,
   RealtimeSession,
@@ -16,4 +17,5 @@ export {
   type RealtimeStatus,
   type RealtimeSocket,
   type RealtimeCodec,
+  type RealtimeToolDefinition,
 } from './realtime-session.ts';
