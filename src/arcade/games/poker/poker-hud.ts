@@ -48,6 +48,14 @@ export function setPokerGameHandlers(h: PokerGameHandlers): void {
   H = h;
 }
 
+// A pending voice action awaiting spoken confirmation (heads-up voice mode). When set,
+// a callout renders just above the hero's action buttons ("say "yes" to confirm the
+// call"). Null clears it. `label` is the action ("fold", "call", "raise to 80", …).
+let voiceStage: string | null = null;
+export function setPokerVoiceStage(label: string | null): void {
+  voiceStage = label;
+}
+
 // ── Action-panel geometry (fixed, so button widths NEVER shift with the amount) ──
 // The three action buttons have fixed label-field widths — Fold narrowest, Raise widest
 // (it holds "Raise to $X" / "All-in"). Labels are space-centred to these, so a button's
@@ -290,9 +298,19 @@ function bettingControls(hero: HeroContext): Node {
     );
   }
 
-  // Sizing row on top, a one-row gap, then the buttons; left-aligned so both rows start at
-  // the same left edge and span the same PANEL_W. No background — it floats over the felt.
+  // A voice-confirm callout sits above everything when an action is staged from speech.
+  const voicePrompt: Node[] = voiceStage
+    ? [
+        Box({ padding: [0, 1], background: [22, 24, 32, 0.94] }, [
+          Text({ text: `say "yes" to confirm the ${voiceStage}`, style: { color: [232, 210, 140], bold: true } }),
+        ]),
+      ]
+    : [];
+
+  // Voice prompt (if any), then the sizing row, a one-row gap, then the buttons; left-
+  // aligned so the rows start at the same left edge. No panel — it floats over the felt.
   return Box({ flexDirection: 'column', gap: 1, alignItems: 'start' }, [
+    ...voicePrompt,
     ...(sizingRow.length ? sizingRow : []),
     Box({ flexDirection: 'row', gap: BTN_GAP }, actions),
   ]);
