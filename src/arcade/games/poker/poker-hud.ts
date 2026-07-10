@@ -48,15 +48,31 @@ export function setPokerGameHandlers(h: PokerGameHandlers): void {
   H = h;
 }
 
-// ── Raise sizing: an editable amount field + ± steppers + ½/¾/pot chips (no slider) ──
-// The raise-TO total lives in a numeric text field (type an exact amount), nudged by the
-// ± steppers (± one big blind; hold the key to repeat) or jumped by the pot-fraction chips.
-// The field's string is the source of truth so it survives the per-frame rebuild; every
-// legal value is reachable (unlike a slider, whose resolution skipped amounts). `betInput`
-// only accepts digits; Enter commits the raise.
+// ── Action-panel geometry (fixed, so button widths NEVER shift with the amount) ──
+// The three action buttons have fixed label-field widths — Fold narrowest, Raise widest
+// (it holds "Raise to $X" / "All-in"). Labels are space-centred to these, so a button's
+// width is constant whether the raise is 2, 3, or 4 digits, or "All-in". Both rows span
+// PANEL_W; the sizing row's slider stretches to fill whatever the chips + field leave, so
+// the two rows end flush at the same overall width.
+const BTN_PAD_H = 2; // ACTION style horizontal padding (each side)
+const FOLD_LABEL_W = 10; // Fold is short → narrowest
+const CALL_LABEL_W = 14;
+const RAISE_LABEL_W = 18; // "Raise to $X" is the longest label → widest
+const BTN_GAP = 2; // between the three buttons
+const SIZE_GAP = 1; // between sizing-row elements
+const CHIP_W = 5; // a 3-char chip ("1/2","2/3","pot","max") + [0,1] padding
+const FIELD_W = 6; // the editable $ amount field
+const PANEL_W = FOLD_LABEL_W + CALL_LABEL_W + RAISE_LABEL_W + 6 * BTN_PAD_H + 2 * BTN_GAP; // total row width
+const SLIDER_W = PANEL_W - (4 * CHIP_W + (1 + FIELD_W) + 5 * SIZE_GAP); // fills the sizing row to PANEL_W
+
+// ── Raise sizing: an editable amount field + pot-fraction chips + a fill slider ──
+// The raise-TO total lives in a numeric text field (type an exact amount), jumped by the
+// pot-fraction / max chips or nudged by the keyboard steppers. The field's string is the
+// source of truth so it survives the per-frame rebuild; every legal value is reachable.
+// `betInput` only accepts digits; Enter commits the raise.
 export const betInput = new Input({
   id: 'poker-bet',
-  width: 6,
+  width: FIELD_W,
   onChange: () => {
     // Keep the buffer numeric; strip anything else the terminal may deliver.
     const digits = betInput.value.replace(/[^0-9]/g, '');
@@ -83,7 +99,7 @@ let betArmedFor = '';
 // dragging it writes a snapped amount back — so field and slider always agree.
 export const betSlider = new Slider({
   id: 'poker-bet-slider',
-  width: 14,
+  width: SLIDER_W,
   value: 0.5,
   step: 0.04,
   onChange: () => {
@@ -237,7 +253,7 @@ function bettingControls(hero: HeroContext): Node {
         H?.onAmountChange();
       });
     sizingRow.push(
-      Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [
+      Box({ flexDirection: 'row', gap: SIZE_GAP, alignItems: 'center' }, [
         frac('1/2', 0.5),
         frac('2/3', 2 / 3),
         frac('pot', 1),
@@ -245,39 +261,38 @@ function bettingControls(hero: HeroContext): Node {
           setBet(hero.maxRaiseTo);
           H?.onAmountChange();
         }),
-        Box({ flexDirection: 'row', gap: 0, alignItems: 'center' }, [Text({ text: '$', style: { color: AMOUNT_LABEL, bold: true } }), Slot('poker-bet')]),
-        Slot('poker-bet-slider'),
+        // "$" shares the field's pillBg so the amount reads as one box (not a stray $ on the felt).
+        Box({ flexDirection: 'row', gap: 0, alignItems: 'center' }, [Text({ text: '$', style: { color: AMOUNT_LABEL, bold: true, background: 'pillBg' } }), Slot('poker-bet')]),
+        Slot('poker-bet-slider'), // width SLIDER_W → the row ends flush with the button row
       ]),
     );
   }
 
-  // ── The three action buttons (chunky, equal width, centred single-line label) ──
+  // ── The three action buttons: fixed widths (Fold narrow, Raise widest), never resizing ──
   const atMax = hero.canRaise && betAmount(hero) >= hero.maxRaiseTo; // "max" / typed-to-stack → all-in
-  const foldLabel = 'Fold';
   const callLabel = hero.toCall > 0 ? (hero.toCall >= hero.stack ? `Call ${money(hero.stack)}` : `Call ${money(hero.toCall)}`) : 'Check';
-  const raiseLabel = hero.canRaise ? (atMax ? 'All-in' : `${hero.toCall > 0 ? 'Raise to' : 'Bet'} ${money(betAmount(hero))}`) : '';
-  const w = Math.max(foldLabel.length, callLabel.length, raiseLabel.length); // equal-width buttons
+  const raiseLabel = atMax ? 'All-in' : `${hero.toCall > 0 ? 'Raise to' : 'Bet'} ${money(betAmount(hero))}`;
 
   const actions: Node[] = [
-    Button({ id: 'poker-fold', label: centerLabel(foldLabel, w), onClick: () => H?.onFold(), style: FOLD }),
-    Button({ id: hero.toCall > 0 ? 'poker-call' : 'poker-check', label: centerLabel(callLabel, w), onClick: () => H?.onCheckCall(), style: ACTION }),
+    Button({ id: 'poker-fold', label: centerLabel('Fold', FOLD_LABEL_W), onClick: () => H?.onFold(), style: FOLD }),
+    Button({ id: hero.toCall > 0 ? 'poker-call' : 'poker-check', label: centerLabel(callLabel, CALL_LABEL_W), onClick: () => H?.onCheckCall(), style: ACTION }),
   ];
   if (hero.canRaise) {
     actions.push(
       Button({
         id: 'poker-raise',
-        label: centerLabel(raiseLabel, w),
+        label: centerLabel(raiseLabel, RAISE_LABEL_W),
         onClick: atMax ? () => H?.onAllin() : () => H?.onBetRaise(betAmount(hero)),
         style: RAISE,
       }),
     );
   }
 
-  // Sizing row on top, a one-row gap, then the buttons; left-aligned so the row starts over
-  // Fold's left edge (WSOP-style). No background — it floats over the felt.
+  // Sizing row on top, a one-row gap, then the buttons; left-aligned so both rows start at
+  // the same left edge and span the same PANEL_W. No background — it floats over the felt.
   return Box({ flexDirection: 'column', gap: 1, alignItems: 'start' }, [
     ...(sizingRow.length ? sizingRow : []),
-    Box({ flexDirection: 'row', gap: 1 }, actions),
+    Box({ flexDirection: 'row', gap: BTN_GAP }, actions),
   ]);
 }
 

@@ -25,7 +25,7 @@ import { providers } from '../arcade/match/models.ts';
 import { CardsScene, type CardsMode } from '../arcade/games/poker/cards-scene.ts';
 import { buildPokerRoot, mountPokerHud } from '../arcade/games/poker/hud.ts';
 import { PokerGameScene, type PokerSeatView } from '../arcade/games/poker/poker-scene.ts';
-import { buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, mountPokerGameHud, pushPokerChat } from '../arcade/games/poker/poker-hud.ts';
+import { betInput as pokerBetInput, buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, mountPokerGameHud, pushPokerChat } from '../arcade/games/poker/poker-hud.ts';
 import { buildPokerSetupPanel, modeDropdown as pokerModeDropdown, mountPokerSetup, playersDropdown as pokerPlayersDropdown, pokerPreviewSeats } from '../arcade/match/poker-setup.ts';
 import { HoldemState } from '../rules/poker/holdem.ts';
 import { mulberry32 } from '../arcade/scenes/wisp.ts';
@@ -296,7 +296,7 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot prism-prompt [cols] [rows] [t] [out]    prism loading screen + press-any-key marquee
   pnpm snapshot cards [single|hand|deck] [cols] [rows] [state] [out]   the cards screen
       (single: a code like Kh/10s/As · hand: peek|up · deck: shuffle|deal)
-  pnpm snapshot poker [cols] [rows] [preflop|flop|river|showdown] [players=N] [hud|setup|cine|result|menu|notes] [spectate] [muck|gather|shuffle] [color] [out]   the poker table
+  pnpm snapshot poker [cols] [rows] [preflop|flop|river|showdown] [players=N] [hud|setup|cine|result|menu|notes] [bet=N] [spectate] [muck|gather|shuffle] [color] [out]   the poker table
       (muck: fold seats to a burn pile, needs players≥3 · gather/shuffle: the between-hands interlude, mid-sweep / mid-shuffle)
 
 Convert + view:  sips -s format png .snapshots/<name>.ppm --out .snapshots/<name>.png -Z 1000`;
@@ -647,7 +647,7 @@ function pokerSnapshot(): void {
       bigBlind: st.bigBlind(),
       canRaise: st.maxRaiseTo(0) > st.currentBetAmount(),
     };
-    screen.setRoot(
+    const buildRoot = (): ReturnType<typeof buildPokerGameRoot> =>
       buildPokerGameRoot(region, buildBar('poker', 'ascii', barActions, { label: 'pause', active: true }), {
         hero,
         blinds: '10/20',
@@ -666,9 +666,15 @@ function pokerSnapshot(): void {
         cineLabel: null,
         resultLabel: scene.resultLabel(),
         awaitingContinue: scene.awaitingContinue(),
-      }),
-      region,
-    );
+      });
+    screen.setRoot(buildRoot(), region); // first build arms the amount field to the min-raise
+    // `bet=N` presets the raise amount (to check fixed button widths at any digit count / all-in).
+    // The re-arm only fires on the first build, so setting the field then rebuilding sticks.
+    const betArg = args.find((a) => /^bet=\d+$/.test(a));
+    if (betArg) {
+      pokerBetInput.value = betArg.split('=')[1];
+      screen.setRoot(buildRoot(), region);
+    }
     const surf2 = screen.snapshot((s) => {
       shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true });
     });
