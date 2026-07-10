@@ -62,8 +62,9 @@ const BTN_GAP = 2; // between the three buttons
 const SIZE_GAP = 1; // between sizing-row elements
 const CHIP_W = 5; // a 3-char chip ("1/2","2/3","pot","max") + [0,1] padding
 const FIELD_W = 6; // the editable $ amount field
+const DOLLAR_W = 2; // the "$" label: a leading pad space + the "$", both on the field's pillBg
 const PANEL_W = FOLD_LABEL_W + CALL_LABEL_W + RAISE_LABEL_W + 6 * BTN_PAD_H + 2 * BTN_GAP; // total row width
-const SLIDER_W = PANEL_W - (4 * CHIP_W + (1 + FIELD_W) + 5 * SIZE_GAP); // fills the sizing row to PANEL_W
+const SLIDER_W = PANEL_W - (4 * CHIP_W + (DOLLAR_W + FIELD_W) + 5 * SIZE_GAP); // fills the sizing row to PANEL_W
 
 // ── Raise sizing: an editable amount field + pot-fraction chips + a fill slider ──
 // The raise-TO total lives in a numeric text field (type an exact amount), jumped by the
@@ -180,7 +181,6 @@ const FOLD: Style = { ...ACTION, background: [96, 44, 44], color: [246, 220, 218
 const RAISE: Style = { ...ACTION, background: [86, 64, 120], color: [238, 230, 250], hover: { background: [110, 84, 150], color: [248, 244, 255] } };
 // The sizing row's pot-fraction / max chips (1 row tall, tight padding).
 const CHIP: Style = { ...BTN, padding: [0, 1], background: [38, 40, 50], color: [200, 204, 216] };
-const AMOUNT_LABEL: RGB = [232, 214, 150]; // gold "$" before the editable amount, pot-pill hue
 
 // Centre a label within `w` cells with spaces so equal-width buttons render centred text.
 function centerLabel(s: string, w: number): string {
@@ -261,8 +261,10 @@ function bettingControls(hero: HeroContext): Node {
           setBet(hero.maxRaiseTo);
           H?.onAmountChange();
         }),
-        // "$" shares the field's pillBg so the amount reads as one box (not a stray $ on the felt).
-        Box({ flexDirection: 'row', gap: 0, alignItems: 'center' }, [Text({ text: '$', style: { color: AMOUNT_LABEL, bold: true, background: 'pillBg' } }), Slot('poker-bet')]),
+        // The "$" (white, on the field's pillBg) with a leading pad space, so the amount reads
+        // as one box with a little breathing room before the "$". (The extra cell comes out of
+        // SLIDER_W, so the row still ends flush with the button row.)
+        Box({ flexDirection: 'row', gap: 0, alignItems: 'center' }, [Text({ text: ' $', style: { color: 'fg', bold: true, background: 'pillBg' } }), Slot('poker-bet')]),
         Slot('poker-bet-slider'), // width SLIDER_W → the row ends flush with the button row
       ]),
     );
