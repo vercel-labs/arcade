@@ -129,6 +129,26 @@ function spectating(): boolean {
   return modeDropdown.index === 1;
 }
 
+// Real-time voice mode — only meaningful for a heads-up human-vs-AI match (Play + 2
+// players), where the AI opponent speaks and acts by voice and you can talk back. The
+// toggle only appears in that case (see buildPokerSetupPanel); everywhere else voice is
+// simply off. Defaults on so the feature is one click away, but falls back to the text
+// path if a mic / Gateway key isn't available.
+export const voiceDropdown = new Dropdown({
+  id: 'poker-voice',
+  items: ['Off', 'On'],
+  width: 10,
+  index: 1,
+  onSelect: () => changed(),
+});
+function voiceApplicable(): boolean {
+  return !spectating() && oppCount() === 1; // Play mode, 2 players (you + one AI)
+}
+// Whether the user asked for realtime voice for this match (only ever true heads-up).
+export function pokerVoiceSelected(): boolean {
+  return voiceApplicable() && voiceDropdown.index === 1;
+}
+
 // The AI-config indices shown as rows: opponents 1..oppCount always, plus seat 1's
 // config (index 0) when spectating.
 function shownIndices(): number[] {
@@ -141,6 +161,7 @@ function shownIndices(): number[] {
 export function mountPokerSetup(ui: Screen): void {
   ui.mount(playersDropdown);
   ui.mount(modeDropdown);
+  ui.mount(voiceDropdown);
   for (const s of sides) {
     ui.mount(s.providerDropdown);
     ui.mount(s.modelDropdown);
@@ -227,11 +248,16 @@ export function buildPokerSetupPanel(): Node {
     .map((s, i) => ({ s, i }))
     .filter(({ i }) => !shownSet.has(i))
     .map(({ s }) => Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot(s.providerDropdown.id), Slot(s.modelDropdown.id)]));
+  // The voice toggle only shows heads-up (Play + 2 players); keep its Slot mounted but
+  // hidden otherwise so the Screen doesn't unmount it (same trick as unshown seats).
+  const voiceShown = voiceApplicable();
+  if (!voiceShown) hidden.push(Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot('poker-voice')]));
 
   return Box({ flexDirection: 'column', gap: 1, alignItems: 'start' }, [
     Text({ text: 'New match', style: { color: TITLE_FG, bold: true } }),
     row('Mode', Slot('poker-setup-mode')),
     row('Players', Slot('poker-players')),
+    ...(voiceShown ? [row('Voice', Slot('poker-voice'))] : []),
     ...seatRows,
     ...hidden,
   ]);

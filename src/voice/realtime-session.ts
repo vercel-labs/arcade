@@ -77,8 +77,23 @@ export interface RealtimeHandlers {
   onSpeechStopped?(): void;
   /** The transcript of what the user said (when input transcription is enabled). */
   onUserTranscript?(text: string): void;
+  /**
+   * The model called a tool/function (a completed `function-call-arguments-done`).
+   * `argumentsJson` is the raw JSON string of the call's arguments; reply with
+   * `sendFunctionResult(callId, name, output)` so the model can continue.
+   */
+  onFunctionCall?(call: { callId: string; name: string; argumentsJson: string }): void;
   /** A provider/socket error message. */
   onError?(message: string): void;
+}
+
+// A function tool the model may call, sent in the session config (mirrors the AI SDK
+// realtime v4 tool spec). `parameters` is a JSON Schema object describing the args.
+export interface RealtimeToolDefinition {
+  type: 'function';
+  name: string;
+  description?: string;
+  parameters: Record<string, unknown>;
 }
 
 // Provider-neutral session configuration (a subset of the AI SDK realtime spec):
@@ -98,6 +113,8 @@ export interface RealtimeSessionConfig {
     silenceDurationMs?: number;
     prefixPaddingMs?: number;
   } | null;
+  /** Function tools the model may call this session (see RealtimeToolDefinition). */
+  tools?: RealtimeToolDefinition[];
 }
 
 // The minimal WebSocket surface we use; `ws` satisfies it, and tests pass a mock.
@@ -144,11 +161,36 @@ export class RealtimeSession {
     await this.send({ type: 'response-create' });
   }
 
-  // Push the session configuration (audio formats, server VAD, transcription).
+  // Push the session configuration (audio formats, server VAD, transcription, tools).
   // Queued until open like any other client event, so call it right after
   // connecting and it lands first.
   updateSession(config: RealtimeSessionConfig): void {
     void this.send({ type: 'session-update', config });
+  }
+
+  // Add a text item to the conversation WITHOUT asking for a reply — a silent
+  // knowledge update (e.g. the current game state) the model uses on its next turn.
+  // Unlike `say`, no `response-create` follows, so it doesn't make the model talk.
+  sendContext(text: string): void {
+    void this.send({ type: 'conversation-item-create', item: { type: 'text-message', role: 'user', text } });
+  }
+
+  // Ask the model to produce a response now, optionally steering just this response
+  // with extra instructions (e.g. "it's your turn — call your action"). Use when
+  // turn boundaries are driven explicitly rather than by the mic/VAD.
+  respond(instructions?: string): void {
+    this.handlers.onStatus?.('responding');
+    void this.send({ type: 'response-create', options: instructions ? { instructions } : undefined });
+  }
+
+  // Return a tool/function result to the model. `output` is a JSON string; `callId`
+  // must match the one from the `onFunctionCall` it answers. `respond` asks the model
+  // to continue after the result (default) — pass false when the turn is fully driven
+  // by the caller and a follow-up utterance would just be noise (e.g. an accepted
+  // action), or true to let it retry after an error result.
+  sendFunctionResult(callId: string, name: string, output: string, respond = true): void {
+    void this.send({ type: 'conversation-item-create', item: { type: 'function-call-output', callId, name, output } });
+    if (respond) void this.send({ type: 'response-create' });
   }
 
   // Append a chunk of microphone audio to the input buffer (base64 PCM16). With
@@ -217,7 +259,16 @@ export class RealtimeSession {
     }
     const parsed = this.codec.parseServerEvent(raw);
     for (const ev of Array.isArray(parsed) ? parsed : [parsed]) {
-      const e = ev as { type?: string; delta?: string; message?: string; transcript?: string; raw?: { type?: string } } | null;
+      const e = ev as {
+        type?: string;
+        delta?: string;
+        message?: string;
+        transcript?: string;
+        callId?: string;
+        name?: string;
+        arguments?: string;
+        raw?: { type?: string };
+      } | null;
       if (!e?.type) continue;
       rtTrace('←', e.type, e.type === 'custom' ? e.raw?.type : undefined);
       switch (e.type) {
@@ -235,6 +286,17 @@ export class RealtimeSession {
           break;
         case 'input-transcription-completed':
           if (e.transcript) this.handlers.onUserTranscript?.(e.transcript);
+          break;
+        case 'function-call-arguments-done':
+          if (e.callId && e.name) {
+            this.handlers.onFunctionCall?.({ callId: e.callId, name: e.name, argumentsJson: e.arguments ?? '{}' });
+          }
+          break;
+        case 'response-created':
+          // Marks a response in-flight — including ones the SERVER auto-creates from
+          // VAD, not just our client-driven ones — so callers can avoid creating an
+          // overlapping response ("active response in progress").
+          this.handlers.onStatus?.('responding');
           break;
         case 'response-done':
           this.handlers.onStatus?.('done');

@@ -13,6 +13,7 @@ import { type HandPublicRecord, HoldemState, type PokerAction } from '../../rule
 import type { PokerGameScene, PokerSeatView } from '../games/poker/poker-scene.ts';
 import { shortModel } from '../games/chess/hud.ts';
 import { PokerMemory } from './poker-memory.ts';
+import { PokerVoice, pokerVoiceCapable } from './poker-voice.ts';
 
 // One seat in the session: the human hero or an AI model (a Gateway slug).
 export type PokerSeatSpec = { kind: 'human' } | { kind: 'ai'; model: string };
@@ -46,6 +47,10 @@ export interface PokerMatchDeps {
   requestRender(): void;
   onCommentary(text: string, name: string): void;
   onHandOver(): void; // refresh the HUD / show the result between hands
+  // A spoken line for the chat rail (voice heads-up): `event` lines render grey/nameless.
+  onChat?(text: string, speaker: string, event: boolean): void;
+  // A human action parsed from speech is staged awaiting confirm (null clears it).
+  onVoiceStage?(label: string | null): void;
 }
 
 export class PokerMatch {
@@ -63,8 +68,24 @@ export class PokerMatch {
   private labels: string[] = [];
   private reflecting: Promise<void> | null = null;
   private reflectAbort: AbortController | null = null;
+  // Real-time voice opponent, only for a 2-seat human-vs-AI Play match when the setup
+  // toggle asked for it + audio is available (AIG-79). Null otherwise (text path).
+  private voice: PokerVoice | null = null;
+  private voiceRequested = false;
 
   constructor(private readonly deps: PokerMatchDeps) {}
+
+  // Whether this session is running heads-up voice against the AI.
+  hasVoice(): boolean {
+    return this.voice !== null;
+  }
+  // Confirm / cancel a human action staged from speech (main binds these to keys).
+  confirmVoiceAction(): void {
+    this.voice?.confirmStaged();
+  }
+  cancelVoiceAction(): void {
+    this.voice?.cancelStaged();
+  }
 
   isRunning(): boolean {
     return this.running;
@@ -93,8 +114,11 @@ export class PokerMatch {
 
   // Start a fresh session with the chosen seats (seat 0 is the human hero). Resets
   // stacks + button, seeds the scene, builds the players, and deals the first hand.
-  start(seats: PokerSeatSpec[]): void {
+  // `opts.voice` (from the setup toggle) requests realtime voice — honored only for a
+  // 2-seat human-vs-AI match with the audio capability present.
+  start(seats: PokerSeatSpec[], opts?: { voice?: boolean }): void {
     this.stop();
+    this.voiceRequested = opts?.voice ?? false;
     this.seats = seats.slice();
     this.stacks = seats.map(() => STARTING_STACK);
     this.button = 0;
@@ -104,17 +128,43 @@ export class PokerMatch {
       s.kind === 'human' ? { kind: 'human', label: 'You' } : { kind: 'ai', label: shortModel(s.model), provider: providerOf(s.model) },
     );
     this.deps.scene.beginSession(views);
+    this.setupVoice(); // may set this.voice for a 2-seat human-vs-AI match — before makePlayer
     this.players = seats.map((s, i) => this.makePlayer(s, i));
     this.running = true;
     this.paused = false;
     this.deps.syncLive();
+    if (this.voice) void this.voice.start(); // open the realtime session for the whole match
     this.dealHand();
+  }
+
+  // Set up the heads-up voice opponent when eligible: a 2-seat Play match (one human,
+  // one AI), the opt-in flag, a Gateway key, and duplex audio. Otherwise leaves
+  // this.voice null so every seat uses the existing text path.
+  private setupVoice(): void {
+    this.voice = null;
+    if (!this.voiceRequested || this.seats.length !== 2) return;
+    const humanSeat = this.seats.findIndex((s) => s.kind === 'human');
+    const botSeat = this.seats.findIndex((s) => s.kind === 'ai');
+    const botSpec = this.seats[botSeat];
+    if (humanSeat < 0 || botSeat < 0 || botSpec?.kind !== 'ai' || !pokerVoiceCapable()) return;
+    this.voice = new PokerVoice({
+      scene: this.deps.scene,
+      botSeat,
+      humanSeat,
+      botModel: botSpec.model, // full slug → chat name colored by the seat's wisp/provider tint
+      botLabel: this.labelOf(botSeat),
+      onChat: (text, speaker, opts) => this.deps.onChat?.(text, speaker, !!opts?.event),
+      onStage: (action, label) => this.deps.onVoiceStage?.(action ? label : null),
+      requestRender: () => this.deps.requestRender(),
+    });
   }
 
   private makePlayer(seat: PokerSeatSpec, index: number): Player<PokerAction> {
     if (seat.kind === 'human') {
       return new HumanPlayer<PokerAction>({ name: 'you', awaitMove: (_s, ctx) => this.deps.scene.requestHumanMove(ctx?.signal) });
     }
+    // Heads-up voice: the AI seat speaks + acts through the realtime session.
+    if (this.voice) return this.voice.player();
     return new ModelPlayer<PokerAction>({
       model: seat.model,
       gameName: "no-limit Texas Hold'em poker",
@@ -197,6 +247,7 @@ export class PokerMatch {
     if (this.stacks[this.button] <= 0) this.button = this.nextAlive(this.button);
     const state = new HoldemState({ stacks: this.stacks.slice(), button: this.button, smallBlind: SMALL_BLIND, bigBlind: BIG_BLIND });
     this.deps.scene.beginHand(state);
+    this.voice?.beginHand(state); // seed the bot with its own hole cards for this hand
     this.deps.onHandOver(); // refresh HUD for the fresh hand
     // Hold the first action until every card is dealt and the table has settled for a beat.
     this.deps.scene
@@ -342,6 +393,8 @@ export class PokerMatch {
     this.reflecting = null;
     this.running = false;
     this.paused = false;
+    this.voice?.close(); // tear down the realtime session + free the mic
+    this.voice = null;
     this.deps.scene.cancelInterlude();
     this.deps.scene.cancelDeal();
     this.deps.scene.endSession(); // also cancels any pending continue gate

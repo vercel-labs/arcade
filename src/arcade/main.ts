@@ -22,7 +22,7 @@ import { buildPokerRoot, mountPokerHud, pokerMode, setPokerHandlers } from './ga
 import { PokerGameScene } from './games/poker/poker-scene.ts';
 import { buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, type HeroContext, mountPokerGameHud, nudgePokerBet, pushPokerChat, setPokerGameHandlers } from './games/poker/poker-hud.ts';
 import { PokerMatch } from './match/poker-driver.ts';
-import { buildPokerSetupPanel, mountPokerSetup, pokerPreviewSeats, pokerSetupReady, pokerSetupSelection, setPokerSetupChanged } from './match/poker-setup.ts';
+import { buildPokerSetupPanel, mountPokerSetup, pokerPreviewSeats, pokerSetupReady, pokerSetupSelection, pokerVoiceSelected, setPokerSetupChanged } from './match/poker-setup.ts';
 import { LogosScene } from './scenes/logos-scene.ts';
 import { AudioScene } from './scenes/audio-scene.ts';
 import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/input.ts';
@@ -610,6 +610,18 @@ const pokerMatch = new PokerMatch({
     forceFrame = true;
     r.requestRender();
   },
+  // Heads-up voice: spoken lines (bot + human) and game-event lines to the chat rail.
+  onChat: (text, speaker, event) => {
+    pushPokerChat({ text, model: event ? '' : speaker, event });
+    r.requestRender();
+  },
+  // A human action parsed from speech, awaiting confirm — surface it as a toast so it's
+  // obvious what saying "yes" (or a button) will commit. Cleared when it resolves.
+  onVoiceStage: (label) => {
+    commentary = label ? { text: `🎤 say “yes” to ${label} — or use the buttons`, model: '', until: t + 3600 } : null;
+    forceFrame = true;
+    r.requestRender();
+  },
 });
 
 // Wire the hero's betting controls to the scene (main owns the scene; the HUD owns
@@ -707,7 +719,7 @@ function confirmPokerSetup(): void {
   closePokerSetup();
   clearPokerChat(); // fresh chat thread for the new session
   pokerChatOpen = false; // the chat starts collapsed (just the pill) each new match
-  pokerMatch.start(seats);
+  pokerMatch.start(seats, { voice: pokerVoiceSelected() });
 }
 
 // The bottom-left "new match" button: tear down a finished session if one is still on
