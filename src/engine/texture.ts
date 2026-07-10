@@ -1,4 +1,4 @@
-import { inflateSync } from 'node:zlib';
+import { deflateSync, inflateSync } from 'node:zlib';
 import type { RGBA } from './color.ts';
 
 // An RGBA8 image in memory: row-major, top-left origin, 4 bytes/pixel. The
@@ -145,6 +145,57 @@ function toRgba(
     out[o + 3] = a;
   }
   return out;
+}
+
+// Encode an RGBA8 Texture to a PNG (8-bit, color type 6, non-interlaced) using
+// only node:zlib — the inverse of decodePng, no native deps. One IDAT, filter 0
+// on every scanline (simplest; deflate still compresses well for icon art).
+export function encodePng(tex: Texture): Uint8Array {
+  const { width, height, data } = tex;
+  const stride = width * 4;
+  const rawRows = Buffer.alloc(height * (stride + 1)); // +1 filter byte per scanline
+  for (let y = 0; y < height; y++) {
+    rawRows[y * (stride + 1)] = 0; // filter type: None
+    Buffer.from(data.buffer, data.byteOffset + y * stride, stride).copy(rawRows, y * (stride + 1) + 1);
+  }
+
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 6; // color type: RGBA
+  // bytes 10..12 (compression / filter / interlace) stay 0
+
+  return Uint8Array.from(
+    Buffer.concat([Buffer.from(PNG_SIG), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(rawRows)), chunk('IEND', Buffer.alloc(0))]),
+  );
+}
+
+// A PNG chunk: length(4) + type(4) + data + CRC32(type+data), all big-endian.
+function chunk(type: string, data: Buffer): Buffer {
+  const typeBuf = Buffer.from(type, 'ascii');
+  const body = Buffer.concat([typeBuf, data]);
+  const out = Buffer.alloc(8 + data.length + 4);
+  out.writeUInt32BE(data.length, 0);
+  body.copy(out, 4);
+  out.writeUInt32BE(crc32(body), out.length - 4);
+  return out;
+}
+
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(buf: Buffer): number {
+  let c = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
 }
 
 const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
