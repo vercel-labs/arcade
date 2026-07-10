@@ -38,6 +38,7 @@ import { CARD_H, CARD_SCALE, CARD_W, drawCard, flatDown, flatUp } from './card-r
 import { HandPeek } from './card-peek.ts';
 import { DeckShuffle } from './deck-shuffle.ts';
 import { chairMesh, chairModel, FELT_STIPPLE, feltMesh, frameMesh, TABLE_MODEL, TABLE_RADIUS } from './table.ts';
+import { drawChipStack, playerColumns, potColumns } from './chips.ts';
 
 const FOVY = (46 * Math.PI) / 180;
 const TABLE_LIGHT = normalize3({ x: 0.25, y: 0.9, z: 0.4 });
@@ -69,7 +70,7 @@ const ACTION_SETTLE = 0.28;
 // the camera hard-cuts from wherever the user was to a fixed bird's-eye over the board,
 // deals the card(s), holds so they read, then cuts back. Camera controls are frozen for
 // its whole duration and the HUD hides everything but the top-right pills (see cine*).
-const CINE_PRE = 0.45; // beat after the closing action, before the cut (nothing deals yet)
+const CINE_PRE = 0.25; // beat after the chips settle, before the cut (nothing deals yet)
 // The fixed bird's-eye: near-straight-down onto the community cards. The distance is
 // computed per street so EVERY card dealt so far is fully in frame while maximising the
 // zoom — the flop's three, then all four on the turn, all five on the river — rather than
@@ -106,6 +107,21 @@ const GATHER_STEP = 0.5; // seconds one gathered card takes to reach the deck
 const GATHER_STAGGER = 0.05; // per-card start delay, so cards sweep in rather than all at once
 const SHUFFLE_CYCLES = 2; // riffle+bridge passes between hands (the user asked for two)
 const SHUFFLE_SPEED = 1.5; // interlude shuffle playback speed (mild speed-up so it reads without dragging)
+
+// ── Chips (see games/poker/chips.ts) ────────────────────────────────────────────
+// A seat's carried stack sits beside its hole cards — at the card radius (HOLE_R) but
+// pushed CHIP_SIDE along the seat tangent, so it never covers the seat's own cards nor the
+// board/burn at the centre. Chips move in two staged beats, never teleporting: when a seat
+// bets, the chips it pushes out fly from that stack to the bet spot in front of it at
+// CHIP_BET_R over BET_PLACE_T; when the betting round closes, all the front bets then slide
+// from CHIP_BET_R to the pot (opposite the muck across the deck) over CHIP_COLLECT_T. The
+// deal cinematic waits for both to finish before it cuts to the bird's-eye, so the user sees
+// their chips land in front and sweep to the pot on their own view first.
+const CHIP_SIDE = 1.65; // tangential offset of the carried stack from the seat's cards
+const CHIP_BET_R = 2.4; // radius of the this-street bet, in front of the seat toward centre
+const CHIP_POT_POS = { x: -1.7, z: -1.4 }; // mirror of MUCK_POS across the deck
+const BET_PLACE_T = 0.3; // seconds chips take to fly from a seat's stack to its bet spot
+const CHIP_COLLECT_T = 0.42; // seconds the front bets take to sweep into the pot
 
 // Idle: with no session running the table isn't bare — it shows a ring of
 // chairs and a centre deck that riffle-shuffles on a loop (see DeckShuffle).
@@ -258,6 +274,16 @@ export class PokerGameScene {
   // HUD row. Reset every hand; cleared for all seats when a new street begins.
   private lastAction: (string | null)[] = [];
 
+  // Bet placement (null when idle): the `pushed` chips a seat just moved out flying from its
+  // stack to its bet spot as `t` runs 0→1 (the first staged beat — no teleport).
+  private betPlace: { seat: number; pushed: number; t: number } | null = null;
+  // Bet → pot chip collection (null when idle): `bets[seat]` is each seat's committed amount
+  // at the moment the round closed, sliding from its bet spot to the pot as `t` runs 0→1.
+  // `pendingCollect` holds those amounts while a placement is still landing — the sweep only
+  // starts once betPlace finishes, so the two beats never overlap. Purely visual.
+  private chipCollect: { bets: number[]; t: number } | null = null;
+  private pendingCollect: number[] | null = null;
+
   // Folded cards resting in / sliding to the burn pile (object permanence — a fold
   // mucks its cards rather than vanishing them). Swept into the deck by the gather.
   private muck: MuckCard[] = [];
@@ -382,6 +408,9 @@ export class PokerGameScene {
     this.seats = []; // back to the default idle ring (no stale wisps over empty chairs)
     this.wisps = [];
     this.cancelContinue(); // drop any in-flight cinematic / winner gate, releasing waiters
+    this.betPlace = null;
+    this.chipCollect = null;
+    this.pendingCollect = null;
     this.cam = this.makeIdleCamera(); // back to the idle framing on the shuffling deck
     this.dirty = true;
   }
@@ -421,6 +450,9 @@ export class PokerGameScene {
     this.dealtFromDeck = 0;
     this.dealHold = -1; // (re)armed when this hand's opening deal lands
     this.lastAction = new Array(state.n).fill(null);
+    this.betPlace = null;
+    this.chipCollect = null; // fresh hand → pot resets with the new state
+    this.pendingCollect = null;
     this.muck = []; // the gather already emptied it; clear defensively for the fresh hand
     this.clearInterlude();
     this.events?.(`New hand · ${this.seatName(state.button)} on the button`);
@@ -494,7 +526,25 @@ export class PokerGameScene {
       const seat = this.hand!.toActSeat();
       const streetBefore = this.hand!.street();
       const wasTerminal = this.hand!.isTerminal();
+      // Snapshot each seat's this-street bet BEFORE the action; if the round closes (all
+      // committed rolled into the pot → sum drops to 0), slide those bets into the pot.
+      const betsBefore = this.seats.map((_, i) => this.hand!.committedOf(i));
+      const sumBefore = betsBefore.reduce((a, b) => a + b, 0);
+      const stackBefore = seat >= 0 ? this.hand!.stackOf(seat) : 0;
       this.hand!.applyAction(action);
+      const sumAfter = this.seats.reduce((a, _, i) => a + this.hand!.committedOf(i), 0);
+      // Chips the actor just pushed out (its stack shrank by exactly this) fly from its stack
+      // to its bet spot — the first staged beat. On a street-closing action the committed
+      // amounts have already rolled to 0, so defer the front→pot sweep (pendingCollect) until
+      // this placement lands; the sweep's per-seat amounts include the closing chips.
+      const pushed = seat >= 0 ? Math.max(0, stackBefore - this.hand!.stackOf(seat)) : 0;
+      if (pushed > 0) this.betPlace = { seat, pushed, t: 0 };
+      if (sumBefore > 0 && sumAfter === 0) {
+        const collectBets = betsBefore.slice();
+        if (seat >= 0) collectBets[seat] += pushed;
+        if (this.betPlace) this.pendingCollect = collectBets;
+        else this.chipCollect = { bets: collectBets, t: 0 };
+      }
       // A new betting round clears every seat's shown action; then record this actor's.
       if (this.hand!.street() !== streetBefore) this.lastAction.fill(null);
       if (seat >= 0) this.lastAction[seat] = actionLabel(action);
@@ -513,8 +563,9 @@ export class PokerGameScene {
       // A street-turning action (flop/turn/river, or a multi-street all-in runout) runs the
       // bird's-eye deal cinematic, which resolves the settle when it cuts back. Any other
       // action just lingers a short beat. Either way this gates runMatch (it awaits us).
+      // linger long enough for an ordinary bet's chips to finish flying to the front.
       if (newCards > 0) this.startCine();
-      else this.beat = ACTION_SETTLE;
+      else this.beat = pushed > 0 ? Math.max(ACTION_SETTLE, BET_PLACE_T + 0.12) : ACTION_SETTLE;
       this.dirty = true;
       this.settleResolve = resolve;
     });
@@ -540,7 +591,10 @@ export class PokerGameScene {
     if (!c) return;
     c.clock += dt;
     if (c.phase === 'pre') {
-      if (c.clock >= CINE_PRE) {
+      // Hold the user's view until the closing bet has flown to the front AND swept into the
+      // pot — only then (plus a short beat) cut to the bird's-eye. No cutting mid-motion.
+      const chipsMoving = this.betPlace !== null || this.pendingCollect !== null || this.chipCollect !== null;
+      if (c.clock >= CINE_PRE && !chipsMoving) {
         c.phase = 'deal';
         c.clock = 0;
         this.cam = this.makeBirdsEyeCamera(); // boom — cut to the bird's-eye
@@ -786,7 +840,7 @@ export class PokerGameScene {
   }
 
   needsRender(): boolean {
-    return this.dirty || (this.active && !this.paused) || this.beat > 0 || this.dealHold > 0 || this.dealing || this.boardT >= 0 || this.cine !== null || this.resultText !== null || this.heroPeek.animating() || this.interludeActive() || this.isIdle();
+    return this.dirty || (this.active && !this.paused) || this.beat > 0 || this.dealHold > 0 || this.dealing || this.boardT >= 0 || this.cine !== null || this.betPlace !== null || this.chipCollect !== null || this.pendingCollect !== null || this.resultText !== null || this.heroPeek.animating() || this.interludeActive() || this.isIdle();
   }
 
   // ── Hero hole-card peek / lift ─────────────────────────────────────────────────
@@ -870,6 +924,24 @@ export class PokerGameScene {
         this.advanceMuck(dt);
         if (this.muck.length) this.drawMuck(target, vp); // folded cards resting in the burn pile
       }
+      // Chips (stacks + bets + pot) render in every hand state, including the interlude.
+      // Two staged beats: placement (stack→front) finishes, then any pending sweep (front→pot)
+      // begins — they never overlap.
+      if (this.betPlace) {
+        this.betPlace.t += dt / BET_PLACE_T;
+        if (this.betPlace.t >= 1) {
+          this.betPlace = null;
+          if (this.pendingCollect) {
+            this.chipCollect = { bets: this.pendingCollect, t: 0 };
+            this.pendingCollect = null;
+          }
+        }
+      }
+      if (this.chipCollect) {
+        this.chipCollect.t += dt / CHIP_COLLECT_T;
+        if (this.chipCollect.t >= 1) this.chipCollect = null;
+      }
+      this.drawChips(target, vp, hand);
     }
 
     // Wisps above each AI seat, pulsing the seat to act (idle when paused/over).
@@ -930,6 +1002,75 @@ export class PokerGameScene {
         this.boardT = this.boardShown < target ? 0 : -1; // chain the next card, or stop
       }
     }
+  }
+
+  // The felt spot of a seat's carried stack: beside its cards (card radius, pushed along the
+  // seat tangent so it clears the cards and the centre). Also the origin of its bet flights.
+  private stackCenter(s: number): { x: number; z: number } {
+    const c = this.seatPos(s, HOLE_R);
+    const a = this.seatAngle(s);
+    return { x: c.x + Math.cos(a) * CHIP_SIDE, z: c.z - Math.sin(a) * CHIP_SIDE };
+  }
+
+  // ── Chips: per-seat carried stacks + this-street bets + the pot pile ────────────
+  private drawChips(target: RenderTarget, vp: Mat4, hand: HoldemState): void {
+    const light = TABLE_LIGHT;
+    const ambient = TABLE_AMBIENT;
+    // A seat's tangent (columns spread sideways) and outward radial, matching the seat ring.
+    const tangentOf = (s: number): { x: number; z: number } => {
+      const a = this.seatAngle(s);
+      return { x: Math.cos(a), z: -Math.sin(a) };
+    };
+    const radialOf = (s: number): { x: number; z: number } => {
+      const a = this.seatAngle(s);
+      return { x: Math.sin(a), z: Math.cos(a) };
+    };
+    // Each seat's carried stack, beside its cards. Columns pile into a rough square that
+    // spreads radially → a slim varied cluster, never a fat tower. Busted seats draw nothing.
+    for (let s = 0; s < this.seats.length; s++) {
+      const stack = hand.stackOf(s);
+      if (stack <= 0) continue;
+      drawChipStack(target, vp, this.stackCenter(s), radialOf(s), playerColumns(stack), light, ambient, s);
+    }
+    // This-street bets in front of each seat, across the two staged beats. `pending`/`collect`
+    // carry the captured per-seat amounts once the round has closed (committedOf is 0 by then).
+    const collect = this.chipCollect;
+    const place = this.betPlace;
+    const pending = this.pendingCollect;
+    if (collect) {
+      // Sweep: the front bets slide from their bet spot into the pot.
+      const p = smooth(collect.t);
+      for (let s = 0; s < this.seats.length; s++) {
+        if (collect.bets[s] <= 0) continue;
+        const from = this.seatPos(s, CHIP_BET_R);
+        const at = { x: from.x + (CHIP_POT_POS.x - from.x) * p, z: from.z + (CHIP_POT_POS.z - from.z) * p };
+        drawChipStack(target, vp, at, tangentOf(s), potColumns(collect.bets[s]), light, ambient, s + 100);
+      }
+    } else {
+      // Resting bets in front (the actor's just-pushed chips are in flight, drawn separately).
+      for (let s = 0; s < this.seats.length; s++) {
+        const source = pending ? pending[s] : hand.committedOf(s);
+        const resting = source - (place && place.seat === s ? place.pushed : 0);
+        if (resting > 0) drawChipStack(target, vp, this.seatPos(s, CHIP_BET_R), tangentOf(s), potColumns(resting), light, ambient, s + 100);
+      }
+      // Placement: the pushed chips fly from the actor's stack to its bet spot.
+      if (place && place.pushed > 0) {
+        const q = smooth(place.t);
+        const from = this.stackCenter(place.seat);
+        const to = this.seatPos(place.seat, CHIP_BET_R);
+        const at = { x: from.x + (to.x - from.x) * q, z: from.z + (to.z - from.z) * q };
+        drawChipStack(target, vp, at, tangentOf(place.seat), potColumns(place.pushed), light, ambient, place.seat + 200);
+      }
+    }
+    // The pot pile: everything in the pot minus whatever is still in front (resting / in flight
+    // / mid-sweep). The captured amounts win while a round is closing (committedOf is 0 then).
+    const frontTotal = collect
+      ? collect.bets.reduce((a, b) => a + b, 0)
+      : pending
+        ? pending.reduce((a, b) => a + b, 0)
+        : this.seats.reduce((a, _, i) => a + hand.committedOf(i), 0);
+    const pot = hand.potTotal() - frontTotal;
+    if (pot > 0) drawChipStack(target, vp, CHIP_POT_POS, { x: 1, z: 0 }, potColumns(pot), light, ambient, 900);
   }
 
   // Backs left in the deck (a card in flight is already off the top).
