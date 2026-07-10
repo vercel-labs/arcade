@@ -7,7 +7,7 @@
 // mounted via Slot, rebuilt into a full-screen tree each frame. main owns the scene +
 // driver and wires the handlers; this module owns the controls + the table furniture.
 
-import { Box, Button, Input, Modal, type Row, ScrollBox, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
+import { Box, Button, Input, Modal, type Row, ScrollBox, Slider, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
 import type { RGB } from '../../../engine/index.ts';
 import { type Card, isRed, RANK_LABELS } from '../../../rules/poker/cards.ts';
 import type { SeatCardView, TableView } from './poker-scene.ts';
@@ -77,6 +77,22 @@ let lastHero: HeroContext | null = null;
 // the field resets to the min-raise so a stale amount never carries over.
 let betArmedFor = '';
 
+// A short slider for quick coarse sizing — a companion to the exact field, not the primary
+// control (a terminal slider is only ~14 cells, so it ballparks; the field / chips / keys
+// land the precise value). Its thumb is driven FROM the amount each frame (see below), and
+// dragging it writes a snapped amount back — so field and slider always agree.
+export const betSlider = new Slider({
+  id: 'poker-bet-slider',
+  width: 14,
+  value: 0.5,
+  step: 0.04,
+  onChange: () => {
+    if (!lastHero || lastHero.maxRaiseTo <= lastHero.minRaiseTo) return;
+    setBet(presetRaise(lastHero, lastHero.minRaiseTo + betSlider.value * (lastHero.maxRaiseTo - lastHero.minRaiseTo)));
+    H?.onAmountChange();
+  },
+});
+
 // The chat thread (reuses the chess ChatBox with its own Slot id; same default empty-state
 // hint as chess). Each AI's pre-move line is pushed here as in-character table talk that
 // never reveals its hole cards.
@@ -84,6 +100,7 @@ const pokerChat = new ChatBox('poker-chat');
 
 export function mountPokerGameHud(ui: Screen): void {
   ui.mount(betInput);
+  ui.mount(betSlider);
   ui.mount(pokerChat);
   ui.mount(notesScroll);
 }
@@ -138,13 +155,23 @@ const BTN: Style = {
   focus: { background: [86, 90, 108], color: [248, 248, 252] },
   pressed: { background: [255, 255, 255], color: [12, 12, 18] },
 };
-const FOLD: Style = { ...BTN, background: [96, 44, 44], color: [246, 220, 218], hover: { background: [150, 58, 58], color: [255, 240, 238] } };
-const RAISE: Style = { ...BTN, background: [86, 64, 120], color: [238, 230, 250], hover: { background: [110, 84, 150], color: [248, 244, 255] } };
-// Compact sizing controls: the ± steppers and the ½/¾/pot chips. Tighter padding than the
-// action buttons so the whole row stays on one line.
-const STEP: Style = { ...BTN, padding: [0, 1] };
+// The three big action buttons are 3 rows tall (padding [1,·] → a blank row above and
+// below a single centred text row) with no wrapping panel behind them — they float over
+// the felt like a WSOP client. Labels are space-centred to a common width so all three are
+// equal-width (paint centres text only via symmetric padding, so we pad the string).
+const ACTION: Style = { ...BTN, padding: [1, 2] };
+const FOLD: Style = { ...ACTION, background: [96, 44, 44], color: [246, 220, 218], hover: { background: [150, 58, 58], color: [255, 240, 238] } };
+const RAISE: Style = { ...ACTION, background: [86, 64, 120], color: [238, 230, 250], hover: { background: [110, 84, 150], color: [248, 244, 255] } };
+// The sizing row's pot-fraction / max chips (1 row tall, tight padding).
 const CHIP: Style = { ...BTN, padding: [0, 1], background: [38, 40, 50], color: [200, 204, 216] };
 const AMOUNT_LABEL: RGB = [232, 214, 150]; // gold "$" before the editable amount, pot-pill hue
+
+// Centre a label within `w` cells with spaces so equal-width buttons render centred text.
+function centerLabel(s: string, w: number): string {
+  if (s.length >= w) return s;
+  const left = Math.floor((w - s.length) / 2);
+  return ' '.repeat(left) + s + ' '.repeat(w - s.length - left);
+}
 
 // The bottom-left corner controls: a green "new match" go button on the idle table,
 // which becomes a green "start" + a grey "cancel" while the settings panel is open.
@@ -179,58 +206,79 @@ export interface MatchControls {
   onCancel?: () => void;
 }
 
-// The betting controls, shown only on the hero's turn. One tight row: Fold · Check/Call ·
-// (the raise sizing group: − [$amount] + · ½ ¾ pot · Raise) · All-in. No slider — the
-// amount is typed / stepped / jumped, so every legal value is reachable.
+// The betting controls, shown only on the hero's turn — a WSOP-style two-tier block over
+// the felt (no wrapping panel): a thin sizing row (1/2 · 2/3 · pot · max chips + a $ field
+// + a short slider) with a one-row gap above three chunky action buttons (Fold · Check|Call
+// · Raise). All-in isn't its own button — "max" sizes to the whole stack and the Raise
+// button then reads "All-in". Every value is still reachable via the field / chips / keys.
 function bettingControls(hero: HeroContext): Node {
   lastHero = hero; // so betInput's Enter + the keyboard steppers size against this hand
   // Re-arm the amount field to the min-raise whenever the decision changes (new street /
-  // turn), so a stale amount from a prior street never carries over. Same decision → leave
-  // the user's typed/stepped value alone.
+  // turn), so a stale amount never carries over. Same decision → leave the user's edit be.
   const key = `${hero.minRaiseTo}:${hero.maxRaiseTo}`;
+  const hasRange = hero.canRaise && hero.maxRaiseTo > hero.minRaiseTo;
   if (hero.canRaise && key !== betArmedFor) {
     setBet(hero.minRaiseTo);
     betArmedFor = key;
   }
+  // Drive the slider thumb from the current amount so it always agrees with the field.
+  if (hasRange) {
+    const span = hero.maxRaiseTo - hero.minRaiseTo;
+    betSlider.value = Math.max(0, Math.min(1, (betAmount(hero) - hero.minRaiseTo) / span));
+  }
 
-  const row: Node[] = [
-    Button({ id: 'poker-fold', label: 'Fold', onClick: () => H?.onFold(), style: FOLD }),
-    hero.toCall > 0
-      ? Button({ id: 'poker-call', label: hero.toCall >= hero.stack ? `Call ${money(hero.stack)} (all-in)` : `Call ${money(hero.toCall)}`, onClick: () => H?.onCheckCall(), style: BTN })
-      : Button({ id: 'poker-check', label: 'Check', onClick: () => H?.onCheckCall(), style: BTN }),
-  ];
-
-  // The raise sizing group, only when there are chips beyond the call AND a real range
-  // (min < max). When min == max, only an all-in is possible, so just show All-in.
-  if (hero.canRaise && hero.maxRaiseTo > hero.minRaiseTo) {
-    const verb = hero.toCall > 0 ? 'Raise' : 'Bet';
-    const chip = (label: string, f: number): Node =>
-      Button({
-        id: `poker-frac-${label}`,
-        label,
-        onClick: () => {
-          setBet(fractionRaise(hero, f));
-          H?.onAmountChange();
-        },
-        style: CHIP,
+  // ── The sizing row (only when there's a real raise range) ──
+  const sizingRow: Node[] = [];
+  if (hasRange) {
+    const chip = (label: string, onClick: () => void): Node => Button({ id: `poker-frac-${label}`, label, onClick, style: CHIP });
+    const frac = (label: string, f: number): Node =>
+      chip(label, () => {
+        setBet(fractionRaise(hero, f));
+        H?.onAmountChange();
       });
-    // - [ $amount ] +  1/2 3/4 pot  Raise  (ASCII labels so they render in every terminal
-    // and in the headless snapshot font)
-    row.push(
+    sizingRow.push(
       Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [
-        Button({ id: 'poker-minus', label: '-', onClick: () => nudgePokerBet(-1), style: STEP }),
+        frac('1/2', 0.5),
+        frac('2/3', 2 / 3),
+        frac('pot', 1),
+        chip('max', () => {
+          setBet(hero.maxRaiseTo);
+          H?.onAmountChange();
+        }),
         Box({ flexDirection: 'row', gap: 0, alignItems: 'center' }, [Text({ text: '$', style: { color: AMOUNT_LABEL, bold: true } }), Slot('poker-bet')]),
-        Button({ id: 'poker-plus', label: '+', onClick: () => nudgePokerBet(1), style: STEP }),
-        chip('1/2', 0.5),
-        chip('3/4', 0.75),
-        chip('pot', 1),
-        Button({ id: 'poker-raise', label: verb, onClick: () => H?.onBetRaise(betAmount(hero)), style: RAISE }),
+        Slot('poker-bet-slider'),
       ]),
     );
   }
-  row.push(Button({ id: 'poker-allin', label: `All-in ${money(hero.maxRaiseTo)}`, onClick: () => H?.onAllin(), style: RAISE }));
 
-  return Box({ flexDirection: 'row', gap: 2, alignItems: 'center', padding: [1, 2], background: [16, 18, 26, 0.92] }, row);
+  // ── The three action buttons (chunky, equal width, centred single-line label) ──
+  const atMax = hero.canRaise && betAmount(hero) >= hero.maxRaiseTo; // "max" / typed-to-stack → all-in
+  const foldLabel = 'Fold';
+  const callLabel = hero.toCall > 0 ? (hero.toCall >= hero.stack ? `Call ${money(hero.stack)}` : `Call ${money(hero.toCall)}`) : 'Check';
+  const raiseLabel = hero.canRaise ? (atMax ? 'All-in' : `${hero.toCall > 0 ? 'Raise to' : 'Bet'} ${money(betAmount(hero))}`) : '';
+  const w = Math.max(foldLabel.length, callLabel.length, raiseLabel.length); // equal-width buttons
+
+  const actions: Node[] = [
+    Button({ id: 'poker-fold', label: centerLabel(foldLabel, w), onClick: () => H?.onFold(), style: FOLD }),
+    Button({ id: hero.toCall > 0 ? 'poker-call' : 'poker-check', label: centerLabel(callLabel, w), onClick: () => H?.onCheckCall(), style: ACTION }),
+  ];
+  if (hero.canRaise) {
+    actions.push(
+      Button({
+        id: 'poker-raise',
+        label: centerLabel(raiseLabel, w),
+        onClick: atMax ? () => H?.onAllin() : () => H?.onBetRaise(betAmount(hero)),
+        style: RAISE,
+      }),
+    );
+  }
+
+  // Sizing row on top, a one-row gap, then the buttons; left-aligned so the row starts over
+  // Fold's left edge (WSOP-style). No background — it floats over the felt.
+  return Box({ flexDirection: 'column', gap: 1, alignItems: 'start' }, [
+    ...(sizingRow.length ? sizingRow : []),
+    Box({ flexDirection: 'row', gap: 1 }, actions),
+  ]);
 }
 
 // ── Right rail: table-talk chat ─────────────────────────────────────────────────
