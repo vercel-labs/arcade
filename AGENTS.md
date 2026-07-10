@@ -56,6 +56,16 @@ game). Inside a library, modules import each other directly, not through the bar
 - `pnpm type-check` — `tsc --noEmit`
 - `pnpm test` — unit tests via `node:test` under `tsx` (auto-discovers `src/**/*.test.ts`; no extra deps)
 
+## Issue tracking (Linear)
+
+Work is tracked in Linear — team **AI Gateway**, project **Arcade**; issues are `AIG-###`
+(e.g. `AIG-77`), poker work under the **Poker Demo Day** milestone. Via the Linear MCP,
+**skip `list_teams`** (it returns the whole org) — go straight to the project: `list_issues`
+with `project: "Arcade"` (add `assignee: "me"`), or `get_issue AIG-###`. Branches follow
+`brianzhang/aig-###-<slug>` (Linear's suggested name). When you finish a piece of work, comment
+on the issue citing the commit (`https://github.com/vercel-labs/arcade/commit/<sha>`), and move
+it to Done only when fully delivered.
+
 ## AI Gateway key (Vercel sign-in)
 
 Everything AI reads `process.env.AI_GATEWAY_API_KEY`. It's resolved once at
