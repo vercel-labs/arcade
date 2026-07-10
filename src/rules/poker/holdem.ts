@@ -633,6 +633,9 @@ export class HoldemState implements ImperfectInfoState<PokerAction> {
   currentBetAmount(): number {
     return this.currentBet;
   }
+  bigBlind(): number {
+    return this.bb;
+  }
   toCall(seat: number): number {
     return Math.max(0, this.currentBet - this.committedRound[seat]);
   }

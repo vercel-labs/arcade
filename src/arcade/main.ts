@@ -20,7 +20,7 @@ import { ChessGameScene } from './games/chess/scene.ts';
 import { CardsScene } from './games/poker/cards-scene.ts';
 import { buildPokerRoot, mountPokerHud, pokerMode, setPokerHandlers } from './games/poker/hud.ts';
 import { PokerGameScene } from './games/poker/poker-scene.ts';
-import { buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, type HeroContext, mountPokerGameHud, pushPokerChat, setPokerGameHandlers } from './games/poker/poker-hud.ts';
+import { buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, type HeroContext, mountPokerGameHud, nudgePokerBet, pushPokerChat, setPokerGameHandlers } from './games/poker/poker-hud.ts';
 import { PokerMatch } from './match/poker-driver.ts';
 import { buildPokerSetupPanel, mountPokerSetup, pokerPreviewSeats, pokerSetupReady, pokerSetupSelection, setPokerSetupChanged } from './match/poker-setup.ts';
 import { LogosScene } from './scenes/logos-scene.ts';
@@ -638,11 +638,20 @@ setPokerGameHandlers({
     forceFrame = true;
     r.requestRender();
   },
-  onSliderChange: () => {
+  onAmountChange: () => {
     forceFrame = true;
     r.requestRender();
   },
 });
+
+// The raise-amount ± steppers, bound to keys (hold to repeat via key autorepeat). No-op
+// unless it's the hero's turn with a raiseable range; the HUD owns the amount + clamping.
+function pokerBetStep(dir: number): void {
+  if (mode !== 'poker' || !pokerScene.heroToAct()) return;
+  nudgePokerBet(dir);
+  forceFrame = true;
+  r.requestRender();
+}
 
 // Stop the poker session (navigating away / new match). Safe when idle.
 function stopPokerMatch(): void {
@@ -779,7 +788,7 @@ function pokerNewGame(): void {
 
 // Build the hero's decision context for the HUD from the live hand (seat 0 = hero).
 function pokerHero(): HeroContext {
-  const idle: HeroContext = { toAct: false, toCall: 0, minRaiseTo: 0, maxRaiseTo: 0, stack: 0, pot: 0, canRaise: false };
+  const idle: HeroContext = { toAct: false, toCall: 0, minRaiseTo: 0, maxRaiseTo: 0, stack: 0, pot: 0, currentBet: 0, bigBlind: 0, canRaise: false };
   if (mode !== 'poker' || !pokerScene.isActive()) return idle;
   let st;
   try {
@@ -794,6 +803,8 @@ function pokerHero(): HeroContext {
     maxRaiseTo: st.maxRaiseTo(0),
     stack: st.stackOf(0),
     pot: st.potTotal(),
+    currentBet: st.currentBetAmount(),
+    bigBlind: st.bigBlind(),
     canRaise: st.maxRaiseTo(0) > st.currentBetAmount(),
   };
 }
@@ -1057,6 +1068,7 @@ const keymap = installKeymap({
   closeMatchSetup,
   cancelWispSwap,
   pokerButton,
+  pokerBetStep,
   closePokerSetup,
   closePokerMenu,
   closePokerNotes,

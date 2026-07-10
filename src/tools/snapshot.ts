@@ -409,7 +409,7 @@ function pokerSnapshot(): void {
     mountPokerGameHud(screen);
     screen.setRoot(
       buildPokerGameRoot(region, buildBar('poker', 'ascii', barActions), {
-        hero: { toAct: false, toCall: 0, minRaiseTo: 0, maxRaiseTo: 0, stack: 0, pot: 0, canRaise: false },
+        hero: { toAct: false, toCall: 0, minRaiseTo: 0, maxRaiseTo: 0, stack: 0, pot: 0, currentBet: 0, bigBlind: 20, canRaise: false },
         blinds: '10/20',
         commentary: null,
         t: 0,
@@ -478,7 +478,7 @@ function pokerSnapshot(): void {
     mountPokerGameHud(screen);
     screen.setRoot(
       buildPokerGameRoot(region, buildBar('poker', 'ascii', barActions, { label: 'pause', active: true }), {
-        hero: { toAct: false, toCall: 0, minRaiseTo: 0, maxRaiseTo: 0, stack: 0, pot: 0, canRaise: false },
+        hero: { toAct: false, toCall: 0, minRaiseTo: 0, maxRaiseTo: 0, stack: 0, pot: 0, currentBet: 0, bigBlind: 20, canRaise: false },
         blinds: '10/20',
         commentary: null,
         t: 0,
@@ -643,6 +643,8 @@ function pokerSnapshot(): void {
       maxRaiseTo: st.maxRaiseTo(0),
       stack: st.stackOf(0),
       pot: st.potTotal(),
+      currentBet: st.currentBetAmount(),
+      bigBlind: st.bigBlind(),
       canRaise: st.maxRaiseTo(0) > st.currentBetAmount(),
     };
     screen.setRoot(

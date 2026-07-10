@@ -1,12 +1,13 @@
 // The poker game HUD: a WSOP-style broadcast overlay — a gold pot pill top-left, a
 // stacked player strip per seat bottom-left ([cards] · name over last action · made
 // hand), and a community-board strip bottom-right. On the hero's turn it also shows
-// the betting controls (Fold / Check|Call, a raise-amount Slider with Bet/Raise +
-// All-in). Mirrors the chess HUD (games/chess/hud.ts): persistent component instances
+// the betting controls in one tight row (Fold / Check|Call, a raise-sizing group — ±
+// steppers + a type-in amount + 1/2·3/4·pot chips + Bet/Raise — and All-in). Mirrors the
+// chess HUD (games/chess/hud.ts): persistent component instances
 // mounted via Slot, rebuilt into a full-screen tree each frame. main owns the scene +
 // driver and wires the handlers; this module owns the controls + the table furniture.
 
-import { Box, Button, Modal, type Row, ScrollBox, Slider, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
+import { Box, Button, Input, Modal, type Row, ScrollBox, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
 import type { RGB } from '../../../engine/index.ts';
 import { type Card, isRed, RANK_LABELS } from '../../../rules/poker/cards.ts';
 import type { SeatCardView, TableView } from './poker-scene.ts';
@@ -23,6 +24,8 @@ export interface HeroContext {
   maxRaiseTo: number; // all-in total
   stack: number;
   pot: number;
+  currentBet: number; // the bet level to match this street (for pot-fraction sizing)
+  bigBlind: number; // one step of the ± steppers; the sizing unit is half of this
   canRaise: boolean; // maxRaiseTo > current bet (there are chips to raise with)
 }
 
@@ -38,21 +41,49 @@ export interface PokerGameHandlers {
   onCheckCall(): void;
   onBetRaise(amount: number): void; // raise TO this total
   onAllin(): void;
-  onSliderChange(): void; // request a re-render so the amount label follows the thumb
+  onAmountChange(): void; // request a re-render so the amount + button labels follow an edit
 }
 let H: PokerGameHandlers | null = null;
 export function setPokerGameHandlers(h: PokerGameHandlers): void {
   H = h;
 }
 
-export const betSlider = new Slider({ id: 'poker-bet', width: 24, value: 0.5, step: 0.02, onChange: () => H?.onSliderChange() });
+// ── Raise sizing: an editable amount field + ± steppers + ½/¾/pot chips (no slider) ──
+// The raise-TO total lives in a numeric text field (type an exact amount), nudged by the
+// ± steppers (± one big blind; hold the key to repeat) or jumped by the pot-fraction chips.
+// The field's string is the source of truth so it survives the per-frame rebuild; every
+// legal value is reachable (unlike a slider, whose resolution skipped amounts). `betInput`
+// only accepts digits; Enter commits the raise.
+export const betInput = new Input({
+  id: 'poker-bet',
+  width: 6,
+  onChange: () => {
+    // Keep the buffer numeric; strip anything else the terminal may deliver.
+    const digits = betInput.value.replace(/[^0-9]/g, '');
+    if (digits !== betInput.value) {
+      betInput.value = digits;
+      betInput.caret = Math.min(betInput.caret, digits.length);
+    }
+    H?.onAmountChange();
+  },
+  onEnter: () => {
+    if (lastHero?.canRaise) H?.onBetRaise(betAmount(lastHero));
+  },
+});
+// The hero context from the latest bettingControls build, so the field's Enter and the
+// keyboard steppers (nudgePokerBet, driven from main) can size against the live hand.
+let lastHero: HeroContext | null = null;
+// The decision this field is armed for ("min:max"); when it changes (a new street / turn)
+// the field resets to the min-raise so a stale amount never carries over.
+let betArmedFor = '';
+
 // The chat thread (reuses the chess ChatBox with its own Slot id; same default empty-state
 // hint as chess). Each AI's pre-move line is pushed here as in-character table talk that
 // never reveals its hole cards.
 const pokerChat = new ChatBox('poker-chat');
 
 export function mountPokerGameHud(ui: Screen): void {
-  ui.mount(betSlider);
+  ui.mount(betInput);
   ui.mount(pokerChat);
   ui.mount(notesScroll);
 }
@@ -65,14 +96,37 @@ export function clearPokerChat(): void {
   pokerChat.clear();
 }
 
-// The raise-TO total the slider currently selects, mapped from its 0..1 value onto
-// [minRaiseTo, maxRaiseTo] and rounded to the big blind for tidy amounts.
-export function sliderAmount(hero: HeroContext): number {
-  const span = hero.maxRaiseTo - hero.minRaiseTo;
-  const raw = hero.minRaiseTo + betSlider.value * span;
-  const step = 10; // round to the small blind
-  const snapped = Math.round(raw / step) * step;
-  return Math.max(hero.minRaiseTo, Math.min(hero.maxRaiseTo, snapped));
+// Clamp a raw raise-to into the legal band and round to a whole chip.
+function clampRaise(hero: HeroContext, v: number): number {
+  return Math.max(hero.minRaiseTo, Math.min(hero.maxRaiseTo, Math.round(v)));
+}
+// A "clean" preset amount: snap to half a big blind (the small-blind grid) then clamp, so
+// the ± steppers and pot-fraction chips land on tidy numbers.
+function presetRaise(hero: HeroContext, v: number): number {
+  const unit = Math.max(1, Math.round(hero.bigBlind / 2));
+  return clampRaise(hero, Math.round(v / unit) * unit);
+}
+// A pot-fraction raise-TO: match the current bet, then raise BY f × (pot after we call) —
+// the standard pot-relative sizing. Clamped + snapped to a tidy amount.
+function fractionRaise(hero: HeroContext, f: number): number {
+  return presetRaise(hero, hero.currentBet + f * (hero.pot + hero.toCall));
+}
+// The committed raise-TO total: the field's value, clamped to the legal band (min-raise ..
+// all-in). Empty / unparseable → the min-raise.
+export function betAmount(hero: HeroContext): number {
+  const n = parseInt(betInput.value.replace(/[^0-9]/g, ''), 10);
+  return clampRaise(hero, Number.isFinite(n) ? n : hero.minRaiseTo);
+}
+// Write an amount back into the field (from a stepper / chip / arm), caret at the end.
+function setBet(n: number): void {
+  betInput.value = String(n);
+  betInput.caret = betInput.value.length;
+}
+// ± stepper by one big blind. Exported so main can bind it to keys (hold to repeat).
+export function nudgePokerBet(dirBigBlinds: number): void {
+  if (!lastHero?.canRaise) return;
+  setBet(presetRaise(lastHero, betAmount(lastHero) + dirBigBlinds * lastHero.bigBlind));
+  H?.onAmountChange();
 }
 
 const BTN: Style = {
@@ -86,6 +140,11 @@ const BTN: Style = {
 };
 const FOLD: Style = { ...BTN, background: [96, 44, 44], color: [246, 220, 218], hover: { background: [150, 58, 58], color: [255, 240, 238] } };
 const RAISE: Style = { ...BTN, background: [86, 64, 120], color: [238, 230, 250], hover: { background: [110, 84, 150], color: [248, 244, 255] } };
+// Compact sizing controls: the ± steppers and the ½/¾/pot chips. Tighter padding than the
+// action buttons so the whole row stays on one line.
+const STEP: Style = { ...BTN, padding: [0, 1] };
+const CHIP: Style = { ...BTN, padding: [0, 1], background: [38, 40, 50], color: [200, 204, 216] };
+const AMOUNT_LABEL: RGB = [232, 214, 150]; // gold "$" before the editable amount, pot-pill hue
 
 // The bottom-left corner controls: a green "new match" go button on the idle table,
 // which becomes a green "start" + a grey "cancel" while the settings panel is open.
@@ -120,33 +179,58 @@ export interface MatchControls {
   onCancel?: () => void;
 }
 
-// The betting controls, shown only on the hero's turn.
+// The betting controls, shown only on the hero's turn. One tight row: Fold · Check/Call ·
+// (the raise sizing group: − [$amount] + · ½ ¾ pot · Raise) · All-in. No slider — the
+// amount is typed / stepped / jumped, so every legal value is reachable.
 function bettingControls(hero: HeroContext): Node {
-  const buttons: Node[] = [Button({ id: 'poker-fold', label: 'Fold', onClick: () => H?.onFold(), style: FOLD })];
-  buttons.push(
+  lastHero = hero; // so betInput's Enter + the keyboard steppers size against this hand
+  // Re-arm the amount field to the min-raise whenever the decision changes (new street /
+  // turn), so a stale amount from a prior street never carries over. Same decision → leave
+  // the user's typed/stepped value alone.
+  const key = `${hero.minRaiseTo}:${hero.maxRaiseTo}`;
+  if (hero.canRaise && key !== betArmedFor) {
+    setBet(hero.minRaiseTo);
+    betArmedFor = key;
+  }
+
+  const row: Node[] = [
+    Button({ id: 'poker-fold', label: 'Fold', onClick: () => H?.onFold(), style: FOLD }),
     hero.toCall > 0
       ? Button({ id: 'poker-call', label: hero.toCall >= hero.stack ? `Call ${money(hero.stack)} (all-in)` : `Call ${money(hero.toCall)}`, onClick: () => H?.onCheckCall(), style: BTN })
       : Button({ id: 'poker-check', label: 'Check', onClick: () => H?.onCheckCall(), style: BTN }),
-  );
+  ];
 
-  const rows: Node[] = [Box({ flexDirection: 'row', gap: 2 }, buttons)];
-  // A raise/bet control only when the hero has chips beyond the call and there's a
-  // real range (min < max). When min == max, only an all-in is possible. The live
-  // amount rides ON the confirm button ("Raise to 790" / "Bet 790") — no separate
-  // floating amount label, no bare verb-only button.
-  if (hero.canRaise) {
-    const amount = sliderAmount(hero);
-    const verb = hero.toCall > 0 ? 'Raise to' : 'Bet';
-    const hasRange = hero.maxRaiseTo > hero.minRaiseTo;
-    const raiseRow: Node[] = [];
-    if (hasRange) {
-      raiseRow.push(Slot('poker-bet'));
-      raiseRow.push(Button({ id: 'poker-raise', label: `${verb} ${money(amount)}`, onClick: () => H?.onBetRaise(amount), style: RAISE }));
-    }
-    raiseRow.push(Button({ id: 'poker-allin', label: `All-in ${money(hero.maxRaiseTo)}`, onClick: () => H?.onAllin(), style: RAISE }));
-    rows.push(Box({ flexDirection: 'row', gap: 2, alignItems: 'center' }, raiseRow));
+  // The raise sizing group, only when there are chips beyond the call AND a real range
+  // (min < max). When min == max, only an all-in is possible, so just show All-in.
+  if (hero.canRaise && hero.maxRaiseTo > hero.minRaiseTo) {
+    const verb = hero.toCall > 0 ? 'Raise' : 'Bet';
+    const chip = (label: string, f: number): Node =>
+      Button({
+        id: `poker-frac-${label}`,
+        label,
+        onClick: () => {
+          setBet(fractionRaise(hero, f));
+          H?.onAmountChange();
+        },
+        style: CHIP,
+      });
+    // - [ $amount ] +  1/2 3/4 pot  Raise  (ASCII labels so they render in every terminal
+    // and in the headless snapshot font)
+    row.push(
+      Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [
+        Button({ id: 'poker-minus', label: '-', onClick: () => nudgePokerBet(-1), style: STEP }),
+        Box({ flexDirection: 'row', gap: 0, alignItems: 'center' }, [Text({ text: '$', style: { color: AMOUNT_LABEL, bold: true } }), Slot('poker-bet')]),
+        Button({ id: 'poker-plus', label: '+', onClick: () => nudgePokerBet(1), style: STEP }),
+        chip('1/2', 0.5),
+        chip('3/4', 0.75),
+        chip('pot', 1),
+        Button({ id: 'poker-raise', label: verb, onClick: () => H?.onBetRaise(betAmount(hero)), style: RAISE }),
+      ]),
+    );
   }
-  return Box({ flexDirection: 'column', gap: 1, padding: [1, 2], background: [16, 18, 26, 0.92] }, rows);
+  row.push(Button({ id: 'poker-allin', label: `All-in ${money(hero.maxRaiseTo)}`, onClick: () => H?.onAllin(), style: RAISE }));
+
+  return Box({ flexDirection: 'row', gap: 2, alignItems: 'center', padding: [1, 2], background: [16, 18, 26, 0.92] }, row);
 }
 
 // ── Right rail: table-talk chat ─────────────────────────────────────────────────

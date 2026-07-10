@@ -46,6 +46,7 @@ export interface KeyHandlers {
   closeMatchSetup(): void;
   cancelWispSwap(): void;
   pokerButton(): void;
+  pokerBetStep(dir: number): void;
   closePokerSetup(): void;
   closePokerMenu(): void;
   closePokerNotes(): void;
@@ -97,6 +98,8 @@ export function installKeymap(h: KeyHandlers): Keymap {
     { id: 'chess.cancelSetup', title: 'Cancel match setup', run: h.closeMatchSetup },
     { id: 'chess.cancelSwap', title: 'Cancel model swap', run: h.cancelWispSwap },
     { id: 'poker.toggleAI', title: 'Poker: play / pause', run: h.pokerButton },
+    { id: 'poker.betDown', title: 'Poker: lower the raise amount', run: () => h.pokerBetStep(-1) },
+    { id: 'poker.betUp', title: 'Poker: raise the raise amount', run: () => h.pokerBetStep(1) },
     { id: 'poker.cancelSetup', title: 'Cancel poker setup', run: h.closePokerSetup },
     { id: 'poker.closeMenu', title: 'Close poker menu', run: h.closePokerMenu },
     { id: 'poker.closeNotes', title: 'Close poker notes', run: h.closePokerNotes },
@@ -125,10 +128,15 @@ export function installKeymap(h: KeyHandlers): Keymap {
   keymap.bind('chess', { key: 'n', cmd: 'chess.resetGame' });
   keymap.bind('chess', { key: 'i', cmd: 'chess.toggleIllegal' });
   keymap.bind('chess', { key: 'e', cmd: 'chess.toggleEvalBar' });
-  // Poker: play/pause. Betting is via the on-screen controls (Tab to a Fold/Call/Raise
-  // button or the bet slider, then Enter/←→), so no letter keys are bound for it (they'd
-  // clash with the global render-mode letters). Home/restart/mode/quit live in the ☰ menu.
+  // Poker: play/pause, plus −/+ to nudge the raise amount by a big blind (hold to repeat via
+  // key autorepeat; the on-screen ± buttons and the type-in amount field do the same). No
+  // letter keys for betting — they'd clash with the global render-mode letters. When the
+  // amount field is focused these are typed instead (and filtered to digits), so they only
+  // step when the felt (not the field) has focus. Home/restart/mode/quit live in the ☰ menu.
   keymap.bind('poker', { key: 'p', cmd: 'poker.toggleAI' });
+  keymap.bind('poker', { key: '-', cmd: 'poker.betDown' });
+  keymap.bind('poker', { key: '=', cmd: 'poker.betUp' }); // unshifted "+"
+  keymap.bind('poker', { key: '+', cmd: 'poker.betUp' });
   // Menu hub: arrows move, Enter/Space launch, Escape returns to the prism loading
   // screen. Escape here shadows the global Escape→quit because the 'menu' base layer
   // is searched before 'global'.
