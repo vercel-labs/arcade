@@ -20,7 +20,7 @@ import { ChessGameScene } from './games/chess/scene.ts';
 import { CardsScene } from './games/poker/cards-scene.ts';
 import { buildPokerRoot, mountPokerHud, pokerMode, setPokerHandlers } from './games/poker/hud.ts';
 import { PokerGameScene } from './games/poker/poker-scene.ts';
-import { buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, type HeroContext, mountPokerGameHud, nudgePokerBet, pushPokerChat, setPokerGameHandlers } from './games/poker/poker-hud.ts';
+import { buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, type HeroContext, mountPokerGameHud, nudgePokerBet, pushPokerChat, setPokerGameHandlers, setPokerVoiceStage } from './games/poker/poker-hud.ts';
 import { PokerMatch } from './match/poker-driver.ts';
 import { buildPokerSetupPanel, mountPokerSetup, pokerPreviewSeats, pokerSetupReady, pokerSetupSelection, pokerVoiceSelected, setPokerSetupChanged } from './match/poker-setup.ts';
 import { LogosScene } from './scenes/logos-scene.ts';
@@ -615,10 +615,10 @@ const pokerMatch = new PokerMatch({
     pushPokerChat({ text, model: event ? '' : speaker, event });
     r.requestRender();
   },
-  // A human action parsed from speech, awaiting confirm — surface it as a toast so it's
-  // obvious what saying "yes" (or a button) will commit. Cleared when it resolves.
+  // A human action parsed from speech, awaiting confirm — shown as a callout right above
+  // the bottom-right action buttons (see poker-hud). Cleared when it resolves.
   onVoiceStage: (label) => {
-    commentary = label ? { text: `🎤 say “yes” to ${label} — or use the buttons`, model: '', until: t + 3600 } : null;
+    setPokerVoiceStage(label);
     forceFrame = true;
     r.requestRender();
   },
