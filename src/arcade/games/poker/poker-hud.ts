@@ -6,12 +6,12 @@
 // mounted via Slot, rebuilt into a full-screen tree each frame. main owns the scene +
 // driver and wires the handlers; this module owns the controls + the table furniture.
 
-import { Box, Button, Modal, Slider, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
+import { Box, Button, Modal, type Row, ScrollBox, Slider, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
 import type { RGB } from '../../../engine/index.ts';
 import { type Card, isRed, RANK_LABELS } from '../../../rules/poker/cards.ts';
 import type { SeatCardView, TableView } from './poker-scene.ts';
 import { providerTint } from '../../scenes/wisp.ts';
-import { ChatBox, type ChatMessage, CHAT_WIDTH, PANEL_PAD_L, PANEL_PAD_R } from '../chess/chat.ts';
+import { ChatBox, type ChatMessage, CHAT_WIDTH, PANEL_PAD_L, PANEL_PAD_R, wrapText } from '../chess/chat.ts';
 import { shortModel } from '../chess/hud.ts';
 
 // The hero's decision context for this frame (from the live HoldemState). When
@@ -54,6 +54,7 @@ const pokerChat = new ChatBox('poker-chat');
 export function mountPokerGameHud(ui: Screen): void {
   ui.mount(betSlider);
   ui.mount(pokerChat);
+  ui.mount(notesScroll);
 }
 
 // A model's table-talk line → the thread. clear resets it for a fresh session.
@@ -86,12 +87,45 @@ const BTN: Style = {
 const FOLD: Style = { ...BTN, background: [96, 44, 44], color: [246, 220, 218], hover: { background: [150, 58, 58], color: [255, 240, 238] } };
 const RAISE: Style = { ...BTN, background: [86, 64, 120], color: [238, 230, 250], hover: { background: [110, 84, 150], color: [248, 244, 255] } };
 
+// The bottom-left corner controls: a green "new match" go button on the idle table,
+// which becomes a green "start" + a grey "cancel" while the settings panel is open.
+// "start" dims (no onClick) until every shown seat has a committed model.
+const MATCH_NEW: Style = {
+  padding: [0, 3],
+  background: [40, 84, 58],
+  color: [226, 240, 230],
+  bold: true,
+  hover: { background: [54, 108, 74] },
+  focus: { background: [54, 108, 74] },
+  pressed: { background: [72, 128, 92] },
+};
+const MATCH_OFF: Style = { padding: [0, 3], background: [34, 36, 44], color: [110, 114, 126], bold: true };
+const MATCH_CANCEL: Style = {
+  padding: [0, 3],
+  background: [44, 46, 56],
+  color: [212, 214, 224],
+  bold: true,
+  hover: { background: [72, 76, 92] },
+  focus: { background: [72, 76, 92] },
+  pressed: { background: [96, 100, 116] },
+};
+
+// The bottom-left corner controls for this frame (null → none, e.g. mid-session).
+// `setup` picks the shape: false → a single green "new match"; true → a green "start"
+// (dimmed when `onPrimary` is absent) beside a grey "cancel" (→ home). `onPrimary` is
+// new-match (idle) / start (setup); `onCancel` is the setup Cancel.
+export interface MatchControls {
+  setup: boolean;
+  onPrimary?: () => void;
+  onCancel?: () => void;
+}
+
 // The betting controls, shown only on the hero's turn.
 function bettingControls(hero: HeroContext): Node {
   const buttons: Node[] = [Button({ id: 'poker-fold', label: 'Fold', onClick: () => H?.onFold(), style: FOLD })];
   buttons.push(
     hero.toCall > 0
-      ? Button({ id: 'poker-call', label: hero.toCall >= hero.stack ? `Call ${hero.stack} (all-in)` : `Call ${hero.toCall}`, onClick: () => H?.onCheckCall(), style: BTN })
+      ? Button({ id: 'poker-call', label: hero.toCall >= hero.stack ? `Call ${money(hero.stack)} (all-in)` : `Call ${money(hero.toCall)}`, onClick: () => H?.onCheckCall(), style: BTN })
       : Button({ id: 'poker-check', label: 'Check', onClick: () => H?.onCheckCall(), style: BTN }),
   );
 
@@ -107,9 +141,9 @@ function bettingControls(hero: HeroContext): Node {
     const raiseRow: Node[] = [];
     if (hasRange) {
       raiseRow.push(Slot('poker-bet'));
-      raiseRow.push(Button({ id: 'poker-raise', label: `${verb} ${amount}`, onClick: () => H?.onBetRaise(amount), style: RAISE }));
+      raiseRow.push(Button({ id: 'poker-raise', label: `${verb} ${money(amount)}`, onClick: () => H?.onBetRaise(amount), style: RAISE }));
     }
-    raiseRow.push(Button({ id: 'poker-allin', label: `All-in ${hero.maxRaiseTo}`, onClick: () => H?.onAllin(), style: RAISE }));
+    raiseRow.push(Button({ id: 'poker-allin', label: `All-in ${money(hero.maxRaiseTo)}`, onClick: () => H?.onAllin(), style: RAISE }));
     rows.push(Box({ flexDirection: 'row', gap: 2, alignItems: 'center' }, raiseRow));
   }
   return Box({ flexDirection: 'column', gap: 1, padding: [1, 2], background: [16, 18, 26, 0.92] }, rows);
@@ -132,6 +166,8 @@ const CELL_DOWN_FG: RGB = [126, 130, 148];
 
 // Thousands separators for chip amounts (POT 1,240) — a tiny formatter, locale-free.
 const withCommas = (n: number): string => n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+// Chip amounts read as money throughout the HUD: a "$" prefix + thousands separators.
+const money = (n: number): string => `$${withCommas(n)}`;
 
 // One mini-card cell: light stock with rank + suit icon (red for ♥/♦), or a muted slate
 // placeholder (`??` for a hidden hole card, `♠` for an undealt board slot). Ten is
@@ -178,14 +214,36 @@ const NOTES_NAV: Style = {
 };
 const NOTES_DIM: Style = { padding: [0, 1], color: [96, 100, 116] }; // disabled ‹ › (single observer)
 
-// One player's block in the modal: the subject's name, then its notes as bullets (or a
-// muted placeholder when the observer has no read yet).
-function notesEntry(label: string, notes: string[]): Node {
-  const head = Text({ text: label, style: { color: [232, 214, 150], bold: true } });
-  const body = notes.length
-    ? notes.map((n) => Text({ text: `• ${n}`, style: { color: [206, 210, 222] } }))
-    : [Text({ text: '· no reads yet', style: { color: [116, 120, 136] } })];
-  return Box({ flexDirection: 'column', gap: 0 }, [head, ...body]);
+// Modal geometry. The card is a fixed width so every observer's page is the same size;
+// notes word-wrap to fit and the body scrolls at a fixed height (see notesScroll).
+const NOTES_INNER_W = 46; // content width inside the card padding (header + scroll region)
+const NOTES_WRAP_W = NOTES_INNER_W - 3; // minus the "• " bullet gutter and the scrollbar column
+const NOTES_VIEW_H = 16; // fixed viewport height (rows) — generous, always this tall
+const NOTES_PLACEHOLDERS = 2; // grey placeholder bullets shown per opponent with no reads yet
+const NOTE_HEAD: RGB = [232, 214, 150]; // gold subject name
+const NOTE_FG: RGB = [206, 210, 222]; // a read's text
+const NOTE_PLACEHOLDER: RGB = [92, 96, 112]; // grey empty-slot bullet
+
+// The scrollable body: a fixed-height viewport over all the entries' rows (rebuilt each
+// frame from the current observer's reads). Persistent so its scroll offset survives the
+// per-frame rebuild; mounted in mountPokerGameHud, placed via Slot below.
+const notesScroll = new ScrollBox({ id: 'poker-notes-scroll', width: NOTES_INNER_W, height: NOTES_VIEW_H, rows: [] });
+let notesObserver = ''; // last observer shown, so paging back to the top resets the scroll
+
+// One subject's rows: a gold name line, then each read wrapped to the column as bullets
+// (first line "• …", continuations indented). With no reads yet, grey placeholder bullets
+// stand in so the block still has shape.
+function notesRows(label: string, notes: string[]): Row[] {
+  const rows: Row[] = [Text({ text: label, style: { color: NOTE_HEAD, bold: true } })];
+  if (notes.length) {
+    for (const n of notes) {
+      const lines = wrapText(n, NOTES_WRAP_W);
+      lines.forEach((line, i) => rows.push(Text({ text: `${i === 0 ? '• ' : '  '}${line}`, style: { color: NOTE_FG } })));
+    }
+  } else {
+    for (let i = 0; i < NOTES_PLACEHOLDERS; i++) rows.push(Text({ text: '•', style: { color: NOTE_PLACEHOLDER } }));
+  }
+  return rows;
 }
 
 // Build the notes modal for the given observer. `entries` are its reads on every other
@@ -209,14 +267,24 @@ export function buildPokerNotesModal(opts: {
     Text({ text: `${opts.observerLabel}'s reads`, style: { color: [222, 224, 234], bold: true } }),
     next,
   ]);
-  const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', gap: 3, width: 46 }, [
+  const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', gap: 3, width: NOTES_INNER_W }, [
     title,
     Button({ id: 'poker-notes-close', label: '✕', onClick: opts.onClose, style: CHAT_CLOSE }),
   ]);
+  // A blank spacer row between subjects; flatten each subject's rows into one list.
+  const rows: Row[] = [];
+  opts.entries.forEach((e, i) => {
+    if (i > 0) rows.push(Text({ text: '' }));
+    rows.push(...notesRows(e.label, e.notes));
+  });
+  if (opts.observerLabel !== notesObserver) {
+    notesScroll.scroll = 0; // paged to a different observer — start at the top
+    notesObserver = opts.observerLabel;
+  }
+  notesScroll.rows = rows;
   const card = Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [1, 3], background: [22, 24, 32] }, [
     header,
-    Box({ height: 0 }),
-    ...opts.entries.map((e) => notesEntry(e.label, e.notes)),
+    Slot('poker-notes-scroll'),
   ]);
   return Modal(card);
 }
@@ -225,11 +293,13 @@ export function buildPokerNotesModal(opts: {
 const POT_BG: RGB = [150, 116, 40]; // WSOP gold
 const POT_FG: RGB = [24, 18, 6]; // dark ink on the gold pill
 // The gold pot pill: a spade emblem + "POT  1,240", with the blinds as a muted line
-// beneath. Mirrors the reference's top-left pot readout.
+// beneath. `alignItems: 'stretch'` makes both rows take the column's width (the wider of
+// the two), so the gold bar and the blinds line always share an edge — a small pot no
+// longer leaves the gold bar narrower than the blinds beneath it.
 function potPill(pot: number, blinds: string): Node {
-  return Box({ flexDirection: 'column', gap: 0 }, [
-    Box({ padding: [0, 2], background: POT_BG }, [Text({ text: `♠ POT  ${withCommas(pot)}`, style: { color: POT_FG, bold: true } })]),
-    Box({ padding: [0, 1] }, [Text({ text: `blinds ${blinds}`, style: { color: 'muted' } })]),
+  return Box({ flexDirection: 'column', gap: 0, alignItems: 'stretch' }, [
+    Box({ padding: [0, 2], background: POT_BG }, [Text({ text: `♠ POT  ${money(pot)}`, style: { color: POT_FG, bold: true } })]),
+    Box({ padding: [0, 1] }, [Text({ text: `blinds ${blinds.split('/').map((b) => `$${b}`).join('/')}`, style: { color: 'muted' } })]),
   ]);
 }
 
@@ -260,9 +330,13 @@ function playerStrip(s: SeatCardView, ended: boolean): Node {
   const win = ended && s.award > 0; // the hand is over and this seat took (a share of) the pot
   const left = Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [
     Text({ text: s.name, style: { color: win ? WIN_INK : s.folded ? DIM_FG : seatTint(s.provider), bold: true } }),
-    Text({ text: withCommas(s.stack), style: { color: win ? WIN_INK : s.folded ? DIM_FG : CHIP_FG, bold: true } }),
+    Text({ text: money(s.stack), style: { color: win ? WIN_INK : s.folded ? DIM_FG : CHIP_FG, bold: true } }),
   ]);
-  const badge = Text({ text: s.pos, style: { color: win ? WIN_INK : 'muted', bold: true } });
+  // Top-right badge: "eliminated" (greyed) for a busted seat sitting out, else its
+  // blind/button position for the hand.
+  const badge = s.eliminated
+    ? Text({ text: 'eliminated', style: { color: DIM_FG, bold: true } })
+    : Text({ text: s.pos, style: { color: win ? WIN_INK : 'muted', bold: true } });
   const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', width: STRIP_W }, [left, badge]);
 
   const cells = [0, 1].map((i) => cardCell(s.cards[i] ?? null, '??'));
@@ -290,7 +364,7 @@ function playerStrips(seats: readonly SeatCardView[], ended: boolean): Node {
 // STRIP_W width. Top row: the "Board" label top-left with the street (Pre-flop / Flop /
 // Turn / River) pinned top-right, mirroring a seat's name + position badge. Bottom row:
 // the five community slots, mirroring a seat's two hole cards. Undealt slots read a muted
-// "··" (two chars, so the grid never reflows) and are replaced in place as streets deal.
+// "??" (matching hidden hole cards, two chars so the grid never reflows) and are replaced in place as streets deal.
 const STREET_LABEL: Record<string, string> = { preflop: 'Pre-flop', flop: 'Flop', turn: 'Turn', river: 'River', showdown: 'Showdown' };
 function boardPanel(v: TableView | null): Node {
   const board = v?.board ?? [];
@@ -300,10 +374,34 @@ function boardPanel(v: TableView | null): Node {
     Text({ text: 'Board', style: { color: [222, 224, 234], bold: true } }),
     Text({ text: street, style: { color: 'muted', bold: true } }),
   ]);
-  const cells = Array.from({ length: 5 }, (_, i) => cardCell(i < shown && i < board.length ? board[i] : null, '··'));
+  const cells = Array.from({ length: 5 }, (_, i) => cardCell(i < shown && i < board.length ? board[i] : null, '??'));
   const cardRow = Box({ flexDirection: 'row', gap: 1, alignItems: 'center', width: STRIP_W }, cells);
   return Box({ flexDirection: 'column', gap: 0, padding: [0, 1], background: [22, 24, 32, 0.92] }, [header, cardRow]);
 }
+
+// ── Top-centre banners (community deal + end-of-hand winner) ─────────────────────
+// While the flop/turn/river deals under the fixed bird's-eye, this floats at the top,
+// centred, over the bare scene (no panel background): a "Board" label + a mini-card per
+// community card on the felt so far (synced to the 3D deal — a cell appears as each card
+// lands, so the flop grows the row and the turn/river add to the already-shown ones).
+// Board-strip card style; the card cells keep their own light stock.
+function cineBanner(label: string, cards: Card[]): Node {
+  return Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [
+    Text({ text: label, style: { color: [222, 224, 234], bold: true } }),
+    ...cards.map((c) => cardCell(c, '??')),
+  ]);
+}
+
+// The end-of-hand winner line ("Claude wins $240" / "You win $240"), gold to match the
+// pot / winning-strip theme. Sits in the same top-centre slot as the cine banner.
+const WIN_TEXT: RGB = [232, 214, 150];
+function resultBanner(text: string): Node {
+  return Text({ text, style: { color: WIN_TEXT, bold: true } });
+}
+
+// The "press any key to continue" prompt shown one row under whichever banner is up. Only
+// a keypress advances — the mouse stays free to orbit/zoom the scene while it's showing.
+const CONTINUE_TEXT = 'press any key to continue';
 
 // The chat panel: a "Chat" header with a ✕ (collapse) at its far right, over the scrollable
 // thread, sized to `height` so it fills the rail above the hand. The header's right padding
@@ -349,19 +447,29 @@ export function buildPokerGameRoot(
     onToggleChat: () => void;
     onOpenMenu: () => void; // ☰ pill → the in-game menu popup (home / restart / mode / quit)
     onOpenNotes: () => void; // "notes" pill → the opponent-notes modal
+    setup: Node | null; // the new-match settings panel (top-left, in place of the pot pill)
+    matchControls: MatchControls | null; // the bottom-left new-match / start+cancel controls
+    hideHud: boolean; // during a community-deal cinematic: hide all but the top-right pills + rail
+    cineLabel: { label: string; cards: Card[] } | null; // top-centre "Board" + cards during that cinematic
+    resultLabel: string | null; // top-centre end-of-hand winner line (over the visible table)
+    awaitingContinue: boolean; // show the "click anywhere to continue" prompt under the banner
   },
 ): Node {
-  const pot = opts.table ? potPill(opts.table.pot, opts.blinds) : null;
-  const board = opts.table ? boardPanel(opts.table) : null;
-  const strips = opts.table && opts.table.seats.length ? playerStrips(opts.table.seats, opts.table.ended) : null;
+  // During a community-deal cinematic everything but the top-right pills + rail is hidden,
+  // so the bird's-eye of the dealing board reads clean (see PokerGameScene.cineHideHud).
+  const hide = opts.hideHud;
+  const pot = !hide && opts.table ? potPill(opts.table.pot, opts.blinds) : null;
+  const board = !hide && opts.table ? boardPanel(opts.table) : null;
+  const strips = !hide && opts.table && opts.table.seats.length ? playerStrips(opts.table.seats, opts.table.ended) : null;
 
   const c = opts.commentary && opts.t < opts.commentary.until ? opts.commentary : null;
   const label = c ? (c.model ? `${shortModel(c.model)}:  ${c.text}` : c.text) : opts.status;
-  const toast = label
-    ? Box({ padding: [0, 2], background: [22, 24, 32, 0.94] }, [Text({ text: label, style: { color: c ? 'fg' : 'muted' } })])
-    : null;
+  const toast =
+    !hide && label
+      ? Box({ padding: [0, 2], background: [22, 24, 32, 0.94] }, [Text({ text: label, style: { color: c ? 'fg' : 'muted' } })])
+      : null;
 
-  const controls = opts.hero.toAct ? bettingControls(opts.hero) : null;
+  const controls = !hide && opts.hero.toAct ? bettingControls(opts.hero) : null;
 
   // The rail (full-height chat) only reserves width when the chat is OPEN. Collapsed, main
   // takes the whole width so the bottom-right controls reach the true corner. `mainW` is the
@@ -377,29 +485,68 @@ export function buildPokerGameRoot(
   const menuPill = Button({ id: 'poker-menu', label: `${MENU_ICON} menu`, onClick: opts.onOpenMenu, style: CHAT_PILL });
   // The notes pill sits between menu and chat, shown whenever a session is live (both when
   // the human plays and when spectating an all-AI table).
-  const notesPill = opts.active ? Button({ id: 'poker-notes', label: 'notes', onClick: opts.onOpenNotes, style: CHAT_PILL }) : null;
+  const notesPill = opts.active ? Button({ id: 'poker-notes', label: 'reads', onClick: opts.onOpenNotes, style: CHAT_PILL }) : null;
   const chatPill =
     opts.active && !opts.chatOpen ? Button({ id: 'poker-chat-open', label: 'chat', onClick: opts.onToggleChat, style: CHAT_PILL }) : null;
   const rightCluster = Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [menuPill, ...(notesPill ? [notesPill] : []), ...(chatPill ? [chatPill] : [])]);
+  // The top-left slot holds the pot pill in a session, or the new-match settings panel
+  // while it's open (they never coexist — the panel only shows on the idle table).
+  const topLeft = hide ? [] : opts.setup ? [opts.setup] : pot ? [pot] : [];
   const topBand = Box({ flexDirection: 'row', alignItems: 'start', width: mainW, padding: [1, 2, 0, 2] }, [
-    ...(pot ? [pot] : []),
+    ...topLeft,
     Box({ flexGrow: 1 }),
     rightCluster,
   ]);
 
+  // The bottom-left corner controls. Idle: a single green "new match". Setup panel open:
+  // a green "start" (dimmed until every seat has a model) beside a grey "cancel" (→ home).
+  const mc = hide ? null : opts.matchControls;
+  const matchBtn = !mc
+    ? []
+    : !mc.setup
+      ? [Button({ id: 'poker-match', label: 'new match', onClick: mc.onPrimary, style: MATCH_NEW })]
+      : [
+          Box({ flexDirection: 'row', gap: 2 }, [
+            Button({ id: 'poker-start', label: 'start', onClick: mc.onPrimary, style: mc.onPrimary ? MATCH_NEW : MATCH_OFF }),
+            Button({ id: 'poker-cancel', label: 'cancel', onClick: mc.onCancel, style: MATCH_CANCEL }),
+          ]),
+        ];
+
   // Bottom band: the status/commentary toast, the board, and the player strips stack up
-  // bottom-LEFT; the betting controls sit in the bottom-RIGHT corner with a small margin
-  // (not tucked flush). alignItems:'end' bottom-aligns the two clusters.
+  // bottom-LEFT (the match button at the very bottom of that stack); the betting controls
+  // sit in the bottom-RIGHT corner with a small margin (not tucked flush). alignItems:'end'
+  // bottom-aligns the two clusters.
   const leftCluster = Box({ flexDirection: 'column', gap: 1, alignItems: 'start' }, [
     ...(toast ? [toast] : []),
     ...(board ? [board] : []),
     ...(strips ? [strips] : []),
+    ...matchBtn,
   ]);
-  const bottomBand = Box({ flexDirection: 'row', alignItems: 'end', width: mainW, padding: [0, 0, 1, 2] }, [
+  // The band sits one row off the bottom (a trailing spacer in `main`). When the
+  // new-match / start+cancel button is showing, drop the band's own bottom padding so it
+  // sits a single row off the edge — a bottom margin that reads level with the 2-cell left
+  // inset (a terminal row is taller than a column is wide). In-session (strips, no button)
+  // keeps the roomier 2-row bottom margin.
+  const bandPadBottom = matchBtn.length ? 0 : 1;
+  const bottomBand = Box({ flexDirection: 'row', alignItems: 'end', width: mainW, padding: [0, 0, bandPadBottom, 2] }, [
     leftCluster,
     Box({ flexGrow: 1 }),
     ...(controls ? [Box({ padding: [0, 2, 0, 0] }, [controls])] : []),
   ]);
+
+  // The top-centre banner floats over the main column (an absolute row so it doesn't disturb
+  // the top-right pills): the community-deal street+cards while the cinematic hides the HUD,
+  // or the end-of-hand winner line over the still-visible table. A "click anywhere to
+  // continue" prompt sits one row beneath it while the scene is awaiting the gesture.
+  const bannerBody = hide && opts.cineLabel ? cineBanner(opts.cineLabel.label, opts.cineLabel.cards) : opts.resultLabel ? resultBanner(opts.resultLabel) : null;
+  const banner = bannerBody
+    ? Box({ position: 'absolute', top: 1, left: 0, width: mainW }, [
+        Box({ flexDirection: 'column', alignItems: 'center', gap: 0, width: mainW }, [
+          bannerBody,
+          ...(opts.awaitingContinue ? [Text({ text: CONTINUE_TEXT, style: { color: 'muted' } })] : []),
+        ]),
+      ])
+    : null;
 
   // The main column takes the width left of the rail (flexGrow); the bar lives here, so it
   // spans only the main column — the rail is clear of it, exactly like the chess layout.
@@ -409,6 +556,7 @@ export function buildPokerGameRoot(
     bottomBand,
     bar,
     Box({ height: 1 }),
+    ...(banner ? [banner] : []),
   ]);
 
   const rail = railOpen ? [buildRightRail(region.h, opts.active, opts.onToggleChat)] : [];

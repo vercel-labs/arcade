@@ -34,7 +34,7 @@ import type { RGB } from '../../../engine/index.ts';
 import { type Card, RANK_LABELS } from '../../../rules/poker/cards.ts';
 import type { HoldemState, PokerAction } from '../../../rules/poker/holdem.ts';
 import { cardBackTexture } from './card-textures.ts';
-import { CARD_SCALE, CARD_W, drawCard, flatDown, flatUp } from './card-render.ts';
+import { CARD_H, CARD_SCALE, CARD_W, drawCard, flatDown, flatUp } from './card-render.ts';
 import { HandPeek } from './card-peek.ts';
 import { DeckShuffle } from './deck-shuffle.ts';
 import { chairMesh, chairModel, FELT_STIPPLE, feltMesh, frameMesh, TABLE_MODEL, TABLE_RADIUS } from './table.ts';
@@ -64,7 +64,18 @@ const WISP_SCALE = 1.0; // orb ~0.85 world radius; centred at WISP_FLOAT so its 
 // STREET_HOLD is an extra pause tacked onto the community-deal time when the flop/turn/
 // river turns, so the new board lands and reads before play resumes (see playMove).
 const ACTION_SETTLE = 0.28;
-const STREET_HOLD = 0.55;
+
+// Community-deal cinematic: when a betting round closes and the flop/turn/river turns,
+// the camera hard-cuts from wherever the user was to a fixed bird's-eye over the board,
+// deals the card(s), holds so they read, then cuts back. Camera controls are frozen for
+// its whole duration and the HUD hides everything but the top-right pills (see cine*).
+const CINE_PRE = 0.45; // beat after the closing action, before the cut (nothing deals yet)
+// The fixed bird's-eye: near-straight-down onto the community cards. The distance is
+// computed per street so EVERY card dealt so far is fully in frame while maximising the
+// zoom — the flop's three, then all four on the turn, all five on the river — rather than
+// tracking only the newest card. CINE_MARGIN leaves a little gap around the outermost cards.
+const CINE_ELEVATION = 1.4;
+const CINE_MARGIN = 1.18;
 
 // The deck lives at the centre-back of the felt for the whole hand: the opening deal
 // flies two cards out to each seat, and each community street (flop/turn/river) is
@@ -74,7 +85,7 @@ const DECK_POS = { x: 0, z: -1.4 }; // centre-back; clear of the board row and t
 const DECK_FULL = 34; // backs in a full stack (visual only); it shrinks as cards are dealt
 const DECK_THICK = 0.02; // stacked back thickness
 const DEAL_STEP = 0.3; // seconds each card takes to fly to its seat — an unhurried, dealt-by-hand pace
-const COMMUNITY_STEP = 0.34; // a community card takes a touch longer (it flips face-up mid-flight)
+const COMMUNITY_STEP = 0.68; // a community card flies out slowly (it flips face-up mid-flight) so the bird's-eye reads
 const DEAL_HOP = 0.85; // height of a dealt card's arc
 const DEAL_CARD: Card = { rank: 0, suit: 0 }; // dealt face-down, so identity is irrelevant
 // After the opening deal lands, hold this long before the first action is requested, so
@@ -98,7 +109,7 @@ const SHUFFLE_SPEED = 1.5; // interlude shuffle playback speed (mild speed-up so
 
 // Idle: with no session running the table isn't bare — it shows a ring of
 // chairs and a centre deck that riffle-shuffles on a loop (see DeckShuffle).
-const IDLE_SEATS = 4; // chairs shown around the empty table
+const IDLE_SEATS = 4; // chairs shown around the empty table (when no setup preview is up)
 
 const smooth = (x: number): number => {
   const t = x < 0 ? 0 : x > 1 ? 1 : x;
@@ -157,7 +168,7 @@ export interface SeatCardView {
   name: string;
   provider?: string;
   kind: 'human' | 'ai';
-  cards: (Card | null)[]; // exactly 2; null = hidden / not shown to the viewer
+  cards: (Card | null)[]; // exactly 2; null = hidden (opponent, or a hero card not yet peeked)
   folded: boolean;
   allIn: boolean;
   stack: number;
@@ -166,6 +177,7 @@ export interface SeatCardView {
   pos: '' | 'BTN' | 'SB' | 'BB'; // blind/button position this hand (BTN only shown 3+ handed)
   madeHand: string; // e.g. "Two Pair" (only for revealed, unfolded seats post-flop)
   award: number; // chips won this hand (>0 once the hand is decided)
+  eliminated: boolean; // busted / sitting this hand out (no chips, dealt no cards)
 }
 
 // The whole-table HUD view: every seat's row plus the shared pot / board. Card
@@ -185,6 +197,9 @@ const SUIT_GLYPH = ['♠', '♥', '♦', '♣'] as const; // indexed by Suit
 const fmtCard = (c: Card): string => `${RANK_LABELS[c.rank]}${SUIT_GLYPH[c.suit]}`;
 const fmtCards = (cards: readonly Card[]): string => cards.map(fmtCard).join(' ');
 
+// Chip amounts read as money everywhere in the HUD: a "$" prefix + thousands separators.
+const money = (n: number): string => `$${n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
+
 // A played action → its short WSOP-style label for the seat's HUD row. Amounts are
 // totals (raise TO, bet amount), matching how HoldemState reads the action.
 function actionLabel(a: PokerAction): string {
@@ -196,9 +211,9 @@ function actionLabel(a: PokerAction): string {
     case 'call':
       return 'CALL';
     case 'bet':
-      return `BET ${a.amount}`;
+      return `BET ${money(a.amount)}`;
     case 'raise':
-      return `RAISE TO ${a.to}`;
+      return `RAISE TO ${money(a.to)}`;
     case 'allin':
       return 'ALL IN';
   }
@@ -211,6 +226,7 @@ export class PokerGameScene {
   private idleDeck: DeckShuffle;
   private dirty = true;
   private lastT = -1;
+  private lastAspect = 1.6; // width/height of the last render target — for the bird's-eye fit math
 
   private hand: HoldemState | null = null;
   private seats: PokerSeatView[] = [];
@@ -262,9 +278,21 @@ export class PokerGameScene {
   private events: ((text: string) => void) | null = null;
 
   // A played action lingers so it's watchable; `beat` is a seconds countdown (ticked by
-  // dt in renderScene), long enough to cover a street's community deal when one turns.
+  // dt in renderScene). A street-turning action instead runs the community-deal cinematic
+  // below, which resolves the same settle when it finishes.
   private beat = 0;
   private settleResolve: (() => void) | null = null;
+  // The community-deal cinematic (null when idle). `pre` holds on the user's view a beat,
+  // then a hard cut to the bird's-eye (`deal`) while the board flies out, then `wait` —
+  // it sits on the bird's-eye showing a "press any key to continue" prompt until the user
+  // presses a key (continueGesture), which cuts back to `saved`. Camera controls are frozen
+  // during pre+deal (the mouse frees up in `wait`).
+  private cine: { phase: 'pre' | 'deal' | 'wait'; clock: number; saved: OrbitCamera } | null = null;
+  // End-of-hand winner gate: the banner text ("Claude wins $240" / "You win $240") shown at
+  // top-centre over the still-visible final table, plus its "click to continue" prompt.
+  // `resultResolve` is the driver's waiter, released by continueGesture (or cancelContinue).
+  private resultText: string | null = null;
+  private resultResolve: (() => void) | null = null;
   // The post-deal pause before play: set to DEAL_HOLD when the opening deal lands, ticked
   // down in renderScene; awaitDeal() resolves when it lapses so the driver holds the first
   // action until every card is dealt and the pause has passed. −1 = not counting.
@@ -292,6 +320,22 @@ export class PokerGameScene {
   // see the bend). The user can still orbit/zoom from here.
   private makeIdleCamera(): OrbitCamera {
     return new OrbitCamera({ azimuth: 0, elevation: 0.62, distance: 9.5, target: { x: 0, y: 0.1, z: 0 } }, CAM_MIN_DIST, CAM_MAX_DIST);
+  }
+
+  // The community-deal cinematic's fixed pose: a near-top-down bird's-eye framing EVERY
+  // community card revealed by this street (slots 0..total-1) — the flop's 3, the turn's 4,
+  // the river's 5 — centred on their midpoint and pulled back just far enough that they all
+  // fit (so the turn zooms out a touch from the flop, the river a touch more). The distance
+  // is the larger of the width fit (cards span horizontally, scaled by the terminal aspect)
+  // and the height fit (a card's length fills the frame vertically).
+  private makeBirdsEyeCamera(): OrbitCamera {
+    const total = this.hand ? this.hand.boardCards().length : 5;
+    const cx = total > 0 ? (this.boardSlotX(0) + this.boardSlotX(total - 1)) / 2 : 0;
+    const spanX = (total > 0 ? this.boardSlotX(total - 1) - this.boardSlotX(0) : 0) + CARD_W; // outer edge to outer edge
+    const tanV = Math.tan(FOVY / 2);
+    const dWidth = (spanX * 0.5 * CINE_MARGIN) / (tanV * this.lastAspect);
+    const dHeight = (CARD_H * 0.5 * CINE_MARGIN) / tanV;
+    return new OrbitCamera({ azimuth: 0, elevation: CINE_ELEVATION, distance: Math.max(dWidth, dHeight), target: { x: cx, y: 0, z: BOARD_Z } }, CAM_MIN_DIST, CAM_MAX_DIST);
   }
 
   // Wire the game-event sink (main pushes these into the chat as grey lines).
@@ -335,7 +379,28 @@ export class PokerGameScene {
     this.cancelDeal();
     this.muck = [];
     this.hand = null;
+    this.seats = []; // back to the default idle ring (no stale wisps over empty chairs)
+    this.wisps = [];
+    this.cancelContinue(); // drop any in-flight cinematic / winner gate, releasing waiters
     this.cam = this.makeIdleCamera(); // back to the idle framing on the shuffling deck
+    this.dirty = true;
+  }
+
+  // ── Idle preview (the new-match settings panel) ─────────────────────────────────
+  // While the setup panel is open (no session yet) the idle table previews the choices
+  // live: the chair ring follows the player count and each AI seat's provider wisp
+  // floats over its chair. null clears back to the bare idle ring. Ignored while a
+  // session is active (beginSession owns the seats then). Opening pulls the camera
+  // back from the deck close-up to the whole-table overview (so the ring + wisps
+  // read); closing returns to the idle framing. Updates in between leave the camera
+  // alone, so the user's own orbiting isn't reset by a dropdown change.
+  setPreview(seats: PokerSeatView[] | null): void {
+    if (this.active) return;
+    const was = this.seats.length > 0;
+    this.seats = seats ?? [];
+    this.wisps = this.seats.map((s, i) => (s.kind === 'ai' && s.provider ? this.loadSeatWisp(s.provider, i) : null));
+    if (!was && seats) this.cam = this.makeCamera();
+    else if (was && !seats) this.cam = this.makeIdleCamera();
     this.dirty = true;
   }
 
@@ -370,6 +435,10 @@ export class PokerGameScene {
     const n = this.seats.length;
     for (let round = 0; round < 2; round++) {
       for (let s = 0; s < n; s++) {
+        // Busted seats sit the hand out — the engine deals them no cards (holeOf empty),
+        // so skip them here too; otherwise the animation flies cards to an empty seat that
+        // then vanish once play starts (there are no resting cards to hold them).
+        if (this.hand && this.hand.holeOf(s).length === 0) continue;
         const a = this.seatAngle(s);
         const c = this.seatPos(s, HOLE_R);
         const tx = Math.cos(a);
@@ -381,7 +450,7 @@ export class PokerGameScene {
     this.deals = plan;
     this.dealDone = 0;
     this.dealT = 0;
-    this.dealing = n > 0;
+    this.dealing = plan.length > 0;
   }
 
   setPaused(paused: boolean): void {
@@ -441,14 +510,134 @@ export class PokerGameScene {
         if (boardBefore < 5 && board.length >= 5) this.events(`River  ${fmtCards(board.slice(4, 5))}`);
       }
       if (this.events && !wasTerminal && this.hand!.isTerminal()) this.events(this.handResult(this.hand!));
-      // If this action turned a street (flop/turn/river, or a multi-street all-in runout),
-      // hold long enough for the new board card(s) to deal out of the deck — COMMUNITY_STEP
-      // each — plus STREET_HOLD to take them in, before the loop asks for the next move.
-      // Otherwise just the short per-action settle. This gates runMatch (it awaits us).
-      this.beat = newCards > 0 ? newCards * COMMUNITY_STEP + STREET_HOLD : ACTION_SETTLE;
+      // A street-turning action (flop/turn/river, or a multi-street all-in runout) runs the
+      // bird's-eye deal cinematic, which resolves the settle when it cuts back. Any other
+      // action just lingers a short beat. Either way this gates runMatch (it awaits us).
+      if (newCards > 0) this.startCine();
+      else this.beat = ACTION_SETTLE;
       this.dirty = true;
       this.settleResolve = resolve;
     });
+  }
+
+  // ── Community-deal cinematic ─────────────────────────────────────────────────────
+  // Arm the bird's-eye deal: remember the user's current pose to restore, then let the
+  // phase clock (advanceCine) drive pre → cut → deal → wait (for a click) → cut-back.
+  // Re-arming while already running (a rare back-to-back street turn) keeps the saved pose.
+  private startCine(): void {
+    if (!this.cine) this.cine = { phase: 'pre', clock: 0, saved: this.cam };
+    else {
+      this.cine.phase = 'pre';
+      this.cine.clock = 0;
+    }
+    this.beat = 0;
+  }
+
+  // Drive the cinematic clock. Called at the top of renderScene so a phase change that
+  // hard-cuts the camera takes effect on the same frame the eye is read.
+  private advanceCine(dt: number): void {
+    const c = this.cine;
+    if (!c) return;
+    c.clock += dt;
+    if (c.phase === 'pre') {
+      if (c.clock >= CINE_PRE) {
+        c.phase = 'deal';
+        c.clock = 0;
+        this.cam = this.makeBirdsEyeCamera(); // boom — cut to the bird's-eye
+        this.dirty = true;
+      }
+      return;
+    }
+    if (c.phase === 'deal') {
+      // The board deals in advanceDeals; once every turned card has landed, sit on the
+      // bird's-eye and wait for the user's click (continueGesture) — no auto-timeout.
+      const target = this.hand ? this.hand.boardCards().length : this.boardShown;
+      if (this.boardShown >= target && this.boardT < 0) {
+        c.phase = 'wait';
+        c.clock = 0;
+        this.dirty = true;
+      }
+    }
+    // 'wait' → nothing ticks; continueGesture cuts back and releases the settle.
+  }
+
+  // Whether a community-deal cinematic has cut to the bird's-eye right now (deal/wait —
+  // not the pre beat, which still shows the user's view). Drives the HUD hide + camera
+  // freeze so only the top-right pills remain while the board deals.
+  cineHidesHud(): boolean {
+    return this.cine !== null && this.cine.phase !== 'pre';
+  }
+
+  // The top-centre banner for the community-deal cinematic: always labelled "Board", listing
+  // EVERY community card on the felt so far (synced to the 3D deal — a cell appears as each
+  // card lands). So the flop grows the row 0→3; the turn shows the flop pre-populated and the
+  // fourth card appears as it lands; the river likewise adds the fifth. null when not in the
+  // bird's-eye. The HUD renders these as mini-cards, mirroring the board strip.
+  cineLabel(): { label: string; cards: Card[] } | null {
+    if (!this.cine || this.cine.phase === 'pre' || !this.hand) return null;
+    return { label: 'Board', cards: this.hand.boardCards().slice(0, this.boardShown) };
+  }
+
+  // ── "Click anywhere to continue" gate (shared by both banners) ───────────────────
+  // End-of-hand winner banner: show `text` at top-centre over the final table and block
+  // until the user clicks/keys (continueGesture) or the gate is cancelled (pause/stop).
+  beginResult(text: string): Promise<void> {
+    this.resultText = text;
+    this.dirty = true;
+    return new Promise<void>((resolve) => {
+      this.resultResolve = resolve;
+    });
+  }
+  resultLabel(): string | null {
+    return this.resultText;
+  }
+
+  // Whether a "click anywhere to continue" prompt is up right now (the bird's-eye deal has
+  // finished dealing, or the end-of-hand winner banner is showing). Main shows the prompt
+  // and routes the next click/keypress to continueGesture while this is true.
+  awaitingContinue(): boolean {
+    return (this.cine !== null && this.cine.phase === 'wait') || this.resultText !== null;
+  }
+
+  // The user clicked/pressed a key past a continue prompt: advance whichever gate is up —
+  // the community-deal cinematic cuts its camera back and releases the move settle; the
+  // winner banner clears and releases the driver's between-hands waiter.
+  continueGesture(): void {
+    if (this.cine !== null && this.cine.phase === 'wait') {
+      this.cam = this.cine.saved;
+      this.cine = null;
+      this.dirty = true;
+      const done = this.settleResolve;
+      this.settleResolve = null;
+      done?.();
+      return;
+    }
+    if (this.resultText !== null) {
+      this.resultText = null;
+      this.dirty = true;
+      const done = this.resultResolve;
+      this.resultResolve = null;
+      done?.();
+    }
+  }
+
+  // Drop any pending continue gate (pause / stop), releasing its waiter so the driver
+  // never hangs and restoring the camera if a cinematic was up.
+  cancelContinue(): void {
+    if (this.cine !== null) {
+      this.cam = this.cine.saved;
+      this.cine = null;
+      const done = this.settleResolve;
+      this.settleResolve = null;
+      done?.();
+    }
+    if (this.resultResolve !== null) {
+      this.resultText = null;
+      const done = this.resultResolve;
+      this.resultResolve = null;
+      done();
+    }
+    this.dirty = true;
   }
 
   // The hero's move seam (HumanPlayer.awaitMove). Resolves when the hero commits via
@@ -497,10 +686,12 @@ export class PokerGameScene {
   }
 
   // The data behind the WSOP-style table HUD (per-seat rows + the shared pot/board).
-  // Card visibility: SPECTATE (no human at the table) reveals every hand; otherwise only
-  // the human's own seat is shown, plus anyone forced open at a real showdown. `boardShown`
-  // tracks the flop/turn/river landing on the felt so the board strip reveals in step with
-  // the table animation. null when no session is running.
+  // Card visibility: SPECTATE (no human at the table) reveals every hand; otherwise the
+  // hero sees only their OWN cards, and only each one they've actually peeked (hover-to-
+  // peek on the felt) — an unpeeked hero card reads as a face-down placeholder, same as
+  // an opponent's — plus anyone forced open at a real showdown. `boardShown` tracks the
+  // flop/turn/river landing on the felt so the board strip reveals in step with the table
+  // animation. null when no session is running.
   tableView(): TableView | null {
     if (!this.active) return null;
     const hand = this.hand;
@@ -515,9 +706,23 @@ export class PokerGameScene {
 
     const seats: SeatCardView[] = this.seats.map((s, i) => {
       const isSelf = s.kind === 'human';
-      const revealed = !!hand && (spectator || isSelf || shown.has(i));
       const hole = hand ? hand.holeOf(i) : [];
-      const cards: (Card | null)[] = revealed ? [hole[0] ?? null, hole[1] ?? null] : [null, null];
+      // Which of this seat's two hole cards the viewer sees. Spectate + showdown open a
+      // whole hand at once; other seats stay hidden. The hero's OWN cards lie face-down
+      // like a home game — each one only appears in the strip once the hero has peeked it
+      // (hover-to-peek on the felt), so the readout mirrors what they've actually looked
+      // at (HandPeek.seen latches a deliberate peek, not a cursor graze).
+      const openAll = !!hand && (spectator || shown.has(i));
+      const cards: (Card | null)[] = !hand
+        ? [null, null]
+        : openAll
+          ? [hole[0] ?? null, hole[1] ?? null]
+          : isSelf
+            ? [0, 1].map((k) => (this.heroPeek.seen(k) ? hole[k] ?? null : null))
+            : [null, null];
+      // A made-hand name needs both hole cards visible to the viewer, so it reads only
+      // once this seat is fully open (both peeked, or a real showdown).
+      const fullyOpen = cards[0] !== null && cards[1] !== null;
       const folded = hand ? hand.isFolded(i) : false;
       // Position badge: BB / SB take priority (so heads-up, where the button IS the SB,
       // reads as SB + BB); the button only shows as BTN when it's neither blind (3+ handed).
@@ -534,8 +739,10 @@ export class PokerGameScene {
         lastAction: this.lastAction[i] ?? null,
         toAct: i === toAct,
         pos,
-        madeHand: revealed && !folded && hand ? hand.handName(i) : '',
+        madeHand: fullyOpen && !folded && hand ? hand.handName(i) : '',
         award: awards.get(i) ?? 0,
+        // Sitting out: the engine dealt this seat no cards (busted). holeOf empty ⟺ out.
+        eliminated: !!hand && hand.holeOf(i).length === 0,
       };
     });
     return {
@@ -549,27 +756,37 @@ export class PokerGameScene {
   }
 
   // ── Camera passthrough ─────────────────────────────────────────────────────────
-  // Reset to the whole-table overview, orbiting/zooming about the table centre.
+  // Camera control is frozen only while the cinematic is actively cutting/dealing (pre +
+  // deal) — the animated bird's-eye is not the user's to move then. Once it's dealt and
+  // waiting for a keypress ('wait'), the mouse is live again so the user can look around
+  // the board; pressing a key (continueGesture) restores their pre-cinematic pose.
+  private cameraLocked(): boolean {
+    return this.cine !== null && this.cine.phase !== 'wait';
+  }
   resetView(): void {
+    if (this.cameraLocked()) return;
     this.cam.reset();
     this.dirty = true;
   }
   orbit(dx: number, dy: number): void {
+    if (this.cameraLocked()) return;
     this.cam.orbit(dx, dy);
     this.cam.elevation = Math.max(0.16, this.cam.elevation); // don't drop under the table
     this.dirty = true;
   }
   pan(dx: number, dy: number): void {
+    if (this.cameraLocked()) return;
     this.cam.pan(dx, dy);
     this.dirty = true;
   }
   zoomBy(f: number): void {
+    if (this.cameraLocked()) return;
     this.cam.zoomBy(f); // zoom straight in on whatever we're looking at (centre by default)
     this.dirty = true;
   }
 
   needsRender(): boolean {
-    return this.dirty || (this.active && !this.paused) || this.beat > 0 || this.dealHold > 0 || this.dealing || this.boardT >= 0 || this.heroPeek.animating() || this.interludeActive() || this.isIdle();
+    return this.dirty || (this.active && !this.paused) || this.beat > 0 || this.dealHold > 0 || this.dealing || this.boardT >= 0 || this.cine !== null || this.resultText !== null || this.heroPeek.animating() || this.interludeActive() || this.isIdle();
   }
 
   // ── Hero hole-card peek / lift ─────────────────────────────────────────────────
@@ -611,6 +828,8 @@ export class PokerGameScene {
   renderScene(target: RenderTarget, t = 0): void {
     const dt = this.lastT < 0 ? 1 / 30 : Math.min(0.1, Math.max(0, t - this.lastT));
     this.lastT = t;
+    this.lastAspect = target.height > 0 ? target.width / target.height : this.lastAspect; // for the bird's-eye fit
+    this.advanceCine(dt); // may hard-cut this.cam before we read the eye below
     target.clear(6, 10, 8);
     const eye = this.cam.eye();
     const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 200 };
@@ -623,9 +842,10 @@ export class PokerGameScene {
     rasterize(target, feltMesh(), feltMaterial, { mvp: tableMvp, model: TABLE_MODEL, lightDir: TABLE_LIGHT, ambient: TABLE_AMBIENT, ...FELT_STIPPLE });
     const chair = chairMesh();
     if (this.isIdle()) {
-      // Idle state: a ring of chairs around a centre deck shuffling on a loop.
+      // Idle state: a ring of chairs around a centre deck shuffling on a loop. With
+      // the setup preview up, the ring follows the chosen player count instead.
       this.idleDeck.step(dt);
-      this.drawChairRing(target, vp, chair, IDLE_SEATS);
+      this.drawChairRing(target, vp, chair, this.seats.length || IDLE_SEATS);
       this.idleDeck.draw(target, vp);
     } else {
       this.drawChairRing(target, vp, chair, this.seats.length);
@@ -653,7 +873,8 @@ export class PokerGameScene {
     }
 
     // Wisps above each AI seat, pulsing the seat to act (idle when paused/over).
-    if (this.active) this.drawWisps(target, vp, t, dt);
+    // Drawn whenever seats carry wisps — a live session or the setup preview.
+    if (this.wisps.length > 0) this.drawWisps(target, vp, t, dt);
 
     // Tick the played-action beat (seconds); when it lapses, wake playMove's awaiter.
     if (this.beat > 0) {
@@ -695,9 +916,12 @@ export class PokerGameScene {
       }
       return;
     }
-    // Community: deal any board cards the state has turned but we haven't shown yet.
+    // Community: deal any board cards the state has turned but we haven't shown yet — but
+    // hold them until the cinematic has cut to the bird's-eye (its `pre` beat plays on the
+    // pre-deal view). Once cutting (deal phase) or when no cinematic is running, deal.
     const target = hand.boardCards().length;
-    if (this.boardT < 0 && this.boardShown < target) this.boardT = 0;
+    const boardGated = this.cine !== null && this.cine.phase === 'pre';
+    if (!boardGated && this.boardT < 0 && this.boardShown < target) this.boardT = 0;
     if (this.boardT >= 0) {
       this.boardT += dt / COMMUNITY_STEP;
       if (this.boardT >= 1) {

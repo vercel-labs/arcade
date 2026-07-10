@@ -183,7 +183,8 @@ export function installKeymap(h: KeyHandlers): Keymap {
   keymap.bind('swap', { key: 'escape', cmd: 'chess.cancelSwap' });
   // Menu team-switch modal: Escape closes it; the modal layer shadows stray keys.
   keymap.bind('teamswitch', { key: 'escape', cmd: 'menu.closeTeamSwitch' });
-  // Poker setup modal: Escape cancels; the layer shadows stray keys.
+  // Poker new-match panel (non-modal): Escape closes it; every other key falls
+  // through to the poker layer (camera pans, 'p' to start, 'b' back).
   keymap.bind('poker-setup', { key: 'escape', cmd: 'poker.cancelSetup' });
   // Poker in-game menu popup: Escape closes it; the layer shadows stray keys.
   keymap.bind('poker-menu', { key: 'escape', cmd: 'poker.closeMenu' });

@@ -20,7 +20,8 @@ export type PokerSeatSpec = { kind: 'human' } | { kind: 'ai'; model: string };
 const STARTING_STACK = 1000;
 const SMALL_BLIND = 10;
 const BIG_BLIND = 20;
-const RESULT_HOLD_MS = 3000; // linger on the revealed hand — cards shown, chips won, winner's strip gold — before the gather/reshuffle interlude (no winner splash; the lingered state IS the celebration)
+// Chip amounts read as money in the winner banner: a "$" prefix + thousands separators.
+const money = (n: number): string => `$${n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
 
 // How poker moves are written, for the model prompt/schema (see ModelPlayer).
 const POKER_NOTATION: MoveNotation = {
@@ -34,7 +35,7 @@ const POKER_NOTATION: MoveNotation = {
 // through. Lives in `system` (see ModelPlayer.persona) so it outranks the per-turn board.
 const POKER_PERSONA =
   "You are playing live no-limit Texas Hold'em against the other players at the table. " +
-  'Your rationale is spoken aloud for everyone to hear, so do not reveal your own cards or ' +
+  'Anything you say out loud is heard by everyone, so do not reveal your own cards or ' +
   'hand strength unless you are bluffing.';
 
 const providerOf = (slug: string): string => slug.split('/')[0] ?? slug;
@@ -55,10 +56,9 @@ export class PokerMatch {
   private abort: AbortController | null = null;
   private paused = false;
   private running = false;
-  private handTimer: ReturnType<typeof setTimeout> | null = null;
   // Session-scoped opponent notes (the "home game" memory) + the display labels the
   // models refer to players by ("the human" / a model's short name, seat-qualified when a
-  // model repeats). Each AI seat reflects on the finished hand during the inter-hand hold.
+  // model repeats). Each AI seat reflects on the finished hand while the winner banner waits.
   private readonly memory = new PokerMemory();
   private labels: string[] = [];
   private reflecting: Promise<void> | null = null;
@@ -121,9 +121,12 @@ export class PokerMatch {
       moveNotation: POKER_NOTATION,
       // Identity + card-secrecy rule (system prompt).
       persona: POKER_PERSONA,
-      // What the rationale field is: the spoken line, kept short. Concealment and context
-      // live in the persona; this just says it is talk, not analysis.
-      rationaleGuide: 'one short line of table talk.',
+      // Split the output so move analysis goes to a private "thinking" field and only the
+      // public "say" line reaches the chat. This is what stops a model from leaking its
+      // hand while justifying a move (a bare "rationale" field invites "8-4 is junk"). The
+      // guide steers `say` toward lively social talk so the chat has character, not a flat
+      // announcement of the action.
+      speech: 'a line or two of live table talk in your own voice: react to the hand, banter, size someone up, or needle an opponent. Actually talk to the table, do not just announce your move',
       // Per-turn context: chip standings + this seat's private opponent notes, read live.
       contextProvider: () => this.moveContext(index),
     });
@@ -229,9 +232,9 @@ export class PokerMatch {
         this.deps.requestRender();
         this.button = this.nextAlive(this.button);
         // Let each AI seat update its opponent notes from this hand, concurrently with the
-        // result hold + interlude (scheduleNext awaits it before dealing the next hand).
+        // winner banner + interlude (proceedAfterHand awaits it before dealing the next hand).
         this.startReflections(state.publicRecord());
-        if (this.running && !this.paused) this.scheduleNext();
+        if (this.running && !this.paused) this.proceedAfterHand(state);
       })
       .catch(() => {}); // aborted mid-decision — fine
   }
@@ -255,34 +258,51 @@ export class PokerMatch {
     this.reflecting = jobs.length ? Promise.all(jobs).then(() => undefined) : null;
   }
 
-  // After a short hold to read the result, run the scene's gather + reshuffle interlude,
-  // then deal the next hand. The interlude animates the finished hand's cards back into
-  // the deck and shuffles it twice (cards never teleport); it resolves when squared. The
-  // pending note-taking (started at hand end) is awaited before the next deal.
-  private scheduleNext(): void {
-    if (this.handTimer) clearTimeout(this.handTimer);
-    this.handTimer = setTimeout(() => {
-      this.handTimer = null;
-      if (!this.running || this.paused) return;
-      this.deps.scene
-        .runInterlude()
-        .then(async () => {
-          if (this.reflecting) {
-            try {
-              await this.reflecting;
-            } catch {
-              /* best-effort */
-            }
-            this.reflecting = null;
+  // The end-of-hand winner announcement + "click to continue", then the gather/reshuffle
+  // interlude, then the next hand. The winner banner (scene.beginResult) shows over the
+  // revealed final table and BLOCKS until the user clicks/keys — so the hand lingers as
+  // long as they like, not a fixed timer. On continue: run the interlude (cards fly back
+  // into the deck and it shuffles twice — never teleporting), await the pending note-taking
+  // (started at hand end, so it overlaps the wait), then deal the next hand.
+  private proceedAfterHand(state: HoldemState): void {
+    this.deps.scene
+      .beginResult(this.winnerText(state))
+      .then(async () => {
+        if (!this.running || this.paused) return;
+        await this.deps.scene.runInterlude();
+        if (this.reflecting) {
+          try {
+            await this.reflecting;
+          } catch {
+            /* best-effort */
           }
-          if (this.running && !this.paused) this.dealHand();
-        })
-        .catch(() => {});
-    }, RESULT_HOLD_MS);
+          this.reflecting = null;
+        }
+        if (this.running && !this.paused) this.dealHand();
+      })
+      .catch(() => {});
   }
 
-  // Pause on whoever's turn it is: cancel any in-flight thinking / human wait and the
-  // inter-hand timer, and freeze the wisps. The hand stays alive for resume.
+  // The winner banner text: "You win $240" / "claude-haiku-4.5 wins $240" (a model's short
+  // display name), or a split-pot "A and B split $240". Amounts are the pot each seat took.
+  private winnerText(state: HoldemState): string {
+    const by = new Map<number, number>();
+    for (const a of state.awards()) by.set(a.seat, (by.get(a.seat) ?? 0) + a.amount);
+    const winners = [...by.entries()].filter(([, amt]) => amt > 0);
+    const disp = (seat: number): string => (this.seats[seat]?.kind === 'human' ? 'You' : this.labelOf(seat));
+    if (winners.length === 0) return 'Hand over';
+    if (winners.length === 1) {
+      const [seat, amt] = winners[0];
+      const verb = this.seats[seat]?.kind === 'human' ? 'win' : 'wins';
+      return `${disp(seat)} ${verb} ${money(amt)}`;
+    }
+    const total = winners.reduce((s, [, amt]) => s + amt, 0);
+    return `${winners.map(([s]) => disp(s)).join(' and ')} split ${money(total)}`;
+  }
+
+  // Pause on whoever's turn it is: cancel any in-flight thinking / human wait, any pending
+  // continue gate (cinematic / winner banner), and freeze the wisps. The hand stays alive
+  // for resume.
   pause(): void {
     if (!this.running || this.paused) return;
     this.paused = true;
@@ -292,12 +312,9 @@ export class PokerMatch {
     this.reflectAbort?.abort(); // cancel any in-flight note-taking
     this.reflectAbort = null;
     this.reflecting = null;
-    if (this.handTimer) {
-      clearTimeout(this.handTimer);
-      this.handTimer = null;
-    }
     this.deps.scene.cancelInterlude(); // drop any in-flight gather/reshuffle
     this.deps.scene.cancelDeal(); // and any pending post-deal wait
+    this.deps.scene.cancelContinue(); // and any bird's-eye deal / winner "click to continue"
     this.deps.requestRender();
   }
 
@@ -323,15 +340,11 @@ export class PokerMatch {
     this.reflectAbort?.abort();
     this.reflectAbort = null;
     this.reflecting = null;
-    if (this.handTimer) {
-      clearTimeout(this.handTimer);
-      this.handTimer = null;
-    }
     this.running = false;
     this.paused = false;
     this.deps.scene.cancelInterlude();
     this.deps.scene.cancelDeal();
-    this.deps.scene.endSession();
+    this.deps.scene.endSession(); // also cancels any pending continue gate
   }
 
   // Swap one seat's model mid-session (the wisp-swap popup): rebuild that seat's

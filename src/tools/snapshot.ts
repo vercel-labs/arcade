@@ -26,7 +26,7 @@ import { CardsScene, type CardsMode } from '../arcade/games/poker/cards-scene.ts
 import { buildPokerRoot, mountPokerHud } from '../arcade/games/poker/hud.ts';
 import { PokerGameScene, type PokerSeatView } from '../arcade/games/poker/poker-scene.ts';
 import { buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, mountPokerGameHud, pushPokerChat } from '../arcade/games/poker/poker-hud.ts';
-import { buildPokerSetup, mountPokerSetup } from '../arcade/match/poker-setup.ts';
+import { buildPokerSetupPanel, modeDropdown as pokerModeDropdown, mountPokerSetup, playersDropdown as pokerPlayersDropdown, pokerPreviewSeats } from '../arcade/match/poker-setup.ts';
 import { HoldemState } from '../rules/poker/holdem.ts';
 import { mulberry32 } from '../arcade/scenes/wisp.ts';
 import { RANK_LABELS, type Suit, SUIT_LETTERS } from '../rules/poker/cards.ts';
@@ -296,7 +296,7 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot prism-prompt [cols] [rows] [t] [out]    prism loading screen + press-any-key marquee
   pnpm snapshot cards [single|hand|deck] [cols] [rows] [state] [out]   the cards screen
       (single: a code like Kh/10s/As · hand: peek|up · deck: shuffle|deal)
-  pnpm snapshot poker [cols] [rows] [preflop|flop|river|showdown] [players=N] [hud|setup|menu|notes] [spectate] [muck|gather|shuffle] [color] [out]   the poker table
+  pnpm snapshot poker [cols] [rows] [preflop|flop|river|showdown] [players=N] [hud|setup|cine|result|menu|notes] [spectate] [muck|gather|shuffle] [color] [out]   the poker table
       (muck: fold seats to a burn pile, needs players≥3 · gather/shuffle: the between-hands interlude, mid-sweep / mid-shuffle)
 
 Convert + view:  sips -s format png .snapshots/<name>.ppm --out .snapshots/<name>.png -Z 1000`;
@@ -349,6 +349,14 @@ if (process.argv[2] === 'help' || process.argv[2] === '--help' || process.argv[2
 //   pnpm exec tsx src/tools/snapshot.ts poker idle [cols] [rows] [<t>] [color] [out.ppm]
 //     idle: no session running — 4 chairs + the centre deck at loop time <t>
 //           seconds (a decimal, e.g. 1.0 for the riffle; default 1.0).
+//   pnpm exec tsx src/tools/snapshot.ts poker setup [cols] [rows] [out.ppm]
+//     setup: the new-match settings panel over the idle table, previewing the
+//            default seats (chair ring + provider wisps) + the start/cancel buttons.
+//   pnpm exec tsx src/tools/snapshot.ts poker cine [cols] [rows] [players=N] [out.ppm]
+//     cine: the flop's bird's-eye deal cinematic (fixed top-down over the board, HUD
+//           hidden to the top-right pills, with the top banner + "click to continue").
+//   pnpm exec tsx src/tools/snapshot.ts poker showdown hud result [players=N] [out.ppm]
+//     result: the end-of-hand winner banner + "click to continue" over the final table.
 function pokerSnapshot(): void {
   const args = process.argv.slice(3);
   const cols = Number(args.find((a) => /^\d+$/.test(a))) || 150;
@@ -380,6 +388,52 @@ function pokerSnapshot(): void {
     return;
   }
 
+  // `setup`: the new-match settings panel over the idle table, previewing the default
+  // choices (chair ring follows the player count; provider wisps float over AI seats),
+  // with the bottom-left "start match" button — exactly what "new match" opens in-app.
+  // `spectate` / `players=N` drive the real pickers, so variants render true to app.
+  if (args.includes('setup')) {
+    if (args.includes('spectate')) pokerModeDropdown.pick(1);
+    if (players >= 2 && players <= 6 && args.some((a) => a.startsWith('players='))) pokerPlayersDropdown.pick(players - 2);
+    const idleScene = new PokerGameScene();
+    idleScene.setPreview(pokerPreviewSeats());
+    const buf = new RenderTarget(cols * SS, rows * 2 * SS);
+    let ti = 0;
+    for (let i = 0; i < 45; i++) {
+      idleScene.renderScene(buf, ti);
+      ti += 1 / 30;
+    }
+    const region = { x: 0, y: 0, w: cols, h: rows };
+    const screen = new Screen(cols, rows);
+    mountPokerSetup(screen);
+    mountPokerGameHud(screen);
+    screen.setRoot(
+      buildPokerGameRoot(region, buildBar('poker', 'ascii', barActions), {
+        hero: { toAct: false, toCall: 0, minRaiseTo: 0, maxRaiseTo: 0, stack: 0, pot: 0, canRaise: false },
+        blinds: '10/20',
+        commentary: null,
+        t: 0,
+        status: '',
+        table: null,
+        active: false,
+        chatOpen: false,
+        onToggleChat: noop,
+        onOpenMenu: noop,
+        onOpenNotes: noop,
+        setup: buildPokerSetupPanel(),
+        matchControls: { setup: true, onPrimary: noop, onCancel: noop },
+        hideHud: false,
+        cineLabel: null,
+        resultLabel: null,
+        awaitingContinue: false,
+      }),
+      region,
+    );
+    const surf2 = screen.snapshot((s) => shapeGlyphToSurface(s, buf, cols, rows, { color: true, hybrid: true }));
+    surfaceToPpm(surf2, cols, rows, args.find((a) => a.endsWith('.ppm')) ?? '.snapshots/poker-setup.ppm');
+    return;
+  }
+
   // `spectate` → every seat is an AI (all hole cards visible, no hero controls); otherwise
   // seat 1 is the human hero (only their own cards show).
   const spectate = args.includes('spectate');
@@ -397,6 +451,58 @@ function pokerSnapshot(): void {
 
   const state = new HoldemState({ stacks: new Array(players).fill(1000), button: 0, smallBlind: 10, bigBlind: 20, rng: mulberry32(0x90ce7) });
   scene.beginHand(state);
+
+  // `cine`: catch the community-deal cinematic mid-flight — the camera has cut to the
+  // fixed bird's-eye over the board and the HUD is hidden down to the top-right pills.
+  // Finish the opening deal, close the preflop round (turning the flop → starting the
+  // cinematic), then step into its bird's-eye hold before compositing.
+  if (args.includes('cine')) {
+    const buf = new RenderTarget(cols * SS, rows * 2 * SS);
+    let tc = 0.05;
+    const stepc = (): void => {
+      scene.renderScene(buf, tc);
+      tc += 1 / 30;
+    };
+    for (let i = 0; i < 100; i++) stepc(); // opening hole-card deal lands
+    // Play (check/call) up to the requested street so its cinematic frames the right count:
+    // flop (default) → 3 cards, `river` → all 5. The turning move starts the cinematic.
+    const cineTarget = street === 'river' || street === 'showdown' ? 3 : 1;
+    let g = 0;
+    while (state.street() < cineTarget && !state.isTerminal() && g++ < 120) {
+      const toCall = state.toCall(state.toActSeat());
+      void scene.playMove(toCall > 0 ? { type: 'call' } : { type: 'check' });
+    }
+    for (let i = 0; i < 160; i++) stepc(); // pre beat → cut → cards deal (slow) → sit in 'wait'
+    const region = { x: 0, y: 0, w: cols, h: rows };
+    const screen = new Screen(cols, rows);
+    mountPokerGameHud(screen);
+    screen.setRoot(
+      buildPokerGameRoot(region, buildBar('poker', 'ascii', barActions, { label: 'pause', active: true }), {
+        hero: { toAct: false, toCall: 0, minRaiseTo: 0, maxRaiseTo: 0, stack: 0, pot: 0, canRaise: false },
+        blinds: '10/20',
+        commentary: null,
+        t: 0,
+        status: '',
+        table: scene.tableView(),
+        active: true,
+        chatOpen: false,
+        onToggleChat: noop,
+        onOpenMenu: noop,
+        onOpenNotes: noop,
+        setup: null,
+        matchControls: null,
+        hideHud: scene.cineHidesHud(),
+        cineLabel: scene.cineLabel(),
+        resultLabel: scene.resultLabel(),
+        awaitingContinue: scene.awaitingContinue(),
+      }),
+      region,
+    );
+    const surf2 = screen.snapshot((s) => shapeGlyphToSurface(s, buf, cols, rows, { color: true, hybrid: true }));
+    surfaceToPpm(surf2, cols, rows, args.find((a) => a.endsWith('.ppm')) ?? '.snapshots/poker-cine.ppm');
+    return;
+  }
+
   // Drive a few scripted actions to reach the requested street (everyone calls/checks).
   // Route through scene.playMove (not state.applyAction) so each seat's last action is
   // captured for its HUD strip; the returned promise is fire-and-forget in this still.
@@ -463,15 +569,6 @@ function pokerSnapshot(): void {
     return;
   }
   const region = { x: 0, y: 0, w: cols, h: rows };
-  // `setup` composites the poker setup modal over the table (like the chess setup still).
-  if (args.includes('setup')) {
-    const screen = new Screen(cols, rows);
-    mountPokerSetup(screen);
-    screen.setRoot(buildPokerSetup(region, { onStart: noop, onCancel: noop }), region);
-    const surf2 = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
-    surfaceToPpm(surf2, cols, rows, out);
-    return;
-  }
   // `menu` composites the in-game ☰ menu popup over the table.
   if (args.includes('menu')) {
     const screen = new Screen(cols, rows);
@@ -495,11 +592,18 @@ function pokerSnapshot(): void {
   // ‹ › pager + per-player bullets render.
   if (args.includes('notes')) {
     const screen = new Screen(cols, rows);
+    mountPokerGameHud(screen); // mounts the notes ScrollBox so its Slot resolves
     screen.setRoot(
       buildPokerNotesModal({
         observerLabel: 'claude-opus-4.8',
         entries: [
-          { label: 'the human', notes: ['Bets big when weak, checks the nuts.', 'Folds to any turn raise.'] },
+          {
+            label: 'the human',
+            notes: [
+              'Bets big when weak and checks the nuts, so treat a large bet on a scary board as a bluff more often than not.',
+              'Folds to any turn raise.',
+            ],
+          },
           { label: 'gpt-5.4', notes: ['Shoves almost every hand — call lighter.'] },
           { label: 'gemini-3-pro', notes: [] },
         ],
@@ -529,8 +633,11 @@ function pokerSnapshot(): void {
       { text: "that's a big number. giving it a think.", model: 'google/gemini-3-pro' },
     ])
       pushPokerChat(m);
+    // `result` composites the end-of-hand winner banner + "click to continue" over the
+    // (visible) final table, as it appears between hands. Needs a decided hand (showdown).
+    if (args.includes('result')) void scene.beginResult('claude-opus-4.8 wins $240');
     const hero = {
-      toAct: !spectate,
+      toAct: !spectate && !args.includes('result'),
       toCall: st.toCall(0),
       minRaiseTo: st.minRaiseTo(0),
       maxRaiseTo: st.maxRaiseTo(0),
@@ -544,13 +651,19 @@ function pokerSnapshot(): void {
         blinds: '10/20',
         commentary: null,
         t: 0,
-        status: spectate ? 'Spectating' : 'Your move',
+        status: '', // matches the app: no "Your move" toast (the lit strip + action bar signal the turn)
         table: scene.tableView(),
         active: true,
         chatOpen: !args.includes('chatclosed'),
         onToggleChat: noop,
         onOpenMenu: noop,
         onOpenNotes: noop,
+        setup: null,
+        matchControls: null,
+        hideHud: false, // the community-deal cinematic has its own `cine` subcommand
+        cineLabel: null,
+        resultLabel: scene.resultLabel(),
+        awaitingContinue: scene.awaitingContinue(),
       }),
       region,
     );

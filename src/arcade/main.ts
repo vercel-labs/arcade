@@ -22,7 +22,7 @@ import { buildPokerRoot, mountPokerHud, pokerMode, setPokerHandlers } from './ga
 import { PokerGameScene } from './games/poker/poker-scene.ts';
 import { buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, type HeroContext, mountPokerGameHud, pushPokerChat, setPokerGameHandlers } from './games/poker/poker-hud.ts';
 import { PokerMatch } from './match/poker-driver.ts';
-import { buildPokerSetup, mountPokerSetup, pokerSetupSelection } from './match/poker-setup.ts';
+import { buildPokerSetupPanel, mountPokerSetup, pokerPreviewSeats, pokerSetupReady, pokerSetupSelection, setPokerSetupChanged } from './match/poker-setup.ts';
 import { LogosScene } from './scenes/logos-scene.ts';
 import { AudioScene } from './scenes/audio-scene.ts';
 import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/input.ts';
@@ -186,8 +186,9 @@ let matchSeats: { white: Seat; black: Seat } | null = null;
 // focus-once edge, like the setup modal.
 let wispSwap: { color: Color; wasPaused: boolean } | null = null;
 let wispSwapFocused = false;
-// The poker setup modal (pick opponents + models), gated on a Gateway key like the
-// chess match setup. `pokerSetupFocused` is its focus-once edge.
+// The poker new-match settings panel (an in-scene top-left stack, not a modal — the
+// table stays interactive behind it), gated on a Gateway key like the chess match
+// setup. `pokerSetupFocused` is its focus-once edge.
 let pokerSetupOpen = false;
 let pokerSetupFocused = false;
 // The poker in-game menu popup (☰ pill → home / new game / mode / quit).
@@ -196,6 +197,7 @@ let pokerMenuOpen = false;
 // selects which AI seat's notebook is shown; ‹ › page through them.
 let pokerNotesOpen = false;
 let pokerNotesIdx = 0;
+let pokerNotesFocused = false; // one-shot: focus the scroll body when the modal opens
 // When on, AI moves bypass the rules: the model's move is parsed loosely and
 // applied as-is. A thunk hands this live value to each ModelPlayer.
 let illegalAllowed = false;
@@ -648,7 +650,9 @@ function stopPokerMatch(): void {
   commentary = null;
 }
 
-// Open the poker setup modal (needs a Gateway key, like the chess match setup).
+// Open the new-match settings panel (needs a Gateway key, like the chess match setup).
+// Non-modal: it stacks down the top-left while the table stays orbit/zoomable, and the
+// idle scene previews the chosen seats live (chairs + provider wisps).
 function openPokerSetup(): void {
   if (!process.env.AI_GATEWAY_API_KEY) {
     commentary = { text: 'Press s to sign in to Vercel and play (or set AI_GATEWAY_API_KEY)', model: '', until: t + 6 };
@@ -658,6 +662,7 @@ function openPokerSetup(): void {
   mountPokerSetup(ui);
   pokerSetupOpen = true;
   pokerSetupFocused = false;
+  pokerScene.setPreview(pokerPreviewSeats());
   forceFrame = true;
   r.requestRender();
 }
@@ -665,11 +670,28 @@ function openPokerSetup(): void {
 function closePokerSetup(): void {
   pokerSetupOpen = false;
   pokerSetupFocused = false;
+  pokerScene.setPreview(null); // back to the bare idle ring
   forceFrame = true;
   r.requestRender();
 }
 
-// Start button: begin a session with the chosen seats (guaranteed present).
+// The setup panel's Cancel button: dismiss the panel and leave the poker screen for the
+// home hub (Escape just closes the panel, staying on the idle table).
+function cancelPokerSetup(): void {
+  closePokerSetup();
+  enterMenu();
+}
+
+// Any committed settings change (players / mode / provider / model) reshapes the idle
+// table live: the chair ring follows the player count, the wisps follow the providers.
+setPokerSetupChanged(() => {
+  if (!pokerSetupOpen) return;
+  pokerScene.setPreview(pokerPreviewSeats());
+  forceFrame = true;
+  r.requestRender();
+});
+
+// Start-match button: begin a session with the chosen seats (guaranteed present).
 function confirmPokerSetup(): void {
   const seats = pokerSetupSelection();
   if (!seats) return;
@@ -679,11 +701,21 @@ function confirmPokerSetup(): void {
   pokerMatch.start(seats);
 }
 
-// The poker AI button / 'p' key: play (idle → open setup) → pause (running) → resume.
+// The bottom-left "new match" button: tear down a finished session if one is still on
+// screen, then open the settings panel (which becomes the "start match" state).
+function pokerNewMatch(): void {
+  if (pokerScene.isActive()) stopPokerMatch(); // session over → back to the idle felt first
+  openPokerSetup();
+}
+
+// The poker AI button / 'p' key: new match (idle → open setup), start (setup open),
+// pause (running), resume (paused).
 function pokerButton(): void {
   if (mode !== 'poker') enterPoker();
-  if (!pokerMatch.isRunning()) openPokerSetup();
-  else if (pokerMatch.isPaused()) pokerMatch.resume();
+  if (!pokerMatch.isRunning()) {
+    if (pokerSetupOpen) confirmPokerSetup();
+    else pokerNewMatch();
+  } else if (pokerMatch.isPaused()) pokerMatch.resume();
   else pokerMatch.pause();
   r.requestRender();
 }
@@ -713,6 +745,7 @@ function openPokerNotes(): void {
 }
 function closePokerNotes(): void {
   pokerNotesOpen = false;
+  pokerNotesFocused = false;
   forceFrame = true;
   r.requestRender();
 }
@@ -765,13 +798,14 @@ function pokerHero(): HeroContext {
   };
 }
 
-// A short status line for the HUD when no commentary/turn prompt is showing.
+// A short status line for the HUD when no commentary/turn prompt is showing. Idle
+// needs no prompt — the bottom-left "new match" button is the affordance.
 function pokerStatus(): string {
-  if (mode !== 'poker') return '';
-  if (!pokerScene.isActive()) return 'Press play to start a match';
-  if (!pokerMatch.isRunning()) return 'Session over — restart from the ☰ menu to play again';
+  if (mode !== 'poker' || !pokerScene.isActive()) return '';
+  if (!pokerMatch.isRunning()) return 'Session over';
   if (pokerMatch.isPaused()) return 'Paused';
-  if (pokerScene.heroToAct()) return 'Your move';
+  // No "Your move" toast: the hero's turn is already shown by the lit player strip and the
+  // Fold/Check/Bet/Raise action bar, so the label above the strips would be redundant.
   return '';
 }
 
@@ -840,7 +874,8 @@ function enterCards(): void {
 }
 
 // The poker game screen: a 3D table where you play no-limit Hold'em against AI
-// models. Entering shows the idle felt; the 'play' button opens the setup modal.
+// models. Entering shows the idle felt (shuffling deck + chair ring); the bottom-left
+// "new match" button opens the settings panel, then reads "start match" to deal.
 function enterPoker(): void {
   stopAiMatch();
   audioScene.deactivate();
@@ -848,9 +883,6 @@ function enterPoker(): void {
   draggingCamera = false;
   mountPokerGameHud(ui);
   fullRepaint();
-  // No play button on the felt anymore, so the setup modal is the entry point: open it
-  // on entry when idle. (Cancel to just watch the empty table; ☰ → Restart game reopens.)
-  if (!pokerMatch.isRunning()) openPokerSetup();
 }
 
 // Wire the poker HUD's controls to the scene. Stored once; the dropdowns/buttons
@@ -1089,6 +1121,7 @@ function syncBar(): void {
   if (!pokerSetupOpen && keymap.hasContext('poker-setup')) keymap.popContext('poker-setup');
   if (!pokerMenuOpen && keymap.hasContext('poker-menu')) keymap.popContext('poker-menu');
   if (!pokerNotesOpen && keymap.hasContext('poker-notes')) keymap.popContext('poker-notes');
+  if (!pokerNotesOpen) pokerNotesFocused = false; // re-focus the scroll body on the next open
   if (!chessMenuOpen && keymap.hasContext('chess-menu')) keymap.popContext('chess-menu');
   const popGameOver = (): void => {
     if (keymap.hasContext('gameover')) keymap.popContext('gameover');
@@ -1194,25 +1227,6 @@ function syncBar(): void {
       if (keymap.hasContext('teamswitch')) keymap.popContext('teamswitch');
       ui.setRoot(buildMenuOverlay(), region);
     }
-  } else if (pokerSetupOpen) {
-    if (keymap.hasContext('promoting')) keymap.popContext('promoting');
-    popGameOver();
-    popSetup();
-    popSwap();
-    promoFocused = false;
-    if (!keymap.hasContext('poker-setup')) keymap.pushContext('poker-setup', true);
-    mountPokerSetup(ui); // a prior modal root may have dropped the Slots
-    ui.setRoot(buildPokerSetup({ x: 0, y: 0, w: cols, h: rows }, { onStart: confirmPokerSetup, onCancel: closePokerSetup }), {
-      x: 0,
-      y: 0,
-      w: cols,
-      h: rows,
-    });
-    if (!pokerSetupFocused) {
-      ui.setFocus('poker-oppcount'); // start on the opponent-count picker
-      pokerSetupFocused = true;
-      forceFrame = true;
-    }
   } else if (mode === 'ui') {
     popGameOver();
     popSetup();
@@ -1313,6 +1327,11 @@ function syncBar(): void {
       }),
       { x: 0, y: 0, w: cols, h: rows },
     );
+    if (!pokerNotesFocused) {
+      ui.setFocus('poker-notes-scroll'); // so ↑/↓/PageUp scroll the reads immediately
+      pokerNotesFocused = true;
+      forceFrame = true;
+    }
   } else if (pokerMenuOpen) {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     popGameOver();
@@ -1339,7 +1358,22 @@ function syncBar(): void {
     // Re-mount the poker HUD components (a prior modal root may have dropped their
     // Slots), then build the WSOP table HUD over the scene. The poker bar is empty (no
     // transport pill) — play/pause is the 'p' key, the rest lives in the ☰ menu.
+    // The new-match settings panel (when open) is part of this same root — top-left,
+    // non-modal — with a NON-modal keymap layer, so Esc closes it but the camera keys
+    // (and 'p' to start) still reach the poker layer.
+    if (pokerSetupOpen) {
+      if (!keymap.hasContext('poker-setup')) keymap.pushContext('poker-setup');
+      mountPokerSetup(ui); // a prior modal root may have dropped the Slots
+    }
     mountPokerGameHud(ui);
+    // The bottom-left corner controls: "start" + "cancel" while the panel is up (start
+    // disabled until every shown seat has a model), "new match" whenever no session is
+    // running, nothing mid-session.
+    const matchControls = pokerSetupOpen
+      ? { setup: true, onPrimary: pokerSetupReady() ? confirmPokerSetup : undefined, onCancel: cancelPokerSetup }
+      : !pokerMatch.isRunning()
+        ? { setup: false, onPrimary: pokerNewMatch }
+        : null;
     ui.setRoot(
       buildPokerGameRoot({ x: 0, y: 0, w: cols, h: rows }, buildBar('poker', renderMode, actions), {
         hero: pokerHero(),
@@ -1353,9 +1387,20 @@ function syncBar(): void {
         onToggleChat: togglePokerChat,
         onOpenMenu: openPokerMenu,
         onOpenNotes: openPokerNotes,
+        setup: pokerSetupOpen ? buildPokerSetupPanel() : null,
+        matchControls,
+        hideHud: pokerScene.cineHidesHud(),
+        cineLabel: pokerScene.cineLabel(),
+        resultLabel: pokerScene.resultLabel(),
+        awaitingContinue: pokerScene.awaitingContinue(),
       }),
       { x: 0, y: 0, w: cols, h: rows },
     );
+    if (pokerSetupOpen && !pokerSetupFocused) {
+      ui.setFocus('poker-players'); // start on the player-count picker
+      pokerSetupFocused = true;
+      forceFrame = true;
+    }
   } else {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     popGameOver();
@@ -1423,6 +1468,13 @@ function onKeyImpl(ev: KeyEvent): void {
     splashing = false;
     return;
   }
+  // Poker "press any key to continue" gate (the bird's-eye deal finished dealing, or the
+  // end-of-hand winner banner is up): any key but ctrl+c proceeds past it. Clicks don't —
+  // the mouse stays free to orbit/zoom the scene until a key is pressed.
+  if (mode === 'poker' && pokerScene.awaitingContinue() && !(ev.ctrl && ev.name === 'c')) {
+    pokerScene.continueGesture();
+    return;
+  }
   // Prism loading screen: any key starts (→ menu). ctrl+c still quits (falls to keymap).
   if (mode === 'prism' && !(ev.ctrl && ev.name === 'c')) {
     enterMenu();
@@ -1453,6 +1505,8 @@ function onMouseImpl(e: MouseEvent): void {
     splashing = false;
     return;
   }
+  // The poker continue gate advances on a KEYPRESS only (see onKeyImpl) — the mouse stays
+  // free here to orbit/zoom/pan the scene while the banner + prompt are up.
   // Prism loading screen: a click starts (→ menu).
   if (mode === 'prism' && e.type === 'down') {
     enterMenu();
@@ -1502,8 +1556,10 @@ function onMouseImpl(e: MouseEvent): void {
   }
   // Modal popups (promotion picker, game-over result, match setup, wisp model
   // swap): clicks/hover go to the popup; the board and camera are frozen until
-  // it's dismissed.
-  if (isPromoting() || gameOver || matchSetupOpen || wispSwap || pokerSetupOpen) {
+  // it's dismissed. (The poker new-match panel is NOT here — it's non-modal, so
+  // pointer input falls through the orbit branch: UI hits go to the panel, misses
+  // rotate/zoom/pan the table behind it.)
+  if (isPromoting() || gameOver || matchSetupOpen || wispSwap) {
     if (e.type === 'move') ui.hover(e.x, e.y);
     else if (e.type === 'down') ui.pointerDown(e.x, e.y);
     else if (e.type === 'drag') ui.drag(e.x, e.y); // e.g. dragging a dropdown's scrollbar

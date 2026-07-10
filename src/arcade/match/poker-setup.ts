@@ -1,15 +1,19 @@
-// The poker match setup modal: choose how many AI opponents (1..5 → a 2..6 seat
-// table; heads-up is the default) and a provider → model for each. You (the human
-// hero) are always seat 0. Mirrors the chess setup modal (match/setup.ts): each AI
-// seat is two collapsing Dropdowns (provider above model) over the baked Gateway
-// catalog, with state on module-level instances so it survives the per-frame
-// rebuild (mounted via Slot). Start is enabled once every SHOWN seat has a model.
+// The poker match setup: an in-scene settings panel stacked down the top-left of the
+// table view (no modal, no scrim — the felt stays interactive behind it). Choose the
+// mode (you play vs. spectate), the player count (2..6 seats, you included), and a
+// provider → model per AI seat. Every choice is pre-committed to a sensible default so
+// the bottom-left "start match" button is live immediately. State lives on module-level
+// instances so it survives the per-frame rebuild (mounted via Slot). The table behind
+// previews the choices live — chairs follow the player count and each AI seat's wisp
+// follows its provider — via the onChanged hook (main wires it to scene.setPreview).
 
-import { Box, Button, Dropdown, Modal, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../tui/index.ts';
+import { Box, Dropdown, Slot, Text, type Node, type Screen } from '../../tui/index.ts';
 import type { RGB } from '../../engine/index.ts';
 import { modelsFor, type ModelInfo, providers } from './models.ts';
 import { providerTint } from '../scenes/wisp.ts';
+import { shortModel } from '../games/chess/hud.ts';
 import type { PokerSeatSpec } from './poker-driver.ts';
+import type { PokerSeatView } from '../games/poker/poker-scene.ts';
 
 const PROVS = providers();
 const PROVIDER_LABELS = PROVS.map((p) => p.name);
@@ -17,6 +21,18 @@ const LIST_ROWS = 7;
 const PROVIDER_W = 16;
 const MODEL_W = 22;
 const MAX_OPP = 5; // up to a 6-seat table (you + 5)
+const SEAT_LABEL_W = 8; // the "Seat N" gutter, so the dropdown columns line up
+
+// Fires on every committed change (mode / players / provider / model), so main can
+// refresh the live table preview. Null until main wires it (module init picks the
+// defaults before the hook exists — nothing to preview yet).
+let onChanged: (() => void) | null = null;
+export function setPokerSetupChanged(fn: () => void): void {
+  onChanged = fn;
+}
+const changed = (): void => {
+  onChanged?.();
+};
 
 interface AiSide {
   readonly providerDropdown: Dropdown;
@@ -47,7 +63,10 @@ function makeSide(idPrefix: string, defaultProvider: string, defaultModelId: str
     width: PROVIDER_W,
     rows: LIST_ROWS,
     index: providerIndex(defaultProvider),
-    onSelect: (i) => pickProvider(side, PROVS[i].slug),
+    onSelect: (i) => {
+      pickProvider(side, PROVS[i].slug);
+      changed();
+    },
   });
   const modelDropdown = new Dropdown({
     id: `${idPrefix}-model`,
@@ -57,6 +76,7 @@ function makeSide(idPrefix: string, defaultProvider: string, defaultModelId: str
     placeholder: 'pick a model…',
     onSelect: (i) => {
       side.modelId = side.models[i]?.id ?? null;
+      changed();
     },
   });
   side = { provider: null, models: [], modelId: null, providerDropdown, modelDropdown };
@@ -66,44 +86,50 @@ function makeSide(idPrefix: string, defaultProvider: string, defaultModelId: str
   return side;
 }
 
-// Per-seat model configs, pre-committed so Start is enabled immediately (demo-friendly);
-// re-pick any provider/model to change them. Index 0 is seat 1's config — used only in
-// SPECTATE mode (where seat 1 is an AI too); in HERO mode you play seat 1 and indices
-// 1..MAX_OPP are your opponents (seats 2..6).
+// Per-seat model configs, pre-committed so "start match" is live immediately; re-pick
+// any provider/model to change them. Index 0 is seat 1's config — used only in SPECTATE
+// mode (where seat 1 is an AI too); in HERO mode you play seat 1 and indices 1..MAX_OPP
+// are your opponents (seats 2..6). The first three AI seats span claude / gpt / gemini;
+// index 0 is a cheap fast Grok, so the default 4-handed spectate table seats four
+// DIFFERENT providers instead of repeating one.
 const DEFAULT_MODELS = [
-  ['google', 'google/gemini-2.5-flash'],
+  ['xai', 'xai/grok-4.1-fast-non-reasoning'],
   ['anthropic', 'anthropic/claude-haiku-4.5'],
   ['openai', 'openai/gpt-5.4-nano'],
   ['google', 'google/gemini-2.5-flash'],
+  ['xai', 'xai/grok-4.1-fast-non-reasoning'],
   ['anthropic', 'anthropic/claude-haiku-4.5'],
-  ['openai', 'openai/gpt-5.4-nano'],
 ] as const;
 const sides: AiSide[] = DEFAULT_MODELS.map(([prov, model], i) => makeSide(`poker-opp${i}`, prov, model));
 
-// How many opponents (seats besides seat 1): 1..MAX_OPP → a 2..6 seat table.
-const countDropdown = new Dropdown({
-  id: 'poker-oppcount',
-  items: Array.from({ length: MAX_OPP }, (_, i) => String(i + 1)),
+// How many players sit at the table (you included in HERO mode): 2..6. Defaults to a
+// 4-handed table. Index i → i+2 players → i+1 AI opponent configs. Exported (like the
+// mode picker) so the snapshot tool can drive variants headlessly.
+export const playersDropdown = new Dropdown({
+  id: 'poker-players',
+  items: Array.from({ length: MAX_OPP }, (_, i) => String(i + 2)),
   width: 6,
-  index: 0, // default: 1 opponent (heads-up)
+  index: 2, // default: 4 players
+  onSelect: () => changed(),
 });
 function oppCount(): number {
-  return (countDropdown.index < 0 ? 0 : countDropdown.index) + 1;
+  return (playersDropdown.index < 0 ? 2 : playersDropdown.index) + 1;
 }
 
 // Hero (you play seat 1) vs. Spectate (all AI — seat 1 is a model too, and every hand
-// is visible). Drives whether seat 1 gets its own model column.
-const modeDropdown = new Dropdown({
+// is visible). Drives whether seat 1 gets its own model row.
+export const modeDropdown = new Dropdown({
   id: 'poker-setup-mode',
-  items: ['You play', 'Spectate (AI vs AI)'],
-  width: 20,
+  items: ['Play with AI', 'Spectate AI'],
+  width: 16,
   index: 0,
+  onSelect: () => changed(),
 });
 function spectating(): boolean {
   return modeDropdown.index === 1;
 }
 
-// The AI-config indices shown as columns: opponents 1..oppCount always, plus seat 1's
+// The AI-config indices shown as rows: opponents 1..oppCount always, plus seat 1's
 // config (index 0) when spectating.
 function shownIndices(): number[] {
   const idx: number[] = [];
@@ -113,7 +139,7 @@ function shownIndices(): number[] {
 }
 
 export function mountPokerSetup(ui: Screen): void {
-  ui.mount(countDropdown);
+  ui.mount(playersDropdown);
   ui.mount(modeDropdown);
   for (const s of sides) {
     ui.mount(s.providerDropdown);
@@ -136,23 +162,22 @@ export function pokerSetupSelection(): PokerSeatSpec[] | null {
   return seats;
 }
 
-const START_ON: Style = {
-  padding: [0, 3],
-  background: [86, 64, 120],
-  color: [238, 230, 250],
-  bold: true,
-  hover: { background: [110, 84, 150] },
-  focus: { background: [110, 84, 150] },
-  pressed: { background: [120, 124, 142] },
-};
-const START_OFF: Style = { padding: [0, 3], background: [34, 36, 44], color: [110, 114, 126], bold: true };
-const CANCEL: Style = {
-  padding: [0, 2],
-  background: [40, 42, 52],
-  color: [212, 214, 224],
-  hover: { background: [72, 76, 92] },
-  focus: { background: [72, 76, 92] },
-};
+// The current choices as scene seat views, for the live idle-table preview: the chair
+// ring follows the count and each AI seat's wisp follows its provider. A seat whose
+// model is un-committed (provider re-picked, model pending) still previews by provider.
+export function pokerPreviewSeats(): PokerSeatView[] {
+  const ai = (side: AiSide): PokerSeatView => ({
+    kind: 'ai',
+    label: side.modelId ? shortModel(side.modelId) : side.provider ?? 'AI',
+    provider: side.provider ?? undefined,
+  });
+  const seats: PokerSeatView[] = [spectating() ? ai(sides[0]) : { kind: 'human', label: 'You' }];
+  for (let i = 1; i <= oppCount(); i++) seats.push(ai(sides[i]));
+  return seats;
+}
+
+const TITLE_FG: RGB = [222, 224, 234];
+const HERO_FG: RGB = [224, 226, 236];
 
 function brandTint(side: AiSide): RGB {
   if (!side.provider) return [212, 214, 224];
@@ -160,48 +185,54 @@ function brandTint(side: AiSide): RGB {
   return [t.x | 0, t.y | 0, t.z | 0];
 }
 
-// One seat's column: a "Seat N" title tinted in the provider's brand hue + the two
-// pickers. `seatNo` is the 1-based table seat this config fills.
-function column(side: AiSide, seatNo: number): Node {
+// A settings line: a muted label gutter + the control, so the columns align.
+function row(label: string, control: Node): Node {
+  return Box({ flexDirection: 'row', gap: 1, alignItems: 'start' }, [
+    Box({ width: SEAT_LABEL_W }, [Text({ text: label, style: { color: 'muted' } })]),
+    control,
+  ]);
+}
+
+// One seat's row: a "Seat N" label tinted in the provider's brand hue + the provider
+// and model pickers side by side. `seatNo` is the 1-based table seat this config fills.
+function seatRow(side: AiSide, seatNo: number): Node {
   side.providerDropdown.setAccent(brandTint(side));
-  return Box({ flexDirection: 'column', gap: 0, width: MODEL_W }, [
-    Box({ justifyContent: 'center' }, [Text({ text: `Seat ${seatNo}`, style: { color: brandTint(side), bold: true } })]),
-    Box({ height: 0 }),
-    Text({ text: 'Provider', style: { color: 'muted' } }),
+  return Box({ flexDirection: 'row', gap: 1, alignItems: 'start' }, [
+    Box({ width: SEAT_LABEL_W }, [Text({ text: `Seat ${seatNo}`, style: { color: brandTint(side), bold: true } })]),
     Slot(side.providerDropdown.id),
-    Text({ text: 'Model', style: { color: 'muted' } }),
     Slot(side.modelDropdown.id),
   ]);
 }
 
-// Build the centered poker setup modal. Seat configs not currently shown keep their
-// dropdown Slots mounted (hidden in a 0×0 box) so the Screen doesn't unmount them.
-export function buildPokerSetup(_region: LayoutBox, opts: { onStart: () => void; onCancel: () => void }): Node {
-  const ready = pokerSetupReady();
-  const start = Button({ id: 'poker-start', label: 'Start game', onClick: ready ? opts.onStart : undefined, style: ready ? START_ON : START_OFF });
-  const cancel = Button({ id: 'poker-cancel', label: 'Cancel', onClick: opts.onCancel, style: CANCEL });
-
+// Build the top-left settings panel: title, mode + players, then one row per AI seat
+// (and a static "you" row for the hero's seat). No card background — the rows float
+// over the scene; only the controls carry their own pill fills. Seat configs not
+// currently shown keep their dropdown Slots mounted (hidden in a 0×0 box) so the
+// Screen doesn't unmount them. Starting is the bottom-left "start match" button (built
+// by the HUD), not a button here; Esc closes.
+export function buildPokerSetupPanel(): Node {
   const shownIdx = shownIndices();
   const shownSet = new Set(shownIdx);
-  const shown = shownIdx.map((i) => column(sides[i], i + 1)); // config i fills table seat i+1
+  const seatRows: Node[] = [];
+  if (!spectating()) {
+    seatRows.push(
+      Box({ flexDirection: 'row', gap: 1, alignItems: 'start' }, [
+        Box({ width: SEAT_LABEL_W }, [Text({ text: 'Seat 1', style: { color: HERO_FG, bold: true } })]),
+        Text({ text: 'you', style: { color: HERO_FG } }),
+      ]),
+    );
+  }
+  seatRows.push(...shownIdx.map((i) => seatRow(sides[i], i + 1))); // config i fills table seat i+1
   const hidden = sides
     .map((s, i) => ({ s, i }))
     .filter(({ i }) => !shownSet.has(i))
     .map(({ s }) => Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot(s.providerDropdown.id), Slot(s.modelDropdown.id)]));
 
-  const seatHint = spectating() ? 'All seats are AI' : 'You play seat 1';
-  const card = Box({ flexDirection: 'column', gap: 1, padding: [1, 3], background: [22, 24, 32] }, [
-    Box({ justifyContent: 'center' }, [Text({ text: 'New poker match', style: { color: [222, 224, 234], bold: true } })]),
-    Box({ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 2 }, [
-      Text({ text: 'Mode', style: { color: 'muted' } }),
-      Slot('poker-setup-mode'),
-      Text({ text: 'Opponents', style: { color: 'muted' } }),
-      Slot('poker-oppcount'),
-      Text({ text: seatHint, style: { color: 'muted' } }),
-    ]),
-    Box({ flexDirection: 'row', gap: 3, alignItems: 'start', justifyContent: 'center' }, [...shown, ...hidden]),
-    Box({ flexDirection: 'row', justifyContent: 'center', gap: 2 }, [start, cancel]),
-    Box({ justifyContent: 'center' }, [Text({ text: 'Tab move · Enter open/pick · ↑↓ scroll · Esc close', style: { color: 'muted' } })]),
+  return Box({ flexDirection: 'column', gap: 1, alignItems: 'start' }, [
+    Text({ text: 'New match', style: { color: TITLE_FG, bold: true } }),
+    row('Mode', Slot('poker-setup-mode')),
+    row('Players', Slot('poker-players')),
+    ...seatRows,
+    ...hidden,
   ]);
-  return Modal(card);
 }
