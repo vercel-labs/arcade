@@ -125,10 +125,10 @@ const BROWN: RGB = [184, 126, 74];
 // Filled chess glyphs (outline glyphs read poorly at one cell); tinted to the
 // promoting side's color via the button's fg.
 const PROMO_OPTIONS: { type: PieceType; sym: string; name: string }[] = [
-  { type: QUEEN, sym: '♛', name: 'Queen' },
-  { type: ROOK, sym: '♜', name: 'Rook' },
-  { type: BISHOP, sym: '♝', name: 'Bishop' },
-  { type: KNIGHT, sym: '♞', name: 'Knight' },
+  { type: QUEEN, sym: '♛', name: 'queen' },
+  { type: ROOK, sym: '♜', name: 'rook' },
+  { type: BISHOP, sym: '♝', name: 'bishop' },
+  { type: KNIGHT, sym: '♞', name: 'knight' },
 ];
 
 // The promotion picker: a bordered popup centered on screen, listing the four
@@ -167,7 +167,7 @@ export function buildPromotion(color: Color, onPick: (t: PieceType) => void): No
       background: [22, 24, 32], // unified popup/panel background
     },
     [
-      Box({ justifyContent: 'center' }, [Text({ text: 'Promote to', style: { color: [222, 224, 234], bold: true } })]),
+      Box({ justifyContent: 'center' }, [Text({ text: 'promote to', style: { color: [222, 224, 234], bold: true } })]),
       ...options,
     ],
   );
@@ -209,8 +209,8 @@ export function buildGameOver(
       Box({ justifyContent: 'center' }, [Text({ text: opts.title, style: { color: opts.tint, bold: true } })]),
       Box({ justifyContent: 'center' }, [Text({ text: opts.subtitle, style: { color: [170, 174, 188] } })]),
       Box({ height: 0 }), // small gap before the actions
-      btn('over-newgame', 'New game', onNewGame, true),
-      btn('over-close', 'Close', onClose, false),
+      btn('over-newgame', 'new game', onNewGame, true),
+      btn('over-close', 'close', onClose, false),
     ],
   );
   return Modal(card);
@@ -265,26 +265,50 @@ export function buildConfirm(opts: {
 // as buildGameOver / buildPromotion so every popup reads as one family.
 const MENU_CLOSE: Style = {
   padding: [0, 1],
+  margin: [0, 1, 0, 0], // nudge the ✕ a cell in from the corner
   color: [150, 154, 166],
-  hover: { background: [180, 60, 60], color: [255, 255, 255] },
-  focus: { background: [72, 76, 92], color: [230, 232, 240] },
-  pressed: { background: [220, 90, 90], color: [255, 255, 255] },
+  // Understated like the chess move-panel ✕ (CLOSE_BTN): the glyph just brightens to white
+  // on hover/focus/press — no background fill.
+  hover: { color: [255, 255, 255] },
+  focus: { color: [255, 255, 255] },
+  pressed: { color: [255, 255, 255] },
 };
 export interface MenuItem {
   id: string;
   label: string;
+  value?: string; // a toggle/cycle state (e.g. "ascii", "off") — right-aligned into a column
   onClick: () => void;
+}
+
+// Shared modal header: a title (left, indented to line up with the padded body) and a ✕ close
+// button hugging the top-right corner. `flexGrow` on the title pushes ✕ to the corner without
+// justify:'between'; the card clips it (overflow:hidden) so the hover fill can't bleed past the
+// edge. Used by the shortcuts + in-game menu popups.
+function modalHeader(title: string, closeId: string, onClose: () => void): Node {
+  return Box({ flexDirection: 'row', alignItems: 'center', gap: 2, padding: [0, 0, 0, 2] }, [
+    Box({ flexGrow: 1 }, [Text({ text: title, style: { color: [222, 224, 234], bold: true } })]),
+    Button({ id: closeId, label: '✕', onClick: onClose, style: MENU_CLOSE }),
+  ]);
 }
 
 // The in-game menu popup (Wii + / PS-button style): a "menu" title + ✕, then a stack of
 // uniform slate buttons — hover is the only lit state (no highlighted primary). Generic
 // over the `items` the caller supplies, so poker and chess share it (each passes its own
 // home / new game / mode / … list). Same Modal + card styling as buildGameOver.
-export function buildGameMenu(opts: { items: MenuItem[]; onClose: () => void }): Node {
+export function buildGameMenu(opts: { groups: MenuItem[][]; onClose: () => void; valueColW?: number }): Node {
+  // Right-align the values of toggle/cycle items into a column, so "mode / eval bar / illegal"
+  // read as label + state; plain actions (home, quit, …) keep just their left label. Widths are
+  // measured across every group so the value column lines up throughout the menu. `valueColW`
+  // reserves a minimum value-column width (e.g. the longest render-mode name) so the popup does
+  // NOT resize when a value cycles to a longer string (ascii → luminance).
+  const withVal = opts.groups.flat().filter((i) => i.value != null);
+  const labelW = withVal.length ? Math.max(...withVal.map((i) => i.label.length)) : 0;
+  const valW = Math.max(opts.valueColW ?? 0, ...(withVal.length ? withVal.map((i) => (i.value as string).length) : [0]));
+  const labelOf = (i: MenuItem): string => (i.value != null ? `${i.label.padEnd(labelW + 3)}${i.value.padStart(valW)}` : i.label);
   const btn = (item: MenuItem): Node =>
     Button({
       id: item.id,
-      label: item.label,
+      label: labelOf(item),
       onClick: item.onClick,
       style: {
         padding: [0, 2],
@@ -297,15 +321,19 @@ export function buildGameMenu(opts: { items: MenuItem[]; onClose: () => void }):
       },
     });
 
-  const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', gap: 3 }, [
-    Text({ text: 'menu', style: { color: [222, 224, 234], bold: true } }),
-    Button({ id: 'game-menu-close', label: '✕', onClick: opts.onClose, style: MENU_CLOSE }),
-  ]);
+  // Groups (session / view toggles / system) are separated by a blank row — a touch more space
+  // than the 1-row gap within a group.
+  const body: Node[] = [];
+  opts.groups.forEach((group, gi) => {
+    if (gi > 0) body.push(Box({ height: 0 }));
+    for (const item of group) body.push(btn(item));
+  });
 
-  const card = Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [1, 3], background: [22, 24, 32] }, [
-    header,
-    Box({ height: 0 }), // small gap before the actions
-    ...opts.items.map(btn),
+  // Card padding is tight [1,1] so the ✕ sits in the corner; the body gets its own [0,2] indent
+  // so the buttons keep breathing room. overflow:hidden clips the ✕ hover fill to the card edge.
+  const card = Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [1, 1], overflow: 'hidden', background: [22, 24, 32] }, [
+    modalHeader('menu', 'game-menu-close', opts.onClose),
+    Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [0, 2] }, body),
   ]);
   return Modal(card);
 }
@@ -329,17 +357,20 @@ function prettyChord(k: string): string {
 // never drift from the real bindings. Keys that trigger the same action collapse into one
 // row (e.g. "= / +"). Same Modal + card family as the game menu.
 export function buildShortcuts(bindings: { key: string; title: string; layer: string; id: string }[], onClose: () => void): Node {
-  const groups = new Map<string, { keys: string[]; global: boolean; pan: boolean }>();
+  const groups = new Map<string, { keys: string[]; general: boolean; pan: boolean }>();
   for (const b of bindings) {
     const pan = b.id.startsWith('camera.pan'); // the 4 arrow pans collapse into one row
+    // "general" = keys that mean the same on every screen: the global layer, plus esc (a
+    // universal "back"), which is bound per-screen only because its target differs.
+    const general = b.layer === 'global' || b.id === 'nav.escBack';
     // The panel is already screen-scoped, so drop the "Poker:"/"Chess:" prefix, and lowercase
     // for consistency with the app's lowercase chrome (buttons, the confirm popup, etc.).
     const label = (pan ? 'pan camera' : b.title.replace(/^(Poker|Chess): /, '')).toLowerCase();
-    const g = groups.get(label) ?? { keys: [], global: b.layer === 'global', pan };
+    const g = groups.get(label) ?? { keys: [], general, pan };
     g.keys.push(prettyChord(b.key));
     groups.set(label, g);
   }
-  const all = [...groups.entries()].map(([label, g]) => ({ label, keys: g.pan ? '↑ ↓ ← →' : g.keys.join(' / '), global: g.global }));
+  const all = [...groups.entries()].map(([label, g]) => ({ label, keys: g.pan ? '↑ ↓ ← →' : g.keys.join(' / '), general: g.general }));
   const keyColW = Math.max(3, ...all.map((r) => r.keys.length));
 
   const row = (r: { label: string; keys: string }): Node =>
@@ -350,19 +381,14 @@ export function buildShortcuts(bindings: { key: string; title: string; layer: st
   const section = (label: string, rows: typeof all): Node[] =>
     rows.length === 0 ? [] : [Text({ text: label, style: { color: [130, 134, 148], bold: true } }), ...rows.map(row)];
 
-  const screen = all.filter((r) => !r.global);
-  const general = all.filter((r) => r.global);
-  const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', gap: 3 }, [
-    Text({ text: 'shortcuts', style: { color: [222, 224, 234], bold: true } }),
-    Button({ id: 'shortcuts-close', label: '✕', onClick: onClose, style: MENU_CLOSE }),
-  ]);
-
-  const card = Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [1, 3], background: [22, 24, 32] }, [
-    header,
-    Box({ height: 0 }),
-    ...section('this screen', screen),
-    ...(screen.length && general.length ? [Box({ height: 0 })] : []),
-    ...section('general', general),
+  const screenRows = all.filter((r) => !r.general);
+  const generalRows = all.filter((r) => r.general);
+  const card = Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [1, 1], overflow: 'hidden', background: [22, 24, 32] }, [
+    modalHeader('shortcuts', 'shortcuts-close', onClose),
+    Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [0, 2] }, [
+      ...section('this game', screenRows),
+      ...section('general', generalRows),
+    ]),
   ]);
   return Modal(card);
 }

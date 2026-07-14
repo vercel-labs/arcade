@@ -199,6 +199,7 @@ export function buildChessGameRoot(
     onToggleChat: () => void;
     onOpenMenu: () => void; // ☰ pill → the in-game menu popup (home / new game / mode / …)
     chatActive: boolean; // an AI match is in progress (suppresses the chat's empty placeholder)
+    illegalOn?: boolean; // illegal-moves mode on → show an "(illegal)" tag beside the "moves" header
   },
 ): Node {
   // Minimized: the header hugs just the "Moves" button (a tight button). Expanded:
@@ -206,16 +207,22 @@ export function buildChessGameRoot(
   // copy-PGN button one space to the left of the ✕ minimize control — at the right
   // edge, aligned with the list below. The panel is left-anchored, so "Moves" keeps
   // the same screen position across states.
+  // The "(illegal)" tag sits just right of the "moves" label whenever illegal-moves mode
+  // is on, in the same red the illegal plies use in the list; it vanishes when off, leaving
+  // the header exactly as it was. Grouped with "moves" so it rides at the left edge.
+  const illegalTag = opts.illegalOn ? [Text({ text: '(illegal)', style: { color: ILLEGAL } })] : [];
+  const movesLabel = Box({ flexDirection: 'row', alignItems: 'center', gap: 1 }, [
+    Button({ id: 'moves-toggle', label: 'moves', onClick: opts.onToggle, style: HEADER_BTN }),
+    ...illegalTag,
+  ]);
   let header: Node;
   if (opts.minimized) {
-    header = Box({ flexDirection: 'row', alignItems: 'center' }, [
-      Button({ id: 'moves-toggle', label: 'Moves', onClick: opts.onToggle, style: HEADER_BTN }),
-    ]);
+    header = movesLabel;
   } else {
     // Right padding gives the ✕ a 1-cell margin from the panel edge while the list
     // (and its scrollbar) below stays full-width / flush right.
     header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', width: HISTORY_WIDTH, padding: [0, 1, 0, 0] }, [
-      Button({ id: 'moves-toggle', label: 'Moves', onClick: opts.onToggle, style: HEADER_BTN }),
+      movesLabel,
       Box({ flexDirection: 'row', alignItems: 'center', gap: 2 }, [
         Button({ id: 'moves-copy', label: COPY_GLYPH, onClick: opts.onCopy, style: CLOSE_BTN }),
         Button({ id: 'moves-close', label: '✕', onClick: opts.onToggle, style: CLOSE_BTN }),
@@ -281,7 +288,7 @@ function buildChatPanel(height: number, onToggle: () => void, active: boolean): 
   chatBox.setViewport(Math.max(1, height - 2 * CHAT_PAD_V - CHAT_HEADER_H));
   chatBox.setActive(active);
   const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', width: CHAT_WIDTH - PANEL_PAD_L - PANEL_PAD_R, padding: [0, 2, 0, 0] }, [
-    Button({ id: 'chat-toggle', label: 'Chat', onClick: onToggle, style: HEADER_BTN }),
+    Button({ id: 'chat-toggle', label: 'chat', onClick: onToggle, style: HEADER_BTN }),
     Button({ id: 'chat-close', label: '✕', onClick: onToggle, style: CLOSE_BTN }),
   ]);
   // flexShrink 0: the wide chess-game bar in the main column overflows its row, so

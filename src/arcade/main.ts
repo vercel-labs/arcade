@@ -25,7 +25,7 @@ import { buildPokerSetupPanel, mountPokerSetup, pokerPreviewSeats, pokerSetupRea
 import { LogosScene } from './scenes/logos-scene.ts';
 import { AudioScene } from './scenes/audio-scene.ts';
 import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/input.ts';
-import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, modeLabel, type BarActions, type MenuItem, type Mode, type RenderMode } from './shell/bars.ts';
+import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, type BarActions, type MenuItem, type Mode, type RenderMode } from './shell/bars.ts';
 import { buildShowcase, mountShowcase } from './scenes/ui-showcase.ts';
 import { buildChessGameRoot, type Commentary, mountChessHud, movesToPgn, refreshMoveHistory } from './games/chess/hud.ts';
 import { clearChat, pushChatMessage } from './games/chess/chat.ts';
@@ -55,6 +55,9 @@ const MAX_STEP = 0.1;
 const SS = 3;
 
 const MODE_ORDER: RenderMode[] = ['ascii', 'color', 'luminance'];
+// Widest render-mode name, reserved as the ☰ menu's value-column width so the popup keeps a
+// stable width as "mode" cycles ascii → color → luminance (see buildGameMenu `valueColW`).
+const MODE_W = Math.max(...MODE_ORDER.map((m) => m.length));
 
 // Unified compositing (OpenTUI keystone): the scene paints into the same Surface
 // as the UI and a single diff is flushed, instead of "scene string + UI overlay
@@ -241,7 +244,7 @@ function gameOverText(r: ChessResult): { title: string; subtitle: string; tint: 
     repetition: 'repetition',
     'insufficient-material': 'insufficient material',
   };
-  const title = r.winner === null ? 'Draw' : r.winner === WHITE ? 'White wins' : 'Black wins';
+  const title = r.winner === null ? 'draw' : r.winner === WHITE ? 'white wins' : 'black wins';
   const tint: RGB = r.winner === BLACK ? [184, 126, 74] : r.winner === WHITE ? [232, 228, 216] : [222, 224, 234];
   return { title, subtitle: `by ${reasons[r.reason]}`, tint };
 }
@@ -473,7 +476,7 @@ function copyMoves(): void {
   const r = chessGame.state().result();
   const token = !r ? '*' : r.winner === WHITE ? '1-0' : r.winner === BLACK ? '0-1' : '1/2-1/2';
   copyToClipboard(movesToPgn(chessGame.moves(), token));
-  commentary = { text: 'Copied PGN to clipboard', model: '', until: t + 2 };
+  commentary = { text: 'copied PGN to clipboard', model: '', until: t + 2 };
   forceFrame = true;
 }
 
@@ -506,7 +509,7 @@ function stopAiMatch(): void {
 // selects are (re)mounted for their Slots; pickers retain their last selection.
 function openMatchSetup(): void {
   if (!process.env.AI_GATEWAY_API_KEY) {
-    commentary = { text: 'Press s to sign in to Vercel and play (or set AI_GATEWAY_API_KEY)', model: '', until: t + 6 };
+    commentary = { text: 'press s to sign in to Vercel and play (or set AI_GATEWAY_API_KEY)', model: '', until: t + 6 };
     r.requestRender();
     return;
   }
@@ -669,7 +672,7 @@ function stopPokerMatch(): void {
 // idle scene previews the chosen seats live (chairs + provider wisps).
 function openPokerSetup(): void {
   if (!process.env.AI_GATEWAY_API_KEY) {
-    commentary = { text: 'Press s to sign in to Vercel and play (or set AI_GATEWAY_API_KEY)', model: '', until: t + 6 };
+    commentary = { text: 'press s to sign in to Vercel and play (or set AI_GATEWAY_API_KEY)', model: '', until: t + 6 };
     r.requestRender();
     return;
   }
@@ -1303,7 +1306,7 @@ function syncBar(): void {
     // Re-mount the swap dropdowns (a prior modal root may have dropped their Slots)
     // before rebuilding the one-column picker for the clicked side.
     mountSwapSetup(ui);
-    const title = wispSwap.color === WHITE ? 'White' : 'Black';
+    const title = wispSwap.color === WHITE ? 'white' : 'black';
     ui.setRoot(buildSwapSetup({ x: 0, y: 0, w: cols, h: rows }, { title, onConfirm: confirmWispSwap, onCancel: cancelWispSwap }), {
       x: 0,
       y: 0,
@@ -1360,16 +1363,22 @@ function syncBar(): void {
     // illegal toggle in place (menu stays open, label reflects the new state). Escape
     // (chess-menu layer) and the header ✕ close it. No default focus (uniform buttons).
     if (!keymap.hasContext('chess-menu')) keymap.pushContext('chess-menu', true);
-    const items: MenuItem[] = [
-      { id: 'chess-menu-home', label: 'home', onClick: enterMenu },
-      { id: 'chess-menu-new', label: 'new game', onClick: () => { resetGame(); closeChessMenu(); } },
-      { id: 'chess-menu-mode', label: modeLabel(renderMode), onClick: cycleMode },
-      { id: 'chess-menu-eval', label: evalBarVisible ? 'hide eval bar' : 'show eval bar', onClick: toggleEvalBar },
-      { id: 'chess-menu-illegal', label: `illegal: ${illegalAllowed ? 'on' : 'off'}`, onClick: toggleIllegal },
-      { id: 'chess-menu-shortcuts', label: 'shortcuts', onClick: () => { closeChessMenu(); openShortcuts(); } },
-      { id: 'chess-menu-quit', label: 'quit', onClick: quit },
+    const groups: MenuItem[][] = [
+      [
+        { id: 'chess-menu-home', label: 'home', onClick: enterMenu },
+        { id: 'chess-menu-new', label: 'new game', onClick: () => { resetGame(); closeChessMenu(); } },
+      ],
+      [
+        { id: 'chess-menu-mode', label: 'mode', value: renderMode, onClick: cycleMode },
+        { id: 'chess-menu-eval', label: 'eval bar', value: evalBarVisible ? 'on' : 'off', onClick: toggleEvalBar },
+        { id: 'chess-menu-illegal', label: 'illegal', value: illegalAllowed ? 'on' : 'off', onClick: toggleIllegal },
+      ],
+      [
+        { id: 'chess-menu-shortcuts', label: 'shortcuts', onClick: () => { closeChessMenu(); openShortcuts(); } },
+        { id: 'chess-menu-quit', label: 'quit', onClick: quit },
+      ],
     ];
-    ui.setRoot(buildGameMenu({ items, onClose: closeChessMenu }), { x: 0, y: 0, w: cols, h: rows });
+    ui.setRoot(buildGameMenu({ groups, onClose: closeChessMenu, valueColW: MODE_W }), { x: 0, y: 0, w: cols, h: rows });
   } else if (mode === 'chess-game') {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     popGameOver();
@@ -1406,6 +1415,7 @@ function syncBar(): void {
         onToggleChat: toggleChat,
         onOpenMenu: openChessMenu,
         chatActive: chessGame.isMatchActive(),
+        illegalOn: illegalAllowed,
       }),
       { x: 0, y: 0, w: cols, h: rows },
     );
@@ -1456,14 +1466,18 @@ function syncBar(): void {
     if (!keymap.hasContext('poker-menu')) keymap.pushContext('poker-menu', true);
     // No default focus: every button shares one style, so pre-focusing one would read as
     // "a different color". Hover (mouse) lights a button; Tab still reaches them.
-    const items: MenuItem[] = [
-      { id: 'poker-menu-home', label: 'home', onClick: enterMenu },
-      { id: 'poker-menu-new', label: 'new game', onClick: pokerNewGame },
-      { id: 'poker-menu-mode', label: modeLabel(renderMode), onClick: cycleMode },
-      { id: 'poker-menu-shortcuts', label: 'shortcuts', onClick: () => { closePokerMenu(); openShortcuts(); } },
-      { id: 'poker-menu-quit', label: 'quit', onClick: quit },
+    const groups: MenuItem[][] = [
+      [
+        { id: 'poker-menu-home', label: 'home', onClick: enterMenu },
+        { id: 'poker-menu-new', label: 'new game', onClick: pokerNewGame },
+      ],
+      [{ id: 'poker-menu-mode', label: 'mode', value: renderMode, onClick: cycleMode }],
+      [
+        { id: 'poker-menu-shortcuts', label: 'shortcuts', onClick: () => { closePokerMenu(); openShortcuts(); } },
+        { id: 'poker-menu-quit', label: 'quit', onClick: quit },
+      ],
     ];
-    ui.setRoot(buildGameMenu({ items, onClose: closePokerMenu }), { x: 0, y: 0, w: cols, h: rows });
+    ui.setRoot(buildGameMenu({ groups, onClose: closePokerMenu, valueColW: MODE_W }), { x: 0, y: 0, w: cols, h: rows });
   } else if (mode === 'poker') {
     popGameOver();
     popSetup();
