@@ -7,7 +7,7 @@ import { Box, Button, Modal, Text, type Node, type Style } from '../../tui/index
 import { BISHOP, BLACK, type Color, KNIGHT, type PieceType, QUEEN, ROOK } from '../../rules/chess/types.ts';
 import type { RGB } from '../../engine/index.ts';
 
-export type Mode = 'prism' | 'menu' | 'chess' | 'chess-game' | 'logos' | 'ui' | 'audio' | 'cards' | 'poker';
+export type Mode = 'prism' | 'menu' | 'chess-game' | 'logos' | 'ui' | 'audio' | 'cards' | 'poker';
 export type RenderMode = 'color' | 'ascii' | 'luminance';
 
 export interface BarActions {
@@ -92,13 +92,6 @@ export function buildBar(
     buttons = [
       Button({ id: 'ai', label: ai.label, onClick: a.aiMatch, style: aiStyle }),
       Button({ id: 'reset', label: 'reset view', onClick: a.reset, style: PILL }),
-    ];
-  } else if (mode === 'chess') {
-    buttons = [
-      Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
-      Button({ id: 'reset', label: 'reset view', onClick: a.reset, style: PILL }),
-      Button({ id: 'mode', label: modeLabel(renderMode), onClick: a.mode, style: PILL }),
-      Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
     ];
   } else if (mode === 'cards') {
     // The cards screen: the mode picker + per-mode controls live in the poker HUD
@@ -223,6 +216,48 @@ export function buildGameOver(
   return Modal(card);
 }
 
+// A yes/cancel confirm popup for destructive/irreversible actions — leaving a game to the
+// home screen (esc in a game) and quitting the app (the 'q' key). `confirmLabel` is the
+// primary (default-focused) action; "cancel" backs out. Buttons sit side by side. `idPrefix`
+// namespaces the button ids so the caller can default-focus `${idPrefix}-yes`. Same Modal +
+// card styling as buildGameOver, so every popup reads as one family.
+export function buildConfirm(opts: {
+  prompt: string;
+  confirmLabel: string;
+  idPrefix: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}): Node {
+  const btn = (id: string, label: string, onClick: () => void, primary: boolean): Node =>
+    Button({
+      id,
+      label,
+      onClick,
+      style: {
+        padding: [0, 2],
+        background: primary ? [86, 64, 120] : [40, 42, 52],
+        color: primary ? [238, 230, 250] : [212, 214, 224],
+        bold: true,
+        hover: { background: primary ? [110, 84, 150] : [72, 76, 92] },
+        focus: { background: primary ? [110, 84, 150] : [72, 76, 92] },
+        pressed: { background: [120, 124, 142] },
+      },
+    });
+
+  const card = Box(
+    { flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [1, 3], background: [22, 24, 32] },
+    [
+      Box({ justifyContent: 'center' }, [Text({ text: opts.prompt, style: { color: [222, 224, 234], bold: true } })]),
+      Box({ height: 0 }),
+      Box({ flexDirection: 'row', justifyContent: 'center', gap: 2 }, [
+        btn(`${opts.idPrefix}-yes`, opts.confirmLabel, opts.onConfirm, true),
+        btn(`${opts.idPrefix}-cancel`, 'cancel', opts.onCancel, false),
+      ]),
+    ],
+  );
+  return Modal(card);
+}
+
 // The poker in-game menu (Wii + / PS-button style): a centered popup with the
 // system actions that used to crowd the bottom bar. Opened by the ☰ pill top-right,
 // dismissed by the ✕ in its header (or Escape). "Mode" cycles the render mode in
@@ -271,6 +306,63 @@ export function buildGameMenu(opts: { items: MenuItem[]; onClose: () => void }):
     header,
     Box({ height: 0 }), // small gap before the actions
     ...opts.items.map(btn),
+  ]);
+  return Modal(card);
+}
+
+// Friendlier display for a chord than the raw binding string.
+const SHORTCUT_KEY_LABELS: Record<string, string> = {
+  escape: 'esc',
+  left: '←',
+  right: '→',
+  up: '↑',
+  down: '↓',
+  space: 'space',
+  enter: 'enter',
+};
+function prettyChord(k: string): string {
+  return SHORTCUT_KEY_LABELS[k] ?? k.replace('ctrl+', '^');
+}
+
+// The in-app shortcuts overlay: the keys live on the CURRENT screen, grouped into
+// "this screen" + "general" (global), generated from keymap.activeBindings() so it can
+// never drift from the real bindings. Keys that trigger the same action collapse into one
+// row (e.g. "= / +"). Same Modal + card family as the game menu.
+export function buildShortcuts(bindings: { key: string; title: string; layer: string; id: string }[], onClose: () => void): Node {
+  const groups = new Map<string, { keys: string[]; global: boolean; pan: boolean }>();
+  for (const b of bindings) {
+    const pan = b.id.startsWith('camera.pan'); // the 4 arrow pans collapse into one row
+    // The panel is already screen-scoped, so drop the "Poker:"/"Chess:" prefix, and lowercase
+    // for consistency with the app's lowercase chrome (buttons, the confirm popup, etc.).
+    const label = (pan ? 'pan camera' : b.title.replace(/^(Poker|Chess): /, '')).toLowerCase();
+    const g = groups.get(label) ?? { keys: [], global: b.layer === 'global', pan };
+    g.keys.push(prettyChord(b.key));
+    groups.set(label, g);
+  }
+  const all = [...groups.entries()].map(([label, g]) => ({ label, keys: g.pan ? '↑ ↓ ← →' : g.keys.join(' / '), global: g.global }));
+  const keyColW = Math.max(3, ...all.map((r) => r.keys.length));
+
+  const row = (r: { label: string; keys: string }): Node =>
+    Box({ flexDirection: 'row', gap: 2 }, [
+      Text({ text: r.keys.padEnd(keyColW), style: { color: [140, 190, 255], bold: true } }),
+      Text({ text: r.label, style: { color: [212, 214, 224] } }),
+    ]);
+  const section = (label: string, rows: typeof all): Node[] =>
+    rows.length === 0 ? [] : [Text({ text: label, style: { color: [130, 134, 148], bold: true } }), ...rows.map(row)];
+
+  const screen = all.filter((r) => !r.global);
+  const general = all.filter((r) => r.global);
+  const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', gap: 3 }, [
+    Text({ text: 'shortcuts', style: { color: [222, 224, 234], bold: true } }),
+    Button({ id: 'shortcuts-close', label: '✕', onClick: onClose, style: MENU_CLOSE }),
+  ]);
+
+  const card = Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [1, 3], background: [22, 24, 32] }, [
+    header,
+    Box({ height: 0 }),
+    ...section('this screen', screen),
+    ...(screen.length && general.length ? [Box({ height: 0 })] : []),
+    ...section('general', general),
   ]);
   return Modal(card);
 }

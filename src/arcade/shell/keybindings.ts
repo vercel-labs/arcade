@@ -5,7 +5,6 @@
 // `run`. main.ts owns the handlers and the live keymap (it still drives setBase /
 // handle / push-pop modal contexts); this module just builds it once at startup.
 import { Keymap } from '../../tui/index.ts';
-import type { RenderMode } from './bars.ts';
 
 // The camera-controllable scene for the active mode (chess turntables, logos wisp
 // orbit, audio wisp). Structural — keeps this module from importing the scenes.
@@ -23,17 +22,16 @@ export interface KeyHandlers {
   openTeamSwitch(): void;
   closeTeamSwitch(): void;
   cycleMode(): void;
-  setRenderMode(m: RenderMode): void;
-  toggleJitter(): void;
   enterMenu(): void;
   toPrism(): void;
   menuNav(step: number): void;
   launchSelected(): void;
   enterAudio(): void;
   audioCycleModel(): void;
-  enterChess(): void;
   enterChessGame(): void;
   enterUi(): void;
+  enterPoker(): void;
+  enterCards(): void;
   activeOrbit(): OrbitLike | null;
   cancelPromotion(): void;
   aiButton(): void;
@@ -42,15 +40,24 @@ export interface KeyHandlers {
   resetGame(): void;
   toggleIllegal(): void;
   toggleEvalBar(): void;
+  openChessMenu(): void;
   closeGameOver(): void;
   closeMatchSetup(): void;
   cancelWispSwap(): void;
   pokerButton(): void;
+  togglePokerChat(): void;
+  openPokerMenu(): void;
   pokerBetStep(dir: number): void;
   closePokerSetup(): void;
   closePokerMenu(): void;
   closePokerNotes(): void;
   closeChessMenu(): void;
+  escBack(): void;
+  closeConfirmHome(): void;
+  openShortcuts(): void;
+  closeShortcuts(): void;
+  openConfirmQuit(): void;
+  closeConfirmQuit(): void;
 }
 
 // Cells-equivalent the arrow keys pan the chess camera per press (held keys
@@ -66,27 +73,32 @@ export function installKeymap(h: KeyHandlers): Keymap {
     { id: 'app.signOut', title: 'Sign out of Vercel', run: h.accountSignOut },
     { id: 'menu.teamSwitch', title: 'Switch Vercel team', run: h.openTeamSwitch },
     { id: 'menu.closeTeamSwitch', title: 'Close team switcher', run: h.closeTeamSwitch },
+    // Render style changes via the bar / ☰ menu "mode" button (ascii is the default). The
+    // cycle command is intentionally UNBOUND — the old 'm' key was repurposed to the ☰ menu —
+    // but stays on the command surface so it's agent-drivable and trivial to re-bind.
     { id: 'view.cycleRenderMode', title: 'Cycle render style', run: h.cycleMode },
-    { id: 'view.setColor', title: 'Render: color', run: () => h.setRenderMode('color') },
-    { id: 'view.setLuminance', title: 'Render: luminance', run: () => h.setRenderMode('luminance') },
-    { id: 'view.setAscii', title: 'Render: ascii', run: () => h.setRenderMode('ascii') },
-    { id: 'view.toggleJitter', title: 'Toggle glyph jitter', run: h.toggleJitter },
     { id: 'nav.back', title: 'Back to menu', run: h.enterMenu },
     { id: 'nav.toPrism', title: 'Back to prism', run: h.toPrism },
-    { id: 'nav.menu', title: 'Open menu', run: h.enterMenu },
+    { id: 'nav.escBack', title: 'Back one level', run: h.escBack },
+    { id: 'nav.confirmHomeCancel', title: 'Stay in game', run: h.closeConfirmHome },
+    { id: 'app.shortcuts', title: 'Show shortcuts', run: h.openShortcuts },
+    { id: 'app.closeShortcuts', title: 'Close shortcuts', run: h.closeShortcuts },
+    { id: 'app.confirmQuit', title: 'Quit', run: h.openConfirmQuit },
+    { id: 'app.closeConfirmQuit', title: 'Keep playing', run: h.closeConfirmQuit },
     { id: 'menu.left', title: 'Menu: previous', run: () => h.menuNav(-1) },
     { id: 'menu.right', title: 'Menu: next', run: () => h.menuNav(1) },
     { id: 'menu.select', title: 'Menu: launch selected', run: h.launchSelected },
     { id: 'nav.audio', title: 'Open audio', run: h.enterAudio },
     { id: 'audio.nextModel', title: 'Audio: next model', run: h.audioCycleModel },
-    { id: 'nav.chess', title: 'Open chess showcase', run: h.enterChess },
     { id: 'nav.chessGame', title: 'Open chess game', run: h.enterChessGame },
     { id: 'nav.ui', title: 'Open UI playground', run: h.enterUi },
-    { id: 'chess.resetView', title: 'Reset camera', run: () => h.activeOrbit()?.resetView() },
-    { id: 'chess.panLeft', title: 'Pan left', run: () => h.activeOrbit()?.pan(PAN_STEP, 0) },
-    { id: 'chess.panRight', title: 'Pan right', run: () => h.activeOrbit()?.pan(-PAN_STEP, 0) },
-    { id: 'chess.panUp', title: 'Pan up', run: () => h.activeOrbit()?.pan(0, PAN_STEP) },
-    { id: 'chess.panDown', title: 'Pan down', run: () => h.activeOrbit()?.pan(0, -PAN_STEP) },
+    { id: 'nav.poker', title: 'Open poker', run: h.enterPoker }, // agent-only (no user key)
+    { id: 'nav.cards', title: 'Open cards (poker-test)', run: h.enterCards }, // agent-only (no user key)
+    { id: 'camera.resetView', title: 'Reset camera', run: () => h.activeOrbit()?.resetView() },
+    { id: 'camera.panLeft', title: 'Pan left', run: () => h.activeOrbit()?.pan(PAN_STEP, 0) },
+    { id: 'camera.panRight', title: 'Pan right', run: () => h.activeOrbit()?.pan(-PAN_STEP, 0) },
+    { id: 'camera.panUp', title: 'Pan up', run: () => h.activeOrbit()?.pan(0, PAN_STEP) },
+    { id: 'camera.panDown', title: 'Pan down', run: () => h.activeOrbit()?.pan(0, -PAN_STEP) },
     { id: 'chess.cancelPromotion', title: 'Cancel promotion', run: h.cancelPromotion },
     { id: 'chess.toggleAI', title: 'Play / pause AI', run: h.aiButton },
     { id: 'chess.toggleHistory', title: 'Toggle move history', run: h.toggleHistory },
@@ -101,39 +113,43 @@ export function installKeymap(h: KeyHandlers): Keymap {
     { id: 'poker.betDown', title: 'Poker: lower the raise amount', run: () => h.pokerBetStep(-1) },
     { id: 'poker.betUp', title: 'Poker: raise the raise amount', run: () => h.pokerBetStep(1) },
     { id: 'poker.cancelSetup', title: 'Cancel poker setup', run: h.closePokerSetup },
+    { id: 'poker.openMenu', title: 'Poker: open menu', run: h.openPokerMenu },
+    { id: 'poker.toggleChat', title: 'Poker: toggle chat', run: h.togglePokerChat },
     { id: 'poker.closeMenu', title: 'Close poker menu', run: h.closePokerMenu },
     { id: 'poker.closeNotes', title: 'Close poker notes', run: h.closePokerNotes },
+    { id: 'chess.openMenu', title: 'Open menu', run: h.openChessMenu },
     { id: 'chess.closeMenu', title: 'Close chess menu', run: h.closeChessMenu },
   ]) {
     keymap.register(c);
   }
-  // Global: work in every mode. (escape/ctrl+c/q all quit; the 'promoting' modal
-  // layer shadows escape to cancel instead — see syncBar.)
+  // Global: the always-available keys. `ctrl+c` is the instant quit hatch (caught in
+  // onKeyImpl before the keymap, so it works even under a modal). `q` opens the quit-confirm
+  // popup. `escape` = back one level — overridden per screen (see below), so it only reaches
+  // this quit binding on the prism (the last level). `?` opens the shortcuts overlay.
   for (const b of [
-    { key: 'q', cmd: 'app.quit' },
+    { key: 'q', cmd: 'app.confirmQuit' },
     { key: 'escape', cmd: 'app.quit' },
     { key: 'ctrl+c', cmd: 'app.quit' },
-    { key: 'm', cmd: 'view.cycleRenderMode' },
-    { key: 'c', cmd: 'view.setColor' },
-    { key: 'l', cmd: 'view.setLuminance' },
-    { key: 'a', cmd: 'view.setAscii' },
-    { key: 'j', cmd: 'view.toggleJitter' },
     { key: 's', cmd: 'app.switchTeam' }, // sign in / switch billing team
+    { key: '?', cmd: 'app.shortcuts' }, // show the shortcuts overlay for the current screen
   ]) {
     keymap.bind('global', b);
   }
   keymap.bind('chess', { key: 'p', cmd: 'chess.toggleAI' });
   keymap.bind('chess', { key: 'h', cmd: 'chess.toggleHistory' });
-  keymap.bind('chess', { key: 't', cmd: 'chess.toggleChat' });
+  keymap.bind('chess', { key: 'c', cmd: 'chess.toggleChat' }); // chat toggle (was 't')
   keymap.bind('chess', { key: 'n', cmd: 'chess.resetGame' });
   keymap.bind('chess', { key: 'i', cmd: 'chess.toggleIllegal' });
   keymap.bind('chess', { key: 'e', cmd: 'chess.toggleEvalBar' });
-  // Poker: play/pause, plus −/+ to nudge the raise amount by a big blind (hold to repeat via
-  // key autorepeat; the on-screen ± buttons and the type-in amount field do the same). No
-  // letter keys for betting — they'd clash with the global render-mode letters. When the
-  // amount field is focused these are typed instead (and filtered to digits), so they only
-  // step when the felt (not the field) has focus. Home/restart/mode/quit live in the ☰ menu.
+  keymap.bind('chess', { key: 'm', cmd: 'chess.openMenu' }); // ☰ menu (chess-game only; no-op in the showcase)
+  // Poker: play/pause ('p'), ☰ menu ('m'), toggle table-talk chat ('c'), plus −/+ to nudge the
+  // raise amount by a big blind (hold to repeat via key autorepeat; the on-screen ± buttons and
+  // the type-in amount field do the same). When the amount field is focused the −/+ are typed
+  // instead (filtered to digits), so they only step when the felt (not the field) has focus.
+  // Home / new game / mode / quit live in the ☰ menu ('m').
   keymap.bind('poker', { key: 'p', cmd: 'poker.toggleAI' });
+  keymap.bind('poker', { key: 'm', cmd: 'poker.openMenu' });
+  keymap.bind('poker', { key: 'c', cmd: 'poker.toggleChat' });
   keymap.bind('poker', { key: '-', cmd: 'poker.betDown' });
   keymap.bind('poker', { key: '=', cmd: 'poker.betUp' }); // unshifted "+"
   keymap.bind('poker', { key: '+', cmd: 'poker.betUp' });
@@ -151,7 +167,6 @@ export function installKeymap(h: KeyHandlers): Keymap {
   ]) {
     keymap.bind('menu', b);
   }
-  for (const layer of ['logos', 'chess', 'ui', 'cards', 'poker']) keymap.bind(layer, { key: 'b', cmd: 'nav.back' });
   // Orbit/pan/reset bindings are shared by the chess turntables, the logos wisp
   // orbit, and the chess backdrop behind the UI playground (the commands resolve
   // the active scene via activeOrbit()). In 'ui', a focused component consumes
@@ -159,24 +174,29 @@ export function installKeymap(h: KeyHandlers): Keymap {
   // the scene — not a widget — has focus.
   for (const layer of ['chess', 'logos', 'ui', 'cards', 'poker']) {
     for (const b of [
-      { key: 'r', cmd: 'chess.resetView' },
-      { key: 'left', cmd: 'chess.panLeft' },
-      { key: 'right', cmd: 'chess.panRight' },
-      { key: 'up', cmd: 'chess.panUp' },
-      { key: 'down', cmd: 'chess.panDown' },
+      { key: 'r', cmd: 'camera.resetView' },
+      { key: 'left', cmd: 'camera.panLeft' },
+      { key: 'right', cmd: 'camera.panRight' },
+      { key: 'up', cmd: 'camera.panUp' },
+      { key: 'down', cmd: 'camera.panDown' },
     ]) {
       keymap.bind(layer, b);
     }
   }
+  // Escape = back one level on every non-menu screen. Games (chess-game / poker) open the
+  // "return home?" confirm via escBack; other screens go straight to the menu. The menu's
+  // own escape (→ prism) and each modal's escape (→ close) live in layers above these and
+  // take precedence. (Prism's escape falls through to the global esc → quit.)
+  for (const layer of ['chess', 'cards', 'logos', 'ui', 'poker', 'audio']) keymap.bind(layer, { key: 'escape', cmd: 'nav.escBack' });
+
   // Audio screen: type-to-talk owns letters (handled before the keymap), so only the
   // non-text keys are bound here — Escape returns to the menu and the arrows pan the
   // wisp camera. ('r'/reset stays on the bar button so it can still be typed.)
-  keymap.bind('audio', { key: 'escape', cmd: 'nav.back' });
   for (const b of [
-    { key: 'left', cmd: 'chess.panLeft' },
-    { key: 'right', cmd: 'chess.panRight' },
-    { key: 'up', cmd: 'chess.panUp' },
-    { key: 'down', cmd: 'chess.panDown' },
+    { key: 'left', cmd: 'camera.panLeft' },
+    { key: 'right', cmd: 'camera.panRight' },
+    { key: 'up', cmd: 'camera.panUp' },
+    { key: 'down', cmd: 'camera.panDown' },
   ]) {
     keymap.bind('audio', b);
   }
@@ -196,8 +216,20 @@ export function installKeymap(h: KeyHandlers): Keymap {
   keymap.bind('poker-setup', { key: 'escape', cmd: 'poker.cancelSetup' });
   // Poker in-game menu popup: Escape closes it; the layer shadows stray keys.
   keymap.bind('poker-menu', { key: 'escape', cmd: 'poker.closeMenu' });
+  keymap.bind('poker-menu', { key: 'm', cmd: 'poker.closeMenu' }); // 'm' toggles the menu shut
   keymap.bind('poker-notes', { key: 'escape', cmd: 'poker.closeNotes' });
   // Chess in-game menu popup: Escape closes it; the layer shadows stray keys.
   keymap.bind('chess-menu', { key: 'escape', cmd: 'chess.closeMenu' });
+  keymap.bind('chess-menu', { key: 'm', cmd: 'chess.closeMenu' }); // 'm' toggles the menu shut
+  // Return-to-home confirm popup (esc in a game): Escape cancels (stay in the game); the
+  // modal layer shadows stray keys. Enter on the default-focused "Return home" confirms.
+  keymap.bind('confirm-home', { key: 'escape', cmd: 'nav.confirmHomeCancel' });
+  // Shortcuts overlay: Escape or '?' closes it (so '?' toggles); the modal layer shadows
+  // stray keys. Its content is generated from keymap.activeBindings() for the screen beneath.
+  keymap.bind('shortcuts', { key: 'escape', cmd: 'app.closeShortcuts' });
+  keymap.bind('shortcuts', { key: '?', cmd: 'app.closeShortcuts' });
+  // Quit-confirm popup (the 'q' key): Escape cancels (keep playing); the modal layer shadows
+  // stray keys. Enter on the default-focused "quit" button quits; ctrl+c still hard-quits.
+  keymap.bind('confirm-quit', { key: 'escape', cmd: 'app.closeConfirmQuit' });
   return keymap;
 }
