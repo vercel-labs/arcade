@@ -155,7 +155,7 @@ export function buildTeamSwitch(view: TeamSwitchView, opts: { onClose: () => voi
     }
   } else if (view.kind === 'signedOut') {
     body = statusBody('Not signed in to Vercel.', 'muted');
-    footer = Box({ flexDirection: 'row', justifyContent: 'center' }, [Button({ id: 'team-signin', label: 'Sign in', onClick: opts.onSignIn, style: PRIMARY })]);
+    footer = Box({ flexDirection: 'row', justifyContent: 'center' }, [Button({ id: 'team-signin', label: 'sign in', onClick: opts.onSignIn, style: PRIMARY })]);
   } else {
     // loaded / switching: the list stays visible (so the switched row's ✓ shows in
     // place). Switching is quick, so no transient "switching…" label — just the list.
@@ -171,7 +171,7 @@ export function buildTeamSwitch(view: TeamSwitchView, opts: { onClose: () => voi
   const close = Box({ position: 'absolute', top: 0, right: -2 }, [Button({ id: 'team-close', label: '✕', onClick: opts.onClose, style: CLOSE })]);
 
   const card = Box({ ...CARD, width: CARD_W }, [
-    center(Text({ text: 'Switch team', style: { color: [222, 224, 234], bold: true } })),
+    center(Text({ text: 'switch team', style: { color: [222, 224, 234], bold: true } })),
     body,
     ...(hint ? [center(Text({ text: hint, style: { color: 'muted' } }))] : []),
     ...(footer ? [footer] : []),

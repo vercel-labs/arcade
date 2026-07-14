@@ -584,11 +584,13 @@ function pokerSnapshot(): void {
     const screen = new Screen(cols, rows);
     screen.setRoot(
       buildGameMenu({
-        items: [
-          { id: 'poker-menu-home', label: 'home', onClick: noop },
-          { id: 'poker-menu-new', label: 'new game', onClick: noop },
-          { id: 'poker-menu-mode', label: 'mode:   ascii', onClick: noop },
-          { id: 'poker-menu-quit', label: 'quit', onClick: noop },
+        groups: [
+          [
+            { id: 'poker-menu-home', label: 'home', onClick: noop },
+            { id: 'poker-menu-new', label: 'new game', onClick: noop },
+          ],
+          [{ id: 'poker-menu-mode', label: 'mode', value: 'ascii', onClick: noop }],
+          [{ id: 'poker-menu-quit', label: 'quit', onClick: noop }],
         ],
         onClose: noop,
       }),
@@ -1022,14 +1024,22 @@ function chessOverlaySnapshot(): void {
   if (process.argv.includes('menu')) {
     screen.setRoot(
       buildGameMenu({
-        items: [
-          { id: 'chess-menu-home', label: 'home', onClick: noop },
-          { id: 'chess-menu-new', label: 'new game', onClick: noop },
-          { id: 'chess-menu-mode', label: 'mode:   ascii', onClick: noop },
-          { id: 'chess-menu-eval', label: evalVisible ? 'hide eval bar' : 'show eval bar', onClick: noop },
-          { id: 'chess-menu-illegal', label: 'illegal: off', onClick: noop },
-          { id: 'chess-menu-quit', label: 'quit', onClick: noop },
+        groups: [
+          [
+            { id: 'chess-menu-home', label: 'home', onClick: noop },
+            { id: 'chess-menu-new', label: 'new game', onClick: noop },
+          ],
+          [
+            { id: 'chess-menu-mode', label: 'mode', value: 'ascii', onClick: noop },
+            { id: 'chess-menu-eval', label: 'eval bar', value: evalVisible ? 'on' : 'off', onClick: noop },
+            { id: 'chess-menu-illegal', label: 'illegal', value: 'off', onClick: noop },
+          ],
+          [
+            { id: 'chess-menu-shortcuts', label: 'shortcuts', onClick: noop },
+            { id: 'chess-menu-quit', label: 'quit', onClick: noop },
+          ],
         ],
+        valueColW: 9,
         onClose: noop,
       }),
       region,
@@ -1052,6 +1062,7 @@ function chessOverlaySnapshot(): void {
       onToggleChat: noop,
       onOpenMenu: noop,
       chatActive: false,
+      illegalOn: process.argv.includes('illegal'),
     }),
     region,
   );
@@ -1133,7 +1144,7 @@ function gameOverSnapshot(): void {
   cg.renderScene(target, 0.7);
   const screen = new Screen(cols, rows);
   const region = { x: 0, y: 0, w: cols, h: rows };
-  screen.setRoot(buildGameOver({ title: 'Black wins', subtitle: 'by checkmate', tint: [184, 126, 74] }, noop, noop), region);
+  screen.setRoot(buildGameOver({ title: 'black wins', subtitle: 'by checkmate', tint: [184, 126, 74] }, noop, noop), region);
   const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
   surfaceToPpm(surf, cols, rows, out);
 }
@@ -1172,7 +1183,8 @@ function shortcutsSnapshot(): void {
   km.setBase(which);
   const root = buildShortcuts(km.activeBindings(), () => {});
   layout(root, { x: 0, y: 0, w: cols, h: rows });
-  paint(root, surf, { hoverId: null, focusId: null, pressedId: null });
+  const hover = process.argv.find((a) => a.startsWith('hover='))?.slice(6) ?? null;
+  paint(root, surf, { hoverId: hover, focusId: null, pressedId: null });
   surfaceToPpm(surf, cols, rows, out);
 }
 

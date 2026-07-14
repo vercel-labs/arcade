@@ -641,7 +641,7 @@ export class PokerGameScene {
   // bird's-eye. The HUD renders these as mini-cards, mirroring the board strip.
   cineLabel(): { label: string; cards: Card[] } | null {
     if (!this.cine || this.cine.phase === 'pre' || !this.hand) return null;
-    return { label: 'Board', cards: this.hand.boardCards().slice(0, this.boardShown) };
+    return { label: 'board', cards: this.hand.boardCards().slice(0, this.boardShown) };
   }
 
   // ── "Click anywhere to continue" gate (shared by both banners) ───────────────────

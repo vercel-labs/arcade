@@ -80,7 +80,7 @@ export function buildShowcase(region: LayoutBox, bar: Node): Node {
       row('Slider', Slot('sc-slider')),
       row('Scroll', Slot('sc-scroll')),
       row('Buffer', gradient),
-      Text({ text: 'Tab cycle · type / ↑↓ ←→ interact · b back', style: { color: 'muted' } }),
+      Text({ text: 'tab cycle · type / ↑↓ ←→ interact · b back', style: { color: 'muted' } }),
     ],
   );
 

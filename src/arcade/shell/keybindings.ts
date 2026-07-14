@@ -60,9 +60,11 @@ export interface KeyHandlers {
   closeConfirmQuit(): void;
 }
 
-// Cells-equivalent the arrow keys pan the chess camera per press (held keys
-// repeat). Tuned to feel like a firm nudge; pan() scales it by distance.
-const PAN_STEP = 10;
+// Cells-equivalent the arrow keys pan the camera per press (held keys repeat) —
+// shared by every orbit screen (chess, poker, logos, ui, cards, audio). A firm
+// nudge; pan() scales it by distance and eases the camera to the new target, so a
+// larger step pans faster while staying smooth.
+const PAN_STEP = 16;
 
 // Build the command surface + per-mode key bindings and return the keymap.
 export function installKeymap(h: KeyHandlers): Keymap {
@@ -79,7 +81,7 @@ export function installKeymap(h: KeyHandlers): Keymap {
     { id: 'view.cycleRenderMode', title: 'Cycle render style', run: h.cycleMode },
     { id: 'nav.back', title: 'Back to menu', run: h.enterMenu },
     { id: 'nav.toPrism', title: 'Back to prism', run: h.toPrism },
-    { id: 'nav.escBack', title: 'Back one level', run: h.escBack },
+    { id: 'nav.escBack', title: 'Back', run: h.escBack },
     { id: 'nav.confirmHomeCancel', title: 'Stay in game', run: h.closeConfirmHome },
     { id: 'app.shortcuts', title: 'Show shortcuts', run: h.openShortcuts },
     { id: 'app.closeShortcuts', title: 'Close shortcuts', run: h.closeShortcuts },

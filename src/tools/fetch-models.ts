@@ -1,7 +1,7 @@
 // Bake the AI Gateway model catalog + provider logos for the match-setup picker.
 // Fetches the public model list, keeps the language models, groups them by
-// provider, and writes public/assets/models.json. Then bakes each provider's logo
-// PNG to public/assets/logos/<slug>.png (the wisp + picker load these). Run:
+// provider, and writes assets/models.json. Then bakes each provider's logo
+// PNG to assets/logos/<slug>.png (the wisp + picker load these). Run:
 //
 //   pnpm exec tsx src/tools/fetch-models.ts
 //
@@ -11,7 +11,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { logoUrl } from '../arcade/scenes/logos.ts';
 
 const MODELS_URL = 'https://ai-gateway.vercel.sh/v1/models';
-const ASSET_DIR = 'public/assets';
+const ASSET_DIR = 'assets';
 const LOGO_DIR = `${ASSET_DIR}/logos`;
 
 // Nicely-cased provider labels; any slug not listed falls back to Title Case.

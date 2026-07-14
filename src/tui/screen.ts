@@ -284,6 +284,11 @@ export class Screen {
   handleKey(ev: KeyEvent): boolean {
     if (!this.root) return false;
     const order = focusOrder(this.root);
+    // Drop focus that pointed at a node in a PREVIOUS root — setRoot doesn't clear focusId, so a
+    // button focused on another screen lingers. A stale id matches nothing here, but left set it
+    // makes the enter/space branch below swallow the key (return true) instead of letting it fall
+    // through to the keymap — which broke Enter-to-launch on the home cover flow.
+    if (this.state.focusId && !order.some((n) => n.id === this.state.focusId)) this.state.focusId = null;
     if (this.state.focusId) {
       const f = order.find((n) => n.id === this.state.focusId);
       if (f?.onKey && f.onKey(ev)) {

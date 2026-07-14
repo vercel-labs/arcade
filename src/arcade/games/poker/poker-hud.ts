@@ -538,7 +538,7 @@ function boardPanel(v: TableView | null): Node {
   const shown = v?.boardShown ?? 0;
   const street = v ? (STREET_LABEL[v.street] ?? v.street) : '';
   const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', width: STRIP_W }, [
-    Text({ text: 'Board', style: { color: [222, 224, 234], bold: true } }),
+    Text({ text: 'board', style: { color: [222, 224, 234], bold: true } }),
     Text({ text: street, style: { color: 'muted', bold: true } }),
   ]);
   const cells = Array.from({ length: 5 }, (_, i) => cardCell(i < shown && i < board.length ? board[i] : null, '??'));
@@ -578,7 +578,7 @@ function chatPanel(height: number, active: boolean, onToggle: () => void): Node 
   pokerChat.setViewport(Math.max(1, height - 2 * CHAT_PAD_V - CHAT_HEADER_H));
   pokerChat.setActive(active);
   const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', width: RAIL_W - PANEL_PAD_L - PANEL_PAD_R, padding: [0, 2, 0, 0] }, [
-    Text({ text: 'Chat', style: { color: [222, 224, 234], bold: true } }),
+    Text({ text: 'chat', style: { color: [222, 224, 234], bold: true } }),
     Button({ id: 'poker-chat-close', label: '✕', onClick: onToggle, style: CHAT_CLOSE }),
   ]);
   return Box({ flexDirection: 'column', width: RAIL_W, height, padding: [CHAT_PAD_V, PANEL_PAD_R, CHAT_PAD_V, PANEL_PAD_L], background: [22, 24, 32, 0.9] }, [

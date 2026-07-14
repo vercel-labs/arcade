@@ -161,22 +161,22 @@ function column(side: Side, title: string, showSeat = false): Node {
   const base = side.providerDropdown.id.replace(/-provider$/, ''); // e.g. 'setup-white' — namespaces the toggle ids
   const seat = showSeat
     ? Box({ flexDirection: 'row', justifyContent: 'center', gap: 0 }, [
-        Button({ id: `${base}-ai`, label: 'AI', onClick: () => setHuman(side, false), style: side.human ? SEG_OFF : SEG_ON }),
-        Button({ id: `${base}-human`, label: 'Human', onClick: () => setHuman(side, true), style: side.human ? SEG_ON : SEG_OFF }),
+        Button({ id: `${base}-ai`, label: 'ai', onClick: () => setHuman(side, false), style: side.human ? SEG_OFF : SEG_ON }),
+        Button({ id: `${base}-human`, label: 'human', onClick: () => setHuman(side, true), style: side.human ? SEG_ON : SEG_OFF }),
       ])
     : null;
   const body: Node[] = side.human
     ? [
-        Text({ text: 'You play this side', style: { color: 'muted' } }),
+        Text({ text: 'you play this side', style: { color: 'muted' } }),
         // Keep the dropdown Slots in the tree (hidden, 0×0 clipped) so the Screen
         // doesn't auto-unmount their components — toggling back to AI must find them
         // still mounted, else the pickers come back empty.
         Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot(side.providerDropdown.id), Slot(side.modelDropdown.id)]),
       ]
     : [
-        Text({ text: 'Provider', style: { color: 'muted' } }),
+        Text({ text: 'provider', style: { color: 'muted' } }),
         Slot(side.providerDropdown.id),
-        Text({ text: 'Model', style: { color: 'muted' } }),
+        Text({ text: 'model', style: { color: 'muted' } }),
         Slot(side.modelDropdown.id),
       ];
   return Box({ flexDirection: 'column', gap: 0, width: MODEL_W }, [
@@ -191,16 +191,16 @@ function column(side: Side, title: string, showSeat = false): Node {
 // both sides are ready; otherwise the button is rendered disabled (no onClick).
 export function buildMatchSetup(_region: LayoutBox, opts: { onStart: () => void; onCancel: () => void }): Node {
   const ready = matchSetupReady();
-  const start = Button({ id: 'setup-start', label: 'Start game', onClick: ready ? opts.onStart : undefined, style: ready ? START_ON : START_OFF });
-  const cancel = Button({ id: 'setup-cancel', label: 'Cancel', onClick: opts.onCancel, style: CANCEL });
+  const start = Button({ id: 'setup-start', label: 'start game', onClick: ready ? opts.onStart : undefined, style: ready ? START_ON : START_OFF });
+  const cancel = Button({ id: 'setup-cancel', label: 'cancel', onClick: opts.onCancel, style: CANCEL });
 
   // alignItems:'start' would clip a list opening in the shorter column, so the
   // columns are top-aligned and the row grows to the taller (open) one.
   const card = Box({ flexDirection: 'column', gap: 1, padding: [1, 3], background: [22, 24, 32] }, [
-    Box({ justifyContent: 'center' }, [Text({ text: 'New match', style: { color: [222, 224, 234], bold: true } })]),
-    Box({ flexDirection: 'row', gap: 4, alignItems: 'start' }, [column(white, 'White', true), column(black, 'Black', true)]),
+    Box({ justifyContent: 'center' }, [Text({ text: 'new match', style: { color: [222, 224, 234], bold: true } })]),
+    Box({ flexDirection: 'row', gap: 4, alignItems: 'start' }, [column(white, 'white', true), column(black, 'black', true)]),
     Box({ flexDirection: 'row', justifyContent: 'center', gap: 2 }, [start, cancel]),
-    Box({ justifyContent: 'center' }, [Text({ text: 'Tab move · Enter open/pick · ↑↓ scroll · Esc close', style: { color: 'muted' } })]),
+    Box({ justifyContent: 'center' }, [Text({ text: 'tab move · enter open/pick · ↑↓ scroll · esc close', style: { color: 'muted' } })]),
   ]);
   return Modal(card);
 }
@@ -241,13 +241,13 @@ export function swapSetupSelection(): string | null {
 // label ("White"/"Black"); the column tints it via swap.key.
 export function buildSwapSetup(_region: LayoutBox, opts: { title: string; onConfirm: () => void; onCancel: () => void }): Node {
   const ready = swap.modelId !== null;
-  const confirm = Button({ id: 'swap-confirm', label: 'Switch', onClick: ready ? opts.onConfirm : undefined, style: ready ? START_ON : START_OFF });
-  const cancel = Button({ id: 'swap-cancel', label: 'Cancel', onClick: opts.onCancel, style: CANCEL });
+  const confirm = Button({ id: 'swap-confirm', label: 'switch', onClick: ready ? opts.onConfirm : undefined, style: ready ? START_ON : START_OFF });
+  const cancel = Button({ id: 'swap-cancel', label: 'cancel', onClick: opts.onCancel, style: CANCEL });
   const card = Box({ flexDirection: 'column', gap: 1, padding: [1, 3], background: [22, 24, 32] }, [
-    Box({ justifyContent: 'center' }, [Text({ text: 'Switch model', style: { color: [222, 224, 234], bold: true } })]),
+    Box({ justifyContent: 'center' }, [Text({ text: 'switch model', style: { color: [222, 224, 234], bold: true } })]),
     Box({ flexDirection: 'row', justifyContent: 'center' }, [column(swap, opts.title)]),
     Box({ flexDirection: 'row', justifyContent: 'center', gap: 2 }, [confirm, cancel]),
-    Box({ justifyContent: 'center' }, [Text({ text: 'Tab move · Enter open/pick · ↑↓ scroll · Esc close', style: { color: 'muted' } })]),
+    Box({ justifyContent: 'center' }, [Text({ text: 'tab move · enter open/pick · ↑↓ scroll · esc close', style: { color: 'muted' } })]),
   ]);
   return Modal(card);
 }

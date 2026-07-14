@@ -72,8 +72,8 @@ function controls(mode: CardsMode): Node[] {
     return [
       labeled('Players', Slot('poker-players')),
       Box({ flexDirection: 'row', gap: 2 }, [
-        Button({ id: 'poker-shuffle', label: 'Shuffle', onClick: () => H?.onShuffle(), style: BTN }),
-        Button({ id: 'poker-deal', label: 'Deal', onClick: () => H?.onDeal(), style: BTN }),
+        Button({ id: 'poker-shuffle', label: 'shuffle', onClick: () => H?.onShuffle(), style: BTN }),
+        Button({ id: 'poker-deal', label: 'deal', onClick: () => H?.onDeal(), style: BTN }),
       ]),
     ];
   }

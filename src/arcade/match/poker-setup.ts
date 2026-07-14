@@ -233,7 +233,7 @@ export function pokerPreviewSeats(): PokerSeatView[] {
     label: side.modelId ? shortModel(side.modelId) : side.provider ?? 'AI',
     provider: side.provider ?? undefined,
   });
-  const seats: PokerSeatView[] = [spectating() ? ai(sides[0]) : { kind: 'human', label: 'You' }];
+  const seats: PokerSeatView[] = [spectating() ? ai(sides[0]) : { kind: 'human', label: 'you' }];
   for (let i = 1; i <= oppCount(); i++) seats.push(ai(sides[i]));
   return seats;
 }
@@ -269,7 +269,7 @@ function stackControl(): Node {
 function seatRow(side: AiSide, seatNo: number): Node {
   side.providerDropdown.setAccent(brandTint(side));
   return Box({ flexDirection: 'row', gap: 1, alignItems: 'start' }, [
-    Box({ width: SEAT_LABEL_W }, [Text({ text: `Seat ${seatNo}`, style: { color: brandTint(side), bold: true } })]),
+    Box({ width: SEAT_LABEL_W }, [Text({ text: `seat ${seatNo}`, style: { color: brandTint(side), bold: true } })]),
     Slot(side.providerDropdown.id),
     Slot(side.modelDropdown.id),
   ]);
@@ -288,7 +288,7 @@ export function buildPokerSetupPanel(): Node {
   if (!spectating()) {
     seatRows.push(
       Box({ flexDirection: 'row', gap: 1, alignItems: 'start' }, [
-        Box({ width: SEAT_LABEL_W }, [Text({ text: 'Seat 1', style: { color: HERO_FG, bold: true } })]),
+        Box({ width: SEAT_LABEL_W }, [Text({ text: 'seat 1', style: { color: HERO_FG, bold: true } })]),
         Text({ text: 'you', style: { color: HERO_FG } }),
       ]),
     );
@@ -304,11 +304,11 @@ export function buildPokerSetupPanel(): Node {
   if (!voiceShown) hidden.push(Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot('poker-voice')]));
 
   return Box({ flexDirection: 'column', gap: 1, alignItems: 'start' }, [
-    Text({ text: 'New match', style: { color: TITLE_FG, bold: true } }),
-    row('Mode', Slot('poker-setup-mode')),
-    row('Players', Slot('poker-players')),
-    row('Stack', stackControl()),
-    ...(voiceShown ? [row('Voice', Slot('poker-voice'))] : []),
+    Text({ text: 'new match', style: { color: TITLE_FG, bold: true } }),
+    row('mode', Slot('poker-setup-mode')),
+    row('players', Slot('poker-players')),
+    row('stack', stackControl()),
+    ...(voiceShown ? [row('voice', Slot('poker-voice'))] : []),
     ...seatRows,
     ...hidden,
   ]);
