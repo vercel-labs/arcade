@@ -15,18 +15,17 @@ import {
 import { PrismScene, SplashScene } from '../prism/index.ts';
 import { CoverFlowScene, LAUNCH_TOTAL } from './shell/coverflow.ts';
 import { MENU_ITEMS } from './shell/menu.ts';
-import { ChessScene } from './games/chess/turntable.ts';
 import { ChessGameScene } from './games/chess/scene.ts';
 import { CardsScene } from './games/poker/cards-scene.ts';
 import { buildPokerRoot, mountPokerHud, pokerMode, setPokerHandlers } from './games/poker/hud.ts';
 import { PokerGameScene } from './games/poker/poker-scene.ts';
 import { buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, type HeroContext, mountPokerGameHud, nudgePokerBet, pushPokerChat, setPokerGameHandlers, setPokerVoiceStage } from './games/poker/poker-hud.ts';
 import { PokerMatch } from './match/poker-driver.ts';
-import { buildPokerSetupPanel, mountPokerSetup, pokerPreviewSeats, pokerSetupReady, pokerSetupSelection, pokerVoiceSelected, setPokerSetupChanged } from './match/poker-setup.ts';
+import { buildPokerSetupPanel, mountPokerSetup, pokerPreviewSeats, pokerSetupReady, pokerSetupSelection, pokerStartingStack, pokerVoiceSelected, setPokerSetupChanged } from './match/poker-setup.ts';
 import { LogosScene } from './scenes/logos-scene.ts';
 import { AudioScene } from './scenes/audio-scene.ts';
 import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/input.ts';
-import { buildBar, buildGameMenu, buildGameOver, buildPromotion, modeLabel, type BarActions, type MenuItem, type Mode, type RenderMode } from './shell/bars.ts';
+import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, modeLabel, type BarActions, type MenuItem, type Mode, type RenderMode } from './shell/bars.ts';
 import { buildShowcase, mountShowcase } from './scenes/ui-showcase.ts';
 import { buildChessGameRoot, type Commentary, mountChessHud, movesToPgn, refreshMoveHistory } from './games/chess/hud.ts';
 import { clearChat, pushChatMessage } from './games/chess/chat.ts';
@@ -54,8 +53,6 @@ const MAX_STEP = 0.1;
 // Supersample factor for the prism screen (antialiasing + sub-cell detail
 // for shape-matched glyph mode).
 const SS = 3;
-// Softmax "temperature" for glyph jitter when enabled (subtle variation).
-const JITTER_TEMP = 0.04;
 
 const MODE_ORDER: RenderMode[] = ['ascii', 'color', 'luminance'];
 
@@ -77,7 +74,6 @@ let display: RenderTarget | undefined;
 const prism = new PrismScene();
 const coverflow = new CoverFlowScene();
 const splash = new SplashScene();
-const chess = new ChessScene();
 const chessGame = new ChessGameScene();
 const logosScene = new LogosScene();
 const audioScene = new AudioScene();
@@ -102,31 +98,29 @@ function barRegion(): LayoutBox {
   return { x: 0, y: rows - BAR_HEIGHT - BAR_BOTTOM_MARGIN, w: cols, h: BAR_HEIGHT };
 }
 
-// The active turntable scene when in a chess view (drives orbit/pan/zoom), or null.
-function orbitScene(): ChessScene | ChessGameScene | null {
-  if (mode === 'chess') return chess;
+// The playable chess board when in the chess-game view (drives orbit/pan/zoom), or null.
+function orbitScene(): ChessGameScene | null {
   if (mode === 'chess-game') return chessGame;
   return null;
 }
 
-// The camera-controllable scene for the active mode: the chess turntables, the
-// logos wisp orbit, or the chess board behind the UI playground. Drives the
-// shared drag/pan/zoom mouse handler and the reset/pan key commands. (The 'ui'
-// backdrop is camera-controllable too, so dragging on the scene behind the panel
-// rotates it.) `orbitScene()` stays null for 'ui' so the tick uses the dedicated
-// 'ui' branch, which always recomposites for live component edits.
-function activeOrbit(): ChessScene | ChessGameScene | LogosScene | AudioScene | CardsScene | PokerGameScene | null {
+// The camera-controllable scene for the active mode: the chess board, the logos
+// wisp orbit, or the chess board behind the UI playground. Drives the shared
+// drag/pan/zoom mouse handler and the reset/pan key commands. (The 'ui' backdrop
+// is camera-controllable too, so dragging on the scene behind the panel rotates
+// it.) `orbitScene()` stays null for 'ui' so the tick uses the dedicated 'ui'
+// branch, which always recomposites for live component edits.
+function activeOrbit(): ChessGameScene | LogosScene | AudioScene | CardsScene | PokerGameScene | null {
   if (mode === 'logos') return logosScene;
   if (mode === 'audio') return audioScene;
   if (mode === 'cards') return cardsScene;
   if (mode === 'poker') return pokerScene;
-  if (mode === 'ui') return chess;
+  if (mode === 'ui') return chessGame;
   return orbitScene();
 }
 
 let mode: Mode = 'prism';
 let renderMode: RenderMode = 'ascii';
-let jitter = false;
 // Camera-drag tracking for the chess screens. `downX/downY` mark where a drag
 // began, so an up close to it counts as a click (select) rather than a rotate.
 let draggingCamera = false;
@@ -218,6 +212,18 @@ let chessMenuOpen = false;
 // match starts, and the chat starts COLLAPSED (just the "chat" pill) — clicking it (or its
 // ✕) toggles. Reset to collapsed on each new match; persists while a match runs.
 let pokerChatOpen = false;
+// The "return to home screen?" confirm popup, shown when Escape is pressed inside a game
+// (chess-game / poker) instead of leaving immediately. "Return home" is default-focused;
+// Cancel (or Escape again) stays in the game.
+let confirmHomeOpen = false;
+let confirmHomeFocused = false;
+// The shortcuts overlay (the '?' key, or the ☰ menu's "shortcuts" item): a generated list
+// of the keys live on the current screen. Content comes from keymap.activeBindings().
+let shortcutsOpen = false;
+// The quit-confirm popup (the 'q' key): "quit" default-focused / "cancel". ctrl+c still
+// hard-quits without a prompt (the instant hatch).
+let confirmQuitOpen = false;
+let confirmQuitFocused = false;
 // The game-over result popup (chess-game only): set once the board is terminal,
 // cleared on a new game; `dismissed` suppresses re-showing after Close until the
 // board leaves the terminal state; `focused` is the focus-once edge.
@@ -265,7 +271,7 @@ function syncLive(): void {
 // Dirty-flag rendering for the static (turntable) chess scenes: skip re-render +
 // re-write when nothing changed. `forceFrame` requests one unconditional repaint
 // after a transition that clears the screen or changes the present output (mode
-// switch, render-mode/jitter toggle, resize). A pure button-hover change is
+// switch, render-mode toggle, resize). A pure button-hover change is
 // detected via `ui.dirty()`, which repaints just the bar without the scene.
 let forceFrame = false;
 const CLEAR = '\x1b[2J';
@@ -430,19 +436,6 @@ function buildMenuOverlay(): Node {
 
 function cycleMode(): void {
   renderMode = MODE_ORDER[(MODE_ORDER.indexOf(renderMode) + 1) % MODE_ORDER.length];
-  fullRepaint();
-}
-
-function setRenderMode(next: RenderMode): void {
-  if (renderMode === next) return;
-  renderMode = next;
-  fullRepaint();
-}
-
-function enterChess(): void {
-  stopAiMatch();
-  mode = 'chess';
-  draggingCamera = false;
   fullRepaint();
 }
 
@@ -719,7 +712,7 @@ function confirmPokerSetup(): void {
   closePokerSetup();
   clearPokerChat(); // fresh chat thread for the new session
   pokerChatOpen = false; // the chat starts collapsed (just the pill) each new match
-  pokerMatch.start(seats, { voice: pokerVoiceSelected() });
+  pokerMatch.start(seats, { voice: pokerVoiceSelected(), stack: pokerStartingStack() });
 }
 
 // The bottom-left "new match" button: tear down a finished session if one is still on
@@ -786,6 +779,57 @@ function openChessMenu(): void {
 }
 function closeChessMenu(): void {
   chessMenuOpen = false;
+  forceFrame = true;
+  r.requestRender();
+}
+
+// Esc = back one level. Inside a game (chess-game / poker) it opens the "return home?"
+// confirm so a stray keypress can't drop a match; every other non-menu screen goes straight
+// back to the menu. (The menu's own esc → prism and each modal's esc → close are handled by
+// higher keymap layers, so they never reach here.)
+function escBack(): void {
+  if (mode === 'chess-game' || mode === 'poker') openConfirmHome();
+  else enterMenu();
+}
+function openConfirmHome(): void {
+  confirmHomeOpen = true;
+  forceFrame = true;
+  r.requestRender();
+}
+function closeConfirmHome(): void {
+  confirmHomeOpen = false;
+  confirmHomeFocused = false;
+  forceFrame = true;
+  r.requestRender();
+}
+function confirmHomeYes(): void {
+  confirmHomeOpen = false;
+  confirmHomeFocused = false;
+  enterMenu();
+}
+
+// The shortcuts overlay: '?' anywhere (or a ☰ menu item) opens it; '?'/esc/✕ close it.
+function openShortcuts(): void {
+  shortcutsOpen = true;
+  forceFrame = true;
+  r.requestRender();
+}
+function closeShortcuts(): void {
+  shortcutsOpen = false;
+  forceFrame = true;
+  r.requestRender();
+}
+
+// The quit-confirm popup: 'q' opens it (from any non-modal screen); esc / cancel dismiss;
+// the "quit" button (default-focused, Enter) calls quit(). ctrl+c bypasses this entirely.
+function openConfirmQuit(): void {
+  confirmQuitOpen = true;
+  forceFrame = true;
+  r.requestRender();
+}
+function closeConfirmQuit(): void {
+  confirmQuitOpen = false;
+  confirmQuitFocused = false;
   forceFrame = true;
   r.requestRender();
 }
@@ -1057,15 +1101,12 @@ const keymap = installKeymap({
   openTeamSwitch,
   closeTeamSwitch,
   cycleMode,
-  setRenderMode,
-  toggleJitter,
   enterMenu,
   toPrism,
   menuNav,
   launchSelected,
   enterAudio,
   audioCycleModel: () => audioScene.cycleModel(),
-  enterChess,
   enterChessGame,
   enterUi,
   activeOrbit,
@@ -1085,19 +1126,24 @@ const keymap = installKeymap({
   closePokerMenu,
   closePokerNotes,
   closeChessMenu,
+  openChessMenu,
+  openPokerMenu,
+  togglePokerChat,
+  escBack,
+  closeConfirmHome,
+  enterPoker,
+  enterCards,
+  openShortcuts,
+  closeShortcuts,
+  openConfirmQuit,
+  closeConfirmQuit,
 });
 
-// Point the keymap's base layer at the current mode (chess + chess-game share
-// the orbit bindings). The 'promoting' modal is pushed/popped separately.
+// Point the keymap's base layer at the current mode (chess-game uses the shared
+// 'chess' orbit layer). The 'promoting' modal is pushed/popped separately.
 function syncContext(): void {
-  const layer: string = mode === 'chess' || mode === 'chess-game' ? 'chess' : mode;
+  const layer: string = mode === 'chess-game' ? 'chess' : mode;
   keymap.setBase(layer); // 'poker' maps straight through to the poker layer
-}
-
-// Toggle per-frame glyph jitter; forceFrame so an idle chess turntable repaints.
-function toggleJitter(): void {
-  jitter = !jitter;
-  forceFrame = true;
 }
 
 // Cancel a pending chess promotion and repaint over the popup without a black
@@ -1141,12 +1187,18 @@ function syncBar(): void {
   if (mode !== 'poker') pokerMenuOpen = false; // the in-game menu only lives in the poker view
   if (mode !== 'poker') pokerNotesOpen = false; // ditto for the notes modal
   if (mode !== 'chess-game') chessMenuOpen = false; // ditto for the chess menu
+  if (mode !== 'chess-game' && mode !== 'poker') confirmHomeOpen = false; // the confirm only lives in a game
   // The poker/chess modal layers are popped whenever their modal isn't open (any branch).
   if (!pokerSetupOpen && keymap.hasContext('poker-setup')) keymap.popContext('poker-setup');
   if (!pokerMenuOpen && keymap.hasContext('poker-menu')) keymap.popContext('poker-menu');
   if (!pokerNotesOpen && keymap.hasContext('poker-notes')) keymap.popContext('poker-notes');
   if (!pokerNotesOpen) pokerNotesFocused = false; // re-focus the scroll body on the next open
   if (!chessMenuOpen && keymap.hasContext('chess-menu')) keymap.popContext('chess-menu');
+  if (!confirmHomeOpen && keymap.hasContext('confirm-home')) keymap.popContext('confirm-home');
+  if (!confirmHomeOpen) confirmHomeFocused = false; // re-focus "Return home" on the next open
+  if (!shortcutsOpen && keymap.hasContext('shortcuts')) keymap.popContext('shortcuts');
+  if (!confirmQuitOpen && keymap.hasContext('confirm-quit')) keymap.popContext('confirm-quit');
+  if (!confirmQuitOpen) confirmQuitFocused = false; // re-focus "quit" on the next open
   const popGameOver = (): void => {
     if (keymap.hasContext('gameover')) keymap.popContext('gameover');
   };
@@ -1158,7 +1210,42 @@ function syncBar(): void {
   };
 
   const pc = promoColor();
-  if (pc !== null) {
+  if (shortcutsOpen) {
+    if (keymap.hasContext('promoting')) keymap.popContext('promoting');
+    popGameOver();
+    popSetup();
+    popSwap();
+    promoFocused = false;
+    if (!keymap.hasContext('shortcuts')) keymap.pushContext('shortcuts', true);
+    // activeBindings() skips modal layers, so it reports the screen beneath this overlay.
+    ui.setRoot(buildShortcuts(keymap.activeBindings(), closeShortcuts), { x: 0, y: 0, w: cols, h: rows });
+  } else if (confirmQuitOpen) {
+    if (keymap.hasContext('promoting')) keymap.popContext('promoting');
+    popGameOver();
+    popSetup();
+    popSwap();
+    promoFocused = false;
+    if (!keymap.hasContext('confirm-quit')) keymap.pushContext('confirm-quit', true);
+    ui.setRoot(buildConfirm({ prompt: 'quit arcade?', confirmLabel: 'quit', idPrefix: 'confirm-quit', onConfirm: quit, onCancel: closeConfirmQuit }), { x: 0, y: 0, w: cols, h: rows });
+    if (!confirmQuitFocused) {
+      ui.setFocus('confirm-quit-yes'); // default highlight so Enter quits
+      confirmQuitFocused = true;
+      forceFrame = true;
+    }
+  } else if (confirmHomeOpen) {
+    if (keymap.hasContext('promoting')) keymap.popContext('promoting');
+    popGameOver();
+    popSetup();
+    popSwap();
+    promoFocused = false;
+    if (!keymap.hasContext('confirm-home')) keymap.pushContext('confirm-home', true);
+    ui.setRoot(buildConfirm({ prompt: 'return to home screen?', confirmLabel: 'return', idPrefix: 'confirm-home', onConfirm: confirmHomeYes, onCancel: closeConfirmHome }), { x: 0, y: 0, w: cols, h: rows });
+    if (!confirmHomeFocused) {
+      ui.setFocus('confirm-home-yes'); // default highlight so Enter returns home
+      confirmHomeFocused = true;
+      forceFrame = true;
+    }
+  } else if (pc !== null) {
     // Keep the keymap's modal layer in lockstep with picker visibility (idempotent
     // each frame, so it self-heals even if a resize reset the base stack).
     if (!keymap.hasContext('promoting')) keymap.pushContext('promoting', true);
@@ -1279,6 +1366,7 @@ function syncBar(): void {
       { id: 'chess-menu-mode', label: modeLabel(renderMode), onClick: cycleMode },
       { id: 'chess-menu-eval', label: evalBarVisible ? 'hide eval bar' : 'show eval bar', onClick: toggleEvalBar },
       { id: 'chess-menu-illegal', label: `illegal: ${illegalAllowed ? 'on' : 'off'}`, onClick: toggleIllegal },
+      { id: 'chess-menu-shortcuts', label: 'shortcuts', onClick: () => { closeChessMenu(); openShortcuts(); } },
       { id: 'chess-menu-quit', label: 'quit', onClick: quit },
     ];
     ui.setRoot(buildGameMenu({ items, onClose: closeChessMenu }), { x: 0, y: 0, w: cols, h: rows });
@@ -1372,6 +1460,7 @@ function syncBar(): void {
       { id: 'poker-menu-home', label: 'home', onClick: enterMenu },
       { id: 'poker-menu-new', label: 'new game', onClick: pokerNewGame },
       { id: 'poker-menu-mode', label: modeLabel(renderMode), onClick: cycleMode },
+      { id: 'poker-menu-shortcuts', label: 'shortcuts', onClick: () => { closePokerMenu(); openShortcuts(); } },
       { id: 'poker-menu-quit', label: 'quit', onClick: quit },
     ];
     ui.setRoot(buildGameMenu({ items, onClose: closePokerMenu }), { x: 0, y: 0, w: cols, h: rows });
@@ -1442,7 +1531,6 @@ function presentScene(withBloom = true, hybridShadow = false): string {
   if (renderMode === 'ascii') {
     return toShapeGlyph(target, cols, rows, {
       color: true,
-      jitterTemp: jitter ? JITTER_TEMP : 0,
       hybrid: hybridShadow,
     });
   }
@@ -1460,7 +1548,6 @@ function presentSceneInto(surf: Surface, withBloom = true, hybridShadow = false)
   if (renderMode === 'ascii') {
     shapeGlyphToSurface(surf, target, cols, rows, {
       color: true,
-      jitterTemp: jitter ? JITTER_TEMP : 0,
       hybrid: hybridShadow,
     });
     return;
@@ -1486,6 +1573,12 @@ function pointerNdc(x: number, y: number): { ndcX: number; ndcY: number; aspect:
 }
 
 function onKeyImpl(ev: KeyEvent): void {
+  // ctrl+c is the guaranteed escape hatch: quit from ANY state, before any modal / gate /
+  // type-to-talk screen can swallow it (in raw mode ctrl+c arrives as a keypress, not SIGINT).
+  if (ev.ctrl && ev.name === 'c') {
+    quit();
+    return;
+  }
   // Any key skips the boot splash straight to the live prism (the wrapper requests
   // a render, so the next tick falls through to the prism branch).
   if (splashing) {
@@ -1495,14 +1588,18 @@ function onKeyImpl(ev: KeyEvent): void {
   // Poker "press any key to continue" gate (the bird's-eye deal finished dealing, or the
   // end-of-hand winner banner is up): any key but ctrl+c proceeds past it. Clicks don't —
   // the mouse stays free to orbit/zoom the scene until a key is pressed.
-  if (mode === 'poker' && pokerScene.awaitingContinue() && !(ev.ctrl && ev.name === 'c')) {
+  if (mode === 'poker' && pokerScene.awaitingContinue()) {
     pokerScene.continueGesture();
     return;
   }
-  // Prism loading screen: any key starts (→ menu). ctrl+c still quits (falls to keymap).
-  if (mode === 'prism' && !(ev.ctrl && ev.name === 'c')) {
-    enterMenu();
-    return;
+  // Prism loading screen: any key starts (→ menu), EXCEPT Escape, which falls through to the
+  // keymap (global esc → quit) so esc stays a consistent "back one level" and prism is the
+  // last level. (ctrl+c is already handled at the top of this function.)
+  if (mode === 'prism') {
+    if (ev.name !== 'escape') {
+      enterMenu();
+      return;
+    }
   }
   // Audio screen: type-to-talk. Printable keys + enter/backspace/tab feed the
   // prompt; everything else (escape → back, arrows → pan) falls to the keymap.
@@ -1790,12 +1887,12 @@ function tick(dt: number): void {
     // scene, since a component edit (typing, slider) changes the tree without
     // tripping ui.dirty(). The empty diff of an idle frame writes nothing.
     syncBar();
-    const sceneDirty = forceFrame || chess.needsRender();
-    if (sceneDirty) chess.renderScene(target);
+    const sceneDirty = forceFrame || chessGame.needsRender();
+    if (sceneDirty) chessGame.renderScene(target);
     if (UNIFIED) r.write(ui.frameComposited((s) => presentSceneInto(s, false, true), sceneDirty));
     else r.write(presentScene(false, true) + ui.frame());
     forceFrame = false;
-    if (chess.needsRender()) r.requestRender(); // keep animating while the camera settles
+    if (chessGame.needsRender()) r.requestRender(); // keep animating while the camera settles
     return;
   }
 
@@ -1848,9 +1945,8 @@ function tick(dt: number): void {
   if (orbit) {
     // Dirty-flag gate: the chess turntables are static between interactions, so
     // skip the (expensive) re-render + full-screen write when nothing changed.
-    // `jitter` intentionally animates (per-frame glyph noise) so it forces redraw.
     syncBar();
-    const sceneDirty = forceFrame || jitter || orbit.needsRender();
+    const sceneDirty = forceFrame || orbit.needsRender();
     if (sceneDirty) orbit.renderScene(target, t);
     if (UNIFIED) {
       // Composite scene + UI into one diffed buffer; skip when nothing changed.
@@ -1867,8 +1963,8 @@ function tick(dt: number): void {
     }
     forceFrame = false;
     // Render-on-demand: chess holds no live lease, so re-arm the next frame while
-    // the scene is still animating (a move/camera settle) or jitter is on.
-    if (orbit.needsRender() || jitter) r.requestRender();
+    // the scene is still animating (a move/camera settle).
+    if (orbit.needsRender()) r.requestRender();
     return;
   }
 }

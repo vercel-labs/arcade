@@ -7,12 +7,12 @@
 // previews the choices live — chairs follow the player count and each AI seat's wisp
 // follows its provider — via the onChanged hook (main wires it to scene.setPreview).
 
-import { Box, Dropdown, Slot, Text, type Node, type Screen } from '../../tui/index.ts';
+import { Box, Dropdown, Slider, Slot, Text, type Node, type Screen } from '../../tui/index.ts';
 import type { RGB } from '../../engine/index.ts';
 import { modelsFor, type ModelInfo, providers } from './models.ts';
 import { providerTint } from '../scenes/wisp.ts';
 import { shortModel } from '../games/chess/hud.ts';
-import type { PokerSeatSpec } from './poker-driver.ts';
+import { BIG_BLIND, type PokerSeatSpec } from './poker-driver.ts';
 import type { PokerSeatView } from '../games/poker/poker-scene.ts';
 
 const PROVS = providers();
@@ -116,6 +116,46 @@ function oppCount(): number {
   return (playersDropdown.index < 0 ? 2 : playersDropdown.index) + 1;
 }
 
+// Configurable starting stack (per player, for the whole session). A slider from 1000 to
+// 10000 chips, snapped to a whole big blind so the amount always divides cleanly into bets
+// and never reads as an odd number. Defaults to the classic 1000. Shown below Players; the
+// "$" readout + slider together span a seat row's provider+model width, so the panel stays
+// a single tidy column and never grows past the seat rows.
+const STACK_MIN = 1000;
+const STACK_MAX = 10000;
+const STACK_READOUT_W = 7; // fits "$10,000"
+const STACK_SLIDER_W = PROVIDER_W + 1 + MODEL_W - STACK_READOUT_W - 1; // == a seat's control columns
+const money = (n: number): string => `$${n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
+const clampStack = (n: number): number => Math.max(STACK_MIN, Math.min(STACK_MAX, n));
+const snapStack = (n: number): number => clampStack(Math.round(n / BIG_BLIND) * BIG_BLIND);
+const stackToNorm = (chips: number): number => (chips - STACK_MIN) / (STACK_MAX - STACK_MIN);
+const normToStack = (v: number): number => snapStack(STACK_MIN + v * (STACK_MAX - STACK_MIN));
+
+let startingStack = STACK_MIN;
+
+// The stack slider: drag (or ←/→, ~5 blinds a nudge) picks the amount; onChange snaps it to
+// a whole big blind and re-homes the thumb there, so the value can never rest on an odd
+// number. Exported like the other setup controls so the snapshot tool can drive it.
+export const stackSlider = new Slider({
+  id: 'poker-stack',
+  width: STACK_SLIDER_W,
+  value: stackToNorm(startingStack),
+  step: (BIG_BLIND * 5) / (STACK_MAX - STACK_MIN),
+  onChange: (v) => {
+    const chips = normToStack(v);
+    stackSlider.value = stackToNorm(chips); // snap the thumb onto the whole-blind value
+    if (chips === startingStack) return;
+    startingStack = chips;
+    changed();
+  },
+});
+
+// The chosen per-player starting chips (a whole multiple of the big blind). Read by main
+// when it starts the session.
+export function pokerStartingStack(): number {
+  return startingStack;
+}
+
 // Hero (you play seat 1) vs. Spectate (all AI — seat 1 is a model too, and every hand
 // is visible). Drives whether seat 1 gets its own model row.
 export const modeDropdown = new Dropdown({
@@ -162,6 +202,7 @@ export function mountPokerSetup(ui: Screen): void {
   ui.mount(playersDropdown);
   ui.mount(modeDropdown);
   ui.mount(voiceDropdown);
+  ui.mount(stackSlider);
   for (const s of sides) {
     ui.mount(s.providerDropdown);
     ui.mount(s.modelDropdown);
@@ -214,6 +255,15 @@ function row(label: string, control: Node): Node {
   ]);
 }
 
+// The starting-stack control body: a "$" readout with the slider to its right, together
+// the width of a seat row's provider+model columns.
+function stackControl(): Node {
+  return Box({ flexDirection: 'row', gap: 1, alignItems: 'start' }, [
+    Box({ width: STACK_READOUT_W }, [Text({ text: money(startingStack), style: { color: HERO_FG } })]),
+    Slot(stackSlider.id),
+  ]);
+}
+
 // One seat's row: a "Seat N" label tinted in the provider's brand hue + the provider
 // and model pickers side by side. `seatNo` is the 1-based table seat this config fills.
 function seatRow(side: AiSide, seatNo: number): Node {
@@ -257,6 +307,7 @@ export function buildPokerSetupPanel(): Node {
     Text({ text: 'New match', style: { color: TITLE_FG, bold: true } }),
     row('Mode', Slot('poker-setup-mode')),
     row('Players', Slot('poker-players')),
+    row('Stack', stackControl()),
     ...(voiceShown ? [row('Voice', Slot('poker-voice'))] : []),
     ...seatRows,
     ...hidden,

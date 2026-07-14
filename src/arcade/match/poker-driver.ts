@@ -20,7 +20,9 @@ export type PokerSeatSpec = { kind: 'human' } | { kind: 'ai'; model: string };
 
 const STARTING_STACK = 1000;
 const SMALL_BLIND = 10;
-const BIG_BLIND = 20;
+// Exported so the setup slider snaps the starting stack to a whole big blind (one source
+// of truth for the blind size).
+export const BIG_BLIND = 20;
 // Chip amounts read as money in the winner banner: a "$" prefix + thousands separators.
 const money = (n: number): string => `$${n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
 
@@ -115,12 +117,13 @@ export class PokerMatch {
   // Start a fresh session with the chosen seats (seat 0 is the human hero). Resets
   // stacks + button, seeds the scene, builds the players, and deals the first hand.
   // `opts.voice` (from the setup toggle) requests realtime voice — honored only for a
-  // 2-seat human-vs-AI match with the audio capability present.
-  start(seats: PokerSeatSpec[], opts?: { voice?: boolean }): void {
+  // 2-seat human-vs-AI match with the audio capability present. `opts.stack` sets the
+  // per-player starting chips (from the setup slider); defaults to STARTING_STACK.
+  start(seats: PokerSeatSpec[], opts?: { voice?: boolean; stack?: number }): void {
     this.stop();
     this.voiceRequested = opts?.voice ?? false;
     this.seats = seats.slice();
-    this.stacks = seats.map(() => STARTING_STACK);
+    this.stacks = seats.map(() => opts?.stack ?? STARTING_STACK);
     this.button = 0;
     this.memory.reset();
     this.computeLabels();

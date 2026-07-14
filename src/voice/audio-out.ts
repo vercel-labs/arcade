@@ -1,8 +1,9 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { hasCommand } from './has-command.ts';
 
 // Plays the PCM16 audio streamed back from a realtime voice session. The gateway
 // sends 24 kHz mono signed-16-bit little-endian PCM in base64 chunks. Two players:
@@ -24,7 +25,7 @@ const PLAYERS: { bin: string; args: string[] }[] = [
 let cachedPlayer: { bin: string; args: string[] } | null | undefined;
 function findPlayer(): { bin: string; args: string[] } | null {
   if (cachedPlayer !== undefined) return cachedPlayer;
-  cachedPlayer = PLAYERS.find((p) => spawnSync('which', [p.bin]).status === 0) ?? null;
+  cachedPlayer = PLAYERS.find((p) => hasCommand(p.bin)) ?? null;
   return cachedPlayer;
 }
 

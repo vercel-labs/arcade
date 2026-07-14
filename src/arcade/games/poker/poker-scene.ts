@@ -30,6 +30,7 @@ import {
 } from '../../../engine/index.ts';
 import { OrbitCamera } from '../../orbit.ts';
 import { loadWisp, mulberry32, providerTint, type Wisp, WISP_SIZE } from '../../scenes/wisp.ts';
+import { asset } from '../../assets.ts';
 import type { RGB } from '../../../engine/index.ts';
 import { type Card, RANK_LABELS } from '../../../rules/poker/cards.ts';
 import type { HoldemState, PokerAction } from '../../../rules/poker/holdem.ts';
@@ -38,7 +39,7 @@ import { CARD_H, CARD_SCALE, CARD_W, drawCard, flatDown, flatUp } from './card-r
 import { HandPeek } from './card-peek.ts';
 import { DeckShuffle } from './deck-shuffle.ts';
 import { chairMesh, chairModel, FELT_STIPPLE, feltMesh, frameMesh, TABLE_MODEL, TABLE_RADIUS } from './table.ts';
-import { drawChipStack, playerColumns, potColumns } from './chips.ts';
+import { type ChipColumn, chipPileHalfExtent, drawChipStack, playerColumns, potColumns } from './chips.ts';
 
 const FOVY = (46 * Math.PI) / 180;
 const TABLE_LIGHT = normalize3({ x: 0.25, y: 0.9, z: 0.4 });
@@ -117,7 +118,18 @@ const SHUFFLE_SPEED = 1.5; // interlude shuffle playback speed (mild speed-up so
 // from CHIP_BET_R to the pot (opposite the muck across the deck) over CHIP_COLLECT_T. The
 // deal cinematic waits for both to finish before it cuts to the bird's-eye, so the user sees
 // their chips land in front and sweep to the pot on their own view first.
-const CHIP_SIDE = 1.65; // tangential offset of the carried stack from the seat's cards
+const CHIP_SIDE = 1.65; // baseline tangential offset of the carried stack from the seat's cards
+// A tall carried stack piles into a wider cluster; left at the fixed CHIP_SIDE it creeps back
+// over the seat's own hole cards (a $10k stack is much wider than a $1k one). So the offset is
+// pushed out until the pile's near edge clears the far edge of the two cards by CHIP_CARD_GAP.
+// Small stacks stay at CHIP_SIDE; only wide piles shift further out (never onto the cards).
+const CARD_TAN_EDGE = HOLE_GAP + CARD_W / 2; // tangential half-span of a seat's two hole cards
+const CHIP_CARD_GAP = 0.18; // clearance kept between the pile's near edge and the cards
+// The felt is flat out to TABLE_RADIUS, where a raised rail lip begins; a chip whose base is
+// past this radius rides up into / behind that lip and reads as sinking under the table. So a
+// carried stack's whole footprint is kept inside this radius (pulled toward centre if a big
+// pile would otherwise overhang the rail). The felt top is y=0, so chips rest at BASE_Y on it.
+const FELT_USABLE_R = TABLE_RADIUS - 0.5;
 const CHIP_BET_R = 2.4; // radius of the this-street bet, in front of the seat toward centre
 const CHIP_POT_POS = { x: -1.7, z: -1.4 }; // mirror of MUCK_POS across the deck
 const BET_PLACE_T = 0.3; // seconds chips take to fly from a seat's stack to its bet spot
@@ -496,7 +508,7 @@ export class PokerGameScene {
 
   private loadSeatWisp(provider: string, seat: number): Wisp | null {
     try {
-      return loadWisp(`public/assets/logos/${provider}.png`, providerTint(provider), seat * 1.3, this.wispRng);
+      return loadWisp(asset(`logos/${provider}.png`), providerTint(provider), seat * 1.3, this.wispRng);
     } catch {
       return null;
     }
@@ -1004,12 +1016,20 @@ export class PokerGameScene {
     }
   }
 
-  // The felt spot of a seat's carried stack: beside its cards (card radius, pushed along the
-  // seat tangent so it clears the cards and the centre). Also the origin of its bet flights.
-  private stackCenter(s: number): { x: number; z: number } {
-    const c = this.seatPos(s, HOLE_R);
+  // The felt spot of seat s's carried stack, sized for the pile `cols` it will draw. Beside
+  // the seat's cards — pushed along the tangent far enough to clear them (bigger piles push
+  // further) — with the radius then pulled in as needed so the pile's whole footprint stays
+  // inside the felt (never overhanging the raised rail). Also the origin of the seat's bet
+  // flights, so the chips fly from where the stack is actually drawn.
+  private stackCenter(s: number, cols: ChipColumn[]): { x: number; z: number } {
+    const ext = chipPileHalfExtent(cols);
+    const off = Math.max(CHIP_SIDE, CARD_TAN_EDGE + CHIP_CARD_GAP + ext.perp); // clear the cards tangentially
+    const tang = off + ext.perp; // the pile's farthest reach along the tangent
+    const rMax = Math.sqrt(Math.max(0, FELT_USABLE_R * FELT_USABLE_R - tang * tang)) - ext.axis;
+    const r = Math.max(0, Math.min(HOLE_R, rMax)); // pull the radius in so the outer edge stays on felt
+    const c = this.seatPos(s, r);
     const a = this.seatAngle(s);
-    return { x: c.x + Math.cos(a) * CHIP_SIDE, z: c.z - Math.sin(a) * CHIP_SIDE };
+    return { x: c.x + Math.cos(a) * off, z: c.z - Math.sin(a) * off };
   }
 
   // ── Chips: per-seat carried stacks + this-street bets + the pot pile ────────────
@@ -1030,7 +1050,8 @@ export class PokerGameScene {
     for (let s = 0; s < this.seats.length; s++) {
       const stack = hand.stackOf(s);
       if (stack <= 0) continue;
-      drawChipStack(target, vp, this.stackCenter(s), radialOf(s), playerColumns(stack), light, ambient, s);
+      const cols = playerColumns(stack);
+      drawChipStack(target, vp, this.stackCenter(s, cols), radialOf(s), cols, light, ambient, s);
     }
     // This-street bets in front of each seat, across the two staged beats. `pending`/`collect`
     // carry the captured per-seat amounts once the round has closed (committedOf is 0 by then).
@@ -1056,7 +1077,7 @@ export class PokerGameScene {
       // Placement: the pushed chips fly from the actor's stack to its bet spot.
       if (place && place.pushed > 0) {
         const q = smooth(place.t);
-        const from = this.stackCenter(place.seat);
+        const from = this.stackCenter(place.seat, playerColumns(hand.stackOf(place.seat)));
         const to = this.seatPos(place.seat, CHIP_BET_R);
         const at = { x: from.x + (to.x - from.x) * q, z: from.z + (to.z - from.z) * q };
         drawChipStack(target, vp, at, tangentOf(place.seat), potColumns(place.pushed), light, ambient, place.seat + 200);

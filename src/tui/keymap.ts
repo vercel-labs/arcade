@@ -117,4 +117,33 @@ export class Keymap {
   commands(): Command[] {
     return [...this.commandMap.values()];
   }
+
+  // The keys effective on the current screen: `global` + the active NON-modal layers,
+  // as { key, title, layer }. Modal layers are skipped, so the shortcuts overlay (itself
+  // a modal) still reports the UNDERLYING screen's keys. Topmost non-modal layer wins a
+  // conflicting chord (matches resolve()). Powers the in-app shortcuts panel, so it can
+  // never drift from the real bindings.
+  activeBindings(): { key: string; title: string; layer: string; id: string }[] {
+    const layerOf = new Map<string, string>(); // chord → layer (first seen, top-down, wins)
+    const idOf = new Map<string, string>(); // chord → command id
+    for (let i = this.contexts.length - 1; i >= 0; i--) {
+      const c = this.contexts[i];
+      if (c.modal) continue; // report the screen beneath, not the overlay's own layer
+      const layer = this.layers.get(c.name);
+      if (!layer) continue;
+      for (const [chord, id] of layer) {
+        if (!layerOf.has(chord)) {
+          layerOf.set(chord, c.name);
+          idOf.set(chord, id);
+        }
+      }
+    }
+    const out: { key: string; title: string; layer: string; id: string }[] = [];
+    for (const [chord, layer] of layerOf) {
+      const id = idOf.get(chord) as string;
+      const cmd = this.commandMap.get(id);
+      if (cmd?.title) out.push({ key: chord, title: cmd.title, layer, id });
+    }
+    return out;
+  }
 }

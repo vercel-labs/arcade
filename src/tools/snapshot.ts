@@ -9,13 +9,13 @@ import { writeFileSync } from 'node:fs';
 import { bloom, downsample, halfBlockToSurface, RenderTarget, shapeGlyphToSurface, Surface } from '../engine/index.ts';
 import { FONT } from '../engine/font8x8.ts';
 import { PrismScene, SplashScene } from '../prism/index.ts';
-import { ChessScene } from '../arcade/games/chess/turntable.ts';
 import { ChessGameScene } from '../arcade/games/chess/scene.ts';
 import { LogosScene } from '../arcade/scenes/logos-scene.ts';
 import { AudioScene } from '../arcade/scenes/audio-scene.ts';
 import { CoverFlowScene } from '../arcade/shell/coverflow.ts';
 import { MENU_ITEMS } from '../arcade/shell/menu.ts';
-import { buildBar, buildGameMenu, buildGameOver, buildPromotion, type Mode } from '../arcade/shell/bars.ts';
+import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, type Mode } from '../arcade/shell/bars.ts';
+import { installKeymap } from '../arcade/shell/keybindings.ts';
 import { buildShowcase, mountShowcase } from '../arcade/scenes/ui-showcase.ts';
 import { buildChessGameRoot, mountChessHud, refreshMoveHistory } from '../arcade/games/chess/hud.ts';
 import { type ChatMessage, clearChat, pushChatMessage } from '../arcade/games/chess/chat.ts';
@@ -185,15 +185,14 @@ const barActions = { back: noop, reset: noop, mode: noop, quit: noop, aiMatch: n
 // proving the bar sits ON TOP of the 3D scene (opaque pills overwrite it;
 // transparent gaps show it through).
 function overlaySnapshot(): void {
-  const scene = (process.argv[3] as Mode) ?? 'chess';
+  const scene = (process.argv[3] as Mode) ?? 'chess-game';
   const cols = Number(process.argv[4]) || 110;
   const rows = Number(process.argv[5]) || 40;
   const out = process.argv[6] ?? `.snapshots/overlay-${scene}.ppm`;
   const SS = 3;
 
   const target = new RenderTarget(cols * SS, rows * 2 * SS);
-  if (scene === 'chess') new ChessScene().renderScene(target);
-  else if (scene === 'chess-game') new ChessGameScene().renderScene(target);
+  if (scene === 'chess-game') new ChessGameScene().renderScene(target);
   else new PrismScene().renderScene(target, 0.6);
   const display = downsample(target, SS);
   if (scene === 'prism') bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
@@ -236,7 +235,7 @@ function uiSnapshot(): void {
 
 function sceneSnapshot(): void {
   const a0 = process.argv[2];
-  const scene = a0 === 'chess' || a0 === 'chess-game' || a0 === 'logos' ? a0 : null;
+  const scene = a0 === 'chess-game' || a0 === 'logos' ? a0 : null;
   const args = scene ? process.argv.slice(3) : process.argv.slice(2);
   const cols = Number(args[0]) || 110;
   const rows = Number(args[1]) || 44;
@@ -245,9 +244,7 @@ function sceneSnapshot(): void {
   const SS = 3;
 
   const target = new RenderTarget(cols * SS, (rows - 1) * 2 * SS);
-  if (scene === 'chess') {
-    new ChessScene().renderScene(target);
-  } else if (scene === 'chess-game') {
+  if (scene === 'chess-game') {
     const cg = new ChessGameScene();
     if (process.argv.includes('match')) {
       // Spin up the AI HUD and play a few opening moves (applied directly — no
@@ -276,17 +273,20 @@ function sceneSnapshot(): void {
 const HELP = `snapshot — render one frame headlessly to a .ppm (convert with sips, then Read the PNG)
 
   pnpm snapshot [cols] [rows] [t] [out.ppm]        prism scene (default; t = seconds)
-  pnpm snapshot <chess|chess-game|logos> [cols] [rows] [t] [out]   a named 3D scene
+  pnpm snapshot <chess-game|logos> [cols] [rows] [t] [out]   a named 3D scene
       (chess-game also accepts 'match' to play a few opening plies first)
 
   pnpm snapshot ui [cols] [rows] [hover=<id>|focus=<id>|pressed=<id>] [out]   button bar
-  pnpm snapshot overlay [chess|chess-game|prism] [cols] [rows] [out]   bar over a scene
+  pnpm snapshot overlay [chess-game|prism] [cols] [rows] [out]   bar over a scene
   pnpm snapshot unified [prism|chess|chess-game|logos] [cols] [rows] [out]   unified compositing path
   pnpm snapshot showcase [cols] [rows] [focus=<id>] [out]   the UI component playground
   pnpm snapshot modal [cols] [rows] [out]          promotion modal over chess
   pnpm snapshot chess-overlay [cols] [rows] [min|empty|illegal|short] [eval] [chat] [menu] [out]   match HUD + moves panel (menu → ☰ popup)
   pnpm snapshot setup [cols] [rows] [out] [open|models]   AI match setup modal
   pnpm snapshot gameover [cols] [rows] [out]       result popup over a finished board
+  pnpm snapshot confirm-home [cols] [rows] [out]   "return to home screen?" confirm over a game
+  pnpm snapshot confirm-quit [cols] [rows] [out]   "quit arcade?" confirm over a game
+  pnpm snapshot shortcuts [poker|chess] [cols] [rows] [out]   shortcuts overlay for a screen
   pnpm snapshot king-anim [cols] [rows] [out]      king caught mid-castle (wisp tracking)
   pnpm snapshot audio [cols] [rows] [out]          realtime audio scene (provider wisp)
   pnpm snapshot splash [cols] [rows] [t] [out]     boot splash at time t
@@ -296,7 +296,7 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot prism-prompt [cols] [rows] [t] [out]    prism loading screen + press-any-key marquee
   pnpm snapshot cards [single|hand|deck] [cols] [rows] [state] [out]   the cards screen
       (single: a code like Kh/10s/As · hand: peek|up · deck: shuffle|deal)
-  pnpm snapshot poker [cols] [rows] [preflop|flop|river|showdown] [players=N] [hud|setup|cine|result|menu|notes] [bet=N] [spectate] [muck|gather|shuffle] [color] [out]   the poker table
+  pnpm snapshot poker [cols] [rows] [preflop|flop|river|showdown] [players=N] [stack=N] [hud|setup|cine|result|menu|notes] [bet=N] [spectate] [muck|gather|shuffle] [color] [out]   the poker table
       (muck: fold seats to a burn pile, needs players≥3 · gather/shuffle: the between-hands interlude, mid-sweep / mid-shuffle)
 
 Convert + view:  sips -s format png .snapshots/<name>.ppm --out .snapshots/<name>.png -Z 1000`;
@@ -313,6 +313,12 @@ if (process.argv[2] === 'help' || process.argv[2] === '--help' || process.argv[2
   unifiedSnapshot();
 } else if (process.argv[2] === 'modal') {
   modalSnapshot();
+} else if (process.argv[2] === 'confirm-home') {
+  confirmHomeSnapshot();
+} else if (process.argv[2] === 'confirm-quit') {
+  confirmQuitSnapshot();
+} else if (process.argv[2] === 'shortcuts') {
+  shortcutsSnapshot();
 } else if (process.argv[2] === 'showcase') {
   showcaseSnapshot();
 } else if (process.argv[2] === 'chess-overlay') {
@@ -449,7 +455,11 @@ function pokerSnapshot(): void {
   }
   scene.beginSession(seatViews);
 
-  const state = new HoldemState({ stacks: new Array(players).fill(1000), button: 0, smallBlind: 10, bigBlind: 20, rng: mulberry32(0x90ce7) });
+  // `stack=N` sets each seat's starting chips (default 1000) — to eyeball big-stack piles
+  // now that the starting stack is configurable in setup, e.g. checking chips clear the cards.
+  const stackArg = args.find((a) => /^stack=\d+$/.test(a));
+  const startStack = stackArg ? Number(stackArg.split('=')[1]) : 1000;
+  const state = new HoldemState({ stacks: new Array(players).fill(startStack), button: 0, smallBlind: 10, bigBlind: 20, rng: mulberry32(0x90ce7) });
   scene.beginHand(state);
 
   // `cine`: catch the community-deal cinematic mid-flight — the camera has cut to the
@@ -938,7 +948,7 @@ function showcaseSnapshot(): void {
   const SS = 3;
 
   const target = new RenderTarget(cols * SS, rows * 2 * SS);
-  new ChessScene().renderScene(target);
+  new ChessGameScene().renderScene(target);
 
   const screen = new Screen(cols, rows);
   mountShowcase(screen);
@@ -1146,6 +1156,59 @@ function modalSnapshot(): void {
   surfaceToPpm(surf, cols, rows, out);
 }
 
+// The shortcuts overlay for a given screen ('poker' | 'chess'), generated from a real
+// keymap's activeBindings() so the panel matches what actually resolves at runtime.
+function shortcutsSnapshot(): void {
+  const which = process.argv[3] === 'chess' ? 'chess' : 'poker';
+  const cols = Number(process.argv[4]) || 96;
+  const rows = Number(process.argv[5]) || 34;
+  const out = process.argv.find((a) => a.endsWith('.ppm')) ?? `.snapshots/shortcuts-${which}.ppm`;
+  const SS = 3;
+  const target = new RenderTarget(cols * SS, rows * 2 * SS);
+  new ChessGameScene().renderScene(target); // backdrop only — the overlay content is the point
+  const surf = new Surface(cols, rows);
+  shapeGlyphToSurface(surf, target, cols, rows, { color: true, hybrid: true });
+  const km = installKeymap(new Proxy({}, { get: () => () => {} }) as never); // stub handlers (never invoked)
+  km.setBase(which);
+  const root = buildShortcuts(km.activeBindings(), () => {});
+  layout(root, { x: 0, y: 0, w: cols, h: rows });
+  paint(root, surf, { hoverId: null, focusId: null, pressedId: null });
+  surfaceToPpm(surf, cols, rows, out);
+}
+
+// The "return to home screen?" confirm popup (esc in a game), over the chess scene, with
+// "return" default-focused — mirrors how syncBar renders it.
+function confirmHomeSnapshot(): void {
+  const cols = Number(process.argv[3]) || 90;
+  const rows = Number(process.argv[4]) || 30;
+  const out = process.argv[5] ?? '.snapshots/confirm-home.ppm';
+  const SS = 3;
+  const target = new RenderTarget(cols * SS, rows * 2 * SS);
+  new ChessGameScene().renderScene(target);
+  const surf = new Surface(cols, rows);
+  shapeGlyphToSurface(surf, target, cols, rows, { color: true, hybrid: true });
+  const root = buildConfirm({ prompt: 'return to home screen?', confirmLabel: 'return', idPrefix: 'confirm-home', onConfirm: () => {}, onCancel: () => {} });
+  layout(root, { x: 0, y: 0, w: cols, h: rows });
+  paint(root, surf, { hoverId: null, focusId: 'confirm-home-yes', pressedId: null });
+  surfaceToPpm(surf, cols, rows, out);
+}
+
+// The "quit arcade?" confirm popup (the 'q' key), with "quit" default-focused.
+function confirmQuitSnapshot(): void {
+  const cols = Number(process.argv[3]) || 90;
+  const rows = Number(process.argv[4]) || 30;
+  const out = process.argv[5] ?? '.snapshots/confirm-quit.ppm';
+  const SS = 3;
+  const target = new RenderTarget(cols * SS, rows * 2 * SS);
+  new ChessGameScene().renderScene(target);
+  const surf = new Surface(cols, rows);
+  shapeGlyphToSurface(surf, target, cols, rows, { color: true, hybrid: true });
+  const root = buildConfirm({ prompt: 'quit arcade?', confirmLabel: 'quit', idPrefix: 'confirm-quit', onConfirm: () => {}, onCancel: () => {} });
+  layout(root, { x: 0, y: 0, w: cols, h: rows });
+  paint(root, surf, { hoverId: null, focusId: 'confirm-quit-yes', pressedId: null });
+  surfaceToPpm(surf, cols, rows, out);
+}
+
 // The unified compositing path (ASCII mode): the scene paints into the SAME
 // Surface as the bar via shapeGlyphToSurface, then the bar paints over it — one
 // composited cell grid, rasterized straight from the Surface. Verifies the
@@ -1158,8 +1221,7 @@ function unifiedSnapshot(): void {
   const SS = 3;
 
   const target = new RenderTarget(cols * SS, rows * 2 * SS);
-  if (scene === 'chess') new ChessScene().renderScene(target);
-  else if (scene === 'chess-game') new ChessGameScene().renderScene(target);
+  if (scene === 'chess-game') new ChessGameScene().renderScene(target);
   else if (scene === 'logos') new LogosScene().renderScene(target, 0.6);
   else new PrismScene().renderScene(target, 0.6);
 

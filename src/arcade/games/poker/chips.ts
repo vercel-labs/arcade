@@ -183,6 +183,20 @@ export function potColumns(amount: number): ChipColumn[] {
   return greedyColumns(amount, POT_VALUES, POT_COL_CAP);
 }
 
+// The half-extents (world units) of the footprint drawChipStack piles `cols` into: how far
+// the cluster reaches from its center along the pile `axis` and its `perp`. Mirrors the same
+// side/rows grid + jitter/chip-radius margins used when drawing. The scene reads `perp` to
+// push a seat's carried stack far enough along the seat tangent that a tall stack's cluster
+// never creeps back over the seat's own hole cards.
+export function chipPileHalfExtent(cols: ChipColumn[]): { axis: number; perp: number } {
+  const n = cols.length;
+  if (n <= 0) return { axis: 0, perp: 0 };
+  const side = Math.max(1, Math.ceil(Math.sqrt(n)));
+  const rows = Math.ceil(n / side);
+  const reach = (span: number): number => ((span - 1) / 2) * PILE_SPACING + COL_JIT + CHIP_JIT + CHIP_R;
+  return { axis: reach(side), perp: reach(rows) };
+}
+
 // Deterministic fractional hash in [0,1) from a handful of ints — stable across frames so the
 // pile doesn't shimmer. Keyed by (seed, column, chip, salt) for per-column and per-chip wobble.
 function frac(seed: number, i: number, k: number, salt: number): number {
