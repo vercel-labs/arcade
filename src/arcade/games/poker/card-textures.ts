@@ -10,6 +10,7 @@
 // Vercel-style triangle — so a full deck of backs is cheap to sample (no image).
 
 import { readFileSync } from 'node:fs';
+import { asset } from '../../assets.ts';
 import { decodePng, FONT, type RGB, type Texture } from '../../../engine/index.ts';
 import { type Card, isRed, RANK_LABELS } from '../../../rules/poker/cards.ts';
 
@@ -46,7 +47,7 @@ type Put = (x: number, y: number, rgb: RGB, a: number) => void;
 // bounding box, so every suit stamps centered with equal visual weight regardless of
 // its native margins. `stampPip` fits that box into the pip's target rect.
 
-const SUIT_DIR = 'public/assets/poker';
+const SUIT_DIR = asset('poker');
 // Indexed by suit (SPADES=0, HEARTS=1, DIAMONDS=2, CLUBS=3).
 const SUIT_FILES = ['spade', 'heart', 'diamond', 'club'] as const;
 
@@ -191,7 +192,7 @@ function drawCorner(put: Put, card: Card, ink: RGB): void {
 // court-box size below. Reduced to a coverage mask (reusing the suit-mask keying)
 // and stamped in the card's ink, so the figure's red/black matches the pips exactly.
 // The box is centred in the FW×FH face and clears the two corner indices.
-const COURT_DIR = 'public/assets/poker/face cards';
+const COURT_DIR = asset('poker/face cards');
 const COURT_NAMES = ['jack', 'queen', 'king'] as const; // rank 10/11/12 → index rank−10
 const COURT_X = 38;
 const COURT_Y = 30;

@@ -29,6 +29,7 @@ import {
   type Vec3,
 } from '../../engine/index.ts';
 import { MENU_ITEMS } from './menu.ts';
+import { asset } from '../assets.ts';
 
 const CARD_H = 0.55; // half the cover edge (square, so edge = 2·CARD_H)
 const SCALE = 2 * CARD_H; // quad() is a unit square (±0.5); scale to the cover edge
@@ -93,7 +94,7 @@ function coverTex(id: string): Texture | null {
   if (hit !== undefined) return hit;
   let tex: Texture | null = null;
   try {
-    tex = decodePng(readFileSync(`public/assets/games/${id}.png`));
+    tex = decodePng(readFileSync(asset(`games/${id}.png`)));
   } catch {
     tex = null;
   }

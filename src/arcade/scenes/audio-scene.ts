@@ -9,6 +9,7 @@ import {
 } from '../../engine/index.ts';
 import { OrbitCamera } from '../orbit.ts';
 import { loadWisp, mulberry32, providerTint, type Wisp } from './wisp.ts';
+import { asset } from '../assets.ts';
 import {
   AudioLog,
   AUDIO_RATE,
@@ -91,9 +92,9 @@ export class AudioScene {
   private loadProviderWisp(): Wisp {
     this.wispProvider = this.provider;
     try {
-      return loadWisp(`public/assets/logos/${this.provider}.png`, providerTint(this.provider), 0, this.rng);
+      return loadWisp(asset(`logos/${this.provider}.png`), providerTint(this.provider), 0, this.rng);
     } catch {
-      return loadWisp('public/assets/logos/openai.png', providerTint('openai'), 0, this.rng);
+      return loadWisp(asset('logos/openai.png'), providerTint('openai'), 0, this.rng);
     }
   }
 

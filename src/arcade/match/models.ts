@@ -3,6 +3,7 @@
 // provider so the modal can offer provider → model selection rather than one flat
 // list of ~200 combos. Loaded synchronously at import (small JSON, offline).
 import { readFileSync } from 'node:fs';
+import { asset } from '../assets.ts';
 
 export interface ModelInfo {
   id: string; // "provider/model" gateway slug
@@ -14,7 +15,7 @@ export interface ProviderInfo {
   models: ModelInfo[];
 }
 
-const catalog: { providers: ProviderInfo[] } = JSON.parse(readFileSync('public/assets/models.json', 'utf8'));
+const catalog: { providers: ProviderInfo[] } = JSON.parse(readFileSync(asset('models.json'), 'utf8'));
 
 // Providers hidden from the picker because they don't actually play through the
 // gateway right now (verified via src/tools/model-probe.ts): `arcee-ai` is gated

@@ -19,6 +19,7 @@ import {
   wispMaterial,
 } from '../../engine/index.ts';
 import { BRAND_HUE } from './logos.ts';
+import { asset } from '../assets.ts';
 
 // Billboard half-extent in world units (a bit bigger than a chess piece).
 export const WISP_SIZE = 0.85;
@@ -234,7 +235,7 @@ export function providerTint(provider: string): Vec3 {
   if (hue) tint = { x: hue[0], y: hue[1], z: hue[2] };
   else {
     try {
-      tint = deriveTint(decodePng(readFileSync(`public/assets/logos/${provider}.png`)));
+      tint = deriveTint(decodePng(readFileSync(asset(`logos/${provider}.png`))));
     } catch {
       tint = { ...NEUTRAL_TINT };
     }

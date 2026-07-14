@@ -1,6 +1,7 @@
 import { type Camera, cameraMatrices, type Mat4, mat4MulVec4, type RenderTarget, type Vec3 } from '../../engine/index.ts';
 import { OrbitCamera } from '../orbit.ts';
 import { loadWisp, mulberry32, providerTint, type Wisp, WISP_SIZE } from './wisp.ts';
+import { asset } from '../assets.ts';
 
 // Will-o'-wisp logos in 3D: each AI Gateway provider mark floats as a spectral
 // plasma orb (see wisp.ts) with the logo billboarded inside, plus drifting ember
@@ -21,7 +22,7 @@ export class LogosScene {
   private lastVp: Mat4 | null = null;
   private lastUp: Vec3 = { x: 0, y: 1, z: 0 };
 
-  constructor(dir = 'public/assets/logos') {
+  constructor(dir = asset('logos')) {
     const rng = mulberry32(0x10905c); // fixed seed → reproducible snapshots
     this.wisps = PROVIDERS.map((name, i) => {
       const wisp = loadWisp(`${dir}/${name}.png`, providerTint(name), i * 1.7, rng);

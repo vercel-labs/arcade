@@ -45,6 +45,7 @@ import {
 } from '../../../rules/chess/types.ts';
 import { OrbitCamera } from '../../orbit.ts';
 import { loadWisp, mulberry32, providerTint, type Wisp, WISP_SIZE } from '../../scenes/wisp.ts';
+import { asset } from '../../assets.ts';
 
 const PIECE_NAMES = ['pawn', 'queen', 'bishop', 'rook', 'king', 'knight'];
 
@@ -194,7 +195,7 @@ export class ChessGameScene {
     return this.dirty || this.matchActive;
   }
 
-  constructor(dir = 'public/assets/chess_blender') {
+  constructor(dir = asset('chess_blender')) {
     const meshes: Record<string, Mesh> = {};
     let maxH = 0;
     let maxFootprint = 0;
@@ -376,7 +377,7 @@ export class ChessGameScene {
   // still plays, just without that side's wisp.
   private loadHudWisp(provider: string, phase: number): Wisp | null {
     try {
-      return loadWisp(`public/assets/logos/${provider}.png`, providerTint(provider), phase, this.wispRng);
+      return loadWisp(asset(`logos/${provider}.png`), providerTint(provider), phase, this.wispRng);
     } catch {
       return null;
     }
