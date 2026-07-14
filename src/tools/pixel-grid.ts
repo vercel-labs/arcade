@@ -3,11 +3,11 @@
 // recovered low-res grid as a char map + palette. Used to render sprites with
 // clean integer scaling instead of guessing pixel boundaries.
 //
-//   pnpm exec tsx src/tools/pixel-grid.ts [public/assets/games/frogger.png]
+//   pnpm exec tsx src/tools/pixel-grid.ts [assets/games/frogger.png]
 import { readFileSync } from 'node:fs';
 import { decodePng } from '../engine/index.ts';
 
-const path = process.argv[2] ?? 'public/assets/games/frogger.png';
+const path = process.argv[2] ?? 'assets/games/frogger.png';
 const t = decodePng(readFileSync(path));
 const { width: W, height: H, data: d } = t;
 const rgb = (x: number, y: number): [number, number, number] => {

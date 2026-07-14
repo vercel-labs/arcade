@@ -1,4 +1,4 @@
-// Bake the menu's game-tile art to public/assets/games/<id>.png. The tiles render
+// Bake the menu's game-tile art to assets/games/<id>.png. The tiles render
 // these as blocky (half-block) backgrounds, so simple, bold icons read best at the
 // tiny tile size. Source: Google's Noto Emoji (Apache-2.0 / OFL) — permissive and
 // hotlinkable via jsDelivr. Run:
@@ -19,7 +19,7 @@ const ART: Record<string, string> = {
   codenames: '1f575', // 🕵 detective
   // pacman: not a Noto emoji — its cover is the classic sprite from Wikimedia
   // Commons (File:Original PacMan.png, transparent, "PD shape"), committed
-  // directly to public/assets/games/pacman.png and NOT managed by this tool.
+  // directly to assets/games/pacman.png and NOT managed by this tool.
   frogger: '1f438', // 🐸 frog
   'space-invaders': '1f47e', // 👾 alien monster
   'street-fighter': '1f94a', // 🥊 boxing glove
@@ -36,7 +36,7 @@ const POKER_SUITS = [
   { cp: '2663', kind: 'black' }, // ♣
 ] as const;
 
-const DIR = 'public/assets/games';
+const DIR = 'assets/games';
 mkdirSync(DIR, { recursive: true });
 
 async function fetchBytes(cp: string): Promise<Uint8Array> {

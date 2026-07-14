@@ -567,7 +567,7 @@ async function main(): Promise<void> {
 
   // 11. Brand tints: colored marks derive a hue; the tuned 4 use their override.
   {
-    const mistral = deriveTint(decodePng(readFileSync('public/assets/logos/mistral.png')));
+    const mistral = deriveTint(decodePng(readFileSync('assets/logos/mistral.png')));
     check('deriveTint: mistral reads orange (r highest, has chroma)', mistral.x > 150 && mistral.x > mistral.z + 40, JSON.stringify(mistral));
     const oa = providerTint('openai');
     check('providerTint: openai uses the BRAND_HUE override', oa.x === BRAND_HUE.openai[0] && oa.y === BRAND_HUE.openai[1], JSON.stringify(oa));

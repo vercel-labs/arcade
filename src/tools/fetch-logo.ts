@@ -1,4 +1,4 @@
-// Fetch an AI Gateway provider/creator logo, bake it to public/assets/logos/,
+// Fetch an AI Gateway provider/creator logo, bake it to assets/logos/,
 // decode it with the engine PNG decoder, and write a PPM preview by sampling the
 // texture — so both the decode and the engine's sampleTexture can be eyeballed
 // (convert the .ppm to PNG with `sips`, then view it). Run:
@@ -25,7 +25,7 @@ if (!url) {
 }
 
 const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-const ASSET_DIR = 'public/assets/logos';
+const ASSET_DIR = 'assets/logos';
 const pngPath = `${ASSET_DIR}/${slug}.png`;
 const ppmPath = `.snapshots/logo-${slug}.ppm`;
 

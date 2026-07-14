@@ -14,10 +14,10 @@ coverage shape vectors matched by nearest neighbor.
 `src/engine/font8x8.ts` is generated (via `src/tools/gen-font.ts`) from the
 **font8x8** bitmap font by Daniel Hepper / Marcel Sondaar / IBM (Public Domain).
 
-The menu game-tile art in `public/assets/games/` is baked (via
+The menu game-tile art in `assets/games/` is baked (via
 `src/tools/fetch-games.ts`) from **Noto Emoji** by Google
 ([googlefonts/noto-emoji](https://github.com/googlefonts/noto-emoji),
-Apache-2.0 / OFL). The poker tile (`public/assets/games/poker.png`) is the
+Apache-2.0 / OFL). The poker tile (`assets/games/poker.png`) is the
 ace-of-spades playing-card glyph from **Noto Sans Symbols2** by Google (OFL),
 via [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:PLAYING_CARD_ACE_OF_SPADES.svg),
 with the enclosed card face filled white and padded to a square.
