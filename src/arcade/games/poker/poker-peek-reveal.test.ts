@@ -41,7 +41,7 @@ test('hero hole cards stay placeholders until peeked, then reveal the peeked car
   const scene = new PokerGameScene();
   scene.beginSession([
     { kind: 'human', label: 'You' },
-    { kind: 'ai', label: 'GPT', provider: 'openai' },
+    { kind: 'ai', label: 'GPT', creator: 'openai' },
   ]);
   const hand = newHand();
   scene.beginHand(hand);

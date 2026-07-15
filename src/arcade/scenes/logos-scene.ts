@@ -1,7 +1,6 @@
 import { type Camera, cameraMatrices, type Mat4, mat4MulVec4, type RenderTarget, type Vec3 } from '../../engine/index.ts';
 import { OrbitCamera } from '../orbit.ts';
-import { loadWisp, mulberry32, providerTint, type Wisp, WISP_SIZE } from './wisp.ts';
-import { asset } from '../assets.ts';
+import { loadCreatorWisp, mulberry32, type Wisp, WISP_SIZE } from './wisp.ts';
 
 // Will-o'-wisp logos in 3D: each AI Gateway provider mark floats as a spectral
 // plasma orb (see wisp.ts) with the logo billboarded inside, plus drifting ember
@@ -10,7 +9,7 @@ import { asset } from '../assets.ts';
 // toggle its speaking pulse. The per-orb rendering lives in Wisp, reused as the
 // per-side HUD in the chess match.
 
-const PROVIDERS = ['openai', 'anthropic', 'google', 'xai'] as const;
+const CREATORS = ['openai', 'anthropic', 'google', 'xai'] as const;
 const FOVY = (50 * Math.PI) / 180;
 const SPACING = 2.8; // gap between orb centers along x
 
@@ -22,14 +21,14 @@ export class LogosScene {
   private lastVp: Mat4 | null = null;
   private lastUp: Vec3 = { x: 0, y: 1, z: 0 };
 
-  constructor(dir = asset('logos')) {
+  constructor(creators: readonly string[] = CREATORS) {
     const rng = mulberry32(0x10905c); // fixed seed → reproducible snapshots
-    this.wisps = PROVIDERS.map((name, i) => {
-      const wisp = loadWisp(`${dir}/${name}.png`, providerTint(name), i * 1.7, rng);
-      return { wisp, x: (i - (PROVIDERS.length - 1) / 2) * SPACING };
+    this.wisps = creators.map((name, i) => {
+      const wisp = loadCreatorWisp(name, i * 1.7, rng);
+      return { wisp, x: (i - (creators.length - 1) / 2) * SPACING };
     });
     // Frame the whole row, viewed from a slight angle so the 3D/billboard reads.
-    const rowWidth = SPACING * (PROVIDERS.length - 1) + 2 * WISP_SIZE;
+    const rowWidth = SPACING * (creators.length - 1) + 2 * WISP_SIZE;
     const dist = rowWidth / (2 * Math.tan(FOVY / 2)) + 1.5;
     this.cam = new OrbitCamera({ azimuth: 0.5, elevation: 0.16, distance: dist, target: { x: 0, y: 0, z: 0 } }, 3, 40);
   }

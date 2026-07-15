@@ -14,7 +14,7 @@ import { Box, Text, type Component, type Node, type Screen } from '../../../tui/
 import type { RGB, Surface } from '../../../engine/index.ts';
 import type { KeyEvent } from '../../../platform/input.ts';
 import type { LayoutBox, PointerHit } from '../../../tui/types.ts';
-import { providerTint } from '../../scenes/wisp.ts';
+import { creatorTint } from '../../scenes/wisp.ts';
 
 // One chat line. Normally a model's rationale, tagged with its slug (drives the name +
 // color). When `event` is set it's a neutral game-event notice (e.g. "Flop  Q♥ 9♦ 5♣"),
@@ -59,7 +59,7 @@ function shortModel(slug: string): string {
 // The creator's wisp color for a slug (its provider's tint — the same signature
 // color the model's orb glows in the match HUD).
 function creatorColor(slug: string): RGB {
-  const t = providerTint(slug.split('/')[0] ?? slug);
+  const t = creatorTint(slug.split('/')[0] ?? slug);
   return [Math.round(t.x), Math.round(t.y), Math.round(t.z)];
 }
 

@@ -1,29 +1,29 @@
 // The poker match setup: an in-scene settings panel stacked down the top-left of the
 // table view (no modal, no scrim — the felt stays interactive behind it). Choose the
 // mode (you play vs. spectate), the player count (2..6 seats, you included), and a
-// provider → model per AI seat. Every choice is pre-committed to a sensible default so
+// creator → model per AI seat. Every choice is pre-committed to a sensible default so
 // the bottom-left "start match" button is live immediately. State lives on module-level
 // instances so it survives the per-frame rebuild (mounted via Slot). The table behind
 // previews the choices live — chairs follow the player count and each AI seat's wisp
-// follows its provider — via the onChanged hook (main wires it to scene.setPreview).
+// follows its creator — via the onChanged hook (main wires it to scene.setPreview).
 
 import { Box, Dropdown, Slider, Slot, Text, type Node, type Screen } from '../../tui/index.ts';
 import type { RGB } from '../../engine/index.ts';
-import { modelsFor, type ModelInfo, providers } from './models.ts';
-import { providerTint } from '../scenes/wisp.ts';
+import { creators, modelsFor, type ModelInfo } from './models.ts';
+import { creatorTint } from '../scenes/wisp.ts';
 import { shortModel } from '../games/chess/hud.ts';
 import { BIG_BLIND, type PokerSeatSpec } from './poker-driver.ts';
 import type { PokerSeatView } from '../games/poker/poker-scene.ts';
 
-const PROVS = providers();
-const PROVIDER_LABELS = PROVS.map((p) => p.name);
+const CREATORS = creators();
+const CREATOR_LABELS = CREATORS.map((c) => c.name);
 const LIST_ROWS = 7;
-const PROVIDER_W = 16;
+const CREATOR_W = 22;
 const MODEL_W = 22;
 const MAX_OPP = 5; // up to a 6-seat table (you + 5)
 const SEAT_LABEL_W = 8; // the "Seat N" gutter, so the dropdown columns line up
 
-// Fires on every committed change (mode / players / provider / model), so main can
+// Fires on every committed change (mode / players / creator / model), so main can
 // refresh the live table preview. Null until main wires it (module init picks the
 // defaults before the hook exists — nothing to preview yet).
 let onChanged: (() => void) | null = null;
@@ -35,36 +35,36 @@ const changed = (): void => {
 };
 
 interface AiSide {
-  readonly providerDropdown: Dropdown;
+  readonly creatorDropdown: Dropdown;
   readonly modelDropdown: Dropdown;
-  provider: string | null;
+  creator: string | null;
   models: ModelInfo[];
   modelId: string | null;
 }
 
-function providerIndex(slug: string): number {
-  const i = PROVS.findIndex((p) => p.slug === slug);
+function creatorIndex(slug: string): number {
+  const i = CREATORS.findIndex((c) => c.slug === slug);
   return i < 0 ? 0 : i;
 }
 
-function pickProvider(side: AiSide, slug: string): void {
-  if (side.provider === slug) return;
-  side.provider = slug;
+function pickCreator(side: AiSide, slug: string): void {
+  if (side.creator === slug) return;
+  side.creator = slug;
   side.models = modelsFor(slug);
   side.modelDropdown.setItems(side.models.map((m) => m.name));
   side.modelId = null;
 }
 
-function makeSide(idPrefix: string, defaultProvider: string, defaultModelId: string): AiSide {
+function makeSide(idPrefix: string, defaultCreator: string, defaultModelId: string): AiSide {
   let side: AiSide;
-  const providerDropdown = new Dropdown({
-    id: `${idPrefix}-provider`,
-    items: PROVIDER_LABELS,
-    width: PROVIDER_W,
+  const creatorDropdown = new Dropdown({
+    id: `${idPrefix}-creator`,
+    items: CREATOR_LABELS,
+    width: CREATOR_W,
     rows: LIST_ROWS,
-    index: providerIndex(defaultProvider),
+    index: creatorIndex(defaultCreator),
     onSelect: (i) => {
-      pickProvider(side, PROVS[i].slug);
+      pickCreator(side, CREATORS[i].slug);
       changed();
     },
   });
@@ -79,19 +79,19 @@ function makeSide(idPrefix: string, defaultProvider: string, defaultModelId: str
       changed();
     },
   });
-  side = { provider: null, models: [], modelId: null, providerDropdown, modelDropdown };
-  pickProvider(side, defaultProvider);
+  side = { creator: null, models: [], modelId: null, creatorDropdown, modelDropdown };
+  pickCreator(side, defaultCreator);
   const i = side.models.findIndex((m) => m.id === defaultModelId);
   if (i >= 0) modelDropdown.pick(i);
   return side;
 }
 
 // Per-seat model configs, pre-committed so "start match" is live immediately; re-pick
-// any provider/model to change them. Index 0 is seat 1's config — used only in SPECTATE
+// any creator/model to change them. Index 0 is seat 1's config — used only in SPECTATE
 // mode (where seat 1 is an AI too); in HERO mode you play seat 1 and indices 1..MAX_OPP
 // are your opponents (seats 2..6). The first three AI seats span claude / gpt / gemini;
 // index 0 is a cheap fast Grok, so the default 4-handed spectate table seats four
-// DIFFERENT providers instead of repeating one.
+// DIFFERENT creators instead of repeating one.
 const DEFAULT_MODELS = [
   ['xai', 'xai/grok-4.1-fast-non-reasoning'],
   ['anthropic', 'anthropic/claude-haiku-4.5'],
@@ -124,7 +124,7 @@ function oppCount(): number {
 const STACK_MIN = 1000;
 const STACK_MAX = 10000;
 const STACK_READOUT_W = 7; // fits "$10,000"
-const STACK_SLIDER_W = PROVIDER_W + 1 + MODEL_W - STACK_READOUT_W - 1; // == a seat's control columns
+const STACK_SLIDER_W = CREATOR_W + 1 + MODEL_W - STACK_READOUT_W - 1; // == a seat's control columns
 const money = (n: number): string => `$${n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
 const clampStack = (n: number): number => Math.max(STACK_MIN, Math.min(STACK_MAX, n));
 const snapStack = (n: number): number => clampStack(Math.round(n / BIG_BLIND) * BIG_BLIND);
@@ -204,7 +204,7 @@ export function mountPokerSetup(ui: Screen): void {
   ui.mount(voiceDropdown);
   ui.mount(stackSlider);
   for (const s of sides) {
-    ui.mount(s.providerDropdown);
+    ui.mount(s.creatorDropdown);
     ui.mount(s.modelDropdown);
   }
 }
@@ -225,13 +225,13 @@ export function pokerSetupSelection(): PokerSeatSpec[] | null {
 }
 
 // The current choices as scene seat views, for the live idle-table preview: the chair
-// ring follows the count and each AI seat's wisp follows its provider. A seat whose
-// model is un-committed (provider re-picked, model pending) still previews by provider.
+// ring follows the count and each AI seat's wisp follows its creator. A seat whose
+// model is un-committed (creator re-picked, model pending) still previews by creator.
 export function pokerPreviewSeats(): PokerSeatView[] {
   const ai = (side: AiSide): PokerSeatView => ({
     kind: 'ai',
-    label: side.modelId ? shortModel(side.modelId) : side.provider ?? 'AI',
-    provider: side.provider ?? undefined,
+    label: side.modelId ? shortModel(side.modelId) : side.creator ?? 'AI',
+    creator: side.creator ?? undefined,
   });
   const seats: PokerSeatView[] = [spectating() ? ai(sides[0]) : { kind: 'human', label: 'you' }];
   for (let i = 1; i <= oppCount(); i++) seats.push(ai(sides[i]));
@@ -242,8 +242,8 @@ const TITLE_FG: RGB = [222, 224, 234];
 const HERO_FG: RGB = [224, 226, 236];
 
 function brandTint(side: AiSide): RGB {
-  if (!side.provider) return [212, 214, 224];
-  const t = providerTint(side.provider);
+  if (!side.creator) return [212, 214, 224];
+  const t = creatorTint(side.creator);
   return [t.x | 0, t.y | 0, t.z | 0];
 }
 
@@ -256,7 +256,7 @@ function row(label: string, control: Node): Node {
 }
 
 // The starting-stack control body: a "$" readout with the slider to its right, together
-// the width of a seat row's provider+model columns.
+// the width of a seat row's creator+model columns.
 function stackControl(): Node {
   return Box({ flexDirection: 'row', gap: 1, alignItems: 'start' }, [
     Box({ width: STACK_READOUT_W }, [Text({ text: money(startingStack), style: { color: HERO_FG } })]),
@@ -264,13 +264,13 @@ function stackControl(): Node {
   ]);
 }
 
-// One seat's row: a "Seat N" label tinted in the provider's brand hue + the provider
+// One seat's row: a "Seat N" label tinted in the creator's brand hue + the creator
 // and model pickers side by side. `seatNo` is the 1-based table seat this config fills.
 function seatRow(side: AiSide, seatNo: number): Node {
-  side.providerDropdown.setAccent(brandTint(side));
+  side.creatorDropdown.setAccent(brandTint(side));
   return Box({ flexDirection: 'row', gap: 1, alignItems: 'start' }, [
     Box({ width: SEAT_LABEL_W }, [Text({ text: `seat ${seatNo}`, style: { color: brandTint(side), bold: true } })]),
-    Slot(side.providerDropdown.id),
+    Slot(side.creatorDropdown.id),
     Slot(side.modelDropdown.id),
   ]);
 }
@@ -297,7 +297,7 @@ export function buildPokerSetupPanel(): Node {
   const hidden = sides
     .map((s, i) => ({ s, i }))
     .filter(({ i }) => !shownSet.has(i))
-    .map(({ s }) => Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot(s.providerDropdown.id), Slot(s.modelDropdown.id)]));
+    .map(({ s }) => Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot(s.creatorDropdown.id), Slot(s.modelDropdown.id)]));
   // The voice toggle only shows heads-up (Play + 2 players); keep its Slot mounted but
   // hidden otherwise so the Screen doesn't unmount it (same trick as unshown seats).
   const voiceShown = voiceApplicable();

@@ -103,7 +103,7 @@ export interface PokerVoiceDeps {
   scene: PokerVoiceScene;
   botSeat: number;
   humanSeat: number;
-  botModel: string; // the AI seat's full model slug ("provider/model") — drives the chat name + wisp-colored tint
+  botModel: string; // the AI seat's full model slug ("creator/model") — drives the chat name + wisp-colored tint
   botLabel: string; // short display name, for event-line text ("<name> stalled…")
   // Push a line to the poker chat rail. `speaker` is a model slug (colored like the
   // text path) or "You" for the human; `event` lines render nameless/grey.

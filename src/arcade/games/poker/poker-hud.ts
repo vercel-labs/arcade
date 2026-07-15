@@ -11,7 +11,7 @@ import { Box, Button, Input, Modal, type Row, ScrollBox, Slider, Slot, Text, typ
 import type { RGB } from '../../../engine/index.ts';
 import { type Card, isRed, RANK_LABELS } from '../../../rules/poker/cards.ts';
 import type { SeatCardView, TableView } from './poker-scene.ts';
-import { providerTint } from '../../scenes/wisp.ts';
+import { creatorTint } from '../../scenes/wisp.ts';
 import { ChatBox, type ChatMessage, CHAT_WIDTH, PANEL_PAD_L, PANEL_PAD_R, wrapText } from '../chess/chat.ts';
 import { shortModel } from '../chess/hud.ts';
 
@@ -482,9 +482,9 @@ const DIM_FG: RGB = [116, 120, 136]; // folded seats
 const WIN_BG: RGB = [150, 116, 40];
 const WIN_INK: RGB = [26, 20, 6];
 
-function seatTint(provider?: string): RGB {
-  if (!provider) return NAME_DEFAULT;
-  const t = providerTint(provider);
+function seatTint(creator?: string): RGB {
+  if (!creator) return NAME_DEFAULT;
+  const t = creatorTint(creator);
   return [t.x | 0, t.y | 0, t.z | 0];
 }
 
@@ -507,7 +507,7 @@ function playerStrip(s: SeatCardView, ended: boolean): Node {
   const win = ended && s.award > 0; // the hand is over and this seat took (a share of) the pot
   const badgeText = s.eliminated ? 'eliminated' : s.pos;
   const left = Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [
-    Text({ text: fitPlayerName(s.name, s.stack, badgeText), style: { color: win ? WIN_INK : s.folded ? DIM_FG : seatTint(s.provider), bold: true } }),
+    Text({ text: fitPlayerName(s.name, s.stack, badgeText), style: { color: win ? WIN_INK : s.folded ? DIM_FG : seatTint(s.creator), bold: true } }),
     Text({ text: money(s.stack), style: { color: win ? WIN_INK : s.folded ? DIM_FG : CHIP_FG, bold: true } }),
   ]);
   // Top-right badge: "eliminated" (greyed) for a busted seat sitting out, else its

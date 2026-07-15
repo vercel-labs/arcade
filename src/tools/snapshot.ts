@@ -21,7 +21,7 @@ import { buildChessGameRoot, mountChessHud, refreshMoveHistory } from '../arcade
 import { type ChatMessage, clearChat, pushChatMessage } from '../arcade/games/chess/chat.ts';
 import { evaluate } from '../rules/chess/eval.ts';
 import { buildMatchSetup, mountMatchSetup } from '../arcade/match/setup.ts';
-import { providers } from '../arcade/match/models.ts';
+import { creators } from '../arcade/match/models.ts';
 import { CardsScene, type CardsMode } from '../arcade/games/poker/cards-scene.ts';
 import { buildPokerRoot, mountPokerHud } from '../arcade/games/poker/hud.ts';
 import { PokerGameScene, type PokerSeatView } from '../arcade/games/poker/poker-scene.ts';
@@ -261,7 +261,7 @@ function sceneSnapshot(): void {
     }
     cg.renderScene(target, t);
   } else if (scene === 'logos') {
-    new LogosScene().renderScene(target, t);
+    new LogosScene(process.argv.includes('fallback') ? ['thinkingmachines'] : undefined).renderScene(target, t);
   } else {
     new PrismScene().renderScene(target, t);
   }
@@ -276,7 +276,7 @@ function sceneSnapshot(): void {
 const HELP = `snapshot — render one frame headlessly to a .ppm (convert with sips, then Read the PNG)
 
   pnpm snapshot [cols] [rows] [t] [out.ppm]        prism scene (default; t = seconds)
-  pnpm snapshot <chess-game|logos> [cols] [rows] [t] [out]   a named 3D scene
+  pnpm snapshot <chess-game|logos> [cols] [rows] [t] [out] [fallback]   a named 3D scene
       (chess-game also accepts 'match' to play a few opening plies first)
 
   pnpm snapshot ui [cols] [rows] [hover=<id>|focus=<id>|pressed=<id>] [out]   button bar
@@ -285,13 +285,13 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot showcase [cols] [rows] [focus=<id>] [out]   the UI component playground
   pnpm snapshot modal [cols] [rows] [out]          promotion modal over chess
   pnpm snapshot chess-overlay [cols] [rows] [min|empty|illegal|short] [eval] [chat] [menu] [out]   match HUD + moves panel (menu → ☰ popup)
-  pnpm snapshot setup [cols] [rows] [out] [open|models]   AI match setup modal
+  pnpm snapshot setup [cols] [rows] [out] [open|models|thinking]   AI match setup modal
   pnpm snapshot gameover [cols] [rows] [out]       result popup over a finished board
   pnpm snapshot confirm-home [cols] [rows] [out]   "return to home screen?" confirm over a game
   pnpm snapshot confirm-quit [cols] [rows] [out]   "quit arcade?" confirm over a game
   pnpm snapshot shortcuts [poker|chess] [cols] [rows] [out]   shortcuts overlay for a screen
   pnpm snapshot king-anim [cols] [rows] [out]      king caught mid-castle (wisp tracking)
-  pnpm snapshot audio [cols] [rows] [out]          realtime audio scene (provider wisp)
+  pnpm snapshot audio [cols] [rows] [out]          realtime audio scene (creator wisp)
   pnpm snapshot splash [cols] [rows] [t] [out]     boot splash at time t
   pnpm snapshot coverflow|menu [cols] [rows] [pos] [hover] [out]   Cover Flow carousel
   pnpm snapshot settings [cols] [rows] [open [loading|switched]] [out]   menu settings gear (open → team-switch modal)
@@ -360,7 +360,7 @@ if (process.argv[2] === 'help' || process.argv[2] === '--help' || process.argv[2
 //           seconds (a decimal, e.g. 1.0 for the riffle; default 1.0).
 //   pnpm exec tsx src/tools/snapshot.ts poker setup [cols] [rows] [out.ppm]
 //     setup: the new-match settings panel over the idle table, previewing the
-//            default seats (chair ring + provider wisps) + the start/cancel buttons.
+//            default seats (chair ring + creator wisps) + the start/cancel buttons.
 //   pnpm exec tsx src/tools/snapshot.ts poker cine [cols] [rows] [players=N] [out.ppm]
 //     cine: the flop's bird's-eye deal cinematic (fixed top-down over the board, HUD
 //           hidden to the top-right pills, with the top banner + "click to continue").
@@ -398,7 +398,7 @@ function pokerSnapshot(): void {
   }
 
   // `setup`: the new-match settings panel over the idle table, previewing the default
-  // choices (chair ring follows the player count; provider wisps float over AI seats),
+  // choices (chair ring follows the player count; creator wisps float over AI seats),
   // with the bottom-left "start match" button — exactly what "new match" opens in-app.
   // `spectate` / `players=N` drive the real pickers, so variants render true to app.
   if (args.includes('setup')) {
@@ -450,14 +450,14 @@ function pokerSnapshot(): void {
   // Route game events into the chat thread (grey lines) so the `hud` snapshot shows them.
   clearPokerChat();
   scene.setEventSink((text) => pushPokerChat({ text, model: '', event: true }));
-  const provs = providers().map((p) => p.slug);
+  const creatorSlugs = creators().map((c) => c.slug);
   const longNames = ['grok-4.1-fast-non-reasoning', 'claude-haiku-4.5', 'step-3.7-flash', 'gemini-2.5-flash'];
   const seatViews: PokerSeatView[] = [];
   for (let s = 0; s < players; s++) {
     if (s === 0 && !spectate) seatViews.push({ kind: 'human', label: 'You' });
     else {
       const label = args.includes('longnames') ? longNames[s % longNames.length] : `AI ${s + 1}`;
-      seatViews.push({ kind: 'ai', label, provider: provs[s % provs.length] });
+      seatViews.push({ kind: 'ai', label, creator: creatorSlugs[s % creatorSlugs.length] });
     }
   }
   scene.beginSession(seatViews);
@@ -779,7 +779,7 @@ function cardsSnapshot(): void {
   surfaceToPpm(surf, cols, rows, out);
 }
 
-// The realtime audio scene: the active model's provider wisp in 3D (speaking, so
+// The realtime audio scene: the active model's creator wisp in 3D (speaking, so
 // the flame is lively). Verifies the wisp loads + renders; the conversation
 // overlay is plain text drawn over the composite in the live app.
 //   pnpm exec tsx src/tools/snapshot.ts audio [cols] [rows] [out.ppm]
@@ -1103,9 +1103,10 @@ function kingAnimSnapshot(): void {
 }
 
 // The AI match setup modal composited over the chess scene via the real Screen
-// (so the provider/model Slots expand). Commits a model for each side so Start is
-// enabled; pass `open` to also expand White's provider dropdown to show the list.
-//   pnpm exec tsx src/tools/snapshot.ts setup [cols] [rows] [out.ppm] [open]
+// (so the creator/model Slots expand). Commits a model for each side so Start is
+// enabled; pass `open` to expand White's creator dropdown, or `thinking` to
+// select Thinking Machines and open the list around it.
+//   pnpm exec tsx src/tools/snapshot.ts setup [cols] [rows] [out.ppm] [open|thinking]
 function setupSnapshot(): void {
   const cols = Number(process.argv[3]) || 120;
   const rows = Number(process.argv[4]) || 40;
@@ -1117,16 +1118,21 @@ function setupSnapshot(): void {
   mountMatchSetup(screen);
   // The modal's module defaults already pre-commit a model per side (Start enabled).
   // Optionally open a dropdown to show the expanded, scrollable picker floating
-  // over the rest of the modal. `open` opens White's provider list; `models`
+  // over the rest of the modal. `open` opens White's creator list; `models`
   // selects Google then opens White's MODEL list (long names wrap onto 2 lines).
-  if (process.argv.includes('models')) {
-    const wp = screen.component('setup-white-provider') as Dropdown | undefined;
-    const g = providers().findIndex((p) => p.slug === 'google');
-    if (g >= 0) wp?.pick(g); // switch White to Google (repopulates + clears its model)
+  if (process.argv.includes('thinking')) {
+    const wc = screen.component('setup-white-creator') as Dropdown | undefined;
+    const thinking = creators().findIndex((c) => c.slug === 'thinkingmachines');
+    if (thinking >= 0) wc?.pick(thinking);
+    wc?.onKey?.({ name: 'enter', raw: '', sequence: '', ctrl: false, shift: false, meta: false, eventType: 'press' });
+  } else if (process.argv.includes('models')) {
+    const wc = screen.component('setup-white-creator') as Dropdown | undefined;
+    const g = creators().findIndex((c) => c.slug === 'google');
+    if (g >= 0) wc?.pick(g); // switch White to Google (repopulates + clears its model)
     (screen.component('setup-white-model') as Dropdown | undefined)?.onKey?.({ name: 'enter', raw: '', sequence: '', ctrl: false, shift: false, meta: false, eventType: 'press' });
   } else if (process.argv.includes('open')) {
     const enter = { name: 'enter', raw: '', sequence: '', ctrl: false, shift: false, meta: false, eventType: 'press' as const };
-    (screen.component('setup-white-provider') as Dropdown | undefined)?.onKey?.(enter);
+    (screen.component('setup-white-creator') as Dropdown | undefined)?.onKey?.(enter);
   }
   const region = { x: 0, y: 0, w: cols, h: rows };
   screen.setRoot(buildMatchSetup(region, { onStart: noop, onCancel: noop }), region);

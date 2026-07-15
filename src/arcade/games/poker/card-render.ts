@@ -295,31 +295,35 @@ export function peekCardCenter(pose: PeekPose): Vec3 {
 //   • dome = false — θ(s) = curl·s: flat (pinned) at s=0, steepest at s=1. The card
 //     lies flat and its far short edge flexes UP — a thumb lifting one half of the
 //     deck by its inner edge (the riffle lift). Concave up.
-//   • dome = true  — θ(s) = curl·(1 − s): steepest at s=0, levelling to flat at s=1.
-//     The card climbs from its pinned outer edge to a raised, LEVEL inner edge — one
-//     SLOPE of an arch whose apex is at that inner edge. Two mirrored slopes meeting
-//     inner-edge-to-inner-edge make the bridge, apex over the seam between them.
-// `depth` offsets the whole card outward along its own surface normal (not straight up),
-// so a stack of cards on the same slope become CONCENTRIC layers — an outward offset of
-// a concave-down curve never self-intersects, so no card can phase through another, and
-// at the apex the inner edges fan into a neat layered stack. At curl = 0 the march is a
-// straight flat line (θ ≡ 0), depth becomes a plain +Y lift, and the card degenerates to
-// a flat quad at y + depth — so the flat-card path just adds depth to y and agrees. The
-// card's length runs along local z (face down / back up, matching flatDown), yawed about
-// Y, so mirroring the yaw (±90°) mirrors which short edge is the raised inner one.
+//   • dome = true — θ(s) falls from `curl` to zero over the outer 82% of the card,
+//     then stays level across the inner 18%. Two mirrored cards therefore rise as the
+//     same concave-down slopes but overlap only along their horizontal apex sections;
+//     those ends remain vertically ordered instead of crossing through one another.
+// `edgeDepth` preserves each half-packet's compact thickness at the grounded outer edge;
+// that separation blends toward the full interleaved `depth` only near the inner overlap.
+// Higher cards keep the same horizontal footprint instead of expanding outward and
+// appearing longer. At curl = 0 both depths agree and the card degenerates to a flat quad
+// at y + depth, matching the flat-card path. The card's length runs along local z (face
+// down / back up, matching flatDown). `bendDirection` mirrors the bend coordinate without
+// mirroring the card or its UVs, so both packets keep the same physical top orientation.
 
 const ARCH_SEGS = 10; // lengthwise subdivisions of an arched card (fewer than the peek: many bend at once)
+const BRIDGE_APEX_FRACTION = 0.18; // level inner section where the interleaved halves overlap
+const BRIDGE_BURIED_INNER_V = 0.94; // hidden inner ends stay outside the material's border band
 
 // Placement of one bent card: center on the felt (x,y,z), yaw about Y, the bend (`curl`
-// magnitude + `dome` direction — see the header), and `depth`, an outward normal offset
-// used to stack cards into concentric, non-crossing layers along the bridge slope.
+// magnitude + `dome` direction — see the header), plus the outer packet and inner
+// interleaved depths used to keep bridge layers ordered without inflating the outside.
 export interface ArchPlace {
   x: number;
   y: number;
   z: number;
   yaw: number;
+  bendDirection: 1 | -1;
   curl: number;
   dome: boolean;
+  innerEdgeVisibility: number;
+  edgeDepth: number;
   depth: number;
 }
 
@@ -329,16 +333,18 @@ export interface ArchPlace {
 // into the shared arch scratch (see makeStrip).
 const archScratch = makeStrip(ARCH_SEGS);
 function archSheet(place: ArchPlace, side: 1 | -1): Mesh {
-  const { x, y, z, yaw, curl, dome, depth } = place;
+  const { x, y, z, yaw, bendDirection, curl, dome, innerEdgeVisibility, edgeDepth, depth } = place;
   const cy = Math.cos(yaw);
   const sy = Math.sin(yaw);
   const seg = CARD_H / ARCH_SEGS;
-  // One-sided tangent of magnitude `curl`; `dome` flips which end is steep (see header).
-  const theta = (t: number): number => curl * (dome ? 1 - t : t);
+  // The bridge slope reaches a zero tangent before the inner edge, leaving a short
+  // horizontal apex section for the two interleaved halves to overlap without crossing.
+  const slopeEnd = 1 - BRIDGE_APEX_FRACTION;
+  const theta = (t: number): number => (dome ? curl * Math.max(0, 1 - t / slopeEnd) : curl * t);
 
   // March the centerline, accumulating (localZ, localY) from the tangent angle: the s=0
   // end stays at localY 0 (pinned) and the far end lifts (dome = false) or the near end
-  // lifts to a level apex (dome = true).
+  // rises to a level apex (dome = true).
   const { zC, yC } = archScratch;
   zC[0] = 0;
   yC[0] = 0;
@@ -355,12 +361,26 @@ function archSheet(place: ArchPlace, side: 1 | -1): Mesh {
     // Surface normal from the tangent: at θ=0 the face sheet (+1) points −Y (down)
     // and the back sheet (−1) points +Y (up) — a back-up card, as in the deck.
     const nLy = -Math.cos(th) * side;
-    const nLz = Math.sin(th) * side;
-    // Shift the centerline outward along its up-normal (−sinθ, cosθ) by `depth`, so a
-    // stack of cards on the same slope nests as concentric offset curves (never cross).
-    const lz = zC[i] - zMid - depth * Math.sin(th);
-    const ly = yC[i] + depth * Math.cos(th);
-    const v = i / ARCH_SEGS;
+    const nLz = Math.sin(th) * side * bendDirection;
+    // Retain half-packet spacing through the outer quarter, then smoothly fan into the
+    // full interleaved stack by the level apex. The overlap is thick; the outside is not.
+    const layerU = Math.max(0, Math.min(1, (i / ARCH_SEGS - 0.25) / (slopeEnd - 0.25)));
+    const layerMix = layerU * layerU * (3 - 2 * layerU);
+    const layerDepth = edgeDepth + (depth - edgeDepth) * layerMix;
+    // Marching is always outer→inner. Reflect that bend coordinate for the right
+    // packet while keeping `yaw` fixed, rather than rotating the physical card 180°.
+    const lz = (zC[i] - zMid) * bendDirection;
+    const ly = yC[i] + layerDepth;
+    // Fade the border only on inner ends that have slid underneath the covering card.
+    // The physical top card always supplies visibility=1, retaining its complete edge.
+    // Starting this blend during the riffle avoids a one-frame pile of opposing borders
+    // immediately before `dome` turns on for the bridge.
+    const visibility = Math.max(0, Math.min(1, innerEdgeVisibility));
+    const innerV = BRIDGE_BURIED_INNER_V + (1 - BRIDGE_BURIED_INNER_V) * visibility;
+    // Keep texture-v aligned with flatDown's back sheet. That sheet's Y rotation makes
+    // the forward bend walk outer→inner as v=1→0; the reflected bend walks v=0→1.
+    // Buried inner edges stop just inside whichever end of the UV range they approach.
+    const v = bendDirection === 1 ? 1 - (i / ARCH_SEGS) * innerV : (i / ARCH_SEGS) * innerV;
     for (let j = 0; j <= 1; j++) {
       const lx = (j - 0.5) * CARD_W;
       // Yaw the local (x,z) about Y, then translate to the placement point.

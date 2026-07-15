@@ -8,8 +8,7 @@ import {
   type Surface,
 } from '../../engine/index.ts';
 import { OrbitCamera } from '../orbit.ts';
-import { loadWisp, mulberry32, providerTint, type Wisp } from './wisp.ts';
-import { asset } from '../assets.ts';
+import { loadCreatorWisp, mulberry32, type Wisp } from './wisp.ts';
 import {
   AudioLog,
   AUDIO_RATE,
@@ -24,7 +23,7 @@ import {
 import type { KeyEvent } from '../../platform/input.ts';
 
 // The realtime audio screen: a live, full-duplex voice conversation with a
-// speech-to-speech model while its provider wisp pulses as it talks. When a mic
+// speech-to-speech model while its creator wisp pulses as it talks. When a mic
 // recorder + streaming player are present, it auto-starts: you just talk, server
 // VAD segments your turns, the model replies with streamed audio, and speaking
 // over it (barge-in) cuts the reply off. Without a mic it degrades to type-to-talk
@@ -32,7 +31,7 @@ import type { KeyEvent } from '../../platform/input.ts';
 // lives in src/ai/{realtime-session,audio-in,audio-out}.ts.
 
 // The gateway's realtime (speech-to-speech) models — GET /v1/models filtered to
-// type:"realtime". Provider = id.split('/')[0], which drives the wisp logo/tint.
+// type:"realtime". Creator = id.split('/')[0], which drives the wisp logo/tint.
 const REALTIME_MODELS = [
   'openai/gpt-realtime-2',
   'openai/gpt-realtime-1.5',
@@ -49,7 +48,7 @@ export class AudioScene {
   private rng = mulberry32(0xa0d10);
   private modelIndex = 0;
   private wisp: Wisp;
-  private wispProvider = '';
+  private wispCreator = '';
   private lastT = -1;
 
   private active = false;
@@ -78,24 +77,20 @@ export class AudioScene {
   private note = ''; // a transient status / error / hint line
 
   constructor() {
-    this.wisp = this.loadProviderWisp();
+    this.wisp = this.loadModelWisp();
     this.cam = new OrbitCamera({ azimuth: 0.4, elevation: 0.12, distance: 4.2, target: { x: 0, y: 0, z: 0 } }, 2, 30);
   }
 
   private get modelId(): string {
     return REALTIME_MODELS[this.modelIndex];
   }
-  private get provider(): string {
+  private get creator(): string {
     return this.modelId.split('/')[0] ?? this.modelId;
   }
 
-  private loadProviderWisp(): Wisp {
-    this.wispProvider = this.provider;
-    try {
-      return loadWisp(asset(`logos/${this.provider}.png`), providerTint(this.provider), 0, this.rng);
-    } catch {
-      return loadWisp(asset('logos/openai.png'), providerTint('openai'), 0, this.rng);
-    }
+  private loadModelWisp(): Wisp {
+    this.wispCreator = this.creator;
+    return loadCreatorWisp(this.creator, 0, this.rng);
   }
 
   // ── lifecycle ────────────────────────────────────────────────────────────────
@@ -158,7 +153,7 @@ export class AudioScene {
   // mic in duplex mode) so the conversation continues with the new model.
   cycleModel(): void {
     this.modelIndex = (this.modelIndex + 1) % REALTIME_MODELS.length;
-    if (this.provider !== this.wispProvider) this.wisp = this.loadProviderWisp();
+    if (this.creator !== this.wispCreator) this.wisp = this.loadModelWisp();
     this.closeSession();
     this.transcript = '';
     this.userTranscript = '';
@@ -249,7 +244,7 @@ export class AudioScene {
     // OpenAI's server VAD is more trigger-happy on background noise than xAI's, so
     // give it a higher activation threshold (needs clearer speech); other providers
     // keep the default.
-    const threshold = this.provider === 'openai' ? 0.99 : 0.5;
+    const threshold = this.creator === 'openai' ? 0.99 : 0.5;
     return {
       outputModalities: ['audio'],
       inputAudioFormat: { type: 'audio/pcm', rate: RATE },

@@ -5,8 +5,8 @@
 // malformed structured output from models that just don't follow instructions.
 //
 //   pnpm exec tsx src/tools/model-probe.ts <model-id>     # one model, verbose
-//   pnpm exec tsx src/tools/model-probe.ts <provider>     # all of a provider's models
-//   pnpm exec tsx src/tools/model-probe.ts sweep          # first model per provider (fast)
+//   pnpm exec tsx src/tools/model-probe.ts <creator>      # all of a creator's models
+//   pnpm exec tsx src/tools/model-probe.ts sweep          # first model per creator (fast)
 //   pnpm exec tsx src/tools/model-probe.ts all            # every language model
 //   pnpm exec tsx src/tools/model-probe.ts <model> --stream [--timeout=60]
 //   pnpm exec tsx src/tools/model-probe.ts <model> --team=<team-slug>
@@ -17,7 +17,7 @@
 // to instead test the bare structured-output call and see the raw provider error
 // (ERROR / MALFORMED), which is what diagnoses access vs output-format problems.
 // Add --stream to test that same bare structured-output call as a stream. A single-model
-// run prints text/reasoning chunks live; provider/sweep/all runs report TTFT + chunk counts.
+// run prints text/reasoning chunks live; creator/sweep/all runs report TTFT + chunk counts.
 // --timeout=N changes the per-model deadline in seconds (default 30).
 // Uses Arcade's cached Vercel login and selected team by default. --team=<slug>
 // selects another team from that login. Either path mints a fresh process-local
@@ -28,7 +28,7 @@ import { z } from 'zod';
 import { ChessState } from '../rules/chess/chess.ts';
 import type { Move } from '../rules/chess/types.ts';
 import { ModelPlayer } from '../ai/model-player.ts';
-import { modelsFor, providers } from '../arcade/match/models.ts';
+import { creators, modelsFor } from '../arcade/match/models.ts';
 import { availableTeams, ensureCachedGatewayKey, useTeam } from '../auth/index.ts';
 
 const CONCURRENCY = 6;
@@ -176,9 +176,9 @@ function classifyError(id: string, e: unknown, ms: number): Result {
 }
 
 function targets(arg: string | undefined): string[] {
-  if (!arg || arg === 'all') return providers().flatMap((p) => modelsFor(p.slug).map((m) => m.id));
-  if (arg === 'sweep') return providers().map((p) => modelsFor(p.slug)[0]?.id).filter((x): x is string => Boolean(x));
-  if (providers().some((p) => p.slug === arg)) return modelsFor(arg).map((m) => m.id);
+  if (!arg || arg === 'all') return creators().flatMap((c) => modelsFor(c.slug).map((m) => m.id));
+  if (arg === 'sweep') return creators().map((c) => modelsFor(c.slug)[0]?.id).filter((x): x is string => Boolean(x));
+  if (creators().some((c) => c.slug === arg)) return modelsFor(arg).map((m) => m.id);
   return [arg];
 }
 

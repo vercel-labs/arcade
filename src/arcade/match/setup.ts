@@ -1,32 +1,32 @@
-// The AI match setup modal: pick a provider → model for White and for Black, then
-// Start. Each side is two collapsing Dropdowns (provider above model) over the
+// The AI match setup modal: pick a creator → model for White and for Black, then
+// Start. Each side is two collapsing Dropdowns (creator above model) over the
 // baked Gateway catalog (models.ts) — closed, they show just the current choice,
 // so the modal stays compact instead of spilling two long lists per side. The
 // dropdown state lives on module-level instances + `Side` records so it survives
 // the per-frame rebuild (mounted via Slot like the move panel). Start is enabled
-// only once BOTH sides have a model committed; picking a different provider clears
-// that side's model (re-picking the same provider, or a different model under it,
-// leaves the provider intact).
+// only once BOTH sides have a model committed; picking a different creator clears
+// that side's model (re-picking the same creator, or a different model under it,
+// leaves the creator intact).
 import { Box, Button, Dropdown, Modal, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../tui/index.ts';
 import type { RGB } from '../../engine/index.ts';
-import { modelsFor, type ModelInfo, providers } from './models.ts';
-import { providerTint } from '../scenes/wisp.ts';
+import { creators, modelsFor, type ModelInfo } from './models.ts';
+import { creatorTint } from '../scenes/wisp.ts';
 import type { Seat } from './driver.ts';
 
-const PROVS = providers();
-const PROVIDER_LABELS = PROVS.map((p) => p.name);
+const CREATORS = creators();
+const CREATOR_LABELS = CREATORS.map((c) => c.name);
 const LIST_ROWS = 7; // visible rows when a dropdown is open (lists scroll past this)
-const PROVIDER_W = 18;
+const CREATOR_W = 22;
 const MODEL_W = 26;
 
 interface Side {
   key: 'white' | 'black'; // drives the title tint; mutable so the swap side can be reused for either color
-  readonly providerDropdown: Dropdown;
+  readonly creatorDropdown: Dropdown;
   readonly modelDropdown: Dropdown;
-  provider: string | null;
+  creator: string | null;
   models: ModelInfo[];
   modelId: string | null;
-  human: boolean; // this side is a human at the keyboard (hides the provider/model pickers)
+  human: boolean; // this side is a human at the keyboard (hides the creator/model pickers)
 }
 
 // Flip a side between an AI (the dropdowns) and a human at the board.
@@ -34,17 +34,17 @@ function setHuman(side: Side, human: boolean): void {
   side.human = human;
 }
 
-function providerIndex(slug: string): number {
-  const i = PROVS.findIndex((p) => p.slug === slug);
+function creatorIndex(slug: string): number {
+  const i = CREATORS.findIndex((c) => c.slug === slug);
   return i < 0 ? 0 : i;
 }
 
-// Set a side's provider: repopulate its model list and clear the committed model.
-// A no-op when the provider is unchanged, so re-picking it (or moving within its
+// Set a side's creator: repopulate its model list and clear the committed model.
+// A no-op when the creator is unchanged, so re-picking it (or moving within its
 // models) doesn't wipe the selection.
-function pickProvider(side: Side, slug: string): void {
-  if (side.provider === slug) return;
-  side.provider = slug;
+function pickCreator(side: Side, slug: string): void {
+  if (side.creator === slug) return;
+  side.creator = slug;
   side.models = modelsFor(slug);
   side.modelDropdown.setItems(side.models.map((m) => m.name)); // resets model → none
   side.modelId = null;
@@ -53,17 +53,17 @@ function pickProvider(side: Side, slug: string): void {
 // `idPrefix` namespaces the two dropdown ids so several modals' sides can be
 // mounted without colliding in the Screen registry (the two start-modal sides +
 // the reusable swap side).
-function makeSide(key: 'white' | 'black', idPrefix: string, defaultProvider: string, defaultModelId?: string): Side {
+function makeSide(key: 'white' | 'black', idPrefix: string, defaultCreator: string, defaultModelId?: string): Side {
   // onSelect closures reference `side`, assigned just below — they only fire on
   // later user interaction, so the forward reference is safe.
   let side: Side;
-  const providerDropdown = new Dropdown({
-    id: `${idPrefix}-provider`,
-    items: PROVIDER_LABELS,
-    width: PROVIDER_W,
+  const creatorDropdown = new Dropdown({
+    id: `${idPrefix}-creator`,
+    items: CREATOR_LABELS,
+    width: CREATOR_W,
     rows: LIST_ROWS,
-    index: providerIndex(defaultProvider), // a provider is pre-chosen…
-    onSelect: (i) => pickProvider(side, PROVS[i].slug),
+    index: creatorIndex(defaultCreator), // a creator is pre-chosen…
+    onSelect: (i) => pickCreator(side, CREATORS[i].slug),
   });
   const modelDropdown = new Dropdown({
     id: `${idPrefix}-model`,
@@ -75,8 +75,8 @@ function makeSide(key: 'white' | 'black', idPrefix: string, defaultProvider: str
       side.modelId = side.models[i]?.id ?? null;
     },
   });
-  side = { key, provider: null, models: [], modelId: null, human: false, providerDropdown, modelDropdown };
-  pickProvider(side, defaultProvider); // populate the model list (modelId stays null)
+  side = { key, creator: null, models: [], modelId: null, human: false, creatorDropdown, modelDropdown };
+  pickCreator(side, defaultCreator); // populate the model list (modelId stays null)
   if (defaultModelId) {
     const i = side.models.findIndex((m) => m.id === defaultModelId);
     if (i >= 0) modelDropdown.pick(i); // commit the default model → sets side.modelId
@@ -86,13 +86,13 @@ function makeSide(key: 'white' | 'black', idPrefix: string, defaultProvider: str
 
 // TEMP (demo): pre-commit a full matchup — Claude Haiku 4.5 vs GPT 5.4 Nano — so the
 // modal opens with Start already enabled. To go back to "pick a model yourself",
-// drop the third arg from each makeSide call (providers stay pre-selected).
+// drop the third arg from each makeSide call (creators stay pre-selected).
 const white = makeSide('white', 'setup-white', 'anthropic', 'anthropic/claude-haiku-4.5');
 const black = makeSide('black', 'setup-black', 'openai', 'openai/gpt-5.4-nano');
 
 export function mountMatchSetup(ui: Screen): void {
   for (const s of [white, black]) {
-    ui.mount(s.providerDropdown);
+    ui.mount(s.creatorDropdown);
     ui.mount(s.modelDropdown);
   }
 }
@@ -143,22 +143,22 @@ const SEG_OFF: Style = {
   focus: { background: [60, 63, 76] },
 };
 
-// A side's brand hue (the provider's wisp color), as an RGB tuple for the field.
+// A side's brand hue (the creator's wisp color), as an RGB tuple for the field.
 function brandTint(side: Side): RGB {
-  if (!side.provider) return [212, 214, 224];
-  const t = providerTint(side.provider);
+  if (!side.creator) return [212, 214, 224];
+  const t = creatorTint(side.creator);
   return [t.x | 0, t.y | 0, t.z | 0];
 }
 
 // One side's column: the title, an optional AI|Human toggle (`showSeat` — the start
-// modal has it, the swap popup doesn't), then either the provider/model pickers (AI)
+// modal has it, the swap popup doesn't), then either the creator/model pickers (AI)
 // or a short "you play this side" note (human). `alignItems:'start'` on the row lets
 // the two columns differ in height when one is human.
 function column(side: Side, title: string, showSeat = false): Node {
-  // Tint the provider field in the provider's brand hue (the same color its wisp
-  // takes in-game), set fresh each frame since the provider can change.
-  side.providerDropdown.setAccent(brandTint(side));
-  const base = side.providerDropdown.id.replace(/-provider$/, ''); // e.g. 'setup-white' — namespaces the toggle ids
+  // Tint the creator field in the creator's brand hue (the same color its wisp
+  // takes in-game), set fresh each frame since the creator can change.
+  side.creatorDropdown.setAccent(brandTint(side));
+  const base = side.creatorDropdown.id.replace(/-creator$/, ''); // e.g. 'setup-white' — namespaces the toggle ids
   const seat = showSeat
     ? Box({ flexDirection: 'row', justifyContent: 'center', gap: 0 }, [
         Button({ id: `${base}-ai`, label: 'ai', onClick: () => setHuman(side, false), style: side.human ? SEG_OFF : SEG_ON }),
@@ -171,11 +171,11 @@ function column(side: Side, title: string, showSeat = false): Node {
         // Keep the dropdown Slots in the tree (hidden, 0×0 clipped) so the Screen
         // doesn't auto-unmount their components — toggling back to AI must find them
         // still mounted, else the pickers come back empty.
-        Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot(side.providerDropdown.id), Slot(side.modelDropdown.id)]),
+        Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot(side.creatorDropdown.id), Slot(side.modelDropdown.id)]),
       ]
     : [
-        Text({ text: 'provider', style: { color: 'muted' } }),
-        Slot(side.providerDropdown.id),
+        Text({ text: 'creator', style: { color: 'muted' } }),
+        Slot(side.creatorDropdown.id),
         Text({ text: 'model', style: { color: 'muted' } }),
         Slot(side.modelDropdown.id),
       ];
@@ -206,27 +206,27 @@ export function buildMatchSetup(_region: LayoutBox, opts: { onStart: () => void;
 }
 
 // ── In-match model swap ─────────────────────────────────────────────────────────
-// A single reusable side for the click-a-wisp popup: the same provider→model
+// A single reusable side for the click-a-wisp popup: the same creator→model
 // picker as one column of the start modal, retargeted per open to whichever side
 // was clicked and seeded with that side's current model. Distinct dropdown ids
 // (`setup-swap-*`) keep it from colliding with the two start-modal sides.
 const swap = makeSide('white', 'setup-swap', 'anthropic', 'anthropic/claude-haiku-4.5');
 
 export function mountSwapSetup(ui: Screen): void {
-  ui.mount(swap.providerDropdown);
+  ui.mount(swap.creatorDropdown);
   ui.mount(swap.modelDropdown);
 }
 
 // Retarget the swap popup to a side and seed it with the side's current model.
-// Committing the provider (via its dropdown, so the field + model list update)
+// Committing the creator (via its dropdown, so the field + model list update)
 // then the model reproduces the exact state a manual pick would leave — with the
-// current model pre-selected, so Switch is enabled immediately. `swap.provider`
-// is cleared first so re-picking the same provider still repopulates the list.
+// current model pre-selected, so Switch is enabled immediately. `swap.creator`
+// is cleared first so re-picking the same creator still repopulates the list.
 export function openSwapSetup(color: 'white' | 'black', slug: string): void {
   swap.key = color;
-  const provider = slug.split('/')[0] ?? slug;
-  swap.provider = null;
-  swap.providerDropdown.pick(providerIndex(provider)); // onSelect → pickProvider populates swap.models
+  const creator = slug.split('/')[0] ?? slug;
+  swap.creator = null;
+  swap.creatorDropdown.pick(creatorIndex(creator)); // onSelect → pickCreator populates swap.models
   const i = swap.models.findIndex((m) => m.id === slug);
   if (i >= 0) swap.modelDropdown.pick(i);
 }
@@ -236,7 +236,7 @@ export function swapSetupSelection(): string | null {
   return swap.modelId;
 }
 
-// The one-column swap modal: the clicked side's provider→model picker with
+// The one-column swap modal: the clicked side's creator→model picker with
 // Switch (enabled once a model is committed) and Cancel. `title` is the side
 // label ("White"/"Black"); the column tints it via swap.key.
 export function buildSwapSetup(_region: LayoutBox, opts: { title: string; onConfirm: () => void; onCancel: () => void }): Node {
