@@ -44,7 +44,7 @@ import {
   WHITE,
 } from '../../../rules/chess/types.ts';
 import { OrbitCamera } from '../../orbit.ts';
-import { loadWisp, mulberry32, providerTint, type Wisp, WISP_SIZE } from '../../scenes/wisp.ts';
+import { loadCreatorWisp, mulberry32, type Wisp, WISP_SIZE } from '../../scenes/wisp.ts';
 import { asset } from '../../assets.ts';
 
 const PIECE_NAMES = ['pawn', 'queen', 'bishop', 'rook', 'king', 'knight'];
@@ -181,7 +181,7 @@ export class ChessGameScene {
   // Parallel to `moveLog`: whether each played move was illegal at the time (only
   // possible under the illegal-moves toggle). The move panel paints these red.
   private moveIllegal: boolean[] = [];
-  // HUD: a provider wisp per side (top corners), pulsing the side to move. Loaded
+  // HUD: a creator wisp per side (top corners), pulsing the side to move. Loaded
   // per match from the model slugs. `wispRng` seeds their ember motion; `lastT`
   // tracks frame delta for the pulse animation.
   private whiteWisp: Wisp | null = null;
@@ -350,11 +350,11 @@ export class ChessGameScene {
     pending?.(); // wake the awaiter (microtask) so a cancelled match can finish unwinding
   }
 
-  // Start a fresh AI-vs-AI game: reset the board, load the two provider wisps for
+  // Start a fresh AI-vs-AI game: reset the board, load the two creator wisps for
   // the HUD, and switch to spectator mode. The driver then plays moves via
-  // playMove(). `white`/`black` are provider keys (e.g. "anthropic", "openai")
+  // playMove(). `white`/`black` are creator keys (e.g. "anthropic", "openai")
   // derived from the model slugs.
-  // A side's provider key loads its HUD wisp; `null` means a human plays that side
+  // A side's creator key loads its HUD wisp; `null` means a human plays that side
   // (no wisp — the mark space stays empty; the clickable board is their interface).
   beginMatch(white: string | null = 'anthropic', black: string | null = 'openai'): void {
     this.resetBoard();
@@ -372,15 +372,10 @@ export class ChessGameScene {
     this.matchActive = false;
   }
 
-  // Load a provider's HUD wisp (tinted by its brand color, derived from the logo
-  // when not hand-tuned), or null if there's no baked logo for it — the match
-  // still plays, just without that side's wisp.
-  private loadHudWisp(provider: string, phase: number): Wisp | null {
-    try {
-      return loadWisp(asset(`logos/${provider}.png`), providerTint(provider), phase, this.wispRng);
-    } catch {
-      return null;
-    }
+  // Load a creator's HUD wisp, falling back to its initial in neutral grey when
+  // no baked logo exists.
+  private loadHudWisp(creator: string, phase: number): Wisp {
+    return loadCreatorWisp(creator, phase, this.wispRng);
   }
 
   // Leave spectator mode (match finished or cancelled). The final position stays
@@ -438,11 +433,11 @@ export class ChessGameScene {
     return best;
   }
 
-  // Swap one side's HUD wisp to a new provider after an in-match model change
+  // Swap one side's HUD wisp to a new creator after an in-match model change
   // (the wisp updates to the new brand's logo + hue). No-op for a side with no
   // wisp loaded. Keeps the same ember phase per side so the pulse stays desynced.
-  setSideProvider(color: Color, provider: string): void {
-    const wisp = this.loadHudWisp(provider, color === WHITE ? 0 : 1.7);
+  setSideCreator(color: Color, creator: string): void {
+    const wisp = this.loadHudWisp(creator, color === WHITE ? 0 : 1.7);
     if (color === WHITE) this.whiteWisp = wisp;
     else this.blackWisp = wisp;
     this.dirty = true;
@@ -746,7 +741,7 @@ export class ChessGameScene {
       }
     }
 
-    // Match HUD: each side's provider wisp floats in 3D just above that side's
+    // Match HUD: each side's creator wisp floats in 3D just above that side's
     // king, tracking it as it moves and scaling with the camera. The side to move
     // pulses (neither once the game is over). Drawn after the board so the flame
     // glows over it.

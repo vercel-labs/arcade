@@ -41,7 +41,7 @@ const POKER_PERSONA =
   'Anything you say out loud is heard by everyone, so do not reveal your own cards or ' +
   'hand strength unless you are bluffing.';
 
-const providerOf = (slug: string): string => slug.split('/')[0] ?? slug;
+const creatorOf = (slug: string): string => slug.split('/')[0] ?? slug;
 
 export interface PokerMatchDeps {
   scene: PokerGameScene;
@@ -128,7 +128,7 @@ export class PokerMatch {
     this.memory.reset();
     this.computeLabels();
     const views: PokerSeatView[] = seats.map((s) =>
-      s.kind === 'human' ? { kind: 'human', label: 'You' } : { kind: 'ai', label: shortModel(s.model), provider: providerOf(s.model) },
+      s.kind === 'human' ? { kind: 'human', label: 'You' } : { kind: 'ai', label: shortModel(s.model), creator: creatorOf(s.model) },
     );
     this.deps.scene.beginSession(views);
     this.setupVoice(); // may set this.voice for a 2-seat human-vs-AI match — before makePlayer
@@ -412,7 +412,7 @@ export class PokerMatch {
     this.memory.clearObserver(seat); // new model → fresh eyes (others keep their reads on this seat)
     this.computeLabels(); // the swapped-in model may change the label / de-dupe suffixes
     this.players[seat] = this.makePlayer(this.seats[seat], seat);
-    this.deps.scene.setSeatProvider(seat, providerOf(model));
+    this.deps.scene.setSeatCreator(seat, creatorOf(model));
   }
 
   // The session is over (one seat has all the chips). Leave it on screen; the HUD

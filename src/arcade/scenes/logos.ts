@@ -9,7 +9,7 @@ import type { RGB } from '../../engine/index.ts';
 const LOGO_CDN =
   'https://7nyt0uhk7sse4zvn.public.blob.vercel-storage.com/docs-assets/static/docs/ai-gateway/logos';
 
-// Brand hue each provider's wisp is tinted with (0..255). Most gateway logos are
+// Brand hue each creator's wisp is tinted with (0..255). Most gateway logos are
 // monochrome marks on a dark tile, so a single signature color reads as "their"
 // wisp: OpenAI teal-green, Anthropic clay, Google blue, xAI cool steel.
 export const BRAND_HUE: Record<string, RGB> = {

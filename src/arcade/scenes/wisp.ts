@@ -9,6 +9,7 @@
 import { readFileSync } from 'node:fs';
 import {
   decodePng,
+  FONT,
   type Mat4,
   mat4MulVec4,
   quad,
@@ -177,6 +178,51 @@ export function loadWisp(pngPath: string, tint: Vec3, phase: number, rng: () => 
   return new Wisp({ tex: decodePng(readFileSync(pngPath)), tint, phase, rng });
 }
 
+// Missing-logo fallback, matching Thinking Machines' neutral grey (#ACA4A5).
+// The mark is generated in memory from the creator's first letter, so a newly
+// discovered creator still gets a recognizable wisp without a baked asset.
+export const FALLBACK_CREATOR_TINT: Vec3 = { x: 0xac, y: 0xa4, z: 0xa5 };
+const initialTextureCache = new Map<string, Texture>();
+
+function initialTexture(creator: string): Texture {
+  const letter = creator.trim().charAt(0).toUpperCase() || '?';
+  const hit = initialTextureCache.get(letter);
+  if (hit) return hit;
+  const glyph = FONT[letter] ?? FONT['?'];
+  const side = 128;
+  const scale = 10;
+  const ox = Math.floor((side - 8 * scale) / 2);
+  const oy = Math.floor((side - 8 * scale) / 2);
+  const data = new Uint8Array(side * side * 4);
+  for (let gy = 0; gy < 8; gy++) {
+    for (let gx = 0; gx < 8; gx++) {
+      if (glyph[gy][gx] !== '1') continue;
+      for (let py = 0; py < scale; py++) {
+        for (let px = 0; px < scale; px++) {
+          const i = ((oy + gy * scale + py) * side + ox + gx * scale + px) * 4;
+          data[i] = 255;
+          data[i + 1] = 255;
+          data[i + 2] = 255;
+          data[i + 3] = 255;
+        }
+      }
+    }
+  }
+  const tex = { width: side, height: side, data };
+  initialTextureCache.set(letter, tex);
+  return tex;
+}
+
+// Prefer the baked creator logo; if it is absent or unreadable, render the first
+// letter as a grey wisp. This keeps callers free of per-scene missing-logo logic.
+export function loadCreatorWisp(creator: string, phase: number, rng: () => number): Wisp {
+  try {
+    return loadWisp(asset(`logos/${creator}.png`), creatorTint(creator), phase, rng);
+  } catch {
+    return new Wisp({ tex: initialTexture(creator), tint: { ...FALLBACK_CREATOR_TINT }, phase, rng });
+  }
+}
+
 // A readable light silver for logos with no usable hue (monochrome marks on a
 // neutral tile, e.g. a white "openai" mark on black).
 const NEUTRAL_TINT: Vec3 = { x: 205, y: 210, z: 222 };
@@ -190,7 +236,7 @@ function normalizeTint(c: Vec3): Vec3 {
   return { x: Math.min(255, c.x * s), y: Math.min(255, c.y * s), z: Math.min(255, c.z * s) };
 }
 
-// Derive a provider's brand tint from its logo. Most gateway marks are brand-
+// Derive a creator's brand tint from its logo. Most gateway marks are brand-
 // colored, so a saturation-weighted average of the "mark" pixels (those differing
 // from the tile background) yields the hue. For a monochrome mark on a colored
 // tile (e.g. a white mark on deepseek's blue), fall back to the tile color. For a
@@ -224,23 +270,23 @@ export function deriveTint(tex: Texture): Vec3 {
   return { ...NEUTRAL_TINT };
 }
 
-// The wisp tint for a provider: a hand-tuned BRAND_HUE override when present, else
+// The wisp tint for a creator: a hand-tuned BRAND_HUE override when present, else
 // derived from the baked logo. Cached (decodes each logo at most once).
 const tintCache = new Map<string, Vec3>();
-export function providerTint(provider: string): Vec3 {
-  const hit = tintCache.get(provider);
+export function creatorTint(creator: string): Vec3 {
+  const hit = tintCache.get(creator);
   if (hit) return hit;
-  const hue = BRAND_HUE[provider];
+  const hue = BRAND_HUE[creator];
   let tint: Vec3;
   if (hue) tint = { x: hue[0], y: hue[1], z: hue[2] };
   else {
     try {
-      tint = deriveTint(decodePng(readFileSync(asset(`logos/${provider}.png`))));
+      tint = deriveTint(decodePng(readFileSync(asset(`logos/${creator}.png`))));
     } catch {
-      tint = { ...NEUTRAL_TINT };
+      tint = { ...FALLBACK_CREATOR_TINT };
     }
   }
-  tintCache.set(provider, tint);
+  tintCache.set(creator, tint);
   return tint;
 }
 

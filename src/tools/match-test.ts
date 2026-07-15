@@ -22,9 +22,9 @@ import { buildBar, buildGameOver, type BarActions } from '../arcade/shell/bars.t
 import { buildChessGameRoot, mountChessHud, moveHistory, movesToPgn, refreshMoveHistory } from '../arcade/games/chess/hud.ts';
 import { ChatBox, wrapText } from '../arcade/games/chess/chat.ts';
 import { BISHOP, BLACK, FLAG_CAPTURE, KING, pieceColor, pieceType, QUEEN, ROOK, square, WHITE } from '../rules/chess/types.ts';
-import { modelsFor, providers } from '../arcade/match/models.ts';
+import { creators, modelsFor } from '../arcade/match/models.ts';
 import { matchSetupReady, matchSetupSelection, mountMatchSetup } from '../arcade/match/setup.ts';
-import { deriveTint, providerTint } from '../arcade/scenes/wisp.ts';
+import { creatorTint, deriveTint } from '../arcade/scenes/wisp.ts';
 import { BRAND_HUE } from '../arcade/scenes/logos.ts';
 import type { KeyEvent } from '../platform/input.ts';
 
@@ -534,30 +534,30 @@ async function main(): Promise<void> {
   {
     const ui = new Screen(120, 40);
     mountMatchSetup(ui);
-    const wp = ui.component('setup-white-provider') as Dropdown;
+    const wc = ui.component('setup-white-creator') as Dropdown;
     const wm = ui.component('setup-white-model') as Dropdown;
-    const provs = providers();
+    const creatorList = creators();
     const commit = (s: Dropdown, i: number): void => s.pick(i); // commit a choice (Enter/click path)
 
     // TEMP demo default pre-commits both models (see match-setup.ts), so the modal
     // opens ready. (When that's reverted, both start null and this is !ready.)
     check('setup: opens ready (both models pre-committed for the demo)', matchSetupReady() && matchSetupSelection() !== null);
 
-    // Changing a provider clears THAT side's model → not ready until re-picked.
-    const otherProv = provs.findIndex((p) => p.slug !== 'anthropic');
-    commit(wp, otherProv);
-    check('setup: changing provider clears that side’s model', !matchSetupReady());
-    commit(wm, 0); // re-pick a model under the new provider
+    // Changing a creator clears THAT side's model → not ready until re-picked.
+    const otherCreator = creatorList.findIndex((c) => c.slug !== 'anthropic');
+    commit(wc, otherCreator);
+    check('setup: changing creator clears that side’s model', !matchSetupReady());
+    commit(wm, 0); // re-pick a model under the new creator
     check('setup: re-picking a model restores ready', matchSetupReady() && matchSetupSelection() !== null);
-    // Picking a different model under the SAME provider keeps it ready.
+    // Picking a different model under the SAME creator keeps it ready.
     if ((ui.component('setup-white-model') as Dropdown).items.length > 1) commit(wm, 1);
-    check('setup: switching model under same provider stays ready', matchSetupReady());
+    check('setup: switching model under same creator stays ready', matchSetupReady());
 
     // Open/close behavior: a closed dropdown opens on Enter; Esc closes it (so the
     // modal's Esc-cancel only fires when no list is open); Enter then commits.
     const enter = { name: 'enter', raw: '', sequence: '', ctrl: false, shift: false, meta: false, eventType: 'press' } as KeyEvent;
     const esc = { name: 'escape', raw: '', sequence: '', ctrl: false, shift: false, meta: false, eventType: 'press' } as KeyEvent;
-    const fresh = ui.component('setup-black-provider') as Dropdown;
+    const fresh = ui.component('setup-black-creator') as Dropdown;
     const openConsumed = fresh.onKey?.(enter);
     check('dropdown: Enter opens the list (consumed)', openConsumed === true && fresh.open);
     const escConsumed = fresh.onKey?.(esc);
@@ -569,19 +569,19 @@ async function main(): Promise<void> {
   {
     const mistral = deriveTint(decodePng(readFileSync('assets/logos/mistral.png')));
     check('deriveTint: mistral reads orange (r highest, has chroma)', mistral.x > 150 && mistral.x > mistral.z + 40, JSON.stringify(mistral));
-    const oa = providerTint('openai');
-    check('providerTint: openai uses the BRAND_HUE override', oa.x === BRAND_HUE.openai[0] && oa.y === BRAND_HUE.openai[1], JSON.stringify(oa));
-    const mi = providerTint('minimax'); // no override → derived (red-ish)
-    check('providerTint: minimax derives a non-grey hue', Math.max(mi.x, mi.y, mi.z) - Math.min(mi.x, mi.y, mi.z) > 30, JSON.stringify(mi));
+    const oa = creatorTint('openai');
+    check('creatorTint: openai uses the BRAND_HUE override', oa.x === BRAND_HUE.openai[0] && oa.y === BRAND_HUE.openai[1], JSON.stringify(oa));
+    const mi = creatorTint('minimax'); // no override → derived (red-ish)
+    check('creatorTint: minimax derives a non-grey hue', Math.max(mi.x, mi.y, mi.z) - Math.min(mi.x, mi.y, mi.z) > 30, JSON.stringify(mi));
   }
 
-  // 12. Unsupported providers are hidden from the picker but still resolvable by
+  // 12. Unsupported creators are hidden from the picker but still resolvable by
   //     name (so the probe can re-test them).
   {
-    const slugs = providers().map((p) => p.slug);
+    const slugs = creators().map((c) => c.slug);
     const hidden = ['arcee-ai', 'meituan', 'sakana'];
-    check('picker hides the unsupported providers', hidden.every((s) => !slugs.includes(s)), slugs.join(','));
-    check('hidden providers still resolve by name', modelsFor('arcee-ai').length > 0);
+    check('picker hides the unsupported creators', hidden.every((s) => !slugs.includes(s)), slugs.join(','));
+    check('hidden creators still resolve by name', modelsFor('arcee-ai').length > 0);
   }
 
   // 13. Illegal-moves loose parse: any piece → any square, no rules.

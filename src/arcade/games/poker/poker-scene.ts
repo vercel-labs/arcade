@@ -1,5 +1,5 @@
 // The playable poker table: a 3D felt table with N seats, dealt hole cards + the
-// community board, per-AI-seat provider wisps, and a betting-driven match. The
+// community board, per-AI-seat creator wisps, and a betting-driven match. The
 // analog of ChessGameScene — it implements MatchScene<PokerAction> so the generic
 // runMatch loop drives one hand, and exposes a HumanPlayer seam (requestHumanMove)
 // for the hero. Session concerns (rotating button, carried stacks, new hands) live
@@ -29,8 +29,7 @@ import {
   type Vec3,
 } from '../../../engine/index.ts';
 import { OrbitCamera } from '../../orbit.ts';
-import { loadWisp, mulberry32, providerTint, type Wisp, WISP_SIZE } from '../../scenes/wisp.ts';
-import { asset } from '../../assets.ts';
+import { loadCreatorWisp, mulberry32, type Wisp, WISP_SIZE } from '../../scenes/wisp.ts';
 import type { RGB } from '../../../engine/index.ts';
 import { type Card, RANK_LABELS } from '../../../rules/poker/cards.ts';
 import type { HoldemState, PokerAction } from '../../../rules/poker/holdem.ts';
@@ -154,6 +153,7 @@ interface DealCard {
 // A folded card sliding into (then resting in) the muck pile. `from*` is its seat rest
 // pose; `to*`/`yaw` its jittered spot on the pile; `t` the 0..1 slide progress.
 interface MuckCard {
+  card: Card;
   fromX: number;
   fromZ: number;
   fromYaw: number;
@@ -168,6 +168,7 @@ interface MuckCard {
 // felt rest pose (`from*`, face-up or face-down) to the deck, flattening face-down and
 // squaring to the deck's orientation; `delay` staggers the sweep.
 interface GatherCard {
+  card: Card;
   fromX: number;
   fromZ: number;
   fromYaw: number;
@@ -180,11 +181,11 @@ interface GatherCard {
 const wrapPi = (a: number): number => ((a + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
 
 // A seat's session-level identity (persists across hands): whether it's the human
-// hero or an AI, its display label, and (AI) its provider for the wisp.
+// hero or an AI, its display label, and (AI) its model creator for the wisp.
 export interface PokerSeatView {
   kind: 'human' | 'ai';
   label: string;
-  provider?: string;
+  creator?: string;
 }
 
 // One seat's row in the WSOP-style table HUD: its identity, the two hole cards (each
@@ -194,7 +195,7 @@ export interface PokerSeatView {
 export interface SeatCardView {
   seat: number;
   name: string;
-  provider?: string;
+  creator?: string;
   kind: 'human' | 'ai';
   cards: (Card | null)[]; // exactly 2; null = hidden (opponent, or a hero card not yet peeked)
   folded: boolean;
@@ -402,7 +403,7 @@ export class PokerGameScene {
   // ── Session / hand lifecycle ─────────────────────────────────────────────────
   beginSession(seats: PokerSeatView[]): void {
     this.seats = seats;
-    this.wisps = seats.map((s, i) => (s.kind === 'ai' && s.provider ? this.loadSeatWisp(s.provider, i) : null));
+    this.wisps = seats.map((s, i) => (s.kind === 'ai' && s.creator ? this.loadSeatWisp(s.creator, i) : null));
     this.active = true;
     this.paused = false;
     this.cam = this.makeCamera();
@@ -429,7 +430,7 @@ export class PokerGameScene {
 
   // ── Idle preview (the new-match settings panel) ─────────────────────────────────
   // While the setup panel is open (no session yet) the idle table previews the choices
-  // live: the chair ring follows the player count and each AI seat's provider wisp
+  // live: the chair ring follows the player count and each AI seat's creator wisp
   // floats over its chair. null clears back to the bare idle ring. Ignored while a
   // session is active (beginSession owns the seats then). Opening pulls the camera
   // back from the deck close-up to the whole-table overview (so the ring + wisps
@@ -439,7 +440,7 @@ export class PokerGameScene {
     if (this.active) return;
     const was = this.seats.length > 0;
     this.seats = seats ?? [];
-    this.wisps = this.seats.map((s, i) => (s.kind === 'ai' && s.provider ? this.loadSeatWisp(s.provider, i) : null));
+    this.wisps = this.seats.map((s, i) => (s.kind === 'ai' && s.creator ? this.loadSeatWisp(s.creator, i) : null));
     if (!was && seats) this.cam = this.makeCamera();
     else if (was && !seats) this.cam = this.makeIdleCamera();
     this.dirty = true;
@@ -506,19 +507,15 @@ export class PokerGameScene {
     return this.active;
   }
 
-  private loadSeatWisp(provider: string, seat: number): Wisp | null {
-    try {
-      return loadWisp(asset(`logos/${provider}.png`), providerTint(provider), seat * 1.3, this.wispRng);
-    } catch {
-      return null;
-    }
+  private loadSeatWisp(creator: string, seat: number): Wisp {
+    return loadCreatorWisp(creator, seat * 1.3, this.wispRng);
   }
 
-  // Swap a seat's wisp to a new provider (in-session model change).
-  setSeatProvider(seat: number, provider: string): void {
+  // Swap a seat's wisp to a new creator (in-session model change).
+  setSeatCreator(seat: number, creator: string): void {
     if (seat < 0 || seat >= this.seats.length) return;
-    this.seats[seat] = { ...this.seats[seat], provider };
-    this.wisps[seat] = this.loadSeatWisp(provider, seat);
+    this.seats[seat] = { ...this.seats[seat], creator };
+    this.wisps[seat] = this.loadSeatWisp(creator, seat);
     this.dirty = true;
   }
 
@@ -796,7 +793,7 @@ export class PokerGameScene {
       return {
         seat: i,
         name: s.label,
-        provider: s.provider,
+        creator: s.creator,
         kind: s.kind,
         cards,
         folded,
@@ -1202,14 +1199,16 @@ export class PokerGameScene {
   // pose to a jittered, rotated spot beside the deck (a loose pile, not a neat stack).
   private muckSeat(seat: number): void {
     if (!this.hand) return;
+    const hole = this.hand.holeOf(seat);
     const a = this.seatAngle(seat);
     const c = this.seatPos(seat, HOLE_R);
     const tx = Math.cos(a);
     const tz = -Math.sin(a);
-    for (let k = 0; k < 2; k++) {
+    for (let k = 0; k < hole.length; k++) {
       const off = k === 0 ? -HOLE_GAP : HOLE_GAP;
       const idx = this.muck.length;
       this.muck.push({
+        card: hole[k],
         fromX: c.x + tx * off,
         fromZ: c.z + tz * off,
         fromYaw: a,
@@ -1269,8 +1268,8 @@ export class PokerGameScene {
     const hand = this.hand;
     if (!hand) return Promise.resolve();
     const g: GatherCard[] = [];
-    const push = (fromX: number, fromZ: number, fromYaw: number, faceUp: boolean): void => {
-      g.push({ fromX, fromZ, fromYaw, faceUp, delay: g.length * GATHER_STAGGER });
+    const push = (card: Card, fromX: number, fromZ: number, fromYaw: number, faceUp: boolean): void => {
+      g.push({ card, fromX, fromZ, fromYaw, faceUp, delay: g.length * GATHER_STAGGER });
     };
     // Live seats' hole cards (folded seats are already in the muck), face-up if shown.
     const reveal = hand.showdownSeats();
@@ -1281,14 +1280,16 @@ export class PokerGameScene {
       const tx = Math.cos(a);
       const tz = -Math.sin(a);
       const faceUp = reveal.includes(s);
-      for (let k = 0; k < 2; k++) {
+      const hole = hand.holeOf(s);
+      for (let k = 0; k < hole.length; k++) {
         const off = k === 0 ? -HOLE_GAP : HOLE_GAP;
-        push(c.x + tx * off, c.z + tz * off, a, faceUp);
+        push(hole[k], c.x + tx * off, c.z + tz * off, a, faceUp);
       }
     }
     // The community board (face-up), then the muck (face-down).
-    for (let i = 0; i < this.boardShown; i++) push(this.boardSlotX(i), BOARD_Z, 0, true);
-    for (const m of this.muck) push(m.toX, m.toZ, m.yaw, false);
+    const board = hand.boardCards();
+    for (let i = 0; i < this.boardShown && i < board.length; i++) push(board[i], this.boardSlotX(i), BOARD_Z, 0, true);
+    for (const m of this.muck) push(m.card, m.toX, m.toZ, m.yaw, false);
     this.muck = [];
     this.gather = g;
     this.gatherT = 0;
@@ -1364,7 +1365,7 @@ export class PokerGameScene {
         const rx0 = gc.faceUp ? -Math.PI / 2 : Math.PI / 2; // flatUp vs flatDown tilt
         const rx = rx0 + (Math.PI / 2 - rx0) * p; // flatten to face-down
         const M = mat4Multiply(mat4Translate(x, y, z), mat4Multiply(mat4RotY(yaw), mat4Multiply(mat4RotX(rx), CARD_SCALE)));
-        drawCard(target, vp, M, DEAL_CARD, this.back);
+        drawCard(target, vp, M, gc.card, this.back);
       }
       return;
     }

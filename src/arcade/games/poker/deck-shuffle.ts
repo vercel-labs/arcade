@@ -18,23 +18,21 @@
 //             inner edges are already up, the overlap happens naturally as they close.
 //             Each card releases on a staggered, bottom-up window (even i ← left, odd i
 //             ← right, so consecutive releases alternate halves — a zipper down the
-//             seam), drops to its interleaved HEIGHT and FLATTENS. The deck ends as two
-//             overlapping sections lying FLAT on the felt (curl back to 0) — not merged.
+//             seam), flattens, and gains combined-deck spacing only along its overlapping
+//             inner end. The exposed outside retains the original half-packet thickness.
 //   bridge  — WITHOUT squaring up, the two still-overlapping halves bow UP into one
-//             arch whose APEX sits over the seam (the overlap), not over any card's
-//             middle. Each card is one concave-down SLOPE (dome): outer edge pinned on
-//             the felt, inner edge raised to the apex. Cards nest as CONCENTRIC layers
-//             (a `depth` offset along the surface normal), so within a half none cross,
-//             and the two halves' inner edges meet at the seam and fan into a layered
-//             apex — one card always on top of the next, none phasing through.
+//             arch. Each card rises from its outer felt contact into a short, level apex
+//             section; the interleaved inner ends overlap only on that shared horizontal
+//             section, where `depth` keeps every card in a stable vertical order. Lower
+//             layers reach farther across the seam; upper layers overlap progressively less.
 //   cascade — the bridge is released: cards peel off the arch bottom-up, one by one, and
-//             FALL into a squared pile building below the apex (each drops from its slope
-//             to its flat settled spot at the centre). The arch empties as the pile grows.
+//             FALL into a squared pile building below the apex. Small deterministic timing
+//             variations keep the release from reading as a perfectly uniform shell.
 //   rest    — a still, squared stack, then the loop repeats.
 //
 // Continuity trick: the settled stack is FIXED and the phases interpolate between the
 // settled position and the split/overlap positions (even i → left comb, odd i → right
-// comb). Every card's (x, y, curl, depth) is continuous across each phase boundary, so
+// comb). Every card's (x, y, curl, edgeDepth, depth) is continuous across each phase boundary, so
 // the loop never pops.
 
 import { type Mat4, mat4Multiply, mat4RotY, mat4Translate, type RenderTarget, type Texture } from '../../../engine/index.ts';
@@ -52,17 +50,19 @@ const SEP = 0.8;
 // Vertical clearance the TOP half lifts to during the cut, before the halves part. Chosen
 // to float the top pile clearly above the resting stack (≈N·THICK ≈ 0.39 tall).
 const SPLIT_LIFT = 0.5;
-// Half-offset each half keeps AFTER the riffle (and holds through the bridge): the piles
-// slide inward only to here, staying double-wide and overlapping at the seam. Chosen so
-// that at the full BRIDGE_CURL the arched slopes' inner edges just meet over the seam:
-// a card bowed to BRIDGE_CURL foreshortens to a half-chord ≈0.56, so centres ±OVERLAP
-// apart put the raised inner edges just crossing over the middle. Lowering it in step
-// with a steeper BRIDGE_CURL shifts each half's felt contact inward for a taller arch.
+// Half-offset each half keeps AFTER the riffle: the piles remain visibly double-wide and
+// overlapping at the seam, then receive only a subtle additional pinch during the bridge.
 const OVERLAP = 0.5;
+const BRIDGE_PINCH = 0.12; // inward centre shift at the bridge apex
+const BRIDGE_LAYER_FAN = 0.08; // bottom cards overlap more; top cards retain wider centres
+const TOP_COVER_INSET = 0.07; // make the final card visibly cover, rather than meet, the other packet
 const CURL_LIFT = 0.9; // one-sided curl of a lifted half (radians of inner-edge tangent)
-const BRIDGE_CURL = 1.15; // concave-down slope of each bridge half (radians of outer-edge tangent) — steep enough for a peaked arch, shallow enough not to balloon toward the camera
+const BRIDGE_CURL = 1.5; // steeper start preserves the arch height with a level inner apex
 const RIFFLE_W = 0.42; // fraction of the riffle phase one card spends falling (rest is stagger)
+const RIFFLE_STACK_AT = 0.55; // keep packet thickness until a released card mostly overlaps
+const RIFFLE_EDGE_COVER_AT = 0.72; // buried inner borders disappear before the bridge handoff
 const CASCADE_W = 0.4; // fraction of the cascade one card spends falling into the pile (rest is stagger)
+const CASCADE_JITTER = 0.008; // deterministic variation in per-card release timing
 const EPS = 1e-3; // below this bend a card is drawn via the cheap flat path
 
 // The looping phase timeline (seconds). rest is the still pause between shuffles.
@@ -132,13 +132,21 @@ export class DeckShuffle {
   private place(i: number): ArchPlace {
     const even = i % 2 === 0;
     const side = even ? -1 : 1;
-    // Mirror the yaw per half so the one-sided `curl` lifts each half's INNER short
-    // edge (the one toward the centre seam), leaving the outer edge pinned.
-    const yaw = even ? Math.PI / 2 : -Math.PI / 2;
+    // Every card keeps one physical orientation for the entire shuffle. Mirror only
+    // the outer→inner bend coordinate so both packets lift toward the centre without
+    // turning either packet (and its directional back artwork) by 180°.
+    const yaw = Math.PI / 2;
+    const bendDirection: 1 | -1 = even ? 1 : -1;
     const settledY = BASE_Y + i * THICK;
     const packetRank = Math.floor(i / 2); // height within its half's little stack
     const packetX = this.cx + side * SEP;
     const overlapX = this.cx + side * OVERLAP;
+    const packetT = packetRank / (N / 2 - 1);
+    const layerFan = BRIDGE_LAYER_FAN * (packetT * 2 - 1);
+    const bridgeX = this.cx + side * (OVERLAP - BRIDGE_PINCH + layerFan);
+    const covering = i === N - 1;
+    const riffledX = overlapX - (covering ? side * TOP_COVER_INSET : 0);
+    const coveredBridgeX = bridgeX - (covering ? side * TOP_COVER_INSET : 0);
     const packetY = BASE_Y + packetRank * THICK;
 
     const { name, p } = this.phase();
@@ -146,6 +154,8 @@ export class DeckShuffle {
     let y = settledY;
     let curl = 0;
     let dome = false;
+    let innerEdgeVisibility = 1;
+    let edgeDepth = 0;
     let depth = 0;
 
     switch (name) {
@@ -174,37 +184,57 @@ export class DeckShuffle {
       }
       case 'riffle': {
         // The raised halves slide together and interleave: each card releases on a
-        // bottom-up stagger (alternating halves), drops to its interleaved HEIGHT AND
-        // flattens (curl back to 0), sliding inward only to `overlapX`. The deck ends
-        // as two overlapping sections lying flat on the felt — not merged.
+        // bottom-up stagger (alternating halves) and flattens while sliding inward. Its
+        // outer end retains packet-local spacing; only the inner end fans toward the
+        // combined interleaved order once most of the horizontal overlap is present.
         const lag = (1 - RIFFLE_W) / Math.max(1, N - 1);
         const e = ease(clamp01((p - i * lag) / RIFFLE_W));
-        x = lerp(packetX, overlapX, e);
-        y = lerp(packetY, settledY, e);
+        const stack = ease(clamp01((e - RIFFLE_STACK_AT) / (1 - RIFFLE_STACK_AT)));
+        // The final card travels the last few centimetres farther across the seam so its
+        // face visibly covers the opposing packet. Delay that inset until stacking begins;
+        // the early riffle trajectory stays identical.
+        x = lerp(packetX, overlapX, e) - (covering ? side * TOP_COVER_INSET * stack : 0);
+        y = BASE_Y;
+        edgeDepth = packetRank * THICK;
+        depth = lerp(packetRank * THICK, i * THICK, stack);
         curl = CURL_LIFT * (1 - e);
+        // The final card owns the visible top boundary. Once it has crossed the seam,
+        // let its inner edge settle faster than the remaining riffle cards so that its
+        // fully-visible border lies over the opposing packet instead of standing upright
+        // through it like a blade. Squaring (1-e) keeps both endpoints continuous.
+        if (covering) curl *= 1 - e;
+        if (!covering) {
+          const covered = ease(clamp01((e - RIFFLE_EDGE_COVER_AT) / (1 - RIFFLE_EDGE_COVER_AT)));
+          innerEdgeVisibility = 1 - covered;
+        }
         break;
       }
       case 'bridge': {
-        // Still overlapping (x held at overlapX), each half bows into a concave-down
-        // slope rising to the seam apex; `depth` nests the cards as concentric layers so
-        // none cross. y drops to BASE_Y because depth (along the up-normal, = +Y when
-        // flat) now carries the stacking — at curl 0 this equals the settled stack.
-        x = overlapX;
+        // Keep the subtle inward motion and fan the centres by packet rank: bottom cards
+        // overlap farther across the seam, while top cards stay progressively wider. The
+        // flat inner apex keeps the opposing surfaces depth-ordered instead of crossing.
+        const arch = ease(p);
+        x = lerp(riffledX, coveredBridgeX, arch);
         y = BASE_Y;
         dome = true;
+        innerEdgeVisibility = covering ? 1 : 0;
+        edgeDepth = packetRank * THICK;
         depth = i * THICK;
-        curl = BRIDGE_CURL * ease(p);
+        curl = BRIDGE_CURL * arch;
         break;
       }
       case 'cascade': {
         // The bridge is released: cards peel off bottom-up (staggered) and fall into a
-        // squared pile at the centre — each drops from its slope (overlapX, full curl) to
-        // its flat settled spot (cx, curl 0). depth keeps the stack from crossing en route.
-        const lag = (1 - CASCADE_W) / Math.max(1, N - 1);
-        const e = ease(clamp01((p - i * lag) / CASCADE_W));
-        x = lerp(overlapX, this.cx, e);
+        // squared pile at the centre. A tiny repeatable delay variation breaks the rigid
+        // cadence while preserving the overall bottom-to-top release order.
+        const lag = (1 - CASCADE_W - CASCADE_JITTER) / Math.max(1, N - 1);
+        const jitter = (((i * 7) % 5) / 4) * CASCADE_JITTER;
+        const e = ease(clamp01((p - (i * lag + jitter)) / CASCADE_W));
+        x = lerp(coveredBridgeX, this.cx, e);
         y = BASE_Y;
         dome = true;
+        innerEdgeVisibility = covering ? 1 : 0;
+        edgeDepth = lerp(packetRank * THICK, i * THICK, e);
         depth = i * THICK;
         curl = BRIDGE_CURL * (1 - e);
         break;
@@ -212,16 +242,15 @@ export class DeckShuffle {
       default: // rest: still, squared, flat
         break;
     }
-    return { x, y, z: this.cz, yaw, curl, dome, depth };
+    return { x, y, z: this.cz, yaw, bendDirection, curl, dome, innerEdgeVisibility, edgeDepth, depth };
   }
 
-  // Draw the whole deck at the current phase. Cards that aren't bending take the cheap
-  // flat two-quad path (still yawed to match, so there's no orientation pop when a card
-  // crosses in or out of bending); only actively-bent cards pay the bent-strip cost.
+  // Draw the whole deck. A card uses the strip path while bent OR while its outer and
+  // inner stack depths differ; only a uniformly flat card takes the cheap two-quad path.
   draw(target: RenderTarget, vp: Mat4): void {
     for (let i = 0; i < N; i++) {
       const pl = this.place(i);
-      if (pl.curl > EPS) {
+      if (pl.curl > EPS || Math.abs(pl.depth - pl.edgeDepth) > EPS) {
         drawArchCard(target, vp, pl, DUMMY, this.back);
       } else {
         // Flat card: `depth` (a normal offset that is purely +Y when flat) becomes a

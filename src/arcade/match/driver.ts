@@ -16,7 +16,7 @@ import type { Move } from '../../rules/chess/types.ts';
 // through the board (see ChessGameScene.requestHumanMove).
 export type Seat = { kind: 'ai'; model: string } | { kind: 'human' };
 
-const providerOf = (slug: string): string => slug.split('/')[0] ?? slug;
+const creatorOf = (slug: string): string => slug.split('/')[0] ?? slug;
 
 export interface AiMatchDeps {
   chessGame: ChessGameScene;
@@ -91,8 +91,8 @@ export class AiMatch {
   // no wisp (beginMatch is passed null for them).
   start(white: Seat, black: Seat): void {
     this.deps.chessGame.beginMatch(
-      white.kind === 'ai' ? providerOf(white.model) : null,
-      black.kind === 'ai' ? providerOf(black.model) : null,
+      white.kind === 'ai' ? creatorOf(white.model) : null,
+      black.kind === 'ai' ? creatorOf(black.model) : null,
     );
     this.paused = false;
     this.players = [this.makePlayer(white), this.makePlayer(black)];

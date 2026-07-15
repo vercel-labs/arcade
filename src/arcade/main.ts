@@ -165,7 +165,7 @@ let teamModalOpen = false;
 let teamModalFocused = false;
 let teamView: TeamSwitchView = { kind: 'loading' };
 
-// AI-vs-AI match. The two sides are chosen in the setup modal (provider → model).
+// AI-vs-AI match. The two sides are chosen in the setup modal (creator → model).
 // The match turn-loop lifecycle lives in AiMatch (ai-match.ts); main owns the
 // surrounding UI state. `commentary` is a transient system/notice toast, shown until
 // `t` passes `until` (model dialogue now flows to the chat threads, not the toast).
@@ -583,7 +583,7 @@ function confirmWispSwap(): void {
   const slug = swapSetupSelection();
   if (!slug || !matchSeats) return;
   aiMatch.setPlayer(s.color === WHITE ? 0 : 1, slug);
-  chessGame.setSideProvider(s.color, slug.split('/')[0] ?? slug);
+  chessGame.setSideCreator(s.color, slug.split('/')[0] ?? slug);
   if (s.color === WHITE) matchSeats.white = { kind: 'ai', model: slug };
   else matchSeats.black = { kind: 'ai', model: slug };
   closeWispSwap();
@@ -669,7 +669,7 @@ function stopPokerMatch(): void {
 
 // Open the new-match settings panel (needs a Gateway key, like the chess match setup).
 // Non-modal: it stacks down the top-left while the table stays orbit/zoomable, and the
-// idle scene previews the chosen seats live (chairs + provider wisps).
+// idle scene previews the chosen seats live (chairs + creator wisps).
 function openPokerSetup(): void {
   if (!process.env.AI_GATEWAY_API_KEY) {
     commentary = { text: 'press s to sign in to Vercel and play (or set AI_GATEWAY_API_KEY)', model: '', until: t + 6 };
@@ -923,7 +923,7 @@ function enterLogos(): void {
 }
 
 // The realtime voice screen: type-to-talk with a speech-to-speech model while its
-// provider wisp pulses. The session opens lazily on the first message.
+// creator wisp pulses. The session opens lazily on the first message.
 function enterAudio(): void {
   stopAiMatch();
   mode = 'audio';
@@ -1293,7 +1293,7 @@ function syncBar(): void {
       h: rows,
     });
     if (!setupFocused) {
-      ui.setFocus('setup-white-provider'); // start in White's provider list
+      ui.setFocus('setup-white-creator'); // start in White's creator list
       setupFocused = true;
       forceFrame = true;
     }
@@ -1314,7 +1314,7 @@ function syncBar(): void {
       h: rows,
     });
     if (!wispSwapFocused) {
-      ui.setFocus('setup-swap-provider'); // start in the provider list
+      ui.setFocus('setup-swap-creator'); // start in the creator list
       wispSwapFocused = true;
       forceFrame = true;
     }
