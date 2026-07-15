@@ -68,14 +68,14 @@ it to Done only when fully delivered.
 
 ## AI Gateway key (Vercel sign-in)
 
-Everything AI reads `process.env.AI_GATEWAY_API_KEY`. It's resolved once at
-startup by `ensureGatewayKey()` ([src/auth/gateway-key.ts](src/auth/gateway-key.ts)),
-with this precedence:
-
-1. An existing `AI_GATEWAY_API_KEY` (env or `.env.local`) wins — skips login.
-2. Otherwise a `vercel login`-style OAuth **device flow** (plain text, before the
-   alt-screen), then a **team picker**, then a key minted for that team via
-   `exchange: true` (get-or-create, billed to the team).
+Everything AI reads `process.env.AI_GATEWAY_API_KEY`. Arcade resolves it once at
+startup through a `vercel login`-style OAuth **device flow** (plain text, before
+the alt-screen), then a **team picker**, then a key minted for that team via
+`exchange: true` (get-or-create, billed to the team). An inherited shell or
+`.env.local` key is deliberately ignored by Arcade so an unrelated credential
+cannot silently select the wrong billing scope. Model testing tools reuse the
+same cached login and selected team via `ensureCachedGatewayKey()`; they also
+ignore inherited keys and require no pasted credential.
 
 Tokens persist at `~/.config/arcade/auth.json` (0600); the minted key is **not**
 stored — it's re-derived each launch. Reuses the Vercel CLI's public OAuth client

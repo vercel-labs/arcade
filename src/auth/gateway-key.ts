@@ -39,7 +39,6 @@ export interface EnsureOpts {
 
 export interface EnsureResult {
   key: string;
-  source: 'env' | 'login';
   team?: Team;
 }
 
@@ -47,16 +46,25 @@ export function isLoggedIn(): boolean {
   return readAuth() !== null;
 }
 
-// Startup entry point. Precedence: an existing AI_GATEWAY_API_KEY wins (CI /
-// power users / a pasted .env key); otherwise we use the stored Vercel session
-// (refreshing or re-logging in as needed), pick a team, and mint a key. Returns
-// null when no key could be obtained (non-interactive with no env key, or the
-// user backed out) — the arcade still runs, just with AI gated.
+// Non-interactive entry point for Arcade's terminal tools. Reuses the cached
+// Vercel OAuth session and its selected team, refreshes the session if needed,
+// and mints the same process-local key as the full Arcade. It never reads an
+// inherited AI_GATEWAY_API_KEY and never opens a browser or team picker.
+export async function ensureCachedGatewayKey(): Promise<EnsureResult | null> {
+  const auth = await cachedSession();
+  if (!auth?.team) return null;
+  const key = await mintKey(auth, auth.team, true);
+  return { key, team: auth.team };
+}
+
+// Startup entry point. Arcade launches always use the stored Vercel session
+// (refreshing or re-logging in as needed), pick a team, and mint a key. A
+// pre-set AI_GATEWAY_API_KEY is deliberately ignored; this prevents an
+// unrelated shell credential from silently changing which team is billed.
+// Returns null when no key could be obtained — the arcade still runs, just with
+// AI gated.
 export async function ensureGatewayKey(opts: EnsureOpts = {}): Promise<EnsureResult | null> {
   const interactive = opts.interactive ?? !!process.stdin.isTTY;
-
-  const envKey = process.env[ENV_KEY]?.trim();
-  if (envKey && !opts.forceLogin && !opts.forceTeamPick) return { key: envKey, source: 'env' };
 
   if (!interactive) return null; // can't run the browser flow without a TTY
 
@@ -64,11 +72,11 @@ export async function ensureGatewayKey(opts: EnsureOpts = {}): Promise<EnsureRes
     const auth = await ensureSession(opts.forceLogin ?? false);
     const team = await ensureTeam(auth, opts.forceTeamPick ?? false);
     const key = await mintKey(auth, team);
-    return { key, source: 'login', team };
+    return { key, team };
   } catch (err) {
     out();
     out(`  Vercel sign-in skipped: ${errMessage(err)}`);
-    out(dim('  Playing without AI — sign in later, or set AI_GATEWAY_API_KEY.'));
+    out(dim('  Playing without AI — sign in later to enable model play.'));
     out();
     return null;
   }
@@ -81,7 +89,7 @@ export async function switchTeam(): Promise<EnsureResult | null> {
     const auth = await ensureSession(false);
     const team = await ensureTeam(auth, true);
     const key = await mintKey(auth, team);
-    return { key, source: 'login', team };
+    return { key, team };
   } catch (err) {
     out(`  Could not switch team: ${errMessage(err)}`);
     return null;
@@ -107,7 +115,7 @@ export async function useTeam(team: Team): Promise<EnsureResult> {
   auth.team = team;
   writeAuth(auth);
   const key = await mintKey(auth, team, true);
-  return { key, source: 'login', team };
+  return { key, team };
 }
 
 // Delete the stored session and drop the key from this process so AI re-gates.
@@ -124,24 +132,24 @@ export function signOut(): boolean {
 // Yield a usable session: a fresh stored token (refreshed if expired), or a new
 // login. Persists whatever it ends up with.
 async function ensureSession(forceLogin: boolean): Promise<StoredAuth> {
-  let auth = forceLogin ? null : readAuth();
-
-  if (auth && isExpired(auth)) {
-    if (auth.refresh_token) {
-      try {
-        const refreshed = toStoredAuth(await refreshAccessToken(auth.refresh_token), auth);
-        writeAuth(refreshed);
-        auth = refreshed;
-      } catch {
-        auth = null; // refresh token revoked/expired — fall through to a fresh login
-      }
-    } else {
-      auth = null;
-    }
-  }
-
+  let auth = forceLogin ? null : await cachedSession();
   if (!auth) auth = await login();
   return auth;
+}
+
+// Yield a fresh cached session without ever starting interactive login.
+async function cachedSession(): Promise<StoredAuth | null> {
+  const auth = readAuth();
+  if (!auth) return null;
+  if (!isExpired(auth)) return auth;
+  if (!auth.refresh_token) return null;
+  try {
+    const refreshed = toStoredAuth(await refreshAccessToken(auth.refresh_token), auth);
+    writeAuth(refreshed);
+    return refreshed;
+  } catch {
+    return null;
+  }
 }
 
 // The device-authorization flow, rendered as plain text.

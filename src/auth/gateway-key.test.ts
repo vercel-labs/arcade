@@ -16,10 +16,10 @@ describe('ensureGatewayKey precedence', () => {
     else process.env.AI_GATEWAY_API_KEY = prev;
   });
 
-  test('an existing AI_GATEWAY_API_KEY wins and skips login', async () => {
-    process.env.AI_GATEWAY_API_KEY = '  vck_from_env  ';
-    const res = await ensureGatewayKey({ interactive: true });
-    assert.deepEqual(res, { key: 'vck_from_env', source: 'env' }); // trimmed, no team, no network
+  test('an inherited AI_GATEWAY_API_KEY does not override Arcade login', async () => {
+    process.env.AI_GATEWAY_API_KEY = 'vck_unrelated';
+    const res = await ensureGatewayKey({ interactive: false });
+    assert.equal(res, null);
   });
 
   test('returns null when non-interactive with no env key (CI/headless)', async () => {

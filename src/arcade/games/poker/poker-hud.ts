@@ -488,6 +488,16 @@ function seatTint(provider?: string): RGB {
   return [t.x | 0, t.y | 0, t.z | 0];
 }
 
+// Keep the name + stack group clear of the pinned position/status badge. Short
+// names are untouched; long model labels use the same one-cell ellipsis as the
+// setup dropdowns. The two subtractions are the name/stack gap and at least one
+// cell of breathing room before the badge.
+export function fitPlayerName(name: string, stack: number, badge: string): string {
+  const max = Math.max(1, STRIP_W - money(stack).length - badge.length - 2);
+  const chars = [...name];
+  return chars.length <= max ? name : `${chars.slice(0, Math.max(0, max - 1)).join('')}…`;
+}
+
 // One player strip, two rows. Top: name (far left) with the chip count directly to its
 // right, and the blind/button position (SB / BB / BTN) pinned to the far right. Bottom:
 // the two hole cards (hidden → ??) with a single info field to their right — the last
@@ -495,15 +505,16 @@ function seatTint(provider?: string): RGB {
 // won). The seat to act gets a lit background; folded seats dim.
 function playerStrip(s: SeatCardView, ended: boolean): Node {
   const win = ended && s.award > 0; // the hand is over and this seat took (a share of) the pot
+  const badgeText = s.eliminated ? 'eliminated' : s.pos;
   const left = Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [
-    Text({ text: s.name, style: { color: win ? WIN_INK : s.folded ? DIM_FG : seatTint(s.provider), bold: true } }),
+    Text({ text: fitPlayerName(s.name, s.stack, badgeText), style: { color: win ? WIN_INK : s.folded ? DIM_FG : seatTint(s.provider), bold: true } }),
     Text({ text: money(s.stack), style: { color: win ? WIN_INK : s.folded ? DIM_FG : CHIP_FG, bold: true } }),
   ]);
   // Top-right badge: "eliminated" (greyed) for a busted seat sitting out, else its
   // blind/button position for the hand.
   const badge = s.eliminated
-    ? Text({ text: 'eliminated', style: { color: DIM_FG, bold: true } })
-    : Text({ text: s.pos, style: { color: win ? WIN_INK : 'muted', bold: true } });
+    ? Text({ text: badgeText, style: { color: DIM_FG, bold: true } })
+    : Text({ text: badgeText, style: { color: win ? WIN_INK : 'muted', bold: true } });
   const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', width: STRIP_W }, [left, badge]);
 
   const cells = [0, 1].map((i) => cardCell(s.cards[i] ?? null, '??'));
