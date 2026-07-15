@@ -297,11 +297,6 @@ function quit(): void {
   process.exit(0);
 }
 
-// Whether the active gateway key came from interactive login (vs. the env var).
-// The in-app account actions only touch a login-sourced key; an explicit
-// AI_GATEWAY_API_KEY is left alone.
-let keyFromLogin = false;
-
 // Run an async plain-text flow outside the alt-screen: stop the frame loop,
 // detach the raw-mode input handler, restore the normal terminal, run `fn`, then
 // re-enter and repaint. The account actions (switch team / sign out) prompt on
@@ -324,17 +319,15 @@ async function withSuspendedTui(fn: () => Promise<void>): Promise<void> {
 // and re-mint the key. Suspends the TUI for the plain-text picker.
 function accountSwitchTeam(): void {
   void withSuspendedTui(async () => {
-    if (await switchTeam()) keyFromLogin = true;
+    await switchTeam();
   });
 }
 
-// In-app "sign out": forget the stored session and re-gate AI. No-op when the
-// key came from the env (nothing of ours to clear).
+// In-app "sign out": forget the stored session and re-gate AI.
 function accountSignOut(): void {
-  if (!keyFromLogin && !isLoggedIn()) return;
+  if (!isLoggedIn()) return;
   void withSuspendedTui(async () => {
     const was = signOutVercel();
-    keyFromLogin = false;
     process.stdout.write(was ? '\n  Signed out of Vercel.\n\n' : '\n  Not signed in.\n\n');
     await new Promise((res) => setTimeout(res, 700)); // let the line be read before the wipe
   });
@@ -383,7 +376,6 @@ function pickTeamChoice(team: Team): void {
   void (async () => {
     try {
       await useTeam(team);
-      keyFromLogin = true;
       markSwitchSucceeded(team); // ✓ on the switched row
       teamView = { kind: 'loaded' }; // back to the list (now showing the ✓), modal stays open
     } catch (err) {
@@ -415,6 +407,14 @@ function closeTeamSwitch(): void {
 function teamSwitchSignIn(): void {
   closeTeamSwitch();
   accountSwitchTeam();
+}
+
+// Settings modal account reset for testing first-run flows. Clear the cached
+// Vercel OAuth session and the process-local Gateway key, restore the terminal,
+// then exit. The next launch has no session and starts device authorization.
+function teamSwitchLogoutAndQuit(): void {
+  signOutVercel();
+  quit();
 }
 
 setTeamSwitchHandlers({ onPick: pickTeamChoice });
@@ -1329,7 +1329,15 @@ function syncBar(): void {
     const region = { x: 0, y: 0, w: cols, h: rows };
     if (teamModalOpen) {
       if (!keymap.hasContext('teamswitch')) keymap.pushContext('teamswitch', true);
-      ui.setRoot(buildTeamSwitch(teamView, { onClose: closeTeamSwitch, onSignIn: teamSwitchSignIn, onBack: teamSwitchBack }), region);
+      ui.setRoot(
+        buildTeamSwitch(teamView, {
+          onClose: closeTeamSwitch,
+          onSignIn: teamSwitchSignIn,
+          onBack: teamSwitchBack,
+          onLogout: teamSwitchLogoutAndQuit,
+        }),
+        region,
+      );
       // Focus the list once it's populated so ↑↓/Enter drive it (the Slot isn't in
       // the loading/switching trees, so wait for 'loaded').
       if (teamView.kind === 'loaded' && !teamModalFocused) {
@@ -1996,21 +2004,21 @@ process.stdout.on('resize', () => {
   fullRepaint();
 });
 
-// Resolve the AI Gateway key (env override → stored Vercel session → device
-// login + team pick), then launch. The interactive flow is plain text and runs
-// BEFORE term.enter(), so it reads like `vercel login` on the normal terminal;
-// once it returns, every model/voice call works via process.env.AI_GATEWAY_API_KEY.
+// Resolve the AI Gateway key from the stored Vercel session (or device login +
+// team pick), then launch. Inherited shell keys are deliberately ignored so an
+// unrelated credential cannot silently change the billed team. The interactive
+// flow runs BEFORE term.enter(); once resolved, model/voice calls read the
+// process-local AI_GATEWAY_API_KEY minted for Arcade.
 const argv = process.argv.slice(2);
 if (argv.includes('--logout')) {
   const was = signOutVercel();
   console.log(was ? 'Signed out of Vercel.' : 'Not signed in.');
   process.exit(0);
 }
-const auth = await ensureGatewayKey({
+await ensureGatewayKey({
   forceLogin: argv.includes('--login'),
   forceTeamPick: argv.includes('--switch-team'),
 });
-keyFromLogin = auth?.source === 'login';
 
 term.enter();
 process.stdin.on('data', parse);

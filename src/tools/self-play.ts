@@ -7,13 +7,11 @@
 //   pnpm exec tsx src/tools/self-play.ts [white-slug] [black-slug] [maxPlies]
 //   pnpm exec tsx src/tools/self-play.ts anthropic/claude-3-haiku openai/gpt-5.4-nano 16
 //
-// Needs AI_GATEWAY_API_KEY (from .env.local).
-import { loadEnv } from '../auth/env.ts';
-
-loadEnv();
+// Reuses Arcade's cached Vercel login + selected team; no pasted key required.
 
 import { ChessState } from '../rules/chess/chess.ts';
 import { ModelPlayer } from '../ai/model-player.ts';
+import { ensureCachedGatewayKey } from '../auth/index.ts';
 import type { Move } from '../rules/chess/types.ts';
 
 const FALLBACK_NOTE = '(no valid reply — fell back to a legal move)';
@@ -23,23 +21,23 @@ const whiteSlug = pos[0] || 'anthropic/claude-3-haiku';
 const blackSlug = pos[1] || 'openai/gpt-5.4-nano';
 const maxPlies = Number(pos[2]) || 30;
 
-if (!process.env.AI_GATEWAY_API_KEY) {
-  console.error('AI_GATEWAY_API_KEY not set (cp .env.example .env.local and add a key)');
-  process.exit(1);
-}
-
 type Attempt = { phase: 'structured' | 'text'; raw: string; result: 'legal' | 'illegal' | 'error' };
 let attempts: Attempt[] = [];
 const onAttempt = (a: Attempt): void => {
   attempts.push(a);
 };
 
-const players = [
-  new ModelPlayer<Move>({ model: whiteSlug, gameName: 'chess', maxRetries: 2, onAttempt, allowIllegal: () => illegal }),
-  new ModelPlayer<Move>({ model: blackSlug, gameName: 'chess', maxRetries: 2, onAttempt, allowIllegal: () => illegal }),
-];
-
 async function main(): Promise<void> {
+  const auth = await ensureCachedGatewayKey();
+  if (!auth?.team) {
+    console.error('self-play: no cached Arcade login/team. Run `pnpm dev --login` once.');
+    process.exit(1);
+  }
+  const players = [
+    new ModelPlayer<Move>({ model: whiteSlug, gameName: 'chess', maxRetries: 2, onAttempt, allowIllegal: () => illegal }),
+    new ModelPlayer<Move>({ model: blackSlug, gameName: 'chess', maxRetries: 2, onAttempt, allowIllegal: () => illegal }),
+  ];
+  console.log(`AI Gateway team: ${auth.team.name} (${auth.team.slug})`);
   console.log(`White: ${whiteSlug}\nBlack: ${blackSlug}${illegal ? '\nillegal moves: ALLOWED (no rules)' : ''}\n`);
   const state = new ChessState();
   const sans: string[] = [];
@@ -74,4 +72,7 @@ async function main(): Promise<void> {
   console.log(`\nplies: ${sans.length}   fallbacks: ${fallbacks}   terminal: ${state.isTerminal()}${r ? ` (${r.reason})` : ''}`);
 }
 
-main();
+main().catch((err) => {
+  console.error('self-play: could not prepare Arcade AI Gateway access —', (err as Error).message);
+  process.exit(1);
+});

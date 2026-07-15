@@ -35,11 +35,12 @@ import { Box, Button, Dropdown, layout, paint, Screen, type PaintState } from '.
 import { buildTeamSwitch, markSwitchSucceeded, mountTeamSwitch, setTeamSwitchTeams } from '../arcade/shell/team-switch.ts';
 
 type Rgb = [number, number, number];
-// One terminal cell rasterizes to CW×CH pixels; the 8x8 glyph stamps top-left.
+// Terminal cells are roughly twice as tall as they are wide. Rasterize each
+// cell at that physical aspect and resample the bundled 8×8 glyph to fill it.
 const CW = 8;
-const CH = 8;
+const CH = 16;
 
-// Rasterize a Surface to a PPM at 8×8 px/cell: optionally fill each cell's two
+// Rasterize a Surface to a PPM at 8×16 px/cell: optionally fill each cell's two
 // half-block background colors (the scene behind a transparent overlay), then
 // stamp the bitmap-font glyph for opaque cells on top. Shared by the ui and
 // overlay snapshots so their pixel output can't drift. `bgAt` returning null (or
@@ -73,9 +74,11 @@ function surfaceToPpm(
       if (!cell || !cell.opaque) continue; // transparent → background shows through
       const glyph = FONT[cell.ch];
       for (let py = 0; py < CH; py++) {
-        const bits = glyph?.[py] ?? '';
+        const gy = Math.floor((py * 8) / CH);
+        const bits = glyph?.[gy] ?? '';
         for (let px = 0; px < CW; px++) {
-          const on = glyph ? bits[px] === '1' : blockBits(cell.ch, px, py);
+          const gx = Math.floor((px * 8) / CW);
+          const on = glyph ? bits[gx] === '1' : blockBits(cell.ch, gx, gy);
           put(cx * CW + px, cy * CH + py, on ? cell.fg : cell.bg);
         }
       }
@@ -296,7 +299,7 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot prism-prompt [cols] [rows] [t] [out]    prism loading screen + press-any-key marquee
   pnpm snapshot cards [single|hand|deck] [cols] [rows] [state] [out]   the cards screen
       (single: a code like Kh/10s/As · hand: peek|up · deck: shuffle|deal)
-  pnpm snapshot poker [cols] [rows] [preflop|flop|river|showdown] [players=N] [stack=N] [hud|setup|cine|result|menu|notes] [bet=N] [spectate] [muck|gather|shuffle] [color] [out]   the poker table
+  pnpm snapshot poker [cols] [rows] [preflop|flop|river|showdown] [players=N] [stack=N] [hud|setup|cine|result|menu|notes] [bet=N] [spectate] [longnames] [muck|gather|shuffle] [color] [out]   the poker table
       (muck: fold seats to a burn pile, needs players≥3 · gather/shuffle: the between-hands interlude, mid-sweep / mid-shuffle)
 
 Convert + view:  sips -s format png .snapshots/<name>.ppm --out .snapshots/<name>.png -Z 1000`;
@@ -448,10 +451,14 @@ function pokerSnapshot(): void {
   clearPokerChat();
   scene.setEventSink((text) => pushPokerChat({ text, model: '', event: true }));
   const provs = providers().map((p) => p.slug);
+  const longNames = ['grok-4.1-fast-non-reasoning', 'claude-haiku-4.5', 'step-3.7-flash', 'gemini-2.5-flash'];
   const seatViews: PokerSeatView[] = [];
   for (let s = 0; s < players; s++) {
     if (s === 0 && !spectate) seatViews.push({ kind: 'human', label: 'You' });
-    else seatViews.push({ kind: 'ai', label: `AI ${s + 1}`, provider: provs[s % provs.length] });
+    else {
+      const label = args.includes('longnames') ? longNames[s % longNames.length] : `AI ${s + 1}`;
+      seatViews.push({ kind: 'ai', label, provider: provs[s % provs.length] });
+    }
   }
   scene.beginSession(seatViews);
 
@@ -860,7 +867,7 @@ function settingsSnapshot(): void {
       : args.includes('error')
         ? { kind: 'error' as const, message: 'Could not create AI Gateway key (403 forbidden)', canReturn: true }
         : { kind: 'loaded' as const };
-    screen.setRoot(buildTeamSwitch(view, { onClose: noop, onSignIn: noop, onBack: noop }), region);
+    screen.setRoot(buildTeamSwitch(view, { onClose: noop, onSignIn: noop, onBack: noop, onLogout: noop }), region);
   } else {
     const gear = { padding: [0, 1] as [number, number], background: [28, 30, 40] as Rgb, color: [200, 205, 220] as Rgb };
     const overlay = Box({ width: cols, height: rows }, [Box({ position: 'absolute', top: 1, right: 2 }, [Button({ id: 'menu-settings', label: '⚙ settings', style: gear })])]);

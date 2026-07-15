@@ -5,6 +5,7 @@
 export { loadEnv } from './env.ts';
 export {
   availableTeams,
+  ensureCachedGatewayKey,
   ensureGatewayKey,
   isLoggedIn,
   signOut,

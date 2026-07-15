@@ -119,6 +119,16 @@ const BACK: Style = {
   focus: { background: [72, 76, 92], color: [235, 237, 245] },
   pressed: { color: [255, 255, 255] },
 };
+// Destructive account action, kept visually separate at the bottom of the card.
+const LOGOUT: Style = {
+  padding: [0, 2],
+  color: [222, 150, 150],
+  border: 'round',
+  borderColor: [108, 54, 58],
+  hover: { color: [255, 242, 242] },
+  focus: { background: [112, 44, 50], color: [255, 242, 242], borderColor: [190, 72, 78] },
+  pressed: { background: [190, 58, 64], color: [255, 255, 255] },
+};
 
 const center = (n: Node): Node => Box({ justifyContent: 'center' }, [n]);
 
@@ -139,8 +149,12 @@ function listBody(): Node {
 // Build the centered team-switch modal for the given view. The card is a fixed
 // size across every view (see statusBody/listBody). `onClose` (the ✕ / Esc) closes
 // it; `onSignIn` (signed-out view only) kicks off the plain-text device login flow;
-// `onBack` (a failed switch) returns to the team list. There's no Cancel button.
-export function buildTeamSwitch(view: TeamSwitchView, opts: { onClose: () => void; onSignIn: () => void; onBack: () => void }): Node {
+// `onBack` (a failed switch) returns to the team list; `onLogout` clears Arcade's
+// cached Vercel session and quits. There's no Cancel button.
+export function buildTeamSwitch(
+  view: TeamSwitchView,
+  opts: { onClose: () => void; onSignIn: () => void; onBack: () => void; onLogout: () => void },
+): Node {
   let body: Node;
   let hint = 'Esc close';
   let footer: Node | null = null;
@@ -169,12 +183,17 @@ export function buildTeamSwitch(view: TeamSwitchView, opts: { onClose: () => voi
   // out through two of the three right-padding cells to leave exactly one cell to the
   // card's right edge.
   const close = Box({ position: 'absolute', top: 0, right: -2 }, [Button({ id: 'team-close', label: '✕', onClick: opts.onClose, style: CLOSE })]);
+  const logout =
+    view.kind === 'signedOut'
+      ? null
+      : center(Button({ id: 'team-logout', label: 'log out and quit', onClick: opts.onLogout, style: LOGOUT }));
 
   const card = Box({ ...CARD, width: CARD_W }, [
-    center(Text({ text: 'switch team', style: { color: [222, 224, 234], bold: true } })),
+    center(Text({ text: 'Vercel account', style: { color: [222, 224, 234], bold: true } })),
     body,
     ...(hint ? [center(Text({ text: hint, style: { color: 'muted' } }))] : []),
     ...(footer ? [footer] : []),
+    ...(logout ? [logout] : []),
     close,
   ]);
   return Modal(card);
