@@ -14,6 +14,7 @@ import type { PokerGameScene, PokerSeatView } from '../games/poker/poker-scene.t
 import { shortModel } from '../games/chess/hud.ts';
 import { PokerMemory } from './poker-memory.ts';
 import { PokerVoice, pokerVoiceCapable } from './poker-voice.ts';
+import { normalizerModel } from './models.ts';
 
 // One seat in the session: the human hero or an AI model (a Gateway slug).
 export type PokerSeatSpec = { kind: 'human' } | { kind: 'ai'; model: string };
@@ -182,6 +183,10 @@ export class PokerMatch {
       speech: 'a line or two of live table talk in your own voice: react to the hand, banter, size someone up, or needle an opponent. Actually talk to the table, do not just announce your move',
       // Per-turn context: chip standings + this seat's private opponent notes, read live.
       contextProvider: () => this.moveContext(index),
+      // Fallback normalization rung (AIG-183). Safe under poker's private-info boundary:
+      // in split (speech) mode ModelPlayer only ever surfaces the public `say` line, so a
+      // normalized action never leaks the private "thinking"/hole cards.
+      normalizer: normalizerModel(),
     });
   }
 

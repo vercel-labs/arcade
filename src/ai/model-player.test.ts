@@ -41,6 +41,20 @@ function proseModel(text: string): { model: MockLanguageModelV3; calls: () => nu
   return { model, calls: () => calls };
 }
 
+// A mock returning fixed JSON strings in sequence — used as the normalizer (which
+// IS structured-capable) and to exercise structured-move replies.
+function jsonModel(replies: string[]): { model: MockLanguageModelV3; calls: () => number } {
+  let calls = 0;
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => okResult(replies[Math.min(calls++, replies.length - 1)]),
+  });
+  return { model, calls: () => calls };
+}
+
+// Prose with no token that parses to any legal move, so BOTH the structured call and
+// the plain-text soft parse fail — forcing the normalization rung (rung 4).
+const UNPARSEABLE = 'Let me consider my options here, weighing the position carefully.';
+
 // The gateway shape when a team can't reach a provider (see model-errors.test.ts):
 // top-level 403 + a cause carrying `no_providers_available`.
 function accessError(): unknown {
@@ -100,4 +114,81 @@ test('cancellation: an aborted signal propagates instead of silently falling bac
   const { model } = throwingModel(accessError()); // any throw; abort should win first
   const player = new ModelPlayer<Move>({ model, name: 'cancel-mock', gameName: 'chess' });
   await assert.rejects(() => player.chooseAction(state, { signal: AbortSignal.abort() }));
+});
+
+test('malformed JSON structured reply still yields a move via the text fallback', async () => {
+  const state = new ChessState();
+  const { model } = proseModel('{"move": "e4", oops not valid json'); // Output.object can\'t parse → schema error
+  const player = new ModelPlayer<Move>({ model, name: 'broken-json', gameName: 'chess', maxRetries: 1 });
+  const { action } = await player.chooseAction(state);
+  // The same reply is soft-parsed as text; "e4" is recovered as a token.
+  assert.equal(state.actionToString(action), 'e4');
+});
+
+test('ambiguous move is re-prompted, then a clear move is accepted', async () => {
+  // Two knights reach d2; a bare "Nd2" is ambiguous (actionFromString → null) so it
+  // must be re-prompted rather than guessed. "Nbd2" then resolves.
+  const state = new ChessState('7k/8/8/8/8/5N2/8/1N2K3 w - - 0 1');
+  const { model } = jsonModel(['{"move":"Nd2","rationale":"a"}', '{"move":"Nbd2","rationale":"b"}']);
+  const player = new ModelPlayer<Move>({ model, name: 'amb', gameName: 'chess', maxRetries: 2 });
+  const { action } = await player.chooseAction(state);
+  assert.equal(state.actionToString(action), 'Nbd2');
+});
+
+test('normalization rung: recovers a legal move from an otherwise unparseable answer', async () => {
+  const state = new ChessState();
+  const { model, calls: modelCalls } = proseModel(UNPARSEABLE);
+  const { model: normalizer, calls: normCalls } = jsonModel(['{"move":"e4"}']);
+  const player = new ModelPlayer<Move>({ model, name: 'stubborn', gameName: 'chess', maxRetries: 0, normalizer, normalizerName: 'norm' });
+  const { action, rationale } = await player.chooseAction(state);
+  assert.equal(state.actionToString(action), 'e4', 'normalizer recovered a legal move');
+  assert.ok(!isFallbackRationale(rationale), 'a real (normalized) move, not a random fallback');
+  assert.equal(normCalls(), 1, 'normalizer was called exactly once');
+  assert.ok(modelCalls() >= 2, 'only after the structured + text rungs failed');
+});
+
+test('normalization rung: normalizer picks an illegal move → diagnosed random fallback', async () => {
+  const state = new ChessState();
+  const { model } = proseModel(UNPARSEABLE);
+  const { model: normalizer } = jsonModel(['{"move":"zz99"}']); // not a legal move
+  const player = new ModelPlayer<Move>({ model, name: 'stubborn', gameName: 'chess', maxRetries: 0, normalizer });
+  const { rationale } = await player.chooseAction(state);
+  assert.equal(rationale, FALLBACK_RATIONALE.exhausted, 'normalization failed → last-resort fallback, still diagnosed');
+});
+
+test('normalization honors cancellation', async () => {
+  const state = new ChessState();
+  const controller = new AbortController();
+  const { model } = proseModel(UNPARSEABLE);
+  // The normalizer aborts mid-pass; ModelPlayer must propagate, not fall back silently.
+  const normalizer = new MockLanguageModelV3({
+    doGenerate: async () => {
+      controller.abort();
+      throw new Error('aborted mid-normalize');
+    },
+  });
+  const player = new ModelPlayer<Move>({ model, name: 'stubborn', gameName: 'chess', maxRetries: 0, normalizer });
+  await assert.rejects(() => player.chooseAction(state, { signal: controller.signal }));
+});
+
+test('private-context safety: a normalized split-mode move never surfaces private reasoning', async () => {
+  // Split/speech mode (poker): the model reasons privately, then a public SAY: line.
+  // Even when normalization recovers the move, the surfaced rationale must be ONLY
+  // the SAY: line — never the "thinking" that reveals the hand.
+  const state = new ChessState();
+  const leaky = 'THINKING: My hand is monstrous, pocket kings, I will crush them.\nSAY: Feeling lucky tonight.';
+  const { model } = proseModel(leaky); // no parseable move token → soft parse fails
+  const { model: normalizer } = jsonModel(['{"move":"e4"}']);
+  const player = new ModelPlayer<Move>({
+    model,
+    name: 'poker-bot',
+    gameName: 'poker',
+    speech: 'A short line you say out loud to the table.',
+    maxRetries: 0,
+    normalizer,
+  });
+  const { action, rationale } = await player.chooseAction(state);
+  assert.equal(state.actionToString(action), 'e4', 'move recovered');
+  assert.equal(rationale, 'Feeling lucky tonight.', 'surfaced rationale is the public SAY line');
+  assert.ok(!/monstrous|pocket kings|crush|THINKING/i.test(rationale ?? ''), 'no private reasoning leaked');
 });

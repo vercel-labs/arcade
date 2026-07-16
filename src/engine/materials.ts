@@ -225,21 +225,19 @@ function smoothstep(a: number, b: number, x: number): number {
 
 export interface WispUniforms {
   mvp: Mat4;
-  logo: Texture; // RGBA source (decodePng)
-  bg: Vec3; // the logo's background color (0..255) — the mark is whatever differs from it
+  logo: Texture; // RGBA source whose ALPHA is pre-baked mark coverage (see logo-mark.ts)
   tint: Vec3; // brand hue (0..255) the whole wisp is colored with
   gain: number; // emissive multiplier; >1 pushes the core bright enough to bloom
   flicker: number; // 0..1+ per-frame brightness wobble (the "living flame" pulse)
-  edge0: number; // mask soft-edge start, in normalized color-distance (0..1)
-  edge1: number; // mask soft-edge end
 }
 
-// Emissive "will-o'-wisp" material: paints a logo as a glowing, brand-hued mark.
-// The mark is extracted by how far each texel's color sits from the logo's own
-// background (× its alpha), so it works for both opaque dark-background tiles and
-// cut-out transparent logos. The whole thing is recolored to a single brand hue
-// and drawn additively (over black), so bloom turns the bright core into a halo.
-const NORM = 1 / Math.sqrt(3 * 255 * 255); // normalize an RGB distance to 0..1
+// Emissive "will-o'-wisp" material: paints a logo's mark as a glowing, brand-hued
+// flame. Masking is decided ONCE at load time (bakeMarkAlpha → coverage stored in
+// the texture's alpha), so this shader is pure recoloring: it reads coverage from
+// alpha and tints it, and never re-derives the mark from color. That separation is
+// what lets multi-color marks keep every region — the shader can't discard a hue
+// for being "too close to the background", because it no longer looks at color.
+// Drawn additively over black, so bloom turns the bright core into a halo.
 const WISP_RGBA = { r: 0, g: 0, b: 0, a: 0 };
 export const wispMaterial: Material<WispUniforms> = {
   cull: 'none',
@@ -249,17 +247,13 @@ export const wispMaterial: Material<WispUniforms> = {
     return { clip, world: vin.position, normal: vin.normal, uv: vin.uv, color: vin.color, bary: { x: 0, y: 0, z: 0 } };
   },
   fragment(u, vy) {
-    const px = sampleTexture(u.logo, vy.uv[0], vy.uv[1]); // [r,g,b,a], a in 0..1
-    const dr = px[0] - u.bg.x;
-    const dg = px[1] - u.bg.y;
-    const db = px[2] - u.bg.z;
-    const dist = Math.sqrt(dr * dr + dg * dg + db * db) * NORM;
-    const mask = smoothstep(u.edge0, u.edge1, dist) * px[3];
+    const px = sampleTexture(u.logo, vy.uv[0], vy.uv[1]); // [r,g,b,a]; a = baked coverage 0..1
+    const mask = px[3];
     if (mask <= 0.002) return null; // background → discard, so only the mark glows
     WISP_RGBA.r = u.tint.x * u.gain;
     WISP_RGBA.g = u.tint.y * u.gain;
     WISP_RGBA.b = u.tint.z * u.gain;
-    WISP_RGBA.a = Math.min(1, mask * u.flicker); // additive weight: tint*gain*mask*flicker
+    WISP_RGBA.a = Math.min(1, mask * u.flicker); // additive weight: tint*gain*coverage*flicker
     return WISP_RGBA;
   },
 };
