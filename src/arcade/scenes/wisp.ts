@@ -8,6 +8,8 @@
 //     so the HUD stays pinned to a corner regardless of the board's camera.
 import { readFileSync } from 'node:fs';
 import {
+  analyzeLogo,
+  bakeMarkAlpha,
   decodePng,
   FONT,
   type Mat4,
@@ -29,8 +31,6 @@ const VY = 0.62; // vertical compression: 2 stacked pixels/char row → keep orb
 const WISP_CAP = 1.15; // flame stays brand-hued (capped below white)
 const EMBERS_PER = 24; // spark pool size; how many are alight scales with energy
 const EMBER_RATE = 9; // respawn attempts/sec at full energy
-const MARK_EDGE0 = 0.22; // mark extraction: bg→mark distance ramp (matches wispMaterial)
-const MARK_EDGE1 = 0.5;
 // Vertical hover drift: the whole orb (flame, mark, embers) bobs on a slow,
 // irregular curve so it floats like a will-o'-wisp instead of sitting pinned at a
 // fixed height. Amplitude is a small fraction of the orb's size, and it's driven
@@ -70,15 +70,16 @@ export class Wisp {
   readonly tint: Vec3;
   speaking = false;
   level = 0; // eases 0..1 toward `speaking`
-  private bg: Vec3;
   private phase: number;
   private rng: () => number;
   private embers: Ember[] = [];
   private mesh = quad(WISP_SIZE); // corners rewritten per-frame to billboard
 
   constructor(opts: { tex: Texture; tint: Vec3; phase: number; rng: () => number }) {
-    this.tex = opts.tex;
-    this.bg = cornerColor(opts.tex);
+    // Bake the mark mask into the texture's alpha once, up front: the material
+    // then just tints by coverage (no per-frame, per-pixel bg comparison), and
+    // multi-color marks keep every region regardless of the brand tint.
+    this.tex = bakeMarkAlpha(opts.tex);
     this.tint = opts.tint;
     this.phase = opts.phase;
     this.rng = opts.rng;
@@ -130,12 +131,9 @@ export class Wisp {
     rasterize(target, this.mesh, wispMaterial, {
       mvp: vp,
       logo: this.tex,
-      bg: this.bg,
       tint: MARK_TINT,
       gain: f.markGain,
       flicker: f.markFlicker,
-      edge0: MARK_EDGE0,
-      edge1: MARK_EDGE1,
     });
 
     this.updateEmbers(dt, f.emberEnergy);
@@ -237,12 +235,15 @@ function normalizeTint(c: Vec3): Vec3 {
 }
 
 // Derive a creator's brand tint from its logo. Most gateway marks are brand-
-// colored, so a saturation-weighted average of the "mark" pixels (those differing
-// from the tile background) yields the hue. For a monochrome mark on a colored
-// tile (e.g. a white mark on deepseek's blue), fall back to the tile color. For a
-// monochrome mark on a neutral tile (white/black on black/white), use NEUTRAL.
+// colored, so a saturation-weighted average of the "mark" pixels yields the hue.
+// Mark membership uses the same robust masking as the wisp (analyzeLogo): a
+// cut-out logo's mark is its opaque pixels (never filtered by a phantom corner
+// color, which used to mis-tint ByteDance), while an opaque tile's mark is
+// whatever differs from the solid background. For a monochrome mark on a colored
+// tile (e.g. a white mark on DeepSeek's blue) fall back to the tile color; for a
+// monochrome mark on a neutral tile (white/black on black/white) use NEUTRAL.
 export function deriveTint(tex: Texture): Vec3 {
-  const bg = cornerColor(tex);
+  const { bg, hasAlpha } = analyzeLogo(tex);
   const { width: W, height: H, data: d } = tex;
   let wr = 0;
   let wg = 0;
@@ -251,11 +252,13 @@ export function deriveTint(tex: Texture): Vec3 {
   let n = 0;
   for (let i = 0; i < W * H; i++) {
     const o = i * 4;
-    if (d[o + 3] < 128) continue; // transparent (logos are opaque, but guard)
+    if (d[o + 3] < 128) continue; // transparent → not the mark
     const r = d[o];
     const g = d[o + 1];
     const b = d[o + 2];
-    if (Math.hypot(r - bg.x, g - bg.y, b - bg.z) < 60) continue; // background-ish → not the mark
+    // Opaque tile: skip background-ish texels. Cut-out: every opaque texel is the
+    // mark (there is no meaningful tile color to compare against).
+    if (!hasAlpha && Math.hypot(r - bg.x, g - bg.y, b - bg.z) < 60) continue;
     n++;
     const chroma = Math.max(r, g, b) - Math.min(r, g, b);
     wr += r * chroma;
@@ -266,7 +269,7 @@ export function deriveTint(tex: Texture): Vec3 {
   if (n === 0) return { ...NEUTRAL_TINT };
   if (wt / n >= 22) return normalizeTint({ x: wr / wt, y: wg / wt, z: wb / wt }); // colored mark
   const bgChroma = Math.max(bg.x, bg.y, bg.z) - Math.min(bg.x, bg.y, bg.z);
-  if (bgChroma >= 40) return normalizeTint(bg); // monochrome mark on a colored tile
+  if (!hasAlpha && bgChroma >= 40) return normalizeTint(bg); // monochrome mark on a colored tile
   return { ...NEUTRAL_TINT };
 }
 
@@ -493,23 +496,3 @@ function drawEmbers(target: RenderTarget, P: Vec3, embers: Ember[], proj: Projec
   }
 }
 
-// Average corner texels as the tile background (mark = "differs from background").
-function cornerColor(tex: Texture): Vec3 {
-  const { width: w, height: h, data: d } = tex;
-  const pts = [
-    [2, 2],
-    [w - 3, 2],
-    [2, h - 3],
-    [w - 3, h - 3],
-  ];
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  for (const [x, y] of pts) {
-    const i = (y * w + x) * 4;
-    r += d[i];
-    g += d[i + 1];
-    b += d[i + 2];
-  }
-  return { x: r / pts.length, y: g / pts.length, z: b / pts.length };
-}
