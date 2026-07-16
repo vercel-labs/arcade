@@ -1,7 +1,25 @@
 import { generateText, type LanguageModel, Output } from 'ai';
 import { z } from 'zod';
 import type { GameState } from '../rules/game.ts';
+import { classifyModelError } from './model-errors.ts';
 import type { Player, TurnContext } from './player.ts';
+
+// The rationale we attach when no real move could be obtained and a random legal
+// move is played instead — so a match never deadlocks. Distinct strings so the
+// spectator line (and the model probe) can tell WHY it fell back apart, rather
+// than reading every failure as "the model gave bad answers":
+//   exhausted   — the model answered but never produced a usable/legal move.
+//   unavailable — the model can't be reached on this team (restricted provider
+//                 access); a text retry would hit the same wall, so we skip it.
+export const FALLBACK_RATIONALE = {
+  exhausted: '(no valid reply — fell back to a legal move)',
+  unavailable: '(model unavailable on this team — fell back to a legal move)',
+} as const;
+const FALLBACK_RATIONALES: string[] = Object.values(FALLBACK_RATIONALE);
+/** True for any rationale ModelPlayer attaches to a random-legal-move fallback. */
+export function isFallbackRationale(r: string | undefined): boolean {
+  return r !== undefined && FALLBACK_RATIONALES.includes(r);
+}
 
 // How a game's moves are written, woven into the prompt + schema so the SAME
 // ModelPlayer serves any harness game. Chess is the default (SAN); poker passes its
@@ -163,12 +181,15 @@ export class ModelPlayer<A> implements Player<A> {
     const legalSan = legal.map((a) => state.actionToString(a));
 
     // Phase 1 — structured output (clean move + rationale). Re-prompt a rejected
-    // move (legal mode: illegal; illegal mode: unparseable); but if the call ERRORS
-    // (the provider can't do JSON-mode output: "json_object not supported",
-    // "response did not match schema", etc.), stop retrying the schema and fall
-    // through to the plain-text path.
+    // move (legal mode: illegal; illegal mode: unparseable); but if the call ERRORS,
+    // classify it: a SCHEMA/unknown error (the provider can't do JSON-mode output:
+    // "responseFormat not supported", "No object generated", etc.) drops to the
+    // plain-text path — a model that reasons fine in prose is still playable. An
+    // ACCESS error (403 / no_providers_available — the team can't reach this
+    // provider) would hit the same wall in text, so we stop and report it distinctly.
     let feedback = '';
     let structuredErrored = false;
+    let unavailable = false;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       let move: string;
       let rationale: string | undefined;
@@ -187,6 +208,10 @@ export class ModelPlayer<A> implements Player<A> {
       } catch (err) {
         if (signal?.aborted) throw err; // cancellation — let it propagate
         this.onAttempt?.({ phase: 'structured', raw: (err as Error).message ?? String(err), result: 'error' });
+        if (classifyModelError(err).kind === 'access') {
+          unavailable = true;
+          break; // provider unreachable on this team — the text path fails identically
+        }
         structuredErrored = true;
         break; // schema unsupported → try the text fallback instead of re-trying
       }
@@ -200,7 +225,7 @@ export class ModelPlayer<A> implements Player<A> {
     // "soft parse"): the model answers in prose ending with a `MOVE:` line, and we
     // scan for a move. Only worth trying when structured output failed outright —
     // a model that DOES emit JSON but keeps picking rejected moves won't do better
-    // in prose.
+    // in prose, and an unreachable provider won't answer at all.
     if (structuredErrored) {
       feedback = '';
       for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
@@ -225,9 +250,10 @@ export class ModelPlayer<A> implements Player<A> {
       }
     }
 
-    // Exhausted everything — play a legal move so a match never deadlocks.
+    // Exhausted everything — play a legal move so a match never deadlocks, tagged
+    // with WHY so the fallback is visibly diagnosed rather than a silent random move.
     const fallback = legal[Math.floor(Math.random() * legal.length)];
-    return { action: fallback, rationale: '(no valid reply — fell back to a legal move)' };
+    return { action: fallback, rationale: unavailable ? FALLBACK_RATIONALE.unavailable : FALLBACK_RATIONALE.exhausted };
   }
 
   // Re-prompt text. Illegal mode: only "I couldn't parse a move" (any move is

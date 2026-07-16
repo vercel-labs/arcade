@@ -10,11 +10,10 @@
 // Reuses Arcade's cached Vercel login + selected team; no pasted key required.
 
 import { ChessState } from '../rules/chess/chess.ts';
-import { ModelPlayer } from '../ai/model-player.ts';
+import { isFallbackRationale, ModelPlayer } from '../ai/model-player.ts';
 import { ensureCachedGatewayKey } from '../auth/index.ts';
 import type { Move } from '../rules/chess/types.ts';
 
-const FALLBACK_NOTE = '(no valid reply — fell back to a legal move)';
 const illegal = process.argv.includes('--illegal'); // apply moves with no rules
 const pos = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const whiteSlug = pos[0] || 'anthropic/claude-3-haiku';
@@ -48,7 +47,7 @@ async function main(): Promise<void> {
     attempts = [];
     const { action, rationale } = await players[side].chooseAction(state);
     const san = state.actionToString(action);
-    const fellBack = rationale === FALLBACK_NOTE;
+    const fellBack = isFallbackRationale(rationale);
     if (fellBack) fallbacks++;
 
     const num = `${Math.floor(ply / 2) + 1}${side === 0 ? '.' : '...'}`;
