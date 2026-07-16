@@ -345,13 +345,14 @@ function cardCell(card: Card | null, placeholder: string): Node {
   return Box({ padding: [0, 1], background: CARD_FACE }, [Text({ text: `${rank}${SUIT_ICON[card.suit]}`, style: { color: isRed(card) ? CARD_RED : CARD_BLACK, bold: true } })]);
 }
 
-// The chat ✕ (collapse) and the reopen pill, mirroring the chess chat affordances.
+// The chat / notes ✕ (collapse), matching the chess chat + game-menu ✕: understated —
+// the glyph just brightens to white on hover/focus/press, no background fill.
 const CHAT_CLOSE: Style = {
   padding: [0, 1],
   color: [150, 154, 166],
-  hover: { background: [180, 60, 60], color: [255, 255, 255] },
-  focus: { background: [72, 76, 92], color: [230, 232, 240] },
-  pressed: { background: [220, 90, 90], color: [255, 255, 255] },
+  hover: { color: [255, 255, 255] },
+  focus: { color: [255, 255, 255] },
+  pressed: { color: [255, 255, 255] },
 };
 // The two top-right pills: a hamburger glyph + "menu", and plain "chat" text (no icon —
 // a width-2 speech-bubble glyph left a stray continuation cell past the pill edge).

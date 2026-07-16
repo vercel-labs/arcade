@@ -102,14 +102,14 @@ const PRIMARY: Style = {
   focus: { background: [110, 84, 150] },
   pressed: { background: [120, 124, 142] },
 };
-// The close (✕) button in the card's top-right: quiet by default, reddening on
-// hover like a window close control.
+// The close (✕) button in the card's top-right: understated, matching the game-menu
+// and chat ✕ — the glyph just brightens to white on hover/focus/press, no fill.
 const CLOSE: Style = {
   padding: [0, 1],
   color: [150, 154, 166],
-  hover: { background: [180, 60, 60], color: [255, 255, 255] },
-  focus: { background: [72, 76, 92], color: [230, 232, 240] },
-  pressed: { background: [220, 90, 90], color: [255, 255, 255] },
+  hover: { color: [255, 255, 255] },
+  focus: { color: [255, 255, 255] },
+  pressed: { color: [255, 255, 255] },
 };
 // The "← back" control on a switch error: a quiet text button (like the close hint it
 // replaces) that returns to the team list.
