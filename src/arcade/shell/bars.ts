@@ -3,7 +3,7 @@
 // pill padding is style padding, and hover colors are a style overlay. Per-button
 // onClick closures replace the id→action if/else that used to live in onMouse.
 
-import { Box, Button, Modal, Text, type Node, type Style } from '../../tui/index.ts';
+import { Box, Button, Dialog, Modal, RoundedButton, Text, type Node, type Style } from '../../tui/index.ts';
 import { BISHOP, BLACK, type Color, KNIGHT, type PieceType, QUEEN, ROOK } from '../../rules/chess/types.ts';
 import type { RGB } from '../../engine/index.ts';
 
@@ -86,12 +86,14 @@ export function buildBar(
     // reset view. Everything system-level (home / new game / mode / eval bar / illegal /
     // quit) lives in the ☰ menu popup (top-right, see hud.ts buildChessGameRoot), and
     // the chat panel is a top-right pill — so the bar stays two buttons, not eight.
-    const aiStyle = ai.active
-      ? { ...PILL, background: [86, 64, 120] as RGB, color: [238, 230, 250] as RGB }
-      : PILL;
+    // Rounded (outlined) controls: 3 rows tall, arc border, a little horizontal
+    // padding, and the row's gap:2 keeps them apart. Transparent interior — the 2D
+    // scene shows through the empty space inside the border. Active (match running)
+    // tints the outline + label purple. Hover/focus whiten the border + label + bold.
+    const aiActive = ai.active ? { color: [216, 200, 235] as RGB, borderColor: [138, 110, 170] as RGB } : {};
     buttons = [
-      Button({ id: 'ai', label: ai.label, onClick: a.aiMatch, style: aiStyle }),
-      Button({ id: 'reset', label: 'reset view', onClick: a.reset, style: PILL }),
+      RoundedButton({ id: 'ai', label: ai.label, onClick: a.aiMatch, padding: [0, 2], ...aiActive }),
+      RoundedButton({ id: 'reset', label: 'reset view', onClick: a.reset, padding: [0, 2] }),
     ];
   } else if (mode === 'cards') {
     // The cards screen: the mode picker + per-mode controls live in the poker HUD
@@ -258,37 +260,11 @@ export function buildConfirm(opts: {
   return Modal(card);
 }
 
-// The poker in-game menu (Wii + / PS-button style): a centered popup with the
-// system actions that used to crowd the bottom bar. Opened by the ☰ pill top-right,
-// dismissed by the ✕ in its header (or Escape). "Mode" cycles the render mode in
-// place and keeps the menu open; the rest act and close. Same Modal + card styling
-// as buildGameOver / buildPromotion so every popup reads as one family.
-const MENU_CLOSE: Style = {
-  padding: [0, 1],
-  margin: [0, 1, 0, 0], // nudge the ✕ a cell in from the corner
-  color: [150, 154, 166],
-  // Understated like the chess move-panel ✕ (CLOSE_BTN): the glyph just brightens to white
-  // on hover/focus/press — no background fill.
-  hover: { color: [255, 255, 255] },
-  focus: { color: [255, 255, 255] },
-  pressed: { color: [255, 255, 255] },
-};
 export interface MenuItem {
   id: string;
   label: string;
   value?: string; // a toggle/cycle state (e.g. "ascii", "off") — right-aligned into a column
   onClick: () => void;
-}
-
-// Shared modal header: a title (left, indented to line up with the padded body) and a ✕ close
-// button hugging the top-right corner. `flexGrow` on the title pushes ✕ to the corner without
-// justify:'between'; the card clips it (overflow:hidden) so the hover fill can't bleed past the
-// edge. Used by the shortcuts + in-game menu popups.
-function modalHeader(title: string, closeId: string, onClose: () => void): Node {
-  return Box({ flexDirection: 'row', alignItems: 'center', gap: 2, padding: [0, 0, 0, 2] }, [
-    Box({ flexGrow: 1 }, [Text({ text: title, style: { color: [222, 224, 234], bold: true } })]),
-    Button({ id: closeId, label: '✕', onClick: onClose, style: MENU_CLOSE }),
-  ]);
 }
 
 // The in-game menu popup (Wii + / PS-button style): a "menu" title + ✕, then a stack of
@@ -305,37 +281,24 @@ export function buildGameMenu(opts: { groups: MenuItem[][]; onClose: () => void;
   const labelW = withVal.length ? Math.max(...withVal.map((i) => i.label.length)) : 0;
   const valW = Math.max(opts.valueColW ?? 0, ...(withVal.length ? withVal.map((i) => (i.value as string).length) : [0]));
   const labelOf = (i: MenuItem): string => (i.value != null ? `${i.label.padEnd(labelW + 3)}${i.value.padStart(valW)}` : i.label);
+  // Sleek outlined items: a rounded arc border (3 rows tall) with a dim resting
+  // border + readable label; hover/focus whitens the border + label and bolds. No
+  // fill, so box-drawing corners stay seam-free over the Dialog card.
   const btn = (item: MenuItem): Node =>
-    Button({
-      id: item.id,
-      label: labelOf(item),
-      onClick: item.onClick,
-      style: {
-        padding: [0, 2],
-        background: [40, 42, 52],
-        color: [212, 214, 224],
-        bold: true,
-        hover: { background: [72, 76, 92] },
-        focus: { background: [72, 76, 92] },
-        pressed: { background: [120, 124, 142] },
-      },
-    });
+    RoundedButton({ id: item.id, label: labelOf(item), onClick: item.onClick, color: [212, 214, 224], borderColor: [88, 92, 110] });
 
-  // Groups (session / view toggles / system) are separated by a blank row — a touch more space
-  // than the 1-row gap within a group.
-  const body: Node[] = [];
-  opts.groups.forEach((group, gi) => {
-    if (gi > 0) body.push(Box({ height: 0 }));
-    for (const item of group) body.push(btn(item));
-  });
+  // The outlined items stack flush (gap 0): each button's own arc border is the
+  // divider, so adjacent bottom/top borders read as one continuous list — no empty
+  // rows between them. Groups are flattened (the border stacking separates rows).
+  const body = opts.groups.flat().map(btn);
 
-  // Card padding is tight [1,1] so the ✕ sits in the corner; the body gets its own [0,2] indent
-  // so the buttons keep breathing room. overflow:hidden clips the ✕ hover fill to the card edge.
-  const card = Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [1, 1], overflow: 'hidden', background: [22, 24, 32] }, [
-    modalHeader('menu', 'game-menu-close', opts.onClose),
-    Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [0, 2] }, body),
-  ]);
-  return Modal(card);
+  // Dialog supplies the card + 'menu' title + corner ✕; the body keeps its own [0,2] indent
+  // so the buttons sit in from the tight card padding.
+  return Modal(
+    Dialog({ title: 'menu', onClose: opts.onClose, closeId: 'game-menu-close' }, [
+      Box({ flexDirection: 'column', alignItems: 'stretch', gap: 0, padding: [0, 2] }, body),
+    ]),
+  );
 }
 
 // Friendlier display for a chord than the raw binding string.
@@ -383,12 +346,12 @@ export function buildShortcuts(bindings: { key: string; title: string; layer: st
 
   const screenRows = all.filter((r) => !r.general);
   const generalRows = all.filter((r) => r.general);
-  const card = Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [1, 1], overflow: 'hidden', background: [22, 24, 32] }, [
-    modalHeader('shortcuts', 'shortcuts-close', onClose),
-    Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [0, 2] }, [
-      ...section('this game', screenRows),
-      ...section('general', generalRows),
+  return Modal(
+    Dialog({ title: 'shortcuts', onClose, closeId: 'shortcuts-close' }, [
+      Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [0, 2] }, [
+        ...section('this game', screenRows),
+        ...section('general', generalRows),
+      ]),
     ]),
-  ]);
-  return Modal(card);
+  );
 }

@@ -9,11 +9,11 @@
 // translucent fill — no line border), and expands back. It's left-anchored, so
 // the "Moves" label keeps the same position in both states. Click it (or the ✕,
 // shown when expanded) to toggle.
-import { Box, Button, type Row, ScrollBox, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
+import { Box, Button, CloseButton, type Row, ScrollBox, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
 import type { RGB, RGBA } from '../../../engine/index.ts';
 import type { ChessResult } from '../../../rules/chess/chess.ts';
 import { WHITE } from '../../../rules/chess/types.ts';
-import { CHAT_WIDTH, chatBox, mountChat, PANEL_PAD_L, PANEL_PAD_R } from './chat.ts';
+import { CHAT_WIDTH, type ChatMessage, chatBox, mountChat, PANEL_PAD_L, PANEL_PAD_R } from './chat.ts';
 
 const HISTORY_HEIGHT = 18; // MAX visible move rows — the panel grows to this, then scrolls
 const HISTORY_WIDTH = 22; // inner content width — header + list share it (fixed)
@@ -34,6 +34,29 @@ export interface Commentary {
   text: string;
   model: string; // model slug, or '' for app messages
   until: number; // seconds (`t`) after which it fades
+}
+
+// Unicode chess glyphs by color, keyed by SAN piece letter (pawns implied). Filled
+// (black) vs outline (white) sets so the mover's side reads at a glance in the chat.
+const GLYPH_WHITE: Record<string, string> = { K: '♔', Q: '♕', R: '♖', B: '♗', N: '♘', P: '♙' };
+const GLYPH_BLACK: Record<string, string> = { K: '♚', Q: '♛', R: '♜', B: '♝', N: '♞', P: '♟' };
+
+// The moved piece's glyph for a SAN string, given the ply (0-based: even = White). A
+// leading K/Q/R/B/N names the piece; castling (O-O / O-O-O) is the king; anything else
+// (a file letter or capture like exd5) is a pawn.
+function moveGlyph(san: string, ply: number): string {
+  const set = ply % 2 === 0 ? GLYPH_WHITE : GLYPH_BLACK;
+  if (san.startsWith('O-O')) return set.K;
+  const c = san[0];
+  return set[c] ?? set.P;
+}
+
+// A chess move rendered as a chat line: the mover's piece glyph + the SAN, grey for a
+// legal move and red with an "(illegal)" tag for one played under the illegal-moves
+// toggle — mirroring the move panel's red. `ply` is the 0-based half-move index.
+export function chessMoveChat(san: string, ply: number, illegal: boolean): ChatMessage {
+  const text = `${moveGlyph(san, ply)} ${san}${illegal ? ' (illegal)' : ''}`;
+  return { text, model: '', event: true, error: illegal };
 }
 
 // SAN log → PGN movetext ("1. e4 c5 2. Nf3 Nc6 … <result>"), pasteable into
@@ -159,9 +182,9 @@ const HEADER_BTN: Style = {
   bold: true,
   hover: { color: [255, 255, 255] },
 };
-// The ✕ minimize control in the expanded header's top-right corner; the copy
-// control sits just right of the "Moves" label (same understated styling).
-const CLOSE_BTN: Style = {
+// The understated copy (↥) control just right of the "Moves" label — a muted glyph
+// that brightens to white on hover, matching the shared CloseButton ✕ beside it.
+const ICON_BTN: Style = {
   padding: [0, 0],
   color: 'muted',
   hover: { color: [255, 255, 255] },
@@ -224,8 +247,8 @@ export function buildChessGameRoot(
     header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', width: HISTORY_WIDTH, padding: [0, 1, 0, 0] }, [
       movesLabel,
       Box({ flexDirection: 'row', alignItems: 'center', gap: 2 }, [
-        Button({ id: 'moves-copy', label: COPY_GLYPH, onClick: opts.onCopy, style: CLOSE_BTN }),
-        Button({ id: 'moves-close', label: '✕', onClick: opts.onToggle, style: CLOSE_BTN }),
+        Button({ id: 'moves-copy', label: COPY_GLYPH, onClick: opts.onCopy, style: ICON_BTN }),
+        CloseButton({ id: 'moves-close', onClick: opts.onToggle }),
       ]),
     ]);
   }
@@ -289,7 +312,7 @@ function buildChatPanel(height: number, onToggle: () => void, active: boolean): 
   chatBox.setActive(active);
   const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', width: CHAT_WIDTH - PANEL_PAD_L - PANEL_PAD_R, padding: [0, 2, 0, 0] }, [
     Button({ id: 'chat-toggle', label: 'chat', onClick: onToggle, style: HEADER_BTN }),
-    Button({ id: 'chat-close', label: '✕', onClick: onToggle, style: CLOSE_BTN }),
+    CloseButton({ id: 'chat-close', onClick: onToggle }),
   ]);
   // flexShrink 0: the wide chess-game bar in the main column overflows its row, so
   // without this the panel would be squeezed below CHAT_WIDTH and clip its bubbles.

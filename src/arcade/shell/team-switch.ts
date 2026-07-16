@@ -4,7 +4,7 @@
 // billed one marked; clicking / Enter on a row switches to it (persist + re-mint the
 // gateway key). main.ts owns the async load/switch and the open/close state; this
 // module just holds the list instance and builds the centered popup.
-import { Box, Button, Modal, Select, Slot, Text, type Node, type Screen, type Style } from '../../tui/index.ts';
+import { Box, Button, Dialog, Modal, Select, Slot, Text, type Node, type Screen, type Style } from '../../tui/index.ts';
 import type { Team } from '../../auth/index.ts';
 
 const LIST_W = 34;
@@ -92,7 +92,7 @@ export type TeamSwitchView =
   // to the list instead of the plain close hint.
   | { kind: 'error'; message: string; canReturn?: boolean };
 
-const CARD: Style = { flexDirection: 'column', gap: 1, padding: [1, 3], background: [22, 24, 32] };
+const CARD_PAD: [number, number] = [1, 3]; // Dialog card padding (content = LIST_W within it)
 const PRIMARY: Style = {
   padding: [0, 3],
   background: [86, 64, 120],
@@ -101,15 +101,6 @@ const PRIMARY: Style = {
   hover: { background: [110, 84, 150] },
   focus: { background: [110, 84, 150] },
   pressed: { background: [120, 124, 142] },
-};
-// The close (✕) button in the card's top-right: quiet by default, reddening on
-// hover like a window close control.
-const CLOSE: Style = {
-  padding: [0, 1],
-  color: [150, 154, 166],
-  hover: { background: [180, 60, 60], color: [255, 255, 255] },
-  focus: { background: [72, 76, 92], color: [230, 232, 240] },
-  pressed: { background: [220, 90, 90], color: [255, 255, 255] },
 };
 // The "← back" control on a switch error: a quiet text button (like the close hint it
 // replaces) that returns to the team list.
@@ -177,24 +168,20 @@ export function buildTeamSwitch(
     hint = '↑↓ move · ⏎ switch · Esc';
   }
 
-  // The ✕ close button, inset one cell from the card's top-right corner. Absolute
-  // children resolve against the content box (inside the card's [1,3] padding), so
-  // `top: 0` already leaves the one-row top padding above it, and `right: -2` pulls it
-  // out through two of the three right-padding cells to leave exactly one cell to the
-  // card's right edge.
-  const close = Box({ position: 'absolute', top: 0, right: -2 }, [Button({ id: 'team-close', label: '✕', onClick: opts.onClose, style: CLOSE })]);
   const logout =
     view.kind === 'signedOut'
       ? null
       : center(Button({ id: 'team-logout', label: 'log out and quit', onClick: opts.onLogout, style: LOGOUT }));
 
-  const card = Box({ ...CARD, width: CARD_W }, [
-    center(Text({ text: 'Vercel account', style: { color: [222, 224, 234], bold: true } })),
-    body,
-    ...(hint ? [center(Text({ text: hint, style: { color: 'muted' } }))] : []),
-    ...(footer ? [footer] : []),
-    ...(logout ? [logout] : []),
-    close,
-  ]);
-  return Modal(card);
+  // Dialog supplies the fixed-width card, the centered "Vercel account" title, and the
+  // corner ✕ (its absolute placement lines the ✕ up one cell from the edge through the
+  // card's [1,3] padding — the same result the hand-rolled close box produced).
+  return Modal(
+    Dialog({ title: 'Vercel account', onClose: opts.onClose, closeId: 'team-close', align: 'center', width: CARD_W, padding: CARD_PAD }, [
+      body,
+      ...(hint ? [center(Text({ text: hint, style: { color: 'muted' } }))] : []),
+      ...(footer ? [footer] : []),
+      ...(logout ? [logout] : []),
+    ]),
+  );
 }
