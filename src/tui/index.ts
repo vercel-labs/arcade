@@ -3,6 +3,7 @@
 // width, color) and platform (input types); nothing imports app code.
 export { Box, Text, Button, Slot } from './nodes.ts';
 export { Modal } from './components/modal.ts';
+export { Dialog, CloseButton, type DialogOpts } from './components/dialog.ts';
 export { ASCIIFont, asciiFontLines } from './components/asciifont.ts';
 export { FrameBuffer, type FrameDraw } from './components/framebuffer.ts';
 export { Dropdown, type DropdownOpts } from './components/dropdown.ts';

@@ -3,7 +3,7 @@
 // pill padding is style padding, and hover colors are a style overlay. Per-button
 // onClick closures replace the id→action if/else that used to live in onMouse.
 
-import { Box, Button, Modal, Text, type Node, type Style } from '../../tui/index.ts';
+import { Box, Button, Dialog, Modal, Text, type Node, type Style } from '../../tui/index.ts';
 import { BISHOP, BLACK, type Color, KNIGHT, type PieceType, QUEEN, ROOK } from '../../rules/chess/types.ts';
 import type { RGB } from '../../engine/index.ts';
 
@@ -258,37 +258,11 @@ export function buildConfirm(opts: {
   return Modal(card);
 }
 
-// The poker in-game menu (Wii + / PS-button style): a centered popup with the
-// system actions that used to crowd the bottom bar. Opened by the ☰ pill top-right,
-// dismissed by the ✕ in its header (or Escape). "Mode" cycles the render mode in
-// place and keeps the menu open; the rest act and close. Same Modal + card styling
-// as buildGameOver / buildPromotion so every popup reads as one family.
-const MENU_CLOSE: Style = {
-  padding: [0, 1],
-  margin: [0, 1, 0, 0], // nudge the ✕ a cell in from the corner
-  color: [150, 154, 166],
-  // Understated like the chess move-panel ✕ (CLOSE_BTN): the glyph just brightens to white
-  // on hover/focus/press — no background fill.
-  hover: { color: [255, 255, 255] },
-  focus: { color: [255, 255, 255] },
-  pressed: { color: [255, 255, 255] },
-};
 export interface MenuItem {
   id: string;
   label: string;
   value?: string; // a toggle/cycle state (e.g. "ascii", "off") — right-aligned into a column
   onClick: () => void;
-}
-
-// Shared modal header: a title (left, indented to line up with the padded body) and a ✕ close
-// button hugging the top-right corner. `flexGrow` on the title pushes ✕ to the corner without
-// justify:'between'; the card clips it (overflow:hidden) so the hover fill can't bleed past the
-// edge. Used by the shortcuts + in-game menu popups.
-function modalHeader(title: string, closeId: string, onClose: () => void): Node {
-  return Box({ flexDirection: 'row', alignItems: 'center', gap: 2, padding: [0, 0, 0, 2] }, [
-    Box({ flexGrow: 1 }, [Text({ text: title, style: { color: [222, 224, 234], bold: true } })]),
-    Button({ id: closeId, label: '✕', onClick: onClose, style: MENU_CLOSE }),
-  ]);
 }
 
 // The in-game menu popup (Wii + / PS-button style): a "menu" title + ✕, then a stack of
@@ -329,13 +303,13 @@ export function buildGameMenu(opts: { groups: MenuItem[][]; onClose: () => void;
     for (const item of group) body.push(btn(item));
   });
 
-  // Card padding is tight [1,1] so the ✕ sits in the corner; the body gets its own [0,2] indent
-  // so the buttons keep breathing room. overflow:hidden clips the ✕ hover fill to the card edge.
-  const card = Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [1, 1], overflow: 'hidden', background: [22, 24, 32] }, [
-    modalHeader('menu', 'game-menu-close', opts.onClose),
-    Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [0, 2] }, body),
-  ]);
-  return Modal(card);
+  // Dialog supplies the card + 'menu' title + corner ✕; the body keeps its own [0,2] indent
+  // so the buttons sit in from the tight card padding.
+  return Modal(
+    Dialog({ title: 'menu', onClose: opts.onClose, closeId: 'game-menu-close' }, [
+      Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [0, 2] }, body),
+    ]),
+  );
 }
 
 // Friendlier display for a chord than the raw binding string.
@@ -383,12 +357,12 @@ export function buildShortcuts(bindings: { key: string; title: string; layer: st
 
   const screenRows = all.filter((r) => !r.general);
   const generalRows = all.filter((r) => r.general);
-  const card = Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [1, 1], overflow: 'hidden', background: [22, 24, 32] }, [
-    modalHeader('shortcuts', 'shortcuts-close', onClose),
-    Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [0, 2] }, [
-      ...section('this game', screenRows),
-      ...section('general', generalRows),
+  return Modal(
+    Dialog({ title: 'shortcuts', onClose, closeId: 'shortcuts-close' }, [
+      Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [0, 2] }, [
+        ...section('this game', screenRows),
+        ...section('general', generalRows),
+      ]),
     ]),
-  ]);
-  return Modal(card);
+  );
 }

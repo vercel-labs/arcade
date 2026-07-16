@@ -7,7 +7,7 @@
 // mounted via Slot, rebuilt into a full-screen tree each frame. main owns the scene +
 // driver and wires the handlers; this module owns the controls + the table furniture.
 
-import { Box, Button, Input, Modal, type Row, ScrollBox, Slider, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
+import { Box, Button, CloseButton, Dialog, Input, Modal, type Row, ScrollBox, Slider, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
 import type { RGB } from '../../../engine/index.ts';
 import { type Card, isRed, RANK_LABELS } from '../../../rules/poker/cards.ts';
 import type { SeatCardView, TableView } from './poker-scene.ts';
@@ -345,15 +345,6 @@ function cardCell(card: Card | null, placeholder: string): Node {
   return Box({ padding: [0, 1], background: CARD_FACE }, [Text({ text: `${rank}${SUIT_ICON[card.suit]}`, style: { color: isRed(card) ? CARD_RED : CARD_BLACK, bold: true } })]);
 }
 
-// The chat / notes ✕ (collapse), matching the chess chat + game-menu ✕: understated —
-// the glyph just brightens to white on hover/focus/press, no background fill.
-const CHAT_CLOSE: Style = {
-  padding: [0, 1],
-  color: [150, 154, 166],
-  hover: { color: [255, 255, 255] },
-  focus: { color: [255, 255, 255] },
-  pressed: { color: [255, 255, 255] },
-};
 // The two top-right pills: a hamburger glyph + "menu", and plain "chat" text (no icon —
 // a width-2 speech-bubble glyph left a stray continuation cell past the pill edge).
 const MENU_ICON = '☰'; // U+2630 — three stacked lines
@@ -435,10 +426,6 @@ export function buildPokerNotesModal(opts: {
     Text({ text: `${opts.observerLabel}'s reads`, style: { color: [222, 224, 234], bold: true } }),
     next,
   ]);
-  const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', gap: 3, width: NOTES_INNER_W }, [
-    title,
-    Button({ id: 'poker-notes-close', label: '✕', onClick: opts.onClose, style: CHAT_CLOSE }),
-  ]);
   // A blank spacer row between subjects; flatten each subject's rows into one list.
   const rows: Row[] = [];
   opts.entries.forEach((e, i) => {
@@ -450,11 +437,8 @@ export function buildPokerNotesModal(opts: {
     notesObserver = opts.observerLabel;
   }
   notesScroll.rows = rows;
-  const card = Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [1, 3], background: [22, 24, 32] }, [
-    header,
-    Slot('poker-notes-scroll'),
-  ]);
-  return Modal(card);
+  // Dialog supplies the card + corner ✕; the pager row is the (custom) title.
+  return Modal(Dialog({ title, onClose: opts.onClose, closeId: 'poker-notes-close', padding: [1, 3] }, [Slot('poker-notes-scroll')]));
 }
 
 // ── Pot pill (top-left) ────────────────────────────────────────────────────────────
@@ -591,7 +575,7 @@ function chatPanel(height: number, active: boolean, onToggle: () => void): Node 
   pokerChat.setActive(active);
   const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', width: RAIL_W - PANEL_PAD_L - PANEL_PAD_R, padding: [0, 2, 0, 0] }, [
     Text({ text: 'chat', style: { color: [222, 224, 234], bold: true } }),
-    Button({ id: 'poker-chat-close', label: '✕', onClick: onToggle, style: CHAT_CLOSE }),
+    CloseButton({ id: 'poker-chat-close', onClick: onToggle }),
   ]);
   return Box({ flexDirection: 'column', width: RAIL_W, height, padding: [CHAT_PAD_V, PANEL_PAD_R, CHAT_PAD_V, PANEL_PAD_L], background: [22, 24, 32, 0.9] }, [
     header,

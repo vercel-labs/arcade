@@ -9,7 +9,7 @@
 // translucent fill — no line border), and expands back. It's left-anchored, so
 // the "Moves" label keeps the same position in both states. Click it (or the ✕,
 // shown when expanded) to toggle.
-import { Box, Button, type Row, ScrollBox, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
+import { Box, Button, CloseButton, type Row, ScrollBox, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
 import type { RGB, RGBA } from '../../../engine/index.ts';
 import type { ChessResult } from '../../../rules/chess/chess.ts';
 import { WHITE } from '../../../rules/chess/types.ts';
@@ -182,9 +182,9 @@ const HEADER_BTN: Style = {
   bold: true,
   hover: { color: [255, 255, 255] },
 };
-// The ✕ minimize control in the expanded header's top-right corner; the copy
-// control sits just right of the "Moves" label (same understated styling).
-const CLOSE_BTN: Style = {
+// The understated copy (↥) control just right of the "Moves" label — a muted glyph
+// that brightens to white on hover, matching the shared CloseButton ✕ beside it.
+const ICON_BTN: Style = {
   padding: [0, 0],
   color: 'muted',
   hover: { color: [255, 255, 255] },
@@ -247,8 +247,8 @@ export function buildChessGameRoot(
     header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', width: HISTORY_WIDTH, padding: [0, 1, 0, 0] }, [
       movesLabel,
       Box({ flexDirection: 'row', alignItems: 'center', gap: 2 }, [
-        Button({ id: 'moves-copy', label: COPY_GLYPH, onClick: opts.onCopy, style: CLOSE_BTN }),
-        Button({ id: 'moves-close', label: '✕', onClick: opts.onToggle, style: CLOSE_BTN }),
+        Button({ id: 'moves-copy', label: COPY_GLYPH, onClick: opts.onCopy, style: ICON_BTN }),
+        CloseButton({ id: 'moves-close', onClick: opts.onToggle }),
       ]),
     ]);
   }
@@ -312,7 +312,7 @@ function buildChatPanel(height: number, onToggle: () => void, active: boolean): 
   chatBox.setActive(active);
   const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', width: CHAT_WIDTH - PANEL_PAD_L - PANEL_PAD_R, padding: [0, 2, 0, 0] }, [
     Button({ id: 'chat-toggle', label: 'chat', onClick: onToggle, style: HEADER_BTN }),
-    Button({ id: 'chat-close', label: '✕', onClick: onToggle, style: CLOSE_BTN }),
+    CloseButton({ id: 'chat-close', onClick: onToggle }),
   ]);
   // flexShrink 0: the wide chess-game bar in the main column overflows its row, so
   // without this the panel would be squeezed below CHAT_WIDTH and clip its bubbles.
