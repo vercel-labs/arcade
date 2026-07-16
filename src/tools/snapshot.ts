@@ -17,7 +17,7 @@ import { MENU_ITEMS } from '../arcade/shell/menu.ts';
 import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, type Mode } from '../arcade/shell/bars.ts';
 import { installKeymap } from '../arcade/shell/keybindings.ts';
 import { buildShowcase, mountShowcase } from '../arcade/scenes/ui-showcase.ts';
-import { buildChessGameRoot, mountChessHud, refreshMoveHistory } from '../arcade/games/chess/hud.ts';
+import { buildChessGameRoot, chessMoveChat, mountChessHud, refreshMoveHistory } from '../arcade/games/chess/hud.ts';
 import { type ChatMessage, clearChat, pushChatMessage } from '../arcade/games/chess/chat.ts';
 import { evaluate } from '../rules/chess/eval.ts';
 import { buildMatchSetup, mountMatchSetup } from '../arcade/match/setup.ts';
@@ -1017,14 +1017,24 @@ function chessOverlaySnapshot(): void {
   const chatVisible = process.argv.includes('chat');
   if (chatVisible && !process.argv.includes('empty')) {
     clearChat();
-    const seed: ChatMessage[] = [
-      { text: 'e4 - grabbing the center. Classic and principled.', model: 'openai/gpt-5.4' },
-      { text: 'c5, the Sicilian. I refuse to play symmetrically against you today.', model: 'anthropic/claude-opus-4.8' },
-      { text: "Nf3, developing and eyeing d4. Let's open this up.", model: 'openai/gpt-5.4' },
-      { text: 'Nc6. Fighting for the center squares, holding my ground.', model: 'anthropic/claude-opus-4.8' },
-      { text: 'Bb5 — a Rossolimo. Pinning your knight and slowing the queenside.', model: 'openai/gpt-5.4' },
+    // Mirror the live thread: each ply's pre-move rationale (colored, named) followed by
+    // the settled move as a grey event line with the mover's glyph — and, under the
+    // illegal toggle, a red "(illegal)" move line.
+    const seed: [string, string, string][] = [
+      ['e4', 'openai/gpt-5.4', 'e4 - grabbing the center. Classic and principled.'],
+      ['c5', 'anthropic/claude-opus-4.8', 'c5, the Sicilian. I refuse to play symmetrically against you today.'],
+      ['Nf3', 'openai/gpt-5.4', "Nf3, developing and eyeing d4. Let's open this up."],
+      ['Nc6', 'anthropic/claude-opus-4.8', 'Nc6. Fighting for the center squares, holding my ground.'],
+      ['Bb5', 'openai/gpt-5.4', 'Bb5 — a Rossolimo. Pinning your knight and slowing the queenside.'],
     ];
-    for (const m of seed) pushChatMessage(m);
+    seed.forEach(([san, model, text], i) => {
+      pushChatMessage({ text, model });
+      pushChatMessage(chessMoveChat(san, i, false));
+    });
+    if (process.argv.includes('illegal')) {
+      pushChatMessage({ text: 'Qh5?! ignoring the pin — sending it anyway.', model: 'anthropic/claude-opus-4.8' });
+      pushChatMessage(chessMoveChat('Qh5', 5, true)); // illegal-toggle ply → red "(illegal)"
+    }
   }
   const region = { x: 0, y: 0, w: cols, h: rows };
   // 'menu' shows the in-game ☰ menu popup over the board (the shared buildGameMenu).

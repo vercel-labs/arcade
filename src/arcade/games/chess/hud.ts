@@ -13,7 +13,7 @@ import { Box, Button, type Row, ScrollBox, Slot, Text, type LayoutBox, type Node
 import type { RGB, RGBA } from '../../../engine/index.ts';
 import type { ChessResult } from '../../../rules/chess/chess.ts';
 import { WHITE } from '../../../rules/chess/types.ts';
-import { CHAT_WIDTH, chatBox, mountChat, PANEL_PAD_L, PANEL_PAD_R } from './chat.ts';
+import { CHAT_WIDTH, type ChatMessage, chatBox, mountChat, PANEL_PAD_L, PANEL_PAD_R } from './chat.ts';
 
 const HISTORY_HEIGHT = 18; // MAX visible move rows — the panel grows to this, then scrolls
 const HISTORY_WIDTH = 22; // inner content width — header + list share it (fixed)
@@ -34,6 +34,29 @@ export interface Commentary {
   text: string;
   model: string; // model slug, or '' for app messages
   until: number; // seconds (`t`) after which it fades
+}
+
+// Unicode chess glyphs by color, keyed by SAN piece letter (pawns implied). Filled
+// (black) vs outline (white) sets so the mover's side reads at a glance in the chat.
+const GLYPH_WHITE: Record<string, string> = { K: '♔', Q: '♕', R: '♖', B: '♗', N: '♘', P: '♙' };
+const GLYPH_BLACK: Record<string, string> = { K: '♚', Q: '♛', R: '♜', B: '♝', N: '♞', P: '♟' };
+
+// The moved piece's glyph for a SAN string, given the ply (0-based: even = White). A
+// leading K/Q/R/B/N names the piece; castling (O-O / O-O-O) is the king; anything else
+// (a file letter or capture like exd5) is a pawn.
+function moveGlyph(san: string, ply: number): string {
+  const set = ply % 2 === 0 ? GLYPH_WHITE : GLYPH_BLACK;
+  if (san.startsWith('O-O')) return set.K;
+  const c = san[0];
+  return set[c] ?? set.P;
+}
+
+// A chess move rendered as a chat line: the mover's piece glyph + the SAN, grey for a
+// legal move and red with an "(illegal)" tag for one played under the illegal-moves
+// toggle — mirroring the move panel's red. `ply` is the 0-based half-move index.
+export function chessMoveChat(san: string, ply: number, illegal: boolean): ChatMessage {
+  const text = `${moveGlyph(san, ply)} ${san}${illegal ? ' (illegal)' : ''}`;
+  return { text, model: '', event: true, error: illegal };
 }
 
 // SAN log → PGN movetext ("1. e4 c5 2. Nf3 Nc6 … <result>"), pasteable into

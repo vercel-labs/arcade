@@ -631,6 +631,7 @@ export function buildPokerGameRoot(
     cineLabel: { label: string; cards: Card[] } | null; // top-centre "Board" + cards during that cinematic
     resultLabel: string | null; // top-centre end-of-hand winner line (over the visible table)
     awaitingContinue: boolean; // show the "click anywhere to continue" prompt under the banner
+    continueIn?: number | null; // seconds left before the gate auto-advances (null → no countdown shown)
   },
 ): Node {
   // During a community-deal cinematic everything but the top-right pills + rail is hidden,
@@ -721,7 +722,9 @@ export function buildPokerGameRoot(
     ? Box({ position: 'absolute', top: 1, left: 0, width: mainW }, [
         Box({ flexDirection: 'column', alignItems: 'center', gap: 0, width: mainW }, [
           bannerBody,
-          ...(opts.awaitingContinue ? [Text({ text: CONTINUE_TEXT, style: { color: 'muted' } })] : []),
+          ...(opts.awaitingContinue
+            ? [Text({ text: opts.continueIn != null ? `continuing in ${opts.continueIn}…  ·  press any key` : CONTINUE_TEXT, style: { color: 'muted' } })]
+            : []),
         ]),
       ])
     : null;

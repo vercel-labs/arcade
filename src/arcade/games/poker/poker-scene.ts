@@ -65,6 +65,10 @@ const WISP_SCALE = 1.0; // orb ~0.85 world radius; centred at WISP_FLOAT so its 
 // STREET_HOLD is an extra pause tacked onto the community-deal time when the flop/turn/
 // river turns, so the new board lands and reads before play resumes (see playMove).
 const ACTION_SETTLE = 0.28;
+// A "press any key to continue" gate (a board reveal or the end-of-hand winner banner)
+// auto-advances after this many seconds if the user doesn't act, so an unattended /
+// spectated match keeps flowing. A keypress still advances it immediately.
+const CONTINUE_AUTO_S = 6;
 
 // Community-deal cinematic: when a betting round closes and the flop/turn/river turns,
 // the camera hard-cuts from wherever the user was to a fixed bird's-eye over the board,
@@ -248,6 +252,27 @@ function actionLabel(a: PokerAction): string {
   }
 }
 
+// A natural-language narration of an action for the chat thread, e.g. "Claude raises to
+// 120" / "You go all-in". `second` (the human hero) uses second-person verbs so it reads
+// "You call" rather than "You calls".
+export function actionNarration(name: string, a: PokerAction, second: boolean): string {
+  const s = second ? '' : 's'; // third-person verb suffix
+  switch (a.type) {
+    case 'fold':
+      return `${name} fold${s}`;
+    case 'check':
+      return `${name} check${s}`;
+    case 'call':
+      return `${name} call${s}`;
+    case 'bet':
+      return `${name} bet${s} ${money(a.amount)}`;
+    case 'raise':
+      return `${name} raise${s} to ${money(a.to)}`;
+    case 'allin':
+      return second ? `${name} go all-in` : `${name} goes all-in`;
+  }
+}
+
 export class PokerGameScene {
   private cam: OrbitCamera;
   private back: Texture;
@@ -332,6 +357,10 @@ export class PokerGameScene {
   // `resultResolve` is the driver's waiter, released by continueGesture (or cancelContinue).
   private resultText: string | null = null;
   private resultResolve: (() => void) | null = null;
+  // Auto-advance countdown for whichever "press any key to continue" gate is up (board
+  // reveal or winner banner): seconds remaining, or −1 when no gate / not counting. Ticked
+  // in renderScene; fires continueGesture at zero. A keypress still advances immediately.
+  private continueClock = -1;
   // The post-deal pause before play: set to DEAL_HOLD when the opening deal lands, ticked
   // down in renderScene; awaitDeal() resolves when it lapses so the driver holds the first
   // action until every card is dealt and the pause has passed. −1 = not counting.
@@ -557,6 +586,9 @@ export class PokerGameScene {
       // A new betting round clears every seat's shown action; then record this actor's.
       if (this.hand!.street() !== streetBefore) this.lastAction.fill(null);
       if (seat >= 0) this.lastAction[seat] = actionLabel(action);
+      // Narrate the action into the chat thread (grey), before any street/result line it
+      // triggers — so the log reads "Claude raises to 120" then "Flop …".
+      if (seat >= 0 && this.events) this.events(actionNarration(this.seatName(seat), action, this.seats[seat]?.kind === 'human'));
       // A fold mucks its cards to the burn pile (object permanence — they slide off, not vanish).
       if (action.type === 'fold' && seat >= 0) this.muckSeat(seat);
       const board = this.hand!.boardCards();
@@ -660,6 +692,29 @@ export class PokerGameScene {
   // and routes the next click/keypress to continueGesture while this is true.
   awaitingContinue(): boolean {
     return (this.cine !== null && this.cine.phase === 'wait') || this.resultText !== null;
+  }
+
+  // Count down the auto-advance timer while a continue gate is up (paused matches don't
+  // tick), firing continueGesture when it lapses. The clock re-arms each time a gate opens
+  // (it resets to −1 the moment no gate is showing).
+  private tickAutoContinue(dt: number): void {
+    if (!this.awaitingContinue() || this.paused) {
+      this.continueClock = -1;
+      return;
+    }
+    if (this.continueClock < 0) this.continueClock = CONTINUE_AUTO_S;
+    this.continueClock -= dt;
+    if (this.continueClock <= 0) {
+      this.continueClock = -1;
+      this.continueGesture();
+    }
+  }
+
+  // Whole seconds left before the current continue gate auto-advances, or null when no
+  // gate is up. The HUD shows this in the prompt ("continuing in 3…").
+  continueCountdown(): number | null {
+    if (!this.awaitingContinue() || this.continueClock < 0) return null;
+    return Math.max(1, Math.ceil(this.continueClock));
   }
 
   // The user clicked/pressed a key past a continue prompt: advance whichever gate is up —
@@ -893,6 +948,7 @@ export class PokerGameScene {
     this.lastT = t;
     this.lastAspect = target.height > 0 ? target.width / target.height : this.lastAspect; // for the bird's-eye fit
     this.advanceCine(dt); // may hard-cut this.cam before we read the eye below
+    this.tickAutoContinue(dt); // may fire continueGesture (restoring the camera) before the eye read
     target.clear(6, 10, 8);
     const eye = this.cam.eye();
     const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 200 };

@@ -18,11 +18,13 @@ import { creatorTint } from '../../scenes/wisp.ts';
 
 // One chat line. Normally a model's rationale, tagged with its slug (drives the name +
 // color). When `event` is set it's a neutral game-event notice (e.g. "Flop  Q♥ 9♦ 5♣"),
-// rendered as a nameless grey line — `model` is ignored.
+// rendered as a nameless grey line — `model` is ignored. `error` promotes an event line
+// to red (e.g. a chess move played illegally under the illegal-moves toggle).
 export interface ChatMessage {
   text: string;
   model: string; // model slug, e.g. "openai/gpt-5.4"
   event?: boolean; // a grey system/game-event line (no name, no color)
+  error?: boolean; // with event: render the line red instead of grey (illegal move)
 }
 
 // ── Layout ────────────────────────────────────────────────────────────────────
@@ -44,6 +46,7 @@ const CONTENT_W = VIEW_W - SCROLLBAR_W - RIGHT_GAP; // text wrap width — a gap
 
 const MSG_FG: RGB = [224, 226, 234]; // dialogue + colon — normal white
 const EVENT_FG: RGB = [138, 142, 156]; // grey — game-event notices
+const ERROR_FG: RGB = [226, 92, 86]; // red — illegal-move events (matches the moves panel)
 const DEFAULT_PLACEHOLDER = 'ai dialogue will appear here';
 const PLACEHOLDER_FG: RGB = [120, 124, 140]; // muted
 const TRACK: RGB = [44, 46, 56];
@@ -109,7 +112,7 @@ interface Rendered {
 
 function render(messages: ChatMessage[]): Rendered[] {
   return messages.map((m) => {
-    if (m.event) return { name: '', color: EVENT_FG, lines: wrapInline(m.text, CONTENT_W, CONTENT_W), event: true };
+    if (m.event) return { name: '', color: m.error ? ERROR_FG : EVENT_FG, lines: wrapInline(m.text, CONTENT_W, CONTENT_W), event: true };
     const name = shortModel(m.model);
     const prefixW = name.length + 2; // "name" + ": "
     return { name, color: creatorColor(m.model), lines: wrapInline(m.text, CONTENT_W, CONTENT_W - prefixW), event: false };

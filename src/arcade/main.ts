@@ -27,7 +27,7 @@ import { AudioScene } from './scenes/audio-scene.ts';
 import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/input.ts';
 import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, type BarActions, type MenuItem, type Mode, type RenderMode } from './shell/bars.ts';
 import { buildShowcase, mountShowcase } from './scenes/ui-showcase.ts';
-import { buildChessGameRoot, type Commentary, mountChessHud, movesToPgn, refreshMoveHistory } from './games/chess/hud.ts';
+import { buildChessGameRoot, chessMoveChat, type Commentary, mountChessHud, movesToPgn, refreshMoveHistory } from './games/chess/hud.ts';
 import { clearChat, pushChatMessage } from './games/chess/chat.ts';
 import { buildMatchSetup, buildSwapSetup, matchSetupSelection, mountMatchSetup, mountSwapSetup, openSwapSetup, swapSetupSelection } from './match/setup.ts';
 import { copyToClipboard } from '../platform/clipboard.ts';
@@ -198,6 +198,9 @@ let pokerNotesFocused = false; // one-shot: focus the scroll body when the modal
 // When on, AI moves bypass the rules: the model's move is parsed loosely and
 // applied as-is. A thunk hands this live value to each ModelPlayer.
 let illegalAllowed = false;
+// How many chess half-moves have already been mirrored into the chat thread as grey
+// (or red "(illegal)") move lines. Bumped as new moves settle; reset with the thread.
+let chessChatPly = 0;
 // Whether the move-history panel is collapsed to its "Moves" header button
 // (toggle with the 'h' key or by clicking the header / ✕). History persists.
 let historyMinimized = false;
@@ -534,6 +537,7 @@ function confirmMatchSetup(): void {
   closeMatchSetup();
   matchSeats = { white: sel.white, black: sel.black };
   clearChat(); // fresh thread for the new game
+  chessChatPly = 0;
   aiMatch.start(sel.white, sel.black);
 }
 
@@ -911,6 +915,7 @@ function resetGame(): void {
   stopAiMatch();
   chessGame.resetGame();
   clearChat(); // empty the DM thread for the fresh game
+  chessChatPly = 0;
   syncLive(); // release the live lease the match held
   forceFrame = true;
   r.requestRender();
@@ -1402,6 +1407,14 @@ function syncBar(): void {
     // Full-screen overlay: move-history panel (top-right) + commentary toast over
     // the board, with the standard bar beneath. Refresh the panel rows first.
     refreshMoveHistory(chessGame.moves(), chessGame.illegalFlags());
+    // Mirror each newly-settled move into the chat thread as a grey line (red + "(illegal)"
+    // for a move played under the illegal toggle), with the moved piece's glyph.
+    const chessMoves = chessGame.moves();
+    if (chessMoves.length > chessChatPly) {
+      const flags = chessGame.illegalFlags();
+      for (let i = chessChatPly; i < chessMoves.length; i++) pushChatMessage(chessMoveChat(chessMoves[i], i, flags[i] ?? false));
+      chessChatPly = chessMoves.length;
+    }
     const ai = !chessGame.isMatchActive()
       ? { label: 'play ai', active: false }
       : aiMatch.isPaused()
@@ -1528,6 +1541,7 @@ function syncBar(): void {
         cineLabel: pokerScene.cineLabel(),
         resultLabel: pokerScene.resultLabel(),
         awaitingContinue: pokerScene.awaitingContinue(),
+        continueIn: pokerScene.continueCountdown(),
       }),
       { x: 0, y: 0, w: cols, h: rows },
     );
