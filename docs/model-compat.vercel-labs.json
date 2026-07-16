@@ -1,0 +1,3615 @@
+{
+  "generatedAt": "2026-07-16T01:22:50.835Z",
+  "team": {
+    "name": "Vercel Labs",
+    "slug": "vercel-labs"
+  },
+  "normalizer": "anthropic/claude-haiku-4.5",
+  "timeoutMs": 45000,
+  "games": [
+    "chess",
+    "poker"
+  ],
+  "models": [
+    {
+      "id": "alibaba/qwen-3-14b",
+      "name": "Qwen3-14B",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 105,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 105,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "alibaba/qwen-3-235b",
+      "name": "Qwen3 235B A22B",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 974,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "call",
+        "ms": 2473,
+        "detail": ""
+      }
+    },
+    {
+      "id": "alibaba/qwen-3-30b",
+      "name": "Qwen3-30B-A3B",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 78,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 78,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "alibaba/qwen-3-32b",
+      "name": "Qwen 3 32B",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "Nf3",
+        "ms": 733,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 2058,
+        "detail": ""
+      }
+    },
+    {
+      "id": "alibaba/qwen-3.6-max-preview",
+      "name": "Qwen 3.6 Max Preview",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 89,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 89,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "alibaba/qwen3-235b-a22b-thinking",
+      "name": "Qwen3 VL 235B A22B Thinking",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 93,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 93,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "alibaba/qwen3-coder",
+      "name": "Qwen3 Coder 480B A35B Instruct",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1426,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "call",
+        "ms": 2483,
+        "detail": ""
+      }
+    },
+    {
+      "id": "alibaba/qwen3-coder-30b-a3b",
+      "name": "Qwen 3 Coder 30B A3B Instruct",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 612,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 1492,
+        "detail": ""
+      }
+    },
+    {
+      "id": "alibaba/qwen3-coder-next",
+      "name": "Qwen3 Coder Next",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 760,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 1478,
+        "detail": ""
+      }
+    },
+    {
+      "id": "alibaba/qwen3-coder-plus",
+      "name": "Qwen3 Coder Plus",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 97,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 97,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "alibaba/qwen3-max",
+      "name": "Qwen3 Max",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 84,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 84,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "alibaba/qwen3-max-preview",
+      "name": "Qwen3 Max Preview",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 87,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 87,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "alibaba/qwen3-max-thinking",
+      "name": "Qwen 3 Max Thinking",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 132,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 132,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "alibaba/qwen3-next-80b-a3b-instruct",
+      "name": "Qwen3 Next 80B A3B Instruct",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 801,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "call",
+        "ms": 1698,
+        "detail": ""
+      }
+    },
+    {
+      "id": "alibaba/qwen3-next-80b-a3b-thinking",
+      "name": "Qwen3 Next 80B A3B Thinking",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 5430,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "fold",
+        "ms": 23783,
+        "detail": ""
+      }
+    },
+    {
+      "id": "alibaba/qwen3-vl-235b-a22b-instruct",
+      "name": "Qwen3 VL 235B A22B Instruct",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 85,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 85,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "alibaba/qwen3-vl-instruct",
+      "name": "Qwen3 VL 235B A22B Instruct",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 86,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 86,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "alibaba/qwen3-vl-thinking",
+      "name": "Qwen3 VL 235B A22B Thinking",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 95,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 95,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "alibaba/qwen3.5-flash",
+      "name": "Qwen 3.5 Flash",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 131,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 131,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "alibaba/qwen3.5-plus",
+      "name": "Qwen 3.5 Plus",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 124,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 124,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "alibaba/qwen3.6-27b",
+      "name": "Qwen 3.6 27B",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 127,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 127,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "alibaba/qwen3.6-plus",
+      "name": "Qwen 3.6 Plus",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 129,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 129,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "alibaba/qwen3.7-max",
+      "name": "Qwen 3.7 Max",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 87,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 87,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "alibaba/qwen3.7-plus",
+      "name": "Qwen 3.7 Plus",
+      "chess": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "e4",
+        "ms": 2275,
+        "detail": "structured output unsupported; plain-text fallback"
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 3343,
+        "detail": ""
+      }
+    },
+    {
+      "id": "amazon/nova-2-lite",
+      "name": "Nova 2 Lite",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 834,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 2289,
+        "detail": ""
+      }
+    },
+    {
+      "id": "amazon/nova-lite",
+      "name": "Nova Lite",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 634,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 120",
+        "ms": 1012,
+        "detail": ""
+      }
+    },
+    {
+      "id": "amazon/nova-micro",
+      "name": "Nova Micro",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 946,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 719,
+        "detail": ""
+      }
+    },
+    {
+      "id": "amazon/nova-pro",
+      "name": "Nova Pro",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "Nf3",
+        "ms": 659,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "fold",
+        "ms": 1537,
+        "detail": ""
+      }
+    },
+    {
+      "id": "anthropic/claude-3-haiku",
+      "name": "Claude 3 Haiku",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1502,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 50",
+        "ms": 2580,
+        "detail": ""
+      }
+    },
+    {
+      "id": "anthropic/claude-fable-5",
+      "name": "Claude Fable 5",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 4457,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 50",
+        "ms": 11113,
+        "detail": ""
+      }
+    },
+    {
+      "id": "anthropic/claude-haiku-4.5",
+      "name": "Claude Haiku 4.5",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1792,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "call",
+        "ms": 5381,
+        "detail": ""
+      }
+    },
+    {
+      "id": "anthropic/claude-opus-4",
+      "name": "Claude Opus 4",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 2979,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 70",
+        "ms": 9301,
+        "detail": ""
+      }
+    },
+    {
+      "id": "anthropic/claude-opus-4.1",
+      "name": "Claude Opus 4.1",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 3212,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "fold",
+        "ms": 7773,
+        "detail": ""
+      }
+    },
+    {
+      "id": "anthropic/claude-opus-4.5",
+      "name": "Claude Opus 4.5",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1974,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 35",
+        "ms": 6276,
+        "detail": ""
+      }
+    },
+    {
+      "id": "anthropic/claude-opus-4.6",
+      "name": "Claude Opus 4.6",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 3939,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "fold",
+        "ms": 8499,
+        "detail": ""
+      }
+    },
+    {
+      "id": "anthropic/claude-opus-4.7",
+      "name": "Claude Opus 4.7",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 2373,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 2582,
+        "detail": ""
+      }
+    },
+    {
+      "id": "anthropic/claude-opus-4.7-fast",
+      "name": "Claude Opus 4.7 (Fast)",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1242,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 30",
+        "ms": 3082,
+        "detail": ""
+      }
+    },
+    {
+      "id": "anthropic/claude-opus-4.8",
+      "name": "Claude Opus 4.8",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 2030,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 30",
+        "ms": 5870,
+        "detail": ""
+      }
+    },
+    {
+      "id": "anthropic/claude-opus-4.8-fast",
+      "name": "Claude Opus 4.8 (Fast)",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1081,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "call",
+        "ms": 3168,
+        "detail": ""
+      }
+    },
+    {
+      "id": "anthropic/claude-sonnet-4",
+      "name": "Claude Sonnet 4",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1492,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "call",
+        "ms": 4970,
+        "detail": ""
+      }
+    },
+    {
+      "id": "anthropic/claude-sonnet-4.5",
+      "name": "Claude Sonnet 4.5",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 2205,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 9239,
+        "detail": ""
+      }
+    },
+    {
+      "id": "anthropic/claude-sonnet-4.6",
+      "name": "Claude Sonnet 4.6",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1751,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 3984,
+        "detail": ""
+      }
+    },
+    {
+      "id": "anthropic/claude-sonnet-5",
+      "name": "Claude Sonnet 5",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 3425,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 70",
+        "ms": 6796,
+        "detail": ""
+      }
+    },
+    {
+      "id": "bytedance/seed-1.6",
+      "name": "Seed 1.6",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 87,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 87,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "bytedance/seed-1.8",
+      "name": "Bytedance Seed 1.8",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 82,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 82,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "cohere/command-a",
+      "name": "Command A",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 86,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 86,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "deepseek/deepseek-r1",
+      "name": "DeepSeek-R1",
+      "chess": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "e4",
+        "ms": 2665,
+        "detail": "structured output unsupported; plain-text fallback"
+      },
+      "poker": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "fold",
+        "ms": 9791,
+        "detail": "structured output unsupported; plain-text fallback"
+      }
+    },
+    {
+      "id": "deepseek/deepseek-v3",
+      "name": "DeepSeek V3 0324",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 92,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 92,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "deepseek/deepseek-v3.1",
+      "name": "DeepSeek V3.1",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 81,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 81,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "deepseek/deepseek-v3.1-terminus",
+      "name": "DeepSeek V3.1 Terminus",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 84,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 84,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "deepseek/deepseek-v3.2",
+      "name": "DeepSeek V3.2",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1437,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 11928,
+        "detail": ""
+      }
+    },
+    {
+      "id": "deepseek/deepseek-v3.2-thinking",
+      "name": "DeepSeek V3.2 Thinking",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 3676,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 5102,
+        "detail": ""
+      }
+    },
+    {
+      "id": "deepseek/deepseek-v4-flash",
+      "name": "DeepSeek V4 Flash",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 4261,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 19012,
+        "detail": ""
+      }
+    },
+    {
+      "id": "deepseek/deepseek-v4-pro",
+      "name": "DeepSeek V4 Pro",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 2118,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 4298,
+        "detail": ""
+      }
+    },
+    {
+      "id": "google/gemini-2.5-flash",
+      "name": "Gemini 2.5 Flash",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 2294,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "fold",
+        "ms": 19701,
+        "detail": ""
+      }
+    },
+    {
+      "id": "google/gemini-2.5-flash-image",
+      "name": "Nano Banana (Gemini 2.5 Flash Image)",
+      "chess": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "e4",
+        "ms": 1749,
+        "detail": "structured output unsupported; plain-text fallback"
+      },
+      "poker": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "raise 40",
+        "ms": 22081,
+        "detail": "structured output unsupported; plain-text fallback"
+      }
+    },
+    {
+      "id": "google/gemini-2.5-flash-lite",
+      "name": "Gemini 2.5 Flash Lite",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 675,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "fold",
+        "ms": 1211,
+        "detail": ""
+      }
+    },
+    {
+      "id": "google/gemini-2.5-pro",
+      "name": "Gemini 2.5 Pro",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 9285,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 14727,
+        "detail": ""
+      }
+    },
+    {
+      "id": "google/gemini-3-flash",
+      "name": "Gemini 3 Flash",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 2999,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "fold",
+        "ms": 7043,
+        "detail": ""
+      }
+    },
+    {
+      "id": "google/gemini-3-pro-image",
+      "name": "Nano Banana Pro (Gemini 3 Pro Image)",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 8241,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 11732,
+        "detail": ""
+      }
+    },
+    {
+      "id": "google/gemini-3-pro-preview",
+      "name": "Gemini 3 Pro Preview",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 2651,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "fold",
+        "ms": 4915,
+        "detail": ""
+      }
+    },
+    {
+      "id": "google/gemini-3.1-flash-image",
+      "name": "Gemini 3.1 Flash Image (Nano Banana 2)",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 4036,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 1653,
+        "detail": ""
+      }
+    },
+    {
+      "id": "google/gemini-3.1-flash-image-preview",
+      "name": "Gemini 3.1 Flash Image Preview (Nano Banana 2)",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 3365,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "call",
+        "ms": 1962,
+        "detail": ""
+      }
+    },
+    {
+      "id": "google/gemini-3.1-flash-lite",
+      "name": "Gemini 3.1 Flash Lite",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1019,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "call",
+        "ms": 1473,
+        "detail": ""
+      }
+    },
+    {
+      "id": "google/gemini-3.1-flash-lite-image",
+      "name": "Gemini 3.1 Flash Lite Image (Nano Banana 2 Lite)",
+      "chess": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "e4",
+        "ms": 1522,
+        "detail": "structured output unsupported; plain-text fallback"
+      },
+      "poker": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "call",
+        "ms": 942,
+        "detail": "structured output unsupported; plain-text fallback"
+      }
+    },
+    {
+      "id": "google/gemini-3.1-flash-lite-preview",
+      "name": "Gemini 3.1 Flash Lite Preview",
+      "chess": {
+        "status": "FALLBACK",
+        "structured": "no",
+        "move": "",
+        "ms": 526,
+        "detail": "all ladder rungs failed — HTTP 404 [AI_APICallError] Publisher model `projects/141030677902/locations/global/publishers/google/models/gemini-3.1-flash-lite-preview` was not found or your project does not ha"
+      },
+      "poker": {
+        "status": "FALLBACK",
+        "structured": "no",
+        "move": "",
+        "ms": 549,
+        "detail": "all ladder rungs failed — HTTP 404 [AI_APICallError] Publisher model `projects/141030677902/locations/global/publishers/google/models/gemini-3.1-flash-lite-preview` was not found or your project does not ha"
+      }
+    },
+    {
+      "id": "google/gemini-3.1-pro-preview",
+      "name": "Gemini 3.1 Pro Preview",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 3077,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "fold",
+        "ms": 5392,
+        "detail": ""
+      }
+    },
+    {
+      "id": "google/gemini-3.5-flash",
+      "name": "Gemini 3.5 Flash",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1724,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "fold",
+        "ms": 2210,
+        "detail": ""
+      }
+    },
+    {
+      "id": "google/gemini-omni-flash-preview",
+      "name": "Gemini Omni Flash Preview",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 2560,
+        "detail": ""
+      },
+      "poker": {
+        "status": "FALLBACK",
+        "structured": "no",
+        "move": "",
+        "ms": 675,
+        "detail": "all ladder rungs failed — ladder failed but a bare structured call succeeded (likely illegal/unparseable moves)"
+      }
+    },
+    {
+      "id": "google/gemma-4-26b-a4b-it",
+      "name": "Gemma 4 26B A4B IT",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1392,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 2614,
+        "detail": ""
+      }
+    },
+    {
+      "id": "google/gemma-4-31b-it",
+      "name": "Gemma 4 31B IT",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 94,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 94,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "inception/mercury-2",
+      "name": "Mercury 2",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 101,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 101,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "inception/mercury-coder-small",
+      "name": "Mercury Coder Small Beta",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 109,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 109,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "interfaze/interfaze-beta",
+      "name": "Interfaze Beta",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 81,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 81,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "kwaipilot/kat-coder-air-v2.5",
+      "name": "Kat Coder Air V2.5",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 86,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 86,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "kwaipilot/kat-coder-pro-v1",
+      "name": "KAT-Coder-Pro V1",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 100,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 100,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "kwaipilot/kat-coder-pro-v2",
+      "name": "Kat Coder Pro V2",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 106,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 106,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "kwaipilot/kat-coder-pro-v2.5",
+      "name": "Kat Coder Pro V2.5",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 90,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 90,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "meta/llama-3.1-70b",
+      "name": "Llama 3.1 70B Instruct",
+      "chess": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "e4",
+        "ms": 836,
+        "detail": "structured output unsupported; plain-text fallback"
+      },
+      "poker": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "call",
+        "ms": 4960,
+        "detail": "structured output unsupported; plain-text fallback"
+      }
+    },
+    {
+      "id": "meta/llama-3.1-8b",
+      "name": "Llama 3.1 8B Instruct",
+      "chess": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "e4",
+        "ms": 639,
+        "detail": "structured output unsupported; plain-text fallback"
+      },
+      "poker": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "call",
+        "ms": 1332,
+        "detail": "structured output unsupported; plain-text fallback"
+      }
+    },
+    {
+      "id": "meta/llama-3.2-11b",
+      "name": "Llama 3.2 11B Vision Instruct",
+      "chess": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "e4",
+        "ms": 638,
+        "detail": "structured output unsupported; plain-text fallback"
+      },
+      "poker": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "bet 20",
+        "ms": 891,
+        "detail": "structured output unsupported; plain-text fallback"
+      }
+    },
+    {
+      "id": "meta/llama-3.2-1b",
+      "name": "Llama 3.2 1B Instruct",
+      "chess": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "e4",
+        "ms": 534,
+        "detail": "structured output unsupported; plain-text fallback"
+      },
+      "poker": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "call",
+        "ms": 2074,
+        "detail": "structured output unsupported; plain-text fallback"
+      }
+    },
+    {
+      "id": "meta/llama-3.2-3b",
+      "name": "Llama 3.2 3B Instruct",
+      "chess": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "Nf3",
+        "ms": 665,
+        "detail": "structured output unsupported; plain-text fallback"
+      },
+      "poker": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "call",
+        "ms": 1526,
+        "detail": "structured output unsupported; plain-text fallback"
+      }
+    },
+    {
+      "id": "meta/llama-3.2-90b",
+      "name": "Llama 3.2 90B Vision Instruct",
+      "chess": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "e4",
+        "ms": 965,
+        "detail": "structured output unsupported; plain-text fallback"
+      },
+      "poker": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "raise 40",
+        "ms": 1507,
+        "detail": "structured output unsupported; plain-text fallback"
+      }
+    },
+    {
+      "id": "meta/llama-3.3-70b",
+      "name": "Llama 3.3 70B Instruct",
+      "chess": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "e4",
+        "ms": 853,
+        "detail": "structured output unsupported; plain-text fallback"
+      },
+      "poker": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "raise 60",
+        "ms": 2629,
+        "detail": "structured output unsupported; plain-text fallback"
+      }
+    },
+    {
+      "id": "meta/llama-4-maverick",
+      "name": "Llama 4 Maverick 17B Instruct",
+      "chess": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "e4",
+        "ms": 985,
+        "detail": "structured output unsupported; plain-text fallback"
+      },
+      "poker": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "raise 60",
+        "ms": 4008,
+        "detail": "structured output unsupported; plain-text fallback"
+      }
+    },
+    {
+      "id": "meta/llama-4-scout",
+      "name": "Llama 4 Scout 17B Instruct",
+      "chess": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "e4",
+        "ms": 1250,
+        "detail": "structured output unsupported; plain-text fallback"
+      },
+      "poker": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "raise 40",
+        "ms": 2932,
+        "detail": "structured output unsupported; plain-text fallback"
+      }
+    },
+    {
+      "id": "meta/muse-spark-1.1",
+      "name": "Muse Spark 1.1",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 97,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 97,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "minimax/minimax-m2",
+      "name": "MiniMax M2",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 81,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 81,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "minimax/minimax-m2.1",
+      "name": "MiniMax M2.1",
+      "chess": {
+        "status": "TIMEOUT",
+        "structured": "—",
+        "move": "",
+        "ms": 45007,
+        "detail": "Delay was aborted"
+      },
+      "poker": {
+        "status": "TIMEOUT",
+        "structured": "—",
+        "move": "",
+        "ms": 45002,
+        "detail": "Delay was aborted"
+      }
+    },
+    {
+      "id": "minimax/minimax-m2.1-lightning",
+      "name": "MiniMax M2.1 Lightning",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 85,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 85,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "minimax/minimax-m2.5",
+      "name": "MiniMax M2.5",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 3158,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 9011,
+        "detail": ""
+      }
+    },
+    {
+      "id": "minimax/minimax-m2.5-highspeed",
+      "name": "MiniMax M2.5 High Speed",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 84,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 84,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "minimax/minimax-m2.7",
+      "name": "MiniMax M2.7",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 4532,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "call",
+        "ms": 5322,
+        "detail": ""
+      }
+    },
+    {
+      "id": "minimax/minimax-m2.7-highspeed",
+      "name": "MiniMax M2.7 High Speed",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 81,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 81,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "minimax/minimax-m3",
+      "name": "MiniMax M3",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1437,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 3585,
+        "detail": ""
+      }
+    },
+    {
+      "id": "mistral/codestral",
+      "name": "Mistral Codestral",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 105,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 105,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "mistral/devstral-2",
+      "name": "Devstral 2",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 85,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 85,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "mistral/devstral-small-2",
+      "name": "Devstral Small 2",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 82,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 82,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "mistral/magistral-medium",
+      "name": "Magistral Medium 2509",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 82,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 82,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "mistral/magistral-small",
+      "name": "Magistral Small 2509",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 93,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 93,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "mistral/ministral-14b",
+      "name": "Ministral 14B",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 84,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 84,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "mistral/ministral-3b",
+      "name": "Ministral 3B",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 105,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 105,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "mistral/ministral-8b",
+      "name": "Ministral 8B",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 84,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 84,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "mistral/mistral-large-3",
+      "name": "Mistral Large 3",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 90,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 90,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "mistral/mistral-medium",
+      "name": "Mistral Medium 3.1",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 87,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 87,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "mistral/mistral-medium-3.5",
+      "name": "Mistral Medium Latest",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 86,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 86,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "mistral/mistral-nemo",
+      "name": "Mistral Nemo 12B",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 114,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 114,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "mistral/mistral-small",
+      "name": "Mistral Small",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 91,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 91,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "mistral/pixtral-12b",
+      "name": "Pixtral 12B 2409",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 85,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 85,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "moonshotai/kimi-k2",
+      "name": "Kimi K2 Instruct",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 85,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 85,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "moonshotai/kimi-k2-thinking",
+      "name": "Kimi K2 Thinking",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 84,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 84,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "moonshotai/kimi-k2.5",
+      "name": "Kimi K2.5",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 754,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "call",
+        "ms": 13224,
+        "detail": ""
+      }
+    },
+    {
+      "id": "moonshotai/kimi-k2.6",
+      "name": "Kimi K2.6",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 11285,
+        "detail": ""
+      },
+      "poker": {
+        "status": "TIMEOUT",
+        "structured": "—",
+        "move": "",
+        "ms": 45003,
+        "detail": "Delay was aborted"
+      }
+    },
+    {
+      "id": "moonshotai/kimi-k2.7-code",
+      "name": "Kimi K2.7 Code",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 4551,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 39211,
+        "detail": ""
+      }
+    },
+    {
+      "id": "moonshotai/kimi-k2.7-code-highspeed",
+      "name": "Kimi K2.7 Code High Speed",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 3122,
+        "detail": ""
+      },
+      "poker": {
+        "status": "TIMEOUT",
+        "structured": "—",
+        "move": "",
+        "ms": 45003,
+        "detail": "Delay was aborted"
+      }
+    },
+    {
+      "id": "morph/morph-v3-fast",
+      "name": "Morph V3 Fast",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 107,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 107,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "morph/morph-v3-large",
+      "name": "Morph V3 Large",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 92,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 92,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "nvidia/nemotron-3-nano-30b-a3b",
+      "name": "Nemotron 3 Nano 30B A3B",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 90,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 90,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "nvidia/nemotron-3-super-120b-a12b",
+      "name": "NVIDIA Nemotron 3 Super 120B A12B",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 678,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "call",
+        "ms": 2239,
+        "detail": ""
+      }
+    },
+    {
+      "id": "nvidia/nemotron-3-ultra-550b-a55b",
+      "name": "Nemotron 3 Ultra",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 81,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 81,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "nvidia/nemotron-nano-12b-v2-vl",
+      "name": "Nvidia Nemotron Nano 12B V2 VL",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "d4",
+        "ms": 486,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 90",
+        "ms": 1082,
+        "detail": ""
+      }
+    },
+    {
+      "id": "nvidia/nemotron-nano-9b-v2",
+      "name": "Nvidia Nemotron Nano 9B V2",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "Nf3",
+        "ms": 690,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 1613,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-3.5-turbo",
+      "name": "GPT-3.5 Turbo",
+      "chess": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "Nf3",
+        "ms": 1325,
+        "detail": "structured output unsupported; plain-text fallback"
+      },
+      "poker": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "raise 80",
+        "ms": 1342,
+        "detail": "structured output unsupported; plain-text fallback"
+      }
+    },
+    {
+      "id": "openai/gpt-4-turbo",
+      "name": "GPT-4 Turbo",
+      "chess": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "e4",
+        "ms": 2848,
+        "detail": "structured output unsupported; plain-text fallback"
+      },
+      "poker": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "raise 60",
+        "ms": 7056,
+        "detail": "structured output unsupported; plain-text fallback"
+      }
+    },
+    {
+      "id": "openai/gpt-4.1",
+      "name": "GPT-4.1",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 824,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 3847,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-4.1-mini",
+      "name": "GPT-4.1 mini",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 881,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 1926,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-4.1-nano",
+      "name": "GPT-4.1 nano",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 514,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 995,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-4o",
+      "name": "GPT-4o",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1005,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 1456,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-4o-mini",
+      "name": "GPT-4o mini",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 792,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 2108,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-4o-mini-search-preview",
+      "name": "GPT 4o Mini Search Preview",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 2005,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "call",
+        "ms": 3094,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5",
+      "name": "GPT-5",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 4248,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 50",
+        "ms": 12668,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5-chat",
+      "name": "GPT 5 Chat",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 749,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 1684,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5-codex",
+      "name": "GPT-5-Codex",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1301,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 50",
+        "ms": 2459,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5-mini",
+      "name": "GPT-5 mini",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 2870,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 9172,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5-nano",
+      "name": "GPT-5 nano",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 4187,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 25674,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5-pro",
+      "name": "GPT-5 pro",
+      "chess": {
+        "status": "TIMEOUT",
+        "structured": "—",
+        "move": "",
+        "ms": 45003,
+        "detail": "Delay was aborted"
+      },
+      "poker": {
+        "status": "TIMEOUT",
+        "structured": "—",
+        "move": "",
+        "ms": 45001,
+        "detail": "Delay was aborted"
+      }
+    },
+    {
+      "id": "openai/gpt-5.1-codex",
+      "name": "GPT-5.1-Codex",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1195,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 2107,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.1-codex-max",
+      "name": "GPT 5.1 Codex Max",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1406,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 3252,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.1-codex-mini",
+      "name": "GPT 5.1 Codex Mini",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 901,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 80",
+        "ms": 2061,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.1-instant",
+      "name": "GPT-5.1 Instant",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1099,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 2092,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.1-thinking",
+      "name": "GPT 5.1 Thinking",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1766,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 5151,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.2",
+      "name": "GPT 5.2",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1708,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 2818,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.2-chat",
+      "name": "GPT 5.2 Chat",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1416,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 5230,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.2-codex",
+      "name": "GPT 5.2 Codex",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1171,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 1990,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.2-pro",
+      "name": "GPT 5.2 ",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 7723,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 50",
+        "ms": 35657,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.3-chat",
+      "name": "GPT-5.3 Chat",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1712,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 4453,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.3-codex",
+      "name": "GPT 5.3 Codex",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1485,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 3396,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.4",
+      "name": "GPT 5.4",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1497,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "call",
+        "ms": 2281,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.4-mini",
+      "name": "GPT 5.4 Mini",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1073,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "call",
+        "ms": 1538,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.4-nano",
+      "name": "GPT 5.4 Nano",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1011,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "fold",
+        "ms": 1264,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.4-pro",
+      "name": "GPT 5.4 Pro",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 34164,
+        "detail": ""
+      },
+      "poker": {
+        "status": "TIMEOUT",
+        "structured": "—",
+        "move": "",
+        "ms": 45002,
+        "detail": "Delay was aborted"
+      }
+    },
+    {
+      "id": "openai/gpt-5.5",
+      "name": "GPT 5.5",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 2511,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 13135,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.5-pro",
+      "name": "GPT 5.5 Pro",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 9745,
+        "detail": ""
+      },
+      "poker": {
+        "status": "TIMEOUT",
+        "structured": "—",
+        "move": "",
+        "ms": 45002,
+        "detail": "Delay was aborted"
+      }
+    },
+    {
+      "id": "openai/gpt-5.6-luna",
+      "name": "GPT 5.6 Luna",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1297,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 2450,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.6-sol",
+      "name": "GPT 5.6 Sol",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1987,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 6863,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.6-terra",
+      "name": "GPT 5.6 Terra",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1034,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 50",
+        "ms": 2135,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-oss-120b",
+      "name": "GPT OSS 120B",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1371,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 6248,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-oss-20b",
+      "name": "GPT OSS 20B",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 760,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 150",
+        "ms": 22195,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-oss-safeguard-20b",
+      "name": "GPT OSS Safeguard 20B",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 88,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 88,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "openai/o1",
+      "name": "o1",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 3664,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 50",
+        "ms": 8955,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/o3",
+      "name": "o3",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1730,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 50",
+        "ms": 4469,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/o3-deep-research",
+      "name": "o3-deep-research",
+      "chess": {
+        "status": "FALLBACK",
+        "structured": "no",
+        "move": "",
+        "ms": 527,
+        "detail": "all ladder rungs failed — HTTP 400 [AI_APICallError] Invalid parameter: 'text.format' of type 'json_schema' is not supported with model version `o3-deep-research`."
+      },
+      "poker": {
+        "status": "FALLBACK",
+        "structured": "no",
+        "move": "",
+        "ms": 505,
+        "detail": "all ladder rungs failed — HTTP 400 [AI_APICallError] Invalid parameter: 'text.format' of type 'json_schema' is not supported with model version `o3-deep-research`."
+      }
+    },
+    {
+      "id": "openai/o3-mini",
+      "name": "o3-mini",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 2708,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 7728,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/o3-pro",
+      "name": "o3 Pro",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 13062,
+        "detail": ""
+      },
+      "poker": {
+        "status": "TIMEOUT",
+        "structured": "—",
+        "move": "",
+        "ms": 45005,
+        "detail": "Delay was aborted"
+      }
+    },
+    {
+      "id": "openai/o4-mini",
+      "name": "o4-mini",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1559,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 4657,
+        "detail": ""
+      }
+    },
+    {
+      "id": "perplexity/sonar",
+      "name": "Sonar",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 85,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 85,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "perplexity/sonar-pro",
+      "name": "Sonar Pro",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 86,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 86,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "perplexity/sonar-reasoning-pro",
+      "name": "Sonar Reasoning Pro",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 695,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 695,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "stepfun/step-3.5-flash",
+      "name": "StepFun 3.5 Flash",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 82,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 82,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "stepfun/step-3.7-flash",
+      "name": "Step 3.7 Flash",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 81,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 81,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "thinkingmachines/inkling",
+      "name": "Inkling",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 77,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 77,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "xai/grok-4.1-fast-non-reasoning",
+      "name": "Grok 4.1 Fast Non-Reasoning",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 732,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "fold",
+        "ms": 1184,
+        "detail": ""
+      }
+    },
+    {
+      "id": "xai/grok-4.1-fast-reasoning",
+      "name": "Grok 4.1 Fast Reasoning",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 2202,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "call",
+        "ms": 18413,
+        "detail": ""
+      }
+    },
+    {
+      "id": "xai/grok-4.20-multi-agent",
+      "name": "Grok 4.20 Multi-Agent",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 105,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 105,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "xai/grok-4.20-multi-agent-beta",
+      "name": "Grok 4.20 Multi Agent Beta",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 186,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 186,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "xai/grok-4.20-non-reasoning",
+      "name": "Grok 4.20 Non-Reasoning",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 620,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 1120,
+        "detail": ""
+      }
+    },
+    {
+      "id": "xai/grok-4.20-non-reasoning-beta",
+      "name": "Grok 4.20 Beta Non-Reasoning",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 187,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 187,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "xai/grok-4.20-reasoning",
+      "name": "Grok 4.20 Reasoning",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 2688,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "fold",
+        "ms": 7393,
+        "detail": ""
+      }
+    },
+    {
+      "id": "xai/grok-4.20-reasoning-beta",
+      "name": "Grok 4.20 Beta Reasoning",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 123,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 123,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "xai/grok-4.3",
+      "name": "Grok 4.3",
+      "chess": {
+        "status": "FALLBACK",
+        "structured": "no",
+        "move": "",
+        "ms": 16187,
+        "detail": "all ladder rungs failed — Failed after 3 attempts. Last error: Service Unavailable"
+      },
+      "poker": {
+        "status": "FALLBACK",
+        "structured": "no",
+        "move": "",
+        "ms": 16468,
+        "detail": "all ladder rungs failed — Failed after 3 attempts. Last error: Service Unavailable"
+      }
+    },
+    {
+      "id": "xai/grok-4.5",
+      "name": "Grok 4.5",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 111,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 111,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "xai/grok-build-0.1",
+      "name": "Grok Build 0.1",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 100,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 100,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "xiaomi/mimo-v2.5",
+      "name": "MiMo M2.5",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 90,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 90,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "xiaomi/mimo-v2.5-pro",
+      "name": "MiMo V2.5 Pro",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 85,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 85,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "zai/glm-4.5",
+      "name": "GLM 4.5",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 103,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 103,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "zai/glm-4.5-air",
+      "name": "GLM 4.5 Air",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 103,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 103,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "zai/glm-4.5v",
+      "name": "GLM 4.5V",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 81,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 81,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "zai/glm-4.6",
+      "name": "GLM 4.6",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 104,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 104,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "zai/glm-4.6v",
+      "name": "GLM-4.6V",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 81,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 81,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "zai/glm-4.6v-flash",
+      "name": "GLM-4.6V-Flash",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 90,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 90,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "zai/glm-4.7",
+      "name": "GLM 4.7",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1445,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 3269,
+        "detail": ""
+      }
+    },
+    {
+      "id": "zai/glm-4.7-flash",
+      "name": "GLM 4.7 Flash",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "Nf3",
+        "ms": 1425,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 2449,
+        "detail": ""
+      }
+    },
+    {
+      "id": "zai/glm-4.7-flashx",
+      "name": "GLM 4.7 FlashX",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 100,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 100,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "zai/glm-5",
+      "name": "GLM 5",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 8390,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "call",
+        "ms": 4201,
+        "detail": ""
+      }
+    },
+    {
+      "id": "zai/glm-5-turbo",
+      "name": "GLM 5 Turbo",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 85,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 85,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "zai/glm-5.1",
+      "name": "GLM 5.1",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1823,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 3776,
+        "detail": ""
+      }
+    },
+    {
+      "id": "zai/glm-5.2",
+      "name": "GLM 5.2",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 3584,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 10934,
+        "detail": ""
+      }
+    },
+    {
+      "id": "zai/glm-5.2-fast",
+      "name": "GLM 5.2 Fast",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1525,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "fold",
+        "ms": 2288,
+        "detail": ""
+      }
+    },
+    {
+      "id": "zai/glm-5v-turbo",
+      "name": "GLM 5V Turbo",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 226,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 226,
+        "detail": "restricted provider access on this team"
+      }
+    }
+  ]
+}
