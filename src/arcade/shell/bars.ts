@@ -3,7 +3,7 @@
 // pill padding is style padding, and hover colors are a style overlay. Per-button
 // onClick closures replace the id→action if/else that used to live in onMouse.
 
-import { Box, Button, Dialog, Modal, Text, type Node, type Style } from '../../tui/index.ts';
+import { Box, Button, Dialog, Modal, RoundedButton, Text, type Node, type Style } from '../../tui/index.ts';
 import { BISHOP, BLACK, type Color, KNIGHT, type PieceType, QUEEN, ROOK } from '../../rules/chess/types.ts';
 import type { RGB } from '../../engine/index.ts';
 
@@ -86,12 +86,14 @@ export function buildBar(
     // reset view. Everything system-level (home / new game / mode / eval bar / illegal /
     // quit) lives in the ☰ menu popup (top-right, see hud.ts buildChessGameRoot), and
     // the chat panel is a top-right pill — so the bar stays two buttons, not eight.
-    const aiStyle = ai.active
-      ? { ...PILL, background: [86, 64, 120] as RGB, color: [238, 230, 250] as RGB }
-      : PILL;
+    // Rounded (outlined) controls: 3 rows tall, arc border, a little horizontal
+    // padding, and the row's gap:2 keeps them apart. Transparent interior — the 2D
+    // scene shows through the empty space inside the border. Active (match running)
+    // tints the outline + label purple. Hover/focus whiten the border + label + bold.
+    const aiActive = ai.active ? { color: [216, 200, 235] as RGB, borderColor: [138, 110, 170] as RGB } : {};
     buttons = [
-      Button({ id: 'ai', label: ai.label, onClick: a.aiMatch, style: aiStyle }),
-      Button({ id: 'reset', label: 'reset view', onClick: a.reset, style: PILL }),
+      RoundedButton({ id: 'ai', label: ai.label, onClick: a.aiMatch, padding: [0, 2], ...aiActive }),
+      RoundedButton({ id: 'reset', label: 'reset view', onClick: a.reset, padding: [0, 2] }),
     ];
   } else if (mode === 'cards') {
     // The cards screen: the mode picker + per-mode controls live in the poker HUD
@@ -279,35 +281,22 @@ export function buildGameMenu(opts: { groups: MenuItem[][]; onClose: () => void;
   const labelW = withVal.length ? Math.max(...withVal.map((i) => i.label.length)) : 0;
   const valW = Math.max(opts.valueColW ?? 0, ...(withVal.length ? withVal.map((i) => (i.value as string).length) : [0]));
   const labelOf = (i: MenuItem): string => (i.value != null ? `${i.label.padEnd(labelW + 3)}${i.value.padStart(valW)}` : i.label);
+  // Sleek outlined items: a rounded arc border (3 rows tall) with a dim resting
+  // border + readable label; hover/focus whitens the border + label and bolds. No
+  // fill, so box-drawing corners stay seam-free over the Dialog card.
   const btn = (item: MenuItem): Node =>
-    Button({
-      id: item.id,
-      label: labelOf(item),
-      onClick: item.onClick,
-      style: {
-        padding: [0, 2],
-        background: [40, 42, 52],
-        color: [212, 214, 224],
-        bold: true,
-        hover: { background: [72, 76, 92] },
-        focus: { background: [72, 76, 92] },
-        pressed: { background: [120, 124, 142] },
-      },
-    });
+    RoundedButton({ id: item.id, label: labelOf(item), onClick: item.onClick, color: [212, 214, 224], borderColor: [88, 92, 110] });
 
-  // Groups (session / view toggles / system) are separated by a blank row — a touch more space
-  // than the 1-row gap within a group.
-  const body: Node[] = [];
-  opts.groups.forEach((group, gi) => {
-    if (gi > 0) body.push(Box({ height: 0 }));
-    for (const item of group) body.push(btn(item));
-  });
+  // The outlined items stack flush (gap 0): each button's own arc border is the
+  // divider, so adjacent bottom/top borders read as one continuous list — no empty
+  // rows between them. Groups are flattened (the border stacking separates rows).
+  const body = opts.groups.flat().map(btn);
 
   // Dialog supplies the card + 'menu' title + corner ✕; the body keeps its own [0,2] indent
   // so the buttons sit in from the tight card padding.
   return Modal(
     Dialog({ title: 'menu', onClose: opts.onClose, closeId: 'game-menu-close' }, [
-      Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [0, 2] }, body),
+      Box({ flexDirection: 'column', alignItems: 'stretch', gap: 0, padding: [0, 2] }, body),
     ]),
   );
 }
