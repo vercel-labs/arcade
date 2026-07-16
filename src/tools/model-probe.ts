@@ -23,11 +23,12 @@
 // selects another team from that login. Either path mints a fresh process-local
 // key and ignores inherited AI_GATEWAY_API_KEY values.
 
-import { APICallError, generateText, Output, streamText } from 'ai';
+import { generateText, Output, streamText } from 'ai';
 import { z } from 'zod';
 import { ChessState } from '../rules/chess/chess.ts';
 import type { Move } from '../rules/chess/types.ts';
-import { ModelPlayer } from '../ai/model-player.ts';
+import { isFallbackRationale, ModelPlayer, FALLBACK_RATIONALE } from '../ai/model-player.ts';
+import { classifyModelError, type FailureKind } from '../ai/model-errors.ts';
 import { creators, modelsFor } from '../arcade/match/models.ts';
 import { availableTeams, ensureCachedGatewayKey, useTeam } from '../auth/index.ts';
 
@@ -47,7 +48,11 @@ const prompt =
   `Legal moves: ${legalSan.join(', ')}\n` +
   `Reply with exactly one move from that list (SAN) and a one-sentence rationale.`;
 
-type Status = 'OK' | 'FALLBACK' | 'ILLEGAL' | 'MALFORMED' | 'ERROR' | 'TIMEOUT';
+// ACCESS is split out from ERROR so the report distinguishes "this team can't reach
+// the provider" (a provisioning/team matter) from "the model or provider is broken"
+// and from MALFORMED ("the model can't emit structured output") — the distinction
+// AIG-183's compatibility audit needs.
+type Status = 'OK' | 'FALLBACK' | 'ILLEGAL' | 'MALFORMED' | 'ACCESS' | 'ERROR' | 'TIMEOUT';
 interface Result {
   id: string;
   status: Status;
@@ -58,7 +63,6 @@ interface Result {
 
 const RAW = process.argv.includes('--raw');
 const STREAM = process.argv.includes('--stream');
-const FALLBACK_NOTE = '(no valid reply — fell back to a legal move)';
 
 interface StreamStats {
   firstEventMs: number | null;
@@ -78,7 +82,10 @@ async function probePlayer(id: string): Promise<Result> {
     const player = new ModelPlayer<Move>({ model: id, gameName: 'chess', maxRetries: 1 });
     const { action, rationale } = await player.chooseAction(state, { signal: AbortSignal.timeout(TIMEOUT_MS) });
     const ms = Date.now() - t0;
-    if (rationale === FALLBACK_NOTE) return { id, status: 'FALLBACK', detail: 'all attempts failed', ms };
+    // A diagnosed fallback means every rung failed. Report the "unavailable" reason as
+    // ACCESS (the team can't reach the provider) rather than a generic FALLBACK.
+    if (rationale === FALLBACK_RATIONALE.unavailable) return { id, status: 'ACCESS', detail: 'restricted provider access on this team', ms };
+    if (isFallbackRationale(rationale)) return { id, status: 'FALLBACK', detail: 'all attempts failed', ms };
     return { id, status: 'OK', detail: state.actionToString(action), ms };
   } catch (e) {
     return classifyError(id, e, Date.now() - t0);
@@ -164,15 +171,22 @@ async function probeStream(id: string, verbose: boolean): Promise<Result> {
   }
 }
 
+// Map the shared classifier's kind onto a probe status. `classifyModelError` walks
+// the gateway's cause chain, so an access error surfaces its real HTTP 403 +
+// `no_providers_available` type instead of being lumped into a generic ERROR.
+const KIND_STATUS: Record<FailureKind, Status> = {
+  timeout: 'TIMEOUT',
+  access: 'ACCESS',
+  schema: 'MALFORMED',
+  transient: 'ERROR',
+  unknown: 'ERROR',
+};
 function classifyError(id: string, e: unknown, ms: number): Result {
-  const err = e as { name?: string; message?: string; statusCode?: number; responseBody?: string };
-  if (err.name === 'TimeoutError' || err.name === 'AbortError') return { id, status: 'TIMEOUT', detail: `${TIMEOUT_MS / 1000}s`, ms };
-  if (APICallError.isInstance(e)) {
-    const body = (err.responseBody ?? err.message ?? '').replace(/\s+/g, ' ').trim().slice(0, 140);
-    return { id, status: 'ERROR', detail: `HTTP ${err.statusCode ?? '?'} ${body}`, ms };
-  }
-  const malformed = (err.name ?? '').includes('Object') || /object|schema|parse|json/i.test(err.message ?? '');
-  return { id, status: malformed ? 'MALFORMED' : 'ERROR', detail: (err.message ?? String(e)).replace(/\s+/g, ' ').slice(0, 140), ms };
+  const c = classifyModelError(e);
+  if (c.kind === 'timeout') return { id, status: 'TIMEOUT', detail: `${TIMEOUT_MS / 1000}s`, ms };
+  const http = c.status ? `HTTP ${c.status} ` : '';
+  const type = c.gatewayType ? `[${c.gatewayType}] ` : '';
+  return { id, status: KIND_STATUS[c.kind], detail: `${http}${type}${c.message}`.slice(0, 160), ms };
 }
 
 function targets(arg: string | undefined): string[] {
@@ -187,8 +201,8 @@ function streamDetail(s: StreamStats): string {
   return `first ${fmt(s.firstEventMs)}, text ${s.textChunks}/${s.textChars}c @ ${fmt(s.firstTextMs)}, reasoning ${s.reasoningChunks}/${s.reasoningChars}c @ ${fmt(s.firstReasoningMs)}`;
 }
 
-const MARK: Record<Status, string> = { OK: 'OK      ', FALLBACK: 'FALLBACK', ILLEGAL: 'ILLEGAL ', MALFORMED: 'MALFORM ', ERROR: 'ERROR   ', TIMEOUT: 'TIMEOUT ' };
-const STATUSES: Status[] = ['OK', 'FALLBACK', 'ILLEGAL', 'MALFORMED', 'ERROR', 'TIMEOUT'];
+const MARK: Record<Status, string> = { OK: 'OK      ', FALLBACK: 'FALLBACK', ILLEGAL: 'ILLEGAL ', MALFORMED: 'MALFORM ', ACCESS: 'ACCESS  ', ERROR: 'ERROR   ', TIMEOUT: 'TIMEOUT ' };
+const STATUSES: Status[] = ['OK', 'FALLBACK', 'ILLEGAL', 'MALFORMED', 'ACCESS', 'ERROR', 'TIMEOUT'];
 
 async function main(): Promise<void> {
   const teamArg = process.argv.find((a) => a.startsWith('--team='))?.slice('--team='.length);
@@ -237,7 +251,7 @@ async function main(): Promise<void> {
   const by = (s: Status): Result[] => results.filter((r) => r.status === s);
   console.log('\n── summary ──');
   for (const s of STATUSES) console.log(`  ${MARK[s].trim().padEnd(9)} ${by(s).length}`);
-  const broken = [...by('FALLBACK'), ...by('ERROR'), ...by('TIMEOUT'), ...by('MALFORMED'), ...by('ILLEGAL')];
+  const broken = [...by('FALLBACK'), ...by('ACCESS'), ...by('ERROR'), ...by('TIMEOUT'), ...by('MALFORMED'), ...by('ILLEGAL')];
   if (broken.length) {
     console.log('\n── not usable ──');
     for (const r of broken) console.log(`  ${r.id.padEnd(40)} ${r.status}: ${r.detail}`);
