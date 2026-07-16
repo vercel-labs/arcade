@@ -11,6 +11,8 @@
     "dev": "tsx src/arcade/main.ts",
     "snapshot": "tsx src/tools/snapshot.ts",
     "snapshot:png": "sh scripts/snapshot-png.sh",
+    "models:audit": "tsx src/tools/model-compat-report.ts",
+    "models:report": "tsx src/tools/model-compat-view.ts",
     "build:vercel": "node scripts/build-vercel-output.mjs",
     "watch": "tsx watch src/arcade/main.ts",
     "type-check": "tsc --noEmit",
