@@ -118,7 +118,7 @@ export interface ModelPlayerOpts {
    * (src/tools/self-play.ts), not used in the app. `raw` is the model's move
    * string / reply / error message; `result` is how it resolved.
    */
-  onAttempt?: (info: { phase: 'structured' | 'text'; raw: string; result: 'legal' | 'illegal' | 'error' }) => void;
+  onAttempt?: (info: { phase: 'structured' | 'text' | 'normalize'; raw: string; result: 'legal' | 'illegal' | 'error' }) => void;
   /**
    * When this returns true, illegal moves are ALLOWED: the model's move is parsed
    * loosely (piece + destination, no rules) via the state's `actionFromStringLoose`
@@ -127,6 +127,19 @@ export interface ModelPlayerOpts {
    * reject/retry path (and the retry prompt lists the legal moves).
    */
   allowIllegal?: () => boolean;
+  /**
+   * Rung 4 of the fallback ladder (AIG-183): a SEPARATE, structured-output-capable
+   * model used to normalize this model's answer into a legal move ONLY after the
+   * native-structured and deterministic-soft-parse rungs have failed. It is given
+   * the legal-action set + this model's raw answer and asked which legal action was
+   * intended — it recovers the move, it does NOT choose a better one, so the play
+   * stays attributed to THIS model. Off (random-legal fallback) unless set. The
+   * surfaced rationale is never the normalizer's; in split/speech mode only the
+   * public `say` line is ever surfaced, so a poker hand can't leak through it.
+   */
+  normalizer?: LanguageModel;
+  /** Label for the normalizer in diagnostics/logs; defaults to its slug. */
+  normalizerName?: string;
 }
 
 // A `Player` backed by an LLM through the Vercel AI Gateway. Observation =
@@ -147,6 +160,8 @@ export class ModelPlayer<A> implements Player<A> {
   private contextProvider?: (player: number) => string;
   private onAttempt?: ModelPlayerOpts['onAttempt'];
   private allowIllegal?: () => boolean;
+  private normalizer?: LanguageModel;
+  private normalizerName?: string;
   private notation: MoveNotation;
   private schema: z.ZodTypeAny;
 
@@ -162,6 +177,8 @@ export class ModelPlayer<A> implements Player<A> {
     this.contextProvider = opts.contextProvider;
     this.onAttempt = opts.onAttempt;
     this.allowIllegal = opts.allowIllegal;
+    this.normalizer = opts.normalizer;
+    this.normalizerName = opts.normalizerName ?? (typeof opts.normalizer === 'string' ? opts.normalizer : undefined);
     this.notation = opts.moveNotation ?? CHESS_NOTATION;
     this.schema = buildSchema(this.notation, { rationale: opts.rationaleGuide, speech: opts.speech });
   }
@@ -190,6 +207,12 @@ export class ModelPlayer<A> implements Player<A> {
     let feedback = '';
     let structuredErrored = false;
     let unavailable = false;
+    // The most recent answer the model actually produced (a rejected move string or
+    // a prose reply) and the best PUBLIC rationale seen — fed to the normalizer rung
+    // if every deterministic rung fails. In split mode `lastRationale` is only ever
+    // the `say` line, so a normalized rescue can't surface private hand analysis.
+    let lastRaw: string | undefined;
+    let lastRationale: string | undefined;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       let move: string;
       let rationale: string | undefined;
@@ -218,6 +241,8 @@ export class ModelPlayer<A> implements Player<A> {
       const action = parse(move);
       this.onAttempt?.({ phase: 'structured', raw: move, result: action ? 'legal' : 'illegal' });
       if (action !== null) return { action, rationale };
+      lastRaw = move;
+      lastRationale = rationale;
       feedback = this.retryNote(move, useLoose, legalSan);
     }
 
@@ -246,14 +271,54 @@ export class ModelPlayer<A> implements Player<A> {
         const parsed = this.parseText(state, text, parse);
         this.onAttempt?.({ phase: 'text', raw: text.replace(/\s+/g, ' ').trim().slice(0, 120), result: parsed ? 'legal' : 'illegal' });
         if (parsed) return parsed;
+        lastRaw = text;
+        lastRationale = this.speech !== undefined ? this.sayFrom(text) : this.rationaleFrom(text);
         feedback = this.retryNote(text.replace(/\s+/g, ' ').trim().slice(0, 60), useLoose, legalSan);
       }
+    }
+
+    // Rung 4 — normalization pass: hand this model's raw answer + the legal set to a
+    // structured-capable normalizer to recover the intended LEGAL move. Skipped when
+    // the provider was unreachable (nothing to normalize) or in illegal-moves mode
+    // (which deliberately bypasses the legal set). The play stays attributed to THIS
+    // model; only its own public rationale is surfaced (never the normalizer's).
+    if (this.normalizer && lastRaw !== undefined && !unavailable && !useLoose) {
+      const action = await this.normalize(state, lastRaw, legalSan, signal);
+      if (action !== null) return { action, rationale: lastRationale };
     }
 
     // Exhausted everything — play a legal move so a match never deadlocks, tagged
     // with WHY so the fallback is visibly diagnosed rather than a silent random move.
     const fallback = legal[Math.floor(Math.random() * legal.length)];
     return { action: fallback, rationale: unavailable ? FALLBACK_RATIONALE.unavailable : FALLBACK_RATIONALE.exhausted };
+  }
+
+  // Rung 4 helper: ask the normalizer which single legal move the player intended,
+  // given its raw answer + the legal-action set. Structured output on a KNOWN
+  // structured-capable model (the whole point — the playing model may not be). It
+  // recovers the move, never substitutes a stronger one, and its reply is validated
+  // against the legal set (strict parse — normalization only runs in legal mode).
+  private async normalize(state: GameState<A>, rawAnswer: string, legalSan: string[], signal?: AbortSignal): Promise<A | null> {
+    if (!this.normalizer) return null;
+    const schema = z.object({ move: z.string().describe(`Exactly one move from the legal list, in ${this.notation.description}.`) });
+    const prompt = [
+      `A ${this.gameName} player was asked for a single move and replied:`,
+      `"""\n${rawAnswer.slice(0, 2000)}\n"""`,
+      `\nThe legal moves are: ${legalSan.join(', ')}.`,
+      `\nWhich ONE of those legal moves did the player intend? Recover the move they meant —`,
+      ` do NOT substitute a different or stronger move. Reply with exactly one move from the list.`,
+    ].join('');
+    try {
+      const { output } = await generateText({ model: this.normalizer, abortSignal: signal, output: Output.object({ schema }), prompt });
+      const move = (output as { move: string }).move;
+      const action = state.actionFromString(move); // normalization always targets the legal set
+      this.onAttempt?.({ phase: 'normalize', raw: `${this.normalizerName ?? 'normalizer'} → ${move}`, result: action ? 'legal' : 'illegal' });
+      return action;
+    } catch (err) {
+      if (signal?.aborted) throw err; // cancellation — let it propagate
+      this.onAttempt?.({ phase: 'normalize', raw: (err as Error).message ?? String(err), result: 'error' });
+      return null;
+    }
   }
 
   // Re-prompt text. Illegal mode: only "I couldn't parse a move" (any move is

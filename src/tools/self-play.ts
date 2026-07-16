@@ -20,7 +20,7 @@ const whiteSlug = pos[0] || 'anthropic/claude-3-haiku';
 const blackSlug = pos[1] || 'openai/gpt-5.4-nano';
 const maxPlies = Number(pos[2]) || 30;
 
-type Attempt = { phase: 'structured' | 'text'; raw: string; result: 'legal' | 'illegal' | 'error' };
+type Attempt = { phase: 'structured' | 'text' | 'normalize'; raw: string; result: 'legal' | 'illegal' | 'error' };
 let attempts: Attempt[] = [];
 const onAttempt = (a: Attempt): void => {
   attempts.push(a);

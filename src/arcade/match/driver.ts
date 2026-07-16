@@ -10,6 +10,7 @@ import { HumanPlayer } from '../../ai/human-player.ts';
 import type { Player } from '../../ai/player.ts';
 import type { ChessGameScene } from '../games/chess/scene.ts';
 import type { Move } from '../../rules/chess/types.ts';
+import { normalizerModel } from './models.ts';
 
 // One side of a match: an AI model (a Gateway slug) or a human at the keyboard.
 // The setup modal produces a pair of these; a human seat has no wisp and is played
@@ -106,7 +107,7 @@ export class AiMatch {
     if (seat.kind === 'human') {
       return new HumanPlayer<Move>({ name: 'you', awaitMove: (_state, ctx) => this.deps.chessGame.requestHumanMove(ctx?.signal) });
     }
-    return new ModelPlayer<Move>({ model: seat.model, gameName: 'chess', allowIllegal: this.deps.allowIllegal });
+    return new ModelPlayer<Move>({ model: seat.model, gameName: 'chess', allowIllegal: this.deps.allowIllegal, normalizer: normalizerModel() });
   }
 
   // Swap one side's player mid-match (the in-game model switch): rebuild that
@@ -115,7 +116,7 @@ export class AiMatch {
   // handoff) and resumes after. No-op when idle (no players yet).
   setPlayer(index: number, model: string): void {
     if (!this.players || index < 0 || index >= this.players.length) return;
-    this.players[index] = new ModelPlayer<Move>({ model, gameName: 'chess', allowIllegal: this.deps.allowIllegal });
+    this.players[index] = new ModelPlayer<Move>({ model, gameName: 'chess', allowIllegal: this.deps.allowIllegal, normalizer: normalizerModel() });
   }
 
   // Pause on whoever's turn it is: cancel the in-flight model call (stop thinking)
