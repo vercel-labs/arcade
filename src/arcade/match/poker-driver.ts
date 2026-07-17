@@ -39,8 +39,8 @@ const POKER_NOTATION: MoveNotation = {
 // through. Lives in `system` (see ModelPlayer.persona) so it outranks the per-turn board.
 const POKER_PERSONA =
   "You are playing live no-limit Texas Hold'em against the other players at the table. " +
-  'Anything you say out loud is heard by everyone, so do not reveal your own cards or ' +
-  'hand strength unless you are bluffing.';
+  'Everything you say out loud is heard by everyone, so bluff and mislead freely but never ' +
+  'honestly reveal the cards you are holding.';
 
 const creatorOf = (slug: string): string => slug.split('/')[0] ?? slug;
 
@@ -180,7 +180,8 @@ export class PokerMatch {
       // hand while justifying a move (a bare "rationale" field invites "8-4 is junk"). The
       // guide steers `say` toward lively social talk so the chat has character, not a flat
       // announcement of the action.
-      speech: 'a line or two of live table talk in your own voice: react to the hand, banter, size someone up, or needle an opponent. Actually talk to the table, do not just announce your move',
+      speech:
+        'a line or two of live table talk in your own voice: banter, needle, read the board, rattle an opponent. Talk to the table, do not just announce your move. Bluff and lie about your hand freely, but never honestly reveal the cards you are holding.',
       // Per-turn context: chip standings + this seat's private opponent notes, read live.
       contextProvider: () => this.moveContext(index),
       // Fallback normalization rung (AIG-183). Safe under poker's private-info boundary:
@@ -253,7 +254,15 @@ export class PokerMatch {
       return;
     }
     if (this.stacks[this.button] <= 0) this.button = this.nextAlive(this.button);
-    const state = new HoldemState({ stacks: this.stacks.slice(), button: this.button, smallBlind: SMALL_BLIND, bigBlind: BIG_BLIND });
+    // Pass the display labels ("the human" / model short-names) so the model observation
+    // names seats instead of "P0/P1" — models then refer to each other by name.
+    const state = new HoldemState({
+      stacks: this.stacks.slice(),
+      button: this.button,
+      smallBlind: SMALL_BLIND,
+      bigBlind: BIG_BLIND,
+      seatNames: this.labels.length ? this.labels.slice() : undefined,
+    });
     this.deps.scene.beginHand(state);
     this.voice?.beginHand(state); // seed the bot with its own hole cards for this hand
     this.deps.onHandOver(); // refresh HUD for the fresh hand
