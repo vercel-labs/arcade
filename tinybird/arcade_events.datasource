@@ -1,0 +1,39 @@
+# arcade_events — usage telemetry for the Arcade CLI (src/telemetry).
+#
+# Reference schema for the datasource the CLI's Events API writes to. The Events API
+# auto-creates and evolves the datasource on first ingest, so pushing this file is
+# OPTIONAL — it documents the shape and lets you PIN column types + the sorting key if
+# you'd rather enforce them than infer:
+#
+#   tb push tinybird/arcade_events.datasource
+#
+# Column notes follow the house Tinybird conventions: no Nullable (empty string / -1
+# sentinels instead), LowCardinality for anything with < ~10k distinct values, and a
+# sorting key ordered lowest-cardinality first.
+
+SCHEMA >
+    `ts` DateTime64(3) `json:$.ts`,
+    `event` LowCardinality(String) `json:$.event`,
+    `env` LowCardinality(String) `json:$.env`,
+    `version` LowCardinality(String) `json:$.version`,
+    `session` String `json:$.session`,
+    `install` String `json:$.install`,
+    `game` LowCardinality(String) `json:$.game` DEFAULT '',
+    `mode` LowCardinality(String) `json:$.mode` DEFAULT '',
+    `models` String `json:$.models` DEFAULT '',
+    `winner` String `json:$.winner` DEFAULT '',
+    `winners` String `json:$.winners` DEFAULT '',
+    `pot` Int32 `json:$.pot` DEFAULT -1,
+    `humans` Int8 `json:$.humans` DEFAULT -1,
+    `stack` Int32 `json:$.stack` DEFAULT -1,
+    `model` String `json:$.model` DEFAULT '',
+    `reason` LowCardinality(String) `json:$.reason` DEFAULT '',
+    `colorMode` LowCardinality(String) `json:$.colorMode` DEFAULT '',
+    `authed` UInt8 `json:$.authed` DEFAULT 0,
+    `cols` Int16 `json:$.cols` DEFAULT -1,
+    `rows` Int16 `json:$.rows` DEFAULT -1,
+    `node` LowCardinality(String) `json:$.node` DEFAULT ''
+
+ENGINE "MergeTree"
+ENGINE_PARTITION_KEY "toYYYYMM(ts)"
+ENGINE_SORTING_KEY "env, event, ts"

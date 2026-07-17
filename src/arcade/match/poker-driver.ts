@@ -6,8 +6,9 @@
 // human seam; main owns the surrounding UI (setup modal, commentary, HUD).
 
 import { runMatch } from '../../ai/match.ts';
-import { ModelPlayer, type MoveNotation } from '../../ai/model-player.ts';
+import { FALLBACK_RATIONALE, isFallbackRationale, ModelPlayer, type MoveNotation } from '../../ai/model-player.ts';
 import { HumanPlayer } from '../../ai/human-player.ts';
+import { trackHandEnded, trackMatchStarted, trackModelFallback } from '../../telemetry/index.ts';
 import type { Player } from '../../ai/player.ts';
 import { type HandPublicRecord, HoldemState, type PokerAction } from '../../rules/poker/holdem.ts';
 import type { PokerGameScene, PokerSeatView } from '../games/poker/poker-scene.ts';
@@ -137,6 +138,13 @@ export class PokerMatch {
       s.kind === 'human' ? { kind: 'human', label: 'You' } : { kind: 'ai', label: this.labelOf(seat), creator: creatorOf(s.model) },
     );
     this.deps.scene.beginSession(views);
+    trackMatchStarted({
+      game: 'poker',
+      mode: seats.every((s) => s.kind === 'ai') ? 'ai_table' : seats.some((s) => s.kind === 'human') && seats.some((s) => s.kind === 'ai') ? 'mixed' : 'human_table',
+      models: seats.map((s) => (s.kind === 'ai' ? s.model : 'human')),
+      humans: seats.filter((s) => s.kind === 'human').length,
+      stack: opts?.stack ?? STARTING_STACK,
+    });
     this.setupVoice(); // may set this.voice for a 2-seat human-vs-AI match — before makePlayer
     this.players = seats.map((s, i) => this.makePlayer(s, i));
     this.running = true;
@@ -311,6 +319,10 @@ export class PokerMatch {
       signal: ctrl.signal,
       onCommentary: (text, player) => {
         const seat = this.players.indexOf(player);
+        const spec = seat >= 0 ? this.seats[seat] : undefined;
+        if (spec?.kind === 'ai' && isFallbackRationale(text)) {
+          trackModelFallback({ game: 'poker', model: spec.model, reason: text === FALLBACK_RATIONALE.unavailable ? 'unavailable' : 'exhausted' });
+        }
         this.deps.onCommentary(text, player.name, seat >= 0 ? this.labelOf(seat) : shortModel(player.name));
       },
     })
@@ -318,6 +330,15 @@ export class PokerMatch {
         if (ctrl.signal.aborted || this.abort !== ctrl) return; // paused / stopped mid-hand
         const r = state.returns();
         for (let i = 0; i < this.stacks.length; i++) this.stacks[i] += r[i];
+        // Report who took chips this hand (winning model slug / 'human') and the pot.
+        const by = new Map<number, number>();
+        for (const a of state.awards()) by.set(a.seat, (by.get(a.seat) ?? 0) + a.amount);
+        const won = [...by.entries()].filter(([, amt]) => amt > 0);
+        trackHandEnded({
+          game: 'poker',
+          winners: won.map(([seat]) => (this.seats[seat]?.kind === 'ai' ? (this.seats[seat] as { model: string }).model : 'human')),
+          pot: won.reduce((sum, [, amt]) => sum + amt, 0),
+        });
         this.abort = null;
         this.deps.onHandOver();
         this.deps.requestRender();
