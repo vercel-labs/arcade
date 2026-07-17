@@ -181,8 +181,8 @@ let launchSel = 0;
 // account, and quit; Account replaces it with the existing Vercel account modal.
 let homeMenuOpen = false;
 // `teamModalOpen` gates account-modal input; `teamModalFocused` is the focus-once
-// edge for the team list; `teamView` drives the modal's contents (loading -> the
-// list -> switching, or the signed-out / error states).
+// edge for its dropdown; `teamView` drives the modal's contents (loading -> loaded
+// -> switching, or the signed-out / error states).
 let teamModalOpen = false;
 let teamModalFocused = false;
 let teamView: TeamSwitchView = { kind: 'loading' };
@@ -221,11 +221,12 @@ function chessMatchupLabels(seats: { white: Seat; black: Seat }): { white: Match
     black: chessSideLabel(seats.black, BLACK, labels[1]),
   };
 }
-// The in-match model-swap popup (click a wisp): the side being edited and whether
-// the match was ALREADY paused when it opened (so closing restores that state
-// instead of unconditionally resuming). Null when closed. `wispSwapFocused` is the
-// focus-once edge, like the setup modal.
-let wispSwap: { color: Color; wasPaused: boolean } | null = null;
+// The shared in-match model-swap popup (click a chess or poker wisp): the seat
+// being edited and whether its match was already paused when it opened.
+type WispSwap =
+  | { game: 'chess'; color: Color; wasPaused: boolean }
+  | { game: 'poker'; seat: number; wasPaused: boolean };
+let wispSwap: WispSwap | null = null;
 let wispSwapFocused = false;
 // The poker new-match settings panel (an in-scene top-left stack, not a modal — the
 // table stays interactive behind it), gated on a Gateway key like the chess match
@@ -439,11 +440,10 @@ async function loadTeams(): Promise<void> {
   r.requestRender();
 }
 
-// Commit a picked team: show a "switching…" state, re-mint the key for it (silently
-// — the TUI is live), and on success mark the row with a ✓ and stay open so the
-// switch reads as confirmed (the user closes with the ✕ / Esc). The re-minted key
-// lands in process.env, so subsequent model/voice calls bill the new team. On failure
-// the modal stays open showing the error.
+// Commit a picked team: show a "switching…" state and re-mint the key for it
+// silently while the TUI stays live. On success the dropdown commits that account
+// as its current value and the modal stays open. The re-minted key lands in
+// process.env, so subsequent model/voice calls bill the new team.
 function pickTeamChoice(team: Team): void {
   if (!teamModalOpen) return;
   teamView = { kind: 'switching', team: team.name };
@@ -451,17 +451,17 @@ function pickTeamChoice(team: Team): void {
   void (async () => {
     try {
       await useTeam(team);
-      markSwitchSucceeded(team); // ✓ on the switched row
-      teamView = { kind: 'loaded' }; // back to the list (now showing the ✓), modal stays open
+      markSwitchSucceeded(team);
+      teamView = { kind: 'loaded' }; // current account is now shown in the closed field
     } catch (err) {
-      // The list is still loaded, so offer "← back" to it (canReturn).
+      // The accounts are still loaded, so offer "← back" to it (canReturn).
       teamView = { kind: 'error', message: err instanceof Error ? err.message : String(err), canReturn: true };
     }
     r.requestRender();
   })();
 }
 
-// The switch-error "← back": return to the loaded team list (still in memory).
+// The switch-error "← back": return to the loaded account dropdown (still in memory).
 function teamSwitchBack(): void {
   if (!teamModalOpen) return;
   teamView = { kind: 'loaded' };
@@ -576,7 +576,7 @@ function stopAiMatch(): void {
   aiMatch.stop();
   commentary = null;
   matchSeats = null;
-  if (wispSwap) closeWispSwap(); // a match ending under an open swap popup dismisses it
+  if (wispSwap?.game === 'chess') closeWispSwap(); // dismiss this match's open swap popup
   chessGame.resetGame();
   clearChat();
   chessChatPly = 0;
@@ -624,26 +624,40 @@ function confirmMatchSetup(): void {
 function openWispSwap(color: Color): void {
   if (!matchSeats) return;
   const seat = color === WHITE ? matchSeats.white : matchSeats.black;
-  if (seat.kind !== 'ai') return; // human sides have no wisp to click, nothing to swap
+  if (seat.kind !== 'ai') return;
   const key = color === WHITE ? 'white' : 'black';
-  const slug = seat.model;
   const wasPaused = aiMatch.isPaused();
-  if (!wasPaused) aiMatch.pause(); // freeze the game during the switch
-  wispSwap = { color, wasPaused };
+  if (!wasPaused) aiMatch.pause();
+  wispSwap = { game: 'chess', color, wasPaused };
   wispSwapFocused = false;
   mountSwapSetup(ui);
-  openSwapSetup(key, slug);
+  openSwapSetup(key, seat.model);
   forceFrame = true;
   r.requestRender();
 }
 
-// Close the popup, restoring the match's prior run/pause state (resume only if we
-// were the ones who paused it). Shared by Cancel and the match-ended path.
+function openPokerWispSwap(seat: number): void {
+  const spec = pokerMatch.seatSpecs()[seat];
+  if (spec?.kind !== 'ai') return;
+  const wasPaused = pokerMatch.isPaused();
+  if (!wasPaused) pokerMatch.pause();
+  wispSwap = { game: 'poker', seat, wasPaused };
+  wispSwapFocused = false;
+  mountSwapSetup(ui);
+  openSwapSetup('white', spec.model, spec.runtime);
+  forceFrame = true;
+  r.requestRender();
+}
+
+// Close the popup, restoring only the match that was paused to open it.
 function closeWispSwap(): void {
-  const s = wispSwap;
+  const swapState = wispSwap;
   wispSwap = null;
   wispSwapFocused = false;
-  if (s && !s.wasPaused && aiMatch.isPaused()) aiMatch.resume();
+  if (swapState && !swapState.wasPaused) {
+    if (swapState.game === 'chess' && aiMatch.isPaused()) aiMatch.resume();
+    if (swapState.game === 'poker' && pokerMatch.isPaused()) pokerMatch.resume();
+  }
   forceFrame = true;
   r.requestRender();
 }
@@ -652,17 +666,22 @@ function cancelWispSwap(): void {
   closeWispSwap();
 }
 
-// Switch button: swap the clicked side's player + HUD wisp to the chosen model,
-// record it in matchSeats, then close (resuming if we auto-paused). Guarded on a
-// committed selection (the button is disabled otherwise).
+// Swap the clicked seat to the committed model, then restore its prior pause state.
 function confirmWispSwap(): void {
-  const s = wispSwap;
-  if (!s) return;
+  const swapState = wispSwap;
   const slug = swapSetupSelection();
-  if (!slug || !matchSeats) return;
-  aiMatch.setPlayer(s.color === WHITE ? 0 : 1, slug);
-  chessGame.setSideCreator(s.color, slug.split('/')[0] ?? slug);
-  if (s.color === WHITE) matchSeats.white = { kind: 'ai', model: slug };
+  if (!swapState || !slug) return;
+
+  if (swapState.game === 'poker') {
+    pokerMatch.setSeatModel(swapState.seat, slug);
+    closeWispSwap();
+    return;
+  }
+
+  if (!matchSeats) return;
+  aiMatch.setPlayer(swapState.color === WHITE ? 0 : 1, slug);
+  chessGame.setSideCreator(swapState.color, slug.split('/')[0] ?? slug);
+  if (swapState.color === WHITE) matchSeats.white = { kind: 'ai', model: slug };
   else matchSeats.black = { kind: 'ai', model: slug };
   closeWispSwap();
 }
@@ -742,6 +761,7 @@ function pokerBetStep(dir: number): void {
 // Stop the poker session (navigating away / new match). Safe when idle.
 function stopPokerMatch(): void {
   pokerMatch.stop(); // scene.endSession() returns the felt to its idle framing
+  if (wispSwap?.game === 'poker') closeWispSwap();
   commentary = null;
   clearPokerChat(); // don't leave a stale table-talk thread behind on leave/new-game
   pokerChatOpen = false;
@@ -1128,19 +1148,14 @@ function menuNav(step: number): void {
 }
 
 // The Cover Flow chrome over the 3D covers: the focused game's title centred below
-// the carousel (dim "coming soon" tail for placeholders) and the control hint.
+// the carousel, with a dim "coming soon" tail for placeholders.
 function drawCoverChrome(surf: Surface, cols: number, rows: number, sel: number): void {
   const item = MENU_ITEMS[sel];
   const suffix = item.enabled ? '' : '   coming soon';
   const tx = Math.max(0, Math.floor((cols - (item.title.length + suffix.length)) / 2));
   const ty = rows - 4;
-  const chip: RGB = [10, 12, 18];
-  surf.drawText(tx, ty, item.title, [240, 244, 255], chip, STYLE_BOLD);
-  if (suffix) surf.drawText(tx + item.title.length, ty, suffix, [150, 156, 174], chip, STYLE_DIM);
-
-  const hint = '← → select   ⏎ play   esc back';
-  const hx = Math.max(0, Math.floor((cols - hint.length) / 2));
-  surf.drawText(hx, rows - 2, hint, [120, 126, 142], [8, 10, 16], STYLE_DIM);
+  surf.drawTextOver(tx, ty, item.title, [240, 244, 255], STYLE_BOLD);
+  if (suffix) surf.drawTextOver(tx + item.title.length, ty, suffix, [150, 156, 174], STYLE_DIM);
 }
 
 // The prism loading-screen prompt: a small, subtle, lowercase line near the bottom whose
@@ -1410,7 +1425,9 @@ function syncBar(): void {
     // Re-mount the swap dropdowns (a prior modal root may have dropped their Slots)
     // before rebuilding the one-column picker for the clicked side.
     mountSwapSetup(ui);
-    const title = wispSwap.color === WHITE ? 'white' : 'black';
+    const title = wispSwap.game === 'chess'
+      ? (wispSwap.color === WHITE ? 'white' : 'black')
+      : 'seat ' + (wispSwap.seat + 1);
     ui.setRoot(buildSwapSetup({ x: 0, y: 0, w: cols, h: rows }, { title, onConfirm: confirmWispSwap, onCancel: cancelWispSwap }), {
       x: 0,
       y: 0,
@@ -1427,8 +1444,8 @@ function syncBar(): void {
     popSetup();
     popSwap();
     // Cover Flow gets one menu button. The menu, shortcuts, quit confirmation, and
-    // Account modal replace the overlay in turn. Keep the team list mounted so its
-    // rows survive rebuilds.
+    // Account modal replace the overlay in turn. Keep the account dropdown mounted
+    // so its committed selection and search interaction survive rebuilds.
     mountTeamSwitch(ui);
     const region = { x: 0, y: 0, w: cols, h: rows };
     if (teamModalOpen) {
@@ -1442,10 +1459,10 @@ function syncBar(): void {
         }),
         region,
       );
-      // Focus the list once it's populated so ↑↓/Enter drive it (the Slot isn't in
+      // Focus the dropdown once it's populated so ↑↓/Enter drive it (the Slot isn't in
       // the loading/switching trees, so wait for 'loaded').
       if (teamView.kind === 'loaded' && !teamModalFocused) {
-        ui.setFocus('team-switch-list');
+        ui.setFocus('team-switch-dropdown');
         teamModalFocused = true;
         forceFrame = true;
       }
@@ -1939,9 +1956,12 @@ function onMouseImpl(e: MouseEvent): void {
         const { ndcX, ndcY, aspect } = pointerNdc(e.x, e.y);
         cardsScene.click(ndcX, ndcY, aspect);
       } else if (isClick && mode === 'poker') {
-        // Click one of your own hole cards to lift it fully face-on.
+        // Click an AI wisp to switch its model; otherwise click one of your own
+        // hole cards to lift it fully face-on.
         const { ndcX, ndcY, aspect } = pointerNdc(e.x, e.y);
-        pokerScene.clickCard(ndcX, ndcY, aspect);
+        const seat = pokerScene.wispAt(ndcX, ndcY, aspect);
+        if (seat !== null) openPokerWispSwap(seat);
+        else pokerScene.clickCard(ndcX, ndcY, aspect);
       }
       draggingCamera = false;
       return;

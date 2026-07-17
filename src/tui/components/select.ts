@@ -14,11 +14,48 @@ import type { LayoutBox, Node, PointerHit, Style } from '../types.ts';
 const TRACK: RGB = defaultTheme.pillBg;
 const THUMB: RGB = [150, 154, 170];
 
+interface VLine {
+  item: number;
+  text: string;
+}
+
+function wrapText(text: string, width: number, hangingIndent = 0): string[] {
+  if (width <= 0) return [text];
+  const indent = Math.max(0, Math.min(hangingIndent, text.length));
+  const prefix = text.slice(0, indent);
+  const continuation = ' '.repeat(indent);
+  const contentWidth = Math.max(1, width - indent);
+  const content = text.slice(indent);
+  const lines: string[] = [];
+  let line = '';
+  for (const word of content.split(' ')) {
+    if (word.length > contentWidth) {
+      if (line) lines.push(line);
+      let rest = word;
+      while (rest.length > contentWidth) {
+        lines.push(rest.slice(0, contentWidth));
+        rest = rest.slice(contentWidth);
+      }
+      line = rest;
+    } else if (!line) line = word;
+    else if (line.length + word.length + 1 <= contentWidth) line += ' ' + word;
+    else {
+      lines.push(line);
+      line = word;
+    }
+  }
+  if (line) lines.push(line);
+  const wrapped = lines.length ? lines : [''];
+  return wrapped.map((part, index) => (index === 0 ? prefix : continuation) + part);
+}
+
 export interface SelectOpts {
   id: string;
   items: string[];
   height?: number; // visible rows, default = items.length (no scroll)
   width?: number; // fixed width, default 'auto'
+  wrap?: boolean; // wrap long items across visual rows, default false
+  wrapIndent?: number; // fixed leading cells repeated on continuation lines
   index?: number;
   onChange?: (index: number, item: string) => void;
   onSelect?: (index: number, item: string) => void;
@@ -60,14 +97,33 @@ export class Select implements Component {
     this.keepSelectionVisible();
   }
 
-  private maxScroll(): number {
-    return Math.max(0, this.items.length - this.height);
+  private visualLines(): VLine[] {
+    if (!this.opts.wrap || typeof this.opts.width !== 'number') {
+      return this.items.map((text, item) => ({ item, text }));
+    }
+    const make = (width: number): VLine[] =>
+      this.items.flatMap((text, item) => wrapText(text, width, this.opts.wrapIndent ?? 0).map((line) => ({ item, text: line })));
+    let lines = make(Math.max(1, this.opts.width - 2)); // horizontal row padding
+    if (lines.length > this.height) lines = make(Math.max(1, this.opts.width - 3)); // scrollbar
+    return lines;
+  }
+
+  private maxScroll(lines = this.visualLines()): number {
+    return Math.max(0, lines.length - this.height);
   }
 
   private keepSelectionVisible(): void {
-    if (this.index < this.scroll) this.scroll = this.index;
-    else if (this.index >= this.scroll + this.height) this.scroll = this.index - this.height + 1;
-    this.scroll = Math.max(0, Math.min(this.maxScroll(), this.scroll));
+    const lines = this.visualLines();
+    let first = lines.findIndex((line) => line.item === this.index);
+    if (first < 0) {
+      this.scroll = 0;
+      return;
+    }
+    let last = first;
+    while (last + 1 < lines.length && lines[last + 1].item === this.index) last++;
+    if (first < this.scroll) this.scroll = first;
+    else if (last >= this.scroll + this.height) this.scroll = last - this.height + 1;
+    this.scroll = Math.max(0, Math.min(this.maxScroll(lines), Math.min(this.scroll, first)));
   }
 
   onFocus(): void {
@@ -100,14 +156,16 @@ export class Select implements Component {
       this.move(ev.wheel === -1 ? -1 : 1);
       return true;
     }
-    if (this.maxScroll() > 0 && ev.x >= ev.w - 1) {
+    const lines = this.visualLines();
+    const maxScroll = this.maxScroll(lines);
+    if (maxScroll > 0 && ev.x >= ev.w - 1) {
       const frac = ev.h > 1 ? ev.y / (ev.h - 1) : 0;
-      this.scroll = Math.round(frac * this.maxScroll());
+      this.scroll = Math.round(Math.max(0, Math.min(1, frac)) * maxScroll);
       return true;
     }
-    const row = this.scroll + ev.y;
-    if (row >= 0 && row < this.items.length) {
-      this.index = row;
+    const line = lines[this.scroll + ev.y];
+    if (line) {
+      this.index = line.item;
       this.opts.onChange?.(this.index, this.items[this.index]);
       if (ev.type === 'down') this.opts.onSelect?.(this.index, this.items[this.index]);
     }
@@ -116,11 +174,13 @@ export class Select implements Component {
 
   // Draw the track in the list's rightmost cell so it stays flush with its container.
   private paintBar(surf: Surface, box: LayoutBox): void {
-    if (this.maxScroll() === 0) return;
+    const lines = this.visualLines();
+    const maxScroll = this.maxScroll(lines);
+    if (maxScroll === 0) return;
     const x = box.x + box.w - 1;
-    const thumb = Math.max(1, Math.round((this.height / this.items.length) * box.h));
+    const thumb = Math.max(1, Math.round((this.height / lines.length) * box.h));
     const span = box.h - thumb;
-    const top = box.y + Math.round((this.scroll / this.maxScroll()) * span);
+    const top = box.y + Math.round((this.scroll / maxScroll) * span);
     for (let y = box.y; y < box.y + box.h; y++) {
       const color = y >= top && y < top + thumb ? THUMB : TRACK;
       surf.setCell(x, y, ' ', color, color);
@@ -129,12 +189,18 @@ export class Select implements Component {
 
   build(): Node {
     const rows: Node[] = [];
-    const overflow = this.maxScroll() > 0;
+    const lines = this.visualLines();
+    const maxScroll = this.maxScroll(lines);
+    this.scroll = Number.isFinite(this.scroll)
+      ? Math.max(0, Math.min(maxScroll, Math.floor(this.scroll)))
+      : 0;
+    const overflow = maxScroll > 0;
     const rowWidth =
       typeof this.opts.width === 'number' && overflow ? Math.max(1, this.opts.width - 1) : this.opts.width;
-    const end = Math.min(this.items.length, this.scroll + this.height);
-    for (let i = this.scroll; i < end; i++) {
-      const selected = i === this.index;
+    const end = Math.min(lines.length, this.scroll + this.height);
+    for (let lineIndex = this.scroll; lineIndex < end; lineIndex++) {
+      const line = lines[lineIndex];
+      const selected = line.item === this.index;
       const style: Style = {
         width: rowWidth,
         padding: [0, 1],
@@ -142,7 +208,7 @@ export class Select implements Component {
         // Selected row = near-white like a hovered bar button (not the blue accent).
         background: selected ? (this.focused ? 'pillHoverBg' : 'focusRing') : 'transparent',
       };
-      rows.push(Text({ text: this.items[i], style }));
+      rows.push(Text({ text: line.text, style }));
     }
     return {
       ...Box({ flexDirection: 'column', alignItems: 'stretch', width: this.opts.width }, rows),

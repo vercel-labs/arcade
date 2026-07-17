@@ -175,6 +175,24 @@ export class Surface {
     }
   }
 
+  // Draw text over the existing surface without introducing a new background
+  // swatch. Terminal glyphs still need a background color, so preserve the scene
+  // cell's current background instead of painting a label chip behind the text.
+  drawTextOver(x: number, y: number, str: string, fg: RGB, style = 0): void {
+    let cx = x;
+    for (const g of str) {
+      const w = stringWidth(g);
+      if (w === 0) continue;
+      const bg = this.getCell(cx, y)?.bg ?? [0, 0, 0];
+      this.setCell(cx, y, g, fg, bg, style);
+      if (w === 2 && this.inBounds(cx + 1, y)) {
+        const continuationBg = this.getCell(cx + 1, y)?.bg ?? bg;
+        this.setCell(cx + 1, y, CONTINUATION, fg, continuationBg, style);
+      }
+      cx += w;
+    }
+  }
+
   // Read a cell (for tooling that rasterizes the grid, e.g. the UI snapshot).
   getCell(x: number, y: number): Cell | null {
     if (!this.inBounds(x, y)) return null;

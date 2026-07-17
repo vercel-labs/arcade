@@ -67,9 +67,35 @@ test('Select: overflowing lists reserve and operate a right-edge scrollbar', () 
   sel.onMouse({ type: 'down', x: 9, y: 2, w: 10, h: 3 });
   assert.equal(sel.build().children?.[0]?.text, 'c', 'clicking the bottom of the track scrolls to the final viewport');
 
+  sel.onMouse({ type: 'drag', x: 9, y: -4, w: 10, h: 3 });
+  assert.equal(sel.build().children?.[0]?.text, 'a', 'dragging above the track clamps to the first viewport');
+  sel.onMouse({ type: 'drag', x: 9, y: 20, w: 10, h: 3 });
+  assert.equal(sel.build().children?.[0]?.text, 'c', 'dragging below the track clamps to the final viewport');
+
   sel.setIndex(4);
   assert.equal(sel.index, 4);
   assert.ok(sel.build().children?.some((row) => row.text === 'e'), 'programmatic selection stays visible');
+});
+
+test('Select: wrapped items remain one selectable row block', () => {
+  let chosen = -1;
+  const longName = 'A-team-name-without-any-spaces';
+  const sel = new Select({
+    id: 'wrapped-select',
+    items: ['Short', longName],
+    width: 14,
+    height: 5,
+    wrap: true,
+    onSelect: (i) => (chosen = i),
+  });
+  sel.onKey(key('down'));
+  const rows = sel.build().children ?? [];
+  const wrapped = rows.filter((row) => row.style.background === 'focusRing');
+  assert.ok(wrapped.length >= 2, 'the selected long item spans multiple highlighted lines');
+  assert.ok(rows.every((row) => (row.text ?? '').length <= 12), 'no visual line exceeds the padded content width');
+
+  sel.onMouse({ type: 'down', x: 1, y: 2, w: 14, h: 5 });
+  assert.equal(chosen, 1, 'clicking a continuation line selects the owning item');
 });
 
 test('Slider: step nudges + clamp', () => {

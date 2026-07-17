@@ -7,22 +7,38 @@
 // only once BOTH sides have a model committed; picking a different creator clears
 // that side's model (re-picking the same creator, or a different model under it,
 // leaves the creator intact).
-import { Box, Dropdown, Modal, RoundedButton, Slot, Text, type LayoutBox, type Node, type Screen } from '../../tui/index.ts';
+import { Box, Dialog, Dropdown, Modal, RoundedButton, Slot, Text, type LayoutBox, type Node, type Screen } from '../../tui/index.ts';
 import type { RGB } from '../../engine/index.ts';
-import { pickerCreators, pickerModelsFor, type ModelInfo } from './models.ts';
+import { pickerCreators, type ModelInfo } from './models.ts';
+import { REALTIME_MODELS } from '../../voice/index.ts';
 import { SLOW_MODELS } from './beta-allowlist.ts';
 import { creatorTint } from '../scenes/wisp.ts';
 import type { Seat } from './driver.ts';
 import { UI_CHROME_BG } from '../theme.ts';
 
-const CREATORS = pickerCreators();
-const CREATOR_LABELS = CREATORS.map((c) => c.name);
+interface PickerCreator {
+  slug: string;
+  name: string;
+  models: ModelInfo[];
+}
+
+const TEXT_CREATORS: PickerCreator[] = pickerCreators();
+const REALTIME_CREATORS: PickerCreator[] = [];
+for (const model of REALTIME_MODELS) {
+  let creator = REALTIME_CREATORS.find((candidate) => candidate.slug === model.creator);
+  if (!creator) {
+    creator = { slug: model.creator, name: model.creatorName, models: [] };
+    REALTIME_CREATORS.push(creator);
+  }
+  creator.models.push({ id: model.id, name: model.name });
+}
 const LIST_ROWS = 7; // visible rows when a dropdown is open (lists scroll past this)
 const CREATOR_W = 22;
 const MODEL_W = 26;
 const SIDE_LABEL_W = 8; // the "white"/"black" gutter, so the side rows line up (mirrors poker-setup)
 
 interface Side {
+  creators: readonly PickerCreator[];
   key: 'white' | 'black'; // drives the title tint; mutable so the swap side can be reused for either color
   readonly creatorDropdown: Dropdown;
   readonly modelDropdown: Dropdown;
@@ -32,8 +48,8 @@ interface Side {
   human: boolean; // this side is a human at the keyboard (hides the creator/model pickers)
 }
 
-function creatorIndex(slug: string): number {
-  const i = CREATORS.findIndex((c) => c.slug === slug);
+function creatorIndex(creators: readonly PickerCreator[], slug: string): number {
+  const i = creators.findIndex((c) => c.slug === slug);
   return i < 0 ? 0 : i;
 }
 
@@ -43,7 +59,7 @@ function creatorIndex(slug: string): number {
 function pickCreator(side: Side, slug: string): void {
   if (side.creator === slug) return;
   side.creator = slug;
-  side.models = pickerModelsFor(slug);
+  side.models = side.creators.find((creator) => creator.slug === slug)?.models ?? [];
   side.modelDropdown.setItems(side.models.map((m) => m.name)); // resets model → none
   side.modelId = null;
 }
@@ -51,7 +67,13 @@ function pickCreator(side: Side, slug: string): void {
 // `idPrefix` namespaces the two dropdown ids so several modals' sides can be
 // mounted without colliding in the Screen registry (the two start-modal sides +
 // the reusable swap side).
-function makeSide(key: 'white' | 'black', idPrefix: string, defaultCreator: string, defaultModelId?: string): Side {
+function makeSide(
+  key: 'white' | 'black',
+  idPrefix: string,
+  defaultCreator: string,
+  defaultModelId?: string,
+  creators: readonly PickerCreator[] = TEXT_CREATORS,
+): Side {
   // onSelect closures reference `side`, assigned just below — they only fire on
   // later user interaction, so the forward reference is safe.
   let side: Side;
@@ -59,11 +81,11 @@ function makeSide(key: 'white' | 'black', idPrefix: string, defaultCreator: stri
     searchable: true,
     searchPlaceholder: 'Search',
     id: `${idPrefix}-creator`,
-    items: CREATOR_LABELS,
+    items: creators.map((creator) => creator.name),
     width: CREATOR_W,
     rows: LIST_ROWS,
-    index: creatorIndex(defaultCreator), // a creator is pre-chosen…
-    onSelect: (i) => pickCreator(side, CREATORS[i].slug),
+    index: creatorIndex(creators, defaultCreator), // a creator is pre-chosen…
+    onSelect: (i) => pickCreator(side, side.creators[i].slug),
   });
   const modelDropdown = new Dropdown({
     searchable: true,
@@ -77,7 +99,7 @@ function makeSide(key: 'white' | 'black', idPrefix: string, defaultCreator: stri
       side.modelId = side.models[i]?.id ?? null;
     },
   });
-  side = { key, creator: null, models: [], modelId: null, human: false, creatorDropdown, modelDropdown };
+  side = { creators, key, creator: null, models: [], modelId: null, human: false, creatorDropdown, modelDropdown };
   pickCreator(side, defaultCreator); // populate the model list (modelId stays null)
   if (defaultModelId) {
     const i = side.models.findIndex((m) => m.id === defaultModelId);
@@ -139,10 +161,10 @@ export function matchSetupSelection(): { white: Seat; black: Seat } | null {
 }
 
 const TITLE_TINT: Record<Side['key'], RGB> = { white: [232, 228, 216], black: [184, 126, 74] };
-// Rounded start/cancel colors (outlined over the board), shared by the match-setup and
-// model-swap popups. Green = ready-to-go (shared look with poker's new-match button); dim
-// grey = not yet ready; neutral = cancel.
+// Rounded action colors. Green is reserved for starting a match; switching an
+// in-progress model uses the app's slate-indigo action color.
 const SETUP_GO: RGB = [120, 205, 142];
+const SWITCH_GO: RGB = [112, 122, 188];
 const SETUP_OFF: RGB = [110, 114, 126];
 const SETUP_NEUTRAL: RGB = [212, 214, 224];
 const SETUP_NEUTRAL_BORDER: RGB = [88, 92, 110];
@@ -248,11 +270,18 @@ export function mountSwapSetup(ui: Screen): void {
 // then the model reproduces the exact state a manual pick would leave — with the
 // current model pre-selected, so Switch is enabled immediately. `swap.creator`
 // is cleared first so re-picking the same creator still repopulates the list.
-export function openSwapSetup(color: 'white' | 'black', slug: string): void {
+export function openSwapSetup(
+  color: 'white' | 'black',
+  slug: string,
+  runtime: 'text' | 'realtime' = 'text',
+): void {
+  const creators = runtime === 'realtime' ? REALTIME_CREATORS : TEXT_CREATORS;
+  swap.creators = creators;
+  swap.creatorDropdown.setItems(creators.map((creator) => creator.name));
   swap.key = color;
   const creator = slug.split('/')[0] ?? slug;
   swap.creator = null;
-  swap.creatorDropdown.pick(creatorIndex(creator)); // onSelect → pickCreator populates swap.models
+  swap.creatorDropdown.pick(creatorIndex(creators, creator)); // onSelect → pickCreator populates swap.models
   const i = swap.models.findIndex((m) => m.id === slug);
   if (i >= 0) swap.modelDropdown.pick(i);
 }
@@ -267,17 +296,23 @@ export function swapSetupSelection(): string | null {
 // label ("White"/"Black"); the column tints it via swap.key.
 export function buildSwapSetup(_region: LayoutBox, opts: { title: string; onConfirm: () => void; onCancel: () => void }): Node {
   const ready = swap.modelId !== null;
-  // Rounded controls, matching the match-setup panel: green "switch" once a model is
-  // committed (dim + inert until then), neutral "cancel".
   const confirm = ready
-    ? RoundedButton({ id: 'swap-confirm', label: 'switch', onClick: opts.onConfirm, color: SETUP_GO })
+    ? RoundedButton({ id: 'swap-confirm', label: 'switch', onClick: opts.onConfirm, color: SWITCH_GO })
     : RoundedButton({ id: 'swap-confirm', label: 'switch', color: SETUP_OFF });
   const cancel = RoundedButton({ id: 'swap-cancel', label: 'cancel', onClick: opts.onCancel, color: SETUP_NEUTRAL, borderColor: SETUP_NEUTRAL_BORDER });
-  const card = Box({ flexDirection: 'column', gap: 1, padding: [1, 3], background: UI_CHROME_BG }, [
-    Box({ justifyContent: 'center' }, [Text({ text: 'switch model', style: { color: [222, 224, 234], bold: true } })]),
-    Box({ flexDirection: 'row', justifyContent: 'center' }, [column(swap, opts.title)]),
-    Box({ flexDirection: 'row', justifyContent: 'center', gap: 2 }, [confirm, cancel]),
-    Box({ justifyContent: 'center' }, [Text({ text: 'tab move · enter open/pick · ↑↓ scroll · esc close', style: { color: 'muted' } })]),
-  ]);
+  const card = Dialog(
+    {
+      title: 'switch model',
+      onClose: opts.onCancel,
+      closeId: 'swap-close',
+      align: 'center',
+      padding: [1, 3],
+      background: UI_CHROME_BG,
+    },
+    [
+      Box({ flexDirection: 'row', justifyContent: 'center' }, [column(swap, opts.title)]),
+      Box({ flexDirection: 'row', justifyContent: 'center', gap: 2 }, [confirm, cancel]),
+    ],
+  );
   return Modal(card, { onDismiss: opts.onCancel });
 }

@@ -6,7 +6,7 @@
 //   pnpm exec tsx src/tools/snapshot.ts ui [cols] [rows] [hover=<id>|focus=<id>] [out.ppm]
 //   pnpm exec tsx src/tools/snapshot.ts overlay [chess|chess-game|prism] [cols] [rows] [out.ppm]
 import { writeFileSync } from 'node:fs';
-import { bloom, downsample, halfBlockToSurface, RenderTarget, shapeGlyphToSurface, Surface } from '../engine/index.ts';
+import { bloom, downsample, halfBlockToSurface, RenderTarget, shapeGlyphToSurface, STYLE_BOLD, STYLE_DIM, Surface } from '../engine/index.ts';
 import { FONT } from '../engine/font8x8.ts';
 import { PrismScene, SplashScene } from '../prism/index.ts';
 import { ChessGameScene } from '../arcade/games/chess/scene.ts';
@@ -299,7 +299,7 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot audio [cols] [rows] [out]          realtime audio scene (creator wisp)
   pnpm snapshot splash [cols] [rows] [t] [out]     boot splash at time t
   pnpm snapshot coverflow|menu [cols] [rows] [pos] [hover] [out]   Cover Flow carousel
-  pnpm snapshot settings [cols] [rows] [open|account [loading|switched]] [out]   home menu button, popup, or account modal
+  pnpm snapshot settings [cols] [rows] [open|account [dropdown|loading|switched|error|long]] [out]   home menu button, popup, or account modal
   pnpm snapshot launch [cols] [rows] [index] [t] [out]   Cover Flow flip-to-title splash
   pnpm snapshot prism-prompt [cols] [rows] [t] [out]    prism loading screen + press-any-key marquee
   pnpm snapshot cards [single|hand|deck] [cols] [rows] [state] [out]   the cards screen
@@ -873,23 +873,23 @@ function coverflowSnapshot(): void {
   new CoverFlowScene().renderScene(target, pos, hover ? sel : -1);
   // Present through the live ASCII (shape-glyph) path — the app's default render
   // mode — so the snapshot matches what the terminal actually shows, then draw the
-  // title + hint chrome on top (mirrors drawCoverChrome in main.ts).
+  // title chrome on top (mirrors drawCoverChrome in main.ts).
   const surf = new Surface(cols, rows);
   shapeGlyphToSurface(surf, target, cols, rows, { color: true });
   const item = MENU_ITEMS[sel];
   if (item) {
-    const title = item.enabled ? item.title : `${item.title}   coming soon`;
-    surf.drawText(Math.max(0, Math.floor((cols - title.length) / 2)), rows - 4, title, [240, 244, 255], [10, 12, 18]);
+    const suffix = item.enabled ? '' : '   coming soon';
+    const x = Math.max(0, Math.floor((cols - item.title.length - suffix.length) / 2));
+    surf.drawTextOver(x, rows - 4, item.title, [240, 244, 255], STYLE_BOLD);
+    if (suffix) surf.drawTextOver(x + item.title.length, rows - 4, suffix, [150, 156, 174], STYLE_DIM);
   }
-  const hint = '< > select   enter play   esc back';
-  surf.drawText(Math.max(0, Math.floor((cols - hint.length) / 2)), rows - 2, hint, [120, 126, 142], [8, 10, 16]);
   surfaceToPpm(surf, cols, rows, out);
   console.log(`wrote ${out} (${cols}x${rows})`);
 }
 
 // The home menu button over Cover Flow; `open` shows its menu and `account`
 // shows the nested Vercel account modal. Mirrors the live menu chrome.
-//   pnpm exec tsx src/tools/snapshot.ts settings [cols] [rows] [open|account] [out.ppm]
+//   pnpm exec tsx src/tools/snapshot.ts settings [cols] [rows] [open|account [dropdown]] [out.ppm]
 function settingsSnapshot(): void {
   const args = process.argv.slice(3);
   const cols = Number(args[0]) || 150;
@@ -907,10 +907,10 @@ function settingsSnapshot(): void {
   mountTeamSwitch(screen);
   const region = { x: 0, y: 0, w: cols, h: rows };
   if (account) {
-    // A long list (more than the viewport) so the still shows the fixed-height,
-    // scrollable list — the current team ● marked and preselected.
+    // A long list exercises the dropdown's sticky search row, wrapped options,
+    // and overflow-owned scrollbar. The closed field shows the current team.
     const teams = [
-      { id: 't1', slug: 'acme', name: 'Acme Corp' },
+      { id: 't1', slug: 'acme', name: args.includes('long') ? 'Acme Corporation With An Unusually Long Team Name' : 'Acme Corp' },
       { id: 't2', slug: 'vercel-labs', name: 'Vercel Labs' },
       { id: 't3', slug: 'personal', name: 'personal' },
       { id: 't4', slug: 'skunkworks', name: 'Skunkworks' },
@@ -921,14 +921,28 @@ function settingsSnapshot(): void {
       { id: 't9', slug: 'atlas', name: 'Atlas' },
       { id: 't10', slug: 'nova', name: 'Nova' },
     ];
-    setTeamSwitchTeams(teams, teams[1]); // current = Vercel Labs (● marked, preselected)
-    if (args.includes('switched')) markSwitchSucceeded(teams[3]); // ✓ on a just-switched team
+    setTeamSwitchTeams(teams, teams[1]);
+    if (args.includes('switched')) markSwitchSucceeded(teams[3]);
     const view = args.includes('loading')
       ? { kind: 'loading' as const }
       : args.includes('error')
-        ? { kind: 'error' as const, message: 'Could not create AI Gateway key (403 forbidden)', canReturn: true }
+        ? { kind: 'error' as const, message: 'Could not create AI Gateway key (HTTP 403): Your team does not have permission to create AI Gateway keys.', canReturn: true }
         : { kind: 'loaded' as const };
     screen.setRoot(buildTeamSwitch(view, { onClose: noop, onSignIn: noop, onBack: noop, onLogout: noop }), region);
+    if (view.kind === 'loaded' && args.includes('dropdown')) {
+      screen.setFocus('team-switch-dropdown');
+      (screen.component('team-switch-dropdown') as Dropdown | undefined)?.onKey({
+        name: 'enter',
+        raw: '\r',
+        sequence: '\r',
+        ctrl: false,
+        shift: false,
+        meta: false,
+        eventType: 'press',
+      });
+      // Re-expand after changing component state so the snapshot includes its overlays.
+      screen.setRoot(buildTeamSwitch(view, { onClose: noop, onSignIn: noop, onBack: noop, onLogout: noop }), region);
+    }
   } else if (open) {
     screen.setRoot(
       buildGameMenu({
@@ -956,11 +970,11 @@ function settingsSnapshot(): void {
     shapeGlyphToSurface(s, target, cols, rows, { color: true });
     const item = MENU_ITEMS[sel];
     if (item) {
-      const title = item.enabled ? item.title : `${item.title}   coming soon`;
-      s.drawText(Math.max(0, Math.floor((cols - title.length) / 2)), rows - 4, title, [240, 244, 255], [10, 12, 18]);
+      const suffix = item.enabled ? '' : '   coming soon';
+      const x = Math.max(0, Math.floor((cols - item.title.length - suffix.length) / 2));
+      s.drawTextOver(x, rows - 4, item.title, [240, 244, 255], STYLE_BOLD);
+      if (suffix) s.drawTextOver(x + item.title.length, rows - 4, suffix, [150, 156, 174], STYLE_DIM);
     }
-    const hint = '< > select   enter play   esc back';
-    s.drawText(Math.max(0, Math.floor((cols - hint.length) / 2)), rows - 2, hint, [120, 126, 142], [8, 10, 16]);
   });
   surfaceToPpm(surf, cols, rows, out);
 }

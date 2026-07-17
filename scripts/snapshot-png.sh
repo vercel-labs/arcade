@@ -8,7 +8,7 @@
 #   pnpm snapshot:png setup 120 40          # any subcommand works
 set -e
 
-log=$(tsx src/tools/snapshot.ts "$@")
+log=$(ARCADE_DEV=1 tsx src/tools/snapshot.ts "$@")
 echo "$log"
 ppm=$(printf '%s\n' "$log" | sed -n 's/^wrote \(.*\) (.*)$/\1/p' | tail -1)
 [ -n "$ppm" ] || { echo "snapshot:png: no .ppm produced (nothing to convert)" >&2; exit 1; }
