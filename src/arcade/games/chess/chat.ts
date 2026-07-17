@@ -80,8 +80,19 @@ function wrapInline(s: string, rest: number, first: number): string[] {
         out.push(line);
         line = '';
       } else {
-        out.push(w.slice(0, cap()));
-        w = w.slice(cap());
+        const width = cap();
+        if (out.length === 0 && width < rest && w.length <= rest) {
+          // A long speaker name can leave only a few cells on the first row.
+          // Keep a normal-sized first word intact on the continuation row instead
+          // of producing awkward fragments such as "Gem" / "ini,".
+          out.push('');
+        } else {
+          // Capture the width before pushing: cap() switches from the first-line
+          // width to the continuation width once out gains an entry. Calling it
+          // again after push used to discard the remainder of the word.
+          out.push(w.slice(0, width));
+          w = w.slice(width);
+        }
       }
     }
     if (!line) line = w;
