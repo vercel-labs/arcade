@@ -18,7 +18,8 @@ import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, b
 import { installKeymap } from '../arcade/shell/keybindings.ts';
 import { buildShowcase, mountShowcase } from '../arcade/scenes/ui-showcase.ts';
 import { buildChessGameRoot, chessMoveChat, mountChessHud, refreshMoveHistory } from '../arcade/games/chess/hud.ts';
-import { type ChatMessage, clearChat, pushChatMessage } from '../arcade/games/chess/chat.ts';
+import { CHAT_WIDTH, type ChatMessage, clearChat, pushChatMessage } from '../arcade/games/chess/chat.ts';
+import { insetRightSceneViewport } from '../arcade/scene-viewport.ts';
 import { evaluate } from '../rules/chess/eval.ts';
 import { buildMatchSetup, mountMatchSetup } from '../arcade/match/setup.ts';
 import { creators } from '../arcade/match/models.ts';
@@ -255,7 +256,8 @@ function sceneSnapshot(): void {
       // Spin up the AI HUD and play a few opening moves (applied directly — no
       // animation wait) so the still shows a live board with the side-to-move
       // wisp pulsing.
-      cg.beginMatch();
+      // `black` → human plays Black vs an AI White, which flips the board 180°.
+      cg.beginMatch('anthropic', process.argv.includes('black') ? null : 'openai');
       for (const san of ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5']) {
         const m = cg.state().actionFromString(san);
         if (m) cg.state().applyAction(m);
@@ -476,7 +478,9 @@ function pokerSnapshot(): void {
   // Finish the opening deal, close the preflop round (turning the flop → starting the
   // cinematic), then step into its bird's-eye hold before compositing.
   if (args.includes('cine')) {
-    const buf = new RenderTarget(cols * SS, rows * 2 * SS);
+    const chatOpen = args.includes('chat');
+    const sceneViewport = insetRightSceneViewport(cols, rows, chatOpen ? CHAT_WIDTH : 0);
+    const buf = new RenderTarget(sceneViewport.w * SS, sceneViewport.h * 2 * SS);
     let tc = 0.05;
     const stepc = (): void => {
       scene.renderScene(buf, tc);
@@ -504,7 +508,7 @@ function pokerSnapshot(): void {
         status: '',
         table: scene.tableView(),
         active: true,
-        chatOpen: false,
+        chatOpen,
         onToggleChat: noop,
         onOpenMenu: noop,
         onOpenNotes: noop,
@@ -517,7 +521,17 @@ function pokerSnapshot(): void {
       }),
       region,
     );
-    const surf2 = screen.snapshot((s) => shapeGlyphToSurface(s, buf, cols, rows, { color: true, hybrid: true }));
+    const surf2 = screen.snapshot((s) =>
+      shapeGlyphToSurface(
+        s,
+        buf,
+        sceneViewport.w,
+        sceneViewport.h,
+        { color: true, hybrid: true },
+        sceneViewport.x,
+        sceneViewport.y,
+      ),
+    );
     surfaceToPpm(surf2, cols, rows, args.find((a) => a.endsWith('.ppm')) ?? '.snapshots/poker-cine.ppm');
     return;
   }
@@ -647,6 +661,12 @@ function pokerSnapshot(): void {
     const screen = new Screen(cols, rows);
     mountPokerGameHud(screen);
     const st = state;
+    const chatOpen = !args.includes('chatclosed');
+    const sceneViewport = insetRightSceneViewport(cols, rows, chatOpen ? CHAT_WIDTH : 0);
+    const hudTarget = chatOpen ? new RenderTarget(sceneViewport.w * SS, sceneViewport.h * 2 * SS) : target;
+    // Re-render once at the actual visible aspect so the camera and scene match
+    // the left-side viewport instead of continuing underneath the chat rail.
+    if (chatOpen) scene.renderScene(hudTarget, t);
     // Seed a few table-talk lines so the right-rail chat renders alongside the game events.
     for (const m of [
       { text: "checking to the raiser - let's see what you've got.", model: 'openai/gpt-5.4' },
@@ -677,7 +697,7 @@ function pokerSnapshot(): void {
         status: '', // matches the app: no "Your move" toast (the lit strip + action bar signal the turn)
         table: scene.tableView(),
         active: true,
-        chatOpen: !args.includes('chatclosed'),
+        chatOpen,
         onToggleChat: noop,
         onOpenMenu: noop,
         onOpenNotes: noop,
@@ -697,7 +717,15 @@ function pokerSnapshot(): void {
       screen.setRoot(buildRoot(), region);
     }
     const surf2 = screen.snapshot((s) => {
-      shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true });
+      shapeGlyphToSurface(
+        s,
+        hudTarget,
+        sceneViewport.w,
+        sceneViewport.h,
+        { color: true, hybrid: true },
+        sceneViewport.x,
+        sceneViewport.y,
+      );
     });
     surfaceToPpm(surf2, cols, rows, out);
     return;
@@ -1021,6 +1049,7 @@ function chessOverlaySnapshot(): void {
   const out = args.find((a) => a.endsWith('.ppm')) ?? `.snapshots/chess-overlay${minimized ? '-min' : ''}.ppm`;
   const SS = 3;
   const t = 0.7;
+  const chatVisible = args.includes('chat');
 
   const cg = new ChessGameScene();
   cg.beginMatch();
@@ -1028,7 +1057,8 @@ function chessOverlaySnapshot(): void {
     const m = cg.state().actionFromString(san);
     if (m) cg.state().applyAction(m);
   }
-  const target = new RenderTarget(cols * SS, rows * 2 * SS);
+  const sceneViewport = insetRightSceneViewport(cols, rows, chatVisible ? CHAT_WIDTH : 0);
+  const target = new RenderTarget(sceneViewport.w * SS, sceneViewport.h * 2 * SS);
   cg.renderScene(target, t);
 
   const screen = new Screen(cols, rows);
@@ -1055,7 +1085,6 @@ function chessOverlaySnapshot(): void {
   const evalVisible = process.argv.includes('eval');
   // 'chat' shows the right-edge model-DM chat panel, seeded with a few messages;
   // add 'empty' to leave it empty (shows the centered placeholder).
-  const chatVisible = process.argv.includes('chat');
   if (chatVisible && !process.argv.includes('empty')) {
     clearChat();
     // Mirror the live thread: each ply's pre-move rationale (colored, named) followed by
@@ -1103,12 +1132,22 @@ function chessOverlaySnapshot(): void {
       }),
       region,
     );
-    const surf2 = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
+    const surf2 = screen.snapshot((s) =>
+      shapeGlyphToSurface(
+        s,
+        target,
+        sceneViewport.w,
+        sceneViewport.h,
+        { color: true, hybrid: true },
+        sceneViewport.x,
+        sceneViewport.y,
+      ),
+    );
     surfaceToPpm(surf2, cols, rows, out);
     return;
   }
   screen.setRoot(
-    buildChessGameRoot(region, buildBar('chess-game', 'ascii', barActions, { label: 'pause ai', active: true }), {
+    buildChessGameRoot(region, buildBar('chess-game', 'ascii', barActions, { label: 'pause', active: true }), {
       minimized,
       onToggle: noop,
       onCopy: noop,
@@ -1129,7 +1168,17 @@ function chessOverlaySnapshot(): void {
     }),
     region,
   );
-  const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
+  const surf = screen.snapshot((s) =>
+    shapeGlyphToSurface(
+      s,
+      target,
+      sceneViewport.w,
+      sceneViewport.h,
+      { color: true, hybrid: true },
+      sceneViewport.x,
+      sceneViewport.y,
+    ),
+  );
   surfaceToPpm(surf, cols, rows, out);
 }
 

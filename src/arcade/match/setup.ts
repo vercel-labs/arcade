@@ -54,6 +54,8 @@ function makeSide(key: 'white' | 'black', idPrefix: string, defaultCreator: stri
   // later user interaction, so the forward reference is safe.
   let side: Side;
   const creatorDropdown = new Dropdown({
+    searchable: true,
+    searchPlaceholder: 'Search',
     id: `${idPrefix}-creator`,
     items: CREATOR_LABELS,
     width: CREATOR_W,
@@ -62,6 +64,8 @@ function makeSide(key: 'white' | 'black', idPrefix: string, defaultCreator: stri
     onSelect: (i) => pickCreator(side, CREATORS[i].slug),
   });
   const modelDropdown = new Dropdown({
+    searchable: true,
+    searchPlaceholder: 'Search',
     id: `${idPrefix}-model`,
     items: [],
     width: MODEL_W,
@@ -91,21 +95,21 @@ const black = makeSide('black', 'setup-black', 'openai', 'openai/gpt-5.4-nano');
 // vs Black is a real choice, unlike a poker seat). It drives the white/black `human`
 // flags: the AI side(s) show model pickers, the human side a short "you". There is no
 // both-human option — human-vs-human is just free-play on the board, so a setup match
-// always has ≥1 AI (which is what the bar's play/pause-AI control assumes). Defaults to
-// Play as White (White moves first — the conventional default).
+// always has ≥1 AI (which is what the bar's play/pause control assumes). "Spectate AI"
+// mirrors poker's mode. Defaults to Play White (White moves first — the conventional default).
 export const modeDropdown = new Dropdown({
   id: 'setup-mode',
-  items: ['Play as White', 'Play as Black', 'Watch AI vs AI'],
-  width: 18,
+  items: ['Play White', 'Play Black', 'Spectate AI'],
+  width: 16,
   index: 0,
   onSelect: () => applyMode(),
 });
 function applyMode(): void {
-  white.human = modeDropdown.index === 0; // Play as White → you are White
-  black.human = modeDropdown.index === 1; // Play as Black → you are Black
-  // index 2 (Watch AI vs AI) → neither side is human
+  white.human = modeDropdown.index === 0; // Play White → you are White
+  black.human = modeDropdown.index === 1; // Play Black → you are Black
+  // index 2 (Spectate AI) → neither side is human
 }
-applyMode(); // seed the default (Play as White) before the first build
+applyMode(); // seed the default (Play White) before the first build
 
 export function mountMatchSetup(ui: Screen): void {
   ui.mount(modeDropdown);
@@ -203,7 +207,7 @@ function sideRow(side: Side): Node {
 // start/cancel controls bottom-left. `onStart` is wired only when both sides are ready.
 export function buildMatchSetup(region: LayoutBox, opts: { onStart: () => void; onCancel: () => void }): Node {
   const ready = matchSetupReady();
-  const start = Button({ id: 'setup-start', label: 'start game', onClick: ready ? opts.onStart : undefined, style: ready ? START_ON : START_OFF });
+  const start = Button({ id: 'setup-start', label: 'start', onClick: ready ? opts.onStart : undefined, style: ready ? START_ON : START_OFF });
   const cancel = Button({ id: 'setup-cancel', label: 'cancel', onClick: opts.onCancel, style: CANCEL });
 
   const panel = Box({ flexDirection: 'column', gap: 1, alignItems: 'start' }, [

@@ -27,7 +27,8 @@ import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, b
 import { buildShowcase, mountShowcase } from './scenes/ui-showcase.ts';
 import { buildChessGameRoot, chessMoveChat, type Commentary, type MatchSide, mountChessHud, movesToPgn, refreshMoveHistory, shortModel } from './games/chess/hud.ts';
 import { creatorTint } from './scenes/wisp.ts';
-import { clearChat, pushChatMessage } from './games/chess/chat.ts';
+import { CHAT_WIDTH, clearChat, pushChatMessage } from './games/chess/chat.ts';
+import { insetRightSceneViewport, pointerNdcInSceneViewport } from './scene-viewport.ts';
 import { buildMatchSetup, buildSwapSetup, matchSetupSelection, mountMatchSetup, mountSwapSetup, openSwapSetup, swapSetupSelection } from './match/setup.ts';
 import { copyToClipboard } from '../platform/clipboard.ts';
 import { BLACK, type Color, WHITE } from '../rules/chess/types.ts';
@@ -231,6 +232,32 @@ let chessMenuOpen = false;
 // match starts, and the chat starts COLLAPSED (just the "chat" pill) — clicking it (or its
 // ✕) toggles. Reset to collapsed on each new match; persists while a match runs.
 let pokerChatOpen = false;
+
+// Chat rails participate in the 3D layout instead of merely painting over it.
+// The HUDs use the same CHAT_WIDTH, so the renderer, camera projection, and UI
+// agree on the exact left-side viewport that remains visible.
+function activeSceneViewport(): LayoutBox {
+  const reservedRight =
+    mode === 'chess-game' && chatVisible
+      ? CHAT_WIDTH
+      : mode === 'poker' && pokerChatOpen && pokerScene.isActive()
+        ? CHAT_WIDTH
+        : 0;
+  return insetRightSceneViewport(cols, rows, reservedRight);
+}
+
+// The engine target is pixel-sized while the viewport is terminal-cell-sized.
+// Reallocate only when a rail or terminal resize changes the available geometry.
+function ensureSceneTarget(): void {
+  const viewport = activeSceneViewport();
+  const width = viewport.w * SS;
+  const height = viewport.h * 2 * SS;
+  if (target.width === width && target.height === height) return;
+  target = new RenderTarget(width, height);
+  display = undefined;
+  forceFrame = true;
+}
+
 // The "return to home screen?" confirm popup, shown when Escape is pressed inside a game
 // (chess-game / poker) instead of leaving immediately. "Return home" is default-focused;
 // Cancel (or Escape again) stays in the game.
@@ -1469,10 +1496,10 @@ function syncBar(): void {
       chessChatPly = chessMoves.length;
     }
     const ai = !chessGame.isMatchActive()
-      ? { label: 'play ai', active: false }
+      ? { label: 'new match', active: false }
       : aiMatch.isPaused()
-        ? { label: 'resume ai', active: true }
-        : { label: 'pause ai', active: true };
+        ? { label: 'resume', active: true }
+        : { label: 'pause', active: true };
     // White-POV centipawns for the eval bar (cheap 64-square scan; only when shown).
     const evalCp = evalBarVisible ? evaluate(chessGame.state().board) : 0;
     ui.setRoot(
@@ -1618,8 +1645,9 @@ function syncBar(): void {
 // Pixel/glyph display style. `withBloom` is the glowy post-process — on for the light
 // effects, off for solid geometry like the chess pieces.
 function presentScene(withBloom = true, hybridShadow = false): string {
+  const viewport = activeSceneViewport();
   if (renderMode === 'ascii') {
-    return toShapeGlyph(target, cols, rows, {
+    return toShapeGlyph(target, viewport.w, viewport.h, {
       color: true,
       hybrid: hybridShadow,
     });
@@ -1632,27 +1660,37 @@ function presentScene(withBloom = true, hybridShadow = false): string {
 // Cell-writing twin of presentScene for the unified path: paints the scene into
 // `surf` (the bottom layer) instead of returning a string. Same display logic.
 function presentSceneInto(surf: Surface, withBloom = true, hybridShadow = false): void {
+  const viewport = activeSceneViewport();
+  const reservedX = viewport.x + viewport.w;
+  if (reservedX < surf.cols) {
+    // The UI rail is translucent. Paint its reserved area black so opening it
+    // cannot blend over scene colors left behind by the previous full-width frame.
+    surf.fillRect(reservedX, 0, surf.cols - reservedX, surf.rows, [0, 0, 0]);
+  }
   if (renderMode === 'ascii') {
-    shapeGlyphToSurface(surf, target, cols, rows, {
-      color: true,
-      hybrid: hybridShadow,
-    });
+    shapeGlyphToSurface(
+      surf,
+      target,
+      viewport.w,
+      viewport.h,
+      {
+        color: true,
+        hybrid: hybridShadow,
+      },
+      viewport.x,
+      viewport.y,
+    );
     return;
   }
   display = downsample(target, SS, display);
   if (withBloom) bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
-  halfBlockToSurface(surf, display);
+  halfBlockToSurface(surf, display, viewport.x, viewport.y);
 }
 
 // Maps a 1-based terminal mouse cell to a normalized device coordinate (−1..1,
 // +y up) plus the aspect the scene renders at — for ray-picking the board.
 function pointerNdc(x: number, y: number): { ndcX: number; ndcY: number; aspect: number } {
-  const sceneRows = rows;
-  return {
-    ndcX: ((x - 0.5) / cols) * 2 - 1,
-    ndcY: 1 - ((y - 0.5) / sceneRows) * 2,
-    aspect: cols / (sceneRows * 2),
-  };
+  return pointerNdcInSceneViewport(x, y, activeSceneViewport());
 }
 
 function onKeyImpl(ev: KeyEvent): void {
@@ -1879,6 +1917,7 @@ const parse = createInputParser({
 function tick(dt: number): void {
   const step = Math.min(dt, MAX_STEP); // real seconds since the last rendered frame, clamped
   t += step;
+  ensureSceneTarget();
 
   if (splashing) {
     // Boot splash: no button bar (the ui root is unmounted until syncBar runs, so

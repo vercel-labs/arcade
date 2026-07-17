@@ -58,6 +58,8 @@ function pickCreator(side: AiSide, slug: string): void {
 function makeSide(idPrefix: string, defaultCreator: string, defaultModelId: string): AiSide {
   let side: AiSide;
   const creatorDropdown = new Dropdown({
+    searchable: true,
+    searchPlaceholder: 'Search',
     id: `${idPrefix}-creator`,
     items: CREATOR_LABELS,
     width: CREATOR_W,
@@ -69,6 +71,8 @@ function makeSide(idPrefix: string, defaultCreator: string, defaultModelId: stri
     },
   });
   const modelDropdown = new Dropdown({
+    searchable: true,
+    searchPlaceholder: 'Search',
     id: `${idPrefix}-model`,
     items: [],
     width: MODEL_W,

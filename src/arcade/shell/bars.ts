@@ -53,7 +53,7 @@ export function buildBar(
   mode: Mode,
   renderMode: RenderMode,
   a: BarActions,
-  ai: { label: string; active: boolean } = { label: 'play ai', active: false },
+  ai: { label: string; active: boolean } = { label: 'new match', active: false },
 ): Node {
   let buttons: Node[] = [];
 

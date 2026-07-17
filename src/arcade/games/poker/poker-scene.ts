@@ -946,7 +946,16 @@ export class PokerGameScene {
   renderScene(target: RenderTarget, t = 0): void {
     const dt = this.lastT < 0 ? 1 / 30 : Math.min(0.1, Math.max(0, t - this.lastT));
     this.lastT = t;
-    this.lastAspect = target.height > 0 ? target.width / target.height : this.lastAspect; // for the bird's-eye fit
+    const aspect = target.height > 0 ? target.width / target.height : this.lastAspect;
+    const viewportChanged = Math.abs(aspect - this.lastAspect) > 1e-6;
+    this.lastAspect = aspect; // for the bird's-eye fit
+    // Opening or closing chat resizes the real 3D viewport. If the street camera
+    // has already cut to its bird's-eye, refit it immediately so the revealed
+    // three/four/five-card span remains inside the newly available width.
+    if (viewportChanged && this.cine && this.cine.phase !== 'pre') {
+      this.cam = this.makeBirdsEyeCamera();
+      this.dirty = true;
+    }
     this.advanceCine(dt); // may hard-cut this.cam before we read the eye below
     this.tickAutoContinue(dt); // may fire continueGesture (restoring the camera) before the eye read
     target.clear(6, 10, 8);
