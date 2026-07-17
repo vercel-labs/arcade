@@ -6,11 +6,12 @@
 // the per-frame rebuild and collapsing (mount it once via mountChessHud).
 //
 // The panel collapses to just its "Moves" header (which reads as a button via the
-// translucent fill — no line border), and expands back. It's left-anchored, so
+// shared solid chrome fill — no line border), and expands back. It's left-anchored, so
 // the "Moves" label keeps the same position in both states. Click it (or the ✕,
 // shown when expanded) to toggle.
 import { Box, Button, CloseButton, type Row, ScrollBox, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
-import type { RGB, RGBA } from '../../../engine/index.ts';
+import type { RGB } from '../../../engine/index.ts';
+import { UI_CHROME_BG, UI_CHROME_PILL, uiChromeBg } from '../../theme.ts';
 import type { ChessResult } from '../../../rules/chess/chess.ts';
 import { WHITE } from '../../../rules/chess/types.ts';
 import { CHAT_WIDTH, type ChatMessage, chatBox, mountChat, PANEL_PAD_L, PANEL_PAD_R } from './chat.ts';
@@ -111,12 +112,14 @@ export function shortModel(slug: string): string {
 // the full width — moves with the evaluation. Fed a white-POV centipawn score
 // (see games/chess/eval.ts) — presentation only. The rail is thin and floats with
 // a gap above and below (it doesn't run to the screen edges).
-const EVAL_RAIL_W = 3; // rail thickness (cells) — odd, so it has a true center column
-const EVAL_COL_W = 5; // column width, sized to hold the numeric label
+const EVAL_RAIL_W = 2; // slimmer rail; even width shares the label's exact center
+const EVAL_LABEL_W = 4; // widest numeric label ("+1.2")
+const EVAL_RIGHT_PAD = 2; // matches the top-right menu/chat control inset
+const EVAL_COL_W = EVAL_LABEL_W + EVAL_RIGHT_PAD;
 const EVAL_VPAD = 4; // rows of gap above and below the rail
 const EVAL_LIGHT: RGB = [232, 228, 216]; // white side (ivory, matches the set)
 const EVAL_DARK: RGB = [48, 46, 52]; // black side (charcoal)
-const EVAL_LABEL_BG: RGBA = [22, 24, 32, 0.9]; // matches the move panel
+const EVAL_LABEL_BG = uiChromeBg(0.9); // matches the move panel
 
 // White's share of the bar (0..1) from a centipawn score. tanh squashes so a huge
 // material lead eases toward — but never pins — the end, like chess.com's curve.
@@ -154,18 +157,18 @@ export function buildEvalBar(cp: number, result: ChessResult | null, height: num
   }
 
   // Whole-cell fill: the bottom `whiteRows` are white, the rest dark. The seam
-  // between them is a single straight line across the rail. The rail is centered
-  // in the column, so its middle column sits under the label's centered decimal
-  // point (the "+X.Y" label is 4 chars → its '.' lands on the column's center).
+  // between them is a single straight line across the rail. Label and rail share
+  // the same four-cell content column, leaving a two-cell right inset aligned
+  // with the top-right controls.
   const whiteRows = Math.max(0, Math.min(barH, Math.round(frac * barH)));
   const railRow = (color: RGB): Node =>
-    Box({ width: EVAL_COL_W, height: 1, justifyContent: 'center' }, [Box({ width: EVAL_RAIL_W, height: 1, background: color })]);
+    Box({ width: EVAL_LABEL_W, height: 1, justifyContent: 'center' }, [Box({ width: EVAL_RAIL_W, height: 1, background: color })]);
   const rows: Node[] = [];
   for (let r = barH - 1; r >= 0; r--) rows.push(railRow(r < whiteRows ? EVAL_LIGHT : EVAL_DARK));
 
-  return Box({ flexDirection: 'column', width: EVAL_COL_W, flexShrink: 0, height, alignItems: 'center' }, [
+  return Box({ flexDirection: 'column', width: EVAL_COL_W, flexShrink: 0, height, alignItems: 'start' }, [
     Box({ flexGrow: 1 }), // top gap (balances the bottom — keeps the rail off the edge)
-    Box({ width: EVAL_COL_W, height: 1, justifyContent: 'center', background: EVAL_LABEL_BG }, [
+    Box({ width: EVAL_LABEL_W, height: 1, justifyContent: 'center', background: EVAL_LABEL_BG }, [
       Text({ text: label, style: { color: [210, 212, 222], bold: true } }),
     ]),
     Box({ height: 1 }), // tiny gap between the number chip and the rail
@@ -191,17 +194,6 @@ const ICON_BTN: Style = {
 };
 const COPY_GLYPH = '↥'; // up-from-bar "export" mark (copies PGN)
 
-// The "open chat" affordance: a top-right pill (chat glyph + label), styled like
-// the home menu pill, shown only while the chat panel is hidden. Clicking it
-// reveals the panel; the panel's own ✕ (also top-right) hides it again.
-const CHAT_PILL: Style = {
-  padding: [0, 1],
-  background: [28, 30, 40],
-  color: [200, 205, 220],
-  hover: { background: [238, 240, 248], color: [16, 16, 24] },
-  focus: { background: [86, 90, 108], color: [248, 248, 252] },
-  pressed: { background: [255, 255, 255], color: [12, 12, 18] },
-};
 
 // ── Match banner ────────────────────────────────────────────────────────────────
 // A centered top-of-screen indicator of what's being played: "free play" when no AI
@@ -212,7 +204,6 @@ export interface MatchSide {
   text: string;
   color: RGB;
 }
-const BANNER_BG: RGBA = [22, 24, 32, 0.9]; // translucent backing so it reads over the board
 function buildMatchBanner(matchup: { white: MatchSide; black: MatchSide } | null | undefined): Node {
   const body: Node[] = matchup
     ? [
@@ -221,7 +212,8 @@ function buildMatchBanner(matchup: { white: MatchSide; black: MatchSide } | null
         Text({ text: matchup.black.text, style: { color: matchup.black.color, bold: true } }),
       ]
     : [Text({ text: 'free play', style: { color: [200, 205, 220] } })];
-  return Box({ flexDirection: 'row', alignItems: 'center', padding: [0, 2], background: BANNER_BG }, body);
+  // No backing — the label reads directly over the board (bold + creator colors carry it).
+  return Box({ flexDirection: 'row', alignItems: 'center', padding: [0, 2] }, body);
 }
 
 // Build the full-screen chess-game overlay: the move panel pinned top-right
@@ -284,8 +276,8 @@ export function buildChessGameRoot(
   // The move-list Slot stays in the tree in BOTH states — when minimized it's
   // wrapped in a 0×0 clipped box (hidden, but still "referenced") so the Screen
   // doesn't auto-unmount the ScrollBox; otherwise re-expanding would find it
-  // unmounted and render an empty panel. No drawn border — the translucent fill
-  // alone separates the panel from the scene, so minimized it reads as a button.
+  // unmounted and render an empty panel. No drawn border — the solid chrome fill
+  // separates the panel from the scene, so minimized it reads as a button.
   // (The header sits directly above the list — no spacer row.)
   const children = opts.minimized
     ? [header, Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot('chess-history')])]
@@ -296,13 +288,13 @@ export function buildChessGameRoot(
   const panel = Box({
     flexDirection: 'column',
     padding: opts.minimized ? [0, 1] : [0, 0, 0, 1],
-    background: [22, 24, 32, 0.9],
+    background: UI_CHROME_BG,
   }, children);
 
   const c = opts.commentary && opts.t < opts.commentary.until ? opts.commentary : null;
   const label = c ? (c.model ? `${shortModel(c.model)}:  ${c.text}` : c.text) : '';
   const toast = c
-    ? Box({ padding: [0, 2], background: [22, 24, 32, 0.94] }, [Text({ text: label, style: { color: 'fg' } })])
+    ? Box({ padding: [0, 2], background: uiChromeBg(0.94) }, [Text({ text: label, style: { color: 'fg' } })])
     : null;
 
   // The main column (panel + toast + bar). The eval rail, when shown, sits to its
@@ -325,8 +317,8 @@ export function buildChessGameRoot(
   // the eval rail too, when it's showing).
   const railW = (opts.chatVisible ? CHAT_WIDTH : 0) + (opts.evalVisible ? EVAL_COL_W : 0);
   const cluster = Box({ position: 'absolute', top: 1, right: opts.chatVisible ? railW + 1 : 2, flexDirection: 'row', gap: 1 }, [
-    Button({ id: 'chess-menu', label: '☰ menu', onClick: opts.onOpenMenu, style: CHAT_PILL }),
-    ...(opts.chatVisible ? [] : [Button({ id: 'chat-open', label: 'chat', onClick: opts.onToggleChat, style: CHAT_PILL })]),
+    Button({ id: 'chess-menu', label: '☰ menu', onClick: opts.onOpenMenu, style: UI_CHROME_PILL }),
+    ...(opts.chatVisible ? [] : [Button({ id: 'chat-open', label: 'chat', onClick: opts.onToggleChat, style: UI_CHROME_PILL })]),
   ]);
   // The match banner floats centered at the top, over a full-width absolute row so it
   // stays centered on screen regardless of the left move panel / right pills.
@@ -350,7 +342,7 @@ function buildChatPanel(height: number, onToggle: () => void, active: boolean): 
   ]);
   // flexShrink 0: the wide chess-game bar in the main column overflows its row, so
   // without this the panel would be squeezed below CHAT_WIDTH and clip its bubbles.
-  return Box({ flexDirection: 'column', width: CHAT_WIDTH, flexShrink: 0, height, padding: [CHAT_PAD_V, PANEL_PAD_R, CHAT_PAD_V, PANEL_PAD_L], background: [22, 24, 32, 0.9] }, [
+  return Box({ flexDirection: 'column', width: CHAT_WIDTH, flexShrink: 0, height, padding: [CHAT_PAD_V, PANEL_PAD_R, CHAT_PAD_V, PANEL_PAD_L], background: uiChromeBg(0.9) }, [
     header,
     Box({ height: 1 }), // gap between header and the thread
     Slot('chess-chat'),

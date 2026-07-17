@@ -6,6 +6,7 @@
 import { Box, Button, Dialog, Modal, RoundedButton, Text, type Node, type Style } from '../../tui/index.ts';
 import { BISHOP, BLACK, type Color, KNIGHT, type PieceType, QUEEN, ROOK } from '../../rules/chess/types.ts';
 import type { RGB } from '../../engine/index.ts';
+import { UI_CHROME_BG } from '../theme.ts';
 
 export type Mode = 'prism' | 'menu' | 'chess-game' | 'logos' | 'ui' | 'audio' | 'cards' | 'poker';
 export type RenderMode = 'ascii' | 'pixels';
@@ -16,6 +17,7 @@ export interface BarActions {
   mode(): void;
   quit(): void;
   aiMatch(): void;
+  newGame(): void;
   audioModel(): void;
 }
 
@@ -53,7 +55,7 @@ export function buildBar(
   mode: Mode,
   renderMode: RenderMode,
   a: BarActions,
-  ai: { label: string; active: boolean } = { label: 'new match', active: false },
+  ai: { label: string; active: boolean } = { label: 'new ai match', active: false },
 ): Node {
   let buttons: Node[] = [];
 
@@ -83,7 +85,7 @@ export function buildBar(
     // The playable board: the AI button plays (idle) → pauses (running) → resumes
     // (paused). Highlighted whenever a match exists (running or paused).
     // Like poker: the felt keeps only the in-flow control — play/pause AI. Everything
-    // system-level (home / new game / reset view / display / eval bar / illegal / quit)
+    // system-level (home / reset board / reset view / display / eval bar / illegal / quit)
     // lives in the ☰ menu popup (top-right, see hud.ts buildChessGameRoot), and the
     // chat panel is a top-right pill — so the bar is a single button.
     // Rounded (outlined) control: 3 rows tall, arc border, a little horizontal padding,
@@ -91,6 +93,10 @@ export function buildBar(
     // the outline + label purple; hover/focus whiten the border + label + bold.
     const aiActive = ai.active ? { color: [216, 200, 235] as RGB, borderColor: [138, 110, 170] as RGB } : {};
     buttons = [RoundedButton({ id: 'ai', label: ai.label, onClick: a.aiMatch, padding: [0, 2], ...aiActive })];
+    // A "reset board" control only sits beside play/pause while a match exists — idle
+    // already reads "new ai match", so it would be redundant there. Same "reset board"
+    // the ☰ menu offers, surfaced on the felt for one-click reset.
+    if (ai.active) buttons.push(RoundedButton({ id: 'new-game', label: 'reset board', onClick: a.newGame, padding: [0, 2] }));
   } else if (mode === 'cards') {
     // The cards screen: the mode picker + per-mode controls live in the poker HUD
     // panel; the bar just carries nav / camera reset / display style / quit.
@@ -101,8 +107,8 @@ export function buildBar(
       Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
     ];
   } else if (mode === 'poker') {
-    // The poker table has NO bottom bar: everything system-level (home / restart / display /
-    // quit) lives in the ☰ menu popup (top-right), play/pause is the 'p' key, and betting
+    // The poker table has NO bottom bar: everything system-level (home / new game /
+    // reset camera / display / quit) lives in the menu popup; play/pause is 'p', and betting
     // lives in the HUD — so the felt stays a clean broadcast overlay, not a toolbar.
     buttons = [];
   }
@@ -136,37 +142,31 @@ const PROMO_OPTIONS: { type: PieceType; sym: string; name: string }[] = [
 // via Escape.)
 export function buildPromotion(color: Color, onPick: (t: PieceType) => void, onCancel: () => void): Node {
   const tint = color === BLACK ? BROWN : IVORY;
+  // Rounded (outlined) choices tinted to the promoting side; hover/focus whiten border +
+  // label. They stack flush (gap 0) so their arc borders read as one continuous list.
   const options = PROMO_OPTIONS.map((o) =>
-    Button({
+    RoundedButton({
       id: `promo-${o.name.toLowerCase()}`,
       label: `${o.sym}  ${o.name}`,
       onClick: () => onPick(o.type),
-      style: {
-        padding: [0, 2],
-        background: [40, 42, 52],
-        color: tint,
-        bold: true,
-        hover: { background: [72, 76, 92] },
-        focus: { background: [72, 76, 92] },
-        pressed: { background: [104, 108, 126] },
-      },
+      color: tint,
+      borderColor: tint,
     }),
   );
 
-  // No line border: the solid background already reads as a panel against the
-  // busy ASCII scene, so the extra frame is visual noise. Tight padding keeps it
-  // compact.
+  // The card's fill reads as a panel against the busy ASCII scene; the rounded choices
+  // sit over it with transparent interiors. Tight padding keeps it compact.
   const popup = Box(
     {
       flexDirection: 'column',
       alignItems: 'stretch',
-      gap: 1,
+      gap: 1, // one row between the "promote to" header and the choices (the choices stay flush)
       padding: [1, 2],
-      background: [22, 24, 32], // unified popup/panel background
+      background: UI_CHROME_BG,
     },
     [
       Box({ justifyContent: 'center' }, [Text({ text: 'promote to', style: { color: [222, 224, 234], bold: true } })]),
-      ...options,
+      Box({ flexDirection: 'column', alignItems: 'stretch', gap: 0 }, options),
     ],
   );
 
@@ -174,6 +174,12 @@ export function buildPromotion(color: Color, onPick: (t: PieceType) => void, onC
   // dim under the unified renderer's alpha compositing).
   return Modal(popup, { onDismiss: onCancel });
 }
+
+// Rounded-button treatments shared by the modal family (confirm / game-over): a purple
+// outline for the affirmative/primary action, neutral grey for cancel/close. Hover/focus
+// whiten the border + label (see tui/button.ts). Matches the chess bar's purple ai control.
+const MODAL_PRIMARY = { color: [216, 200, 235] as RGB, borderColor: [138, 110, 170] as RGB };
+const MODAL_NEUTRAL = { color: [212, 214, 224] as RGB, borderColor: [88, 92, 110] as RGB };
 
 // The game-over result popup (chess.com style): a centered card with the outcome
 // ("White wins" / "Draw") tinted to the winner's set color, the reason beneath
@@ -186,29 +192,21 @@ export function buildGameOver(
   onClose: () => void,
 ): Node {
   const btn = (id: string, label: string, onClick: () => void, primary: boolean): Node =>
-    Button({
-      id,
-      label,
-      onClick,
-      style: {
-        padding: [0, 2],
-        background: primary ? [86, 64, 120] : [40, 42, 52],
-        color: primary ? [238, 230, 250] : [212, 214, 224],
-        bold: true,
-        hover: { background: primary ? [110, 84, 150] : [72, 76, 92] },
-        focus: { background: primary ? [110, 84, 150] : [72, 76, 92] },
-        pressed: { background: [120, 124, 142] },
-      },
-    });
+    RoundedButton({ id, label, onClick, ...(primary ? MODAL_PRIMARY : MODAL_NEUTRAL) });
 
+  // One row between the text and the buttons (the middle ground), but the buttons stay
+  // flush with each other (gap 0 — shared arc borders read as one list).
   const card = Box(
-    { flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [1, 3], background: [22, 24, 32] }, // unified popup background
+    { flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [1, 3], background: UI_CHROME_BG },
     [
-      Box({ justifyContent: 'center' }, [Text({ text: opts.title, style: { color: opts.tint, bold: true } })]),
-      Box({ justifyContent: 'center' }, [Text({ text: opts.subtitle, style: { color: [170, 174, 188] } })]),
-      Box({ height: 0 }), // small gap before the actions
-      btn('over-newgame', 'new game', onNewGame, true),
-      btn('over-close', 'close', onClose, false),
+      Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1 }, [
+        Box({ justifyContent: 'center' }, [Text({ text: opts.title, style: { color: opts.tint, bold: true } })]),
+        Box({ justifyContent: 'center' }, [Text({ text: opts.subtitle, style: { color: [170, 174, 188] } })]),
+      ]),
+      Box({ flexDirection: 'column', alignItems: 'stretch', gap: 0 }, [
+        btn('over-newgame', 'new game', onNewGame, true),
+        btn('over-close', 'close', onClose, false),
+      ]),
     ],
   );
   return Modal(card, { onDismiss: onClose });
@@ -227,26 +225,14 @@ export function buildConfirm(opts: {
   onCancel: () => void;
 }): Node {
   const btn = (id: string, label: string, onClick: () => void, primary: boolean): Node =>
-    Button({
-      id,
-      label,
-      onClick,
-      style: {
-        padding: [0, 2],
-        background: primary ? [86, 64, 120] : [40, 42, 52],
-        color: primary ? [238, 230, 250] : [212, 214, 224],
-        bold: true,
-        hover: { background: primary ? [110, 84, 150] : [72, 76, 92] },
-        focus: { background: primary ? [110, 84, 150] : [72, 76, 92] },
-        pressed: { background: [120, 124, 142] },
-      },
-    });
+    RoundedButton({ id, label, onClick, padding: [0, 3], ...(primary ? MODAL_PRIMARY : MODAL_NEUTRAL) });
 
+  // One row between the prompt and the buttons (the middle ground — no double spacer);
+  // the two buttons keep a horizontal gap so they read as separate actions.
   const card = Box(
-    { flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [1, 3], background: [22, 24, 32] },
+    { flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [1, 3], background: UI_CHROME_BG },
     [
       Box({ justifyContent: 'center' }, [Text({ text: opts.prompt, style: { color: [222, 224, 234], bold: true } })]),
-      Box({ height: 0 }),
       Box({ flexDirection: 'row', justifyContent: 'center', gap: 2 }, [
         btn(`${opts.idPrefix}-yes`, opts.confirmLabel, opts.onConfirm, true),
         btn(`${opts.idPrefix}-cancel`, 'cancel', opts.onCancel, false),
@@ -292,7 +278,7 @@ export function buildGameMenu(opts: { groups: MenuItem[][]; onClose: () => void;
   // with their left border; `closeInset: 1` nudges the ✕ one cell right. Buttons keep
   // gap 0 so their arc borders read as one continuous list.
   return Modal(
-    Dialog({ title: 'menu', onClose: opts.onClose, closeId: 'game-menu-close', padding: [1, 3], closeInset: 1 }, [
+    Dialog({ title: 'menu', onClose: opts.onClose, closeId: 'game-menu-close', padding: [1, 3], closeInset: 1, background: UI_CHROME_BG }, [
       Box({ flexDirection: 'column', alignItems: 'stretch', gap: 0 }, body),
     ]),
     { onDismiss: opts.onClose },
@@ -317,7 +303,23 @@ function prettyChord(k: string): string {
 // "this screen" + "general" (global), generated from keymap.activeBindings() so it can
 // never drift from the real bindings. Keys that trigger the same action collapse into one
 // row (e.g. "= / +"). Same Modal + card family as the game menu.
-export function buildShortcuts(bindings: { key: string; title: string; layer: string; id: string }[], onClose: () => void): Node {
+// The mouse controls documented in the controls overlay, per screen. Orbit screens
+// share drag/pan/zoom; the menu browses covers + launches; chess adds click-to-select/
+// move on top of orbit. Screens absent here (e.g. the prism) have no mouse row.
+const ORBIT_MODES: Mode[] = ['chess-game', 'poker', 'logos', 'audio', 'cards', 'ui'];
+export function mouseControlsFor(mode: Mode): { keys: string; label: string }[] {
+  if (mode === 'menu') return [{ keys: 'scroll', label: 'prev / next' }, { keys: 'click', label: 'launch' }];
+  const rows: { keys: string; label: string }[] = [];
+  if (ORBIT_MODES.includes(mode)) rows.push({ keys: 'drag', label: 'rotate' }, { keys: 'right-drag', label: 'pan' }, { keys: 'scroll', label: 'zoom' });
+  if (mode === 'chess-game') rows.push({ keys: 'click', label: 'select / move' });
+  return rows;
+}
+
+export function buildShortcuts(
+  bindings: { key: string; title: string; layer: string; id: string }[],
+  onClose: () => void,
+  opts: { mouse?: { keys: string; label: string }[] } = {},
+): Node {
   const groups = new Map<string, { keys: string[]; general: boolean; pan: boolean }>();
   for (const b of bindings) {
     const pan = b.id.startsWith('camera.pan'); // the 4 arrow pans collapse into one row
@@ -326,31 +328,38 @@ export function buildShortcuts(bindings: { key: string; title: string; layer: st
     const general = b.layer === 'global' || b.id === 'nav.escBack';
     // The panel is already screen-scoped, so drop the "Poker:"/"Chess:" prefix, and lowercase
     // for consistency with the app's lowercase chrome (buttons, the confirm popup, etc.).
-    const label = (pan ? 'pan camera' : b.title.replace(/^(Poker|Chess): /, '')).toLowerCase();
+    const label = (pan ? 'pan camera' : b.title.replace(/^(Poker|Chess|Menu): /, '')).toLowerCase();
     const g = groups.get(label) ?? { keys: [], general, pan };
     g.keys.push(prettyChord(b.key));
     groups.set(label, g);
   }
   const all = [...groups.entries()].map(([label, g]) => ({ label, keys: g.pan ? '↑ ↓ ← →' : g.keys.join(' / '), general: g.general }));
-  const keyColW = Math.max(3, ...all.map((r) => r.keys.length));
-
-  const row = (r: { label: string; keys: string }): Node =>
+  const mouseRows = opts.mouse ?? [];
+  // Each column sizes its own key gutter (left holds single-key chords; right holds the
+  // wider "right-drag"), so neither pads to the other's widest key.
+  const keyWidth = (rows: { keys: string }[]): number => Math.max(3, ...rows.map((r) => r.keys.length));
+  const mkRow = (keyColW: number) => (r: { label: string; keys: string }): Node =>
     Box({ flexDirection: 'row', gap: 2 }, [
       Text({ text: r.keys.padEnd(keyColW), style: { color: [140, 190, 255], bold: true } }),
       Text({ text: r.label, style: { color: [212, 214, 224] } }),
     ]);
-  const section = (label: string, rows: typeof all): Node[] =>
-    rows.length === 0 ? [] : [Text({ text: label, style: { color: [130, 134, 148], bold: true } }), ...rows.map(row)];
+  const section = (label: string, rows: { label: string; keys: string }[], keyColW: number): Node[] =>
+    rows.length === 0 ? [] : [Text({ text: label, style: { color: [130, 134, 148], bold: true } }), ...rows.map(mkRow(keyColW))];
+  const column = (children: Node[]): Node => Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1 }, children);
 
   const screenRows = all.filter((r) => !r.general);
   const generalRows = all.filter((r) => r.general);
+  const leftW = keyWidth(screenRows);
+  const rightW = keyWidth([...mouseRows, ...generalRows]);
+  // Two columns so the in-game list doesn't run too tall: this-game keys on the left, the
+  // (shared) mouse + general blocks stacked on the right.
   // Same header treatment as the game menu: the card's [1,3] padding insets the body so
   // the title lines up with it; `closeInset: 1` nudges the ✕ one cell right.
   return Modal(
-    Dialog({ title: 'shortcuts', onClose, closeId: 'shortcuts-close', padding: [1, 3], closeInset: 1 }, [
-      Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1 }, [
-        ...section('this game', screenRows),
-        ...section('general', generalRows),
+    Dialog({ title: 'controls', onClose, closeId: 'shortcuts-close', padding: [1, 3], closeInset: 1 }, [
+      Box({ flexDirection: 'row', alignItems: 'start', gap: 5 }, [
+        column(section('this screen', screenRows, leftW)),
+        column([...section('mouse', mouseRows, rightW), ...section('general', generalRows, rightW)]),
       ]),
     ]),
     { onDismiss: onClose },

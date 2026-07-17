@@ -17,9 +17,6 @@ interface OrbitLike {
 // is mostly shorthand. `run` closures below capture these.
 export interface KeyHandlers {
   quit(): void;
-  accountSwitchTeam(): void;
-  accountSignOut(): void;
-  openTeamSwitch(): void;
   closeTeamSwitch(): void;
   cycleMode(): void;
   openHomeMenu(): void;
@@ -73,9 +70,6 @@ export function installKeymap(h: KeyHandlers): Keymap {
   const keymap = new Keymap();
   for (const c of [
     { id: 'app.quit', title: 'Quit', run: h.quit },
-    { id: 'app.switchTeam', title: 'Switch Vercel team', run: h.accountSwitchTeam },
-    { id: 'app.signOut', title: 'Sign out of Vercel', run: h.accountSignOut },
-    { id: 'menu.teamSwitch', title: 'Switch Vercel team', run: h.openTeamSwitch },
     { id: 'menu.closeTeamSwitch', title: 'Close team switcher', run: h.closeTeamSwitch },
     { id: 'menu.openMenu', title: 'Open menu', run: h.openHomeMenu },
     { id: 'menu.closeMenu', title: 'Close menu', run: h.closeHomeMenu },
@@ -87,13 +81,13 @@ export function installKeymap(h: KeyHandlers): Keymap {
     { id: 'nav.toPrism', title: 'Back to prism', run: h.toPrism },
     { id: 'nav.escBack', title: 'Back', run: h.escBack },
     { id: 'nav.confirmHomeCancel', title: 'Stay in game', run: h.closeConfirmHome },
-    { id: 'app.shortcuts', title: 'Show shortcuts', run: h.openShortcuts },
-    { id: 'app.closeShortcuts', title: 'Close shortcuts', run: h.closeShortcuts },
+    { id: 'app.shortcuts', title: 'Show controls', run: h.openShortcuts },
+    { id: 'app.closeShortcuts', title: 'Close controls', run: h.closeShortcuts },
     { id: 'app.confirmQuit', title: 'Quit', run: h.openConfirmQuit },
     { id: 'app.closeConfirmQuit', title: 'Keep playing', run: h.closeConfirmQuit },
-    { id: 'menu.left', title: 'Menu: previous', run: () => h.menuNav(-1) },
-    { id: 'menu.right', title: 'Menu: next', run: () => h.menuNav(1) },
-    { id: 'menu.select', title: 'Menu: launch selected', run: h.launchSelected },
+    { id: 'menu.left', title: 'previous', run: () => h.menuNav(-1) },
+    { id: 'menu.right', title: 'next', run: () => h.menuNav(1) },
+    { id: 'menu.select', title: 'launch selected', run: h.launchSelected },
     { id: 'nav.audio', title: 'Open audio', run: h.enterAudio },
     { id: 'audio.nextModel', title: 'Audio: next model', run: h.audioCycleModel },
     { id: 'nav.chessGame', title: 'Open chess game', run: h.enterChessGame },
@@ -109,7 +103,7 @@ export function installKeymap(h: KeyHandlers): Keymap {
     { id: 'chess.toggleAI', title: 'Play / pause AI', run: h.aiButton },
     { id: 'chess.toggleHistory', title: 'Toggle move history', run: h.toggleHistory },
     { id: 'chess.toggleChat', title: 'Toggle chat', run: h.toggleChat },
-    { id: 'chess.resetGame', title: 'Reset game', run: h.resetGame },
+    { id: 'chess.resetGame', title: 'Reset board', run: h.resetGame }, // menu / bar button only (no user key)
     { id: 'chess.toggleIllegal', title: 'Toggle illegal moves', run: h.toggleIllegal },
     { id: 'chess.toggleEvalBar', title: 'Toggle eval bar', run: h.toggleEvalBar },
     { id: 'chess.closeGameOver', title: 'Close result', run: h.closeGameOver },
@@ -136,7 +130,6 @@ export function installKeymap(h: KeyHandlers): Keymap {
     { key: 'q', cmd: 'app.confirmQuit' },
     { key: 'escape', cmd: 'app.quit' },
     { key: 'ctrl+c', cmd: 'app.quit' },
-    { key: 's', cmd: 'app.switchTeam' }, // sign in / switch billing team
     { key: '?', cmd: 'app.shortcuts' }, // show the shortcuts overlay for the current screen
   ]) {
     keymap.bind('global', b);
@@ -144,7 +137,6 @@ export function installKeymap(h: KeyHandlers): Keymap {
   keymap.bind('chess', { key: 'p', cmd: 'chess.toggleAI' });
   keymap.bind('chess', { key: 'h', cmd: 'chess.toggleHistory' });
   keymap.bind('chess', { key: 'c', cmd: 'chess.toggleChat' }); // chat toggle (was 't')
-  keymap.bind('chess', { key: 'n', cmd: 'chess.resetGame' });
   keymap.bind('chess', { key: 'i', cmd: 'chess.toggleIllegal' });
   keymap.bind('chess', { key: 'e', cmd: 'chess.toggleEvalBar' });
   keymap.bind('chess', { key: 'm', cmd: 'chess.openMenu' }); // ☰ menu (chess-game only; no-op in the showcase)
@@ -169,8 +161,6 @@ export function installKeymap(h: KeyHandlers): Keymap {
     { key: 'space', cmd: 'menu.select' },
     { key: 'escape', cmd: 'nav.toPrism' },
     { key: 'm', cmd: 'menu.openMenu' },
-    { key: 's', cmd: 'menu.teamSwitch' }, // shadow global 's': open the in-screen modal team picker
-    { key: 'o', cmd: 'app.signOut' }, // account home: sign out (switch-team is global 's')
   ]) {
     keymap.bind('menu', b);
   }
@@ -214,7 +204,7 @@ export function installKeymap(h: KeyHandlers): Keymap {
   keymap.bind('gameover', { key: 'escape', cmd: 'chess.closeGameOver' });
   // Match-setup panel: Escape cancels, and the arrow keys pan / 'r' resets the board behind
   // it — so you can frame the board while picking models, like the poker setup. It stays
-  // modal for chess ACTION keys ('m'/'n'/'p'/'i'/'e'/'q'/…) so they can't fire over the setup;
+  // modal for chess ACTION keys ('m'/'p'/'i'/'e'/'q'/…) so they can't fire over the setup;
   // only the camera controls are bound through. (up/down still scroll a focused dropdown
   // first — Screen.handleKey runs before the keymap — and pan only when nothing's focused.)
   keymap.bind('setup', { key: 'escape', cmd: 'chess.cancelSetup' });

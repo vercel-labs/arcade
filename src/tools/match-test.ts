@@ -198,7 +198,7 @@ async function main(): Promise<void> {
   //    move-history ScrollBox expands and the commentary toast renders.
   {
     const noop = (): void => {};
-    const actions: BarActions = { back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, audioModel: noop };
+    const actions: BarActions = { back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, newGame: noop, audioModel: noop };
     const ui = new Screen(80, 30);
     mountChessHud(ui);
     refreshMoveHistory(['e4', 'e5', 'Nf3', 'Nc6']);
@@ -260,7 +260,7 @@ async function main(): Promise<void> {
   //     while legal moves stay light, and the red must vanish when nothing's flagged.
   {
     const noop = (): void => {};
-    const actions: BarActions = { back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, audioModel: noop };
+    const actions: BarActions = { back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, newGame: noop, audioModel: noop };
     const ui = new Screen(80, 30);
     mountChessHud(ui);
     const render = (): void =>
@@ -285,7 +285,7 @@ async function main(): Promise<void> {
   //     and the wheel step moves several rows per notch (snappier than 1).
   {
     const noop = (): void => {};
-    const actions: BarActions = { back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, audioModel: noop };
+    const actions: BarActions = { back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, newGame: noop, audioModel: noop };
     const ui = new Screen(80, 30);
     mountChessHud(ui);
     refreshMoveHistory(Array.from({ length: 60 }, (_, i) => (i % 2 === 0 ? 'Nf3' : 'Nc6'))); // 30 rows → scrollable, snapped to bottom

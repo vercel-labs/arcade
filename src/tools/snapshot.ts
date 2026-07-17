@@ -14,7 +14,7 @@ import { LogosScene } from '../arcade/scenes/logos-scene.ts';
 import { AudioScene } from '../arcade/scenes/audio-scene.ts';
 import { CoverFlowScene } from '../arcade/shell/coverflow.ts';
 import { MENU_ITEMS } from '../arcade/shell/menu.ts';
-import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, type Mode } from '../arcade/shell/bars.ts';
+import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, mouseControlsFor, type Mode } from '../arcade/shell/bars.ts';
 import { installKeymap } from '../arcade/shell/keybindings.ts';
 import { buildShowcase, mountShowcase } from '../arcade/scenes/ui-showcase.ts';
 import { buildChessGameRoot, chessMoveChat, mountChessHud, refreshMoveHistory } from '../arcade/games/chess/hud.ts';
@@ -34,6 +34,7 @@ import { RANK_LABELS, type Suit, SUIT_LETTERS } from '../rules/poker/cards.ts';
 import type { Color } from '../rules/chess/types.ts';
 import { Box, Button, Dropdown, layout, paint, Screen, type PaintState } from '../tui/index.ts';
 import { buildTeamSwitch, markSwitchSucceeded, mountTeamSwitch, setTeamSwitchTeams } from '../arcade/shell/team-switch.ts';
+import { UI_CHROME_PILL } from '../arcade/theme.ts';
 
 type Rgb = [number, number, number];
 // Terminal cells are roughly twice as tall as they are wide. Rasterize each
@@ -185,7 +186,7 @@ function blockBits(ch: string, px: number, py: number): boolean {
 }
 
 const noop = (): void => {};
-const barActions = { back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, audioModel: noop };
+const barActions = { back: noop, reset: noop, mode: noop, quit: noop, aiMatch: noop, newGame: noop, audioModel: noop };
 
 // Render a scene full-height, then composite that screen's button bar over it —
 // proving the bar sits ON TOP of the 3D scene (opaque pills overwrite it;
@@ -518,6 +519,7 @@ function pokerSnapshot(): void {
         cineLabel: scene.cineLabel(),
         resultLabel: scene.resultLabel(),
         awaitingContinue: scene.awaitingContinue(),
+        continueIn: scene.continueCountdown(),
       }),
       region,
     );
@@ -612,9 +614,14 @@ function pokerSnapshot(): void {
             { id: 'poker-menu-home', label: 'home', onClick: noop },
             { id: 'poker-menu-new', label: 'new game', onClick: noop },
           ],
-          [{ id: 'poker-menu-mode', label: 'display', value: 'ascii', onClick: noop }],
+          [
+            { id: 'poker-menu-reset', label: 'reset camera', onClick: noop },
+            { id: 'poker-menu-mode', label: 'display', value: 'ascii', onClick: noop },
+            { id: 'poker-menu-color', label: 'color', value: 'truecolor', onClick: noop },
+          ],
           [{ id: 'poker-menu-quit', label: 'quit', onClick: noop }],
         ],
+        valueColW: 9,
         onClose: noop,
       }),
       region,
@@ -674,9 +681,12 @@ function pokerSnapshot(): void {
       { text: "that's a big number. giving it a think.", model: 'google/gemini-3-pro' },
     ])
       pushPokerChat(m);
-    // `result` composites the end-of-hand winner banner + "click to continue" over the
-    // (visible) final table, as it appears between hands. Needs a decided hand (showdown).
-    if (args.includes('result')) void scene.beginResult('claude-opus-4.8 wins $240');
+    // `result` composites the end-of-hand winner banner and next-hand countdown over
+    // the visible final table. Needs a decided hand (showdown).
+    if (args.includes('result')) {
+      void scene.beginResult('claude-opus-4.8 wins $240');
+      scene.renderScene(hudTarget, t + 1 / 30); // arm the six-second next-hand countdown
+    }
     const hero = {
       toAct: !spectate && !args.includes('result'),
       toCall: st.toCall(0),
@@ -707,6 +717,7 @@ function pokerSnapshot(): void {
         cineLabel: null,
         resultLabel: scene.resultLabel(),
         awaitingContinue: scene.awaitingContinue(),
+        continueIn: scene.continueCountdown(),
       });
     screen.setRoot(buildRoot(), region); // first build arms the amount field to the min-raise
     // `bet=N` presets the raise amount (to check fixed button widths at any digit count / all-in).
@@ -901,21 +912,23 @@ function settingsSnapshot(): void {
     screen.setRoot(
       buildGameMenu({
         groups: [
-          [{ id: 'home-menu-display', label: 'display', value: 'ascii', onClick: noop }],
           [
-            { id: 'home-menu-shortcuts', label: 'shortcuts', onClick: noop },
+            { id: 'home-menu-display', label: 'display', value: 'ascii', onClick: noop },
+            { id: 'home-menu-color', label: 'color', value: 'truecolor', onClick: noop },
+          ],
+          [
+            { id: 'home-menu-shortcuts', label: 'controls', onClick: noop },
             { id: 'home-menu-account', label: 'account', onClick: noop },
             { id: 'home-menu-quit', label: 'quit', onClick: noop },
           ],
         ],
-        valueColW: 6,
+        valueColW: 9,
         onClose: noop,
       }),
       region,
     );
   } else {
-    const menuPill = { padding: [0, 1] as [number, number], background: [28, 30, 40] as Rgb, color: [200, 205, 220] as Rgb };
-    const overlay = Box({ width: cols, height: rows }, [Box({ position: 'absolute', top: 1, right: 2 }, [Button({ id: 'menu-button', label: '☰ menu', style: menuPill })])]);
+    const overlay = Box({ width: cols, height: rows }, [Box({ position: 'absolute', top: 1, right: 2 }, [Button({ id: 'menu-button', label: '☰ menu', style: UI_CHROME_PILL })])]);
     screen.setRoot(overlay, region);
   }
   const surf = screen.snapshot((s) => {
@@ -1114,20 +1127,21 @@ function chessOverlaySnapshot(): void {
         groups: [
           [
             { id: 'chess-menu-home', label: 'home', onClick: noop },
-            { id: 'chess-menu-new', label: 'new game', onClick: noop },
+            { id: 'chess-menu-new', label: 'reset board', onClick: noop },
           ],
           [
-            { id: 'chess-menu-reset', label: 'reset view', onClick: noop },
+            { id: 'chess-menu-reset', label: 'reset camera', onClick: noop },
             { id: 'chess-menu-mode', label: 'display', value: 'ascii', onClick: noop },
+            { id: 'chess-menu-color', label: 'color', value: 'truecolor', onClick: noop },
             { id: 'chess-menu-eval', label: 'eval bar', value: evalVisible ? 'on' : 'off', onClick: noop },
             { id: 'chess-menu-illegal', label: 'illegal', value: 'off', onClick: noop },
           ],
           [
-            { id: 'chess-menu-shortcuts', label: 'shortcuts', onClick: noop },
+            { id: 'chess-menu-shortcuts', label: 'controls', onClick: noop },
             { id: 'chess-menu-quit', label: 'quit', onClick: noop },
           ],
         ],
-        valueColW: 6,
+        valueColW: 9,
         onClose: noop,
       }),
       region,
@@ -1290,10 +1304,11 @@ function modalSnapshot(): void {
   surfaceToPpm(surf, cols, rows, out);
 }
 
-// The shortcuts overlay for a given screen ('poker' | 'chess'), generated from a real
-// keymap's activeBindings() so the panel matches what actually resolves at runtime.
+// The shortcuts overlay for a given screen ('poker' | 'chess' | 'menu'), generated from a
+// real keymap's activeBindings() so the panel matches what actually resolves at runtime.
 function shortcutsSnapshot(): void {
-  const which = process.argv[3] === 'chess' ? 'chess' : 'poker';
+  const arg = process.argv[3];
+  const which: 'chess' | 'poker' | 'menu' = arg === 'chess' || arg === 'menu' ? arg : 'poker';
   const cols = Number(process.argv[4]) || 96;
   const rows = Number(process.argv[5]) || 34;
   const out = process.argv.find((a) => a.endsWith('.ppm')) ?? `.snapshots/shortcuts-${which}.ppm`;
@@ -1304,7 +1319,8 @@ function shortcutsSnapshot(): void {
   shapeGlyphToSurface(surf, target, cols, rows, { color: true, hybrid: true });
   const km = installKeymap(new Proxy({}, { get: () => () => {} }) as never); // stub handlers (never invoked)
   km.setBase(which);
-  const root = buildShortcuts(km.activeBindings(), () => {});
+  const mode: Mode = which === 'chess' ? 'chess-game' : which;
+  const root = buildShortcuts(km.activeBindings(), () => {}, { mouse: mouseControlsFor(mode) });
   layout(root, { x: 0, y: 0, w: cols, h: rows });
   const hover = process.argv.find((a) => a.startsWith('hover='))?.slice(6) ?? null;
   paint(root, surf, { hoverId: hover, focusId: null, pressedId: null });

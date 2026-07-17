@@ -355,6 +355,7 @@ export class ChessGameScene {
     this.deselect();
     this.anim = null;
     this.pendingPromo = null;
+    this.cam.reset(); // snap back to the default view — a new match/game starts unrotated
     this.dirty = true;
     pending?.(); // wake the awaiter (microtask) so a cancelled match can finish unwinding
   }

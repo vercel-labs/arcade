@@ -39,3 +39,20 @@ test('ChatBox keeps first words intact after a long model-name prefix', () => {
     'good.',
   ]);
 });
+
+test('ChatBox renders a disambiguated label while retaining the model identity', () => {
+  const chat = new ChatBox('chat-label-test');
+  chat.setViewport(4);
+  chat.setActive(true);
+  chat.push({
+    model: 'anthropic/claude-haiku-4.5',
+    label: 'claude-haiku-4.5 (2)',
+    text: 'Your move.',
+  });
+
+  assert.deepEqual(renderedRows(chat, 4).slice(0, 3), [
+    'claude-haiku-4.5 (2): Your move.',
+    '',
+    '',
+  ]);
+});

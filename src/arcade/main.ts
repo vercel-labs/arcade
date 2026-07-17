@@ -1,4 +1,5 @@
 import {
+  applyTerminalColorMode,
   bloom,
   downsample,
   halfBlockToSurface,
@@ -7,6 +8,7 @@ import {
   STYLE_BOLD,
   STYLE_DIM,
   type Surface,
+  type TerminalColorMode,
   toHalfBlock,
   toShapeGlyph,
 } from '../engine/index.ts';
@@ -23,7 +25,7 @@ import { buildPokerSetupPanel, mountPokerSetup, pokerPreviewSeats, pokerSetupRea
 import { LogosScene } from './scenes/logos-scene.ts';
 import { AudioScene } from './scenes/audio-scene.ts';
 import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/input.ts';
-import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, type BarActions, type MenuItem, type Mode, type RenderMode } from './shell/bars.ts';
+import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, mouseControlsFor, type BarActions, type MenuItem, type Mode, type RenderMode } from './shell/bars.ts';
 import { buildShowcase, mountShowcase } from './scenes/ui-showcase.ts';
 import { buildChessGameRoot, chessMoveChat, type Commentary, type MatchSide, mountChessHud, movesToPgn, refreshMoveHistory, shortModel } from './games/chess/hud.ts';
 import { creatorTint } from './scenes/wisp.ts';
@@ -35,12 +37,14 @@ import { BLACK, type Color, WHITE } from '../rules/chess/types.ts';
 import { evaluate } from '../rules/chess/eval.ts';
 import type { ChessResult } from '../rules/chess/chess.ts';
 import type { RGB, RGBA } from '../engine/index.ts';
-import { Box, Button, Renderer, Screen, type LayoutBox, type Node, type Style } from '../tui/index.ts';
+import { Box, Button, Renderer, Screen, type LayoutBox, type Node } from '../tui/index.ts';
+import { UI_CHROME_PILL } from './theme.ts';
 import { installKeymap } from './shell/keybindings.ts';
 import { buildTeamSwitch, markSwitchSucceeded, mountTeamSwitch, setTeamSwitchHandlers, setTeamSwitchTeams, type TeamSwitchView } from './shell/team-switch.ts';
 import * as term from '../platform/terminal.ts';
 import { availableTeams, ensureGatewayKey, isLoggedIn, loadEnv, signOut as signOutVercel, switchTeam, type Team, useTeam } from '../auth/index.ts';
 import { AiMatch, type Seat } from './match/driver.ts';
+import { disambiguateLabels } from './match/labels.ts';
 
 // Populate process.env from .env.local before anything reads AI_GATEWAY_API_KEY.
 loadEnv();
@@ -55,9 +59,13 @@ const MAX_STEP = 0.1;
 const SS = 3;
 
 const MODE_ORDER: RenderMode[] = ['ascii', 'pixels'];
-// Widest display-style name, reserved as the menu's value-column width so the popup keeps a
-// stable width as "display" cycles ascii <-> pixels (see buildGameMenu `valueColW`).
-const MODE_W = Math.max(...MODE_ORDER.map((m) => m.length));
+const COLOR_ORDER: TerminalColorMode[] = ['truecolor', '256-color'];
+// Reserve the widest setting value so the popup keeps a stable width as either
+// display or color cycles in place (see buildGameMenu `valueColW`).
+const MENU_VALUE_W = Math.max(
+  ...MODE_ORDER.map((m) => m.length),
+  ...COLOR_ORDER.map((m) => m.length),
+);
 
 // Unified compositing (OpenTUI keystone): the scene paints into the same Surface
 // as the UI and a single diff is flushed, instead of "scene string + UI overlay
@@ -124,6 +132,11 @@ function activeOrbit(): ChessGameScene | LogosScene | AudioScene | CardsScene | 
 
 let mode: Mode = 'prism';
 let renderMode: RenderMode = 'ascii';
+let colorMode: TerminalColorMode = 'truecolor';
+
+function writeFrame(output: string): void {
+  r.write(applyTerminalColorMode(output, colorMode));
+}
 // Pointer pan used to pass raw cell deltas while one arrow press pans 16
 // cell-equivalents. A 4x multiplier keeps right/modifier-drag responsive and
 // visually attached to the mouse without changing orbit or keyboard speed.
@@ -186,10 +199,24 @@ let matchSeats: { white: Seat; black: Seat } | null = null;
 // Resolve a seat to the match banner's label + color: a creator's brand hue for an AI
 // (its short model name), or the piece tint for a human ("you"), so you can read the
 // matchup — and which side you're on — at a glance.
-function chessSideLabel(seat: Seat, color: Color): MatchSide {
-  if (seat.kind === 'human') return { text: 'you', color: color === WHITE ? [232, 228, 216] : [184, 126, 74] };
+function chessSideLabel(seat: Seat, color: Color, text: string): MatchSide {
+  if (seat.kind === 'human') return { text, color: color === WHITE ? [232, 228, 216] : [184, 126, 74] };
   const t = creatorTint(seat.model.split('/')[0] ?? seat.model);
-  return { text: shortModel(seat.model), color: [t.x | 0, t.y | 0, t.z | 0] };
+  return { text, color: [t.x | 0, t.y | 0, t.z | 0] };
+}
+function chessMatchupLabels(seats: { white: Seat; black: Seat }): { white: MatchSide; black: MatchSide } {
+  const pair = [seats.white, seats.black];
+  const labels = disambiguateLabels(
+    pair.map((seat, index) =>
+      seat.kind === 'human'
+        ? { key: `human:${index}`, label: 'you' }
+        : { key: seat.model, label: shortModel(seat.model) },
+    ),
+  );
+  return {
+    white: chessSideLabel(seats.white, WHITE, labels[0]),
+    black: chessSideLabel(seats.black, BLACK, labels[1]),
+  };
 }
 // The in-match model-swap popup (click a wisp): the side being edited and whether
 // the match was ALREADY paused when it opened (so closing restores that state
@@ -366,16 +393,6 @@ function accountSwitchTeam(): void {
   });
 }
 
-// In-app "sign out": forget the stored session and re-gate AI.
-function accountSignOut(): void {
-  if (!isLoggedIn()) return;
-  void withSuspendedTui(async () => {
-    const was = signOutVercel();
-    process.stdout.write(was ? '\n  Signed out of Vercel.\n\n' : '\n  Not signed in.\n\n');
-    await new Promise((res) => setTimeout(res, 700)); // let the line be read before the wipe
-  });
-}
-
 // Home menu + Vercel account modal.
 function openHomeMenu(): void {
   if (mode !== 'menu' || homeMenuOpen || teamModalOpen || launching) return;
@@ -476,22 +493,19 @@ setTeamSwitchHandlers({ onPick: pickTeamChoice });
 
 // The hub's one menu button is pinned top-right over Cover Flow. The root is
 // transparent so clicks off the pill fall through to the carousel.
-const MENU_PILL: Style = {
-  padding: [0, 1],
-  background: [28, 30, 40],
-  color: [200, 205, 220],
-  hover: { background: [238, 240, 248], color: [16, 16, 24] },
-  focus: { background: [86, 90, 108], color: [248, 248, 252] },
-  pressed: { background: [255, 255, 255], color: [12, 12, 18] },
-};
 function buildMenuOverlay(): Node {
-  const menuButton = Button({ id: 'menu-button', label: '☰ menu', onClick: openHomeMenu, style: MENU_PILL });
+  const menuButton = Button({ id: 'menu-button', label: '☰ menu', onClick: openHomeMenu, style: UI_CHROME_PILL });
   // Inset from the top-right corner by a row / a couple of columns so it breathes.
   return Box({ width: cols, height: rows }, [Box({ position: 'absolute', top: 1, right: 2 }, [menuButton])]);
 }
 
 function cycleMode(): void {
   renderMode = MODE_ORDER[(MODE_ORDER.indexOf(renderMode) + 1) % MODE_ORDER.length];
+  fullRepaint();
+}
+
+function cycleColor(): void {
+  colorMode = COLOR_ORDER[(COLOR_ORDER.indexOf(colorMode) + 1) % COLOR_ORDER.length];
   fullRepaint();
 }
 
@@ -542,8 +556,8 @@ const aiMatch = new AiMatch({
   requestRender: () => r.requestRender(),
   // A model's pre-move rationale is a chat line, not a toast — append it to the
   // persistent thread (the bottom toast is reserved for app/system notices).
-  onCommentary: (text, model) => {
-    pushChatMessage({ text, model });
+  onCommentary: (text, model, label) => {
+    pushChatMessage({ text, model, label });
     r.requestRender();
   },
   allowIllegal: () => illegalAllowed,
@@ -652,8 +666,8 @@ const pokerMatch = new PokerMatch({
   requestRender: () => r.requestRender(),
   // A model's pre-move line is in-character TABLE TALK — append it to the poker
   // thread (like the chess DMs), not the bottom toast (reserved for system notices).
-  onCommentary: (text, model) => {
-    pushPokerChat({ text, model });
+  onCommentary: (text, model, label) => {
+    pushPokerChat({ text, model, label });
     r.requestRender();
   },
   onHandOver: () => {
@@ -661,8 +675,8 @@ const pokerMatch = new PokerMatch({
     r.requestRender();
   },
   // Heads-up voice: spoken lines (bot + human) and game-event lines to the chat rail.
-  onChat: (text, speaker, event) => {
-    pushPokerChat({ text, model: event ? '' : speaker, event });
+  onChat: (text, speaker, event, label) => {
+    pushPokerChat({ text, model: event ? '' : speaker, label: event ? undefined : label, event });
     r.requestRender();
   },
   // A human action parsed from speech, awaiting confirm — shown as a callout right above
@@ -1145,6 +1159,7 @@ const actions: BarActions = {
   mode: cycleMode,
   quit,
   aiMatch: aiButton,
+  newGame: resetGame,
   audioModel: () => audioScene.cycleModel(),
 };
 
@@ -1157,9 +1172,6 @@ const actions: BarActions = {
 // the handlers and the live keymap (setBase / handle / modal push-pop below).
 const keymap = installKeymap({
   quit,
-  accountSwitchTeam,
-  accountSignOut,
-  openTeamSwitch,
   closeTeamSwitch,
   openHomeMenu,
   closeHomeMenu,
@@ -1288,7 +1300,8 @@ function syncBar(): void {
     promoFocused = false;
     if (!keymap.hasContext('shortcuts')) keymap.pushContext('shortcuts', true);
     // activeBindings() skips modal layers, so it reports the screen beneath this overlay.
-    ui.setRoot(buildShortcuts(keymap.activeBindings(), closeShortcuts), { x: 0, y: 0, w: cols, h: rows });
+    // Mouse rows are per-screen (orbit drag/zoom, menu browse/launch, chess click-to-move).
+    ui.setRoot(buildShortcuts(keymap.activeBindings(), closeShortcuts, { mouse: mouseControlsFor(mode) }), { x: 0, y: 0, w: cols, h: rows });
   } else if (confirmQuitOpen) {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     popGameOver();
@@ -1420,14 +1433,17 @@ function syncBar(): void {
       if (keymap.hasContext('teamswitch')) keymap.popContext('teamswitch');
       if (!keymap.hasContext('home-menu')) keymap.pushContext('home-menu', true);
       const groups: MenuItem[][] = [
-        [{ id: 'home-menu-display', label: 'display', value: renderMode, onClick: cycleMode }],
         [
-          { id: 'home-menu-shortcuts', label: 'shortcuts', onClick: openShortcuts },
+          { id: 'home-menu-display', label: 'display', value: renderMode, onClick: cycleMode },
+          { id: 'home-menu-color', label: 'color', value: colorMode, onClick: cycleColor },
+        ],
+        [
+          { id: 'home-menu-shortcuts', label: 'controls', onClick: openShortcuts },
           { id: 'home-menu-account', label: 'account', onClick: openTeamSwitch },
           { id: 'home-menu-quit', label: 'quit', onClick: openConfirmQuit },
         ],
       ];
-      ui.setRoot(buildGameMenu({ groups, onClose: closeHomeMenu, valueColW: MODE_W }), region);
+      ui.setRoot(buildGameMenu({ groups, onClose: closeHomeMenu, valueColW: MENU_VALUE_W }), region);
     } else {
       if (keymap.hasContext('teamswitch')) keymap.popContext('teamswitch');
       if (keymap.hasContext('home-menu')) keymap.popContext('home-menu');
@@ -1458,20 +1474,21 @@ function syncBar(): void {
     const groups: MenuItem[][] = [
       [
         { id: 'chess-menu-home', label: 'home', onClick: enterMenu },
-        { id: 'chess-menu-new', label: 'new game', onClick: () => { resetGame(); closeChessMenu(); } },
+        { id: 'chess-menu-new', label: 'reset board', onClick: () => { resetGame(); closeChessMenu(); } },
       ],
       [
-        { id: 'chess-menu-reset', label: 'reset view', onClick: () => { actions.reset(); closeChessMenu(); } },
+        { id: 'chess-menu-reset', label: 'reset camera', onClick: () => { actions.reset(); closeChessMenu(); } },
         { id: 'chess-menu-mode', label: 'display', value: renderMode, onClick: cycleMode },
+        { id: 'chess-menu-color', label: 'color', value: colorMode, onClick: cycleColor },
         { id: 'chess-menu-eval', label: 'eval bar', value: evalBarVisible ? 'on' : 'off', onClick: toggleEvalBar },
         { id: 'chess-menu-illegal', label: 'illegal', value: illegalAllowed ? 'on' : 'off', onClick: toggleIllegal },
       ],
       [
-        { id: 'chess-menu-shortcuts', label: 'shortcuts', onClick: openShortcuts },
+        { id: 'chess-menu-shortcuts', label: 'controls', onClick: openShortcuts },
         { id: 'chess-menu-quit', label: 'quit', onClick: quit },
       ],
     ];
-    ui.setRoot(buildGameMenu({ groups, onClose: closeChessMenu, valueColW: MODE_W }), { x: 0, y: 0, w: cols, h: rows });
+    ui.setRoot(buildGameMenu({ groups, onClose: closeChessMenu, valueColW: MENU_VALUE_W }), { x: 0, y: 0, w: cols, h: rows });
   } else if (mode === 'chess-game') {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     popGameOver();
@@ -1496,7 +1513,7 @@ function syncBar(): void {
       chessChatPly = chessMoves.length;
     }
     const ai = !chessGame.isMatchActive()
-      ? { label: 'new match', active: false }
+      ? { label: 'new ai match', active: false }
       : aiMatch.isPaused()
         ? { label: 'resume', active: true }
         : { label: 'pause', active: true };
@@ -1517,7 +1534,7 @@ function syncBar(): void {
         onOpenMenu: openChessMenu,
         chatActive: chessGame.isMatchActive(),
         illegalOn: illegalAllowed,
-        matchup: matchSeats ? { white: chessSideLabel(matchSeats.white, WHITE), black: chessSideLabel(matchSeats.black, BLACK) } : null,
+        matchup: matchSeats ? chessMatchupLabels(matchSeats) : null,
       }),
       { x: 0, y: 0, w: cols, h: rows },
     );
@@ -1562,7 +1579,7 @@ function syncBar(): void {
     popSetup();
     popSwap();
     promoFocused = false;
-    // The in-game menu popup, over the poker view. Home/Quit/Restart act and dismiss;
+    // The in-game menu popup, over the poker view. Home/New game/Reset camera/Quit dismiss;
     // Display cycles the render style in place (menu stays open). Escape (poker-menu layer)
     // and the header ✕ close it.
     if (!keymap.hasContext('poker-menu')) keymap.pushContext('poker-menu', true);
@@ -1573,13 +1590,17 @@ function syncBar(): void {
         { id: 'poker-menu-home', label: 'home', onClick: enterMenu },
         { id: 'poker-menu-new', label: 'new game', onClick: pokerNewGame },
       ],
-      [{ id: 'poker-menu-mode', label: 'display', value: renderMode, onClick: cycleMode }],
       [
-        { id: 'poker-menu-shortcuts', label: 'shortcuts', onClick: openShortcuts },
+        { id: 'poker-menu-reset', label: 'reset camera', onClick: () => { actions.reset(); closePokerMenu(); } },
+        { id: 'poker-menu-mode', label: 'display', value: renderMode, onClick: cycleMode },
+        { id: 'poker-menu-color', label: 'color', value: colorMode, onClick: cycleColor },
+      ],
+      [
+        { id: 'poker-menu-shortcuts', label: 'controls', onClick: openShortcuts },
         { id: 'poker-menu-quit', label: 'quit', onClick: quit },
       ],
     ];
-    ui.setRoot(buildGameMenu({ groups, onClose: closePokerMenu, valueColW: MODE_W }), { x: 0, y: 0, w: cols, h: rows });
+    ui.setRoot(buildGameMenu({ groups, onClose: closePokerMenu, valueColW: MENU_VALUE_W }), { x: 0, y: 0, w: cols, h: rows });
   } else if (mode === 'poker') {
     popGameOver();
     popSetup();
@@ -1706,10 +1727,8 @@ function onKeyImpl(ev: KeyEvent): void {
     splashing = false;
     return;
   }
-  // Poker "press any key to continue" gate (the bird's-eye deal finished dealing, or the
-  // end-of-hand winner banner is up): any key but ctrl+c proceeds past it. Clicks don't —
-  // the mouse stays free to orbit/zoom the scene until a key is pressed.
-  if (mode === 'poker' && pokerScene.awaitingContinue()) {
+  // Space advances a poker countdown immediately; other keys retain their normal behavior.
+  if (mode === 'poker' && pokerScene.awaitingContinue() && ev.name === 'space') {
     pokerScene.continueGesture();
     return;
   }
@@ -1747,8 +1766,8 @@ function onMouseImpl(e: MouseEvent): void {
     splashing = false;
     return;
   }
-  // The poker continue gate advances on a KEYPRESS only (see onKeyImpl) — the mouse stays
-  // free here to orbit/zoom/pan the scene while the banner + prompt are up.
+  // The poker continue gate advances on Space only (see onKeyImpl); the mouse stays free
+  // here to orbit/zoom/pan the scene while the banner and prompt are up.
   // Prism loading screen: a click starts (→ menu).
   if (mode === 'prism' && e.type === 'down') {
     enterMenu();
@@ -1926,7 +1945,7 @@ function tick(dt: number): void {
     // so there's no black flash and the handoff is seamless.
     if (!splash.done(t)) {
       splash.renderScene(target, t);
-      r.write(UNIFIED ? ui.frameComposited((s) => presentSceneInto(s)) : presentScene());
+      writeFrame(UNIFIED ? ui.frameComposited((s) => presentSceneInto(s)) : presentScene());
       return;
     }
     splashing = false;
@@ -1935,7 +1954,7 @@ function tick(dt: number): void {
   if (mode === 'prism') {
     // Prism loading screen: live prism + a breathing "press any key" prompt, no bar.
     prism.renderScene(target, t);
-    r.write(
+    writeFrame(
       UNIFIED
         ? ui.frameComposited((s) => {
             presentSceneInto(s);
@@ -1951,7 +1970,7 @@ function tick(dt: number): void {
     if (launching) {
       launchT += step;
       coverflow.renderLaunch(target, launchSel, launchT);
-      r.write(UNIFIED ? ui.frameComposited((s) => presentSceneInto(s)) : presentScene());
+      writeFrame(UNIFIED ? ui.frameComposited((s) => presentSceneInto(s)) : presentScene());
       if (launchT >= LAUNCH_TOTAL) {
         launching = false;
         enterGame(MENU_ITEMS[launchSel].id);
@@ -1966,7 +1985,7 @@ function tick(dt: number): void {
     if (Math.abs(menuSel - coverPos) < 0.0015) coverPos = menuSel;
     coverflow.renderScene(target, coverPos, menuHover ? menuSel : -1);
     syncBar();
-    r.write(
+    writeFrame(
       UNIFIED
         ? ui.frameComposited((s) => {
             presentSceneInto(s);
@@ -1980,7 +1999,7 @@ function tick(dt: number): void {
   if (mode === 'logos') {
     logosScene.renderScene(target, t);
     syncBar();
-    r.write(UNIFIED ? ui.frameComposited((s) => presentSceneInto(s)) : presentScene() + ui.frame());
+    writeFrame(UNIFIED ? ui.frameComposited((s) => presentSceneInto(s)) : presentScene() + ui.frame());
     return;
   }
 
@@ -1989,7 +2008,7 @@ function tick(dt: number): void {
     // the menu). The bar composites on top via syncBar's root.
     audioScene.renderScene(target, t);
     syncBar();
-    r.write(
+    writeFrame(
       UNIFIED
         ? ui.frameComposited((s) => {
             presentSceneInto(s);
@@ -2010,8 +2029,8 @@ function tick(dt: number): void {
     syncBar();
     const sceneDirty = forceFrame || chessGame.needsRender();
     if (sceneDirty) chessGame.renderScene(target);
-    if (UNIFIED) r.write(ui.frameComposited((s) => presentSceneInto(s, false, true), sceneDirty));
-    else r.write(presentScene(false, true) + ui.frame());
+    if (UNIFIED) writeFrame(ui.frameComposited((s) => presentSceneInto(s, false, true), sceneDirty));
+    else writeFrame(presentScene(false, true) + ui.frame());
     forceFrame = false;
     if (chessGame.needsRender()) r.requestRender(); // keep animating while the camera settles
     return;
@@ -2025,11 +2044,11 @@ function tick(dt: number): void {
     const sceneDirty = forceFrame || cardsScene.needsRender();
     if (sceneDirty) cardsScene.renderScene(target, t);
     if (UNIFIED) {
-      if (sceneDirty || ui.dirty()) r.write(ui.frameComposited((s) => presentSceneInto(s, false, true), sceneDirty));
+      if (sceneDirty || ui.dirty()) writeFrame(ui.frameComposited((s) => presentSceneInto(s, false, true), sceneDirty));
     } else if (sceneDirty) {
-      r.write(presentScene(false, true) + ui.frame());
+      writeFrame(presentScene(false, true) + ui.frame());
     } else if (ui.dirty()) {
-      r.write(ui.frame());
+      writeFrame(ui.frame());
     }
     forceFrame = false;
     if (cardsScene.needsRender()) r.requestRender();
@@ -2046,16 +2065,16 @@ function tick(dt: number): void {
     if (sceneDirty) pokerScene.renderScene(target, t);
     if (UNIFIED) {
       if (sceneDirty || ui.dirty()) {
-        r.write(
+        writeFrame(
           ui.frameComposited((s) => {
             presentSceneInto(s, false, true);
           }, sceneDirty),
         );
       }
     } else if (sceneDirty) {
-      r.write(presentScene(false, true) + ui.frame());
+      writeFrame(presentScene(false, true) + ui.frame());
     } else if (ui.dirty()) {
-      r.write(ui.frame());
+      writeFrame(ui.frame());
     }
     forceFrame = false;
     if (pokerScene.needsRender()) r.requestRender();
@@ -2074,13 +2093,13 @@ function tick(dt: number): void {
       // Pass sceneDirty so a hover-only frame reuses the cached scene layer
       // instead of re-sampling the whole scene.
       if (sceneDirty || ui.dirty()) {
-        r.write(ui.frameComposited((s) => presentSceneInto(s, false, true), sceneDirty));
+        writeFrame(ui.frameComposited((s) => presentSceneInto(s, false, true), sceneDirty));
       }
     } else if (sceneDirty) {
-      r.write(presentScene(false, true) + ui.frame());
+      writeFrame(presentScene(false, true) + ui.frame());
     } else if (ui.dirty()) {
       // Only a button hover/focus changed: repaint just the bar, not the scene.
-      r.write(ui.frame());
+      writeFrame(ui.frame());
     }
     forceFrame = false;
     // Render-on-demand: chess holds no live lease, so re-arm the next frame while
