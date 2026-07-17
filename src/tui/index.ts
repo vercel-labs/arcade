@@ -15,7 +15,6 @@ export { Dialog, CloseButton, type DialogOpts } from './components/dialog.ts';
 export { ASCIIFont, asciiFontLines } from './components/asciifont.ts';
 export { FrameBuffer, type FrameDraw } from './components/framebuffer.ts';
 export { Dropdown, type DropdownOpts } from './components/dropdown.ts';
-export { Combobox, type ComboboxOpts } from './components/combobox.ts';
 export { Input, type InputOpts } from './components/input.ts';
 export { Select, type SelectOpts } from './components/select.ts';
 export { type Row, ScrollBox, type ScrollBoxOpts } from './components/scrollbox.ts';

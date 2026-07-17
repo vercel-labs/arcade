@@ -1,18 +1,7 @@
-// A collapsing single-select (combobox). Unlike Select — which keeps its whole
-// list on screen — a Dropdown shows just a one-line "field" with the current
-// choice + a caret; focusing it and pressing Enter (or clicking) opens a
-// scrollable list below, ↑/↓ move the highlight, Enter/click commits and closes,
-// and Esc closes (so does Tabbing away). The list only appears while open, so a
-// screen full of choices (a provider + model picker per side) stays calm.
-//
-// The open list is a `position:absolute` + `overlay` node: out of flow, so it
-// neither resizes nor is clipped by its container (it floats over later siblings
-// and can extend past the card), and it scrolls — a wheel or a drag on the
-// right-edge scrollbar moves the view; ↑/↓ move the highlight and keep it in
-// view. Option names too long for the width WRAP onto extra lines (rather than
-// truncating); a wrapped item highlights and selects as one block. Persistent
-// state (open / committed index / scroll) lives on the instance so it survives
-// the per-frame rebuild, like Select/ScrollBox.
+// One collapsing single-select component for ordinary and searchable lists.
+// Search is opt-in, its filter never becomes the committed value, and its row
+// stays sticky above the options. Overflow scrolls automatically after the
+// configured number of visible rows.
 
 import { type RGB } from '../../engine/index.ts';
 import type { Surface } from '../../engine/index.ts';
@@ -25,131 +14,180 @@ import type { LayoutBox, Node, PointerHit, Style } from '../types.ts';
 export interface DropdownOpts {
   id: string;
   items: string[];
-  width: number; // fixed field/list width (cells)
-  rows?: number; // max visible lines when open (the list scrolls past this), default 7
-  index?: number; // committed selection, or -1 for none (shows the placeholder)
-  placeholder?: string; // field text when nothing is committed, default 'Select…'
-  accentColor?: ColorToken; // committed field-text color (e.g. a brand hue), default 'fg'
-  onSelect?: (index: number, item: string) => void; // fires on commit (Enter/click)
+  width: number;
+  rows?: number; // max visible option rows before automatic scrolling, default 7
+  searchable?: boolean; // sticky filter row, default false
+  index?: number;
+  placeholder?: string;
+  searchPlaceholder?: string; // muted search prompt before activation
+  emptyLabel?: string;
+  accentColor?: ColorToken;
+  onSelect?: (index: number, item: string) => void;
+  onQueryChange?: (query: string) => void;
 }
 
-const CARET_CLOSED = '▾';
-const CARET_OPEN = '▴';
-const TRACK: RGB = defaultTheme.pillBg;
-const THUMB: RGB = [150, 154, 170]; // a light gray (not the blue accent)
-const WHEEL_STEP = 3; // lines per wheel notch (matches ScrollBox)
-
-// One rendered line of the open list: which item it belongs to, and its text
-// fragment. A long item name spans several consecutive lines with the same `item`.
-interface VLine {
+interface Match {
   item: number;
+  label: string;
+}
+
+interface VLine {
+  match: number;
   text: string;
 }
 
-// Word-wrap `text` into pieces no wider than `w`. Greedy; a single word longer
-// than `w` is hard-split so nothing ever overflows the column.
-function wrapText(text: string, w: number): string[] {
-  if (w <= 0) return [text];
-  const out: string[] = [];
-  let cur = '';
+const TRACK: RGB = defaultTheme.pillBg;
+const THUMB: RGB = [150, 154, 170];
+const WHEEL_STEP = 3;
+const CURSOR: RGB = [131, 165, 152]; // #83A598
+const CURSOR_FG: RGB = [12, 18, 24];
+
+function wrapText(text: string, width: number): string[] {
+  if (width <= 0) return [text];
+  const lines: string[] = [];
+  let line = '';
   for (const word of text.split(' ')) {
-    if (word.length > w) {
-      if (cur) {
-        out.push(cur);
-        cur = '';
-      }
+    if (word.length > width) {
+      if (line) lines.push(line);
       let rest = word;
-      while (rest.length > w) {
-        out.push(rest.slice(0, w));
-        rest = rest.slice(w);
+      while (rest.length > width) {
+        lines.push(rest.slice(0, width));
+        rest = rest.slice(width);
       }
-      cur = rest;
-    } else if (cur === '') {
-      cur = word;
-    } else if (cur.length + 1 + word.length <= w) {
-      cur += ' ' + word;
-    } else {
-      out.push(cur);
-      cur = word;
+      line = rest;
+    } else if (!line) line = word;
+    else if (line.length + word.length + 1 <= width) line += ' ' + word;
+    else {
+      lines.push(line);
+      line = word;
     }
   }
-  if (cur) out.push(cur);
-  return out.length ? out : [''];
+  if (line) lines.push(line);
+  return lines.length ? lines : [''];
+}
+
+function charClass(char: string): 'space' | 'word' | 'punct' {
+  if (/\s/.test(char)) return 'space';
+  if (/[\p{L}\p{N}_]/u.test(char)) return 'word';
+  return 'punct';
+}
+
+function previousWord(text: string, from: number): number {
+  let i = Math.max(0, Math.min(text.length, from));
+  while (i > 0 && charClass(text[i - 1]) === 'space') i--;
+  if (i === 0) return 0;
+  const kind = charClass(text[i - 1]);
+  while (i > 0 && charClass(text[i - 1]) === kind) i--;
+  return i;
+}
+
+function nextWord(text: string, from: number): number {
+  let i = Math.max(0, Math.min(text.length, from));
+  while (i < text.length && charClass(text[i]) === 'space') i++;
+  if (i === text.length) return i;
+  const kind = charClass(text[i]);
+  while (i < text.length && charClass(text[i]) === kind) i++;
+  while (i < text.length && charClass(text[i]) === 'space') i++;
+  return i;
 }
 
 export class Dropdown implements Component {
   id: string;
-  index: number; // committed selection (-1 = none)
   items: string[];
+  index: number;
   open = false;
-  private highlight = 0; // ITEM highlighted while open (the pending choice)
-  private scroll = 0; // first visible LINE (view offset, independent of highlight)
+  query = '';
+  caret = 0;
+
   private focused = false;
-  private width: number;
-  private rows: number;
-  private lines: VLine[] = []; // items wrapped to the list width, flattened
+  private editing = false;
+  private queryScroll = 0;
+  private highlight = 0;
+  private scroll = 0;
+  private matches: Match[] = [];
+  private lines: VLine[] = [];
+  private readonly width: number;
+  private readonly rows: number;
   private opts: DropdownOpts;
 
   constructor(opts: DropdownOpts) {
     this.id = opts.id;
     this.opts = opts;
     this.items = opts.items;
-    this.width = opts.width;
-    this.rows = opts.rows ?? 7;
+    this.width = Math.max(8, opts.width);
+    this.rows = Math.max(1, opts.rows ?? 7);
     this.index = opts.index ?? -1;
-    this.relayoutLines();
+    this.refilter();
   }
 
-  // Inner text width of a list row: the width minus the reserved scrollbar gutter
-  // (rightmost column) minus the [0,1] horizontal padding.
-  private innerWidth(): number {
-    return Math.max(1, this.width - 1 - 2);
-  }
-
-  // Recompute the wrapped-line model (after items or width change).
-  private relayoutLines(): void {
-    const w = this.innerWidth();
-    const lines: VLine[] = [];
-    this.items.forEach((label, item) => {
-      for (const text of wrapText(label, w)) lines.push({ item, text });
-    });
-    this.lines = lines;
-  }
-
-  // Replace the list contents (e.g. models after the provider changes): clear the
-  // committed selection back to the placeholder and collapse.
-  setItems(items: string[]): void {
-    this.items = items;
-    this.index = -1;
-    this.highlight = 0;
-    this.scroll = 0;
-    this.open = false;
-    this.relayoutLines();
-  }
-
-  // Committed item's label, or null when nothing is chosen.
   get value(): string | null {
     return this.index >= 0 ? (this.items[this.index] ?? null) : null;
   }
 
-  // The brand/accent field color can change per frame (provider hue); let the
-  // owner set it just before build without rebuilding the instance.
+  get filteredItems(): string[] {
+    return this.matches.map((match) => match.label);
+  }
+
+  setItems(items: string[], index = -1): void {
+    this.items = items;
+    this.index = index >= 0 && index < items.length ? index : -1;
+    this.open = false;
+    this.setQuery('');
+  }
+
   setAccent(color: ColorToken): void {
     this.opts = { ...this.opts, accentColor: color };
+  }
+
+  setQuery(query: string): void {
+    this.query = query;
+    this.editing = query.length > 0;
+    this.caret = query.length;
+    this.queryScroll = 0;
+    this.highlight = 0;
+    this.scroll = 0;
+    this.refilter();
+    this.opts.onQueryChange?.(query);
   }
 
   onFocus(): void {
     this.focused = true;
   }
-  // Losing focus (Tab away) collapses an open list.
+
   onBlur(): void {
+    const resetSearch = this.open || !!this.query || this.editing;
     this.focused = false;
     this.open = false;
+    if (this.searchable && resetSearch) this.setQuery('');
   }
+
   onPointerDownOutside(): boolean {
-    if (!this.open) return false;
+    if (!this.open && !this.query && !this.editing) return false;
     this.open = false;
+    if (this.searchable) this.setQuery('');
     return true;
+  }
+
+  private innerWidth(): number {
+    return Math.max(1, this.width - 3);
+  }
+
+  private get searchable(): boolean {
+    return this.opts.searchable ?? false;
+  }
+
+  private refilter(): void {
+    const needle = this.query.trim().toLocaleLowerCase();
+    this.matches = this.items
+      .map((label, item) => ({ item, label }))
+      .filter(({ label }) => !needle || label.toLocaleLowerCase().includes(needle));
+    if (this.highlight >= this.matches.length) this.highlight = Math.max(0, this.matches.length - 1);
+
+    const lines: VLine[] = [];
+    this.matches.forEach((match, i) => {
+      for (const text of wrapText(match.label, this.innerWidth())) lines.push({ match: i, text });
+    });
+    this.lines = lines;
   }
 
   private maxScroll(): number {
@@ -157,185 +195,349 @@ export class Dropdown implements Component {
   }
 
   private openList(): void {
+    if (!this.open && (this.query || this.editing)) this.setQuery('');
     this.open = true;
-    this.highlight = this.index >= 0 ? this.index : 0;
+    const selected = this.matches.findIndex((match) => match.item === this.index);
+    this.highlight = selected >= 0 ? selected : 0;
     this.scrollToHighlight();
   }
 
-  // Keep the highlighted item's lines within the visible window (keyboard nav).
+  private toggleList(): void {
+    if (this.open) {
+      this.open = false;
+      this.setQuery('');
+    } else this.openList();
+  }
+
   private scrollToHighlight(): void {
-    let first = this.lines.findIndex((l) => l.item === this.highlight);
+    if (!this.lines.length) {
+      this.scroll = 0;
+      return;
+    }
+    let first = this.lines.findIndex((line) => line.match === this.highlight);
     if (first < 0) first = 0;
     let last = first;
-    while (last + 1 < this.lines.length && this.lines[last + 1].item === this.highlight) last++;
+    while (last + 1 < this.lines.length && this.lines[last + 1].match === this.highlight) last++;
     if (first < this.scroll) this.scroll = first;
     else if (last >= this.scroll + this.rows) this.scroll = last - this.rows + 1;
     this.scroll = Math.max(0, Math.min(this.maxScroll(), Math.min(this.scroll, first)));
   }
 
   private moveHighlight(delta: number): void {
-    const n = this.items.length;
-    if (n === 0) return;
-    this.highlight = Math.max(0, Math.min(n - 1, this.highlight + delta));
+    if (!this.matches.length) return;
+    this.highlight = Math.max(0, Math.min(this.matches.length - 1, this.highlight + delta));
     this.scrollToHighlight();
   }
 
-  // Scroll the view without moving the highlight (wheel / scrollbar drag).
   private scrollBy(delta: number): void {
     this.scroll = Math.max(0, Math.min(this.maxScroll(), this.scroll + delta));
   }
 
-  // Commit a choice: record it, collapse, and notify. Public so the owner (and
-  // headless tests) can drive a selection the way Enter/click does.
-  pick(i: number): void {
-    if (i < 0 || i >= this.items.length) return;
-    this.index = i;
+  private replaceQuery(next: string, caret: number): void {
+    this.query = next;
+    this.editing = true;
+    this.caret = Math.max(0, Math.min(next.length, caret));
+    this.highlight = 0;
+    this.scroll = 0;
+    this.refilter();
+    this.opts.onQueryChange?.(next);
+  }
+
+  private beginSearch(): void {
+    if (this.editing) return;
+    this.editing = true;
+    this.caret = this.query.length;
+    this.queryScroll = 0;
+  }
+
+  private insert(raw: string): void {
+    const printable = [...raw].filter((char) => char >= ' ' && char !== '\x7f').join('');
+    if (!printable) return;
+    this.replaceQuery(this.query.slice(0, this.caret) + printable + this.query.slice(this.caret), this.caret + printable.length);
+    this.open = true;
+  }
+
+  pickMatch(matchIndex: number): void {
+    const match = this.matches[matchIndex];
+    if (!match) return;
+    this.index = match.item;
     this.open = false;
-    this.opts.onSelect?.(i, this.items[i]);
+    if (this.searchable) this.setQuery('');
+    this.opts.onSelect?.(match.item, match.label);
+  }
+
+  pick(itemIndex: number): void {
+    if (itemIndex < 0 || itemIndex >= this.items.length) return;
+    this.index = itemIndex;
+    this.open = false;
+    if (this.searchable) this.setQuery('');
+    this.opts.onSelect?.(itemIndex, this.items[itemIndex]);
   }
 
   onKey(ev: KeyEvent): boolean {
+    if (!this.searchable) {
+      if (!this.open) {
+        if (ev.name === 'enter' || ev.name === 'space' || ev.name === 'up' || ev.name === 'down') {
+          this.openList();
+          return true;
+        }
+        return false;
+      }
+      if (ev.name === 'up' || ev.name === 'k') this.moveHighlight(-1);
+      else if (ev.name === 'down' || ev.name === 'j') this.moveHighlight(1);
+      else if (ev.name === 'pageup') this.scrollBy(-this.rows);
+      else if (ev.name === 'pagedown') this.scrollBy(this.rows);
+      else if (ev.name === 'enter' || ev.name === 'space') this.pickMatch(this.highlight);
+      else if (ev.name === 'escape') this.open = false;
+      else return false;
+      return true;
+    }
+
+    const printable = !ev.ctrl && !ev.meta && !!ev.raw && !['enter', 'tab', 'escape', 'backspace'].includes(ev.name);
+
     if (!this.open) {
-      // Closed: Enter/Space/↓ open the list; ↑ opens too (web-combobox feel).
-      if (ev.name === 'enter' || ev.name === 'space' || ev.name === 'down' || ev.name === 'up') {
+      if (ev.name === 'enter' || ev.name === 'space' || ev.name === 'up' || ev.name === 'down') {
         this.openList();
         return true;
       }
-      return false; // let Esc/Tab/etc. fall through to the app (e.g. modal cancel)
+      if (!printable) return false;
+      this.openList();
+      this.beginSearch();
+      this.insert(ev.raw);
+      return true;
     }
-    // Open: navigate by ITEM / commit / dismiss.
-    if (ev.name === 'up' || ev.name === 'k') this.moveHighlight(-1);
-    else if (ev.name === 'down' || ev.name === 'j') this.moveHighlight(1);
-    else if (ev.name === 'pageup') this.scrollBy(-this.rows);
-    else if (ev.name === 'pagedown') this.scrollBy(this.rows);
-    else if (ev.name === 'enter' || ev.name === 'space') this.pick(this.highlight);
-    else if (ev.name === 'escape') this.open = false; // dismiss without committing
-    else return false; // Tab and friends pass through (and onBlur collapses us)
-    return true;
+
+    if (printable) {
+      this.beginSearch();
+      this.insert(ev.raw);
+      return true;
+    }
+    if (ev.name === 'backspace' || (ev.ctrl && (ev.name === 'u' || ev.name === 'w'))) {
+      this.beginSearch();
+      const start = ev.super || (ev.ctrl && ev.name === 'u') ? 0 : ev.meta || ev.ctrl ? previousWord(this.query, this.caret) : Math.max(0, this.caret - 1);
+      if (start < this.caret) this.replaceQuery(this.query.slice(0, start) + this.query.slice(this.caret), start);
+      return true;
+    }
+    if (ev.name === 'delete' || (ev.ctrl && ev.name === 'k')) {
+      this.beginSearch();
+      const end = ev.super || (ev.ctrl && ev.name === 'k') ? this.query.length : ev.meta || ev.ctrl ? nextWord(this.query, this.caret) : this.caret + 1;
+      if (this.caret < this.query.length) this.replaceQuery(this.query.slice(0, this.caret) + this.query.slice(Math.min(this.query.length, end)), this.caret);
+      return true;
+    }
+    if (ev.name === 'left' || ev.name === 'right') {
+      if (!this.editing) return false;
+      if (ev.super) this.caret = ev.name === 'left' ? 0 : this.query.length;
+      else if (ev.meta || ev.ctrl) this.caret = ev.name === 'left' ? previousWord(this.query, this.caret) : nextWord(this.query, this.caret);
+      else this.caret = Math.max(0, Math.min(this.query.length, this.caret + (ev.name === 'left' ? -1 : 1)));
+      return true;
+    }
+    if (ev.name === 'home' || ev.name === 'end' || (ev.ctrl && (ev.name === 'a' || ev.name === 'e'))) {
+      if (!this.editing) return false;
+      this.caret = ev.name === 'home' || ev.name === 'a' ? 0 : this.query.length;
+      return true;
+    }
+    if (ev.name === 'up' || ev.name === 'down') {
+      this.moveHighlight(ev.name === 'up' ? -1 : 1);
+      return true;
+    }
+    if (ev.name === 'pageup' || ev.name === 'pagedown') {
+      this.scrollBy(ev.name === 'pageup' ? -this.rows : this.rows);
+      return true;
+    }
+    if (ev.name === 'enter') {
+      if (this.matches.length) this.pickMatch(this.highlight);
+      return true;
+    }
+    if (ev.name === 'escape') {
+      this.open = false;
+      this.setQuery('');
+      return true;
+    }
+    return false;
   }
 
-  // The field's mouse handler: a press toggles the list open/closed.
-  private onFieldMouse(ev: PointerHit): boolean {
+  private onSearchMouse(ev: PointerHit): boolean {
     if (ev.type === 'down') {
-      if (this.open) this.open = false;
-      else this.openList();
+      this.beginSearch();
+      this.caret = Math.max(0, Math.min(this.query.length, this.queryScroll + ev.x - 3));
     }
     return true;
   }
 
-  // The open list's mouse handler (its own overlay node, so coords are local to
-  // the list). Wheel scrolls the view; a drag/click on the right-edge scrollbar
-  // jumps the view; a click on any line of an item commits that item.
+  private onToggleMouse(ev: PointerHit): boolean {
+    if (ev.type === 'down') this.toggleList();
+    return true;
+  }
+
+  private onOptionMouse(match: number, ev: PointerHit): boolean {
+    if (ev.type === 'wheel') this.scrollBy(ev.wheel === -1 ? -WHEEL_STEP : WHEEL_STEP);
+    else {
+      this.highlight = match;
+      if (ev.type === 'down') this.pickMatch(match);
+    }
+    return true;
+  }
+
   private onListMouse(ev: PointerHit): boolean {
     if (ev.type === 'wheel') {
       this.scrollBy(ev.wheel === -1 ? -WHEEL_STEP : WHEEL_STEP);
       return true;
     }
     if (ev.x >= this.width - 1 && this.lines.length > this.rows) {
-      // Scrollbar column: jump proportional to the cursor's y within the track.
       const frac = ev.h > 1 ? ev.y / (ev.h - 1) : 0;
       this.scroll = Math.max(0, Math.min(this.maxScroll(), Math.round(frac * this.maxScroll())));
       return true;
     }
-    const line = this.scroll + ev.y;
-    if (line >= 0 && line < this.lines.length) {
-      const item = this.lines[line].item;
-      this.highlight = item;
-      if (ev.type === 'down') this.pick(item);
+    const line = this.lines[this.scroll + ev.y];
+    if (line) {
+      this.highlight = line.match;
+      if (ev.type === 'down') this.pickMatch(line.match);
     }
     return true;
   }
 
-  // Slim scrollbar in the list's rightmost (reserved) column — a gapless
-  // cell-background bar — shown only when the list overflows its visible lines.
   private paintBar(surf: Surface, box: LayoutBox): void {
-    const total = this.lines.length;
-    if (total <= this.rows) return;
+    if (this.lines.length <= this.rows) return;
     const x = box.x + box.w - 1;
-    const thumb = Math.max(1, Math.round((this.rows / total) * box.h));
+    const thumb = Math.max(1, Math.round((this.rows / this.lines.length) * box.h));
     const span = box.h - thumb;
-    const top = box.y + (this.maxScroll() === 0 ? 0 : Math.round((this.scroll / this.maxScroll()) * span));
+    const top = box.y + (this.maxScroll() ? Math.round((this.scroll / this.maxScroll()) * span) : 0);
     for (let y = box.y; y < box.y + box.h; y++) {
       const color = y >= top && y < top + thumb ? THUMB : TRACK;
       surf.setCell(x, y, ' ', color, color);
     }
   }
 
-  // Fit the committed label into the one-line field, leaving room for the caret.
-  private fieldText(): string {
-    const inner = this.width - 2; // padding [0,1] eats one cell each side
-    const caret = this.open ? CARET_OPEN : CARET_CLOSED;
+  private searchRoom(): number {
+    return Math.max(1, this.width - 4);
+  }
+
+  private reflowQuery(): void {
+    const room = this.searchRoom();
+    if (this.caret < this.queryScroll) this.queryScroll = this.caret;
+    else if (this.caret >= this.queryScroll + room) this.queryScroll = this.caret - room + 1;
+    this.queryScroll = Math.max(0, this.queryScroll);
+  }
+
+  private selectionText(): string {
+    const room = Math.max(1, this.width - 4);
     const label = this.value ?? this.opts.placeholder ?? 'Select…';
-    const room = inner - 2; // 1 gap + 1 caret
-    const shown = label.length > room ? `${label.slice(0, room - 1)}…` : label;
+    const shown = label.length > room ? label.slice(0, Math.max(0, room - 1)) + '…' : label;
+    const caret = this.open ? '▴' : '▾';
     return shown.padEnd(room) + ' ' + caret;
   }
 
+  private searchText(): string {
+    if (!this.editing) return '⌕ ' + (this.opts.searchPlaceholder ?? 'Search');
+    this.reflowQuery();
+    return '⌕ ' + this.query.slice(this.queryScroll, this.queryScroll + this.searchRoom());
+  }
+
+  private paintCursor(surf: Surface, box: LayoutBox): void {
+    if (!this.editing || !this.focused || box.w <= 0) return;
+    this.reflowQuery();
+    const x = box.x + 2 + this.caret - this.queryScroll;
+    if (x < box.x || x >= box.x + box.w) return;
+    const char = this.query[this.caret] ?? ' ';
+    surf.setCell(x, box.y, char, CURSOR_FG, CURSOR);
+  }
+
   build(): Node {
-    const committed = this.index >= 0;
+    const active = this.focused || this.open;
     const fieldStyle: Style = {
       width: this.width,
       padding: [0, 1],
       bold: true,
-      // Gray/white like the bar buttons: muted placeholder, brand/light when set.
-      color: committed ? (this.opts.accentColor ?? 'fg') : 'muted',
-      // Resting gray; the lighter focus-gray when open or focused (matches buttons).
-      background: this.open || this.focused ? 'focusRing' : 'pillBg',
-      hover: this.open ? undefined : { background: 'focusRing' },
+      color: this.index >= 0 ? (this.opts.accentColor ?? 'fg') : 'muted',
+      background: active ? 'focusRing' : 'pillBg',
+      hover: { background: 'focusRing' },
     };
-    // The field is the focusable, id-bearing node (clicking it focuses the
-    // dropdown; ↑/↓/Enter route here). The open list is a sibling overlay.
     const field: Node = {
-      ...Text({ text: this.fieldText(), style: fieldStyle }),
+      ...Text({ text: this.selectionText(), style: fieldStyle }),
       id: this.id,
       focusable: true,
       onKey: (ev) => this.onKey(ev),
-      onMouse: (ev) => this.onFieldMouse(ev),
+      onMouse: (ev) => this.onToggleMouse(ev),
     };
-
     const children: Node[] = [field];
     if (this.open) {
-      const visible = Math.min(this.lines.length, this.rows);
-      const end = this.scroll + visible;
-      const rowW = this.width - 1; // rows stop one short of the reserved scrollbar gutter
-      const listRows: Node[] = [];
-      for (let li = this.scroll; li < end; li++) {
-        const { item, text } = this.lines[li];
-        const on = item === this.highlight; // every line of the highlighted item lights up
-        listRows.push(
-          Text({
-            // Selected item reads like a hovered bar button: near-white bg, dark text.
-            text,
-            style: { width: rowW, padding: [0, 1], color: on ? 'pillHoverFg' : 'fg', background: on ? 'pillHoverBg' : 'pillBg' },
+      const dropdownTop = this.searchable ? 2 : 1;
+      if (this.searchable) {
+        const search: Node = {
+          ...Text({
+            text: this.searchText(),
+            id: this.id + '-search',
+            style: {
+              position: 'absolute',
+              top: 1,
+              left: 0,
+              width: this.width,
+              padding: [0, 1],
+              color: this.editing ? 'fg' : 'muted',
+              background: 'pillBg',
+              hover: { background: 'focusRing' },
+              focus: { background: 'focusRing' },
+            },
           }),
-        );
+          focusable: true,
+          overlay: true,
+          onKey: (ev) => this.onKey(ev),
+          onMouse: (ev) => this.onSearchMouse(ev),
+          draw: (surf, box) => this.paintCursor(surf, box),
+        };
+        children.push(search);
       }
-      // Float the list just below the field (top:1, out of flow → the container
-      // keeps its one-row height). Its own bg fills the reserved gutter column
-      // when no scrollbar is drawn; it owns the list's mouse + scrollbar.
-      children.push({
-        ...Box(
-          {
-            position: 'absolute',
-            top: 1,
-            left: 0,
-            width: this.width,
-            height: visible,
-            overflow: 'hidden',
-            flexDirection: 'column',
-            alignItems: 'start',
-            background: 'pillBg',
-          },
-          listRows,
-        ),
-        overlay: true,
-        onMouse: (ev: PointerHit) => this.onListMouse(ev),
-        draw: (surf, b) => this.paintBar(surf, b),
-      });
+
+      if (!this.lines.length) {
+        children.push({
+          ...Box({ position: 'absolute', top: dropdownTop, left: 0, width: this.width, height: 1, background: 'pillBg' }, [
+            Text({ text: this.opts.emptyLabel ?? 'No matches', style: { width: this.width, padding: [0, 1], color: 'muted', background: 'pillBg' } }),
+          ]),
+          overlay: true,
+          onMouse: (ev: PointerHit) => this.onListMouse(ev),
+        });
+      } else {
+        const visible = Math.min(this.lines.length, this.rows);
+        const listRows = this.lines.slice(this.scroll, this.scroll + visible).map(({ match, text }) => {
+          const activeRow = match === this.highlight;
+          const row: Node = {
+            ...Text({
+              text,
+              id: this.id + '-option-' + (this.matches[match]?.item ?? match),
+              style: {
+                width: this.width - 1,
+                padding: [0, 1],
+                color: activeRow ? 'pillHoverFg' : 'fg',
+                background: activeRow ? 'pillHoverBg' : 'pillBg',
+                hover: { color: 'pillHoverFg', background: 'pillHoverBg' },
+              },
+            }),
+            onMouse: (ev: PointerHit) => this.onOptionMouse(match, ev),
+          };
+          return row;
+        });
+        children.push({
+          ...Box(
+            {
+              position: 'absolute',
+              top: dropdownTop,
+              left: 0,
+              width: this.width,
+              height: visible,
+              overflow: 'hidden',
+              flexDirection: 'column',
+              alignItems: 'start',
+              background: 'pillBg',
+            },
+            listRows,
+          ),
+          overlay: true,
+          onMouse: (ev: PointerHit) => this.onListMouse(ev),
+          draw: (surf, box) => this.paintBar(surf, box),
+        });
+      }
     }
 
-    // The wrapper stays one row tall (the field) — the list is out of flow — so a
-    // dropdown opening never resizes the modal around it.
     return Box({ flexDirection: 'column', alignItems: 'stretch', width: this.width }, children);
   }
 }

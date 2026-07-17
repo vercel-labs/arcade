@@ -983,7 +983,7 @@ function showcaseSnapshot(): void {
   const region = { x: 0, y: 0, w: cols, h: rows };
   screen.setRoot(buildShowcase(region, buildBar('ui', 'ascii', barActions)), region);
   if (queryArg) {
-    const targetId = focusArg?.split('=')[1] ?? 'sc-model-combobox';
+    const targetId = focusArg?.split('=')[1] ?? 'sc-model-dropdown';
     screen.setFocus(targetId);
     // Rebuild once so the component receives focus before the synthetic text
     // events, then again so the filtered overlay has current geometry.

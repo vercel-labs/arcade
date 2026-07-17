@@ -55,6 +55,9 @@ export class Screen {
   // map includes floating overlay descendants, so their clicks still count as
   // inside the component even when they extend beyond the field's layout box.
   private nodeOwners = new WeakMap<Node, string>();
+  // Focusable descendants may use their own ids (for example a dropdown's
+  // internal search row) while still belonging to one component lifecycle.
+  private focusOwners = new Map<string, string>();
 
   constructor(cols: number, rows: number) {
     this.cols = cols;
@@ -106,6 +109,7 @@ export class Screen {
   // between components. Runs before layout so the spliced subtrees are measured.
   private expand(root: Node | null): void {
     this.nodeOwners = new WeakMap<Node, string>();
+    this.focusOwners = new Map<string, string>();
     const refs = new Set<string>();
     const walk = (n: Node, owner: string | null): void => {
       let nodeOwner = owner;
@@ -118,12 +122,13 @@ export class Screen {
         }
       }
       if (nodeOwner) this.nodeOwners.set(n, nodeOwner);
+      if (nodeOwner && n.id) this.focusOwners.set(n.id, nodeOwner);
       for (const ch of n.children ?? []) walk(ch, nodeOwner);
     };
     if (root) walk(root, null);
 
     // Focus transition (a component is "focused" only while its Slot is present).
-    const fc = this.state.focusId && refs.has(this.state.focusId) ? this.state.focusId : null;
+    const fc = this.state.focusId ? (this.focusOwners.get(this.state.focusId) ?? (refs.has(this.state.focusId) ? this.state.focusId : null)) : null;
     if (fc !== this.focusedComponent) {
       if (this.focusedComponent) this.registry.get(this.focusedComponent)?.onBlur?.();
       if (fc) this.registry.get(fc)?.onFocus?.();
@@ -232,7 +237,7 @@ export class Screen {
     // Pointer focus follows the web model: a focusable target gains focus; a
     // non-focusable click clears it unless it stayed inside the focused component.
     if (target?.focusable) this.state.focusId = target.id ?? null;
-    else if (!owner || owner !== this.state.focusId) this.state.focusId = null;
+    else if (!owner || owner !== this.focusedComponent) this.state.focusId = null;
 
     // Absorb the press if it lands on ANY solid surface (panel or widget); only a
     // press over a transparent gap / open scene falls through to the caller.
