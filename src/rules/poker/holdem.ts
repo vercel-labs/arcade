@@ -44,6 +44,11 @@ export interface HoldemOpts {
   smallBlind: number;
   bigBlind: number;
   rng?: () => number; // injected for reproducible deals (defaults to Math.random)
+  // Optional per-seat display names for the model-facing observation (e.g. "the human",
+  // "gpt-5.4-nano"). Purely presentational — the engine defaults to neutral "P0"/"P1"…
+  // so it stays a generic Hold'em engine; the harness supplies real names so models
+  // refer to each other by name instead of by seat index.
+  seatNames?: readonly string[];
 }
 
 // A finished hand's PUBLIC record — everything a table observer legitimately saw, and
@@ -93,6 +98,7 @@ export class HoldemState implements ImperfectInfoState<PokerAction> {
   private finished = false;
   private payoffs: number[] | null = null; // per-seat net delta, cached at finish
   private awardLog: { seat: number; amount: number }[] = []; // pot awards (for the HUD)
+  private readonly seatNames?: readonly string[]; // display names for the model observation (default "P{s}")
 
   constructor(opts: HoldemOpts) {
     this.n = opts.stacks.length;
@@ -100,6 +106,7 @@ export class HoldemState implements ImperfectInfoState<PokerAction> {
     this.bb = opts.bigBlind;
     this.button = opts.button;
     this.minRaise = opts.bigBlind;
+    this.seatNames = opts.seatNames;
 
     this.deck = shuffle(fullDeck(), opts.rng ?? Math.random);
     this.stacks = opts.stacks.slice();
@@ -555,20 +562,30 @@ export class HoldemState implements ImperfectInfoState<PokerAction> {
 
   // Seat `player`'s private view: its own hole cards + all public info, never another
   // seat's cards. This is the observation `ModelPlayer` prompts on.
+  // A seat's display name for the model observation — the harness-supplied name (e.g.
+  // "the human", "gpt-5.4-nano") or the neutral "P{s}" fallback, so models refer to each
+  // other by name rather than by seat index.
+  private seatName(s: number): string {
+    return this.seatNames?.[s] ?? `P${s}`;
+  }
+
   informationStateString(player: number): string {
     const toCall = Math.max(0, this.currentBet - this.committedRound[player]);
     const lines: string[] = [];
-    lines.push(`No-Limit Texas Hold'em, ${this.n} players. You are seat ${player}${player === this.button ? ' (dealer button)' : ''}.`);
+    lines.push(`No-Limit Texas Hold'em, ${this.n} players. You are ${this.seatName(player)}${player === this.button ? ' (dealer button)' : ''}.`);
     lines.push(`Your hole cards: ${this.hole[player].map(cardLabel).join(' ')}`);
     lines.push(`Community: ${this.community.map(cardLabel).join(' ') || '(none yet)'}  —  ${STREET_NAMES[this.streetNo]}`);
     lines.push(`Pot: ${this.potTotal()}. Your stack: ${this.stacks[player]}. To call: ${toCall}. Min raise to: ${Math.min(this.committedRound[player] + this.stacks[player], this.currentBet === 0 ? this.bb : this.currentBet + this.minRaise)}. All-in to: ${this.committedRound[player] + this.stacks[player]}.`);
     const seats = [];
     for (let s = 0; s < this.n; s++) {
       const st = this.folded[s] ? 'folded' : this.allIn[s] ? 'all-in' : `${this.stacks[s]} behind`;
-      seats.push(`P${s}${s === player ? '(you)' : ''}${s === this.button ? '[BTN]' : ''}: ${st}, in ${this.committedRound[s]}`);
+      seats.push(`${this.seatName(s)}${s === player ? ' (you)' : ''}${s === this.button ? ' [BTN]' : ''}: ${st}, in ${this.committedRound[s]}`);
     }
     lines.push(`Seats: ${seats.join('; ')}`);
-    lines.push(`Action: ${this.log.join('; ') || '(none yet)'}`);
+    // The stored log tags seats as "P{s}"; relabel to display names for the observation
+    // when names are supplied (history()/toString() keep the neutral form).
+    const log = this.seatNames ? this.log.map((l) => l.replace(/\bP(\d+)\b/g, (_m, d) => this.seatName(Number(d)))) : this.log;
+    lines.push(`Action: ${log.join('; ') || '(none yet)'}`);
     return lines.join('\n');
   }
 

@@ -1,11 +1,13 @@
 {
-  "generatedAt": "2026-07-16T01:32:14.521Z",
+  "generatedAt": "2026-07-17T02:02:38.017Z",
   "team": {
     "name": "AI Gateway Early Access Models",
     "slug": "ai-gateway-early-access-models"
   },
   "normalizer": "anthropic/claude-haiku-4.5",
   "timeoutMs": 45000,
+  "retryTimeoutMs": 90000,
+  "source": "live:/v1/models",
   "games": [
     "chess",
     "poker"
@@ -18,14 +20,14 @@
         "status": "FALLBACK",
         "structured": "no",
         "move": "",
-        "ms": 910,
+        "ms": 1073,
         "detail": "all ladder rungs failed — HTTP 400 [AI_APICallError] max_tokens=65536 cannot be greater than max_model_len=max_total_tokens=40960. Please request fewer output tokens. (parameter=max_tokens, value=65536)"
       },
       "poker": {
         "status": "FALLBACK",
         "structured": "no",
         "move": "",
-        "ms": 1035,
+        "ms": 595,
         "detail": "all ladder rungs failed — HTTP 400 [AI_APICallError] max_tokens=65536 cannot be greater than max_model_len=max_total_tokens=40960. Please request fewer output tokens. (parameter=max_tokens, value=65536)"
       }
     },
@@ -36,14 +38,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1081,
+        "ms": 1596,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "fold",
-        "ms": 3079,
+        "ms": 3898,
         "detail": ""
       }
     },
@@ -54,14 +56,14 @@
         "status": "FALLBACK",
         "structured": "no",
         "move": "",
-        "ms": 893,
+        "ms": 1077,
         "detail": "all ladder rungs failed — HTTP 400 [AI_APICallError] This model's maximum context length is 40960 tokens. However, you requested 65577 tokens (41 in the messages, 65536 in the completion). Please reduce the"
       },
       "poker": {
         "status": "FALLBACK",
         "structured": "no",
         "move": "",
-        "ms": 752,
+        "ms": 640,
         "detail": "all ladder rungs failed — HTTP 400 [AI_APICallError] This model's maximum context length is 40960 tokens. However, you requested 65577 tokens (41 in the messages, 65536 in the completion). Please reduce the"
       }
     },
@@ -71,15 +73,15 @@
       "chess": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "e4",
-        "ms": 1945,
+        "move": "Nf3",
+        "ms": 2596,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 40",
-        "ms": 7713,
+        "ms": 2484,
         "detail": ""
       }
     },
@@ -90,15 +92,15 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 12811,
+        "ms": 12028,
         "detail": ""
       },
       "poker": {
-        "status": "TIMEOUT",
-        "structured": "—",
-        "move": "",
-        "ms": 45002,
-        "detail": "Delay was aborted"
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "fold",
+        "ms": 44358,
+        "detail": ""
       }
     },
     {
@@ -108,14 +110,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 5270,
+        "ms": 5993,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 23461,
+        "move": "fold",
+        "ms": 7948,
         "detail": ""
       }
     },
@@ -126,14 +128,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1404,
+        "ms": 1467,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "call",
-        "ms": 3049,
+        "ms": 5943,
         "detail": ""
       }
     },
@@ -144,15 +146,15 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 669,
+        "ms": 753,
         "detail": ""
       },
       "poker": {
-        "status": "TEXT",
-        "structured": "no",
-        "move": "call",
-        "ms": 7116,
-        "detail": "structured output unsupported; plain-text fallback"
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 6453,
+        "detail": ""
       }
     },
     {
@@ -162,14 +164,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 860,
+        "ms": 6032,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 80",
-        "ms": 2949,
+        "move": "raise 40",
+        "ms": 1345,
         "detail": ""
       }
     },
@@ -180,14 +182,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2617,
+        "ms": 2276,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 5581,
+        "move": "call",
+        "ms": 6589,
         "detail": ""
       }
     },
@@ -198,14 +200,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 3619,
+        "ms": 2445,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 8952,
+        "move": "raise 60",
+        "ms": 5565,
         "detail": ""
       }
     },
@@ -216,14 +218,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2176,
+        "ms": 1814,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "call",
-        "ms": 8067,
+        "ms": 6529,
         "detail": ""
       }
     },
@@ -234,14 +236,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 3460,
+        "ms": 3075,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 6944,
+        "move": "call",
+        "ms": 8984,
         "detail": ""
       }
     },
@@ -252,14 +254,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1443,
+        "ms": 822,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 2748,
+        "move": "fold",
+        "ms": 2112,
         "detail": ""
       }
     },
@@ -270,14 +272,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 5621,
+        "ms": 7987,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 50",
-        "ms": 42379,
+        "move": "call",
+        "ms": 39338,
         "detail": ""
       }
     },
@@ -288,14 +290,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1746,
+        "ms": 1165,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 40",
-        "ms": 4396,
+        "ms": 4096,
         "detail": ""
       }
     },
@@ -306,14 +308,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1136,
+        "ms": 1187,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 3917,
+        "move": "call",
+        "ms": 3738,
         "detail": ""
       }
     },
@@ -324,14 +326,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 8570,
+        "ms": 4439,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 14957,
+        "move": "raise 40",
+        "ms": 31590,
         "detail": ""
       }
     },
@@ -342,14 +344,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 12780,
+        "ms": 8136,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 38352,
+        "move": "call",
+        "ms": 32212,
         "detail": ""
       }
     },
@@ -360,33 +362,33 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 32773,
+        "ms": 29497,
         "detail": ""
       },
       "poker": {
-        "status": "TIMEOUT",
-        "structured": "—",
-        "move": "",
-        "ms": 45004,
-        "detail": "Delay was aborted"
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 58023,
+        "detail": ""
       }
     },
     {
       "id": "alibaba/qwen3.6-27b",
       "name": "Qwen 3.6 27B",
       "chess": {
-        "status": "TIMEOUT",
-        "structured": "—",
-        "move": "",
-        "ms": 45008,
-        "detail": "Delay was aborted"
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 11528,
+        "detail": ""
       },
       "poker": {
-        "status": "TIMEOUT",
-        "structured": "—",
-        "move": "",
-        "ms": 45003,
-        "detail": "Delay was aborted"
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 35257,
+        "detail": ""
       }
     },
     {
@@ -396,14 +398,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 15869,
+        "ms": 22567,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 43518,
+        "move": "call",
+        "ms": 24641,
         "detail": ""
       }
     },
@@ -414,14 +416,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 7263,
+        "ms": 5968,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 25936,
+        "move": "raise 30",
+        "ms": 18313,
         "detail": ""
       }
     },
@@ -432,14 +434,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 6827,
+        "ms": 7823,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 22201,
+        "move": "fold",
+        "ms": 26840,
         "detail": ""
       }
     },
@@ -450,14 +452,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 855,
+        "ms": 783,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 1728,
+        "move": "call",
+        "ms": 2328,
         "detail": ""
       }
     },
@@ -468,14 +470,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 802,
+        "ms": 726,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 120",
-        "ms": 873,
+        "ms": 844,
         "detail": ""
       }
     },
@@ -486,14 +488,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 520,
+        "ms": 595,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 100",
-        "ms": 971,
+        "move": "raise 40",
+        "ms": 837,
         "detail": ""
       }
     },
@@ -503,15 +505,15 @@
       "chess": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "Nf3",
-        "ms": 722,
+        "move": "e4",
+        "ms": 726,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 1202,
+        "move": "call",
+        "ms": 1138,
         "detail": ""
       }
     },
@@ -522,14 +524,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 951,
+        "ms": 994,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 2544,
+        "move": "raise 50",
+        "ms": 3560,
         "detail": ""
       }
     },
@@ -540,14 +542,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 4969,
+        "ms": 4151,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 50",
-        "ms": 5950,
+        "move": "fold",
+        "ms": 11626,
         "detail": ""
       }
     },
@@ -558,14 +560,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1263,
+        "ms": 1874,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 6055,
+        "move": "call",
+        "ms": 7617,
         "detail": ""
       }
     },
@@ -576,14 +578,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2926,
+        "ms": 2215,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 55",
-        "ms": 11131,
+        "move": "raise 50",
+        "ms": 9329,
         "detail": ""
       }
     },
@@ -594,14 +596,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2905,
+        "ms": 3723,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 11510,
+        "move": "call",
+        "ms": 8591,
         "detail": ""
       }
     },
@@ -612,14 +614,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2153,
+        "ms": 1921,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 6367,
+        "move": "raise 50",
+        "ms": 6104,
         "detail": ""
       }
     },
@@ -630,14 +632,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 4305,
+        "ms": 3222,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 50",
-        "ms": 6513,
+        "ms": 4829,
         "detail": ""
       }
     },
@@ -648,14 +650,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 5988,
+        "ms": 4660,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 3484,
+        "move": "raise 30",
+        "ms": 7297,
         "detail": ""
       }
     },
@@ -666,14 +668,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2340,
+        "ms": 1194,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 2481,
+        "move": "raise 30",
+        "ms": 1943,
         "detail": ""
       }
     },
@@ -684,14 +686,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2111,
+        "ms": 2123,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "call",
-        "ms": 4841,
+        "ms": 4035,
         "detail": ""
       }
     },
@@ -702,14 +704,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2681,
+        "ms": 1552,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 1824,
+        "move": "raise 30",
+        "ms": 1965,
         "detail": ""
       }
     },
@@ -720,14 +722,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1478,
+        "ms": 2723,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "call",
-        "ms": 5512,
+        "ms": 5334,
         "detail": ""
       }
     },
@@ -738,14 +740,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2472,
+        "ms": 3042,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 6847,
+        "move": "raise 60",
+        "ms": 13890,
         "detail": ""
       }
     },
@@ -756,14 +758,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 3103,
+        "ms": 1761,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 60",
-        "ms": 7321,
+        "ms": 5462,
         "detail": ""
       }
     },
@@ -774,15 +776,51 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2299,
+        "ms": 1856,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 70",
-        "ms": 6240,
+        "move": "raise 60",
+        "ms": 8374,
         "detail": ""
+      }
+    },
+    {
+      "id": "arcee-ai/trinity-large-thinking",
+      "name": "Trinity Large Thinking",
+      "chess": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "e4",
+        "ms": 7131,
+        "detail": "structured output unsupported; plain-text fallback"
+      },
+      "poker": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "call",
+        "ms": 14516,
+        "detail": "structured output unsupported; plain-text fallback"
+      }
+    },
+    {
+      "id": "arcee-ai/trinity-mini",
+      "name": "Trinity Mini",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 224,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 224,
+        "detail": "restricted provider access on this team"
       }
     },
     {
@@ -792,14 +830,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 17291,
+        "ms": 6848,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 44516,
+        "move": "raise 40",
+        "ms": 20072,
         "detail": ""
       }
     },
@@ -810,15 +848,15 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 7516,
+        "ms": 14072,
         "detail": ""
       },
       "poker": {
-        "status": "TIMEOUT",
-        "structured": "—",
-        "move": "",
-        "ms": 45004,
-        "detail": "Delay was aborted"
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "call",
+        "ms": 28974,
+        "detail": ""
       }
     },
     {
@@ -828,14 +866,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 706,
+        "ms": 644,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 2634,
+        "move": "call",
+        "ms": 2852,
         "detail": ""
       }
     },
@@ -846,14 +884,14 @@
         "status": "TEXT",
         "structured": "no",
         "move": "e4",
-        "ms": 33257,
+        "ms": 51255,
         "detail": "structured output unsupported; plain-text fallback"
       },
       "poker": {
         "status": "TIMEOUT",
         "structured": "—",
         "move": "",
-        "ms": 45003,
+        "ms": 45001,
         "detail": "Delay was aborted"
       }
     },
@@ -864,14 +902,14 @@
         "status": "TEXT",
         "structured": "no",
         "move": "e4",
-        "ms": 6644,
+        "ms": 7248,
         "detail": "structured output unsupported; plain-text fallback"
       },
       "poker": {
         "status": "TEXT",
         "structured": "no",
-        "move": "raise 40",
-        "ms": 12466,
+        "move": "call",
+        "ms": 9590,
         "detail": "structured output unsupported; plain-text fallback"
       }
     },
@@ -882,14 +920,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 6658,
+        "ms": 7351,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "call",
-        "ms": 14010,
+        "ms": 22696,
         "detail": ""
       }
     },
@@ -900,14 +938,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 3352,
+        "ms": 3109,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "call",
-        "ms": 10772,
+        "ms": 14281,
         "detail": ""
       }
     },
@@ -918,14 +956,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1139,
+        "ms": 1429,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 2511,
+        "move": "raise 40",
+        "ms": 3544,
         "detail": ""
       }
     },
@@ -933,17 +971,17 @@
       "id": "deepseek/deepseek-v3.2-thinking",
       "name": "DeepSeek V3.2 Thinking",
       "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
+        "status": "TEXT",
+        "structured": "no",
         "move": "e4",
-        "ms": 1219,
-        "detail": ""
+        "ms": 3279,
+        "detail": "structured output unsupported; plain-text fallback"
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 4248,
+        "move": "call",
+        "ms": 2372,
         "detail": ""
       }
     },
@@ -954,14 +992,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 4186,
+        "ms": 1015,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 14572,
+        "move": "raise 40",
+        "ms": 3357,
         "detail": ""
       }
     },
@@ -972,14 +1010,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2889,
+        "ms": 2762,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 23119,
+        "move": "raise 60",
+        "ms": 8056,
         "detail": ""
       }
     },
@@ -990,14 +1028,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1371,
+        "ms": 2869,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 8212,
+        "move": "raise 40",
+        "ms": 26555,
         "detail": ""
       }
     },
@@ -1008,14 +1046,14 @@
         "status": "TEXT",
         "structured": "no",
         "move": "e4",
-        "ms": 2066,
+        "ms": 1507,
         "detail": "structured output unsupported; plain-text fallback"
       },
       "poker": {
         "status": "TEXT",
         "structured": "no",
-        "move": "raise 60",
-        "ms": 10209,
+        "move": "fold",
+        "ms": 2678,
         "detail": "structured output unsupported; plain-text fallback"
       }
     },
@@ -1026,14 +1064,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 875,
+        "ms": 721,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "call",
-        "ms": 1307,
+        "ms": 1482,
         "detail": ""
       }
     },
@@ -1044,14 +1082,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 6375,
+        "ms": 6510,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 20644,
+        "move": "fold",
+        "ms": 16730,
         "detail": ""
       }
     },
@@ -1062,14 +1100,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2766,
+        "ms": 2488,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 60",
-        "ms": 3932,
+        "ms": 4076,
         "detail": ""
       }
     },
@@ -1080,14 +1118,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 6075,
+        "ms": 8702,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 13969,
+        "move": "raise 50",
+        "ms": 7639,
         "detail": ""
       }
     },
@@ -1098,14 +1136,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2787,
+        "ms": 3244,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 9001,
+        "move": "raise 50",
+        "ms": 6903,
         "detail": ""
       }
     },
@@ -1116,14 +1154,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2480,
+        "ms": 2112,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 60",
-        "ms": 5348,
+        "ms": 2322,
         "detail": ""
       }
     },
@@ -1134,14 +1172,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 3305,
+        "ms": 2671,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 11233,
+        "move": "call",
+        "ms": 3593,
         "detail": ""
       }
     },
@@ -1152,14 +1190,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1141,
+        "ms": 1618,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 1458,
+        "move": "fold",
+        "ms": 2007,
         "detail": ""
       }
     },
@@ -1170,14 +1208,14 @@
         "status": "TEXT",
         "structured": "no",
         "move": "e4",
-        "ms": 1672,
+        "ms": 1643,
         "detail": "structured output unsupported; plain-text fallback"
       },
       "poker": {
         "status": "TEXT",
         "structured": "no",
         "move": "call",
-        "ms": 1733,
+        "ms": 1196,
         "detail": "structured output unsupported; plain-text fallback"
       }
     },
@@ -1188,14 +1226,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 979,
+        "ms": 920,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "call",
-        "ms": 1542,
+        "ms": 1447,
         "detail": ""
       }
     },
@@ -1206,14 +1244,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 3577,
+        "ms": 4113,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 50",
-        "ms": 5668,
+        "move": "raise 40",
+        "ms": 5920,
         "detail": ""
       }
     },
@@ -1224,14 +1262,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1915,
+        "ms": 1254,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 60",
-        "ms": 2009,
+        "ms": 2105,
         "detail": ""
       }
     },
@@ -1242,14 +1280,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 3158,
+        "ms": 3019,
         "detail": ""
       },
       "poker": {
         "status": "FALLBACK",
         "structured": "no",
         "move": "",
-        "ms": 1271,
+        "ms": 1076,
         "detail": "all ladder rungs failed — ladder failed but a bare structured call succeeded (likely illegal/unparseable moves)"
       }
     },
@@ -1260,14 +1298,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1132,
+        "ms": 19351,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 8440,
+        "move": "raise 30",
+        "ms": 2160,
         "detail": ""
       }
     },
@@ -1278,14 +1316,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 3141,
+        "ms": 3911,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 5999,
+        "move": "call",
+        "ms": 18632,
         "detail": ""
       }
     },
@@ -1296,14 +1334,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 719,
+        "ms": 1006,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 1085,
+        "move": "fold",
+        "ms": 5033,
         "detail": ""
       }
     },
@@ -1314,14 +1352,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 558,
+        "ms": 1193,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 40",
-        "ms": 2502,
+        "ms": 1734,
         "detail": ""
       }
     },
@@ -1332,14 +1370,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2470,
+        "ms": 2386,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 60",
-        "ms": 3503,
+        "ms": 3665,
         "detail": ""
       }
     },
@@ -1350,14 +1388,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 3852,
+        "ms": 2002,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 2363,
+        "move": "fold",
+        "ms": 3023,
         "detail": ""
       }
     },
@@ -1368,14 +1406,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1626,
+        "ms": 1826,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 3036,
+        "move": "fold",
+        "ms": 1954,
         "detail": ""
       }
     },
@@ -1386,14 +1424,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1481,
+        "ms": 2094,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 2308,
+        "move": "fold",
+        "ms": 3192,
         "detail": ""
       }
     },
@@ -1404,14 +1442,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2681,
+        "ms": 2587,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 5360,
+        "move": "raise 40",
+        "ms": 5240,
         "detail": ""
       }
     },
@@ -1422,14 +1460,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1660,
+        "ms": 3037,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 3890,
+        "move": "raise 40",
+        "ms": 4079,
         "detail": ""
       }
     },
@@ -1439,15 +1477,15 @@
       "chess": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "e4",
-        "ms": 7613,
+        "move": "d4",
+        "ms": 2892,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 40",
-        "ms": 21697,
+        "ms": 3589,
         "detail": ""
       }
     },
@@ -1455,72 +1493,72 @@
       "id": "meta/llama-3.2-11b",
       "name": "Llama 3.2 11B Vision Instruct",
       "chess": {
-        "status": "TEXT",
+        "status": "FALLBACK",
         "structured": "no",
-        "move": "e4",
-        "ms": 751,
-        "detail": "structured output unsupported; plain-text fallback"
+        "move": "",
+        "ms": 358,
+        "detail": "all ladder rungs failed — HTTP 404 [AI_APICallError] This model version has reached the end of its life. Please refer to the AWS documentation for more details."
       },
       "poker": {
-        "status": "TEXT",
+        "status": "FALLBACK",
         "structured": "no",
-        "move": "bet 40",
-        "ms": 1225,
-        "detail": "structured output unsupported; plain-text fallback"
+        "move": "",
+        "ms": 306,
+        "detail": "all ladder rungs failed — HTTP 404 [AI_APICallError] This model version has reached the end of its life. Please refer to the AWS documentation for more details."
       }
     },
     {
       "id": "meta/llama-3.2-1b",
       "name": "Llama 3.2 1B Instruct",
       "chess": {
-        "status": "TEXT",
+        "status": "FALLBACK",
         "structured": "no",
-        "move": "e4",
-        "ms": 562,
-        "detail": "structured output unsupported; plain-text fallback"
+        "move": "",
+        "ms": 326,
+        "detail": "all ladder rungs failed — HTTP 404 [AI_APICallError] This model version has reached the end of its life. Please refer to the AWS documentation for more details."
       },
       "poker": {
-        "status": "TEXT",
+        "status": "FALLBACK",
         "structured": "no",
-        "move": "call",
-        "ms": 1550,
-        "detail": "structured output unsupported; plain-text fallback"
+        "move": "",
+        "ms": 365,
+        "detail": "all ladder rungs failed — HTTP 404 [AI_APICallError] This model version has reached the end of its life. Please refer to the AWS documentation for more details."
       }
     },
     {
       "id": "meta/llama-3.2-3b",
       "name": "Llama 3.2 3B Instruct",
       "chess": {
-        "status": "TEXT",
+        "status": "FALLBACK",
         "structured": "no",
-        "move": "d4",
-        "ms": 2216,
-        "detail": "structured output unsupported; plain-text fallback"
+        "move": "",
+        "ms": 320,
+        "detail": "all ladder rungs failed — HTTP 404 [AI_APICallError] This model version has reached the end of its life. Please refer to the AWS documentation for more details."
       },
       "poker": {
-        "status": "TEXT",
+        "status": "FALLBACK",
         "structured": "no",
-        "move": "call",
-        "ms": 2027,
-        "detail": "structured output unsupported; plain-text fallback"
+        "move": "",
+        "ms": 316,
+        "detail": "all ladder rungs failed — HTTP 404 [AI_APICallError] This model version has reached the end of its life. Please refer to the AWS documentation for more details."
       }
     },
     {
       "id": "meta/llama-3.2-90b",
       "name": "Llama 3.2 90B Vision Instruct",
       "chess": {
-        "status": "TEXT",
+        "status": "FALLBACK",
         "structured": "no",
-        "move": "e4",
-        "ms": 1285,
-        "detail": "structured output unsupported; plain-text fallback"
+        "move": "",
+        "ms": 301,
+        "detail": "all ladder rungs failed — HTTP 404 [AI_APICallError] This model version has reached the end of its life. Please refer to the AWS documentation for more details."
       },
       "poker": {
-        "status": "TEXT",
+        "status": "FALLBACK",
         "structured": "no",
-        "move": "raise 60",
-        "ms": 1386,
-        "detail": "structured output unsupported; plain-text fallback"
+        "move": "",
+        "ms": 358,
+        "detail": "all ladder rungs failed — HTTP 404 [AI_APICallError] This model version has reached the end of its life. Please refer to the AWS documentation for more details."
       }
     },
     {
@@ -1530,14 +1568,14 @@
         "status": "TEXT",
         "structured": "no",
         "move": "e4",
-        "ms": 1011,
+        "ms": 781,
         "detail": "structured output unsupported; plain-text fallback"
       },
       "poker": {
         "status": "TEXT",
         "structured": "no",
         "move": "raise 80",
-        "ms": 1544,
+        "ms": 1686,
         "detail": "structured output unsupported; plain-text fallback"
       }
     },
@@ -1548,14 +1586,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1944,
+        "ms": 2229,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 3767,
+        "move": "raise 80",
+        "ms": 6805,
         "detail": ""
       }
     },
@@ -1566,14 +1604,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1613,
+        "ms": 2187,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 1742,
+        "move": "raise 60",
+        "ms": 3289,
         "detail": ""
       }
     },
@@ -1584,15 +1622,15 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 11171,
+        "ms": 13852,
         "detail": ""
       },
       "poker": {
-        "status": "TIMEOUT",
-        "structured": "—",
-        "move": "",
-        "ms": 45003,
-        "detail": "Delay was aborted"
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 23121,
+        "detail": ""
       }
     },
     {
@@ -1602,14 +1640,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 6025,
+        "ms": 6147,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 15816,
+        "move": "raise 40",
+        "ms": 15052,
         "detail": ""
       }
     },
@@ -1620,15 +1658,15 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 7124,
+        "ms": 5540,
         "detail": ""
       },
       "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "raise 50",
-        "ms": 10382,
-        "detail": ""
+        "status": "TEXT",
+        "structured": "no",
+        "move": "call",
+        "ms": 23029,
+        "detail": "structured output unsupported; plain-text fallback"
       }
     },
     {
@@ -1638,14 +1676,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 7327,
+        "ms": 5992,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 12819,
+        "move": "fold",
+        "ms": 9961,
         "detail": ""
       }
     },
@@ -1656,14 +1694,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 6418,
+        "ms": 4771,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 12672,
+        "move": "fold",
+        "ms": 15242,
         "detail": ""
       }
     },
@@ -1674,14 +1712,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 5927,
+        "ms": 5672,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 12069,
+        "move": "fold",
+        "ms": 13888,
         "detail": ""
       }
     },
@@ -1692,14 +1730,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 4549,
+        "ms": 6490,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "fold",
-        "ms": 13485,
+        "ms": 9368,
         "detail": ""
       }
     },
@@ -1710,14 +1748,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 5037,
+        "ms": 9004,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 11200,
+        "move": "raise 70",
+        "ms": 12430,
         "detail": ""
       }
     },
@@ -1728,14 +1766,14 @@
         "status": "TEXT",
         "structured": "no",
         "move": "e4",
-        "ms": 3619,
+        "ms": 3324,
         "detail": "structured output unsupported; plain-text fallback"
       },
       "poker": {
         "status": "TEXT",
         "structured": "no",
-        "move": "raise 60",
-        "ms": 30654,
+        "move": "call",
+        "ms": 27447,
         "detail": "structured output unsupported; plain-text fallback"
       }
     },
@@ -1746,14 +1784,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 578,
+        "ms": 522,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 962,
+        "move": "call",
+        "ms": 1314,
         "detail": ""
       }
     },
@@ -1764,14 +1802,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 930,
+        "ms": 1458,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "fold",
-        "ms": 2478,
+        "ms": 2033,
         "detail": ""
       }
     },
@@ -1782,14 +1820,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 863,
+        "ms": 807,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "fold",
-        "ms": 1792,
+        "ms": 1869,
         "detail": ""
       }
     },
@@ -1800,15 +1838,15 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1247,
+        "ms": 887,
         "detail": ""
       },
       "poker": {
-        "status": "TEXT",
-        "structured": "no",
+        "status": "STRUCTURED",
+        "structured": "yes",
         "move": "fold",
-        "ms": 43689,
-        "detail": "structured output unsupported; plain-text fallback"
+        "ms": 2535,
+        "detail": ""
       }
     },
     {
@@ -1818,14 +1856,14 @@
         "status": "TEXT",
         "structured": "no",
         "move": "e4",
-        "ms": 6216,
+        "ms": 8165,
         "detail": "structured output unsupported; plain-text fallback"
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 4864,
+        "move": "call",
+        "ms": 3911,
         "detail": ""
       }
     },
@@ -1836,14 +1874,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 767,
+        "ms": 889,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 5383,
+        "move": "raise 40",
+        "ms": 3978,
         "detail": ""
       }
     },
@@ -1854,14 +1892,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 716,
+        "ms": 584,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 100",
-        "ms": 2692,
+        "move": "call",
+        "ms": 1524,
         "detail": ""
       }
     },
@@ -1872,14 +1910,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 932,
+        "ms": 639,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 3404,
+        "move": "call",
+        "ms": 1996,
         "detail": ""
       }
     },
@@ -1890,14 +1928,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1044,
+        "ms": 1066,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 7322,
+        "move": "raise 40",
+        "ms": 8528,
         "detail": ""
       }
     },
@@ -1908,14 +1946,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1130,
+        "ms": 1105,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "fold",
-        "ms": 2786,
+        "ms": 2679,
         "detail": ""
       }
     },
@@ -1926,14 +1964,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 830,
+        "ms": 791,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 60",
-        "ms": 2653,
+        "ms": 2024,
         "detail": ""
       }
     },
@@ -1944,14 +1982,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1534,
+        "ms": 672,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "call",
-        "ms": 5190,
+        "ms": 2190,
         "detail": ""
       }
     },
@@ -1962,14 +2000,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 686,
+        "ms": 609,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 2567,
+        "move": "fold",
+        "ms": 2627,
         "detail": ""
       }
     },
@@ -1980,14 +2018,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 817,
+        "ms": 860,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 6293,
+        "move": "raise 60",
+        "ms": 8264,
         "detail": ""
       }
     },
@@ -1998,14 +2036,14 @@
         "status": "TEXT",
         "structured": "no",
         "move": "e4",
-        "ms": 6537,
+        "ms": 7941,
         "detail": "structured output unsupported; plain-text fallback"
       },
       "poker": {
         "status": "TEXT",
         "structured": "no",
-        "move": "call",
-        "ms": 8195,
+        "move": "fold",
+        "ms": 14319,
         "detail": "structured output unsupported; plain-text fallback"
       }
     },
@@ -2013,36 +2051,36 @@
       "id": "moonshotai/kimi-k2-thinking",
       "name": "Kimi K2 Thinking",
       "chess": {
-        "status": "TIMEOUT",
-        "structured": "—",
-        "move": "",
-        "ms": 45004,
-        "detail": "Delay was aborted"
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 13976,
+        "detail": ""
       },
       "poker": {
-        "status": "TIMEOUT",
-        "structured": "—",
-        "move": "",
-        "ms": 45003,
-        "detail": "Delay was aborted"
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 38537,
+        "detail": ""
       }
     },
     {
       "id": "moonshotai/kimi-k2.5",
       "name": "Kimi K2.5",
       "chess": {
-        "status": "TEXT",
-        "structured": "no",
+        "status": "STRUCTURED",
+        "structured": "yes",
         "move": "e4",
-        "ms": 37879,
-        "detail": "structured output unsupported; plain-text fallback"
+        "ms": 19516,
+        "detail": ""
       },
       "poker": {
-        "status": "TIMEOUT",
-        "structured": "—",
-        "move": "",
-        "ms": 45004,
-        "detail": "Delay was aborted"
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 89218,
+        "detail": ""
       }
     },
     {
@@ -2052,15 +2090,15 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 17139,
+        "ms": 11616,
         "detail": ""
       },
       "poker": {
-        "status": "TIMEOUT",
-        "structured": "—",
-        "move": "",
-        "ms": 45003,
-        "detail": "Delay was aborted"
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 51867,
+        "detail": ""
       }
     },
     {
@@ -2070,14 +2108,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 6937,
+        "ms": 5387,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 28056,
+        "move": "raise 40",
+        "ms": 21726,
         "detail": ""
       }
     },
@@ -2088,14 +2126,32 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1831,
+        "ms": 1499,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 50",
-        "ms": 3419,
+        "ms": 3963,
+        "detail": ""
+      }
+    },
+    {
+      "id": "moonshotai/kimi-k3",
+      "name": "moonshotai/kimi-k3",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 20415,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 36534,
         "detail": ""
       }
     },
@@ -2106,14 +2162,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "Nf3",
-        "ms": 744,
+        "ms": 784,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "check",
-        "ms": 639,
+        "move": "raise 40",
+        "ms": 660,
         "detail": ""
       }
     },
@@ -2124,14 +2180,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2150,
+        "ms": 1239,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 40",
-        "ms": 3053,
+        "ms": 5545,
         "detail": ""
       }
     },
@@ -2142,15 +2198,15 @@
         "status": "TEXT",
         "structured": "no",
         "move": "e4",
-        "ms": 2786,
+        "ms": 4647,
         "detail": "structured output unsupported; plain-text fallback"
       },
       "poker": {
-        "status": "TIMEOUT",
-        "structured": "—",
-        "move": "",
-        "ms": 45004,
-        "detail": "Delay was aborted"
+        "status": "TEXT",
+        "structured": "no",
+        "move": "fold",
+        "ms": 22901,
+        "detail": "structured output unsupported; plain-text fallback"
       }
     },
     {
@@ -2160,637 +2216,7 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1993,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "raise 80",
-        "ms": 1914,
-        "detail": ""
-      }
-    },
-    {
-      "id": "nvidia/nemotron-3-ultra-550b-a55b",
-      "name": "Nemotron 3 Ultra",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 517,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "raise 70",
-        "ms": 1111,
-        "detail": ""
-      }
-    },
-    {
-      "id": "nvidia/nemotron-nano-12b-v2-vl",
-      "name": "Nvidia Nemotron Nano 12B V2 VL",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "Nc3",
-        "ms": 606,
-        "detail": ""
-      },
-      "poker": {
-        "status": "TIMEOUT",
-        "structured": "—",
-        "move": "",
-        "ms": 45004,
-        "detail": "Delay was aborted"
-      }
-    },
-    {
-      "id": "nvidia/nemotron-nano-9b-v2",
-      "name": "Nvidia Nemotron Nano 9B V2",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "Nf3",
-        "ms": 757,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "raise 40",
-        "ms": 2457,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-3.5-turbo",
-      "name": "GPT-3.5 Turbo",
-      "chess": {
-        "status": "TEXT",
-        "structured": "no",
-        "move": "Nf3",
-        "ms": 1609,
-        "detail": "structured output unsupported; plain-text fallback"
-      },
-      "poker": {
-        "status": "TEXT",
-        "structured": "no",
-        "move": "fold",
-        "ms": 822,
-        "detail": "structured output unsupported; plain-text fallback"
-      }
-    },
-    {
-      "id": "openai/gpt-4-turbo",
-      "name": "GPT-4 Turbo",
-      "chess": {
-        "status": "TEXT",
-        "structured": "no",
-        "move": "e4",
-        "ms": 2251,
-        "detail": "structured output unsupported; plain-text fallback"
-      },
-      "poker": {
-        "status": "TEXT",
-        "structured": "no",
-        "move": "call",
-        "ms": 2500,
-        "detail": "structured output unsupported; plain-text fallback"
-      }
-    },
-    {
-      "id": "openai/gpt-4.1",
-      "name": "GPT-4.1",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 699,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "raise 40",
-        "ms": 2040,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-4.1-mini",
-      "name": "GPT-4.1 mini",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 2229,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "raise 40",
-        "ms": 2784,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-4.1-nano",
-      "name": "GPT-4.1 nano",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 561,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "call",
-        "ms": 994,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-4o",
-      "name": "GPT-4o",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 966,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "raise 40",
-        "ms": 2548,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-4o-mini",
-      "name": "GPT-4o mini",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 1346,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "raise 40",
-        "ms": 1892,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-4o-mini-search-preview",
-      "name": "GPT 4o Mini Search Preview",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 1758,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "raise 40",
-        "ms": 2924,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-5",
-      "name": "GPT-5",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 3396,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "raise 40",
-        "ms": 29394,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-5-chat",
-      "name": "GPT 5 Chat",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 893,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "raise 50",
-        "ms": 1398,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-5-codex",
-      "name": "GPT-5-Codex",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 1315,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "raise 60",
-        "ms": 1943,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-5-mini",
-      "name": "GPT-5 mini",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 2646,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "raise 60",
-        "ms": 11152,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-5-nano",
-      "name": "GPT-5 nano",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 4842,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "raise 40",
-        "ms": 22935,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-5-pro",
-      "name": "GPT-5 pro",
-      "chess": {
-        "status": "TIMEOUT",
-        "structured": "—",
-        "move": "",
-        "ms": 45001,
-        "detail": "Delay was aborted"
-      },
-      "poker": {
-        "status": "TIMEOUT",
-        "structured": "—",
-        "move": "",
-        "ms": 45003,
-        "detail": "Delay was aborted"
-      }
-    },
-    {
-      "id": "openai/gpt-5.1-codex",
-      "name": "GPT-5.1-Codex",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 1156,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "raise 50",
-        "ms": 2434,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-5.1-codex-max",
-      "name": "GPT 5.1 Codex Max",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 1572,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "raise 50",
-        "ms": 3822,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-5.1-codex-mini",
-      "name": "GPT 5.1 Codex Mini",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 836,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "raise 40",
-        "ms": 1562,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-5.1-instant",
-      "name": "GPT-5.1 Instant",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 1261,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "raise 50",
-        "ms": 2609,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-5.1-thinking",
-      "name": "GPT 5.1 Thinking",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 1145,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "call",
-        "ms": 6260,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-5.2",
-      "name": "GPT 5.2",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 1625,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "raise 60",
-        "ms": 2812,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-5.2-chat",
-      "name": "GPT 5.2 Chat",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 1415,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "raise 40",
-        "ms": 3125,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-5.2-codex",
-      "name": "GPT 5.2 Codex",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 1321,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "raise 40",
-        "ms": 1755,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-5.2-pro",
-      "name": "GPT 5.2 ",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 7769,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "raise 40",
-        "ms": 40429,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-5.3-chat",
-      "name": "GPT-5.3 Chat",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 1584,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "raise 60",
-        "ms": 5228,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-5.3-codex",
-      "name": "GPT 5.3 Codex",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 1567,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "raise 60",
-        "ms": 2940,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-5.4",
-      "name": "GPT 5.4",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 1379,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "call",
-        "ms": 2345,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-5.4-mini",
-      "name": "GPT 5.4 Mini",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 1101,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "call",
-        "ms": 1549,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-5.4-nano",
-      "name": "GPT 5.4 Nano",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 3509,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "call",
-        "ms": 1599,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-5.4-pro",
-      "name": "GPT 5.4 Pro",
-      "chess": {
-        "status": "TIMEOUT",
-        "structured": "—",
-        "move": "",
-        "ms": 45004,
-        "detail": "Delay was aborted"
-      },
-      "poker": {
-        "status": "TIMEOUT",
-        "structured": "—",
-        "move": "",
-        "ms": 45002,
-        "detail": "Delay was aborted"
-      }
-    },
-    {
-      "id": "openai/gpt-5.5",
-      "name": "GPT 5.5",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 1936,
-        "detail": ""
-      },
-      "poker": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "call",
-        "ms": 12625,
-        "detail": ""
-      }
-    },
-    {
-      "id": "openai/gpt-5.5-pro",
-      "name": "GPT 5.5 Pro",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 9241,
-        "detail": ""
-      },
-      "poker": {
-        "status": "TIMEOUT",
-        "structured": "—",
-        "move": "",
-        "ms": 45004,
-        "detail": "Delay was aborted"
-      }
-    },
-    {
-      "id": "openai/gpt-5.6-luna",
-      "name": "GPT 5.6 Luna",
-      "chess": {
-        "status": "STRUCTURED",
-        "structured": "yes",
-        "move": "e4",
-        "ms": 1149,
+        "ms": 845,
         "detail": ""
       },
       "poker": {
@@ -2802,20 +2228,650 @@
       }
     },
     {
-      "id": "openai/gpt-5.6-sol",
-      "name": "GPT 5.6 Sol",
+      "id": "nvidia/nemotron-3-ultra-550b-a55b",
+      "name": "Nemotron 3 Ultra",
       "chess": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2880,
+        "ms": 507,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "call",
+        "ms": 886,
+        "detail": ""
+      }
+    },
+    {
+      "id": "nvidia/nemotron-nano-12b-v2-vl",
+      "name": "Nvidia Nemotron Nano 12B V2 VL",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 678,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 40",
-        "ms": 9855,
+        "ms": 1241,
+        "detail": ""
+      }
+    },
+    {
+      "id": "nvidia/nemotron-nano-9b-v2",
+      "name": "Nvidia Nemotron Nano 9B V2",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "Nf3",
+        "ms": 658,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 1887,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-3.5-turbo",
+      "name": "GPT-3.5 Turbo",
+      "chess": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "Nf3",
+        "ms": 719,
+        "detail": "structured output unsupported; plain-text fallback"
+      },
+      "poker": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "raise 80",
+        "ms": 1019,
+        "detail": "structured output unsupported; plain-text fallback"
+      }
+    },
+    {
+      "id": "openai/gpt-4-turbo",
+      "name": "GPT-4 Turbo",
+      "chess": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "e4",
+        "ms": 2724,
+        "detail": "structured output unsupported; plain-text fallback"
+      },
+      "poker": {
+        "status": "TEXT",
+        "structured": "no",
+        "move": "raise 60",
+        "ms": 3313,
+        "detail": "structured output unsupported; plain-text fallback"
+      }
+    },
+    {
+      "id": "openai/gpt-4.1",
+      "name": "GPT-4.1",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 908,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 50",
+        "ms": 1568,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-4.1-mini",
+      "name": "GPT-4.1 mini",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 834,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 4056,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-4.1-nano",
+      "name": "GPT-4.1 nano",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 555,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 3146,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-4o",
+      "name": "GPT-4o",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1122,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "call",
+        "ms": 2098,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-4o-mini",
+      "name": "GPT-4o mini",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1418,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 1988,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-4o-mini-search-preview",
+      "name": "GPT 4o Mini Search Preview",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 2129,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 3286,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5",
+      "name": "GPT-5",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 3011,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 50",
+        "ms": 14530,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5-chat",
+      "name": "GPT 5 Chat",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 875,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 50",
+        "ms": 1533,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5-codex",
+      "name": "GPT-5-Codex",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1239,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 50",
+        "ms": 2597,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5-mini",
+      "name": "GPT-5 mini",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 2307,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 70",
+        "ms": 8840,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5-nano",
+      "name": "GPT-5 nano",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 4047,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 23612,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5-pro",
+      "name": "GPT-5 pro",
+      "chess": {
+        "status": "TIMEOUT",
+        "structured": "—",
+        "move": "",
+        "ms": 45002,
+        "detail": "Delay was aborted"
+      },
+      "poker": {
+        "status": "TIMEOUT",
+        "structured": "—",
+        "move": "",
+        "ms": 45002,
+        "detail": "Delay was aborted"
+      }
+    },
+    {
+      "id": "openai/gpt-5.1-codex",
+      "name": "GPT-5.1-Codex",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1090,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 1812,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.1-codex-max",
+      "name": "GPT 5.1 Codex Max",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 3129,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 50",
+        "ms": 3375,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.1-codex-mini",
+      "name": "GPT 5.1 Codex Mini",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1224,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 2092,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.1-instant",
+      "name": "GPT-5.1 Instant",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1330,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 2613,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.1-thinking",
+      "name": "GPT 5.1 Thinking",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 2848,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 10131,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.2",
+      "name": "GPT 5.2",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1437,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 3113,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.2-chat",
+      "name": "GPT 5.2 Chat",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1301,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 3642,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.2-codex",
+      "name": "GPT 5.2 Codex",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1269,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 1598,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.2-pro",
+      "name": "GPT 5.2 ",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 8319,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 50",
+        "ms": 30513,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.3-chat",
+      "name": "GPT-5.3 Chat",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 2261,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 3292,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.3-codex",
+      "name": "GPT 5.3 Codex",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1226,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "call",
+        "ms": 2647,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.4",
+      "name": "GPT 5.4",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1204,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 80",
+        "ms": 3727,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.4-mini",
+      "name": "GPT 5.4 Mini",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 5219,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "call",
+        "ms": 5541,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.4-nano",
+      "name": "GPT 5.4 Nano",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 1550,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "fold",
+        "ms": 1865,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.4-pro",
+      "name": "GPT 5.4 Pro",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 21908,
+        "detail": ""
+      },
+      "poker": {
+        "status": "TIMEOUT",
+        "structured": "—",
+        "move": "",
+        "ms": 45001,
+        "detail": "Delay was aborted"
+      }
+    },
+    {
+      "id": "openai/gpt-5.5",
+      "name": "GPT 5.5",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 6204,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "call",
+        "ms": 14587,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.5-pro",
+      "name": "GPT 5.5 Pro",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 12660,
+        "detail": ""
+      },
+      "poker": {
+        "status": "TIMEOUT",
+        "structured": "—",
+        "move": "",
+        "ms": 45001,
+        "detail": "Delay was aborted"
+      }
+    },
+    {
+      "id": "openai/gpt-5.6-luna",
+      "name": "GPT 5.6 Luna",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 965,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "call",
+        "ms": 2323,
+        "detail": ""
+      }
+    },
+    {
+      "id": "openai/gpt-5.6-sol",
+      "name": "GPT 5.6 Sol",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 2291,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 50",
+        "ms": 7388,
         "detail": ""
       }
     },
@@ -2826,14 +2882,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1145,
+        "ms": 1200,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 50",
-        "ms": 3863,
+        "ms": 2359,
         "detail": ""
       }
     },
@@ -2844,14 +2900,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 819,
+        "ms": 706,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 80",
-        "ms": 4614,
+        "ms": 2817,
         "detail": ""
       }
     },
@@ -2862,14 +2918,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1659,
+        "ms": 1835,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "fold",
-        "ms": 6405,
+        "ms": 22656,
         "detail": ""
       }
     },
@@ -2880,14 +2936,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 565,
+        "ms": 382,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 1046,
+        "move": "call",
+        "ms": 1888,
         "detail": ""
       }
     },
@@ -2898,14 +2954,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2586,
+        "ms": 3887,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 50",
-        "ms": 6584,
+        "move": "raise 40",
+        "ms": 8409,
         "detail": ""
       }
     },
@@ -2916,14 +2972,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1897,
+        "ms": 1695,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 50",
-        "ms": 5212,
+        "ms": 3885,
         "detail": ""
       }
     },
@@ -2934,14 +2990,14 @@
         "status": "FALLBACK",
         "structured": "no",
         "move": "",
-        "ms": 423,
+        "ms": 491,
         "detail": "all ladder rungs failed — HTTP 400 [AI_APICallError] Invalid parameter: 'text.format' of type 'json_schema' is not supported with model version `o3-deep-research`."
       },
       "poker": {
         "status": "FALLBACK",
         "structured": "no",
         "move": "",
-        "ms": 547,
+        "ms": 470,
         "detail": "all ladder rungs failed — HTTP 400 [AI_APICallError] Invalid parameter: 'text.format' of type 'json_schema' is not supported with model version `o3-deep-research`."
       }
     },
@@ -2952,14 +3008,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 4354,
+        "ms": 2716,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 5445,
+        "move": "call",
+        "ms": 29188,
         "detail": ""
       }
     },
@@ -2970,14 +3026,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 16274,
+        "ms": 9914,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 50",
-        "ms": 26935,
+        "move": "raise 40",
+        "ms": 37886,
         "detail": ""
       }
     },
@@ -2988,14 +3044,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1584,
+        "ms": 1956,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 60",
-        "ms": 5756,
+        "ms": 8469,
         "detail": ""
       }
     },
@@ -3006,14 +3062,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2247,
+        "ms": 1964,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 100",
-        "ms": 4826,
+        "move": "raise 80",
+        "ms": 4917,
         "detail": ""
       }
     },
@@ -3024,14 +3080,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 3423,
+        "ms": 4051,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 2910,
+        "move": "raise 40",
+        "ms": 4535,
         "detail": ""
       }
     },
@@ -3042,14 +3098,32 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 6692,
+        "ms": 5192,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 60",
-        "ms": 12611,
+        "ms": 7879,
+        "detail": ""
+      }
+    },
+    {
+      "id": "sakana/fugu-ultra",
+      "name": "Fugu Ultra",
+      "chess": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 36396,
+        "detail": ""
+      },
+      "poker": {
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 18425,
         "detail": ""
       }
     },
@@ -3060,15 +3134,15 @@
         "status": "TEXT",
         "structured": "no",
         "move": "e4",
-        "ms": 1324,
+        "ms": 8064,
         "detail": "structured output unsupported; plain-text fallback"
       },
       "poker": {
-        "status": "TEXT",
-        "structured": "no",
-        "move": "raise 40",
-        "ms": 29620,
-        "detail": "structured output unsupported; plain-text fallback"
+        "status": "TIMEOUT",
+        "structured": "—",
+        "move": "",
+        "ms": 45002,
+        "detail": "Delay was aborted"
       }
     },
     {
@@ -3078,15 +3152,15 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 10052,
+        "ms": 10244,
         "detail": ""
       },
       "poker": {
-        "status": "TIMEOUT",
-        "structured": "—",
-        "move": "",
-        "ms": 45004,
-        "detail": "Delay was aborted"
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "fold",
+        "ms": 6486,
+        "detail": ""
       }
     },
     {
@@ -3096,14 +3170,14 @@
         "status": "TEXT",
         "structured": "no",
         "move": "e4",
-        "ms": 13851,
+        "ms": 11503,
         "detail": "structured output unsupported; plain-text fallback"
       },
       "poker": {
         "status": "TEXT",
         "structured": "no",
         "move": "raise 60",
-        "ms": 9983,
+        "ms": 5568,
         "detail": "structured output unsupported; plain-text fallback"
       }
     },
@@ -3114,14 +3188,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1075,
+        "ms": 638,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 1260,
+        "move": "call",
+        "ms": 1122,
         "detail": ""
       }
     },
@@ -3132,14 +3206,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1865,
+        "ms": 3344,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 6239,
+        "move": "fold",
+        "ms": 13957,
         "detail": ""
       }
     },
@@ -3147,17 +3221,17 @@
       "id": "xai/grok-4.20-multi-agent",
       "name": "Grok 4.20 Multi-Agent",
       "chess": {
-        "status": "TEXT",
-        "structured": "no",
+        "status": "STRUCTURED",
+        "structured": "yes",
         "move": "e4",
-        "ms": 5832,
-        "detail": "structured output unsupported; plain-text fallback"
+        "ms": 3851,
+        "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 60",
-        "ms": 13112,
+        "ms": 10495,
         "detail": ""
       }
     },
@@ -3168,14 +3242,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2889,
+        "ms": 3864,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 8935,
+        "move": "fold",
+        "ms": 7997,
         "detail": ""
       }
     },
@@ -3186,14 +3260,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 721,
+        "ms": 754,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "fold",
-        "ms": 1938,
+        "ms": 2044,
         "detail": ""
       }
     },
@@ -3204,14 +3278,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 838,
+        "ms": 579,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 3317,
+        "move": "fold",
+        "ms": 1655,
         "detail": ""
       }
     },
@@ -3222,14 +3296,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2594,
+        "ms": 3289,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 9065,
+        "move": "raise 40",
+        "ms": 13189,
         "detail": ""
       }
     },
@@ -3240,14 +3314,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2298,
+        "ms": 2239,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 8205,
+        "move": "fold",
+        "ms": 7727,
         "detail": ""
       }
     },
@@ -3258,14 +3332,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2821,
+        "ms": 2462,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 40",
-        "ms": 4903,
+        "ms": 6550,
         "detail": ""
       }
     },
@@ -3276,14 +3350,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 3166,
+        "ms": 3086,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 60",
-        "ms": 15930,
+        "ms": 13598,
         "detail": ""
       }
     },
@@ -3294,14 +3368,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 4702,
+        "ms": 2226,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 40",
-        "ms": 37993,
+        "ms": 31440,
         "detail": ""
       }
     },
@@ -3312,14 +3386,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2405,
+        "ms": 2294,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "call",
-        "ms": 5135,
+        "ms": 5890,
         "detail": ""
       }
     },
@@ -3330,14 +3404,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2343,
+        "ms": 5419,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 60",
-        "ms": 5304,
+        "ms": 10552,
         "detail": ""
       }
     },
@@ -3348,15 +3422,15 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 18863,
+        "ms": 14130,
         "detail": ""
       },
       "poker": {
-        "status": "TIMEOUT",
-        "structured": "—",
-        "move": "",
-        "ms": 45002,
-        "detail": "Delay was aborted"
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 54403,
+        "detail": ""
       }
     },
     {
@@ -3366,15 +3440,15 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 30300,
+        "ms": 25661,
         "detail": ""
       },
       "poker": {
-        "status": "TIMEOUT",
-        "structured": "—",
-        "move": "",
-        "ms": 45003,
-        "detail": "Delay was aborted"
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 31076,
+        "detail": ""
       }
     },
     {
@@ -3384,14 +3458,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 7532,
+        "ms": 8649,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 21443,
+        "move": "call",
+        "ms": 8602,
         "detail": ""
       }
     },
@@ -3402,14 +3476,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 5314,
+        "ms": 13338,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 60",
-        "ms": 17198,
+        "ms": 9138,
         "detail": ""
       }
     },
@@ -3420,14 +3494,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 6141,
+        "ms": 15884,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 18003,
+        "move": "call",
+        "ms": 11586,
         "detail": ""
       }
     },
@@ -3438,14 +3512,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 4041,
+        "ms": 4893,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 23743,
+        "move": "fold",
+        "ms": 23400,
         "detail": ""
       }
     },
@@ -3456,14 +3530,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 580,
+        "ms": 514,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 2138,
+        "move": "call",
+        "ms": 1461,
         "detail": ""
       }
     },
@@ -3474,14 +3548,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1169,
+        "ms": 598,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 1410,
+        "move": "raise 35",
+        "ms": 1398,
         "detail": ""
       }
     },
@@ -3492,14 +3566,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 7325,
+        "ms": 6600,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 40",
-        "ms": 20321,
+        "ms": 38020,
         "detail": ""
       }
     },
@@ -3510,14 +3584,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 852,
+        "ms": 34423,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 3094,
+        "move": "raise 50",
+        "ms": 14257,
         "detail": ""
       }
     },
@@ -3528,15 +3602,15 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 4314,
+        "ms": 2892,
         "detail": ""
       },
       "poker": {
-        "status": "TIMEOUT",
-        "structured": "—",
-        "move": "",
-        "ms": 45002,
-        "detail": "Delay was aborted"
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 60",
+        "ms": 11525,
+        "detail": ""
       }
     },
     {
@@ -3546,14 +3620,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1022,
+        "ms": 883,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 2233,
+        "move": "raise 60",
+        "ms": 1966,
         "detail": ""
       }
     },
@@ -3564,14 +3638,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2736,
+        "ms": 2887,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 24803,
+        "move": "raise 40",
+        "ms": 5323,
         "detail": ""
       }
     },
@@ -3582,14 +3656,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 995,
+        "ms": 708,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 2901,
+        "move": "fold",
+        "ms": 2836,
         "detail": ""
       }
     },
@@ -3600,14 +3674,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 8081,
+        "ms": 6512,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 35582,
+        "move": "call",
+        "ms": 24252,
         "detail": ""
       }
     }

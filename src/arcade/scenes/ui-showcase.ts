@@ -8,7 +8,7 @@ import { hslToRgb } from '../../engine/index.ts';
 import {
   ASCIIFont,
   Box,
-  Combobox,
+  Dropdown,
   FrameBuffer,
   Input,
   Select,
@@ -20,6 +20,7 @@ import {
   type Node,
   type Screen,
 } from '../../tui/index.ts';
+import { creators } from '../match/models.ts';
 
 // Long-lived component instances. Module-level so their state (caret, selection,
 // slider value, scroll) persists across visits to the screen; mountShowcase
@@ -34,33 +35,30 @@ const scroll = new ScrollBox({
   rows: Array.from({ length: 14 }, (_, i) => `  ${String(i + 1).padStart(2)}. move ${i + 1}`),
 });
 
-// A small, deliberately static catalog for the component prototype. The actual
-// match catalog remains Arcade-owned; this scene only proves that one reusable
-// combobox can drive another without importing setup-screen code into the TUI.
-const showcaseModels: Record<string, string[]> = {
-  OpenAI: ['GPT-5', 'GPT-5 Mini', 'o3', 'GPT-4.1'],
-  Anthropic: ['Claude Opus 4.1', 'Claude Sonnet 4', 'Claude 3.7 Sonnet'],
-  Google: ['Gemini 2.5 Pro', 'Gemini 2.5 Flash', 'Gemini 2.0 Flash'],
-  xAI: ['Grok 4', 'Grok 3 Mini'],
-  Mistral: ['Mistral Large', 'Codestral', 'Ministral 8B'],
-};
+// Use the same complete, compatibility-filtered Gateway catalog as the real
+// match setup. OpenAI remains the initial creator for a familiar default.
+const showcaseCreators = creators();
+const defaultCreatorIndex = Math.max(0, showcaseCreators.findIndex((creator) => creator.slug === 'openai'));
+const modelLabels = (creatorIndex: number): string[] => showcaseCreators[creatorIndex]?.models.map((model) => model.name) ?? [];
 
-const modelCombobox = new Combobox({
-  id: 'sc-model-combobox',
-  items: showcaseModels.OpenAI,
+const modelDropdown = new Dropdown({
+  id: 'sc-model-dropdown',
+  searchable: true,
+  items: modelLabels(defaultCreatorIndex),
   width: 28,
   rows: 7,
   index: 0,
-  placeholder: 'Search models…',
+  searchPlaceholder: 'Search',
 });
-const creatorCombobox = new Combobox({
-  id: 'sc-creator-combobox',
-  items: Object.keys(showcaseModels),
+const creatorDropdown = new Dropdown({
+  id: 'sc-creator-dropdown',
+  searchable: true,
+  items: showcaseCreators.map((creator) => creator.name),
   width: 28,
-  rows: 6,
-  index: 0,
-  placeholder: 'Search creators…',
-  onSelect: (_index, creator) => modelCombobox.setItems(showcaseModels[creator] ?? [], 0),
+  rows: 7,
+  index: defaultCreatorIndex,
+  searchPlaceholder: 'Search',
+  onSelect: (index) => modelDropdown.setItems(modelLabels(index), 0),
 });
 
 export function mountShowcase(ui: Screen): void {
@@ -68,8 +66,8 @@ export function mountShowcase(ui: Screen): void {
   ui.mount(select);
   ui.mount(slider);
   ui.mount(scroll);
-  ui.mount(creatorCombobox);
-  ui.mount(modelCombobox);
+  ui.mount(creatorDropdown);
+  ui.mount(modelDropdown);
 }
 
 // A labeled row: a muted fixed-width caption next to the component's Slot/node.
@@ -133,10 +131,10 @@ export function buildShowcase(region: LayoutBox, bar: Node): Node {
       [
         Text({ text: 'MODEL SELECTOR', style: { bold: true, color: 'accent' } }),
         Text({ text: 'creator', style: { color: 'muted' } }),
-        Slot('sc-creator-combobox'),
+        Slot('sc-creator-dropdown'),
         Text({ text: 'model', style: { color: 'muted' } }),
-        Slot('sc-model-combobox'),
-        Text({ text: 'type to search · ↑↓ choose · enter select', style: { color: 'muted' } }),
+        Slot('sc-model-dropdown'),
+        Text({ text: 'search · ↑↓ choose · enter', style: { color: 'muted' } }),
       ],
     ),
     overlay: true,
