@@ -39,9 +39,7 @@ export interface AudioBus {
   stop(): void;
 }
 
-// The realtime (speech-to-speech) model that voices the opponent. NOT the text model
-// picked in setup — realtime needs a realtime-type model. Override with the env var.
-const DEFAULT_VOICE_MODEL = 'openai/gpt-realtime-2';
+// The selected realtime model both voices the opponent and makes its poker decisions.
 const RATE = 24000;
 
 // Turn safety: cap how many times we ask the bot to act in one turn (re-prompts fire on
@@ -103,7 +101,7 @@ export interface PokerVoiceDeps {
   scene: PokerVoiceScene;
   botSeat: number;
   humanSeat: number;
-  botModel: string; // the AI seat's full model slug ("creator/model") — drives the chat name + wisp-colored tint
+  botModel: string; // actual realtime slug; drives the session, chat identity, and wisp tint
   botLabel: string; // short display name, for event-line text ("<name> stalled…")
   // Push a line to the poker chat rail. `speaker` is a model slug (colored like the
   // text path) or "You" for the human; `event` lines render nameless/grey.
@@ -124,7 +122,7 @@ export function pokerVoiceCapable(): boolean {
 
 export class PokerVoice {
   private session: RealtimeSession | null = null;
-  private readonly model = process.env.ARCADE_POKER_VOICE_MODEL || DEFAULT_VOICE_MODEL;
+  private readonly model: string;
   private readonly audio: AudioBus;
   private readonly audioLog = new AudioLog();
   private connecting = false;
@@ -156,6 +154,7 @@ export class PokerVoice {
     private readonly open: (model: string, handlers: RealtimeHandlers) => Promise<RealtimeSession> = openRealtime,
     makeAudio: (handlers: VoiceDuplexHandlers) => AudioBus = (h) => new VoiceDuplex(h),
   ) {
+    this.model = deps.botModel;
     this.audio = makeAudio({
       onForward: (pcm) => this.session?.appendAudio(pcm),
       onMicDecision: (peak, playMs, decision) => this.audioLog.mic(peak, playMs, decision),

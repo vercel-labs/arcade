@@ -7,9 +7,9 @@
 import { Box, Button, Dialog, Modal, Select, Slot, Text, type Node, type Screen, type Style } from '../../tui/index.ts';
 import type { Team } from '../../auth/index.ts';
 
-const LIST_W = 34;
+const LIST_W = 52;
 const LIST_ROWS = 7; // fixed viewport height; longer team lists scroll past this
-const CARD_W = LIST_W + 6; // card outer width (content = LIST_W within the [1,3] padding)
+const CARD_W = LIST_W + 2; // card outer width (content = LIST_W within the [1,1] padding)
 
 // The teams backing the current list contents (index-aligned with the Select's
 // rows), and the pick handler main.ts wires in once at startup. `currentId` is the
@@ -40,12 +40,12 @@ export function setTeamSwitchHandlers(h: { onPick: (team: Team) => void }): void
 }
 
 // One row label: a ✓ for a just-switched team, else ● for the billed team, else a
-// blank gutter (so names stay aligned); a "(slug)" tail disambiguates when the slug
-// differs from the name. Truncated to the list width so long names can't overflow.
+// blank gutter so names stay aligned. Team ids and slugs stay in the backing data but are
+// intentionally omitted from the row; the human-readable Vercel team name is enough here.
 function labelOf(team: Team): string {
   const mark = team.id === succeededId ? '✓ ' : team.id === currentId ? '● ' : '  ';
-  const tail = team.slug && team.slug !== team.name ? ` (${team.slug})` : '';
-  return truncate(`${mark}${team.name}${tail}`, LIST_W - 2); // -2 for the row's [0,1] padding
+  const max = LIST_W - 2 - (teams.length > LIST_ROWS ? 1 : 0); // row padding + optional bar
+  return truncate(mark + team.name, max);
 }
 
 function truncate(s: string, max: number): string {
@@ -68,7 +68,7 @@ export function setTeamSwitchTeams(next: Team[], current: Team | null): void {
   succeededId = null;
   list.setItems(next.map(labelOf));
   const ci = current ? next.findIndex((t) => t.id === current.id) : -1;
-  if (ci >= 0) list.index = ci;
+  if (ci >= 0) list.setIndex(ci);
 }
 
 // Mark a team as just-switched-to: it becomes the billed team and gets the ✓
@@ -78,7 +78,7 @@ export function markSwitchSucceeded(team: Team): void {
   succeededId = team.id;
   relabel();
   const i = teams.findIndex((t) => t.id === team.id);
-  if (i >= 0) list.index = i;
+  if (i >= 0) list.setIndex(i);
 }
 
 // The modal's visual states: loading the list, the loaded list, an in-flight
@@ -92,7 +92,7 @@ export type TeamSwitchView =
   // to the list instead of the plain close hint.
   | { kind: 'error'; message: string; canReturn?: boolean };
 
-const CARD_PAD: [number, number] = [1, 3]; // Dialog card padding (content = LIST_W within it)
+const CARD_PAD: [number, number] = [1, 1]; // scrollbar sits against the card's inner right edge
 const PRIMARY: Style = {
   padding: [0, 3],
   background: [86, 64, 120],
@@ -175,7 +175,7 @@ export function buildTeamSwitch(
 
   // Dialog supplies the fixed-width card, the centered "Vercel account" title, and the
   // corner ✕ (its absolute placement lines the ✕ up one cell from the edge through the
-  // card's [1,3] padding — the same result the hand-rolled close box produced).
+  // card's [1,1] padding — the same result the hand-rolled close box produced).
   return Modal(
     Dialog({ title: 'Vercel account', onClose: opts.onClose, closeId: 'team-close', align: 'center', width: CARD_W, padding: CARD_PAD }, [
       body,

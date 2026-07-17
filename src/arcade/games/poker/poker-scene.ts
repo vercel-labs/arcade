@@ -154,6 +154,9 @@ const CHIP_AWARD_HOP = 0.72; // clears the board while crossing the felt
 // Idle: with no session running the table isn't bare — it shows a ring of
 // chairs and a centre deck that riffle-shuffles on a loop (see DeckShuffle).
 const IDLE_SEATS = 4; // chairs shown around the empty table (when no setup preview is up)
+// Varied carried-stack sizes for the idle "furniture" (a static pre-flop table). Deliberately
+// uneven so the piles differ per seat; indexed by seat, cycled if more chairs than entries.
+const IDLE_STACK_AMOUNTS = [1200, 2000, 750, 1650, 950, 2400] as const;
 
 const smooth = (x: number): number => {
   const t = x < 0 ? 0 : x > 1 ? 1 : x;
@@ -301,6 +304,13 @@ export class PokerGameScene {
   private back: Texture;
   // The idle deck at the felt centre, shuffling on a loop while idle (no session).
   private idleDeck: DeckShuffle;
+  // Cached carried-stack inventories for the idle furniture — denominated once (deterministic)
+  // so the per-seat piles are stable across frames rather than re-rolled each draw.
+  private readonly idleStacks: ChipColumn[][] = IDLE_STACK_AMOUNTS.map((amt) => playerColumns(amt));
+  // During the setup preview: the carried-stack columns for the chosen starting stack (every
+  // seat equal). Recomputed as the stack slider changes, so the piles grow/shrink live. Null
+  // outside preview → the bare idle ring uses its own varied stacks instead.
+  private previewCols: ChipColumn[] | null = null;
   private dirty = true;
   private lastT = -1;
   private lastAspect = 1.6; // width/height of the last render target — for the bird's-eye fit math
@@ -504,10 +514,13 @@ export class PokerGameScene {
   // back from the deck close-up to the whole-table overview (so the ring + wisps
   // read); closing returns to the idle framing. Updates in between leave the camera
   // alone, so the user's own orbiting isn't reset by a dropdown change.
-  setPreview(seats: PokerSeatView[] | null): void {
+  setPreview(seats: PokerSeatView[] | null, stack?: number): void {
     if (this.active) return;
     const was = this.seats.length > 0;
     this.seats = seats ?? [];
+    // Preview piles reflect the chosen starting stack (all seats equal) so they track the
+    // stack slider live; cleared when the preview closes back to the varied idle ring.
+    this.previewCols = seats && stack != null ? playerColumns(stack) : null;
     this.wisps = this.seats.map((s, i) => (s.kind === 'ai' && s.creator ? this.loadSeatWisp(s.creator, i) : null));
     if (!was && seats) this.cam = this.makeCamera();
     else if (was && !seats) this.cam = this.makeIdleCamera();
@@ -1039,7 +1052,9 @@ export class PokerGameScene {
       // Idle state: a ring of chairs around a centre deck shuffling on a loop. With
       // the setup preview up, the ring follows the chosen player count instead.
       this.idleDeck.step(dt);
-      this.drawChairRing(target, vp, chair, this.seats.length || IDLE_SEATS);
+      const n = this.seats.length || IDLE_SEATS;
+      this.drawChairRing(target, vp, chair, n);
+      this.drawIdleFurniture(target, vp, n); // static pre-flop hands + carried stacks per chair
       this.idleDeck.draw(target, vp);
     } else {
       this.drawChairRing(target, vp, chair, this.seats.length);
@@ -1278,6 +1293,39 @@ export class PokerGameScene {
     for (let k = 0; k < n; k++) {
       const model = chairModel((k / n) * Math.PI * 2);
       rasterize(target, chair, lambertMaterial, { mvp: mat4Multiply(vp, model), model, lightDir: TABLE_LIGHT, ambient: TABLE_AMBIENT });
+    }
+  }
+
+  // Idle "furniture": a static pre-flop table — two face-down hole cards + a carried chip
+  // stack in front of each empty chair — so the attract scene reads as a live table paused
+  // pre-deal rather than a bare ring. No community cards, no deal; purely decorative. Uses
+  // its own raw-angle geometry (seatPos/seatAngle assume a live seat list, empty when idle),
+  // mirroring drawHoleCards + stackCenter. Stack sizes vary and run through the same
+  // playerColumns / drawChipStack path as a real game, so the piles are naturally non-uniform.
+  private drawIdleFurniture(target: RenderTarget, vp: Mat4, n: number): void {
+    for (let k = 0; k < n; k++) {
+      const a = (k / n) * Math.PI * 2;
+      const cx = Math.sin(a) * HOLE_R;
+      const cz = Math.cos(a) * HOLE_R;
+      const tx = Math.cos(a); // seat tangent (the two cards sit ±HOLE_GAP along it)
+      const tz = -Math.sin(a);
+      for (let j = 0; j < 2; j++) {
+        const off = j === 0 ? -HOLE_GAP : HOLE_GAP;
+        const M = mat4Multiply(mat4Translate(cx + tx * off, CARD_LIFT, cz + tz * off), mat4Multiply(mat4RotY(a), flatDown()));
+        drawCard(target, vp, M, DEAL_CARD, this.back);
+      }
+      // Carried stack beside the cards — same felt-fit math as stackCenter, raw-angle here.
+      // In the setup preview every seat shows the chosen starting stack (so it tracks the
+      // slider); the bare idle ring uses its varied per-seat amounts.
+      const cols = this.previewCols ?? this.idleStacks[k % this.idleStacks.length];
+      if (cols.length === 0) continue;
+      const ext = chipPileHalfExtent(cols, k);
+      const sideOff = Math.max(CHIP_SIDE, CARD_TAN_EDGE + CHIP_CARD_GAP + ext.perp);
+      const tang = sideOff + ext.perp;
+      const rMax = Math.sqrt(Math.max(0, FELT_USABLE_R * FELT_USABLE_R - tang * tang)) - ext.axis;
+      const r = Math.max(0, Math.min(HOLE_R + CHIP_EDGE_NUDGE, rMax));
+      const center = { x: Math.sin(a) * r + Math.cos(a) * sideOff, z: Math.cos(a) * r - Math.sin(a) * sideOff };
+      drawChipStack(target, vp, center, { x: Math.sin(a), z: Math.cos(a) }, cols, TABLE_LIGHT, TABLE_AMBIENT, k);
     }
   }
 

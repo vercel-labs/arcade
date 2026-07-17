@@ -4,6 +4,7 @@
 // list of ~200 combos. Loaded synchronously at import (small JSON, offline).
 import { readFileSync } from 'node:fs';
 import { asset } from '../assets.ts';
+import { BETA_MODEL_ALLOWLIST } from './beta-allowlist.ts';
 
 export interface ModelInfo {
   id: string; // "creator/model" gateway slug
@@ -17,27 +18,45 @@ export interface CreatorInfo {
 
 const catalog: { creators: CreatorInfo[] } = JSON.parse(readFileSync(asset('models.json'), 'utf8'));
 
-// Compatibility policy (AIG-183). Selectable models play through the ModelPlayer
-// fallback ladder automatically — native structured output → plain-text soft parse →
-// 2nd-LLM normalization (see normalizerModel) → a visibly-diagnosed random legal move
-// as the last resort. So a model that lacks structured output (e.g. thinkingmachines/
-// inkling) stays selectable and still plays via a lower rung, rather than being hidden
-// or shown a warning. Only creators that don't play through the gateway AT ALL are
-// hidden here; the reproducible audit is `src/tools/model-compat-report.ts`.
-//
-// Currently hidden (verified via the probe / report): `arcee-ai` is gated behind a
-// separate access profile, `meituan` reports "Unsupported model", and `sakana` hangs
-// past the request timeout. Drop a slug once it works. Direct lookups (modelsFor /
-// modelName) still resolve these, so the tools can re-test them by name; only the
-// listed/selectable set excludes them.
+// Creator-level exclusions: creators that don't play through the gateway at all.
+// Verified via the probe / report (`src/tools/model-compat-report.ts`): `arcee-ai`
+// is gated behind a separate access profile, `meituan` reports "Unsupported model",
+// and `sakana` hangs past the request timeout. Drop a slug once it works. Direct
+// lookups (modelsFor / modelName) still resolve these; only the selectable set excludes them.
 const UNSUPPORTED = new Set(['arcee-ai', 'meituan', 'sakana']);
 
-// Selectable creators (picker + probe sweep) — excludes the unsupported ones.
+// Selectable creators (full catalog minus unsupported). Used by the audit/probe
+// tools (which must see every model to regenerate the allowlist) and as the base
+// for the picker below.
 export function creators(): CreatorInfo[] {
   return catalog.creators.filter((c) => !UNSUPPORTED.has(c.slug));
 }
 export function modelsFor(slug: string): ModelInfo[] {
   return catalog.creators.find((c) => c.slug === slug)?.models ?? [];
+}
+
+// Private-beta model policy (AIG-183 → AIG-105). The match-setup picker offers only
+// BETA_MODEL_ALLOWLIST — models the audit verified play both games via native
+// structured output on the internal-playground team. A selected model still runs the
+// ModelPlayer fallback ladder (structured → soft parse → normalizer → random legal),
+// so this is about a clean first-impression menu, not the only way a model can play.
+// Set ARCADE_ALL_MODELS=1 to offer the full catalog (dev, or a different team). The
+// base creators()/modelsFor() stay unfiltered so tools and direct lookups see everything.
+function allowlistActive(): boolean {
+  return !/^(1|on|true|yes)$/i.test(process.env.ARCADE_ALL_MODELS?.trim() ?? '');
+}
+function allowed(models: ModelInfo[]): ModelInfo[] {
+  return allowlistActive()
+    ? models.filter((m) => BETA_MODEL_ALLOWLIST.has(m.id))
+    : models;
+}
+export function pickerCreators(): CreatorInfo[] {
+  return creators()
+    .map((c) => ({ ...c, models: allowed(c.models) }))
+    .filter((c) => c.models.length > 0);
+}
+export function pickerModelsFor(slug: string): ModelInfo[] {
+  return allowed(modelsFor(slug));
 }
 export function creatorName(slug: string): string {
   return catalog.creators.find((c) => c.slug === slug)?.name ?? slug;

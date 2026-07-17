@@ -55,7 +55,7 @@ export function buildBar(
   mode: Mode,
   renderMode: RenderMode,
   a: BarActions,
-  ai: { label: string; active: boolean } = { label: 'new ai match', active: false },
+  ai: { label: string; active: boolean } = { label: 'new match', active: false },
 ): Node {
   let buttons: Node[] = [];
 
@@ -91,12 +91,12 @@ export function buildBar(
     // Rounded (outlined) control: 3 rows tall, arc border, a little horizontal padding,
     // transparent interior (the 2D scene shows through). Active (match running) tints
     // the outline + label purple; hover/focus whiten the border + label + bold.
-    const aiActive = ai.active ? { color: [216, 200, 235] as RGB, borderColor: [138, 110, 170] as RGB } : {};
-    buttons = [RoundedButton({ id: 'ai', label: ai.label, onClick: a.aiMatch, padding: [0, 2], ...aiActive })];
+    const aiActive = ai.active ? { color: [200, 206, 236] as RGB, borderColor: [112, 122, 188] as RGB } : {};
+    buttons = [RoundedButton({ id: 'ai', label: ai.label, onClick: a.aiMatch, ...aiActive })];
     // A "reset board" control only sits beside play/pause while a match exists — idle
-    // already reads "new ai match", so it would be redundant there. Same "reset board"
+    // already reads "new match", so it would be redundant there. Same "reset board"
     // the ☰ menu offers, surfaced on the felt for one-click reset.
-    if (ai.active) buttons.push(RoundedButton({ id: 'new-game', label: 'reset board', onClick: a.newGame, padding: [0, 2] }));
+    if (ai.active) buttons.push(RoundedButton({ id: 'new-game', label: 'reset board', onClick: a.newGame }));
   } else if (mode === 'cards') {
     // The cards screen: the mode picker + per-mode controls live in the poker HUD
     // panel; the bar just carries nav / camera reset / display style / quit.
@@ -178,7 +178,7 @@ export function buildPromotion(color: Color, onPick: (t: PieceType) => void, onC
 // Rounded-button treatments shared by the modal family (confirm / game-over): a purple
 // outline for the affirmative/primary action, neutral grey for cancel/close. Hover/focus
 // whiten the border + label (see tui/button.ts). Matches the chess bar's purple ai control.
-const MODAL_PRIMARY = { color: [216, 200, 235] as RGB, borderColor: [138, 110, 170] as RGB };
+const MODAL_PRIMARY = { color: [200, 206, 236] as RGB, borderColor: [112, 122, 188] as RGB };
 const MODAL_NEUTRAL = { color: [212, 214, 224] as RGB, borderColor: [88, 92, 110] as RGB };
 
 // The game-over result popup (chess.com style): a centered card with the outcome
@@ -194,8 +194,9 @@ export function buildGameOver(
   const btn = (id: string, label: string, onClick: () => void, primary: boolean): Node =>
     RoundedButton({ id, label, onClick, ...(primary ? MODAL_PRIMARY : MODAL_NEUTRAL) });
 
-  // One row between the text and the buttons (the middle ground), but the buttons stay
-  // flush with each other (gap 0 — shared arc borders read as one list).
+  // Centered title/subtitle, then a centered row of content-sized buttons (same layout as
+  // buildConfirm) — the buttons size to their labels + padding rather than stretching to
+  // the card width.
   const card = Box(
     { flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [1, 3], background: UI_CHROME_BG },
     [
@@ -203,7 +204,7 @@ export function buildGameOver(
         Box({ justifyContent: 'center' }, [Text({ text: opts.title, style: { color: opts.tint, bold: true } })]),
         Box({ justifyContent: 'center' }, [Text({ text: opts.subtitle, style: { color: [170, 174, 188] } })]),
       ]),
-      Box({ flexDirection: 'column', alignItems: 'stretch', gap: 0 }, [
+      Box({ flexDirection: 'row', justifyContent: 'center', gap: 2 }, [
         btn('over-newgame', 'new game', onNewGame, true),
         btn('over-close', 'close', onClose, false),
       ]),
@@ -225,7 +226,7 @@ export function buildConfirm(opts: {
   onCancel: () => void;
 }): Node {
   const btn = (id: string, label: string, onClick: () => void, primary: boolean): Node =>
-    RoundedButton({ id, label, onClick, padding: [0, 3], ...(primary ? MODAL_PRIMARY : MODAL_NEUTRAL) });
+    RoundedButton({ id, label, onClick, ...(primary ? MODAL_PRIMARY : MODAL_NEUTRAL) });
 
   // One row between the prompt and the buttons (the middle ground — no double spacer);
   // the two buttons keep a horizontal gap so they read as separate actions.
@@ -312,6 +313,8 @@ export function mouseControlsFor(mode: Mode): { keys: string; label: string }[] 
   const rows: { keys: string; label: string }[] = [];
   if (ORBIT_MODES.includes(mode)) rows.push({ keys: 'drag', label: 'rotate' }, { keys: 'right-drag', label: 'pan' }, { keys: 'scroll', label: 'zoom' });
   if (mode === 'chess-game') rows.push({ keys: 'click', label: 'select / move' });
+  // Poker: hover a hole card to peek (bends it up), click to lift it fully face-on.
+  if (mode === 'poker') rows.push({ keys: 'hover', label: 'peek at card' }, { keys: 'click', label: 'lift card' });
   return rows;
 }
 

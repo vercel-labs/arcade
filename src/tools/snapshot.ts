@@ -27,7 +27,7 @@ import { CardsScene, type CardsMode } from '../arcade/games/poker/cards-scene.ts
 import { buildPokerRoot, mountPokerHud } from '../arcade/games/poker/hud.ts';
 import { PokerGameScene, type PokerSeatView } from '../arcade/games/poker/poker-scene.ts';
 import { betInput as pokerBetInput, buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, mountPokerGameHud, pushPokerChat } from '../arcade/games/poker/poker-hud.ts';
-import { buildPokerSetupPanel, modeDropdown as pokerModeDropdown, mountPokerSetup, playersDropdown as pokerPlayersDropdown, pokerPreviewSeats } from '../arcade/match/poker-setup.ts';
+import { buildPokerSetupPanel, modeDropdown as pokerModeDropdown, mountPokerSetup, playersDropdown as pokerPlayersDropdown, pokerPreviewSeats, pokerStartingStack } from '../arcade/match/poker-setup.ts';
 import { HoldemState } from '../rules/poker/holdem.ts';
 import { mulberry32 } from '../arcade/scenes/wisp.ts';
 import { RANK_LABELS, type Suit, SUIT_LETTERS } from '../rules/poker/cards.ts';
@@ -410,7 +410,7 @@ function pokerSnapshot(): void {
     if (args.includes('spectate')) pokerModeDropdown.pick(1);
     if (players >= 2 && players <= 6 && args.some((a) => a.startsWith('players='))) pokerPlayersDropdown.pick(players - 2);
     const idleScene = new PokerGameScene();
-    idleScene.setPreview(pokerPreviewSeats());
+    idleScene.setPreview(pokerPreviewSeats(), pokerStartingStack());
     const buf = new RenderTarget(cols * SS, rows * 2 * SS);
     let ti = 0;
     for (let i = 0; i < 45; i++) {
@@ -436,6 +436,7 @@ function pokerSnapshot(): void {
         onOpenNotes: noop,
         setup: buildPokerSetupPanel(),
         matchControls: { setup: true, onPrimary: noop, onCancel: noop },
+        pauseControl: null,
         hideHud: false,
         cineLabel: null,
         resultLabel: null,
@@ -515,6 +516,7 @@ function pokerSnapshot(): void {
         onOpenNotes: noop,
         setup: null,
         matchControls: null,
+        pauseControl: { paused: false, onToggle: noop },
         hideHud: scene.cineHidesHud(),
         cineLabel: scene.cineLabel(),
         resultLabel: scene.resultLabel(),
@@ -631,27 +633,45 @@ function pokerSnapshot(): void {
     return;
   }
   // `notes` composites the opponent-notes modal over the table, with sample reads so the
-  // ‹ › pager + per-player bullets render.
+  // observer dropdown + per-player bullets render. `longnames` picks a long observer to
+  // check the dropdown ellipsis + the card's fixed width.
   if (args.includes('notes')) {
     const screen = new Screen(cols, rows);
-    mountPokerGameHud(screen); // mounts the notes ScrollBox so its Slot resolves
+    mountPokerGameHud(screen); // mounts the notes ScrollBox + observer dropdown so their Slots resolve
+    const observers = args.includes('longnames')
+      ? [
+          { label: 'grok-4.1-fast-non-reasoning', creator: 'xai' },
+          { label: 'claude-opus-4.8', creator: 'anthropic' },
+          { label: 'gpt-5.4-nano', creator: 'openai' },
+        ]
+      : [
+          { label: 'claude-opus-4.8', creator: 'anthropic' },
+          { label: 'gpt-5.4', creator: 'openai' },
+          { label: 'gemini-3-pro', creator: 'google' },
+        ];
     screen.setRoot(
       buildPokerNotesModal({
-        observerLabel: 'claude-opus-4.8',
+        observers,
+        activeIndex: 0,
         entries: [
           {
             label: 'the human',
             notes: [
               'Bets big when weak and checks the nuts, so treat a large bet on a scary board as a bluff more often than not.',
               'Folds to any turn raise.',
+              'Overvalues top pair and will stack off with it on wet boards.',
             ],
           },
-          { label: 'gpt-5.4', notes: ['Shoves almost every hand — call lighter.'] },
-          { label: 'gemini-3-pro', notes: [] },
+          {
+            label: 'gpt-5.4',
+            notes: ['Shoves almost every hand — call lighter.', 'Never slow-plays; a check means genuine weakness.'],
+          },
+          {
+            label: 'gemini-3-pro',
+            notes: ['Tight preflop, but barrels turn and river relentlessly once committed.'],
+          },
+          { label: 'claude-haiku-4.5', notes: [] },
         ],
-        canCycle: true,
-        onPrev: noop,
-        onNext: noop,
         onClose: noop,
       }),
       region,
@@ -713,6 +733,7 @@ function pokerSnapshot(): void {
         onOpenNotes: noop,
         setup: null,
         matchControls: null,
+        pauseControl: { paused: false, onToggle: noop },
         hideHud: false, // the community-deal cinematic has its own `cine` subcommand
         cineLabel: null,
         resultLabel: scene.resultLabel(),
@@ -1282,6 +1303,7 @@ function gameOverSnapshot(): void {
   const screen = new Screen(cols, rows);
   const region = { x: 0, y: 0, w: cols, h: rows };
   screen.setRoot(buildGameOver({ title: 'black wins', subtitle: 'by checkmate', tint: [184, 126, 74] }, noop, noop), region);
+  screen.setFocus('over-newgame'); // mirror the live app, which default-focuses "new game"
   const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
   surfaceToPpm(surf, cols, rows, out);
 }

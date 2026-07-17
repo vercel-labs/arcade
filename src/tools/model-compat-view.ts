@@ -9,6 +9,7 @@
 //   pnpm models:report --only=fail         # only models that aren't cleanly playable
 //   pnpm models:report --status=ACCESS,TEXT
 //   pnpm models:report --game=poker        # focus one game
+//   pnpm models:report --sort=slow         # slowest move first (single-team view)
 //   pnpm models:report --md[=docs/model-compat.md]   # also write a combined markdown ref
 //   pnpm models:report --html[=docs/model-compat.html]  # write a styled, interactive HTML report
 //
@@ -67,6 +68,19 @@ const STYLE: Record<Status, { glyph: string; color: (s: string) => string }> = {
 const statusLabel = (s?: Status): string => (s ? STYLE[s].color(s) : dim('—'));
 const glyph = (s?: Status): string => (s ? STYLE[s].color(STYLE[s].glyph) : dim('-'));
 
+// Move latency, coloured by gameplay feel: green <10s · yellow 10–20s · red ≥20s.
+const SLOW_MS = 20_000;
+const secs = (ms?: number): string => (ms == null ? dim('—') : `${(ms / 1000).toFixed(1)}s`);
+const speed = (ms?: number): ((s: string) => string) =>
+  ms == null ? dim : ms >= SLOW_MS ? red : ms >= 10_000 ? yellow : green;
+const worstMs = (m: Row, gs: GameKind[]): number =>
+  Math.max(0, ...gs.map((g) => m[g]?.ms ?? 0));
+const median = (xs: number[]): number => {
+  if (!xs.length) return 0;
+  const s = [...xs].sort((a, b) => a - b);
+  return s[Math.floor((s.length - 1) / 2)];
+};
+
 // Visible width (ignoring SGR codes), for padding coloured cells.
 const plain = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, '');
 const pad = (s: string, w: number): string => s + ' '.repeat(Math.max(0, w - plain(s).length));
@@ -83,6 +97,7 @@ const ONLY = arg('only'); // 'fail' | 'ok'
 const GAME = arg('game') as GameKind | undefined;
 const STATUS_FILTER = arg('status')?.split(',').map((s) => s.trim().toUpperCase()) as Status[] | undefined;
 const FORCE_MATRIX = has('matrix');
+const SORT = arg('sort'); // 'slow' → slowest move first
 
 function loadReports(): Report[] {
   const files = process.argv.filter((a) => a.endsWith('.json') && !a.startsWith('--'));
@@ -120,26 +135,41 @@ function renderSingle(r: Report): string[] {
   out.push(dim(`generated ${r.generatedAt.slice(0, 10)} · games ${gs.join('+')} · normalizer ${r.normalizer ?? '(disabled)'} · ${r.timeoutMs / 1000}s timeout`));
   out.push('');
 
-  // Summary counts per game.
+  // Summary counts + latency per game.
   for (const g of gs) {
     const counts = SEVERITY.map((s) => ({ s, n: r.models.filter((m) => m[g]?.status === s).length })).filter((c) => c.n);
     const playable = r.models.filter((m) => PLAYABLE.has(m[g]?.status ?? ('' as Status))).length;
-    out.push(`  ${bold(g.padEnd(6))} ${green(`${playable}/${r.models.length} playable`)}   ${counts.map((c) => `${STYLE[c.s].color(c.s)} ${c.n}`).join('  ')}`);
+    // Latency stats over playable models only (failed/blocked calls aren't a move time).
+    const lat = r.models.filter((m) => PLAYABLE.has(m[g]?.status ?? ('' as Status))).map((m) => m[g]?.ms ?? 0);
+    const slow = lat.filter((ms) => ms >= SLOW_MS).length;
+    const latStr = lat.length ? `${dim('median')} ${secs(median(lat))} · ${dim('slowest')} ${speed(Math.max(...lat))(secs(Math.max(...lat)))} · ${slow >= 1 ? red(`${slow} ≥${SLOW_MS / 1000}s`) : dim('0 slow')}` : '';
+    out.push(`  ${bold(g.padEnd(6))} ${green(`${playable}/${r.models.length} playable`)}   ${counts.map((c) => `${STYLE[c.s].color(c.s)} ${c.n}`).join('  ')}   ${latStr}`);
   }
   out.push('');
   out.push(dim('  legend: STRUCTURED=native JSON · TEXT=prose-parsed · NORMALIZED=2nd-LLM · FALLBACK=random · ACCESS=team blocked · TIMEOUT/ERROR'));
+  out.push(dim(`  latency (per move): ${green('<10s')} · ${yellow('10–20s')} · ${red(`≥${SLOW_MS / 1000}s (sluggish for gameplay)`)}`));
   out.push('');
 
-  const rows = r.models.filter((m) => keepRow(m, gs)).sort((a, b) => SEVERITY.indexOf(worst(a, gs) ?? 'STRUCTURED') - SEVERITY.indexOf(worst(b, gs) ?? 'STRUCTURED') || a.id.localeCompare(b.id));
+  const bySeverity = (a: Row, b: Row) => SEVERITY.indexOf(worst(a, gs) ?? 'STRUCTURED') - SEVERITY.indexOf(worst(b, gs) ?? 'STRUCTURED') || a.id.localeCompare(b.id);
+  const bySlow = (a: Row, b: Row) => worstMs(b, gs) - worstMs(a, gs) || a.id.localeCompare(b.id);
+  const rows = r.models.filter((m) => keepRow(m, gs)).sort(SORT === 'slow' ? bySlow : bySeverity);
   const idW = Math.max(5, ...rows.map((m) => m.id.length));
-  const header = `  ${pad(bold('MODEL'), idW)}  ${pad(bold('STRUCT'), 6)}  ${gs.map((g) => pad(bold(g.toUpperCase()), 12)).join('  ')}  ${bold('NOTES')}`;
+  const gameW = 22;
+  const header = `  ${pad(bold('MODEL'), idW)}  ${pad(bold('STRUCT'), 6)}  ${gs.map((g) => pad(bold(g.toUpperCase()), gameW)).join('  ')}  ${bold('NOTES')}`;
   out.push(header);
   for (const m of rows) {
     const struct = m.chess?.structured ?? m.poker?.structured ?? '—';
     const structCell = struct === 'yes' ? green('yes') : struct === 'no' ? yellow('no ') : dim('—  ');
-    const cells = gs.map((g) => pad(`${statusLabel(m[g]?.status)}${m[g]?.move ? ' ' + dim(m[g]!.move) : ''}`, 12)).join('  ');
-    const note = gs.map((g) => m[g]?.detail).find(Boolean) ?? '';
-    out.push(`  ${pad(m.id, idW)}  ${pad(structCell, 6)}  ${cells}  ${dim(note.slice(0, 80))}`);
+    const cells = gs.map((g) => {
+      const gr = m[g];
+      const time = gr && PLAYABLE.has(gr.status) ? ' ' + speed(gr.ms)(secs(gr.ms)) : '';
+      return pad(`${statusLabel(gr?.status)}${gr?.move ? ' ' + dim(gr.move) : ''}${time}`, gameW);
+    }).join('  ');
+    const detail = gs.map((g) => m[g]?.detail).find(Boolean) ?? '';
+    const ms = worstMs(m, gs);
+    const slowTag = rowPlayable(m, gs) && ms >= SLOW_MS ? red(`slow ${secs(ms)}`) : '';
+    const note = [slowTag, dim(detail.slice(0, 70))].filter(Boolean).join(' ');
+    out.push(`  ${pad(m.id, idW)}  ${pad(structCell, 6)}  ${cells}  ${note}`);
   }
   if (!rows.length) out.push(dim('  (no models match the current filters)'));
   return out;

@@ -9,12 +9,13 @@
 // leaves the creator intact).
 import { Box, Dropdown, Modal, RoundedButton, Slot, Text, type LayoutBox, type Node, type Screen } from '../../tui/index.ts';
 import type { RGB } from '../../engine/index.ts';
-import { creators, modelsFor, type ModelInfo } from './models.ts';
+import { pickerCreators, pickerModelsFor, type ModelInfo } from './models.ts';
+import { SLOW_MODELS } from './beta-allowlist.ts';
 import { creatorTint } from '../scenes/wisp.ts';
 import type { Seat } from './driver.ts';
 import { UI_CHROME_BG } from '../theme.ts';
 
-const CREATORS = creators();
+const CREATORS = pickerCreators();
 const CREATOR_LABELS = CREATORS.map((c) => c.name);
 const LIST_ROWS = 7; // visible rows when a dropdown is open (lists scroll past this)
 const CREATOR_W = 22;
@@ -42,7 +43,7 @@ function creatorIndex(slug: string): number {
 function pickCreator(side: Side, slug: string): void {
   if (side.creator === slug) return;
   side.creator = slug;
-  side.models = modelsFor(slug);
+  side.models = pickerModelsFor(slug);
   side.modelDropdown.setItems(side.models.map((m) => m.name)); // resets model → none
   side.modelId = null;
 }
@@ -100,7 +101,7 @@ const black = makeSide('black', 'setup-black', 'openai', 'openai/gpt-5.4-nano');
 // mirrors poker's mode. Defaults to Play White (White moves first — the conventional default).
 export const modeDropdown = new Dropdown({
   id: 'setup-mode',
-  items: ['Play White', 'Play Black', 'Spectate AI'],
+  items: ['play white', 'play black', 'spectate ai'],
   width: 16,
   index: 0,
   onSelect: () => applyMode(),
@@ -153,6 +154,15 @@ function brandTint(side: Side): RGB {
   return [t.x | 0, t.y | 0, t.z | 0];
 }
 
+// A dim amber "slow" hint beside a known-slow model (SLOW_MODELS) — it still
+// plays, just takes a while. Node[] so it spreads into a row (empty when fast).
+const SLOW_FG: RGB = [210, 168, 90];
+function slowBadge(modelId: string | null): Node[] {
+  return modelId && SLOW_MODELS.has(modelId)
+    ? [Text({ text: 'slow', style: { color: SLOW_FG } })]
+    : [];
+}
+
 // One side's column for the swap popup: the centered title, then the creator/model
 // pickers. Tints the creator field in the creator's brand hue (its in-game wisp color),
 // set fresh each frame since the creator can change.
@@ -165,6 +175,7 @@ function column(side: Side, title: string): Node {
     Slot(side.creatorDropdown.id),
     Text({ text: 'model', style: { color: 'muted' } }),
     Slot(side.modelDropdown.id),
+    ...slowBadge(side.modelId),
   ]);
 }
 
@@ -189,7 +200,7 @@ function sideRow(side: Side): Node {
         Text({ text: 'you', style: { color: 'muted' } }),
         Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot(side.creatorDropdown.id), Slot(side.modelDropdown.id)]),
       ]
-    : [Slot(side.creatorDropdown.id), Slot(side.modelDropdown.id)];
+    : [Slot(side.creatorDropdown.id), Slot(side.modelDropdown.id), ...slowBadge(side.modelId)];
   return row(side.key, TITLE_TINT[side.key], controls);
 }
 
@@ -201,9 +212,9 @@ export function buildMatchSetup(region: LayoutBox, opts: { onStart: () => void; 
   // Rounded (outlined) controls over the board: a green "start" (dim + inert until both
   // sides are ready) beside a neutral "cancel". Green matches poker's new-match button.
   const start = ready
-    ? RoundedButton({ id: 'setup-start', label: 'start', onClick: opts.onStart, color: SETUP_GO, padding: [0, 3] })
-    : RoundedButton({ id: 'setup-start', label: 'start', color: SETUP_OFF, padding: [0, 3] });
-  const cancel = RoundedButton({ id: 'setup-cancel', label: 'cancel', onClick: opts.onCancel, color: SETUP_NEUTRAL, borderColor: SETUP_NEUTRAL_BORDER, padding: [0, 3] });
+    ? RoundedButton({ id: 'setup-start', label: 'start', onClick: opts.onStart, color: SETUP_GO })
+    : RoundedButton({ id: 'setup-start', label: 'start', color: SETUP_OFF });
+  const cancel = RoundedButton({ id: 'setup-cancel', label: 'cancel', onClick: opts.onCancel, color: SETUP_NEUTRAL, borderColor: SETUP_NEUTRAL_BORDER });
 
   const panel = Box({ flexDirection: 'column', gap: 1, alignItems: 'start' }, [
     Text({ text: 'new match', style: { color: [222, 224, 234], bold: true } }),
@@ -259,9 +270,9 @@ export function buildSwapSetup(_region: LayoutBox, opts: { title: string; onConf
   // Rounded controls, matching the match-setup panel: green "switch" once a model is
   // committed (dim + inert until then), neutral "cancel".
   const confirm = ready
-    ? RoundedButton({ id: 'swap-confirm', label: 'switch', onClick: opts.onConfirm, color: SETUP_GO, padding: [0, 3] })
-    : RoundedButton({ id: 'swap-confirm', label: 'switch', color: SETUP_OFF, padding: [0, 3] });
-  const cancel = RoundedButton({ id: 'swap-cancel', label: 'cancel', onClick: opts.onCancel, color: SETUP_NEUTRAL, borderColor: SETUP_NEUTRAL_BORDER, padding: [0, 3] });
+    ? RoundedButton({ id: 'swap-confirm', label: 'switch', onClick: opts.onConfirm, color: SETUP_GO })
+    : RoundedButton({ id: 'swap-confirm', label: 'switch', color: SETUP_OFF });
+  const cancel = RoundedButton({ id: 'swap-cancel', label: 'cancel', onClick: opts.onCancel, color: SETUP_NEUTRAL, borderColor: SETUP_NEUTRAL_BORDER });
   const card = Box({ flexDirection: 'column', gap: 1, padding: [1, 3], background: UI_CHROME_BG }, [
     Box({ justifyContent: 'center' }, [Text({ text: 'switch model', style: { color: [222, 224, 234], bold: true } })]),
     Box({ flexDirection: 'row', justifyContent: 'center' }, [column(swap, opts.title)]),

@@ -16,7 +16,7 @@
 // `model-compat-view.ts` can render a cross-team matrix (public vs team-exclusive).
 // The view tool prints the human-readable report; this tool only produces the JSON.
 //
-//   pnpm models:audit [all|sweep|<creator>|<model>] [--team=<slug>]
+//   pnpm models:audit [all|allowlist|sweep|<creator>|<model>] [--team=<slug>]
 //   pnpm models:audit all --game=chess           # one game only (default: both)
 //   pnpm models:audit all --timeout=60 --out=docs # output dir (default: docs)
 //   pnpm models:audit --live                      # audit the CURRENT /v1/models language set
@@ -38,6 +38,7 @@ import type { GameState } from '../rules/game.ts';
 import { isFallbackRationale, ModelPlayer, FALLBACK_RATIONALE, type MoveNotation } from '../ai/model-player.ts';
 import { classifyModelError } from '../ai/model-errors.ts';
 import { creators, modelsFor, modelName, normalizerModel } from '../arcade/match/models.ts';
+import { BETA_MODEL_ALLOWLIST } from '../arcade/match/beta-allowlist.ts';
 import { availableTeams, ensureCachedGatewayKey, useTeam, type Team } from '../auth/index.ts';
 
 const CONCURRENCY = 6;
@@ -190,6 +191,7 @@ async function liveLanguageIds(): Promise<string[]> {
 
 function targets(arg: string | undefined): string[] {
   if (!arg || arg === 'all') return creators().flatMap((c) => modelsFor(c.slug).map((m) => m.id));
+  if (arg === 'allowlist') return [...BETA_MODEL_ALLOWLIST]; // re-verify the private-beta picker set
   if (arg === 'sweep') return creators().map((c) => modelsFor(c.slug)[0]?.id).filter((x): x is string => Boolean(x));
   if (creators().some((c) => c.slug === arg)) return modelsFor(arg).map((m) => m.id);
   return [arg];

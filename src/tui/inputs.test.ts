@@ -51,6 +51,27 @@ test('Select: navigation, clamping, onSelect', () => {
   ok(sel.onKey(key('tab')) === false, 'Tab falls through');
 });
 
+test('Select: overflowing lists reserve and operate a right-edge scrollbar', () => {
+  const sel = new Select({
+    id: 'scrolling-select',
+    items: ['a', 'b', 'c', 'd', 'e'],
+    width: 10,
+    height: 3,
+  });
+  const fitting = new Select({ id: 'fitting-select', items: ['a', 'b'], width: 10, height: 3 }).build();
+  assert.equal(fitting.children?.[0]?.style.width, 10, 'a fitting list uses the full width');
+
+  const built = sel.build();
+  assert.equal(built.children?.[0]?.style.width, 9, 'overflow reserves the final cell for the scrollbar');
+
+  sel.onMouse({ type: 'down', x: 9, y: 2, w: 10, h: 3 });
+  assert.equal(sel.build().children?.[0]?.text, 'c', 'clicking the bottom of the track scrolls to the final viewport');
+
+  sel.setIndex(4);
+  assert.equal(sel.index, 4);
+  assert.ok(sel.build().children?.some((row) => row.text === 'e'), 'programmatic selection stays visible');
+});
+
 test('Slider: step nudges + clamp', () => {
   const slider = new Slider({ id: 'sl', value: 0.5, step: 0.1 });
   slider.onKey(key('right'));
@@ -200,6 +221,21 @@ test('Dropdown searchable: filtering never mutates the committed selection', () 
   ok(combo.value === 'GPT-5' && combo.query === 'Mini' && field?.text?.startsWith('GPT-5') === true, 'a partial filter never replaces the closed-field selection');
   screen.handleKey(key('enter'));
   ok(combo.value === 'GPT-5 Mini' && combo.query === '' && !combo.open, 'only committing an actual option changes the selection');
+});
+
+test('Dropdown reserves a scrollbar column only when options overflow', () => {
+  const fitting = new Dropdown({ id: 'fitting-dropdown', items: ['text', 'realtime voice'], width: 18, rows: 7 });
+  fitting.onKey(key('enter'));
+  const fittingList = fitting.build().children?.find((node) => node.overlay);
+  ok(
+    fittingList?.children?.every((row) => row.style.width === 18) === true,
+    'a short list uses the full dropdown width',
+  );
+
+  const overflowing = new Dropdown({ id: 'overflowing-dropdown', items: ['one', 'two', 'three'], width: 18, rows: 2 });
+  overflowing.onKey(key('enter'));
+  const overflowingList = overflowing.build().children?.find((node) => node.overlay);
+  ok(overflowingList?.children?.every((row) => row.style.width === 17) === true, 'an overflowing list reserves one scrollbar column');
 });
 
 test('Dropdown searchable: search row is sticky above seven scrolling options', () => {

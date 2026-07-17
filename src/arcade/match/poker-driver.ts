@@ -18,7 +18,10 @@ import { PokerVoice, pokerVoiceCapable } from './poker-voice.ts';
 import { normalizerModel } from './models.ts';
 
 // One seat in the session: the human hero or an AI model (a Gateway slug).
-export type PokerSeatSpec = { kind: 'human' } | { kind: 'ai'; model: string };
+export type PokerSeatSpec =
+  | { kind: 'human' }
+  | { kind: 'ai'; model: string; runtime: 'text' }
+  | { kind: 'ai'; model: string; runtime: 'realtime' };
 
 const STARTING_STACK = 1000;
 const SMALL_BLIND = 10;
@@ -72,10 +75,9 @@ export class PokerMatch {
   private labels: string[] = [];
   private reflecting: Promise<void> | null = null;
   private reflectAbort: AbortController | null = null;
-  // Real-time voice opponent, only for a 2-seat human-vs-AI Play match when the setup
-  // toggle asked for it + audio is available (AIG-79). Null otherwise (text path).
+  // Realtime voice opponent, created only when a heads-up seat explicitly uses the
+  // realtime runtime and duplex audio is available. Null for standard text seats.
   private voice: PokerVoice | null = null;
-  private voiceRequested = false;
 
   constructor(private readonly deps: PokerMatchDeps) {}
 
@@ -102,10 +104,14 @@ export class PokerMatch {
   }
 
   // ── Opponent notes, for the HUD notes modal ────────────────────────────────────
-  // The AI seats that keep notes (the observers you can page through), with their labels.
-  noteObservers(): { seat: number; label: string }[] {
-    const out: { seat: number; label: string }[] = [];
-    for (let s = 0; s < this.seats.length; s++) if (this.seats[s].kind === 'ai') out.push({ seat: s, label: this.labelOf(s) });
+  // The AI seats that keep notes (the observers the picker switches between), with
+  // their labels + creator (for the picker's brand tint).
+  noteObservers(): { seat: number; label: string; creator: string }[] {
+    const out: { seat: number; label: string; creator: string }[] = [];
+    for (let s = 0; s < this.seats.length; s++) {
+      const spec = this.seats[s];
+      if (spec.kind === 'ai') out.push({ seat: s, label: this.labelOf(s), creator: creatorOf(spec.model) });
+    }
     return out;
   }
   // One observer's reads on every OTHER seat at the table (label + its notes), for the
@@ -118,12 +124,10 @@ export class PokerMatch {
 
   // Start a fresh session with the chosen seats (seat 0 is the human hero). Resets
   // stacks + button, seeds the scene, builds the players, and deals the first hand.
-  // `opts.voice` (from the setup toggle) requests realtime voice — honored only for a
-  // 2-seat human-vs-AI match with the audio capability present. `opts.stack` sets the
-  // per-player starting chips (from the setup slider); defaults to STARTING_STACK.
-  start(seats: PokerSeatSpec[], opts?: { voice?: boolean; stack?: number }): void {
+  // A realtime seat explicitly identifies the voice runtime and actual model.
+  // `opts.stack` sets the per-player starting chips (from the setup slider); defaults to STARTING_STACK.
+  start(seats: PokerSeatSpec[], opts?: { stack?: number }): void {
     this.stop();
-    this.voiceRequested = opts?.voice ?? false;
     this.seats = seats.slice();
     this.stacks = seats.map(() => opts?.stack ?? STARTING_STACK);
     this.button = 0;
@@ -142,16 +146,24 @@ export class PokerMatch {
     this.dealHand();
   }
 
-  // Set up the heads-up voice opponent when eligible: a 2-seat Play match (one human,
-  // one AI), the opt-in flag, a Gateway key, and duplex audio. Otherwise leaves
-  // this.voice null so every seat uses the existing text path.
+  // Set up the heads-up voice opponent from the realtime seat itself. Invalid or
+  // unavailable realtime configurations fail instead of silently running another model.
   private setupVoice(): void {
     this.voice = null;
-    if (!this.voiceRequested || this.seats.length !== 2) return;
+    const realtimeSeats = this.seats.flatMap((seat, index) =>
+      seat.kind === 'ai' && seat.runtime === 'realtime' ? [index] : [],
+    );
+    if (realtimeSeats.length === 0) return;
+    if (this.seats.length !== 2 || realtimeSeats.length !== 1) {
+      throw new Error('Realtime voice requires one human and one realtime AI seat.');
+    }
     const humanSeat = this.seats.findIndex((s) => s.kind === 'human');
-    const botSeat = this.seats.findIndex((s) => s.kind === 'ai');
+    const botSeat = realtimeSeats[0];
     const botSpec = this.seats[botSeat];
-    if (humanSeat < 0 || botSeat < 0 || botSpec?.kind !== 'ai' || !pokerVoiceCapable()) return;
+    if (humanSeat < 0 || botSpec?.kind !== 'ai' || botSpec.runtime !== 'realtime') {
+      throw new Error('Realtime voice requires one human and one realtime AI seat.');
+    }
+    if (!pokerVoiceCapable()) throw new Error('Realtime voice is unavailable in this terminal.');
     this.voice = new PokerVoice({
       scene: this.deps.scene,
       botSeat,
@@ -174,8 +186,10 @@ export class PokerMatch {
     if (seat.kind === 'human') {
       return new HumanPlayer<PokerAction>({ name: 'you', awaitMove: (_s, ctx) => this.deps.scene.requestHumanMove(ctx?.signal) });
     }
-    // Heads-up voice: the AI seat speaks + acts through the realtime session.
-    if (this.voice) return this.voice.player();
+    if (seat.runtime === 'realtime') {
+      if (!this.voice) throw new Error('Realtime poker seat started without a voice session.');
+      return this.voice.player();
+    }
     return new ModelPlayer<PokerAction>({
       model: seat.model,
       gameName: "no-limit Texas Hold'em poker",
@@ -327,7 +341,7 @@ export class PokerMatch {
     const jobs: Promise<void>[] = [];
     for (let seat = 0; seat < this.seats.length; seat++) {
       const spec = this.seats[seat];
-      if (spec.kind !== 'ai' || this.stacks[seat] <= 0) continue;
+      if (spec.kind !== 'ai' || spec.runtime === 'realtime' || this.stacks[seat] <= 0) continue;
       const subjects = this.otherLiveSeats(seat);
       if (!subjects.length) continue;
       jobs.push(this.memory.reflect({ model: spec.model, observer: seat, subjects, record, labelOf: (s) => this.labelOf(s), signal: ctrl.signal }));
@@ -431,7 +445,7 @@ export class PokerMatch {
   setSeatModel(seat: number, model: string): void {
     if (seat < 0 || seat >= this.players.length) return;
     if (this.seats[seat]?.kind !== 'ai') return;
-    this.seats[seat] = { kind: 'ai', model };
+    this.seats[seat] = { kind: 'ai', model, runtime: this.seats[seat].runtime };
     this.memory.clearObserver(seat); // new model → fresh eyes (others keep their reads on this seat)
     this.computeLabels(); // the swapped-in model may change the label / de-dupe suffixes
     this.players[seat] = this.makePlayer(this.seats[seat], seat);

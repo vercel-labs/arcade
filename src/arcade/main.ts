@@ -19,12 +19,13 @@ import { ChessGameScene } from './games/chess/scene.ts';
 import { CardsScene } from './games/poker/cards-scene.ts';
 import { buildPokerRoot, mountPokerHud, pokerMode, setPokerHandlers } from './games/poker/hud.ts';
 import { PokerGameScene } from './games/poker/poker-scene.ts';
-import { buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, type HeroContext, mountPokerGameHud, nudgePokerBet, pushPokerChat, setPokerGameHandlers, setPokerVoiceStage } from './games/poker/poker-hud.ts';
+import { buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, type HeroContext, mountPokerGameHud, nudgePokerBet, pushPokerChat, setNotesObserverPick, setPokerGameHandlers, setPokerVoiceStage } from './games/poker/poker-hud.ts';
 import { PokerMatch } from './match/poker-driver.ts';
-import { buildPokerSetupPanel, mountPokerSetup, pokerPreviewSeats, pokerSetupReady, pokerSetupSelection, pokerStartingStack, pokerVoiceSelected, setPokerSetupChanged } from './match/poker-setup.ts';
+import { buildPokerSetupPanel, mountPokerSetup, pokerPreviewSeats, pokerSetupReady, pokerSetupSelection, pokerStartingStack, setPokerSetupChanged } from './match/poker-setup.ts';
 import { LogosScene } from './scenes/logos-scene.ts';
 import { AudioScene } from './scenes/audio-scene.ts';
 import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/input.ts';
+import { detectTerminalColorMode } from '../platform/terminal-color-detection.ts';
 import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, mouseControlsFor, type BarActions, type MenuItem, type Mode, type RenderMode } from './shell/bars.ts';
 import { buildShowcase, mountShowcase } from './scenes/ui-showcase.ts';
 import { buildChessGameRoot, chessMoveChat, type Commentary, type MatchSide, mountChessHud, movesToPgn, refreshMoveHistory, shortModel } from './games/chess/hud.ts';
@@ -132,7 +133,9 @@ function activeOrbit(): ChessGameScene | LogosScene | AudioScene | CardsScene | 
 
 let mode: Mode = 'prism';
 let renderMode: RenderMode = 'ascii';
-let colorMode: TerminalColorMode = 'truecolor';
+// Start from the universally safe palette. Startup detection upgrades this to
+// truecolor before the alternate screen or first rendered frame is shown.
+let colorMode: TerminalColorMode = '256-color';
 
 function writeFrame(output: string): void {
   r.write(applyTerminalColorMode(output, colorMode));
@@ -563,13 +566,20 @@ const aiMatch = new AiMatch({
   allowIllegal: () => illegalAllowed,
 });
 
-// Fully stop the match and clear the commentary toast. Used by reset-game and on
-// navigating away (the enter*/toPrism/enterMenu transitions) — NOT by pause.
+// Fully stop the match and return chess to a clean free-play slate. Used by
+// reset-game and on navigating away (the enter*/toPrism/enterMenu transitions) —
+// NOT by pause. Navigating away already ends the match, so there's no live game to
+// preserve: clearing the board, move history, and DM thread means returning to
+// chess is a fresh start, not a stale, matchless transcript. (A match that ends
+// while you STAY on the board is left intact — this only fires on leave/reset.)
 function stopAiMatch(): void {
   aiMatch.stop();
   commentary = null;
   matchSeats = null;
   if (wispSwap) closeWispSwap(); // a match ending under an open swap popup dismisses it
+  chessGame.resetGame();
+  clearChat();
+  chessChatPly = 0;
 }
 
 // Open the setup modal to pick the two models (needs a Gateway key). The four
@@ -731,8 +741,10 @@ function pokerBetStep(dir: number): void {
 
 // Stop the poker session (navigating away / new match). Safe when idle.
 function stopPokerMatch(): void {
-  pokerMatch.stop();
+  pokerMatch.stop(); // scene.endSession() returns the felt to its idle framing
   commentary = null;
+  clearPokerChat(); // don't leave a stale table-talk thread behind on leave/new-game
+  pokerChatOpen = false;
 }
 
 // Open the new-match settings panel (needs a Gateway key, like the chess match setup).
@@ -747,7 +759,7 @@ function openPokerSetup(): void {
   mountPokerSetup(ui);
   pokerSetupOpen = true;
   pokerSetupFocused = false;
-  pokerScene.setPreview(pokerPreviewSeats());
+  pokerScene.setPreview(pokerPreviewSeats(), pokerStartingStack());
   forceFrame = true;
   r.requestRender();
 }
@@ -771,7 +783,7 @@ function cancelPokerSetup(): void {
 // table live: the chair ring follows the player count, the wisps follow the providers.
 setPokerSetupChanged(() => {
   if (!pokerSetupOpen) return;
-  pokerScene.setPreview(pokerPreviewSeats());
+  pokerScene.setPreview(pokerPreviewSeats(), pokerStartingStack());
   forceFrame = true;
   r.requestRender();
 });
@@ -783,7 +795,7 @@ function confirmPokerSetup(): void {
   closePokerSetup();
   clearPokerChat(); // fresh chat thread for the new session
   pokerChatOpen = false; // the chat starts collapsed (just the pill) each new match
-  pokerMatch.start(seats, { voice: pokerVoiceSelected(), stack: pokerStartingStack() });
+  pokerMatch.start(seats, { stack: pokerStartingStack() });
 }
 
 // The bottom-left "new match" button: tear down a finished session if one is still on
@@ -805,6 +817,16 @@ function pokerButton(): void {
   r.requestRender();
 }
 
+// The bottom-right pause/resume button: just toggles a live session (no new-match /
+// start handling — the button only exists while a match is running or paused).
+function togglePokerPause(): void {
+  if (!pokerMatch.isRunning()) return;
+  if (pokerMatch.isPaused()) pokerMatch.resume();
+  else pokerMatch.pause();
+  forceFrame = true;
+  r.requestRender();
+}
+
 // The ☰ in-game menu popup (home / new game / display / quit).
 function openPokerMenu(): void {
   if (mode !== 'poker') return;
@@ -818,7 +840,8 @@ function closePokerMenu(): void {
   r.requestRender();
 }
 
-// The "notes" pill popup: each AI seat's private opponent reads, paged with ‹ ›.
+// The "notes" pill popup: each AI seat's private opponent reads, switched via the
+// modal's colored observer dropdown (which routes selection to setNotesObserverPick).
 function openPokerNotes(): void {
   if (mode !== 'poker' || !pokerMatch.isRunning()) return;
   const observers = pokerMatch.noteObservers();
@@ -834,12 +857,12 @@ function closePokerNotes(): void {
   forceFrame = true;
   r.requestRender();
 }
-function cyclePokerNotes(delta: number): void {
-  const n = pokerMatch.noteObservers().length;
-  if (n > 0) pokerNotesIdx = (pokerNotesIdx + delta + n) % n;
+// The observer dropdown picks which AI seat's reads to show.
+setNotesObserverPick((i) => {
+  pokerNotesIdx = i;
   forceFrame = true;
   r.requestRender();
-}
+});
 
 // The chess ☰ in-game menu popup (home / new game / display / eval bar / illegal / quit).
 function openChessMenu(): void {
@@ -941,7 +964,7 @@ function pokerHero(): HeroContext {
 function pokerStatus(): string {
   if (mode !== 'poker' || !pokerScene.isActive()) return '';
   if (!pokerMatch.isRunning()) return 'Session over';
-  if (pokerMatch.isPaused()) return 'Paused';
+  // Paused state is shown by the bottom-right resume button, not a status line.
   // No "Your move" toast: the hero's turn is already shown by the lit player strip and the
   // Fold/Check/Bet/Raise action bar, so the label above the strips would be redundant.
   return '';
@@ -976,10 +999,7 @@ function aiButton(): void {
 // and clear the move history + captures.
 function resetGame(): void {
   if (mode !== 'chess-game') return;
-  stopAiMatch();
-  chessGame.resetGame();
-  clearChat(); // empty the DM thread for the fresh game
-  chessChatPly = 0;
+  stopAiMatch(); // stops the match and clears the board, move history, and DM thread
   syncLive(); // release the live lease the match held
   forceFrame = true;
   r.requestRender();
@@ -1513,7 +1533,7 @@ function syncBar(): void {
       chessChatPly = chessMoves.length;
     }
     const ai = !chessGame.isMatchActive()
-      ? { label: 'new ai match', active: false }
+      ? { label: 'new match', active: false }
       : aiMatch.isPaused()
         ? { label: 'resume', active: true }
         : { label: 'pause', active: true };
@@ -1552,18 +1572,17 @@ function syncBar(): void {
     popSetup();
     popSwap();
     promoFocused = false;
-    // The opponent-notes modal, over the poker view. ‹ › page through the AI seats; the
-    // header ✕ and Escape (poker-notes layer) close it.
+    // The opponent-notes modal, over the poker view. The colored observer dropdown
+    // switches AI seats; the header ✕ and Escape (poker-notes layer) close it.
     if (!keymap.hasContext('poker-notes')) keymap.pushContext('poker-notes', true);
     const observers = pokerMatch.noteObservers();
-    const observer = observers[Math.min(pokerNotesIdx, observers.length - 1)];
+    const activeIdx = Math.min(pokerNotesIdx, observers.length - 1);
+    const observer = observers[activeIdx];
     ui.setRoot(
       buildPokerNotesModal({
-        observerLabel: observer?.label ?? '—',
+        observers,
+        activeIndex: activeIdx,
         entries: observer ? pokerMatch.notesView(observer.seat) : [],
-        canCycle: observers.length > 1,
-        onPrev: () => cyclePokerNotes(-1),
-        onNext: () => cyclePokerNotes(1),
         onClose: closePokerNotes,
       }),
       { x: 0, y: 0, w: cols, h: rows },
@@ -1639,6 +1658,10 @@ function syncBar(): void {
         onOpenNotes: openPokerNotes,
         setup: pokerSetupOpen ? buildPokerSetupPanel() : null,
         matchControls,
+        pauseControl:
+          pokerScene.isActive() && pokerMatch.isRunning()
+            ? { paused: pokerMatch.isPaused(), onToggle: togglePokerPause }
+            : null,
         hideHud: pokerScene.cineHidesHud(),
         cineLabel: pokerScene.cineLabel(),
         resultLabel: pokerScene.resultLabel(),
@@ -1662,6 +1685,24 @@ function syncBar(): void {
   }
 }
 
+// Pixel mode preserves every bright texel, so Cover Flow's 1.1x face lighting
+// plus the global low-threshold bloom washes broad areas of the cover art toward
+// white. Give only the menu a lower exposure and a restrained highlight bloom.
+// ASCII bypasses this path entirely, preserving its existing contrast.
+function preparePixelDisplay(withBloom: boolean): RenderTarget {
+  display = downsample(target, SS, display);
+  if (mode === 'menu') {
+    const colors = display.color;
+    for (let i = 0; i < colors.length; i++) colors[i] *= 0.86;
+    if (withBloom) {
+      bloom(display, { threshold: 180, intensity: 0.12, radius: 1, passes: 1 });
+    }
+  } else if (withBloom) {
+    bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
+  }
+  return display;
+}
+
 // Presents the engine `target` (prism / chess) in the active
 // Pixel/glyph display style. `withBloom` is the glowy post-process — on for the light
 // effects, off for solid geometry like the chess pieces.
@@ -1673,9 +1714,7 @@ function presentScene(withBloom = true, hybridShadow = false): string {
       hybrid: hybridShadow,
     });
   }
-  display = downsample(target, SS, display);
-  if (withBloom) bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
-  return toHalfBlock(display);
+  return toHalfBlock(preparePixelDisplay(withBloom));
 }
 
 // Cell-writing twin of presentScene for the unified path: paints the scene into
@@ -1703,9 +1742,7 @@ function presentSceneInto(surf: Surface, withBloom = true, hybridShadow = false)
     );
     return;
   }
-  display = downsample(target, SS, display);
-  if (withBloom) bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
-  halfBlockToSurface(surf, display, viewport.x, viewport.y);
+  halfBlockToSurface(surf, preparePixelDisplay(withBloom), viewport.x, viewport.y);
 }
 
 // Maps a 1-based terminal mouse cell to a normalized device coordinate (−1..1,
@@ -2133,6 +2170,11 @@ if (argv.includes('--logout')) {
   console.log(was ? 'Signed out of Vercel.' : 'Not signed in.');
   process.exit(0);
 }
+colorMode = await detectTerminalColorMode();
+const colorStatus =
+  colorMode === 'truecolor' ? 'Truecolor detected.' : 'Truecolor not detected. Using 256-color.';
+process.stdout.write(`\x1b[38;2;135;135;175m  \u2713 ${colorStatus}\x1b[0m\n`);
+
 await ensureGatewayKey({
   forceLogin: argv.includes('--login'),
   forceTeamPick: argv.includes('--switch-team'),
