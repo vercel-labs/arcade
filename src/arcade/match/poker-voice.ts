@@ -2,7 +2,8 @@
 // speaks and takes its actions through one speech-to-speech session, and the human
 // talks back (and may act) by voice. Scoped to a 2-seat Play match — human vs one AI —
 // where a live realtime session pays off and the multi-speaker problem can't occur
-// (one bot voice + one human). Opt-in via ARCADE_POKER_VOICE=1.
+// (one bot voice + one human). It's enabled by choosing the realtime model type for the
+// AI seat in poker setup, not by any env flag.
 //
 // This owns ONE RealtimeSession + the shared VoiceDuplex audio bus, and bridges to the
 // turn loop via a RealtimeVoicePlayer (a Player<PokerAction>): on the bot's turn it

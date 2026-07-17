@@ -1,6 +1,6 @@
 // Perft CLI: print the leaf-node counts per depth and compare against the canonical
 // reference values. The same perft() + cases back the automated test
-// (src/games/chess/perft.test.ts) — this is the human-readable view.
+// (src/rules/chess/perft.test.ts) — this is the human-readable view.
 //
 //   pnpm exec tsx src/tools/perft.ts
 import { Board } from '../rules/chess/board.ts';

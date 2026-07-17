@@ -90,14 +90,6 @@ export function mat4RotY(a: number): Mat4 {
   return m;
 }
 
-export function mat4RotZ(a: number): Mat4 {
-  const c = Math.cos(a);
-  const s = Math.sin(a);
-  const m = mat4Identity();
-  m[0] = c; m[1] = s; m[4] = -s; m[5] = c;
-  return m;
-}
-
 export function mat4Translate(x: number, y: number, z: number): Mat4 {
   const m = mat4Identity();
   m[12] = x; m[13] = y; m[14] = z;

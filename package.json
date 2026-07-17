@@ -42,8 +42,10 @@
   },
   "files": [
     "bin",
+    "assets",
     "src",
-    "assets"
+    "!src/tools",
+    "!src/**/*.test.ts"
   ],
   "publishConfig": {
     "access": "restricted"
