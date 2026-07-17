@@ -12,6 +12,7 @@ import type { ColorToken } from '../theme.ts';
 import type { Dimension, Node, Style } from '../types.ts';
 
 const CLOSE_GLYPH = '✕';
+const BACK_GLYPH = '←';
 const TITLE_FG: ColorToken = [222, 224, 234];
 const CARD_BG: ColorToken = [22, 24, 32];
 
@@ -35,11 +36,17 @@ export function CloseButton(opts: { id: string; onClick: () => void; style?: Sty
 function rightPad(p: [number, number] | [number, number, number, number]): number {
   return p[1];
 }
+// Left inset: index 3 for [t,r,b,l], else index 1 ([v,h] shares one horizontal value).
+function leftPad(p: [number, number] | [number, number, number, number]): number {
+  return p.length === 4 ? p[3] : p[1];
+}
 
 export interface DialogOpts {
   title?: string | Node; // a bold label, or a custom header node (e.g. a pager row)
   onClose?: () => void; // present → a corner ✕ that calls it
   closeId?: string; // the ✕ button id (needed when onClose is set)
+  onBack?: () => void; // present → a top-left ← icon that calls it (mirrors the ✕)
+  backId?: string; // the ← button id (needed when onBack is set)
   width?: Dimension; // fixed card width; omit to size to content
   background?: ColorToken; // card fill (default the shared slate)
   padding?: [number, number] | [number, number, number, number]; // card padding (default [1,1])
@@ -68,6 +75,15 @@ export function Dialog(opts: DialogOpts, children: Node[] = []): Node {
     items.push(
       Box({ position: 'absolute', top: 0, right: -(rightPad(pad) - 1) + (opts.closeInset ?? 0) }, [
         CloseButton({ id: opts.closeId ?? 'dialog-close', onClick: opts.onClose }),
+      ]),
+    );
+  }
+  if (opts.onBack) {
+    // A top-left ← icon, mirroring the ✕: same understated glyph, one cell in from the
+    // card's left edge (pulled out through the left padding).
+    items.push(
+      Box({ position: 'absolute', top: 0, left: -(leftPad(pad) - 1) }, [
+        Button({ id: opts.backId ?? 'dialog-back', label: BACK_GLYPH, onClick: opts.onBack, style: CLOSE_STYLE }),
       ]),
     );
   }

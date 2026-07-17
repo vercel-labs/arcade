@@ -1,84 +1,78 @@
 // The Vercel account modal, opened from Account in the Cover Flow home menu.
-// A persistent Select (survives the per-frame rebuild, mounted via Slot like
-// the match-setup dropdowns) lists the signed-in user's teams with the currently
-// billed one marked; clicking / Enter on a row switches to it (persist + re-mint the
-// gateway key). main.ts owns the async load/switch and the open/close state; this
-// module just holds the list instance and builds the centered popup.
-import { Box, Button, Dialog, Modal, Select, Slot, Text, type Node, type Screen, type Style } from '../../tui/index.ts';
+// A persistent searchable Dropdown shows the current billing team in its committed
+// field and owns filtering, wrapped options, and overflow scrolling. main.ts owns
+// async loading/switching and the modal lifecycle.
+import { Box, Button, Dialog, Dropdown, Modal, Slot, Text, type Node, type Screen, type Style } from '../../tui/index.ts';
 import type { Team } from '../../auth/index.ts';
 
-const LIST_W = 52;
-const LIST_ROWS = 7; // fixed viewport height; longer team lists scroll past this
-const CARD_W = LIST_W + 2; // card outer width (content = LIST_W within the [1,1] padding)
+const LIST_W = 36;
+const LIST_ROWS = 7; // maximum visible dropdown option rows before scrolling
+const CARD_W = LIST_W + 6; // three cells of breathing room on each side
 
-// The teams backing the current list contents (index-aligned with the Select's
-// rows), and the pick handler main.ts wires in once at startup. `currentId` is the
-// billed team (● marker); `succeededId` is a team we just switched to (✓ marker),
-// which supersedes the dot so the switch reads as confirmed.
+// The teams backing the dropdown (index-aligned with its items), and the pick
+// handler main.ts wires once at startup. The committed field shows the current team.
 let teams: Team[] = [];
 let onPick: (team: Team) => void = () => {};
-let currentId: string | null = null;
-let succeededId: string | null = null;
 
-const list = new Select({
-  id: 'team-switch-list',
+const dropdown = new Dropdown({
+  id: 'team-switch-dropdown',
   items: [],
   width: LIST_W,
-  height: LIST_ROWS,
+  rows: LIST_ROWS,
+  searchable: true,
+  searchPlaceholder: 'Search Vercel accounts',
+  placeholder: 'select an account',
   onSelect: (i) => {
-    const t = teams[i];
-    if (t) onPick(t);
+    const team = teams[i];
+    if (team) onPick(team);
   },
 });
 
 export function mountTeamSwitch(ui: Screen): void {
-  ui.mount(list);
+  ui.mount(dropdown);
 }
 
 export function setTeamSwitchHandlers(h: { onPick: (team: Team) => void }): void {
   onPick = h.onPick;
 }
 
-// One row label: a ✓ for a just-switched team, else ● for the billed team, else a
-// blank gutter so names stay aligned. Team ids and slugs stay in the backing data but are
-// intentionally omitted from the row; the human-readable Vercel team name is enough here.
-function labelOf(team: Team): string {
-  const mark = team.id === succeededId ? '✓ ' : team.id === currentId ? '● ' : '  ';
-  const max = LIST_W - 2 - (teams.length > LIST_ROWS ? 1 : 0); // row padding + optional bar
-  return truncate(mark + team.name, max);
+function wrapText(text: string, width: number): string[] {
+  if (width <= 0) return [text];
+  const lines: string[] = [];
+  let line = '';
+  for (const word of text.split(' ')) {
+    if (word.length > width) {
+      if (line) lines.push(line);
+      let rest = word;
+      while (rest.length > width) {
+        lines.push(rest.slice(0, width));
+        rest = rest.slice(width);
+      }
+      line = rest;
+    } else if (!line) line = word;
+    else if (line.length + word.length + 1 <= width) line += ' ' + word;
+    else {
+      lines.push(line);
+      line = word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines.length ? lines : [''];
 }
 
-function truncate(s: string, max: number): string {
-  const cps = [...s];
-  return cps.length <= max ? s : `${cps.slice(0, Math.max(0, max - 1)).join('')}…`;
-}
-
-// Recompute the row labels in place (preserving selection + scroll) after a marker
-// changes — unlike setItems, which resets them.
-function relabel(): void {
-  list.items = teams.map(labelOf);
-}
-
-// Feed the loaded teams into the list and preselect the current one so it's the
-// highlighted row when the modal opens. Clears any prior ✓ (this is a fresh open).
-// setItems resets index+scroll, so the current-team index is applied after.
+// Feed the loaded teams into the dropdown and commit the current billing team so
+// the closed field itself is the current-account indicator.
 export function setTeamSwitchTeams(next: Team[], current: Team | null): void {
   teams = next;
-  currentId = current?.id ?? null;
-  succeededId = null;
-  list.setItems(next.map(labelOf));
-  const ci = current ? next.findIndex((t) => t.id === current.id) : -1;
-  if (ci >= 0) list.setIndex(ci);
+  const currentIndex = current ? next.findIndex((team) => team.id === current.id) : -1;
+  dropdown.setItems(next.map((team) => team.name), currentIndex);
 }
 
-// Mark a team as just-switched-to: it becomes the billed team and gets the ✓
-// success marker. Keeps the current selection/scroll so the row stays put.
+// A successful switch commits the chosen team in the closed dropdown. setItems
+// updates the value without firing onSelect again.
 export function markSwitchSucceeded(team: Team): void {
-  currentId = team.id;
-  succeededId = team.id;
-  relabel();
-  const i = teams.findIndex((t) => t.id === team.id);
-  if (i >= 0) list.setIndex(i);
+  const index = teams.findIndex((candidate) => candidate.id === team.id);
+  if (index >= 0) dropdown.setItems(teams.map((candidate) => candidate.name), index);
 }
 
 // The modal's visual states: loading the list, the loaded list, an in-flight
@@ -89,10 +83,10 @@ export type TeamSwitchView =
   | { kind: 'switching'; team: string }
   | { kind: 'signedOut' }
   // `canReturn` (a switch that failed with the list still loaded) shows a "← back"
-  // to the list instead of the plain close hint.
+  // to the dropdown instead of the plain close behavior.
   | { kind: 'error'; message: string; canReturn?: boolean };
 
-const CARD_PAD: [number, number] = [1, 1]; // scrollbar sits against the card's inner right edge
+const CARD_PAD: [number, number] = [1, 3];
 const PRIMARY: Style = {
   padding: [0, 3],
   background: [86, 64, 120],
@@ -101,14 +95,6 @@ const PRIMARY: Style = {
   hover: { background: [110, 84, 150] },
   focus: { background: [110, 84, 150] },
   pressed: { background: [120, 124, 142] },
-};
-// The "← back" control on a switch error: a quiet text button (like the close hint it
-// replaces) that returns to the team list.
-const BACK: Style = {
-  color: [170, 174, 186],
-  hover: { color: [235, 237, 245] },
-  focus: { background: [72, 76, 92], color: [235, 237, 245] },
-  pressed: { color: [255, 255, 255] },
 };
 // Destructive account action, kept visually separate at the bottom of the card.
 const LOGOUT: Style = {
@@ -123,49 +109,53 @@ const LOGOUT: Style = {
 
 const center = (n: Node): Node => Box({ justifyContent: 'center' }, [n]);
 
-// A status line centered in the body's fixed footprint (loading / switching /
-// signed-out / error), so those views are the exact size of the loaded list — no
-// resize flicker when the teams land.
-function statusBody(text: string, color: Style['color']): Node {
-  return Box({ width: LIST_W, height: LIST_ROWS, justifyContent: 'center', alignItems: 'center' }, [Text({ text, style: { color } })]);
+// Status views keep the list's normal footprint. Long errors wrap and can grow
+// beyond it so the complete gateway response remains readable.
+function statusBody(text: string, color: Style['color'], align: 'left' | 'center' = 'center'): Node {
+  const lines = wrapText(text, LIST_W - 2);
+  return Box(
+    {
+      width: LIST_W,
+      height: Math.max(LIST_ROWS, lines.length),
+      flexDirection: 'column',
+      justifyContent: 'center',
+      alignItems: align === 'left' ? 'start' : 'center',
+      padding: [0, 1],
+    },
+    lines.map((line) => Text({ text: line, style: { color } })),
+  );
 }
 
-// The loaded list in a fixed-height, clipped viewport: the space is allocated up
-// front (empty rows below a short list), and a long list scrolls within it — the
-// modal looks identical whether the account has two teams or twenty.
-function listBody(): Node {
-  return Box({ width: LIST_W, height: LIST_ROWS, overflow: 'hidden' }, [Slot('team-switch-list')]);
+// The dropdown stays one row in layout; its search and option list are overlays, so
+// opening it does not resize the card or push the logout action down.
+function dropdownBody(): Node {
+  return Box({ width: LIST_W }, [Slot('team-switch-dropdown')]);
 }
 
 // Build the centered team-switch modal for the given view. The card is a fixed
-// size across every view (see statusBody/listBody). `onClose` (the ✕ / Esc) closes
+// size across every view (see statusBody/dropdownBody). `onClose` (the ✕ / Esc) closes
 // it; `onSignIn` (signed-out view only) kicks off the plain-text device login flow;
-// `onBack` (a failed switch) returns to the team list; `onLogout` clears Arcade's
+// `onBack` (a failed switch) returns to the dropdown; `onLogout` clears Arcade's
 // cached Vercel session and quits. There's no Cancel button.
 export function buildTeamSwitch(
   view: TeamSwitchView,
   opts: { onClose: () => void; onSignIn: () => void; onBack: () => void; onLogout: () => void },
 ): Node {
   let body: Node;
-  let hint = 'Esc close';
   let footer: Node | null = null;
+  // A switch that failed still has the accounts loaded, so offer a top-left ← back to the
+  // dropdown (a load failure has nothing to return to — just the modal's ✕).
+  const canBack = view.kind === 'error' && view.canReturn;
   if (view.kind === 'loading') body = statusBody('Loading teams…', 'muted');
   else if (view.kind === 'error') {
-    body = statusBody(truncate(view.message, LIST_W), 'danger');
-    // A switch that failed still has the list loaded → offer "← back" to it instead of
-    // the plain close hint. A load failure (no list) keeps the close hint.
-    if (view.canReturn) {
-      hint = '';
-      footer = Box({ flexDirection: 'row', justifyContent: 'start' }, [Button({ id: 'team-back', label: '← back', onClick: opts.onBack, style: BACK })]);
-    }
+    body = statusBody(view.message, 'danger', 'left');
   } else if (view.kind === 'signedOut') {
     body = statusBody('Not signed in to Vercel.', 'muted');
     footer = Box({ flexDirection: 'row', justifyContent: 'center' }, [Button({ id: 'team-signin', label: 'sign in', onClick: opts.onSignIn, style: PRIMARY })]);
   } else {
-    // loaded / switching: the list stays visible (so the switched row's ✓ shows in
-    // place). Switching is quick, so no transient "switching…" label — just the list.
-    body = listBody();
-    hint = '↑↓ move · ⏎ switch · Esc';
+    // Loaded and switching states keep the current team in the committed field.
+    // Switching is quick, so there is no transient replacement label.
+    body = dropdownBody();
   }
 
   const logout =
@@ -177,9 +167,8 @@ export function buildTeamSwitch(
   // corner ✕ (its absolute placement lines the ✕ up one cell from the edge through the
   // card's [1,1] padding — the same result the hand-rolled close box produced).
   return Modal(
-    Dialog({ title: 'Vercel account', onClose: opts.onClose, closeId: 'team-close', align: 'center', width: CARD_W, padding: CARD_PAD }, [
+    Dialog({ title: 'Vercel account', onClose: opts.onClose, closeId: 'team-close', onBack: canBack ? opts.onBack : undefined, backId: 'team-back', align: 'center', width: CARD_W, padding: CARD_PAD }, [
       body,
-      ...(hint ? [center(Text({ text: hint, style: { color: 'muted' } }))] : []),
       ...(footer ? [footer] : []),
       ...(logout ? [logout] : []),
     ]),
