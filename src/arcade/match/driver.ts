@@ -5,13 +5,22 @@
 // the surrounding UI — the setup modal, the commentary toast, and the
 // illegal-moves flag — and injects the seams below.
 import { runMatch } from '../../ai/match.ts';
-import { ModelPlayer } from '../../ai/model-player.ts';
+import { FALLBACK_RATIONALE, isFallbackRationale, ModelPlayer } from '../../ai/model-player.ts';
 import { HumanPlayer } from '../../ai/human-player.ts';
 import type { Player } from '../../ai/player.ts';
 import type { ChessGameScene } from '../games/chess/scene.ts';
 import type { Move } from '../../rules/chess/types.ts';
 import { disambiguateLabels } from './labels.ts';
 import { normalizerModel } from './models.ts';
+import { trackMatchEnded, trackMatchStarted, trackModelFallback } from '../../telemetry/index.ts';
+
+// A seat's telemetry identity: the model slug, or 'human' for a keyboard seat.
+const seatId = (seat: Seat): string => (seat.kind === 'ai' ? seat.model : 'human');
+// Summarize the pairing for analytics: ai_vs_ai (spectated), human_vs_ai, or hotseat.
+const matchMode = (seats: Seat[]): string => {
+  const ai = seats.filter((s) => s.kind === 'ai').length;
+  return ai === 2 ? 'ai_vs_ai' : ai === 1 ? 'human_vs_ai' : 'hotseat';
+};
 
 // One side of a match: an AI model (a Gateway slug) or a human at the keyboard.
 // The setup modal produces a pair of these; a human seat has no wisp and is played
@@ -77,6 +86,7 @@ export class AiMatch {
     this.abort = ctrl;
     this.deps.syncLive();
     this.deps.requestRender();
+    let finalReturns: number[] | null = null;
     runMatch<Move>(this.deps.chessGame, this.players, {
       signal: ctrl.signal,
       onCommentary: (text, player) => {
@@ -84,13 +94,28 @@ export class AiMatch {
         const seat = index >= 0 ? this.seats?.[index] : null;
         const model = seat?.kind === 'ai' ? seat.model : player.name;
         const label = index >= 0 ? (this.labels[index] ?? shortModel(model)) : shortModel(model);
+        if (seat?.kind === 'ai' && isFallbackRationale(text)) {
+          trackModelFallback({ game: 'chess', model, reason: text === FALLBACK_RATIONALE.unavailable ? 'unavailable' : 'exhausted' });
+        }
         this.deps.onCommentary(text, model, label);
       },
     })
+      .then((returns) => {
+        finalReturns = returns;
+      })
       .catch(() => {}) // aborted mid-decision (pause/stop) — fine
       .finally(() => {
         if (this.abort === ctrl) this.abort = null;
         if (this.paused) return; // paused: keep the match alive on the current turn
+        // A genuine finish (checkmate / stalemate / draw) reaches a terminal position; a
+        // stop or navigate-away does not. Only the former is a reportable result — the
+        // winner falls out of the returns vector (white index 0, black index 1).
+        const seats = this.seats;
+        if (seats && finalReturns && this.deps.chessGame.state().isTerminal()) {
+          const [w, b] = finalReturns;
+          const winner = w > b ? seatId(seats[0]) : b > w ? seatId(seats[1]) : 'draw';
+          trackMatchEnded({ game: 'chess', mode: matchMode(seats), models: seats.map(seatId), winner });
+        }
         this.deps.chessGame.endMatch(); // ended (terminal or stopped); final position stays up
         this.players = null;
         this.deps.syncLive();
@@ -109,6 +134,12 @@ export class AiMatch {
       white.kind === 'ai' ? creatorOf(white.model) : null,
       black.kind === 'ai' ? creatorOf(black.model) : null,
     );
+    trackMatchStarted({
+      game: 'chess',
+      mode: matchMode(this.seats),
+      models: this.seats.map(seatId),
+      humans: this.seats.filter((s) => s.kind === 'human').length,
+    });
     this.paused = false;
     this.players = [this.makePlayer(white), this.makePlayer(black)];
     this.runLoop();

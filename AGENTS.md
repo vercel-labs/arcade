@@ -31,6 +31,7 @@ src/
   ai/         game AI: Player interface + LLM-backed ModelPlayer + match loop
   auth/       Vercel sign-in (OAuth device flow) + AI Gateway key resolution
   voice/      realtime speech-to-speech session + mic/speaker I/O + echo cancel
+  telemetry/  fire-and-forget anonymous usage counts → Tinybird Events API (opt-out)
   arcade/     THE app: orchestrator (main.ts) + per-game/scene/shell presentation
     games/<game>/   per-game presentation (chess: scene, hud, turntable)
     match/          AI-vs-AI plumbing (driver, setup modal, model catalog)
@@ -83,6 +84,15 @@ stored — it's re-derived each launch. Reuses the Vercel CLI's public OAuth cli
 to mint gateway keys. In-app: switch team + sign out live in the home menu / account
 modal (no key bindings); flags `--login` / `--switch-team` / `--logout`. Auth lives in `src/auth/{env,vercel-auth,
 vercel-api,gateway-key}.ts`; `src/platform/open-browser.ts` opens the browser.
+
+## Telemetry
+
+`src/telemetry/` sends anonymous usage counts (launches, model picks, match/hand results,
+model fallbacks — never prompts or game content) to a Tinybird Events API datasource. It's
+fire-and-forget: never blocks the UI, never throws, silent unless `ARCADE_TELEMETRY_TOKEN`
+is set, and opt-out via `ARCADE_TELEMETRY=0`. The hosted workspace lives on Tinybird's
+cloud — setup + the datasource schema are in [tinybird/README.md](tinybird/README.md). This
+is the data layer the leaderboard milestone builds on.
 
 ## Deploying the curl prism
 

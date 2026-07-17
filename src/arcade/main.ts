@@ -46,6 +46,7 @@ import * as term from '../platform/terminal.ts';
 import { availableTeams, ensureGatewayKey, isLoggedIn, loadEnv, signOut as signOutVercel, switchTeam, type Team, useTeam } from '../auth/index.ts';
 import { AiMatch, type Seat } from './match/driver.ts';
 import { disambiguateLabels } from './match/labels.ts';
+import { flushTelemetry, initTelemetry, trackSessionStart } from '../telemetry/index.ts';
 
 // Populate process.env from .env.local before anything reads AI_GATEWAY_API_KEY.
 loadEnv();
@@ -368,7 +369,9 @@ function fullRepaint(): void {
 function quit(): void {
   r.destroy();
   term.leave();
-  process.exit(0);
+  // Give any in-flight telemetry a brief window to drain, then exit regardless — the
+  // cap keeps quit from ever visibly hanging on the network.
+  void flushTelemetry(400).finally(() => process.exit(0));
 }
 
 // Run an async plain-text flow outside the alt-screen: stop the frame loop,
@@ -2198,6 +2201,16 @@ process.stdout.write(`\x1b[38;2;135;135;175m  \u2713 ${colorStatus}\x1b[0m\n`);
 await ensureGatewayKey({
   forceLogin: argv.includes('--login'),
   forceTeamPick: argv.includes('--switch-team'),
+});
+
+// Resolve the anonymous install id + (once) print the opt-out notice while still in
+// plain text, then record the launch. Both are no-ops unless a telemetry token is set.
+initTelemetry();
+trackSessionStart({
+  colorMode,
+  authed: isLoggedIn(),
+  cols: process.stdout.columns ?? 0,
+  rows: process.stdout.rows ?? 0,
 });
 
 term.enter();
