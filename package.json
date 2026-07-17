@@ -1,7 +1,6 @@
 {
   "name": "@vercel/arcade",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "description": "Terminal-rendered ASCII arcade \u2014 3D games in the terminal, powered by Vercel AI Gateway",
   "engines": {
