@@ -25,7 +25,7 @@ const KEY_NAME = 'Arcade';
 
 const bold = (s: string): string => `\x1b[1m${s}\x1b[0m`;
 const dim = (s: string): string => `\x1b[2m${s}\x1b[0m`;
-const green = (s: string): string => `\x1b[32m${s}\x1b[0m`;
+const status = (s: string): string => `\x1b[38;2;135;135;175m${s}\x1b[0m`;
 const out = (s = ''): void => void process.stdout.write(`${s}\n`);
 
 export interface EnsureOpts {
@@ -175,7 +175,7 @@ async function login(): Promise<StoredAuth> {
   if (user?.username) auth.user = { username: user.username }; // persisted → key name + skips a refetch later
   writeAuth(auth);
 
-  out(green(`  ✓ Signed in${user ? ` as ${user.username}` : ''}.`));
+  out(status(`  ✓ Signed in${user ? ` as ${user.username}` : ''}.`));
   return auth;
 }
 
@@ -244,7 +244,7 @@ async function mintKey(auth: StoredAuth, team: Team, quiet = false): Promise<str
   const key = await createGatewayKey(auth.access_token, team.id, name);
   process.env[ENV_KEY] = key;
   if (!quiet) {
-    out(green(`  ✓ AI Gateway ready — billed to ${team.name}.`));
+    out(status(`  ✓ AI Gateway ready. Billed to ${team.name}.`));
     out();
   }
   return key;

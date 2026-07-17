@@ -9,19 +9,36 @@
 
 import { Box, Dropdown, Slider, Slot, Text, type Node, type Screen } from '../../tui/index.ts';
 import type { RGB } from '../../engine/index.ts';
-import { creators, modelsFor, type ModelInfo } from './models.ts';
+import { pickerCreators, type ModelInfo } from './models.ts';
+import { DEFAULT_REALTIME_MODEL_ID, REALTIME_MODELS } from '../../voice/index.ts';
+import { SLOW_MODELS } from './beta-allowlist.ts';
 import { creatorTint } from '../scenes/wisp.ts';
 import { shortModel } from '../games/chess/hud.ts';
 import { BIG_BLIND, type PokerSeatSpec } from './poker-driver.ts';
+import { pokerVoiceCapable } from './poker-voice.ts';
 import type { PokerSeatView } from '../games/poker/poker-scene.ts';
 
-const CREATORS = creators();
-const CREATOR_LABELS = CREATORS.map((c) => c.name);
+interface AiCreator {
+  slug: string;
+  name: string;
+  models: ModelInfo[];
+}
+
+const TEXT_CREATORS: AiCreator[] = pickerCreators();
+const REALTIME_CREATORS: AiCreator[] = [];
+for (const model of REALTIME_MODELS) {
+  let creator = REALTIME_CREATORS.find((candidate) => candidate.slug === model.creator);
+  if (!creator) {
+    creator = { slug: model.creator, name: model.creatorName, models: [] };
+    REALTIME_CREATORS.push(creator);
+  }
+  creator.models.push({ id: model.id, name: model.name });
+}
 const LIST_ROWS = 7;
 const CREATOR_W = 22;
 const MODEL_W = 22;
 const MAX_OPP = 5; // up to a 6-seat table (you + 5)
-const SEAT_LABEL_W = 8; // the "Seat N" gutter, so the dropdown columns line up
+const SEAT_LABEL_W = 10; // wide enough for "model type"; all controls stay aligned
 
 // Fires on every committed change (mode / players / creator / model), so main can
 // refresh the live table preview. Null until main wires it (module init picks the
@@ -35,6 +52,7 @@ const changed = (): void => {
 };
 
 interface AiSide {
+  readonly creators: readonly AiCreator[];
   readonly creatorDropdown: Dropdown;
   readonly modelDropdown: Dropdown;
   creator: string | null;
@@ -42,31 +60,31 @@ interface AiSide {
   modelId: string | null;
 }
 
-function creatorIndex(slug: string): number {
-  const i = CREATORS.findIndex((c) => c.slug === slug);
+function creatorIndex(creators: readonly AiCreator[], slug: string): number {
+  const i = creators.findIndex((c) => c.slug === slug);
   return i < 0 ? 0 : i;
 }
 
 function pickCreator(side: AiSide, slug: string): void {
   if (side.creator === slug) return;
   side.creator = slug;
-  side.models = modelsFor(slug);
+  side.models = side.creators.find((creator) => creator.slug === slug)?.models ?? [];
   side.modelDropdown.setItems(side.models.map((m) => m.name));
   side.modelId = null;
 }
 
-function makeSide(idPrefix: string, defaultCreator: string, defaultModelId: string): AiSide {
+function makeSide(idPrefix: string, creators: readonly AiCreator[], defaultCreator: string, defaultModelId: string): AiSide {
   let side: AiSide;
   const creatorDropdown = new Dropdown({
     searchable: true,
     searchPlaceholder: 'Search',
     id: `${idPrefix}-creator`,
-    items: CREATOR_LABELS,
+    items: creators.map((creator) => creator.name),
     width: CREATOR_W,
     rows: LIST_ROWS,
-    index: creatorIndex(defaultCreator),
+    index: creatorIndex(creators, defaultCreator),
     onSelect: (i) => {
-      pickCreator(side, CREATORS[i].slug);
+      pickCreator(side, creators[i].slug);
       changed();
     },
   });
@@ -83,7 +101,7 @@ function makeSide(idPrefix: string, defaultCreator: string, defaultModelId: stri
       changed();
     },
   });
-  side = { creator: null, models: [], modelId: null, creatorDropdown, modelDropdown };
+  side = { creators, creator: null, models: [], modelId: null, creatorDropdown, modelDropdown };
   pickCreator(side, defaultCreator);
   const i = side.models.findIndex((m) => m.id === defaultModelId);
   if (i >= 0) modelDropdown.pick(i);
@@ -104,7 +122,12 @@ const DEFAULT_MODELS = [
   ['xai', 'xai/grok-4.1-fast-non-reasoning'],
   ['anthropic', 'anthropic/claude-haiku-4.5'],
 ] as const;
-const sides: AiSide[] = DEFAULT_MODELS.map(([prov, model], i) => makeSide(`poker-opp${i}`, prov, model));
+const sides: AiSide[] = DEFAULT_MODELS.map(([prov, model], i) =>
+  makeSide(`poker-opp${i}`, TEXT_CREATORS, prov, model),
+);
+const realtimeSide = makeSide(
+  'poker-realtime-opp', REALTIME_CREATORS, 'openai', DEFAULT_REALTIME_MODEL_ID,
+);
 
 // How many players sit at the table (you included in HERO mode): 2..6. Defaults to a
 // 4-handed table. Index i → i+2 players → i+1 AI opponent configs. Exported (like the
@@ -164,7 +187,7 @@ export function pokerStartingStack(): number {
 // is visible). Drives whether seat 1 gets its own model row.
 export const modeDropdown = new Dropdown({
   id: 'poker-setup-mode',
-  items: ['Play vs AI', 'Spectate AI'],
+  items: ['play vs ai', 'spectate ai'],
   width: 16,
   index: 0,
   onSelect: () => changed(),
@@ -173,24 +196,24 @@ function spectating(): boolean {
   return modeDropdown.index === 1;
 }
 
-// Real-time voice mode — only meaningful for a heads-up human-vs-AI match (Play + 2
-// players), where the AI opponent speaks and acts by voice and you can talk back. The
-// toggle only appears in that case (see buildPokerSetupPanel); everywhere else voice is
-// simply off. Defaults on so the feature is one click away, but falls back to the text
-// path if a mic / Gateway key isn't available.
-export const voiceDropdown = new Dropdown({
-  id: 'poker-voice',
-  items: ['Off', 'On'],
-  width: 10,
+// Model type only applies to heads-up Play. Text uses the standard model catalog;
+// Realtime voice uses the speech-to-speech catalog and the selected model is the
+// actual opponent that speaks and acts.
+export const modelTypeDropdown = new Dropdown({
+  id: 'poker-model-type',
+  items: ['text', 'realtime voice'],
+  width: 18,
   index: 1,
   onSelect: () => changed(),
 });
-function voiceApplicable(): boolean {
+function modelTypeApplicable(): boolean {
   return !spectating() && oppCount() === 1; // Play mode, 2 players (you + one AI)
 }
-// Whether the user asked for realtime voice for this match (only ever true heads-up).
-export function pokerVoiceSelected(): boolean {
-  return voiceApplicable() && voiceDropdown.index === 1;
+function realtimeSelected(): boolean {
+  return modelTypeApplicable() && modelTypeDropdown.index === 1;
+}
+function sideForIndex(index: number): AiSide {
+  return realtimeSelected() && index === 1 ? realtimeSide : sides[index];
 }
 
 // The AI-config indices shown as rows: opponents 1..oppCount always, plus seat 1's
@@ -205,17 +228,20 @@ function shownIndices(): number[] {
 export function mountPokerSetup(ui: Screen): void {
   ui.mount(playersDropdown);
   ui.mount(modeDropdown);
-  ui.mount(voiceDropdown);
+  ui.mount(modelTypeDropdown);
   ui.mount(stackSlider);
   for (const s of sides) {
     ui.mount(s.creatorDropdown);
     ui.mount(s.modelDropdown);
   }
+  ui.mount(realtimeSide.creatorDropdown);
+  ui.mount(realtimeSide.modelDropdown);
 }
 
 // Ready when every shown seat's config has a committed model.
 export function pokerSetupReady(): boolean {
-  return shownIndices().every((i) => sides[i].modelId !== null);
+  const committed = shownIndices().every((i) => sideForIndex(i).modelId !== null);
+  return committed && (!realtimeSelected() || pokerVoiceCapable());
 }
 
 // The chosen seats. HERO: seat 1 is the human, seats 2..N are the shown opponents.
@@ -223,8 +249,13 @@ export function pokerSetupReady(): boolean {
 // config lacks a model.
 export function pokerSetupSelection(): PokerSeatSpec[] | null {
   if (!pokerSetupReady()) return null;
-  const seats: PokerSeatSpec[] = [spectating() ? { kind: 'ai', model: sides[0].modelId! } : { kind: 'human' }];
-  for (let i = 1; i <= oppCount(); i++) seats.push({ kind: 'ai', model: sides[i].modelId! });
+  const seats: PokerSeatSpec[] = [
+    spectating() ? { kind: 'ai', model: sides[0].modelId!, runtime: 'text' } : { kind: 'human' },
+  ];
+  for (let i = 1; i <= oppCount(); i++) {
+    const side = sideForIndex(i);
+    seats.push({ kind: 'ai', model: side.modelId!, runtime: realtimeSelected() ? 'realtime' : 'text' });
+  }
   return seats;
 }
 
@@ -238,12 +269,22 @@ export function pokerPreviewSeats(): PokerSeatView[] {
     creator: side.creator ?? undefined,
   });
   const seats: PokerSeatView[] = [spectating() ? ai(sides[0]) : { kind: 'human', label: 'you' }];
-  for (let i = 1; i <= oppCount(); i++) seats.push(ai(sides[i]));
+  for (let i = 1; i <= oppCount(); i++) seats.push(ai(sideForIndex(i)));
   return seats;
 }
 
 const TITLE_FG: RGB = [222, 224, 234];
 const HERO_FG: RGB = [224, 226, 236];
+const SLOW_FG: RGB = [210, 168, 90]; // amber hint for slow-but-working models
+
+// A dim "slow" hint shown beside a seat's model when it's a known-slow pick
+// (SLOW_MODELS) — it still plays, just takes a while (mostly poker). Node[] so it
+// spreads cleanly into a row and is nothing when the model is fast.
+function slowBadge(modelId: string | null): Node[] {
+  return modelId && SLOW_MODELS.has(modelId)
+    ? [Text({ text: 'slow', style: { color: SLOW_FG } })]
+    : [];
+}
 
 function brandTint(side: AiSide): RGB {
   if (!side.creator) return [212, 214, 224];
@@ -276,6 +317,7 @@ function seatRow(side: AiSide, seatNo: number): Node {
     Box({ width: SEAT_LABEL_W }, [Text({ text: `seat ${seatNo}`, style: { color: brandTint(side), bold: true } })]),
     Slot(side.creatorDropdown.id),
     Slot(side.modelDropdown.id),
+    ...slowBadge(side.modelId),
   ]);
 }
 
@@ -287,7 +329,7 @@ function seatRow(side: AiSide, seatNo: number): Node {
 // by the HUD), not a button here; Esc closes.
 export function buildPokerSetupPanel(): Node {
   const shownIdx = shownIndices();
-  const shownSet = new Set(shownIdx);
+  const visibleSides = new Set(shownIdx.map((index) => sideForIndex(index)));
   const seatRows: Node[] = [];
   if (!spectating()) {
     seatRows.push(
@@ -297,22 +339,24 @@ export function buildPokerSetupPanel(): Node {
       ]),
     );
   }
-  seatRows.push(...shownIdx.map((i) => seatRow(sides[i], i + 1))); // config i fills table seat i+1
-  const hidden = sides
-    .map((s, i) => ({ s, i }))
-    .filter(({ i }) => !shownSet.has(i))
-    .map(({ s }) => Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot(s.creatorDropdown.id), Slot(s.modelDropdown.id)]));
-  // The voice toggle only shows heads-up (Play + 2 players); keep its Slot mounted but
-  // hidden otherwise so the Screen doesn't unmount it (same trick as unshown seats).
-  const voiceShown = voiceApplicable();
-  if (!voiceShown) hidden.push(Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot('poker-voice')]));
+  seatRows.push(...shownIdx.map((i) => seatRow(sideForIndex(i), i + 1))); // config i fills table seat i+1
+  const hidden = [...sides, realtimeSide]
+    .filter((side) => !visibleSides.has(side))
+    .map((side) => Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot(side.creatorDropdown.id), Slot(side.modelDropdown.id)]));
+  // Model type only applies to heads-up Play; keep its Slot mounted when hidden.
+  const modelTypeShown = modelTypeApplicable();
+  const realtimeUnavailable = modelTypeShown && realtimeSelected() && !pokerVoiceCapable();
+  if (!modelTypeShown) {
+    hidden.push(Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot('poker-model-type')]));
+  }
 
   return Box({ flexDirection: 'column', gap: 1, alignItems: 'start' }, [
     Text({ text: 'new match', style: { color: TITLE_FG, bold: true } }),
     row('mode', Slot('poker-setup-mode')),
     row('players', Slot('poker-players')),
     row('stack', stackControl()),
-    ...(voiceShown ? [row('voice', Slot('poker-voice'))] : []),
+    ...(modelTypeShown ? [row('model type', Slot('poker-model-type'))] : []),
+    ...(realtimeUnavailable ? [row('', Text({ text: 'realtime voice unavailable', style: { color: 'muted' } }))] : []),
     ...seatRows,
     ...hidden,
   ]);

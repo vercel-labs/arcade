@@ -22,6 +22,10 @@ export interface DropdownOpts {
   searchPlaceholder?: string; // muted search prompt before activation
   emptyLabel?: string;
   accentColor?: ColorToken;
+  // Bare field: no default pill background (transparent — shows the surface behind),
+  // boxed only on hover/focus; the caret hugs the label (content-width, no ellipsis)
+  // instead of padding to a fixed width. The option list still uses `width`.
+  bare?: boolean;
   onSelect?: (index: number, item: string) => void;
   onQueryChange?: (query: string) => void;
 }
@@ -168,10 +172,6 @@ export class Dropdown implements Component {
     return true;
   }
 
-  private innerWidth(): number {
-    return Math.max(1, this.width - 3);
-  }
-
   private get searchable(): boolean {
     return this.opts.searchable ?? false;
   }
@@ -183,11 +183,17 @@ export class Dropdown implements Component {
       .filter(({ label }) => !needle || label.toLocaleLowerCase().includes(needle));
     if (this.highlight >= this.matches.length) this.highlight = Math.max(0, this.matches.length - 1);
 
-    const lines: VLine[] = [];
-    this.matches.forEach((match, i) => {
-      for (const text of wrapText(match.label, this.innerWidth())) lines.push({ match: i, text });
-    });
-    this.lines = lines;
+    const wrapMatches = (width: number): VLine[] => {
+      const lines: VLine[] = [];
+      this.matches.forEach((match, i) => {
+        for (const text of wrapText(match.label, width)) lines.push({ match: i, text });
+      });
+      return lines;
+    };
+    // Use the whole list width when it fits. Only narrow the option rows by one
+    // column when overflow actually requires a scrollbar.
+    this.lines = wrapMatches(Math.max(1, this.width - 2));
+    if (this.lines.length > this.rows) this.lines = wrapMatches(Math.max(1, this.width - 3));
   }
 
   private maxScroll(): number {
@@ -420,10 +426,12 @@ export class Dropdown implements Component {
   }
 
   private selectionText(): string {
-    const room = Math.max(1, this.width - 4);
-    const label = this.value ?? this.opts.placeholder ?? 'Select…';
-    const shown = label.length > room ? label.slice(0, Math.max(0, room - 1)) + '…' : label;
     const caret = this.open ? '▴' : '▾';
+    const label = this.value ?? this.opts.placeholder ?? 'Select…';
+    // Bare: the caret hugs the label — no fixed-width padding, no ellipsis.
+    if (this.opts.bare) return `${label} ${caret}`;
+    const room = Math.max(1, this.width - 4);
+    const shown = label.length > room ? label.slice(0, Math.max(0, room - 1)) + '…' : label;
     return shown.padEnd(room) + ' ' + caret;
   }
 
@@ -444,14 +452,23 @@ export class Dropdown implements Component {
 
   build(): Node {
     const active = this.focused || this.open;
-    const fieldStyle: Style = {
-      width: this.width,
-      padding: [0, 1],
-      bold: true,
-      color: this.index >= 0 ? (this.opts.accentColor ?? 'fg') : 'muted',
-      background: active ? 'focusRing' : 'pillBg',
-      hover: { background: 'focusRing' },
-    };
+    const bare = this.opts.bare ?? false;
+    const fieldStyle: Style = bare
+      ? {
+          padding: [0, 0],
+          bold: true,
+          color: this.index >= 0 ? (this.opts.accentColor ?? 'fg') : 'muted',
+          background: active ? 'focusRing' : undefined, // transparent until hover/focus
+          hover: { background: 'focusRing' },
+        }
+      : {
+          width: this.width,
+          padding: [0, 1],
+          bold: true,
+          color: this.index >= 0 ? (this.opts.accentColor ?? 'fg') : 'muted',
+          background: active ? 'focusRing' : 'pillBg',
+          hover: { background: 'focusRing' },
+        };
     const field: Node = {
       ...Text({ text: this.selectionText(), style: fieldStyle }),
       id: this.id,
@@ -498,6 +515,7 @@ export class Dropdown implements Component {
         });
       } else {
         const visible = Math.min(this.lines.length, this.rows);
+        const scrollable = this.lines.length > this.rows;
         const listRows = this.lines.slice(this.scroll, this.scroll + visible).map(({ match, text }) => {
           const activeRow = match === this.highlight;
           const row: Node = {
@@ -505,7 +523,7 @@ export class Dropdown implements Component {
               text,
               id: this.id + '-option-' + (this.matches[match]?.item ?? match),
               style: {
-                width: this.width - 1,
+                width: this.width - (scrollable ? 1 : 0),
                 padding: [0, 1],
                 color: activeRow ? 'pillHoverFg' : 'fg',
                 background: activeRow ? 'pillHoverBg' : 'pillBg',
@@ -538,6 +556,13 @@ export class Dropdown implements Component {
       }
     }
 
-    return Box({ flexDirection: 'column', alignItems: 'stretch', width: this.width }, children);
+    // Bare: shrink the column to the field's content width (so the caret hugs the
+    // label); the option list is an absolute overlay and keeps its own `width`.
+    return Box(
+      bare
+        ? { flexDirection: 'column', alignItems: 'start' }
+        : { flexDirection: 'column', alignItems: 'stretch', width: this.width },
+      children,
+    );
   }
 }

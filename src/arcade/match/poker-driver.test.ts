@@ -16,9 +16,9 @@ test('duplicate poker slugs reach the live player-strip view with visible indice
 
   match.start(
     [
-      { kind: 'ai', model: 'anthropic/claude-haiku-4.5' },
-      { kind: 'ai', model: 'anthropic/claude-haiku-4.5' },
-      { kind: 'ai', model: 'openai/gpt-5.4' },
+      { kind: 'ai', model: 'anthropic/claude-haiku-4.5', runtime: 'text' },
+      { kind: 'ai', model: 'anthropic/claude-haiku-4.5', runtime: 'text' },
+      { kind: 'ai', model: 'openai/gpt-5.4', runtime: 'text' },
     ],
     { stack: 1_000 },
   );

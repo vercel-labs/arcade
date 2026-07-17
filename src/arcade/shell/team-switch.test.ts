@@ -21,6 +21,7 @@ describe('Vercel account settings', () => {
       { kind: 'loaded' },
       { onClose: noop, onSignIn: noop, onBack: noop, onLogout: () => (loggedOut = true) },
     );
+    assert.equal(root.children?.[0]?.style.width, 54, 'account card is wide enough for team names and slugs');
     const button = find(root, 'team-logout');
     assert.ok(button, 'expected the logout button');
     button.onClick?.();

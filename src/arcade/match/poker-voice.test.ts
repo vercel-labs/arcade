@@ -71,6 +71,7 @@ function rig(botSeat: number, humanSeat: number, heroTurn = false) {
   };
   const state = new HoldemState({ stacks: [1000, 1000], button: 0, smallBlind: 10, bigBlind: 20 });
   const sent: string[] = [];
+  const openedModels: string[] = [];
   const listeners: Record<string, (a?: unknown) => void> = {};
   const socket: RealtimeSocket = { send: (d) => sent.push(d), close: () => {}, on: (ev, cb) => { listeners[ev] = cb; } };
   const codec: RealtimeCodec = { serializeClientEvent: (e) => e, parseServerEvent: (d) => d };
@@ -78,7 +79,8 @@ function rig(botSeat: number, humanSeat: number, heroTurn = false) {
   const staged: (PokerAction | null)[] = [];
   const committed: PokerAction[] = [];
   const scene: PokerVoiceScene = { state: () => state, heroToAct: () => hero, commitHumanAction: (a) => committed.push(a) };
-  const open = async (_m: string, handlers: RealtimeHandlers): Promise<RealtimeSession> => {
+  const open = async (model: string, handlers: RealtimeHandlers): Promise<RealtimeSession> => {
+    openedModels.push(model);
     const s = new RealtimeSession(codec, socket, handlers);
     listeners.open?.();
     return s;
@@ -88,8 +90,8 @@ function rig(botSeat: number, humanSeat: number, heroTurn = false) {
       scene,
       botSeat,
       humanSeat,
-      botModel: 'anthropic/claude-haiku-4.5',
-      botLabel: 'claude-haiku-4.5',
+      botModel: 'openai/gpt-realtime-1.5',
+      botLabel: 'gpt-realtime-1.5',
       onChat: (text, speaker, opts) => chat.push({ text, speaker, event: opts?.event }),
       onStage: (a) => staged.push(a),
       requestRender: () => {},
@@ -99,7 +101,7 @@ function rig(botSeat: number, humanSeat: number, heroTurn = false) {
   );
   const recv = (obj: unknown): void => listeners.message?.(JSON.stringify(obj));
   const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
-  return { state, voice, sent, recv, flush, chat, staged, committed, setHero };
+  return { state, voice, sent, recv, flush, chat, staged, committed, openedModels, setHero };
 }
 
 test('bot turn pushes ONLY the bot\'s own view (no human hole cards) and a tool call resolves the move', async () => {
@@ -107,6 +109,7 @@ test('bot turn pushes ONLY the bot\'s own view (no human hole cards) and a tool 
   const humanSeat = 0;
   const r = rig(botSeat, humanSeat);
   await r.voice.start();
+  assert.deepEqual(r.openedModels, ['openai/gpt-realtime-1.5']);
 
   const pending = r.voice.player().chooseAction(r.state);
   await r.flush();
@@ -168,7 +171,7 @@ test('chat: bot lines carry the model slug (wisp-colored), human lines are tagge
 
   const bot = r.chat.find((c) => c.text === 'Nice flop.');
   const human = r.chat.find((c) => c.text === 'you got lucky pal');
-  assert.ok(bot && bot.speaker === 'anthropic/claude-haiku-4.5' && !bot.event, 'bot line uses the model slug (not an event)');
+  assert.ok(bot && bot.speaker === 'openai/gpt-realtime-1.5' && !bot.event, 'bot line uses the selected realtime slug');
   assert.ok(human && human.speaker === 'You' && !human.event, 'human speech is tracked as a "You" line');
   r.voice.close();
 });

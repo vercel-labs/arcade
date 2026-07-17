@@ -13,6 +13,7 @@ import {
   AudioLog,
   AUDIO_RATE,
   openRealtime,
+  REALTIME_MODELS,
   pcm16Peak,
   VoiceDuplex,
   type RealtimeHandlers,
@@ -28,17 +29,9 @@ import type { KeyEvent } from '../../platform/input.ts';
 // VAD segments your turns, the model replies with streamed audio, and speaking
 // over it (barge-in) cuts the reply off. Without a mic it degrades to type-to-talk
 // with streamed (or, with only afplay, buffered) playback. The realtime plumbing
-// lives in src/ai/{realtime-session,audio-in,audio-out}.ts.
+// lives in src/voice/{realtime-session,audio-in,audio-out}.ts.
 
-// The gateway's realtime (speech-to-speech) models — GET /v1/models filtered to
-// type:"realtime". Creator = id.split('/')[0], which drives the wisp logo/tint.
-const REALTIME_MODELS = [
-  'openai/gpt-realtime-2',
-  'openai/gpt-realtime-1.5',
-  'openai/gpt-realtime-mini',
-  'xai/grok-voice-think-fast-1.0',
-];
-
+// The shared realtime-model inventory drives this scene's model cycle and wisp creator.
 const FOVY = (50 * Math.PI) / 180;
 const RATE = AUDIO_RATE; // PCM16 sample rate shared by input + output audio
 const PANEL_BG: RGB = [12, 14, 20];
@@ -82,7 +75,7 @@ export class AudioScene {
   }
 
   private get modelId(): string {
-    return REALTIME_MODELS[this.modelIndex];
+    return REALTIME_MODELS[this.modelIndex].id;
   }
   private get creator(): string {
     return this.modelId.split('/')[0] ?? this.modelId;
