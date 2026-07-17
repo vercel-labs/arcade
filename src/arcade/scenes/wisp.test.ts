@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { analyzeLogo, decodePng, markCoverage, type Texture } from '../../engine/index.ts';
+import { analyzeLogo, bakeMarkAlpha, decodePng, markCoverage, type Texture } from '../../engine/index.ts';
 import { asset } from '../assets.ts';
 import { creators } from '../match/models.ts';
 import { deriveTint, FALLBACK_CREATOR_TINT, loadCreatorWisp, mulberry32 } from './wisp.ts';
@@ -46,6 +46,12 @@ test('every selectable creator yields a non-empty wisp mark (logo or fallback in
     for (let i = 3; i < wisp.tex.data.length; i += 4) if (wisp.tex.data[i] > 128) covered++;
     assert.ok(covered > 200, `${slug} should render a visible mark (got ${covered} covered texels)`);
   }
+});
+
+test('Anthropic wisps use the iconic Claude mark instead of the company AI mark', () => {
+  const wisp = loadCreatorWisp('anthropic', 0, mulberry32(1));
+  const claude = bakeMarkAlpha(logo('claude'));
+  assert.deepEqual(wisp.tex.data, claude.data);
 });
 
 test('ByteDance (transparent multi-color): all bars survive despite the phantom-corner color', () => {

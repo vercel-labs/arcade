@@ -156,6 +156,10 @@ export class ChessGameScene {
   // is keyed by its captor for jailSlot().
   private whiteJail: { type: number; color: Color }[] = [];
   private blackJail: { type: number; color: Color }[] = [];
+  // Human plays Black → render the board 180°-rotated (Black on the near, well-lit side)
+  // with the camera + light fixed, so the human isn't stuck viewing from the dim far side.
+  // Purely presentational: a 180° turn preserves square colors, so queens stay on color.
+  private flipped = false;
   // Dirty-flag rendering: the scene is static between interactions (no camera
   // auto-orbit), so the orchestrator can skip re-rendering and re-writing an
   // unchanged frame. Set on any camera/selection change; stays set while a move
@@ -237,7 +241,10 @@ export class ChessGameScene {
   private squareCenter(sq: number): Vec3 {
     const file = sq & 7;
     const rank = sq >> 4;
-    return { x: (file - 3.5) * this.square, y: 0, z: (3.5 - rank) * this.square };
+    const x = (file - 3.5) * this.square;
+    const z = (3.5 - rank) * this.square;
+    // Flipped (human plays Black): a 180° turn about the board center, i.e. negate x and z.
+    return this.flipped ? { x: -x, y: 0, z: -z } : { x, y: 0, z };
   }
 
   // World position of a captured piece's parking slot, for the given captor's
@@ -254,7 +261,9 @@ export class ChessGameScene {
     // Row 0 aligns just inside the front-right corner, a touch ahead of h1's
     // center; successive rows step back toward h8.
     const z = edge - (JAIL_STEP * sq) / 2 - row * JAIL_STEP * sq;
-    return captor === WHITE ? { x, y: 0, z } : { x: -x, y: 0, z: -z };
+    const slot = captor === WHITE ? { x, y: 0, z } : { x: -x, y: 0, z: -z };
+    // Jails rotate with the board when flipped, so the human's captures stay near them.
+    return this.flipped ? { x: -slot.x, y: 0, z: -slot.z } : slot;
   }
 
   // ── Camera passthrough ─────────────────────────────────────────────────────
@@ -346,6 +355,7 @@ export class ChessGameScene {
     this.deselect();
     this.anim = null;
     this.pendingPromo = null;
+    this.cam.reset(); // snap back to the default view — a new match/game starts unrotated
     this.dirty = true;
     pending?.(); // wake the awaiter (microtask) so a cancelled match can finish unwinding
   }
@@ -362,6 +372,9 @@ export class ChessGameScene {
     this.blackWisp = black ? this.loadHudWisp(black, 1.7) : null;
     this.matchActive = true;
     this.matchPaused = false;
+    // Human plays Black (black seat human, white AI) → flip so the human's pieces sit on
+    // the near, well-lit side and the AI is across the board (camera + light unchanged).
+    this.flipped = black === null && white !== null;
     this.dirty = true;
   }
 
@@ -370,6 +383,7 @@ export class ChessGameScene {
   resetGame(): void {
     this.resetBoard();
     this.matchActive = false;
+    this.flipped = false; // free play is always White's (well-lit) view
   }
 
   // Load a creator's HUD wisp, falling back to its initial in neutral grey when
@@ -505,8 +519,14 @@ export class ChessGameScene {
     if (Math.abs(dir.y) < 1e-6) return -1;
     const t = -eye.y / dir.y;
     if (t <= 0) return -1;
-    const file = Math.floor((eye.x + dir.x * t) / this.square + 4);
-    const rank = Math.floor(4 - (eye.z + dir.z * t) / this.square);
+    // World hit point → square. When flipped the render negates x/z, so negate the
+    // hit point back before mapping, keeping clicks aligned with what's drawn.
+    const hx = eye.x + dir.x * t;
+    const hz = eye.z + dir.z * t;
+    const wx = this.flipped ? -hx : hx;
+    const wz = this.flipped ? -hz : hz;
+    const file = Math.floor(wx / this.square + 4);
+    const rank = Math.floor(4 - wz / this.square);
     if (file < 0 || file > 7 || rank < 0 || rank > 7) return -1;
     return rank * 16 + file;
   }

@@ -45,7 +45,7 @@ const PAD = 0.07; // paper margin inside the bezel so the art doesn't hug the ed
 // scaling it up — front art → back title — zooming until the bezel leaves frame,
 // then holding the full-screen title before the game opens.
 const LAUNCH_FLIP = 1.0; // seconds for the flip + zoom-in
-const LAUNCH_HOLD = 1.0; // seconds holding the full-screen title
+const LAUNCH_HOLD = 0.5; // seconds holding the full-screen title
 export const LAUNCH_TOTAL = LAUNCH_FLIP + LAUNCH_HOLD;
 const LAUNCH_SCALE_END = 3.8; // quad scale at full zoom (bezel pushed off-screen)
 const LAUNCH_TITLE_PX = 12; // texels per font pixel in the back-face title texture

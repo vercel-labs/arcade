@@ -151,20 +151,20 @@ test('Dropdown searchable: cursor is hidden initially, filled on focus, and hidd
   screen.pointerDown(3, 1);
   ok(combo.open && combo.query === '', 'clicking the committed field opens the list without activating search');
   relayout();
-  assert.notDeepEqual(screen.snapshot(() => {}).getCell(3, 1)?.bg, [131, 165, 152], 'the search placeholder has no cursor');
+  assert.notDeepEqual(screen.snapshot(() => {}).getCell(1, 1)?.bg, [131, 165, 152], 'the search placeholder has no cursor');
 
-  screen.pointerDown(4, 2); // first query boundary, after the icon
+  screen.pointerDown(2, 2); // first query boundary
   ok(combo.caret === 0, 'clicking search activates a real empty input buffer');
   relayout();
-  const focused = screen.snapshot(() => {}).getCell(3, 1);
+  const focused = screen.snapshot(() => {}).getCell(1, 1);
   assert.deepEqual(focused?.bg, [131, 165, 152], 'focused cursor is a filled #83A598 cell');
 
   for (const c of 'abc') screen.handleKey(ch(c));
   ok(combo.query === 'abc' && combo.caret === 3, 'typing advances the search cursor');
   relayout();
-  assert.deepEqual(screen.snapshot(() => {}).getCell(6, 1)?.bg, [131, 165, 152], 'cursor stays immediately after typed text');
+  assert.deepEqual(screen.snapshot(() => {}).getCell(4, 1)?.bg, [131, 165, 152], 'cursor stays immediately after typed text');
 
-  screen.pointerDown(5, 2); // query boundary between a and b
+  screen.pointerDown(3, 2); // query boundary between a and b
   ok(combo.caret === 1, 'clicking between query characters places the cursor at that boundary');
   screen.handleKey(ch('X'));
   ok(combo.query === 'aXbc' && combo.caret === 2, 'typing inserts at the clicked position and advances the cursor');
@@ -178,7 +178,7 @@ test('Dropdown searchable: cursor is hidden initially, filled on focus, and hidd
 
   screen.setFocus(null);
   relayout();
-  assert.notDeepEqual(screen.snapshot(() => {}).getCell(3, 1)?.bg, [131, 165, 152], 'blur removes the cyan cursor cell');
+  assert.notDeepEqual(screen.snapshot(() => {}).getCell(1, 1)?.bg, [131, 165, 152], 'blur removes the cyan cursor cell');
   ok(combo.query === '' && !combo.open, 'blur clears the transient filter and closes the list');
 });
 
@@ -194,7 +194,7 @@ test('Dropdown searchable: filtering never mutates the committed selection', () 
   screen.pointerDown(5, 1);
   ok(combo.open && combo.query === '', 'opening preserves the committed value and starts with all options');
   relayout();
-  screen.pointerDown(4, 2);
+  screen.pointerDown(2, 2);
   for (const c of 'Mini') screen.handleKey(ch(c));
   const field = combo.build().children?.[0];
   ok(combo.value === 'GPT-5' && combo.query === 'Mini' && field?.text?.startsWith('GPT-5') === true, 'a partial filter never replaces the closed-field selection');
@@ -209,7 +209,7 @@ test('Dropdown searchable: search row is sticky above seven scrolling options', 
   const before = combo.build().children ?? [];
   const search = before.find((node) => node.id === 'sticky-combo-search');
   const list = before.find((node) => node.overlay && node.children?.length === 7);
-  ok(search?.text === '⌕ Search' && search.style.top === 1, 'search is the first sticky dropdown row');
+  ok(search?.text === 'Search' && search.style.top === 1, 'search is the first sticky dropdown row');
   ok(list?.style.top === 2 && list.children?.length === 7, 'exactly seven option rows render below search');
   const firstBefore = list?.children?.[0]?.id;
 
@@ -217,7 +217,7 @@ test('Dropdown searchable: search row is sticky above seven scrolling options', 
   const after = combo.build().children ?? [];
   const stickySearch = after.find((node) => node.id === 'sticky-combo-search');
   const scrolledList = after.find((node) => node.overlay && node.children?.length === 7);
-  ok(stickySearch?.text === '⌕ Search' && scrolledList?.children?.[0]?.id !== firstBefore, 'scrolling options does not move the search row');
+  ok(stickySearch?.text === 'Search' && scrolledList?.children?.[0]?.id !== firstBefore, 'scrolling options does not move the search row');
 });
 
 test('Dropdown searchable: field and option mouse targets are independent', () => {

@@ -7,13 +7,14 @@
 // mounted via Slot, rebuilt into a full-screen tree each frame. main owns the scene +
 // driver and wires the handlers; this module owns the controls + the table furniture.
 
-import { Box, Button, CloseButton, Dialog, Input, Modal, type Row, ScrollBox, Slider, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
+import { Box, Button, CloseButton, Dialog, Input, Modal, type Row, RoundedButton, ScrollBox, Slider, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
 import type { RGB } from '../../../engine/index.ts';
 import { type Card, isRed, RANK_LABELS } from '../../../rules/poker/cards.ts';
 import type { SeatCardView, TableView } from './poker-scene.ts';
 import { creatorTint } from '../../scenes/wisp.ts';
 import { ChatBox, type ChatMessage, CHAT_WIDTH, PANEL_PAD_L, PANEL_PAD_R, wrapText } from '../chess/chat.ts';
 import { shortModel } from '../chess/hud.ts';
+import { UI_CHROME_PILL, uiChromeBg } from '../../theme.ts';
 
 // The hero's decision context for this frame (from the live HoldemState). When
 // `toAct` is false the betting controls are hidden.
@@ -198,27 +199,13 @@ function centerLabel(s: string, w: number): string {
 }
 
 // The bottom-left corner controls: a green "new match" go button on the idle table,
-// which becomes a green "start" + a grey "cancel" while the settings panel is open.
-// "start" dims (no onClick) until every shown seat has a committed model.
-const MATCH_NEW: Style = {
-  padding: [0, 3],
-  background: [40, 84, 58],
-  color: [226, 240, 230],
-  bold: true,
-  hover: { background: [54, 108, 74] },
-  focus: { background: [54, 108, 74] },
-  pressed: { background: [72, 128, 92] },
-};
-const MATCH_OFF: Style = { padding: [0, 3], background: [34, 36, 44], color: [110, 114, 126], bold: true };
-const MATCH_CANCEL: Style = {
-  padding: [0, 3],
-  background: [44, 46, 56],
-  color: [212, 214, 224],
-  bold: true,
-  hover: { background: [72, 76, 92] },
-  focus: { background: [72, 76, 92] },
-  pressed: { background: [96, 100, 116] },
-};
+// which becomes a green "start" + a neutral "cancel" while the settings panel is open.
+// "start" dims (no onClick) until every shown seat has a committed model. Rounded
+// (outlined) treatment — hover/focus whiten the border + label (see tui/button.ts).
+const MATCH_GO: RGB = [120, 205, 142]; // ready-to-go green (shared look with chess setup)
+const MATCH_OFF_FG: RGB = [110, 114, 126]; // dim, inert "start" before every seat is set
+const MATCH_NEUTRAL: RGB = [212, 214, 224]; // cancel label
+const MATCH_NEUTRAL_BORDER: RGB = [88, 92, 110]; // cancel border at rest
 
 // The bottom-left corner controls for this frame (null → none, e.g. mid-session).
 // `setup` picks the shape: false → a single green "new match"; true → a green "start"
@@ -301,7 +288,7 @@ function bettingControls(hero: HeroContext): Node {
   // A voice-confirm callout sits above everything when an action is staged from speech.
   const voicePrompt: Node[] = voiceStage
     ? [
-        Box({ padding: [0, 1], background: [22, 24, 32, 0.94] }, [
+        Box({ padding: [0, 1], background: uiChromeBg(0.94) }, [
           Text({ text: `say "yes" to confirm the ${voiceStage}`, style: { color: [232, 210, 140], bold: true } }),
         ]),
       ]
@@ -348,15 +335,6 @@ function cardCell(card: Card | null, placeholder: string): Node {
 // The two top-right pills: a hamburger glyph + "menu", and plain "chat" text (no icon —
 // a width-2 speech-bubble glyph left a stray continuation cell past the pill edge).
 const MENU_ICON = '☰'; // U+2630 — three stacked lines
-const CHAT_PILL: Style = {
-  padding: [0, 1],
-  background: [40, 42, 52],
-  color: [212, 214, 224],
-  bold: true,
-  hover: { background: [86, 90, 108], color: [248, 248, 252] },
-  focus: { background: [86, 90, 108], color: [248, 248, 252] },
-  pressed: { background: [120, 124, 142], color: [12, 12, 18] },
-};
 
 // ── Notes modal (opponent reads) ─────────────────────────────────────────────────
 // A centered modal listing one AI seat's private reads on every other player, paged
@@ -483,7 +461,16 @@ function seatTint(creator?: string): RGB {
 export function fitPlayerName(name: string, stack: number, badge: string): string {
   const max = Math.max(1, STRIP_W - money(stack).length - badge.length - 2);
   const chars = [...name];
-  return chars.length <= max ? name : `${chars.slice(0, Math.max(0, max - 1)).join('')}…`;
+  if (chars.length <= max) return name;
+  // Duplicate-model indices carry the identity, so preserve the trailing " (2)" and
+  // ellipsize the base slug instead of cutting the suffix off a long HUD label.
+  const suffix = name.match(/ \(\d+\)$/)?.[0] ?? '';
+  const suffixChars = [...suffix];
+  if (suffixChars.length > 0 && suffixChars.length < max) {
+    const baseChars = [...name.slice(0, -suffix.length)];
+    return `${baseChars.slice(0, Math.max(0, max - suffixChars.length - 1)).join('')}…${suffix}`;
+  }
+  return `${chars.slice(0, Math.max(0, max - 1)).join('')}…`;
 }
 
 // One player strip, two rows. Top: name (far left) with the chip count directly to its
@@ -493,10 +480,13 @@ export function fitPlayerName(name: string, stack: number, badge: string): strin
 // won). The seat to act gets a lit background; folded seats dim.
 function playerStrip(s: SeatCardView, ended: boolean): Node {
   const win = ended && s.award > 0; // the hand is over and this seat took (a share of) the pot
+  // The engine's stack is post-bet, pre-award; add the pot just won so the displayed total
+  // jumps to the new bankroll at hand end (award is 0 during play, so this is a no-op then).
+  const total = s.stack + s.award;
   const badgeText = s.eliminated ? 'eliminated' : s.pos;
   const left = Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [
-    Text({ text: fitPlayerName(s.name, s.stack, badgeText), style: { color: win ? WIN_INK : s.folded ? DIM_FG : seatTint(s.creator), bold: true } }),
-    Text({ text: money(s.stack), style: { color: win ? WIN_INK : s.folded ? DIM_FG : CHIP_FG, bold: true } }),
+    Text({ text: fitPlayerName(s.name, total, badgeText), style: { color: win ? WIN_INK : s.folded ? DIM_FG : seatTint(s.creator), bold: true } }),
+    Text({ text: money(total), style: { color: win ? WIN_INK : s.folded ? DIM_FG : CHIP_FG, bold: true } }),
   ]);
   // Top-right badge: "eliminated" (greyed) for a busted seat sitting out, else its
   // blind/button position for the hand.
@@ -515,7 +505,7 @@ function playerStrip(s: SeatCardView, ended: boolean): Node {
   const cardRow = Box({ flexDirection: 'row', gap: 1, alignItems: 'center', width: STRIP_W }, [...cells, ...info]);
 
   // Winner → gold; the seat to act → lit; everyone else → the base slate.
-  const bg: [number, number, number, number] = win ? [...WIN_BG, 1] : s.toAct ? [46, 52, 72, 0.96] : [22, 24, 32, 0.9];
+  const bg: [number, number, number, number] = win ? [...WIN_BG, 1] : s.toAct ? [46, 52, 72, 0.96] : uiChromeBg(0.9);
   return Box({ flexDirection: 'column', gap: 0, padding: [0, 1], background: bg }, [header, cardRow]);
 }
 
@@ -542,7 +532,7 @@ function boardPanel(v: TableView | null): Node {
   ]);
   const cells = Array.from({ length: 5 }, (_, i) => cardCell(i < shown && i < board.length ? board[i] : null, '??'));
   const cardRow = Box({ flexDirection: 'row', gap: 1, alignItems: 'center', width: STRIP_W }, cells);
-  return Box({ flexDirection: 'column', gap: 0, padding: [0, 1], background: [22, 24, 32, 0.92] }, [header, cardRow]);
+  return Box({ flexDirection: 'column', gap: 0, padding: [0, 1], background: uiChromeBg(0.92) }, [header, cardRow]);
 }
 
 // ── Top-centre banners (community deal + end-of-hand winner) ─────────────────────
@@ -565,9 +555,16 @@ function resultBanner(text: string): Node {
   return Text({ text, style: { color: WIN_TEXT, bold: true } });
 }
 
-// The "press any key to continue" prompt shown one row under whichever banner is up. Only
-// a keypress advances — the mouse stays free to orbit/zoom the scene while it's showing.
-const CONTINUE_TEXT = 'press any key to continue';
+// Countdown is primary; the brighter keycap is the immediate action.
+function continuePrompt(nextHand: boolean, seconds: number | null | undefined): Node {
+  const state = nextHand ? 'next hand' : 'action resumes';
+  const action = nextHand ? 'deal now' : 'resume now';
+  return Box({ flexDirection: 'row', gap: 0, alignItems: 'center' }, [
+    ...(seconds != null ? [Text({ text: `${state} in ${seconds}  ·  `, style: { color: 'muted' } })] : []),
+    Text({ text: '[space]', style: { color: 'fg', bold: true } }),
+    Text({ text: ` ${action}`, style: { color: 'muted' } }),
+  ]);
+}
 
 // The chat panel: a "Chat" header with a ✕ (collapse) at its far right, over the scrollable
 // thread, sized to `height` so it fills the rail above the hand. The header's right padding
@@ -580,7 +577,7 @@ function chatPanel(height: number, active: boolean, onToggle: () => void): Node 
     Text({ text: 'chat', style: { color: [222, 224, 234], bold: true } }),
     CloseButton({ id: 'poker-chat-close', onClick: onToggle }),
   ]);
-  return Box({ flexDirection: 'column', width: RAIL_W, height, padding: [CHAT_PAD_V, PANEL_PAD_R, CHAT_PAD_V, PANEL_PAD_L], background: [22, 24, 32, 0.9] }, [
+  return Box({ flexDirection: 'column', width: RAIL_W, height, padding: [CHAT_PAD_V, PANEL_PAD_R, CHAT_PAD_V, PANEL_PAD_L], background: uiChromeBg(0.9) }, [
     header,
     Box({ height: 1 }),
     Slot('poker-chat'),
@@ -618,7 +615,7 @@ export function buildPokerGameRoot(
     hideHud: boolean; // during a community-deal cinematic: hide all but the top-right pills + rail
     cineLabel: { label: string; cards: Card[] } | null; // top-centre "Board" + cards during that cinematic
     resultLabel: string | null; // top-centre end-of-hand winner line (over the visible table)
-    awaitingContinue: boolean; // show the "click anywhere to continue" prompt under the banner
+    awaitingContinue: boolean; // show the timed Space prompt under the banner
     continueIn?: number | null; // seconds left before the gate auto-advances (null → no countdown shown)
   },
 ): Node {
@@ -633,7 +630,7 @@ export function buildPokerGameRoot(
   const label = c ? (c.model ? `${shortModel(c.model)}:  ${c.text}` : c.text) : opts.status;
   const toast =
     !hide && label
-      ? Box({ padding: [0, 2], background: [22, 24, 32, 0.94] }, [Text({ text: label, style: { color: c ? 'fg' : 'muted' } })])
+      ? Box({ padding: [0, 2], background: uiChromeBg(0.94) }, [Text({ text: label, style: { color: c ? 'fg' : 'muted' } })])
       : null;
 
   const controls = !hide && opts.hero.toAct ? bettingControls(opts.hero) : null;
@@ -649,12 +646,12 @@ export function buildPokerGameRoot(
   // the chat is OPEN the rail is a separate column and this band spans only `mainW`, so the
   // menu pill lands flush against the left edge of the chat panel — exactly where we want
   // it. The chat pill's ✕ (in the open panel's header) handles collapse, so it drops here.
-  const menuPill = Button({ id: 'poker-menu', label: `${MENU_ICON} menu`, onClick: opts.onOpenMenu, style: CHAT_PILL });
+  const menuPill = Button({ id: 'poker-menu', label: `${MENU_ICON} menu`, onClick: opts.onOpenMenu, style: UI_CHROME_PILL });
   // The notes pill sits between menu and chat, shown whenever a session is live (both when
   // the human plays and when spectating an all-AI table).
-  const notesPill = opts.active ? Button({ id: 'poker-notes', label: 'reads', onClick: opts.onOpenNotes, style: CHAT_PILL }) : null;
+  const notesPill = opts.active ? Button({ id: 'poker-notes', label: 'reads', onClick: opts.onOpenNotes, style: UI_CHROME_PILL }) : null;
   const chatPill =
-    opts.active && !opts.chatOpen ? Button({ id: 'poker-chat-open', label: 'chat', onClick: opts.onToggleChat, style: CHAT_PILL }) : null;
+    opts.active && !opts.chatOpen ? Button({ id: 'poker-chat-open', label: 'chat', onClick: opts.onToggleChat, style: UI_CHROME_PILL }) : null;
   const rightCluster = Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [menuPill, ...(notesPill ? [notesPill] : []), ...(chatPill ? [chatPill] : [])]);
   // The top-left slot holds the pot pill in a session, or the new-match settings panel
   // while it's open (they never coexist — the panel only shows on the idle table).
@@ -671,11 +668,13 @@ export function buildPokerGameRoot(
   const matchBtn = !mc
     ? []
     : !mc.setup
-      ? [Button({ id: 'poker-match', label: 'new match', onClick: mc.onPrimary, style: MATCH_NEW })]
+      ? [RoundedButton({ id: 'poker-match', label: 'new match', onClick: mc.onPrimary, color: MATCH_GO, padding: [0, 3] })]
       : [
           Box({ flexDirection: 'row', gap: 2 }, [
-            Button({ id: 'poker-start', label: 'start', onClick: mc.onPrimary, style: mc.onPrimary ? MATCH_NEW : MATCH_OFF }),
-            Button({ id: 'poker-cancel', label: 'cancel', onClick: mc.onCancel, style: MATCH_CANCEL }),
+            mc.onPrimary
+              ? RoundedButton({ id: 'poker-start', label: 'start', onClick: mc.onPrimary, color: MATCH_GO, padding: [0, 3] })
+              : RoundedButton({ id: 'poker-start', label: 'start', color: MATCH_OFF_FG, padding: [0, 3] }),
+            RoundedButton({ id: 'poker-cancel', label: 'cancel', onClick: mc.onCancel, color: MATCH_NEUTRAL, borderColor: MATCH_NEUTRAL_BORDER, padding: [0, 3] }),
           ]),
         ];
 
@@ -703,15 +702,15 @@ export function buildPokerGameRoot(
 
   // The top-centre banner floats over the main column (an absolute row so it doesn't disturb
   // the top-right pills): the community-deal street+cards while the cinematic hides the HUD,
-  // or the end-of-hand winner line over the still-visible table. A "click anywhere to
-  // continue" prompt sits one row beneath it while the scene is awaiting the gesture.
+  // or the end-of-hand winner line over the still-visible table. Its contextual countdown
+  // and Space action sit one row beneath it.
   const bannerBody = hide && opts.cineLabel ? cineBanner(opts.cineLabel.label, opts.cineLabel.cards) : opts.resultLabel ? resultBanner(opts.resultLabel) : null;
   const banner = bannerBody
     ? Box({ position: 'absolute', top: 1, left: 0, width: mainW }, [
         Box({ flexDirection: 'column', alignItems: 'center', gap: 0, width: mainW }, [
           bannerBody,
           ...(opts.awaitingContinue
-            ? [Text({ text: opts.continueIn != null ? `continuing in ${opts.continueIn}…  ·  press any key` : CONTINUE_TEXT, style: { color: 'muted' } })]
+            ? [continuePrompt(opts.resultLabel !== null, opts.continueIn)]
             : []),
         ]),
       ])

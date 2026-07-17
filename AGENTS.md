@@ -80,8 +80,8 @@ ignore inherited keys and require no pasted credential.
 Tokens persist at `~/.config/arcade/auth.json` (0600); the minted key is **not**
 stored — it's re-derived each launch. Reuses the Vercel CLI's public OAuth client
 (`CLIENT_ID` in [src/auth/vercel-auth.ts](src/auth/vercel-auth.ts)), the one allow-listed
-to mint gateway keys. In-app: `s` switch team, `o` (menu) sign out; flags
-`--login` / `--switch-team` / `--logout`. Auth lives in `src/auth/{env,vercel-auth,
+to mint gateway keys. In-app: switch team + sign out live in the home menu / account
+modal (no key bindings); flags `--login` / `--switch-team` / `--logout`. Auth lives in `src/auth/{env,vercel-auth,
 vercel-api,gateway-key}.ts`; `src/platform/open-browser.ts` opens the browser.
 
 ## Deploying the curl prism

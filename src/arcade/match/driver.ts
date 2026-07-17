@@ -10,6 +10,7 @@ import { HumanPlayer } from '../../ai/human-player.ts';
 import type { Player } from '../../ai/player.ts';
 import type { ChessGameScene } from '../games/chess/scene.ts';
 import type { Move } from '../../rules/chess/types.ts';
+import { disambiguateLabels } from './labels.ts';
 import { normalizerModel } from './models.ts';
 
 // One side of a match: an AI model (a Gateway slug) or a human at the keyboard.
@@ -18,6 +19,7 @@ import { normalizerModel } from './models.ts';
 export type Seat = { kind: 'ai'; model: string } | { kind: 'human' };
 
 const creatorOf = (slug: string): string => slug.split('/')[0] ?? slug;
+const shortModel = (slug: string): string => slug.slice(slug.indexOf('/') + 1);
 
 export interface AiMatchDeps {
   chessGame: ChessGameScene;
@@ -26,7 +28,7 @@ export interface AiMatchDeps {
   requestRender(): void;
   // Surface a pre-move rationale (main routes it into the chat thread) — the model
   // slug tags the line with its name + creator color.
-  onCommentary(text: string, model: string): void;
+  onCommentary(text: string, model: string, label: string): void;
   // Live illegal-moves flag, read per move by each ModelPlayer.
   allowIllegal(): boolean;
 }
@@ -37,6 +39,10 @@ export class AiMatch {
   // The two players for the current game — kept across a pause so resume continues
   // with them.
   private players: Player<Move>[] | null = null;
+  // Parallel seat identity + resolved display labels. Keeping these separate from the
+  // Player name preserves the full slug for chat color while duplicate labels stay distinct.
+  private seats: Seat[] | null = null;
+  private labels: string[] = [];
   // Halts the loop on the current turn (no thinking/moves) while keeping the match
   // alive.
   private paused = false;
@@ -54,6 +60,8 @@ export class AiMatch {
     this.abort?.abort();
     this.abort = null;
     this.players = null;
+    this.seats = null;
+    this.labels = [];
     this.paused = false;
     this.deps.chessGame.setMatchPaused(false);
     this.deps.chessGame.endMatch();
@@ -72,7 +80,11 @@ export class AiMatch {
     runMatch<Move>(this.deps.chessGame, this.players, {
       signal: ctrl.signal,
       onCommentary: (text, player) => {
-        this.deps.onCommentary(text, player.name);
+        const index = this.players?.indexOf(player) ?? -1;
+        const seat = index >= 0 ? this.seats?.[index] : null;
+        const model = seat?.kind === 'ai' ? seat.model : player.name;
+        const label = index >= 0 ? (this.labels[index] ?? shortModel(model)) : shortModel(model);
+        this.deps.onCommentary(text, model, label);
       },
     })
       .catch(() => {}) // aborted mid-decision (pause/stop) — fine
@@ -91,6 +103,8 @@ export class AiMatch {
   // HumanPlayer and a ModelPlayer are interchangeable in `runMatch`. Human sides get
   // no wisp (beginMatch is passed null for them).
   start(white: Seat, black: Seat): void {
+    this.seats = [white, black];
+    this.computeLabels();
     this.deps.chessGame.beginMatch(
       white.kind === 'ai' ? creatorOf(white.model) : null,
       black.kind === 'ai' ? creatorOf(black.model) : null,
@@ -110,6 +124,16 @@ export class AiMatch {
     return new ModelPlayer<Move>({ model: seat.model, gameName: 'chess', allowIllegal: this.deps.allowIllegal, normalizer: normalizerModel() });
   }
 
+  private computeLabels(): void {
+    this.labels = disambiguateLabels(
+      (this.seats ?? []).map((seat, index) =>
+        seat.kind === 'human'
+          ? { key: `human:${index}`, label: 'you' }
+          : { key: seat.model, label: shortModel(seat.model) },
+      ),
+    );
+  }
+
   // Swap one side's player mid-match (the in-game model switch): rebuild that
   // side's ModelPlayer in place, so the next turn is decided by the new model.
   // The caller pauses first (cancelling any in-flight thinking for a clean
@@ -117,6 +141,8 @@ export class AiMatch {
   setPlayer(index: number, model: string): void {
     if (!this.players || index < 0 || index >= this.players.length) return;
     this.players[index] = new ModelPlayer<Move>({ model, gameName: 'chess', allowIllegal: this.deps.allowIllegal, normalizer: normalizerModel() });
+    if (this.seats) this.seats[index] = { kind: 'ai', model };
+    this.computeLabels();
   }
 
   // Pause on whoever's turn it is: cancel the in-flight model call (stop thinking)

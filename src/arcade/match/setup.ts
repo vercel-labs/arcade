@@ -7,11 +7,12 @@
 // only once BOTH sides have a model committed; picking a different creator clears
 // that side's model (re-picking the same creator, or a different model under it,
 // leaves the creator intact).
-import { Box, Button, Dropdown, Modal, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../tui/index.ts';
+import { Box, Dropdown, Modal, RoundedButton, Slot, Text, type LayoutBox, type Node, type Screen } from '../../tui/index.ts';
 import type { RGB } from '../../engine/index.ts';
 import { creators, modelsFor, type ModelInfo } from './models.ts';
 import { creatorTint } from '../scenes/wisp.ts';
 import type { Seat } from './driver.ts';
+import { UI_CHROME_BG } from '../theme.ts';
 
 const CREATORS = creators();
 const CREATOR_LABELS = CREATORS.map((c) => c.name);
@@ -54,6 +55,8 @@ function makeSide(key: 'white' | 'black', idPrefix: string, defaultCreator: stri
   // later user interaction, so the forward reference is safe.
   let side: Side;
   const creatorDropdown = new Dropdown({
+    searchable: true,
+    searchPlaceholder: 'Search',
     id: `${idPrefix}-creator`,
     items: CREATOR_LABELS,
     width: CREATOR_W,
@@ -62,6 +65,8 @@ function makeSide(key: 'white' | 'black', idPrefix: string, defaultCreator: stri
     onSelect: (i) => pickCreator(side, CREATORS[i].slug),
   });
   const modelDropdown = new Dropdown({
+    searchable: true,
+    searchPlaceholder: 'Search',
     id: `${idPrefix}-model`,
     items: [],
     width: MODEL_W,
@@ -91,21 +96,21 @@ const black = makeSide('black', 'setup-black', 'openai', 'openai/gpt-5.4-nano');
 // vs Black is a real choice, unlike a poker seat). It drives the white/black `human`
 // flags: the AI side(s) show model pickers, the human side a short "you". There is no
 // both-human option — human-vs-human is just free-play on the board, so a setup match
-// always has ≥1 AI (which is what the bar's play/pause-AI control assumes). Defaults to
-// Play as White (White moves first — the conventional default).
+// always has ≥1 AI (which is what the bar's play/pause control assumes). "Spectate AI"
+// mirrors poker's mode. Defaults to Play White (White moves first — the conventional default).
 export const modeDropdown = new Dropdown({
   id: 'setup-mode',
-  items: ['Play as White', 'Play as Black', 'Watch AI vs AI'],
-  width: 18,
+  items: ['Play White', 'Play Black', 'Spectate AI'],
+  width: 16,
   index: 0,
   onSelect: () => applyMode(),
 });
 function applyMode(): void {
-  white.human = modeDropdown.index === 0; // Play as White → you are White
-  black.human = modeDropdown.index === 1; // Play as Black → you are Black
-  // index 2 (Watch AI vs AI) → neither side is human
+  white.human = modeDropdown.index === 0; // Play White → you are White
+  black.human = modeDropdown.index === 1; // Play Black → you are Black
+  // index 2 (Spectate AI) → neither side is human
 }
-applyMode(); // seed the default (Play as White) before the first build
+applyMode(); // seed the default (Play White) before the first build
 
 export function mountMatchSetup(ui: Screen): void {
   ui.mount(modeDropdown);
@@ -133,23 +138,13 @@ export function matchSetupSelection(): { white: Seat; black: Seat } | null {
 }
 
 const TITLE_TINT: Record<Side['key'], RGB> = { white: [232, 228, 216], black: [184, 126, 74] };
-const START_ON: Style = {
-  padding: [0, 3],
-  background: [86, 64, 120],
-  color: [238, 230, 250],
-  bold: true,
-  hover: { background: [110, 84, 150] },
-  focus: { background: [110, 84, 150] },
-  pressed: { background: [120, 124, 142] },
-};
-const START_OFF: Style = { padding: [0, 3], background: [34, 36, 44], color: [110, 114, 126], bold: true };
-const CANCEL: Style = {
-  padding: [0, 2],
-  background: [40, 42, 52],
-  color: [212, 214, 224],
-  hover: { background: [72, 76, 92] },
-  focus: { background: [72, 76, 92] },
-};
+// Rounded start/cancel colors (outlined over the board), shared by the match-setup and
+// model-swap popups. Green = ready-to-go (shared look with poker's new-match button); dim
+// grey = not yet ready; neutral = cancel.
+const SETUP_GO: RGB = [120, 205, 142];
+const SETUP_OFF: RGB = [110, 114, 126];
+const SETUP_NEUTRAL: RGB = [212, 214, 224];
+const SETUP_NEUTRAL_BORDER: RGB = [88, 92, 110];
 
 // A side's brand hue (the creator's wisp color), as an RGB tuple for the field.
 function brandTint(side: Side): RGB {
@@ -203,8 +198,12 @@ function sideRow(side: Side): Node {
 // start/cancel controls bottom-left. `onStart` is wired only when both sides are ready.
 export function buildMatchSetup(region: LayoutBox, opts: { onStart: () => void; onCancel: () => void }): Node {
   const ready = matchSetupReady();
-  const start = Button({ id: 'setup-start', label: 'start game', onClick: ready ? opts.onStart : undefined, style: ready ? START_ON : START_OFF });
-  const cancel = Button({ id: 'setup-cancel', label: 'cancel', onClick: opts.onCancel, style: CANCEL });
+  // Rounded (outlined) controls over the board: a green "start" (dim + inert until both
+  // sides are ready) beside a neutral "cancel". Green matches poker's new-match button.
+  const start = ready
+    ? RoundedButton({ id: 'setup-start', label: 'start', onClick: opts.onStart, color: SETUP_GO, padding: [0, 3] })
+    : RoundedButton({ id: 'setup-start', label: 'start', color: SETUP_OFF, padding: [0, 3] });
+  const cancel = RoundedButton({ id: 'setup-cancel', label: 'cancel', onClick: opts.onCancel, color: SETUP_NEUTRAL, borderColor: SETUP_NEUTRAL_BORDER, padding: [0, 3] });
 
   const panel = Box({ flexDirection: 'column', gap: 1, alignItems: 'start' }, [
     Text({ text: 'new match', style: { color: [222, 224, 234], bold: true } }),
@@ -257,9 +256,13 @@ export function swapSetupSelection(): string | null {
 // label ("White"/"Black"); the column tints it via swap.key.
 export function buildSwapSetup(_region: LayoutBox, opts: { title: string; onConfirm: () => void; onCancel: () => void }): Node {
   const ready = swap.modelId !== null;
-  const confirm = Button({ id: 'swap-confirm', label: 'switch', onClick: ready ? opts.onConfirm : undefined, style: ready ? START_ON : START_OFF });
-  const cancel = Button({ id: 'swap-cancel', label: 'cancel', onClick: opts.onCancel, style: CANCEL });
-  const card = Box({ flexDirection: 'column', gap: 1, padding: [1, 3], background: [22, 24, 32] }, [
+  // Rounded controls, matching the match-setup panel: green "switch" once a model is
+  // committed (dim + inert until then), neutral "cancel".
+  const confirm = ready
+    ? RoundedButton({ id: 'swap-confirm', label: 'switch', onClick: opts.onConfirm, color: SETUP_GO, padding: [0, 3] })
+    : RoundedButton({ id: 'swap-confirm', label: 'switch', color: SETUP_OFF, padding: [0, 3] });
+  const cancel = RoundedButton({ id: 'swap-cancel', label: 'cancel', onClick: opts.onCancel, color: SETUP_NEUTRAL, borderColor: SETUP_NEUTRAL_BORDER, padding: [0, 3] });
+  const card = Box({ flexDirection: 'column', gap: 1, padding: [1, 3], background: UI_CHROME_BG }, [
     Box({ justifyContent: 'center' }, [Text({ text: 'switch model', style: { color: [222, 224, 234], bold: true } })]),
     Box({ flexDirection: 'row', justifyContent: 'center' }, [column(swap, opts.title)]),
     Box({ flexDirection: 'row', justifyContent: 'center', gap: 2 }, [confirm, cancel]),

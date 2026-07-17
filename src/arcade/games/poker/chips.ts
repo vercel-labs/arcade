@@ -22,12 +22,12 @@ const DENOMS: Denom[] = [
   { value: 50, base: { x: 48, y: 98, z: 172 }, spot: WHITE }, // blue
   { value: 20, base: { x: 168, y: 46, z: 50 }, spot: WHITE }, // red
   { value: 10, base: WHITE, spot: { x: 58, y: 100, z: 178 } }, // white (blue spots)
+  { value: 1, base: { x: 116, y: 72, z: 142 }, spot: WHITE }, // purple change (rare split-pot remainder)
 ];
-// Players decompose over the no-black set, balanced across denominations (a varied cluster
-// of green/blue/red/white columns, never one dominant tower). The pot / bets use the full
-// set, greedy → a compact black-bottomed pile like a real pot.
-const PLAYER_VALUES = [100, 50, 20, 10];
-const POT_VALUES = [500, 100, 50, 20, 10];
+// Player stacks balance every casino color, including black $500 chips; pots stay greedy
+// so pushed chips remain compact when a visual inventory needs to make change.
+const PLAYER_VALUES = [500, 100, 50, 20, 10];
+const POT_VALUES = [500, 100, 50, 20, 10, 1];
 
 // Chip geometry + stacking (world units; a card is 1.0×1.4 for scale). Sized so a stack of
 // a handful of chips reads as a real little tower from the overview.
@@ -37,12 +37,16 @@ const SEGMENTS = 18; // around; 18 = round enough, and divisible by 6 for even e
 const TICKS = 6; // edge/face spots (the classic six-spot rim)
 const RING_INNER = 0.5; // fraction of R: inner disc radius
 const RING_LINE = 0.64; // fraction of R: outer edge of the inner ring line
-const PLAYER_COL_CAP = 6; // baseline player column height (grows for big stacks; see playerColumns)
-const POT_COL_CAP = 20; // the pot pile can stack tall
-const PILE_SPACING = 0.42; // grid pitch between columns (slightly < a chip Ø → a tight pile)
+const MAX_COLUMNS_PER_COLOR = 2;
+const SECOND_COLUMN_AT = 16; // prefer height; split a color only once its first tower is tall
+const PILE_SPACING = 0.5; // tight initial grid; the collision solve below separates it
 const BASE_Y = 0.02; // bottom chip rests just clear of the felt
 const COL_JIT = 0.07; // per-column world jitter off the grid cell (an unruly pile, not a lattice)
-const CHIP_JIT = 0.03; // per-chip world wobble so a column isn't a perfect cylinder
+const CHIP_JIT = 0.025; // bounded wobble; slightly tighter than the original loose pile
+const COLLISION_GAP = 0.005;
+// Column centers leave room for both chip radii plus the maximum opposing radial
+// wobble. This guarantees that cylinders in neighboring stacks cannot intersect.
+export const CHIP_COLLISION_DISTANCE = 2 * CHIP_R + 2 * CHIP_JIT + COLLISION_GAP;
 
 // One chip mesh per denomination, built once and drawn many. Flat clay disc: top + bottom
 // faces each carry a base disc, a spot-colored ring line, and a base annulus with six
@@ -119,29 +123,52 @@ export interface ChipColumn {
   count: number;
 }
 
-// Greedy decomposition (biggest first), each column capped — a compact, high-denom pile.
-function greedyColumns(amount: number, values: number[], cap: number): ChipColumn[] {
+// Count chips without caring how same-color towers are currently split.
+function countsFor(cols: readonly ChipColumn[], values = POT_VALUES): number[] {
+  return values.map((value) =>
+    cols.reduce((total, col) => total + (col.value === value ? Math.max(0, Math.floor(col.count)) : 0), 0),
+  );
+}
+
+// At most two towers per color. A color stays in one tall tower until SECOND_COLUMN_AT,
+// then divides evenly into two; columns are interleaved by color to avoid solid blocks.
+function columnsFromCounts(counts: readonly number[], values = POT_VALUES): ChipColumn[] {
+  const parts = counts.map((raw) => {
+    const count = Math.max(0, Math.floor(raw));
+    return count > SECOND_COLUMN_AT
+      ? [Math.ceil(count / MAX_COLUMNS_PER_COLOR), Math.floor(count / MAX_COLUMNS_PER_COLOR)]
+      : count > 0
+        ? [count]
+        : [];
+  });
   const cols: ChipColumn[] = [];
-  let rem = Math.max(0, Math.round(amount));
-  for (const value of values) {
-    let n = Math.floor(rem / value);
-    rem -= n * value;
-    while (n > 0) {
-      const c = Math.min(cap, n);
-      cols.push({ value, count: c });
-      n -= c;
+  for (let layer = 0; layer < MAX_COLUMNS_PER_COLOR; layer++) {
+    for (let i = 0; i < values.length; i++) {
+      const count = parts[i][layer] ?? 0;
+      if (count > 0) cols.push({ value: values[i], count });
     }
   }
   return cols;
 }
 
-// Balanced decomposition: hand out one chip of each denomination in turn, so no single
-// denomination runs away into a tall tower. Amounts are multiples of 10 (blinds are 10/20)
-// and 10 is the smallest value, so this always terminates; the guard covers odd inputs.
-function balancedCounts(amount: number, values: number[]): number[] {
+// Greedy denomination counts (large chips first), used for compact pot/change fallbacks.
+function greedyCounts(amount: number, values: readonly number[]): number[] {
   const counts = values.map(() => 0);
   let rem = Math.max(0, Math.round(amount));
-  for (let i = 0, guard = 0; rem > 0 && guard < 100000; i++, guard++) {
+  for (let i = 0; i < values.length; i++) {
+    counts[i] = Math.floor(rem / values[i]);
+    rem -= counts[i] * values[i];
+  }
+  return counts;
+}
+
+// Balanced decomposition: hand out one chip of each denomination in turn. This keeps every
+// color present while black chips absorb large stacks instead of making them fan outward.
+function balancedCounts(amount: number, values: readonly number[]): number[] {
+  const counts = values.map(() => 0);
+  let rem = Math.max(0, Math.round(amount));
+  const floor = Math.min(...values);
+  for (let i = 0; rem >= floor; i++) {
     const vi = i % values.length;
     if (values[vi] <= rem) {
       counts[vi]++;
@@ -151,50 +178,123 @@ function balancedCounts(amount: number, values: number[]): number[] {
   return counts;
 }
 
-// Turn per-denomination counts into short columns, interleaved by denomination so the
-// cluster alternates colors (green/blue/red/white) rather than grouping like with like.
-function splitColumns(counts: number[], values: number[], cap: number): ChipColumn[] {
-  const rem = counts.slice();
-  const cols: ChipColumn[] = [];
-  for (let any = true; any; ) {
-    any = false;
-    for (let vi = 0; vi < values.length; vi++) {
-      if (rem[vi] > 0) {
-        const c = Math.min(cap, rem[vi]);
-        cols.push({ value: values[vi], count: c });
-        rem[vi] -= c;
-        any = true;
-      }
-    }
-  }
-  return cols;
+export function chipAmount(cols: readonly ChipColumn[]): number {
+  return cols.reduce((total, col) => total + col.value * col.count, 0);
 }
 
-// A carried player stack (a varied square pile) and a pot / bet pile (compact, black-bottomed,
-// greedy over the full denomination set). For a big stack the per-denomination columns grow
-// taller (cap scales with the largest count) rather than sprawling into ever more columns, so
-// the pile stays a bounded square — a taller/wider cluster still reads as "more chips".
-export function playerColumns(amount: number): ChipColumn[] {
-  const counts = balancedCounts(amount, PLAYER_VALUES);
-  const cap = Math.max(PLAYER_COL_CAP, Math.ceil(Math.max(1, ...counts) / 3));
-  return splitColumns(counts, PLAYER_VALUES, cap);
+export function cloneChipColumns(cols: readonly ChipColumn[]): ChipColumn[] {
+  return cols.map((col) => ({ ...col }));
 }
+
+export function mergeChipColumns(...groups: readonly ChipColumn[][]): ChipColumn[] {
+  const counts = POT_VALUES.map((value) =>
+    groups.reduce(
+      (total, cols) =>
+        total + cols.reduce((sum, col) => sum + (col.value === value ? Math.max(0, Math.floor(col.count)) : 0), 0),
+      0,
+    ),
+  );
+  return columnsFromCounts(counts);
+}
+
+// Find an exact subset of the chips currently owned. Larger denominations are preferred,
+// but the search honors finite counts so a bet never invents a color when exact change exists.
+function exactSelection(counts: readonly number[], amount: number): number[] | null {
+  const selected = counts.map(() => 0);
+  const dead = new Set<string>();
+  const visit = (i: number, rem: number): boolean => {
+    if (rem === 0) return true;
+    if (i >= POT_VALUES.length || rem < 0) return false;
+    const key = `${i}:${rem}`;
+    if (dead.has(key)) return false;
+    const value = POT_VALUES[i];
+    const max = Math.min(counts[i], Math.floor(rem / value));
+    for (let n = max; n >= 0; n--) {
+      selected[i] = n;
+      if (visit(i + 1, rem - n * value)) return true;
+    }
+    selected[i] = 0;
+    dead.add(key);
+    return false;
+  };
+  return visit(0, amount) ? selected.slice() : null;
+}
+
+export interface TakenChips {
+  remaining: ChipColumn[];
+  pushed: ChipColumn[];
+  converted: boolean;
+}
+
+// Remove a bet from a persistent visual stack. An all-in (or any full-stack amount) returns
+// the exact existing columns. Ordinary bets use existing chips when possible and only color
+// up/down as a last-resort change-making step.
+export function takeChipColumns(
+  cols: readonly ChipColumn[],
+  amount: number,
+  allIn = false,
+): TakenChips {
+  const total = chipAmount(cols);
+  const target = Math.max(0, Math.min(total, Math.round(amount)));
+  if (target === 0) return { remaining: cloneChipColumns(cols), pushed: [], converted: false };
+  if (allIn || target === total) {
+    return { remaining: [], pushed: cloneChipColumns(cols), converted: false };
+  }
+
+  const takeFrom = (source: readonly ChipColumn[], converted: boolean): TakenChips | null => {
+    const counts = countsFor(source);
+    const selected = exactSelection(counts, target);
+    if (!selected) return null;
+    return {
+      remaining: columnsFromCounts(counts.map((count, i) => count - selected[i])),
+      pushed: columnsFromCounts(selected),
+      converted,
+    };
+  };
+
+  const existing = takeFrom(cols, false);
+  if (existing) return existing;
+
+  // Exact change is unavailable: recolor the current stack once, then take the bet. This
+  // path is intentionally forbidden for all-ins above, preserving the shoved stack exactly.
+  const recolored = playerColumns(total);
+  const changed = takeFrom(recolored, true);
+  if (changed) return changed;
+  return {
+    remaining: playerColumns(total - target),
+    pushed: potColumns(target),
+    converted: true,
+  };
+}
+
+// New hands are the color-up boundary: balanced denominations, black chips for large values,
+// height before width, and never more than two towers of one color.
+export function playerColumns(amount: number): ChipColumn[] {
+  const rounded = Math.max(0, Math.round(amount));
+  const counts = balancedCounts(rounded, PLAYER_VALUES);
+  const represented = counts.reduce((total, count, i) => total + count * PLAYER_VALUES[i], 0);
+  // Split pots can create a sub-$10 remainder. Keep that exact with a small purple change
+  // tower without distributing $1 chips throughout normal starting stacks.
+  return columnsFromCounts([...counts, rounded - represented], POT_VALUES);
+}
+
 export function potColumns(amount: number): ChipColumn[] {
-  return greedyColumns(amount, POT_VALUES, POT_COL_CAP);
+  return columnsFromCounts(greedyCounts(amount, POT_VALUES), POT_VALUES);
 }
 
 // The half-extents (world units) of the footprint drawChipStack piles `cols` into: how far
-// the cluster reaches from its center along the pile `axis` and its `perp`. Mirrors the same
-// side/rows grid + jitter/chip-radius margins used when drawing. The scene reads `perp` to
-// push a seat's carried stack far enough along the seat tangent that a tall stack's cluster
+// the cluster reaches from its center along the pile `axis` and its `perp`. It uses the same
+// resolved layout as drawing. The scene reads `perp` to push a seat's carried stack far enough
+// along the seat tangent that a tall stack's cluster
 // never creeps back over the seat's own hole cards.
-export function chipPileHalfExtent(cols: ChipColumn[]): { axis: number; perp: number } {
-  const n = cols.length;
-  if (n <= 0) return { axis: 0, perp: 0 };
-  const side = Math.max(1, Math.ceil(Math.sqrt(n)));
-  const rows = Math.ceil(n / side);
-  const reach = (span: number): number => ((span - 1) / 2) * PILE_SPACING + COL_JIT + CHIP_JIT + CHIP_R;
-  return { axis: reach(side), perp: reach(rows) };
+export function chipPileHalfExtent(cols: ChipColumn[], seed = 0): { axis: number; perp: number } {
+  const placements = chipColumnPlacements(cols.length, seed);
+  if (placements.length === 0) return { axis: 0, perp: 0 };
+  const margin = CHIP_COLLISION_DISTANCE / 2;
+  return {
+    axis: Math.max(...placements.map((p) => Math.abs(p.axis))) + margin,
+    perp: Math.max(...placements.map((p) => Math.abs(p.perp))) + margin,
+  };
 }
 
 // Deterministic fractional hash in [0,1) from a handful of ints — stable across frames so the
@@ -203,12 +303,81 @@ function frac(seed: number, i: number, k: number, salt: number): number {
   const x = Math.sin(seed * 127.1 + i * 311.7 + k * 74.7 + salt * 269.5) * 43758.5453;
   return x - Math.floor(x);
 }
+export interface ChipColumnPlacement {
+  axis: number;
+  perp: number;
+}
+
+// Start from the hand-placed jittered grid, then relax overlapping column
+// footprints like equal rigid discs. Moving whole columns keeps every tower
+// supported while retaining an irregular, non-lattice silhouette.
+export function chipColumnPlacements(count: number, seed = 0): ChipColumnPlacement[] {
+  const n = Math.max(0, Math.floor(count));
+  const side = Math.max(1, Math.ceil(Math.sqrt(n)));
+  const rows = Math.ceil(n / side);
+  const out: ChipColumnPlacement[] = Array.from({ length: n }, (_, i) => ({
+    axis: ((i % side) - (side - 1) / 2) * PILE_SPACING + (frac(seed, i, 0, 1) * 2 - 1) * COL_JIT,
+    perp: (Math.floor(i / side) - (rows - 1) / 2) * PILE_SPACING + (frac(seed, i, 0, 2) * 2 - 1) * COL_JIT,
+  }));
+
+  const minSq = CHIP_COLLISION_DISTANCE * CHIP_COLLISION_DISTANCE;
+  for (let pass = 0; pass < Math.max(16, n * 4); pass++) {
+    let corrected = false;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        let dx = out[j].axis - out[i].axis;
+        let dz = out[j].perp - out[i].perp;
+        const dSq = dx * dx + dz * dz;
+        if (dSq >= minSq - 1e-12) continue;
+        let distance = Math.sqrt(dSq);
+        if (distance < 1e-9) {
+          const angle = frac(seed, i, j, 8) * Math.PI * 2;
+          dx = Math.cos(angle);
+          dz = Math.sin(angle);
+          distance = 1;
+        }
+        const push = (CHIP_COLLISION_DISTANCE - (dSq < 1e-18 ? 0 : distance)) / 2;
+        const ux = dx / distance;
+        const uz = dz / distance;
+        out[i].axis -= ux * push;
+        out[i].perp -= uz * push;
+        out[j].axis += ux * push;
+        out[j].perp += uz * push;
+        corrected = true;
+      }
+    }
+    if (!corrected) break;
+  }
+  // Give each stable seed a different local pile orientation. Seats use their index as
+  // the seed, so identical stacks no longer repeat the same top-left/top-right pattern.
+  // Rotating the resolved rigid-column layout cannot introduce new intersections.
+  const turns = ((Math.trunc(seed) % 4) + 4) % 4;
+  const mirror = Math.floor(Math.abs(Math.trunc(seed)) / 4) % 2 === 1;
+  return out.map((placement) => {
+    let axis = mirror ? -placement.axis : placement.axis;
+    let perp = placement.perp;
+    for (let turn = 0; turn < turns; turn++) [axis, perp] = [-perp, axis];
+    return { axis, perp };
+  });
+}
+
+// Deterministically shuffle which denomination tower occupies each resolved position.
+// This is draw-only: counts, values, height preference, and the two-towers-per-color cap
+// remain untouched. A stable seed avoids shimmer while giving each player a distinct pile.
+export function arrangeChipColumns(cols: readonly ChipColumn[], seed = 0): ChipColumn[] {
+  const arranged = cloneChipColumns(cols);
+  for (let i = arranged.length - 1; i > 0; i--) {
+    const j = Math.floor(frac(seed + 17, i, arranged.length, 9) * (i + 1));
+    [arranged[i], arranged[j]] = [arranged[j], arranged[i]];
+  }
+  return arranged;
+}
 
 // Draw a set of columns piled at felt position `center` in a rough square (grid whose long
 // side runs along `axis`), each column jittered off its cell and every chip given its own
 // slight wobble + free rotation so the edge spots never line up and the pile looks placed by
 // hand. Lit with the scene's table light so chips match the chairs / frame. `vp` is the camera
-// view-projection; `seed` keys the (stable) jitter per stack.
+// view-projection; `seed` keys the stable jitter and `lift` raises a pile in flight.
 export function drawChipStack(
   target: RenderTarget,
   vp: Mat4,
@@ -218,23 +387,24 @@ export function drawChipStack(
   light: Vec3,
   ambient: number,
   seed = 0,
+  lift = 0,
 ): void {
   const perp = { x: -axis.z, z: axis.x }; // unit perpendicular in the felt plane
-  const n = cols.length;
-  const side = Math.max(1, Math.ceil(Math.sqrt(n))); // columns along `axis`
-  const rows = Math.ceil(n / side); // rows along `perp`
-  for (let i = 0; i < n; i++) {
-    const gx = (i % side) - (side - 1) / 2; // centred grid cell
-    const gy = Math.floor(i / side) - (rows - 1) / 2;
-    const ox = gx * PILE_SPACING + (frac(seed, i, 0, 1) * 2 - 1) * COL_JIT;
-    const oy = gy * PILE_SPACING + (frac(seed, i, 0, 2) * 2 - 1) * COL_JIT;
+  const placements = chipColumnPlacements(cols.length, seed);
+  const arranged = arrangeChipColumns(cols, seed);
+  for (let i = 0; i < arranged.length; i++) {
+    const { axis: ox, perp: oy } = placements[i];
     const bx = center.x + axis.x * ox + perp.x * oy;
     const bz = center.z + axis.z * ox + perp.z * oy;
-    const mesh = chipMesh(cols[i].value);
-    for (let k = 0; k < cols[i].count; k++) {
-      const cx = bx + (frac(seed, i, k, 3) * 2 - 1) * CHIP_JIT;
-      const cz = bz + (frac(seed, i, k, 4) * 2 - 1) * CHIP_JIT;
-      const model: Mat4 = mat4Multiply(mat4Translate(cx, BASE_Y + CHIP_H * (k + 0.5), cz), mat4RotY(frac(seed, i, k, 5) * Math.PI * 2));
+    const mesh = chipMesh(arranged[i].value);
+    for (let k = 0; k < arranged[i].count; k++) {
+      // Radial jitter (rather than independent square-axis jitter) gives every
+      // chip a hand-placed wobble while keeping its displacement strictly bounded.
+      const jitterR = frac(seed, i, k, 3) * CHIP_JIT;
+      const jitterA = frac(seed, i, k, 4) * Math.PI * 2;
+      const cx = bx + Math.cos(jitterA) * jitterR;
+      const cz = bz + Math.sin(jitterA) * jitterR;
+      const model: Mat4 = mat4Multiply(mat4Translate(cx, BASE_Y + lift + CHIP_H * (k + 0.5), cz), mat4RotY(frac(seed, i, k, 5) * Math.PI * 2));
       rasterize(target, mesh, lambertMaterial, { mvp: mat4Multiply(vp, model), model, lightDir: light, ambient });
     }
   }

@@ -182,6 +182,13 @@ export function loadWisp(pngPath: string, tint: Vec3, phase: number, rng: () => 
 export const FALLBACK_CREATOR_TINT: Vec3 = { x: 0xac, y: 0xa4, z: 0xa5 };
 const initialTextureCache = new Map<string, Texture>();
 
+// Anthropic is the one intentional exception to creator-logo wisps: Claude's
+// sunburst is the recognizable model mark, while the Anthropic "AI" mark remains
+// available to non-wisp logo consumers.
+const WISP_LOGO_OVERRIDE: Readonly<Record<string, string>> = {
+  anthropic: 'claude',
+};
+
 function initialTexture(creator: string): Texture {
   const letter = creator.trim().charAt(0).toUpperCase() || '?';
   const hit = initialTextureCache.get(letter);
@@ -214,8 +221,9 @@ function initialTexture(creator: string): Texture {
 // Prefer the baked creator logo; if it is absent or unreadable, render the first
 // letter as a grey wisp. This keeps callers free of per-scene missing-logo logic.
 export function loadCreatorWisp(creator: string, phase: number, rng: () => number): Wisp {
+  const logo = WISP_LOGO_OVERRIDE[creator] ?? creator;
   try {
-    return loadWisp(asset(`logos/${creator}.png`), creatorTint(creator), phase, rng);
+    return loadWisp(asset(`logos/${logo}.png`), creatorTint(creator), phase, rng);
   } catch {
     return new Wisp({ tex: initialTexture(creator), tint: { ...FALLBACK_CREATOR_TINT }, phase, rng });
   }

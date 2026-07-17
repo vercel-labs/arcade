@@ -23,6 +23,7 @@ import { creatorTint } from '../../scenes/wisp.ts';
 export interface ChatMessage {
   text: string;
   model: string; // model slug, e.g. "openai/gpt-5.4"
+  label?: string; // resolved speaker label; model remains the source of creator color
   event?: boolean; // a grey system/game-event line (no name, no color)
   error?: boolean; // with event: render the line red instead of grey (illegal move)
 }
@@ -80,8 +81,19 @@ function wrapInline(s: string, rest: number, first: number): string[] {
         out.push(line);
         line = '';
       } else {
-        out.push(w.slice(0, cap()));
-        w = w.slice(cap());
+        const width = cap();
+        if (out.length === 0 && width < rest && w.length <= rest) {
+          // A long speaker name can leave only a few cells on the first row.
+          // Keep a normal-sized first word intact on the continuation row instead
+          // of producing awkward fragments such as "Gem" / "ini,".
+          out.push('');
+        } else {
+          // Capture the width before pushing: cap() switches from the first-line
+          // width to the continuation width once out gains an entry. Calling it
+          // again after push used to discard the remainder of the word.
+          out.push(w.slice(0, width));
+          w = w.slice(width);
+        }
       }
     }
     if (!line) line = w;
@@ -113,7 +125,7 @@ interface Rendered {
 function render(messages: ChatMessage[]): Rendered[] {
   return messages.map((m) => {
     if (m.event) return { name: '', color: m.error ? ERROR_FG : EVENT_FG, lines: wrapInline(m.text, CONTENT_W, CONTENT_W), event: true };
-    const name = shortModel(m.model);
+    const name = m.label ?? shortModel(m.model);
     const prefixW = name.length + 2; // "name" + ": "
     return { name, color: creatorColor(m.model), lines: wrapInline(m.text, CONTENT_W, CONTENT_W - prefixW), event: false };
   });
