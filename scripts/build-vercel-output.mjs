@@ -1,6 +1,10 @@
 // Build the Vercel Build Output API tree (.vercel/output) for the streaming
 // prism endpoint, so it can be shipped with `vercel deploy --prebuilt`.
 //
+// Note: keep pnpm-lock.yaml in sync with package.json — Vercel's deploy runs a
+// frozen `pnpm install` and fails the build on a mismatch (e.g. a dependency that
+// moved between deps/devDeps without regenerating the lockfile).
+//
 // Why prebuilt: api/index.ts imports project source through .ts-extension
 // specifiers (e.g. ../src/engine/index.ts), which Vercel's default @vercel/node
 // build can't bundle. So we esbuild it into a single .mjs ourselves and hand
