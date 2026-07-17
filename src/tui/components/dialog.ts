@@ -45,6 +45,7 @@ export interface DialogOpts {
   padding?: [number, number] | [number, number, number, number]; // card padding (default [1,1])
   align?: 'left' | 'center'; // title alignment (default left); the body lays out normally
   titleColor?: ColorToken;
+  closeInset?: number; // extra cells to pull the ✕ inward from its default (edge-hugging) spot
 }
 
 // A titled card. The ✕ is absolutely positioned so it hugs the top-right corner
@@ -62,8 +63,10 @@ export function Dialog(opts: DialogOpts, children: Node[] = []): Node {
   if (titleNode) items.push(center ? Box({ flexDirection: 'row', justifyContent: 'center' }, [titleNode]) : titleNode);
   items.push(...children);
   if (opts.onClose) {
+    // Default sits the ✕ one cell from the card edge; `closeInset` pulls it further
+    // in (e.g. to line the ✕ up with an inset body instead of the card edge).
     items.push(
-      Box({ position: 'absolute', top: 0, right: -(rightPad(pad) - 1) }, [
+      Box({ position: 'absolute', top: 0, right: -(rightPad(pad) - 1) + (opts.closeInset ?? 0) }, [
         CloseButton({ id: opts.closeId ?? 'dialog-close', onClick: opts.onClose }),
       ]),
     );

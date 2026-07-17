@@ -25,6 +25,10 @@ export interface Component {
   onUnmount?(): void; // fired when explicitly unmounted or dropped from the tree
   onFocus?(): void; // fired when keyboard focus enters this component
   onBlur?(): void; // fired when focus leaves it
+  // Fired for a pointer-down outside every node rendered by this component,
+  // including overlay descendants. Return true when internal state changed so
+  // render-on-demand screens repaint (for example, an open dropdown closed).
+  onPointerDownOutside?(): boolean;
 }
 
 // A live store of component instances, keyed by id. Dumb except for firing the

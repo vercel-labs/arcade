@@ -86,10 +86,11 @@ function drawBorder(surf: Surface, lb: LayoutBox, e: Style, bg: RGB, bits: numbe
   }
 }
 
-function paintNode(node: Node, surf: Surface, st: PaintState, theme: Theme, inheritedBg: RGB | undefined, overlays: Node[] | null): void {
+function paintNode(node: Node, surf: Surface, st: PaintState, theme: Theme, inheritedBg: RGB | undefined, overlays: Node[] | null, deferSelf = true): void {
   // Defer overlay subtrees to a final pass so they float above later siblings.
-  // (overlays === null means we're already in that pass — paint inline.)
-  if (overlays && node.overlay) {
+  // While painting one overlay root, nested overlays are deferred again so they
+  // float above every later child of that root (dropdown inside a modal/card).
+  if (overlays && deferSelf && node.overlay) {
     overlays.push(node);
     return;
   }
@@ -134,18 +135,18 @@ function paintNode(node: Node, surf: Surface, st: PaintState, theme: Theme, inhe
     }
     inheritedBg = bg;
   }
-  for (const c of node.children ?? []) paintNode(c, surf, st, theme, inheritedBg, overlays);
+  for (const c of node.children ?? []) paintNode(c, surf, st, theme, inheritedBg, overlays, true);
 }
 
 export function paint(root: Node, surf: Surface, st: PaintState, theme: Theme = defaultTheme): void {
   const overlays: Node[] = [];
   paintNode(root, surf, st, theme, undefined, overlays);
-  // Second pass: overlays (dropdown lists, popovers) on top of the whole tree, in
-  // discovery order. Their own subtrees paint inline (overlays = null), and the
-  // clip carried by layout (an ancestor's overflow) still applies.
-  for (const o of overlays) {
+  // Each overlay layer is appended while its parent layer paints. That makes a
+  // nested popover a later/topper layer than every ordinary child of its modal.
+  for (let i = 0; i < overlays.length; i++) {
+    const o = overlays[i];
     surf.setClip(o.clip ?? null);
-    paintNode(o, surf, st, theme, undefined, null);
+    paintNode(o, surf, st, theme, undefined, overlays, false);
   }
   surf.setClip(null); // don't leak a clip into later direct Surface writes
 }

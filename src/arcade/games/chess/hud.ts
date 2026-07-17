@@ -192,7 +192,7 @@ const ICON_BTN: Style = {
 const COPY_GLYPH = '↥'; // up-from-bar "export" mark (copies PGN)
 
 // The "open chat" affordance: a top-right pill (chat glyph + label), styled like
-// the menu's settings gear, shown only while the chat panel is hidden. Clicking it
+// the home menu pill, shown only while the chat panel is hidden. Clicking it
 // reveals the panel; the panel's own ✕ (also top-right) hides it again.
 const CHAT_PILL: Style = {
   padding: [0, 1],
@@ -202,6 +202,27 @@ const CHAT_PILL: Style = {
   focus: { background: [86, 90, 108], color: [248, 248, 252] },
   pressed: { background: [255, 255, 255], color: [12, 12, 18] },
 };
+
+// ── Match banner ────────────────────────────────────────────────────────────────
+// A centered top-of-screen indicator of what's being played: "free play" when no AI
+// match is running (a nudge that the board is yours to move a piece), or "<white> vs
+// <black>" with each side's label in its color — a creator's brand hue for an AI, the
+// piece tint for a human ("you"). Fed a resolved descriptor by main; presentation only.
+export interface MatchSide {
+  text: string;
+  color: RGB;
+}
+const BANNER_BG: RGBA = [22, 24, 32, 0.9]; // translucent backing so it reads over the board
+function buildMatchBanner(matchup: { white: MatchSide; black: MatchSide } | null | undefined): Node {
+  const body: Node[] = matchup
+    ? [
+        Text({ text: matchup.white.text, style: { color: matchup.white.color, bold: true } }),
+        Text({ text: '  vs  ', style: { color: 'muted' } }),
+        Text({ text: matchup.black.text, style: { color: matchup.black.color, bold: true } }),
+      ]
+    : [Text({ text: 'free play', style: { color: [200, 205, 220] } })];
+  return Box({ flexDirection: 'row', alignItems: 'center', padding: [0, 2], background: BANNER_BG }, body);
+}
 
 // Build the full-screen chess-game overlay: the move panel pinned top-right
 // (collapsible — see `minimized`/`onToggle`), a commentary toast above the bar
@@ -223,6 +244,7 @@ export function buildChessGameRoot(
     onOpenMenu: () => void; // ☰ pill → the in-game menu popup (home / new game / mode / …)
     chatActive: boolean; // an AI match is in progress (suppresses the chat's empty placeholder)
     illegalOn?: boolean; // illegal-moves mode on → show an "(illegal)" tag beside the "moves" header
+    matchup?: { white: MatchSide; black: MatchSide } | null; // top banner: the matchup, or free play (null)
   },
 ): Node {
   // Minimized: the header hugs just the "Moves" button (a tight button). Expanded:
@@ -234,10 +256,16 @@ export function buildChessGameRoot(
   // is on, in the same red the illegal plies use in the list; it vanishes when off, leaving
   // the header exactly as it was. Grouped with "moves" so it rides at the left edge.
   const illegalTag = opts.illegalOn ? [Text({ text: '(illegal)', style: { color: ILLEGAL } })] : [];
-  const movesLabel = Box({ flexDirection: 'row', alignItems: 'center', gap: 1 }, [
-    Button({ id: 'moves-toggle', label: 'moves', onClick: opts.onToggle, style: HEADER_BTN }),
-    ...illegalTag,
-  ]);
+  // The whole chip toggles the panel — not just the "moves" label. Hit-testing routes a
+  // click to the deepest interactive node, so a bare "(illegal)" Text (and the gap) would
+  // be dead space that the translucent panel swallows without collapsing. The wrapper Box
+  // carries onClick to catch those cells; the inner button keeps its own hover.
+  const movesLabel: Node = {
+    kind: 'box',
+    onClick: opts.onToggle,
+    style: { flexDirection: 'row', alignItems: 'center', gap: 1 },
+    children: [Button({ id: 'moves-toggle', label: 'moves', onClick: opts.onToggle, style: HEADER_BTN }), ...illegalTag],
+  };
   let header: Node;
   if (opts.minimized) {
     header = movesLabel;
@@ -246,7 +274,8 @@ export function buildChessGameRoot(
     // (and its scrollbar) below stays full-width / flush right.
     header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', width: HISTORY_WIDTH, padding: [0, 1, 0, 0] }, [
       movesLabel,
-      Box({ flexDirection: 'row', alignItems: 'center', gap: 2 }, [
+      // gap 1 (not 2) sits the copy (↥) one cell closer to the ✕, per the tighter header.
+      Box({ flexDirection: 'row', alignItems: 'center', gap: 1 }, [
         Button({ id: 'moves-copy', label: COPY_GLYPH, onClick: opts.onCopy, style: ICON_BTN }),
         CloseButton({ id: 'moves-close', onClick: opts.onToggle }),
       ]),
@@ -299,7 +328,12 @@ export function buildChessGameRoot(
     Button({ id: 'chess-menu', label: '☰ menu', onClick: opts.onOpenMenu, style: CHAT_PILL }),
     ...(opts.chatVisible ? [] : [Button({ id: 'chat-open', label: 'chat', onClick: opts.onToggleChat, style: CHAT_PILL })]),
   ]);
-  return Box({ width: region.w, height: region.h }, [row, cluster]);
+  // The match banner floats centered at the top, over a full-width absolute row so it
+  // stays centered on screen regardless of the left move panel / right pills.
+  const banner = Box({ position: 'absolute', top: 1, left: 0, width: region.w, flexDirection: 'row', justifyContent: 'center' }, [
+    buildMatchBanner(opts.matchup),
+  ]);
+  return Box({ width: region.w, height: region.h }, [row, cluster, banner]);
 }
 
 // The right-edge chat panel: a "Chat" header (clickable → hide, plus a ✕) over the

@@ -6,6 +6,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Box, Text, Slot } from './nodes.ts';
 import { Dropdown } from './components/dropdown.ts';
+import { Combobox } from './components/combobox.ts';
+import { Modal } from './components/modal.ts';
 import { Input } from './components/input.ts';
 import { Select } from './components/select.ts';
 import { ScrollBox } from './components/scrollbox.ts';
@@ -65,6 +67,208 @@ test('ScrollBox: scroll + clamp', () => {
   ok(sb.scroll === 2, 'down clamps at maxScroll (rows-height = 2)');
   sb.onKey(key('up'));
   ok(sb.scroll === 1, 'up scrolls back');
+});
+
+test('Combobox: filtering, editing, navigation, commit, and empty results', () => {
+  let picked = -1;
+  const queries: string[] = [];
+  const combo = new Combobox({
+    id: 'combo',
+    items: ['GPT-5', 'Claude Sonnet 4.5', 'Gemini Flash', 'Mistral Large'],
+    width: 24,
+    index: 0,
+    onSelect: (i) => (picked = i),
+    onQueryChange: (query) => queries.push(query),
+  });
+
+  ok(combo.value === 'GPT-5' && combo.query === '', 'committed value is visible while the query is empty');
+  combo.onKey({ ...key('backspace'), super: true }); // clear the editable committed value before a fresh search
+  for (const c of 'flash') combo.onKey(ch(c));
+  ok(combo.open && combo.query === 'flash', 'typing edits the query and opens the list');
+  assert.deepEqual(combo.filteredItems, ['Gemini Flash'], 'filtering is case-insensitive');
+  combo.onKey(key('enter'));
+  ok(picked === 2 && combo.index === 2 && combo.value === 'Gemini Flash', 'Enter commits the filtered original item');
+  ok(combo.query === '' && !combo.open, 'commit clears the live query and closes the list');
+
+  combo.setQuery('g');
+  combo.onKey(key('down')); // opens with the committed Gemini match highlighted
+  combo.onKey(key('up')); // move to GPT-5
+  combo.onKey(key('enter'));
+  ok(combo.index === 0, 'Up/Down navigate filtered matches before committing');
+  combo.onKey({ ...key('backspace'), super: true });
+
+  combo.onKey({ ...ch('x'), raw: 'Claude ' });
+  ok(combo.query === 'Claude ', 'a multi-character input event is inserted as pasted text');
+  combo.onKey(key('backspace'));
+  ok(combo.query === 'Claude', 'Backspace edits the live query');
+  combo.onKey(key('escape'));
+  ok(combo.query === '' && !combo.open && combo.value === 'GPT-5', 'Escape clears search but preserves the committed value');
+  combo.onKey({ ...key('backspace'), super: true });
+
+  combo.onKey(ch('z'));
+  combo.onKey(ch('z'));
+  ok(combo.filteredItems.length === 0, 'an unmatched query produces an empty result set');
+  const overlay = (combo.build().children ?? []).find((node) => node.overlay);
+  ok(overlay?.children?.[0]?.text === 'No matches', 'the open list renders an explicit empty state');
+  ok(queries.includes('flash') && queries.includes(''), 'query changes are observable by owners');
+});
+
+test('Combobox: native-style cursor movement and deletion', () => {
+  const combo = new Combobox({ id: 'editing-combo', items: [], width: 24 });
+  combo.setQuery('alpha beta');
+
+  combo.onKey(key('left'));
+  ok(combo.caret === 9, 'Left moves the cursor by one character');
+  combo.onKey({ ...key('left'), meta: true });
+  ok(combo.caret === 6, 'Option/Alt-Left moves to the previous word');
+  combo.onKey({ ...key('left'), super: true });
+  ok(combo.caret === 0, 'Command/Super-Left moves to the start of the line');
+  combo.onKey({ ...key('right'), super: true });
+  ok(combo.caret === combo.query.length, 'Command/Super-Right moves to the end of the line');
+
+  combo.onKey({ ...key('backspace'), meta: true });
+  ok(combo.query === 'alpha ' && combo.caret === 6, 'Option/Alt-Backspace deletes the previous word');
+  combo.onKey({ ...key('backspace'), super: true });
+  ok(combo.query === '' && combo.caret === 0, 'Command/Super-Backspace deletes to the start of the line');
+
+  combo.setQuery('alpha beta');
+  combo.onKey(key('home'));
+  combo.onKey({ ...key('delete'), meta: true });
+  ok(combo.query === 'beta' && combo.caret === 0, 'Option/Alt-Delete deletes the next word');
+  combo.onKey({ ...key('delete'), super: true });
+  ok(combo.query === '', 'Command/Super-Delete deletes to the end of the line');
+});
+
+test('Combobox: cursor is hidden initially, filled on focus, outlined on blur', () => {
+  const combo = new Combobox({ id: 'cursor-combo', items: [], width: 16 });
+  combo.setQuery('abc');
+  const screen = new Screen(24, 4);
+  const region = { x: 0, y: 0, w: 24, h: 4 };
+  screen.mount(combo);
+  const relayout = (): void => screen.setRoot(Box({}, [Slot('cursor-combo')]) as Node, region);
+
+  relayout();
+  ok(screen.snapshot(() => {}).getCell(2, 0)?.ch !== '▯', 'cursor does not appear before the field is activated');
+  screen.pointerDown(3, 1); // content column 1 → caret between a and b
+  ok(combo.caret === 1, 'clicking between characters places the insertion cursor at that boundary');
+  relayout();
+  const focused = screen.snapshot(() => {}).getCell(2, 0);
+  assert.deepEqual(focused?.bg, [131, 165, 152], 'focused cursor is a filled #83A598 cell');
+
+  screen.handleKey(ch('X'));
+  ok(combo.query === 'aXbc' && combo.caret === 2, 'typing inserts at the clicked position and advances the cursor');
+  relayout();
+  assert.deepEqual(screen.snapshot(() => {}).getCell(3, 0)?.bg, [131, 165, 152], 'cursor follows immediately after inserted text');
+  screen.handleKey(key('left'));
+  screen.handleKey(ch('Y'));
+  ok(combo.query === 'aYXbc' && combo.caret === 2, 'Left moves between characters and typing uses the new position');
+
+  screen.pointerDown(10, 1);
+  ok(combo.caret === combo.query.length, 'clicking past the text places the cursor at the right edge');
+
+  screen.setFocus(null);
+  relayout();
+  const blurred = screen.snapshot(() => {}).getCell(1 + combo.query.length, 0);
+  ok(blurred?.ch === '▯' && combo.query === 'aYXbc', 'blurred cursor becomes an outline and preserves the query');
+});
+
+test('Combobox: committed defaults become editable text on first interaction', () => {
+  const combo = new Combobox({ id: 'default-combo', items: ['GPT-5', 'GPT-5 Mini'], width: 18, index: 0 });
+  const screen = new Screen(24, 5);
+  const region = { x: 0, y: 0, w: 24, h: 5 };
+  screen.mount(combo);
+  const relayout = (): void => screen.setRoot(Box({}, [Slot('default-combo')]) as Node, region);
+
+  relayout();
+  ok(combo.value === 'GPT-5' && combo.query === '', 'default starts as a committed display value');
+  screen.pointerDown(5, 1); // click before '-' in GPT-5
+  ok(combo.query === 'GPT-5' && combo.caret === 3, 'click promotes the default to editable text and places the cursor at the clicked boundary');
+  relayout();
+  screen.handleKey(ch('X'));
+  ok(combo.query === 'GPTX-5' && combo.caret === 4, 'typing edits the promoted default at the cursor position');
+  screen.handleKey(key('left'));
+  ok(combo.caret === 3, 'Left navigates the default text one character at a time');
+});
+
+test('Combobox: chevron and option mouse targets are independent', () => {
+  let picked = -1;
+  const combo = new Combobox({ id: 'mouse-combo', items: ['Alpha', 'Beta', 'Gamma'], width: 12, rows: 3, onSelect: (i) => (picked = i) });
+  const screen = new Screen(40, 10);
+  const region = { x: 0, y: 0, w: 40, h: 10 };
+  screen.mount(combo);
+  const relayout = (): void => screen.setRoot(Box({}, [Slot('mouse-combo')]) as Node, region);
+
+  relayout();
+  screen.pointerDown(12, 1); // rightmost field cells are the dedicated chevron
+  ok(combo.open && combo.query === '', 'clicking the chevron opens without editing the query');
+  relayout();
+  screen.pointerDown(2, 3); // second option row in the floating list
+  ok(picked === 1 && combo.index === 1 && !combo.open, 'clicking an option commits and closes');
+
+  relayout();
+  screen.pointerDown(12, 1);
+  ok(combo.open, 'the chevron reopens the list');
+  relayout();
+  screen.pointerDown(12, 1);
+  ok(!combo.open, 'the same chevron toggles the list closed');
+});
+test('Combobox: outside clicks close the list and clear focus', () => {
+  const combo = new Combobox({ id: 'outside-combo', items: ['Alpha', 'Beta'], width: 12, index: 0 });
+  const screen = new Screen(24, 6);
+  const region = { x: 0, y: 0, w: 24, h: 6 };
+  screen.mount(combo);
+  const relayout = (): void => screen.setRoot(Box({}, [Slot('outside-combo')]) as Node, region);
+
+  relayout();
+  screen.pointerDown(3, 1);
+  combo.setQuery('zz');
+  relayout();
+  screen.pointerDown(2, 2);
+  ok(combo.open, 'a click in the floating empty-result row stays inside the combobox');
+
+  screen.pointerDown(24, 6);
+  ok(!combo.open, 'a click on the transparent scene closes the open list');
+  relayout();
+  const query = combo.query;
+  ok(!screen.handleKey(ch('x')) && combo.query === query, 'the outside click also removes keyboard focus');
+});
+
+test('Modal: card clicks stay inside and scrim clicks dismiss', () => {
+  let dismissals = 0;
+  const modal = Modal(Box({ width: 12, height: 4, background: 'pillBg' }), { onDismiss: () => dismissals++ });
+  const screen = new Screen(40, 12);
+  screen.setRoot(modal, { x: 0, y: 0, w: 40, h: 12 });
+
+  const card = modal.children?.[0]?.layout;
+  ok(card != null, 'the modal card is laid out');
+  screen.pointerDown((card?.x ?? 0) + 1, (card?.y ?? 0) + 1);
+  ok(dismissals === 0, 'clicking blank space inside the card does not dismiss');
+
+  screen.pointerDown(1, 1);
+  ok(dismissals === 1, 'clicking the scrim dismisses the modal');
+});
+
+test('nested overlays paint and hit above later children of an outer overlay', () => {
+  const nested: Node = {
+    ...Text({ text: 'TOP', id: 'nested', style: { position: 'absolute', top: 1, left: 0, width: 8, background: [20, 80, 120] } }),
+    overlay: true,
+    onMouse: () => true,
+  };
+  const cover: Node = {
+    ...Text({ text: 'COVER', id: 'cover', style: { position: 'absolute', top: 1, left: 0, width: 8, background: [120, 20, 20] } }),
+    onMouse: () => true,
+  };
+  const outer: Node = {
+    ...Box({ width: 8, height: 3, background: [10, 10, 10] }, [nested, cover]),
+    overlay: true,
+  };
+  const screen = new Screen(12, 5);
+  screen.setRoot(Box({}, [outer]), { x: 0, y: 0, w: 12, h: 5 });
+
+  const cell = screen.snapshot(() => {}).getCell(0, 1);
+  ok(cell?.ch === 'T', 'nested dropdown layer paints over a later subtitle/field');
+  const target = screen.pointerDown(1, 2);
+  ok(target?.id === 'nested', 'nested dropdown layer also receives the topmost mouse hit');
 });
 
 // Mouse routing through the real Screen: pointerDown hit-tests + captures, drag

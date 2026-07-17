@@ -1,5 +1,5 @@
-// The "switch Vercel team" modal, opened by the settings gear on the Cover Flow
-// menu. A persistent Select (survives the per-frame rebuild, mounted via Slot like
+// The Vercel account modal, opened from Account in the Cover Flow home menu.
+// A persistent Select (survives the per-frame rebuild, mounted via Slot like
 // the match-setup dropdowns) lists the signed-in user's teams with the currently
 // billed one marked; clicking / Enter on a row switches to it (persist + re-mint the
 // gateway key). main.ts owns the async load/switch and the open/close state; this
@@ -183,5 +183,6 @@ export function buildTeamSwitch(
       ...(footer ? [footer] : []),
       ...(logout ? [logout] : []),
     ]),
+    { onDismiss: opts.onClose },
   );
 }

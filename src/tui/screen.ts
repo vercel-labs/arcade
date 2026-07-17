@@ -51,6 +51,10 @@ export class Screen {
   // The node that received the last pointer 'down' and has onMouse — drags route
   // here (pointer capture) until the next up.
   private captured: Node | null = null;
+  // Every expanded node is associated with its persistent component owner. The
+  // map includes floating overlay descendants, so their clicks still count as
+  // inside the component even when they extend beyond the field's layout box.
+  private nodeOwners = new WeakMap<Node, string>();
 
   constructor(cols: number, rows: number) {
     this.cols = cols;
@@ -101,18 +105,22 @@ export class Screen {
   // last frame are unmounted, and onFocus/onBlur fire as keyboard focus moves
   // between components. Runs before layout so the spliced subtrees are measured.
   private expand(root: Node | null): void {
+    this.nodeOwners = new WeakMap<Node, string>();
     const refs = new Set<string>();
-    const walk = (n: Node): void => {
+    const walk = (n: Node, owner: string | null): void => {
+      let nodeOwner = owner;
       if (n.component) {
+        nodeOwner = n.component;
         const c = this.registry.get(n.component);
         if (c) {
           refs.add(n.component);
           n.children = [c.build()];
         }
       }
-      for (const ch of n.children ?? []) walk(ch);
+      if (nodeOwner) this.nodeOwners.set(n, nodeOwner);
+      for (const ch of n.children ?? []) walk(ch, nodeOwner);
     };
-    if (root) walk(root);
+    if (root) walk(root, null);
 
     // Focus transition (a component is "focused" only while its Slot is present).
     const fc = this.state.focusId && refs.has(this.state.focusId) ? this.state.focusId : null;
@@ -207,17 +215,35 @@ export class Screen {
   pointerDown(x1: number, y1: number): Node | null {
     this.captured = null;
     if (!this.root) return null;
+
+    const x = x1 - 1;
+    const y = y1 - 1;
+    const surface = hitSurface(this.root, x, y);
+    const target = hitTest(this.root, x, y);
+    const owner = (target ? this.nodeOwners.get(target) : undefined) ?? (surface ? this.nodeOwners.get(surface) : undefined) ?? null;
+
+    // Give rendered components a document-style outside-pointer hook. Ownership
+    // covers their overlays, so option rows and scrollbars remain inside.
+    for (const id of this.mountedRefs) {
+      if (id === owner) continue;
+      if (this.registry.get(id)?.onPointerDownOutside?.()) this.contentDirty = true;
+    }
+
+    // Pointer focus follows the web model: a focusable target gains focus; a
+    // non-focusable click clears it unless it stayed inside the focused component.
+    if (target?.focusable) this.state.focusId = target.id ?? null;
+    else if (!owner || owner !== this.state.focusId) this.state.focusId = null;
+
     // Absorb the press if it lands on ANY solid surface (panel or widget); only a
     // press over a transparent gap / open scene falls through to the caller.
-    const surface = hitSurface(this.root, x1 - 1, y1 - 1);
+    // Focus and outside-click handlers still run for those scene clicks.
     if (!surface) return null;
+
     // Route interaction (focus / onMouse / onClick) to the nearest interactive
     // node, which may be an ancestor of the surface (e.g. the Select that owns a
     // background-painted row).
-    const target = hitTest(this.root, x1 - 1, y1 - 1);
     if (target) {
       this.state.pressedId = target.id ?? null;
-      if (target.focusable) this.state.focusId = target.id ?? null;
       if (target.onMouse && target.layout) {
         this.captured = target;
         target.onMouse(this.local(target, x1, y1, 'down'));

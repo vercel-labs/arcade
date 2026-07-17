@@ -14,6 +14,7 @@ export interface KeyEvent {
   ctrl: boolean;
   shift: boolean;
   meta: boolean;
+  super?: boolean; // Command/Super when the terminal's keyboard protocol reports it
   eventType: 'press';
 }
 
@@ -42,6 +43,16 @@ const MOUSE_SEQ = /^\x1b\[<(\d+);(\d+);(\d+)([Mm])/;
 // char, so `raw` is empty and `sequence` carries the bytes.
 function seqKey(name: string, sequence: string, mods: Partial<KeyEvent> = {}): KeyEvent {
   return { name, raw: '', sequence, ctrl: false, shift: false, meta: false, eventType: 'press', ...mods };
+}
+
+function csiModifiers(value: number): Partial<KeyEvent> {
+  const bits = Math.max(0, value - 1);
+  return {
+    shift: (bits & 1) !== 0,
+    meta: (bits & 2) !== 0 || (bits & 32) !== 0,
+    ctrl: (bits & 4) !== 0,
+    super: (bits & 8) !== 0,
+  };
 }
 
 // Classify a single literal character into a KeyEvent. Control chars (ctrl-a..z),
@@ -88,14 +99,36 @@ export function createInputParser(handlers: Handlers): (chunk: string) => void {
       }
 
       if (s.startsWith('\x1b[')) {
-        if (s.length < 3) {
+        // CSI key sequences may include an xterm/Kitty modifier parameter:
+        // ESC[1;3D = Option-Left, ESC[1;5D = Ctrl-Left, ESC[1;9D =
+        // Command/Super-Left. Keep an incomplete sequence for the next chunk.
+        const m = /^\x1b\[([0-9;]*)([A-Za-z~])/.exec(s);
+        if (!m) {
           pending = s;
           return;
         }
-        const arrow = { A: 'up', B: 'down', C: 'right', D: 'left' }[s[2]];
-        if (arrow) handlers.onKey?.(seqKey(arrow, s.slice(0, 3)));
-        else if (s[2] === 'Z') handlers.onKey?.(seqKey('tab', '\x1b[Z', { shift: true })); // Shift+Tab
-        s = s.slice(3);
+        const params = m[1] ? m[1].split(';').map(Number) : [];
+        const final = m[2];
+        const modifier = params.length > 1 ? params[params.length - 1] : 1;
+        const mods = csiModifiers(modifier);
+        const arrow = { A: 'up', B: 'down', C: 'right', D: 'left' }[final];
+        let name = arrow;
+        if (final === 'H' || (final === '~' && (params[0] === 1 || params[0] === 7))) name = 'home';
+        else if (final === 'F' || (final === '~' && (params[0] === 4 || params[0] === 8))) name = 'end';
+        else if (final === '~' && params[0] === 3) name = 'delete';
+        if (name) handlers.onKey?.(seqKey(name, m[0], mods));
+        else if (final === 'Z') handlers.onKey?.(seqKey('tab', m[0], { ...mods, shift: true })); // Shift+Tab
+        s = s.slice(m[0].length);
+        continue;
+      }
+
+      // Traditional terminal encoding for Option/Alt plus a character is an ESC
+      // prefix in the same chunk (not a CSI modifier). This is how
+      // Option-Backspace commonly arrives on macOS.
+      if (s.startsWith('\x1b') && s.length > 1) {
+        const ev = charKey(s[1]);
+        handlers.onKey?.({ ...ev, meta: true, sequence: s.slice(0, 2) });
+        s = s.slice(2);
         continue;
       }
 

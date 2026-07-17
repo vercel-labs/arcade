@@ -22,6 +22,8 @@ export interface KeyHandlers {
   openTeamSwitch(): void;
   closeTeamSwitch(): void;
   cycleMode(): void;
+  openHomeMenu(): void;
+  closeHomeMenu(): void;
   enterMenu(): void;
   toPrism(): void;
   menuNav(step: number): void;
@@ -75,10 +77,12 @@ export function installKeymap(h: KeyHandlers): Keymap {
     { id: 'app.signOut', title: 'Sign out of Vercel', run: h.accountSignOut },
     { id: 'menu.teamSwitch', title: 'Switch Vercel team', run: h.openTeamSwitch },
     { id: 'menu.closeTeamSwitch', title: 'Close team switcher', run: h.closeTeamSwitch },
-    // Render style changes via the bar / ☰ menu "mode" button (ascii is the default). The
+    { id: 'menu.openMenu', title: 'Open menu', run: h.openHomeMenu },
+    { id: 'menu.closeMenu', title: 'Close menu', run: h.closeHomeMenu },
+    // Render style changes via the bar / menu "display" setting (ascii is the default). The
     // cycle command is intentionally UNBOUND — the old 'm' key was repurposed to the ☰ menu —
     // but stays on the command surface so it's agent-drivable and trivial to re-bind.
-    { id: 'view.cycleRenderMode', title: 'Cycle render style', run: h.cycleMode },
+    { id: 'view.cycleRenderMode', title: 'Cycle display style', run: h.cycleMode },
     { id: 'nav.back', title: 'Back to menu', run: h.enterMenu },
     { id: 'nav.toPrism', title: 'Back to prism', run: h.toPrism },
     { id: 'nav.escBack', title: 'Back', run: h.escBack },
@@ -148,7 +152,7 @@ export function installKeymap(h: KeyHandlers): Keymap {
   // raise amount by a big blind (hold to repeat via key autorepeat; the on-screen ± buttons and
   // the type-in amount field do the same). When the amount field is focused the −/+ are typed
   // instead (filtered to digits), so they only step when the felt (not the field) has focus.
-  // Home / new game / mode / quit live in the ☰ menu ('m').
+  // Home / new game / display / quit live in the ☰ menu ('m').
   keymap.bind('poker', { key: 'p', cmd: 'poker.toggleAI' });
   keymap.bind('poker', { key: 'm', cmd: 'poker.openMenu' });
   keymap.bind('poker', { key: 'c', cmd: 'poker.toggleChat' });
@@ -164,6 +168,7 @@ export function installKeymap(h: KeyHandlers): Keymap {
     { key: 'enter', cmd: 'menu.select' },
     { key: 'space', cmd: 'menu.select' },
     { key: 'escape', cmd: 'nav.toPrism' },
+    { key: 'm', cmd: 'menu.openMenu' },
     { key: 's', cmd: 'menu.teamSwitch' }, // shadow global 's': open the in-screen modal team picker
     { key: 'o', cmd: 'app.signOut' }, // account home: sign out (switch-team is global 's')
   ]) {
@@ -207,11 +212,23 @@ export function installKeymap(h: KeyHandlers): Keymap {
   keymap.bind('promoting', { key: 'escape', cmd: 'chess.cancelPromotion' });
   // Game-over popup is modal too: Escape closes it (and the layer shadows 'q' etc.).
   keymap.bind('gameover', { key: 'escape', cmd: 'chess.closeGameOver' });
-  // Match-setup modal: Escape cancels; the layer shadows stray keys.
+  // Match-setup panel: Escape cancels, and the arrow keys pan / 'r' resets the board behind
+  // it — so you can frame the board while picking models, like the poker setup. It stays
+  // modal for chess ACTION keys ('m'/'n'/'p'/'i'/'e'/'q'/…) so they can't fire over the setup;
+  // only the camera controls are bound through. (up/down still scroll a focused dropdown
+  // first — Screen.handleKey runs before the keymap — and pan only when nothing's focused.)
   keymap.bind('setup', { key: 'escape', cmd: 'chess.cancelSetup' });
+  keymap.bind('setup', { key: 'left', cmd: 'camera.panLeft' });
+  keymap.bind('setup', { key: 'right', cmd: 'camera.panRight' });
+  keymap.bind('setup', { key: 'up', cmd: 'camera.panUp' });
+  keymap.bind('setup', { key: 'down', cmd: 'camera.panDown' });
+  keymap.bind('setup', { key: 'r', cmd: 'camera.resetView' });
   // In-match model-swap popup: Escape cancels (same modal treatment as setup).
   keymap.bind('swap', { key: 'escape', cmd: 'chess.cancelSwap' });
   // Menu team-switch modal: Escape closes it; the modal layer shadows stray keys.
+  // Cover Flow home menu: Escape or m closes it; other keys stay modal.
+  keymap.bind('home-menu', { key: 'escape', cmd: 'menu.closeMenu' });
+  keymap.bind('home-menu', { key: 'm', cmd: 'menu.closeMenu' });
   keymap.bind('teamswitch', { key: 'escape', cmd: 'menu.closeTeamSwitch' });
   // Poker new-match panel (non-modal): Escape closes it; every other key falls
   // through to the poker layer (camera pans, 'p' to start, 'b' back).

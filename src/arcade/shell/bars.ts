@@ -8,7 +8,7 @@ import { BISHOP, BLACK, type Color, KNIGHT, type PieceType, QUEEN, ROOK } from '
 import type { RGB } from '../../engine/index.ts';
 
 export type Mode = 'prism' | 'menu' | 'chess-game' | 'logos' | 'ui' | 'audio' | 'cards' | 'poker';
-export type RenderMode = 'color' | 'ascii' | 'luminance';
+export type RenderMode = 'ascii' | 'pixels';
 
 export interface BarActions {
   back(): void;
@@ -34,8 +34,8 @@ const PILL: Style = {
   pressed: { background: [255, 255, 255], color: [12, 12, 18] },
 };
 
-// Center a string within a fixed-width field. Keeps the mode button a stable
-// width as the render-mode name changes, without the label drifting left (the
+// Center a string within a fixed-width field. Keeps the display button a stable
+// width as the render-style name changes, without the label drifting left (the
 // old padEnd left-anchored the text inside the pill).
 export function centerField(s: string, width: number): string {
   const pad = Math.max(0, width - s.length);
@@ -43,10 +43,10 @@ export function centerField(s: string, width: number): string {
   return ' '.repeat(left) + s + ' '.repeat(pad - left);
 }
 
-// The mode-cycle button label ("mode:  ascii"), centered so the pill/menu row keeps a
-// stable width as the render-mode name changes. Shared by the bar and the game menu.
-export function modeLabel(renderMode: RenderMode): string {
-  return `mode: ${centerField(renderMode, 9)}`;
+// The display-cycle button label ("display: ascii "), centered so the pill stays a
+// stable width as the render-style name changes.
+export function displayLabel(renderMode: RenderMode): string {
+  return `display: ${centerField(renderMode, 6)}`;
 }
 
 export function buildBar(
@@ -60,14 +60,14 @@ export function buildBar(
   if (mode === 'ui') {
     buttons = [
       Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
-      Button({ id: 'mode', label: modeLabel(renderMode), onClick: a.mode, style: PILL }),
+      Button({ id: 'mode', label: displayLabel(renderMode), onClick: a.mode, style: PILL }),
       Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
     ];
   } else if (mode === 'logos') {
     buttons = [
       Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
       Button({ id: 'reset', label: 'reset view', onClick: a.reset, style: PILL }),
-      Button({ id: 'mode', label: modeLabel(renderMode), onClick: a.mode, style: PILL }),
+      Button({ id: 'mode', label: displayLabel(renderMode), onClick: a.mode, style: PILL }),
       Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
     ];
   } else if (mode === 'audio') {
@@ -82,30 +82,26 @@ export function buildBar(
   } else if (mode === 'chess-game') {
     // The playable board: the AI button plays (idle) → pauses (running) → resumes
     // (paused). Highlighted whenever a match exists (running or paused).
-    // Like poker: the felt keeps only the two in-flow controls — play/pause AI and
-    // reset view. Everything system-level (home / new game / mode / eval bar / illegal /
-    // quit) lives in the ☰ menu popup (top-right, see hud.ts buildChessGameRoot), and
-    // the chat panel is a top-right pill — so the bar stays two buttons, not eight.
-    // Rounded (outlined) controls: 3 rows tall, arc border, a little horizontal
-    // padding, and the row's gap:2 keeps them apart. Transparent interior — the 2D
-    // scene shows through the empty space inside the border. Active (match running)
-    // tints the outline + label purple. Hover/focus whiten the border + label + bold.
+    // Like poker: the felt keeps only the in-flow control — play/pause AI. Everything
+    // system-level (home / new game / reset view / display / eval bar / illegal / quit)
+    // lives in the ☰ menu popup (top-right, see hud.ts buildChessGameRoot), and the
+    // chat panel is a top-right pill — so the bar is a single button.
+    // Rounded (outlined) control: 3 rows tall, arc border, a little horizontal padding,
+    // transparent interior (the 2D scene shows through). Active (match running) tints
+    // the outline + label purple; hover/focus whiten the border + label + bold.
     const aiActive = ai.active ? { color: [216, 200, 235] as RGB, borderColor: [138, 110, 170] as RGB } : {};
-    buttons = [
-      RoundedButton({ id: 'ai', label: ai.label, onClick: a.aiMatch, padding: [0, 2], ...aiActive }),
-      RoundedButton({ id: 'reset', label: 'reset view', onClick: a.reset, padding: [0, 2] }),
-    ];
+    buttons = [RoundedButton({ id: 'ai', label: ai.label, onClick: a.aiMatch, padding: [0, 2], ...aiActive })];
   } else if (mode === 'cards') {
     // The cards screen: the mode picker + per-mode controls live in the poker HUD
-    // panel; the bar just carries nav / camera reset / render mode / quit.
+    // panel; the bar just carries nav / camera reset / display style / quit.
     buttons = [
       Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
       Button({ id: 'reset', label: 'reset view', onClick: a.reset, style: PILL }),
-      Button({ id: 'mode', label: modeLabel(renderMode), onClick: a.mode, style: PILL }),
+      Button({ id: 'mode', label: displayLabel(renderMode), onClick: a.mode, style: PILL }),
       Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
     ];
   } else if (mode === 'poker') {
-    // The poker table has NO bottom bar: everything system-level (home / restart / mode /
+    // The poker table has NO bottom bar: everything system-level (home / restart / display /
     // quit) lives in the ☰ menu popup (top-right), play/pause is the 'p' key, and betting
     // lives in the HUD — so the felt stays a clean broadcast overlay, not a toolbar.
     buttons = [];
@@ -138,7 +134,7 @@ const PROMO_OPTIONS: { type: PieceType; sym: string; name: string }[] = [
 // color. `onPick` plays the chosen promotion. Built fresh each frame like the
 // bar; the Screen keeps hover/focus by id. (Cancel is handled by the orchestrator
 // via Escape.)
-export function buildPromotion(color: Color, onPick: (t: PieceType) => void): Node {
+export function buildPromotion(color: Color, onPick: (t: PieceType) => void, onCancel: () => void): Node {
   const tint = color === BLACK ? BROWN : IVORY;
   const options = PROMO_OPTIONS.map((o) =>
     Button({
@@ -176,7 +172,7 @@ export function buildPromotion(color: Color, onPick: (t: PieceType) => void): No
 
   // Centered modal: a translucent scrim dims the scene behind the popup (real
   // dim under the unified renderer's alpha compositing).
-  return Modal(popup);
+  return Modal(popup, { onDismiss: onCancel });
 }
 
 // The game-over result popup (chess.com style): a centered card with the outcome
@@ -215,7 +211,7 @@ export function buildGameOver(
       btn('over-close', 'close', onClose, false),
     ],
   );
-  return Modal(card);
+  return Modal(card, { onDismiss: onClose });
 }
 
 // A yes/cancel confirm popup for destructive/irreversible actions — leaving a game to the
@@ -257,7 +253,7 @@ export function buildConfirm(opts: {
       ]),
     ],
   );
-  return Modal(card);
+  return Modal(card, { onDismiss: opts.onCancel });
 }
 
 export interface MenuItem {
@@ -270,13 +266,13 @@ export interface MenuItem {
 // The in-game menu popup (Wii + / PS-button style): a "menu" title + ✕, then a stack of
 // uniform slate buttons — hover is the only lit state (no highlighted primary). Generic
 // over the `items` the caller supplies, so poker and chess share it (each passes its own
-// home / new game / mode / … list). Same Modal + card styling as buildGameOver.
+// home / new game / display / … list). Same Modal + card styling as buildGameOver.
 export function buildGameMenu(opts: { groups: MenuItem[][]; onClose: () => void; valueColW?: number }): Node {
-  // Right-align the values of toggle/cycle items into a column, so "mode / eval bar / illegal"
+  // Right-align the values of toggle/cycle items into a column, so "display / eval bar / illegal"
   // read as label + state; plain actions (home, quit, …) keep just their left label. Widths are
   // measured across every group so the value column lines up throughout the menu. `valueColW`
   // reserves a minimum value-column width (e.g. the longest render-mode name) so the popup does
-  // NOT resize when a value cycles to a longer string (ascii → luminance).
+  // NOT resize when a value cycles to a longer string (ascii to pixels).
   const withVal = opts.groups.flat().filter((i) => i.value != null);
   const labelW = withVal.length ? Math.max(...withVal.map((i) => i.label.length)) : 0;
   const valW = Math.max(opts.valueColW ?? 0, ...(withVal.length ? withVal.map((i) => (i.value as string).length) : [0]));
@@ -292,12 +288,14 @@ export function buildGameMenu(opts: { groups: MenuItem[][]; onClose: () => void;
   // rows between them. Groups are flattened (the border stacking separates rows).
   const body = opts.groups.flat().map(btn);
 
-  // Dialog supplies the card + 'menu' title + corner ✕; the body keeps its own [0,2] indent
-  // so the buttons sit in from the tight card padding.
+  // The card's [1,3] horizontal padding insets the buttons so the 'menu' title lines up
+  // with their left border; `closeInset: 1` nudges the ✕ one cell right. Buttons keep
+  // gap 0 so their arc borders read as one continuous list.
   return Modal(
-    Dialog({ title: 'menu', onClose: opts.onClose, closeId: 'game-menu-close' }, [
-      Box({ flexDirection: 'column', alignItems: 'stretch', gap: 0, padding: [0, 2] }, body),
+    Dialog({ title: 'menu', onClose: opts.onClose, closeId: 'game-menu-close', padding: [1, 3], closeInset: 1 }, [
+      Box({ flexDirection: 'column', alignItems: 'stretch', gap: 0 }, body),
     ]),
+    { onDismiss: opts.onClose },
   );
 }
 
@@ -346,12 +344,15 @@ export function buildShortcuts(bindings: { key: string; title: string; layer: st
 
   const screenRows = all.filter((r) => !r.general);
   const generalRows = all.filter((r) => r.general);
+  // Same header treatment as the game menu: the card's [1,3] padding insets the body so
+  // the title lines up with it; `closeInset: 1` nudges the ✕ one cell right.
   return Modal(
-    Dialog({ title: 'shortcuts', onClose, closeId: 'shortcuts-close' }, [
-      Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [0, 2] }, [
+    Dialog({ title: 'shortcuts', onClose, closeId: 'shortcuts-close', padding: [1, 3], closeInset: 1 }, [
+      Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1 }, [
         ...section('this game', screenRows),
         ...section('general', generalRows),
       ]),
     ]),
+    { onDismiss: onClose },
   );
 }

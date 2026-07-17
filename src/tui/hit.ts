@@ -28,22 +28,23 @@ function isSurface(n: Node): boolean {
 // Topmost node matching `pred` that contains the point, or null. Later nodes in
 // preorder paint on top, so the last match wins. A clipped node is only hit where
 // it's actually visible (inside its clip rect). Overlay subtrees paint above the
-// whole tree (see paint.ts), so any match inside one beats every non-overlay
-// match — mirrored here by tracking the two separately and preferring the overlay.
+// whole tree (see paint.ts). Nested overlays are a still-higher layer, so their
+// dropdown rows beat ordinary children painted later inside the outer modal.
 function deepest(root: Node, x: number, y: number, pred: (n: Node) => boolean): Node | null {
-  let base: Node | null = null;
-  let over: Node | null = null;
-  const walk = (n: Node, inOverlay: boolean): void => {
-    const here = inOverlay || n.overlay === true;
+  let best: Node | null = null;
+  let bestDepth = -1;
+  const walk = (n: Node, overlayDepth: number): void => {
+    const depth = overlayDepth + (n.overlay ? 1 : 0);
     const visible = n.layout && contains(n.layout, x, y) && (!n.clip || contains(n.clip, x, y));
-    if (visible && pred(n)) {
-      if (here) over = n;
-      else base = n;
+    // At equal depth, later preorder nodes paint later and therefore win.
+    if (visible && pred(n) && depth >= bestDepth) {
+      best = n;
+      bestDepth = depth;
     }
-    for (const c of n.children ?? []) walk(c, here);
+    for (const c of n.children ?? []) walk(c, depth);
   };
-  walk(root, false);
-  return over ?? base;
+  walk(root, 0);
+  return best;
 }
 
 // Topmost INTERACTIVE node at the point (the routing target for onClick/onMouse/

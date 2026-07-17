@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-17T00:20:04.978Z",
+  "generatedAt": "2026-07-17T01:18:28.418Z",
   "team": {
     "name": "Internal Playground",
     "slug": "vercel-internal-playground"
@@ -7,6 +7,7 @@
   "normalizer": "anthropic/claude-haiku-4.5",
   "timeoutMs": 45000,
   "retryTimeoutMs": 90000,
+  "source": "live:/v1/models",
   "games": [
     "chess",
     "poker"
@@ -19,14 +20,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 105,
+        "ms": 245,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 105,
+        "ms": 245,
         "detail": "restricted provider access on this team"
       }
     },
@@ -37,14 +38,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1085,
+        "ms": 1190,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 3186,
+        "move": "fold",
+        "ms": 3044,
         "detail": ""
       }
     },
@@ -55,14 +56,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 173,
+        "ms": 249,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 173,
+        "ms": 249,
         "detail": "restricted provider access on this team"
       }
     },
@@ -73,14 +74,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1379,
+        "ms": 874,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "fold",
-        "ms": 2096,
+        "ms": 1385,
         "detail": ""
       }
     },
@@ -91,14 +92,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 90,
+        "ms": 236,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 90,
+        "ms": 236,
         "detail": "restricted provider access on this team"
       }
     },
@@ -109,14 +110,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 89,
+        "ms": 241,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 89,
+        "ms": 241,
         "detail": "restricted provider access on this team"
       }
     },
@@ -127,14 +128,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1475,
+        "ms": 1542,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 2200,
+        "move": "call",
+        "ms": 2598,
         "detail": ""
       }
     },
@@ -145,15 +146,15 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1478,
+        "ms": 915,
         "detail": ""
       },
       "poker": {
-        "status": "TEXT",
-        "structured": "no",
-        "move": "call",
-        "ms": 8608,
-        "detail": "structured output unsupported; plain-text fallback"
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "bet 40",
+        "ms": 1537,
+        "detail": ""
       }
     },
     {
@@ -163,14 +164,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 688,
+        "ms": 2310,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "fold",
-        "ms": 1610,
+        "ms": 5515,
         "detail": ""
       }
     },
@@ -181,14 +182,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 92,
+        "ms": 102,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 92,
+        "ms": 102,
         "detail": "restricted provider access on this team"
       }
     },
@@ -199,14 +200,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 88,
+        "ms": 86,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 88,
+        "ms": 86,
         "detail": "restricted provider access on this team"
       }
     },
@@ -217,14 +218,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 154,
+        "ms": 96,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 154,
+        "ms": 96,
         "detail": "restricted provider access on this team"
       }
     },
@@ -235,14 +236,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 126,
+        "ms": 87,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 126,
+        "ms": 87,
         "detail": "restricted provider access on this team"
       }
     },
@@ -253,14 +254,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 690,
+        "ms": 816,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 1714,
+        "move": "raise 80",
+        "ms": 3512,
         "detail": ""
       }
     },
@@ -271,14 +272,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 5457,
+        "ms": 6716,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 15941,
+        "move": "raise 40",
+        "ms": 33613,
         "detail": ""
       }
     },
@@ -289,14 +290,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 129,
+        "ms": 158,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 129,
+        "ms": 158,
         "detail": "restricted provider access on this team"
       }
     },
@@ -307,14 +308,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 106,
+        "ms": 84,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 106,
+        "ms": 84,
         "detail": "restricted provider access on this team"
       }
     },
@@ -325,14 +326,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 99,
+        "ms": 91,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 99,
+        "ms": 91,
         "detail": "restricted provider access on this team"
       }
     },
@@ -343,14 +344,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 121,
+        "ms": 102,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 121,
+        "ms": 102,
         "detail": "restricted provider access on this team"
       }
     },
@@ -361,14 +362,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 127,
+        "ms": 93,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 127,
+        "ms": 93,
         "detail": "restricted provider access on this team"
       }
     },
@@ -379,14 +380,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 126,
+        "ms": 93,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 126,
+        "ms": 93,
         "detail": "restricted provider access on this team"
       }
     },
@@ -397,14 +398,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 113,
+        "ms": 100,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 113,
+        "ms": 100,
         "detail": "restricted provider access on this team"
       }
     },
@@ -415,14 +416,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 104,
+        "ms": 93,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 104,
+        "ms": 93,
         "detail": "restricted provider access on this team"
       }
     },
@@ -433,14 +434,14 @@
         "status": "TEXT",
         "structured": "no",
         "move": "e4",
-        "ms": 2364,
+        "ms": 2743,
         "detail": "structured output unsupported; plain-text fallback"
       },
       "poker": {
         "status": "TEXT",
         "structured": "no",
-        "move": "fold",
-        "ms": 7906,
+        "move": "raise 40",
+        "ms": 5963,
         "detail": "structured output unsupported; plain-text fallback"
       }
     },
@@ -450,15 +451,15 @@
       "chess": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "e4",
-        "ms": 703,
+        "move": "d4",
+        "ms": 946,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 1777,
+        "move": "raise 60",
+        "ms": 5563,
         "detail": ""
       }
     },
@@ -469,14 +470,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1436,
+        "ms": 1619,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 120",
-        "ms": 861,
+        "ms": 1091,
         "detail": ""
       }
     },
@@ -487,14 +488,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 566,
+        "ms": 519,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 828,
+        "move": "bet 100",
+        "ms": 773,
         "detail": ""
       }
     },
@@ -505,14 +506,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "Nf3",
-        "ms": 912,
+        "ms": 975,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 1272,
+        "move": "raise 60",
+        "ms": 1611,
         "detail": ""
       }
     },
@@ -523,14 +524,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1080,
+        "ms": 1124,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 80",
-        "ms": 3229,
+        "move": "raise 70",
+        "ms": 2946,
         "detail": ""
       }
     },
@@ -541,14 +542,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 3971,
+        "ms": 4262,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 50",
-        "ms": 7212,
+        "ms": 10087,
         "detail": ""
       }
     },
@@ -559,14 +560,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1788,
+        "ms": 8942,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 6239,
+        "move": "fold",
+        "ms": 5496,
         "detail": ""
       }
     },
@@ -577,14 +578,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 3533,
+        "ms": 3278,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 8708,
+        "move": "raise 50",
+        "ms": 8268,
         "detail": ""
       }
     },
@@ -595,14 +596,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 3166,
+        "ms": 2564,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 50",
-        "ms": 9670,
+        "move": "call",
+        "ms": 8929,
         "detail": ""
       }
     },
@@ -613,14 +614,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 5992,
+        "ms": 3394,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 50",
-        "ms": 6169,
+        "ms": 5462,
         "detail": ""
       }
     },
@@ -631,14 +632,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2751,
+        "ms": 2769,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 7736,
+        "move": "raise 50",
+        "ms": 4773,
         "detail": ""
       }
     },
@@ -649,14 +650,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2210,
+        "ms": 2696,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 4313,
+        "move": "raise 60",
+        "ms": 3931,
         "detail": ""
       }
     },
@@ -667,14 +668,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1047,
+        "ms": 2115,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "call",
-        "ms": 1767,
+        "ms": 1891,
         "detail": ""
       }
     },
@@ -685,14 +686,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2035,
+        "ms": 2032,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 5089,
+        "move": "raise 40",
+        "ms": 3237,
         "detail": ""
       }
     },
@@ -703,14 +704,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1288,
+        "ms": 4062,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "call",
-        "ms": 2531,
+        "ms": 2344,
         "detail": ""
       }
     },
@@ -721,14 +722,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1548,
+        "ms": 2806,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 4995,
+        "move": "call",
+        "ms": 6088,
         "detail": ""
       }
     },
@@ -739,14 +740,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2130,
+        "ms": 10457,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 9932,
+        "move": "call",
+        "ms": 14281,
         "detail": ""
       }
     },
@@ -757,14 +758,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1930,
+        "ms": 2351,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 60",
-        "ms": 4127,
+        "ms": 4666,
         "detail": ""
       }
     },
@@ -775,15 +776,51 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1889,
+        "ms": 1933,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 4730,
+        "move": "raise 70",
+        "ms": 4768,
         "detail": ""
+      }
+    },
+    {
+      "id": "arcee-ai/trinity-large-thinking",
+      "name": "Trinity Large Thinking",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 91,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 91,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "arcee-ai/trinity-mini",
+      "name": "Trinity Mini",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 107,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 107,
+        "detail": "restricted provider access on this team"
       }
     },
     {
@@ -793,14 +830,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 7943,
+        "ms": 16038,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "fold",
-        "ms": 24372,
+        "ms": 24693,
         "detail": ""
       }
     },
@@ -811,14 +848,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 8369,
+        "ms": 7040,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 34689,
+        "move": "raise 40",
+        "ms": 29251,
         "detail": ""
       }
     },
@@ -829,14 +866,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 101,
+        "ms": 92,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 101,
+        "ms": 92,
         "detail": "restricted provider access on this team"
       }
     },
@@ -847,14 +884,14 @@
         "status": "TEXT",
         "structured": "no",
         "move": "e4",
-        "ms": 3106,
+        "ms": 4302,
         "detail": "structured output unsupported; plain-text fallback"
       },
       "poker": {
         "status": "TEXT",
         "structured": "no",
         "move": "raise 40",
-        "ms": 5072,
+        "ms": 22467,
         "detail": "structured output unsupported; plain-text fallback"
       }
     },
@@ -865,14 +902,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 90,
+        "ms": 87,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 90,
+        "ms": 87,
         "detail": "restricted provider access on this team"
       }
     },
@@ -883,14 +920,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 182,
+        "ms": 86,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 182,
+        "ms": 86,
         "detail": "restricted provider access on this team"
       }
     },
@@ -901,14 +938,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 90,
+        "ms": 111,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 90,
+        "ms": 111,
         "detail": "restricted provider access on this team"
       }
     },
@@ -919,14 +956,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2505,
+        "ms": 3171,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 50",
-        "ms": 2493,
+        "move": "raise 60",
+        "ms": 4106,
         "detail": ""
       }
     },
@@ -937,14 +974,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 974,
+        "ms": 1053,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 50",
-        "ms": 6289,
+        "move": "raise 40",
+        "ms": 3317,
         "detail": ""
       }
     },
@@ -955,14 +992,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1584,
+        "ms": 1253,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 4409,
+        "move": "fold",
+        "ms": 7611,
         "detail": ""
       }
     },
@@ -973,14 +1010,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2733,
+        "ms": 1972,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 50",
-        "ms": 7124,
+        "ms": 16428,
         "detail": ""
       }
     },
@@ -991,14 +1028,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2465,
+        "ms": 2853,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 40",
-        "ms": 8018,
+        "ms": 23727,
         "detail": ""
       }
     },
@@ -1009,14 +1046,14 @@
         "status": "TEXT",
         "structured": "no",
         "move": "e4",
-        "ms": 1903,
+        "ms": 2941,
         "detail": "structured output unsupported; plain-text fallback"
       },
       "poker": {
         "status": "TEXT",
         "structured": "no",
-        "move": "raise 40",
-        "ms": 10282,
+        "move": "raise 60",
+        "ms": 7523,
         "detail": "structured output unsupported; plain-text fallback"
       }
     },
@@ -1027,14 +1064,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 786,
+        "ms": 664,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 1204,
+        "move": "raise 70",
+        "ms": 1898,
         "detail": ""
       }
     },
@@ -1045,14 +1082,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 8234,
+        "ms": 9525,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 50",
-        "ms": 22732,
+        "move": "raise 60",
+        "ms": 17850,
         "detail": ""
       }
     },
@@ -1063,14 +1100,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1891,
+        "ms": 6929,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 4505,
+        "move": "raise 60",
+        "ms": 3594,
         "detail": ""
       }
     },
@@ -1081,14 +1118,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 7330,
+        "ms": 8844,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "fold",
-        "ms": 8119,
+        "ms": 12855,
         "detail": ""
       }
     },
@@ -1099,14 +1136,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 3110,
+        "ms": 2810,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 50",
-        "ms": 5983,
+        "move": "fold",
+        "ms": 6730,
         "detail": ""
       }
     },
@@ -1117,14 +1154,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 3162,
+        "ms": 3260,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 2940,
+        "move": "call",
+        "ms": 1758,
         "detail": ""
       }
     },
@@ -1135,14 +1172,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2059,
+        "ms": 2104,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 60",
-        "ms": 7027,
+        "ms": 3582,
         "detail": ""
       }
     },
@@ -1153,14 +1190,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 978,
+        "ms": 1352,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 1441,
+        "move": "raise 70",
+        "ms": 7296,
         "detail": ""
       }
     },
@@ -1170,15 +1207,15 @@
       "chess": {
         "status": "TEXT",
         "structured": "no",
-        "move": "e4",
-        "ms": 1448,
+        "move": "d4",
+        "ms": 1643,
         "detail": "structured output unsupported; plain-text fallback"
       },
       "poker": {
         "status": "TEXT",
         "structured": "no",
         "move": "call",
-        "ms": 1132,
+        "ms": 1295,
         "detail": "structured output unsupported; plain-text fallback"
       }
     },
@@ -1189,14 +1226,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 886,
+        "ms": 908,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 1396,
+        "move": "fold",
+        "ms": 1104,
         "detail": ""
       }
     },
@@ -1207,14 +1244,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2966,
+        "ms": 2923,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 50",
-        "ms": 6788,
+        "move": "raise 40",
+        "ms": 5300,
         "detail": ""
       }
     },
@@ -1225,14 +1262,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1126,
+        "ms": 1597,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "fold",
-        "ms": 2119,
+        "ms": 2343,
         "detail": ""
       }
     },
@@ -1243,14 +1280,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 3685,
+        "ms": 2896,
         "detail": ""
       },
       "poker": {
         "status": "FALLBACK",
         "structured": "no",
         "move": "",
-        "ms": 954,
+        "ms": 1246,
         "detail": "all ladder rungs failed — ladder failed but a bare structured call succeeded (likely illegal/unparseable moves)"
       }
     },
@@ -1261,15 +1298,15 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 8103,
+        "ms": 1381,
         "detail": ""
       },
       "poker": {
-        "status": "TEXT",
-        "structured": "no",
-        "move": "raise 40",
-        "ms": 16337,
-        "detail": "structured output unsupported; plain-text fallback"
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 20",
+        "ms": 18916,
+        "detail": ""
       }
     },
     {
@@ -1279,14 +1316,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 98,
+        "ms": 85,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 98,
+        "ms": 85,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1297,14 +1334,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 97,
+        "ms": 107,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 97,
+        "ms": 107,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1315,14 +1352,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 90,
+        "ms": 105,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 90,
+        "ms": 105,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1333,14 +1370,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 159,
+        "ms": 96,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 159,
+        "ms": 96,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1351,14 +1388,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 88,
+        "ms": 190,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 88,
+        "ms": 190,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1369,14 +1406,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 88,
+        "ms": 85,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 88,
+        "ms": 85,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1387,14 +1424,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 97,
+        "ms": 121,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 97,
+        "ms": 121,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1405,14 +1442,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 124,
+        "ms": 82,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 124,
+        "ms": 82,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1423,14 +1460,14 @@
         "status": "TEXT",
         "structured": "no",
         "move": "e4",
-        "ms": 995,
+        "ms": 1136,
         "detail": "structured output unsupported; plain-text fallback"
       },
       "poker": {
         "status": "TEXT",
         "structured": "no",
-        "move": "raise 40",
-        "ms": 2228,
+        "move": "raise 60",
+        "ms": 1693,
         "detail": "structured output unsupported; plain-text fallback"
       }
     },
@@ -1441,14 +1478,14 @@
         "status": "TEXT",
         "structured": "no",
         "move": "e4",
-        "ms": 580,
+        "ms": 579,
         "detail": "structured output unsupported; plain-text fallback"
       },
       "poker": {
         "status": "TEXT",
         "structured": "no",
         "move": "raise 40",
-        "ms": 712,
+        "ms": 876,
         "detail": "structured output unsupported; plain-text fallback"
       }
     },
@@ -1459,14 +1496,14 @@
         "status": "FALLBACK",
         "structured": "no",
         "move": "",
-        "ms": 347,
+        "ms": 331,
         "detail": "all ladder rungs failed — HTTP 404 [AI_APICallError] This model version has reached the end of its life. Please refer to the AWS documentation for more details."
       },
       "poker": {
         "status": "FALLBACK",
         "structured": "no",
         "move": "",
-        "ms": 306,
+        "ms": 364,
         "detail": "all ladder rungs failed — HTTP 404 [AI_APICallError] This model version has reached the end of its life. Please refer to the AWS documentation for more details."
       }
     },
@@ -1477,14 +1514,14 @@
         "status": "FALLBACK",
         "structured": "no",
         "move": "",
-        "ms": 361,
+        "ms": 329,
         "detail": "all ladder rungs failed — HTTP 404 [AI_APICallError] This model version has reached the end of its life. Please refer to the AWS documentation for more details."
       },
       "poker": {
         "status": "FALLBACK",
         "structured": "no",
         "move": "",
-        "ms": 324,
+        "ms": 367,
         "detail": "all ladder rungs failed — HTTP 404 [AI_APICallError] This model version has reached the end of its life. Please refer to the AWS documentation for more details."
       }
     },
@@ -1495,14 +1532,14 @@
         "status": "FALLBACK",
         "structured": "no",
         "move": "",
-        "ms": 295,
+        "ms": 383,
         "detail": "all ladder rungs failed — HTTP 404 [AI_APICallError] This model version has reached the end of its life. Please refer to the AWS documentation for more details."
       },
       "poker": {
         "status": "FALLBACK",
         "structured": "no",
         "move": "",
-        "ms": 344,
+        "ms": 386,
         "detail": "all ladder rungs failed — HTTP 404 [AI_APICallError] This model version has reached the end of its life. Please refer to the AWS documentation for more details."
       }
     },
@@ -1513,14 +1550,14 @@
         "status": "FALLBACK",
         "structured": "no",
         "move": "",
-        "ms": 303,
+        "ms": 386,
         "detail": "all ladder rungs failed — HTTP 404 [AI_APICallError] This model version has reached the end of its life. Please refer to the AWS documentation for more details."
       },
       "poker": {
         "status": "FALLBACK",
         "structured": "no",
         "move": "",
-        "ms": 308,
+        "ms": 373,
         "detail": "all ladder rungs failed — HTTP 404 [AI_APICallError] This model version has reached the end of its life. Please refer to the AWS documentation for more details."
       }
     },
@@ -1531,14 +1568,14 @@
         "status": "TEXT",
         "structured": "no",
         "move": "e4",
-        "ms": 1037,
+        "ms": 639,
         "detail": "structured output unsupported; plain-text fallback"
       },
       "poker": {
         "status": "TEXT",
         "structured": "no",
-        "move": "raise 80",
-        "ms": 2270,
+        "move": "raise 60",
+        "ms": 1447,
         "detail": "structured output unsupported; plain-text fallback"
       }
     },
@@ -1549,14 +1586,14 @@
         "status": "TEXT",
         "structured": "no",
         "move": "e4",
-        "ms": 1421,
+        "ms": 1217,
         "detail": "structured output unsupported; plain-text fallback"
       },
       "poker": {
         "status": "TEXT",
         "structured": "no",
-        "move": "raise 50",
-        "ms": 3191,
+        "move": "raise 60",
+        "ms": 2796,
         "detail": "structured output unsupported; plain-text fallback"
       }
     },
@@ -1567,14 +1604,14 @@
         "status": "TEXT",
         "structured": "no",
         "move": "e4",
-        "ms": 1453,
+        "ms": 1674,
         "detail": "structured output unsupported; plain-text fallback"
       },
       "poker": {
         "status": "TEXT",
         "structured": "no",
         "move": "raise 40",
-        "ms": 2904,
+        "ms": 4013,
         "detail": "structured output unsupported; plain-text fallback"
       }
     },
@@ -1585,14 +1622,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 96,
+        "ms": 85,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 96,
+        "ms": 85,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1603,14 +1640,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 86,
+        "ms": 92,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 86,
+        "ms": 92,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1621,14 +1658,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2874,
+        "ms": 2830,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 5266,
+        "move": "call",
+        "ms": 5683,
         "detail": ""
       }
     },
@@ -1639,14 +1676,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 88,
+        "ms": 82,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 88,
+        "ms": 82,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1657,14 +1694,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 3745,
+        "ms": 13593,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 7529,
+        "move": "fold",
+        "ms": 21683,
         "detail": ""
       }
     },
@@ -1675,14 +1712,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 87,
+        "ms": 163,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 87,
+        "ms": 163,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1693,14 +1730,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 6393,
+        "ms": 2192,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 3810,
+        "move": "raise 60",
+        "ms": 4532,
         "detail": ""
       }
     },
@@ -1711,14 +1748,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 87,
+        "ms": 103,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 87,
+        "ms": 103,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1729,14 +1766,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2869,
+        "ms": 1964,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 1758,
+        "move": "call",
+        "ms": 3424,
         "detail": ""
       }
     },
@@ -1747,14 +1784,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 104,
+        "ms": 86,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 104,
+        "ms": 86,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1765,14 +1802,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 88,
+        "ms": 82,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 88,
+        "ms": 82,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1783,14 +1820,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 84,
+        "ms": 94,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 84,
+        "ms": 94,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1801,14 +1838,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 86,
+        "ms": 101,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 86,
+        "ms": 101,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1819,14 +1856,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 97,
+        "ms": 94,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 97,
+        "ms": 94,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1837,14 +1874,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 92,
+        "ms": 141,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 92,
+        "ms": 141,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1855,14 +1892,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 87,
+        "ms": 94,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 87,
+        "ms": 94,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1873,14 +1910,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 97,
+        "ms": 91,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 97,
+        "ms": 91,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1891,14 +1928,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 93,
+        "ms": 101,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 93,
+        "ms": 101,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1909,14 +1946,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 100,
+        "ms": 118,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 100,
+        "ms": 118,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1927,14 +1964,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 105,
+        "ms": 93,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 105,
+        "ms": 93,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1945,14 +1982,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 84,
+        "ms": 87,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 84,
+        "ms": 87,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1963,14 +2000,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 87,
+        "ms": 85,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 87,
+        "ms": 85,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1981,14 +2018,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 96,
+        "ms": 89,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 96,
+        "ms": 89,
         "detail": "restricted provider access on this team"
       }
     },
@@ -1999,14 +2036,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 98,
+        "ms": 85,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 98,
+        "ms": 85,
         "detail": "restricted provider access on this team"
       }
     },
@@ -2017,14 +2054,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 85,
+        "ms": 118,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 85,
+        "ms": 118,
         "detail": "restricted provider access on this team"
       }
     },
@@ -2035,14 +2072,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 794,
+        "ms": 775,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 1706,
+        "move": "fold",
+        "ms": 1751,
         "detail": ""
       }
     },
@@ -2053,15 +2090,15 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 12274,
+        "ms": 11715,
         "detail": ""
       },
       "poker": {
-        "status": "TIMEOUT",
-        "structured": "—",
-        "move": "",
-        "ms": 45003,
-        "detail": "Delay was aborted"
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "raise 40",
+        "ms": 60759,
+        "detail": ""
       }
     },
     {
@@ -2071,14 +2108,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2018,
+        "ms": 1858,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 12335,
+        "move": "raise 60",
+        "ms": 13102,
         "detail": ""
       }
     },
@@ -2089,15 +2126,33 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 3465,
+        "ms": 2041,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 40",
-        "ms": 35337,
+        "ms": 4640,
         "detail": ""
+      }
+    },
+    {
+      "id": "moonshotai/kimi-k3",
+      "name": "moonshotai/kimi-k3",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 91,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 91,
+        "detail": "restricted provider access on this team"
       }
     },
     {
@@ -2107,14 +2162,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 98,
+        "ms": 113,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 98,
+        "ms": 113,
         "detail": "restricted provider access on this team"
       }
     },
@@ -2125,14 +2180,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 96,
+        "ms": 100,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 96,
+        "ms": 100,
         "detail": "restricted provider access on this team"
       }
     },
@@ -2143,14 +2198,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 86,
+        "ms": 88,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 86,
+        "ms": 88,
         "detail": "restricted provider access on this team"
       }
     },
@@ -2160,15 +2215,15 @@
       "chess": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "Nf3",
-        "ms": 1444,
+        "move": "e4",
+        "ms": 2264,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 8175,
+        "move": "raise 60",
+        "ms": 21378,
         "detail": ""
       }
     },
@@ -2179,14 +2234,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 96,
+        "ms": 88,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 96,
+        "ms": 88,
         "detail": "restricted provider access on this team"
       }
     },
@@ -2197,14 +2252,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 566,
+        "ms": 1622,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 1185,
+        "move": "bet 40",
+        "ms": 3650,
         "detail": ""
       }
     },
@@ -2214,15 +2269,15 @@
       "chess": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "Nf3",
-        "ms": 624,
+        "move": "e4",
+        "ms": 576,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 150",
-        "ms": 1776,
+        "move": "fold",
+        "ms": 1635,
         "detail": ""
       }
     },
@@ -2232,15 +2287,15 @@
       "chess": {
         "status": "TEXT",
         "structured": "no",
-        "move": "e4",
-        "ms": 1105,
+        "move": "d4",
+        "ms": 780,
         "detail": "structured output unsupported; plain-text fallback"
       },
       "poker": {
         "status": "TEXT",
         "structured": "no",
-        "move": "raise 100",
-        "ms": 990,
+        "move": "fold",
+        "ms": 894,
         "detail": "structured output unsupported; plain-text fallback"
       }
     },
@@ -2251,14 +2306,14 @@
         "status": "TEXT",
         "structured": "no",
         "move": "e4",
-        "ms": 2000,
+        "ms": 2272,
         "detail": "structured output unsupported; plain-text fallback"
       },
       "poker": {
         "status": "TEXT",
         "structured": "no",
         "move": "call",
-        "ms": 1549,
+        "ms": 1272,
         "detail": "structured output unsupported; plain-text fallback"
       }
     },
@@ -2269,14 +2324,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1390,
+        "ms": 814,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "fold",
-        "ms": 3922,
+        "ms": 2860,
         "detail": ""
       }
     },
@@ -2287,14 +2342,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 978,
+        "ms": 1159,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 40",
-        "ms": 3291,
+        "ms": 3002,
         "detail": ""
       }
     },
@@ -2305,14 +2360,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 702,
+        "ms": 752,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "check",
-        "ms": 1165,
+        "move": "raise 40",
+        "ms": 981,
         "detail": ""
       }
     },
@@ -2323,14 +2378,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 859,
+        "ms": 977,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 40",
-        "ms": 1714,
+        "ms": 3287,
         "detail": ""
       }
     },
@@ -2341,14 +2396,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 855,
+        "ms": 1071,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 1566,
+        "move": "call",
+        "ms": 2481,
         "detail": ""
       }
     },
@@ -2359,14 +2414,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1710,
+        "ms": 2149,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 40",
-        "ms": 3273,
+        "ms": 3468,
         "detail": ""
       }
     },
@@ -2377,14 +2432,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2369,
+        "ms": 4883,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 50",
-        "ms": 14368,
+        "ms": 14172,
         "detail": ""
       }
     },
@@ -2395,14 +2450,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 743,
+        "ms": 775,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 1910,
+        "move": "raise 50",
+        "ms": 1316,
         "detail": ""
       }
     },
@@ -2413,14 +2468,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1346,
+        "ms": 1318,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 50",
-        "ms": 2632,
+        "ms": 4189,
         "detail": ""
       }
     },
@@ -2431,14 +2486,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 5593,
+        "ms": 3032,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 13393,
+        "move": "raise 60",
+        "ms": 18849,
         "detail": ""
       }
     },
@@ -2449,14 +2504,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2616,
+        "ms": 3477,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 40",
-        "ms": 16271,
+        "ms": 30044,
         "detail": ""
       }
     },
@@ -2464,17 +2519,17 @@
       "id": "openai/gpt-5-pro",
       "name": "GPT-5 pro",
       "chess": {
-        "status": "TIMEOUT",
-        "structured": "—",
-        "move": "",
-        "ms": 45003,
-        "detail": "Delay was aborted"
+        "status": "STRUCTURED",
+        "structured": "yes",
+        "move": "e4",
+        "ms": 63103,
+        "detail": ""
       },
       "poker": {
         "status": "TIMEOUT",
         "structured": "—",
         "move": "",
-        "ms": 45002,
+        "ms": 45005,
         "detail": "Delay was aborted"
       }
     },
@@ -2485,14 +2540,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1213,
+        "ms": 1144,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 50",
-        "ms": 1707,
+        "move": "raise 40",
+        "ms": 7615,
         "detail": ""
       }
     },
@@ -2503,14 +2558,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1285,
+        "ms": 2481,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 50",
-        "ms": 1904,
+        "move": "raise 60",
+        "ms": 4160,
         "detail": ""
       }
     },
@@ -2521,14 +2576,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 987,
+        "ms": 948,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 3435,
+        "move": "raise 40",
+        "ms": 10270,
         "detail": ""
       }
     },
@@ -2539,14 +2594,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1199,
+        "ms": 1094,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 50",
-        "ms": 2752,
+        "move": "raise 40",
+        "ms": 1677,
         "detail": ""
       }
     },
@@ -2557,14 +2612,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2002,
+        "ms": 6548,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "call",
-        "ms": 3934,
+        "ms": 3140,
         "detail": ""
       }
     },
@@ -2575,14 +2630,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1406,
+        "ms": 1498,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 60",
-        "ms": 3321,
+        "ms": 3555,
         "detail": ""
       }
     },
@@ -2593,14 +2648,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1492,
+        "ms": 1264,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 60",
-        "ms": 3279,
+        "ms": 6322,
         "detail": ""
       }
     },
@@ -2611,14 +2666,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1865,
+        "ms": 1006,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 3427,
+        "move": "call",
+        "ms": 2146,
         "detail": ""
       }
     },
@@ -2629,14 +2684,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 9140,
+        "ms": 8579,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 50",
-        "ms": 33930,
+        "ms": 25053,
         "detail": ""
       }
     },
@@ -2647,14 +2702,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1673,
+        "ms": 1395,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 50",
-        "ms": 3758,
+        "move": "raise 60",
+        "ms": 5797,
         "detail": ""
       }
     },
@@ -2665,14 +2720,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1282,
+        "ms": 1490,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 2987,
+        "move": "raise 70",
+        "ms": 3307,
         "detail": ""
       }
     },
@@ -2683,14 +2738,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1352,
+        "ms": 1400,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 80",
-        "ms": 2693,
+        "move": "call",
+        "ms": 2609,
         "detail": ""
       }
     },
@@ -2701,14 +2756,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1119,
+        "ms": 999,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 2034,
+        "move": "raise 40",
+        "ms": 1831,
         "detail": ""
       }
     },
@@ -2719,14 +2774,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1179,
+        "ms": 829,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 2096,
+        "move": "raise 140",
+        "ms": 2054,
         "detail": ""
       }
     },
@@ -2737,7 +2792,7 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 22616,
+        "ms": 25914,
         "detail": ""
       },
       "poker": {
@@ -2755,14 +2810,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2571,
+        "ms": 2581,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 8902,
+        "move": "call",
+        "ms": 14286,
         "detail": ""
       }
     },
@@ -2773,14 +2828,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 8442,
+        "ms": 18349,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 40",
-        "ms": 86957,
+        "ms": 64457,
         "detail": ""
       }
     },
@@ -2791,14 +2846,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1555,
+        "ms": 999,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 3294,
+        "move": "raise 60",
+        "ms": 2823,
         "detail": ""
       }
     },
@@ -2809,14 +2864,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1642,
+        "ms": 1596,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 50",
-        "ms": 6199,
+        "ms": 5264,
         "detail": ""
       }
     },
@@ -2827,14 +2882,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1375,
+        "ms": 1316,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 40",
-        "ms": 2648,
+        "ms": 1632,
         "detail": ""
       }
     },
@@ -2845,14 +2900,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 721,
+        "ms": 1454,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 40",
-        "ms": 4489,
+        "ms": 6906,
         "detail": ""
       }
     },
@@ -2863,14 +2918,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1894,
+        "ms": 940,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 14916,
+        "move": "raise 60",
+        "ms": 7734,
         "detail": ""
       }
     },
@@ -2881,14 +2936,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 95,
+        "ms": 108,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 95,
+        "ms": 108,
         "detail": "restricted provider access on this team"
       }
     },
@@ -2899,14 +2954,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 4216,
+        "ms": 3290,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 60",
-        "ms": 11066,
+        "ms": 26931,
         "detail": ""
       }
     },
@@ -2917,14 +2972,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1959,
+        "ms": 1510,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 50",
-        "ms": 7757,
+        "ms": 7030,
         "detail": ""
       }
     },
@@ -2935,14 +2990,14 @@
         "status": "FALLBACK",
         "structured": "no",
         "move": "",
-        "ms": 485,
+        "ms": 494,
         "detail": "all ladder rungs failed — HTTP 400 [AI_APICallError] Invalid parameter: 'text.format' of type 'json_schema' is not supported with model version `o3-deep-research`."
       },
       "poker": {
         "status": "FALLBACK",
         "structured": "no",
         "move": "",
-        "ms": 442,
+        "ms": 501,
         "detail": "all ladder rungs failed — HTTP 400 [AI_APICallError] Invalid parameter: 'text.format' of type 'json_schema' is not supported with model version `o3-deep-research`."
       }
     },
@@ -2953,14 +3008,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1134,
+        "ms": 3246,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 40",
-        "ms": 6194,
+        "ms": 6576,
         "detail": ""
       }
     },
@@ -2971,14 +3026,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 17101,
+        "ms": 13075,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 50",
-        "ms": 29195,
+        "ms": 31465,
         "detail": ""
       }
     },
@@ -2989,14 +3044,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1735,
+        "ms": 1450,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 7043,
+        "move": "raise 60",
+        "ms": 4693,
         "detail": ""
       }
     },
@@ -3007,14 +3062,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 86,
+        "ms": 83,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 86,
+        "ms": 83,
         "detail": "restricted provider access on this team"
       }
     },
@@ -3025,14 +3080,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 226,
+        "ms": 102,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 226,
+        "ms": 102,
         "detail": "restricted provider access on this team"
       }
     },
@@ -3043,14 +3098,32 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 89,
+        "ms": 119,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 89,
+        "ms": 119,
+        "detail": "restricted provider access on this team"
+      }
+    },
+    {
+      "id": "sakana/fugu-ultra",
+      "name": "Fugu Ultra",
+      "chess": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 102,
+        "detail": "restricted provider access on this team"
+      },
+      "poker": {
+        "status": "ACCESS",
+        "structured": "—",
+        "move": "",
+        "ms": 102,
         "detail": "restricted provider access on this team"
       }
     },
@@ -3061,14 +3134,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 88,
+        "ms": 94,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 88,
+        "ms": 94,
         "detail": "restricted provider access on this team"
       }
     },
@@ -3079,14 +3152,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 83,
+        "ms": 114,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 83,
+        "ms": 114,
         "detail": "restricted provider access on this team"
       }
     },
@@ -3097,14 +3170,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 95,
+        "ms": 104,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 95,
+        "ms": 104,
         "detail": "restricted provider access on this team"
       }
     },
@@ -3115,14 +3188,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 927,
+        "ms": 778,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 1424,
+        "move": "fold",
+        "ms": 1602,
         "detail": ""
       }
     },
@@ -3133,14 +3206,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1810,
+        "ms": 3549,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "fold",
-        "ms": 10368,
+        "ms": 18394,
         "detail": ""
       }
     },
@@ -3151,14 +3224,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 97,
+        "ms": 121,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 97,
+        "ms": 121,
         "detail": "restricted provider access on this team"
       }
     },
@@ -3169,14 +3242,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 91,
+        "ms": 100,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 91,
+        "ms": 100,
         "detail": "restricted provider access on this team"
       }
     },
@@ -3187,14 +3260,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 627,
+        "ms": 875,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 40",
-        "ms": 1039,
+        "move": "fold",
+        "ms": 988,
         "detail": ""
       }
     },
@@ -3223,14 +3296,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1217,
+        "ms": 1537,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "raise 60",
-        "ms": 4551,
+        "ms": 5266,
         "detail": ""
       }
     },
@@ -3241,14 +3314,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 91,
+        "ms": 132,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 91,
+        "ms": 132,
         "detail": "restricted provider access on this team"
       }
     },
@@ -3259,14 +3332,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 10457,
+        "ms": 3298,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 50",
-        "ms": 15482,
+        "move": "call",
+        "ms": 13799,
         "detail": ""
       }
     },
@@ -3277,14 +3350,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 3278,
+        "ms": 3430,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 13223,
+        "move": "fold",
+        "ms": 7605,
         "detail": ""
       }
     },
@@ -3313,14 +3386,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 88,
+        "ms": 97,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 88,
+        "ms": 97,
         "detail": "restricted provider access on this team"
       }
     },
@@ -3331,14 +3404,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 98,
+        "ms": 97,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 98,
+        "ms": 97,
         "detail": "restricted provider access on this team"
       }
     },
@@ -3349,14 +3422,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 89,
+        "ms": 101,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 89,
+        "ms": 101,
         "detail": "restricted provider access on this team"
       }
     },
@@ -3367,14 +3440,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 86,
+        "ms": 91,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 86,
+        "ms": 91,
         "detail": "restricted provider access on this team"
       }
     },
@@ -3385,14 +3458,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 91,
+        "ms": 97,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 91,
+        "ms": 97,
         "detail": "restricted provider access on this team"
       }
     },
@@ -3403,14 +3476,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 86,
+        "ms": 100,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 86,
+        "ms": 100,
         "detail": "restricted provider access on this team"
       }
     },
@@ -3421,14 +3494,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 161,
+        "ms": 99,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 161,
+        "ms": 99,
         "detail": "restricted provider access on this team"
       }
     },
@@ -3439,14 +3512,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 88,
+        "ms": 86,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 88,
+        "ms": 86,
         "detail": "restricted provider access on this team"
       }
     },
@@ -3457,14 +3530,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 1059,
+        "ms": 1050,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "call",
-        "ms": 2486,
+        "move": "raise 60",
+        "ms": 2642,
         "detail": ""
       }
     },
@@ -3474,15 +3547,15 @@
       "chess": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "Nf3",
-        "ms": 718,
+        "move": "e4",
+        "ms": 4433,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 1756,
+        "move": "raise 40",
+        "ms": 6485,
         "detail": ""
       }
     },
@@ -3493,14 +3566,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 84,
+        "ms": 96,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 84,
+        "ms": 96,
         "detail": "restricted provider access on this team"
       }
     },
@@ -3511,14 +3584,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 804,
+        "ms": 1977,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "fold",
-        "ms": 6126,
+        "move": "call",
+        "ms": 2787,
         "detail": ""
       }
     },
@@ -3529,14 +3602,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 85,
+        "ms": 93,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 85,
+        "ms": 93,
         "detail": "restricted provider access on this team"
       }
     },
@@ -3547,14 +3620,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 4641,
+        "ms": 4088,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 50",
-        "ms": 7878,
+        "move": "fold",
+        "ms": 15028,
         "detail": ""
       }
     },
@@ -3565,14 +3638,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 2916,
+        "ms": 3161,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "call",
-        "ms": 16236,
+        "ms": 4222,
         "detail": ""
       }
     },
@@ -3583,14 +3656,14 @@
         "status": "STRUCTURED",
         "structured": "yes",
         "move": "e4",
-        "ms": 940,
+        "ms": 1299,
         "detail": ""
       },
       "poker": {
         "status": "STRUCTURED",
         "structured": "yes",
-        "move": "raise 60",
-        "ms": 2292,
+        "move": "raise 40",
+        "ms": 3566,
         "detail": ""
       }
     },
@@ -3601,14 +3674,14 @@
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 87,
+        "ms": 84,
         "detail": "restricted provider access on this team"
       },
       "poker": {
         "status": "ACCESS",
         "structured": "—",
         "move": "",
-        "ms": 87,
+        "ms": 84,
         "detail": "restricted provider access on this team"
       }
     }

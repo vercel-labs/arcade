@@ -35,6 +35,16 @@ test('input parser → KeyEvent', () => {
   ok(esc.name === 'escape', 'ESC → escape');
   const [ctrlc] = parseKeys('\x03');
   ok(ctrlc.name === 'c' && ctrlc.ctrl, 'Ctrl-C → ctrl+c');
+  const [optionLeft] = parseKeys('\x1b[1;3D');
+  ok(optionLeft.name === 'left' && optionLeft.meta, 'CSI modifier 3 → Option/Alt-Left');
+  const [ctrlRight] = parseKeys('\x1b[1;5C');
+  ok(ctrlRight.name === 'right' && ctrlRight.ctrl, 'CSI modifier 5 → Ctrl-Right');
+  const [commandLeft] = parseKeys('\x1b[1;9D');
+  ok(commandLeft.name === 'left' && commandLeft.super === true, 'CSI modifier 9 → Command/Super-Left');
+  const [home] = parseKeys('\x1b[H');
+  ok(home.name === 'home', 'CSI H → Home');
+  const [optionBackspace] = parseKeys('\x1b\x7f');
+  ok(optionBackspace.name === 'backspace' && optionBackspace.meta, 'ESC-prefixed DEL → Option/Alt-Backspace');
   ok(eventToChord(ctrlc) === 'ctrl+c', 'eventToChord(ctrl-c) === "ctrl+c"');
   ok(eventToChord(Q) === 'q', 'eventToChord(Q) === "q" (shift folded for letters)');
   ok(eventToChord(stab) === 'shift+tab', 'eventToChord(shift-tab) === "shift+tab"');
