@@ -2,14 +2,12 @@ import {
   bloom,
   downsample,
   halfBlockToSurface,
-  luminanceToSurface,
   RenderTarget,
   shapeGlyphToSurface,
   STYLE_BOLD,
   STYLE_DIM,
   type Surface,
   toHalfBlock,
-  toLuminance,
   toShapeGlyph,
 } from '../engine/index.ts';
 import { PrismScene, SplashScene } from '../prism/index.ts';
@@ -27,7 +25,8 @@ import { AudioScene } from './scenes/audio-scene.ts';
 import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/input.ts';
 import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, type BarActions, type MenuItem, type Mode, type RenderMode } from './shell/bars.ts';
 import { buildShowcase, mountShowcase } from './scenes/ui-showcase.ts';
-import { buildChessGameRoot, chessMoveChat, type Commentary, mountChessHud, movesToPgn, refreshMoveHistory } from './games/chess/hud.ts';
+import { buildChessGameRoot, chessMoveChat, type Commentary, type MatchSide, mountChessHud, movesToPgn, refreshMoveHistory, shortModel } from './games/chess/hud.ts';
+import { creatorTint } from './scenes/wisp.ts';
 import { clearChat, pushChatMessage } from './games/chess/chat.ts';
 import { buildMatchSetup, buildSwapSetup, matchSetupSelection, mountMatchSetup, mountSwapSetup, openSwapSetup, swapSetupSelection } from './match/setup.ts';
 import { copyToClipboard } from '../platform/clipboard.ts';
@@ -54,9 +53,9 @@ const MAX_STEP = 0.1;
 // for shape-matched glyph mode).
 const SS = 3;
 
-const MODE_ORDER: RenderMode[] = ['ascii', 'color', 'luminance'];
-// Widest render-mode name, reserved as the ☰ menu's value-column width so the popup keeps a
-// stable width as "mode" cycles ascii → color → luminance (see buildGameMenu `valueColW`).
+const MODE_ORDER: RenderMode[] = ['ascii', 'pixels'];
+// Widest display-style name, reserved as the menu's value-column width so the popup keeps a
+// stable width as "display" cycles ascii <-> pixels (see buildGameMenu `valueColW`).
 const MODE_W = Math.max(...MODE_ORDER.map((m) => m.length));
 
 // Unified compositing (OpenTUI keystone): the scene paints into the same Surface
@@ -124,6 +123,10 @@ function activeOrbit(): ChessGameScene | LogosScene | AudioScene | CardsScene | 
 
 let mode: Mode = 'prism';
 let renderMode: RenderMode = 'ascii';
+// Pointer pan used to pass raw cell deltas while one arrow press pans 16
+// cell-equivalents. A 4x multiplier keeps right/modifier-drag responsive and
+// visually attached to the mouse without changing orbit or keyboard speed.
+const POINTER_PAN_SCALE = 4;
 // Camera-drag tracking for the chess screens. `downX/downY` mark where a drag
 // began, so an up close to it counts as a click (select) rather than a rotate.
 let draggingCamera = false;
@@ -157,10 +160,12 @@ const MENU_EASE_RATE = 8.2;
 let launching = false;
 let launchT = 0;
 let launchSel = 0;
-// The menu's settings gear opens a modal team-switch picker. `teamModalOpen` gates
-// menu input (like the chess modals); `teamModalFocused` is the focus-once edge for
-// the team list; `teamView` drives the modal's contents (loading → the list →
-// switching, or the signed-out / error states).
+// The Cover Flow hub has one menu button. Its popup owns display, shortcuts,
+// account, and quit; Account replaces it with the existing Vercel account modal.
+let homeMenuOpen = false;
+// `teamModalOpen` gates account-modal input; `teamModalFocused` is the focus-once
+// edge for the team list; `teamView` drives the modal's contents (loading -> the
+// list -> switching, or the signed-out / error states).
 let teamModalOpen = false;
 let teamModalFocused = false;
 let teamView: TeamSwitchView = { kind: 'loading' };
@@ -177,6 +182,14 @@ let setupFocused = false;
 // The source the wisp-swap popup seeds from (AI sides only), and what a swap
 // updates. Set at start, updated on swap, cleared on stop.
 let matchSeats: { white: Seat; black: Seat } | null = null;
+// Resolve a seat to the match banner's label + color: a creator's brand hue for an AI
+// (its short model name), or the piece tint for a human ("you"), so you can read the
+// matchup — and which side you're on — at a glance.
+function chessSideLabel(seat: Seat, color: Color): MatchSide {
+  if (seat.kind === 'human') return { text: 'you', color: color === WHITE ? [232, 228, 216] : [184, 126, 74] };
+  const t = creatorTint(seat.model.split('/')[0] ?? seat.model);
+  return { text: shortModel(seat.model), color: [t.x | 0, t.y | 0, t.z | 0] };
+}
 // The in-match model-swap popup (click a wisp): the side being edited and whether
 // the match was ALREADY paused when it opened (so closing restores that state
 // instead of unconditionally resuming). Null when closed. `wispSwapFocused` is the
@@ -188,7 +201,7 @@ let wispSwapFocused = false;
 // setup. `pokerSetupFocused` is its focus-once edge.
 let pokerSetupOpen = false;
 let pokerSetupFocused = false;
-// The poker in-game menu popup (☰ pill → home / new game / mode / quit).
+// The poker in-game menu popup (☰ pill → home / new game / display / quit).
 let pokerMenuOpen = false;
 // The poker opponent-notes modal (notes pill → each AI seat's private reads). `pokerNotesIdx`
 // selects which AI seat's notebook is shown; ‹ › page through them.
@@ -211,7 +224,7 @@ let chatVisible = false;
 // Whether the right-edge eval bar is shown (toggle with the 'e' key or the ☰ menu).
 // Default hidden; the score is recomputed from the live board each frame.
 let evalBarVisible = false;
-// The chess in-game menu popup (☰ pill → home / new game / mode / eval bar / illegal /
+// The chess in-game menu popup (☰ pill → home / new game / display / eval bar / illegal /
 // quit), mirroring the poker menu.
 let chessMenuOpen = false;
 // Whether the poker chat panel is expanded. The rail (chat + hand) only appears once a
@@ -277,7 +290,7 @@ function syncLive(): void {
 // Dirty-flag rendering for the static (turntable) chess scenes: skip re-render +
 // re-write when nothing changed. `forceFrame` requests one unconditional repaint
 // after a transition that clears the screen or changes the present output (mode
-// switch, render-mode toggle, resize). A pure button-hover change is
+// switch, display toggle, resize). A pure button-hover change is
 // detected via `ui.dirty()`, which repaints just the bar without the scene.
 let forceFrame = false;
 const CLEAR = '\x1b[2J';
@@ -336,11 +349,23 @@ function accountSignOut(): void {
   });
 }
 
-// ── Settings gear: switch Vercel team (menu screen) ─────────────────────────────
-// The gear top-right of the Cover Flow menu opens an in-screen modal team picker —
-// the alt-screen-friendly counterpart to the plain-text `switchTeam()`. Opening
-// kicks off an async team fetch; the menu holds a live render lease, so the
-// loading → list → switching transitions paint as they land.
+// Home menu + Vercel account modal.
+function openHomeMenu(): void {
+  if (mode !== 'menu' || homeMenuOpen || teamModalOpen || launching) return;
+  homeMenuOpen = true;
+  forceFrame = true;
+  r.requestRender();
+}
+
+function closeHomeMenu(): void {
+  if (!homeMenuOpen) return;
+  homeMenuOpen = false;
+  forceFrame = true;
+  r.requestRender();
+}
+
+// Account opens the existing team picker while the home menu remains underneath.
+// Closing Account therefore returns to the menu. Loading and switching stay live.
 function openTeamSwitch(): void {
   if (mode !== 'menu' || teamModalOpen) return;
   teamModalOpen = true;
@@ -412,8 +437,8 @@ function teamSwitchSignIn(): void {
   accountSwitchTeam();
 }
 
-// Settings modal account reset for testing first-run flows. Clear the cached
-// Vercel OAuth session and the process-local Gateway key, restore the terminal,
+// Account-modal reset for testing first-run flows. Clear the cached Vercel OAuth
+// session and the process-local Gateway key, restore the terminal,
 // then exit. The next launch has no session and starts device authorization.
 function teamSwitchLogoutAndQuit(): void {
   signOutVercel();
@@ -422,11 +447,9 @@ function teamSwitchLogoutAndQuit(): void {
 
 setTeamSwitchHandlers({ onPick: pickTeamChoice });
 
-// The menu's UI overlay: a settings gear pinned top-right over the Cover Flow
-// scene. The root is transparent so clicks off the gear fall through to the
-// carousel (only the gear pill is a hit surface). The team-switch modal replaces
-// this whole root while open (see syncBar), matching the chess modals.
-const GEAR: Style = {
+// The hub's one menu button is pinned top-right over Cover Flow. The root is
+// transparent so clicks off the pill fall through to the carousel.
+const MENU_PILL: Style = {
   padding: [0, 1],
   background: [28, 30, 40],
   color: [200, 205, 220],
@@ -435,9 +458,9 @@ const GEAR: Style = {
   pressed: { background: [255, 255, 255], color: [12, 12, 18] },
 };
 function buildMenuOverlay(): Node {
-  const gear = Button({ id: 'menu-settings', label: '⚙ settings', onClick: openTeamSwitch, style: GEAR });
+  const menuButton = Button({ id: 'menu-button', label: '☰ menu', onClick: openHomeMenu, style: MENU_PILL });
   // Inset from the top-right corner by a row / a couple of columns so it breathes.
-  return Box({ width: cols, height: rows }, [Box({ position: 'absolute', top: 1, right: 2 }, [gear])]);
+  return Box({ width: cols, height: rows }, [Box({ position: 'absolute', top: 1, right: 2 }, [menuButton])]);
 }
 
 function cycleMode(): void {
@@ -741,7 +764,7 @@ function pokerButton(): void {
   r.requestRender();
 }
 
-// The ☰ in-game menu popup (home / new game / mode / quit).
+// The ☰ in-game menu popup (home / new game / display / quit).
 function openPokerMenu(): void {
   if (mode !== 'poker') return;
   pokerMenuOpen = true;
@@ -777,7 +800,7 @@ function cyclePokerNotes(delta: number): void {
   r.requestRender();
 }
 
-// The chess ☰ in-game menu popup (home / new game / mode / eval bar / illegal / quit).
+// The chess ☰ in-game menu popup (home / new game / display / eval bar / illegal / quit).
 function openChessMenu(): void {
   if (mode !== 'chess-game') return;
   chessMenuOpen = true;
@@ -1004,6 +1027,9 @@ function enterMenu(): void {
   stopPokerMatch();
   audioScene.deactivate(); // tear down any open voice session when leaving
   mode = 'menu';
+  homeMenuOpen = false;
+  teamModalOpen = false;
+  teamModalFocused = false;
   menuSel = 0;
   coverPos = 0;
   menuHover = false;
@@ -1021,7 +1047,7 @@ function launchSelected(): void {
   launching = true;
   launchT = 0;
   launchSel = menuSel;
-  ui.setRoot(null); // hide the settings gear during the flip-to-title launch splash
+  ui.setRoot(null); // hide the menu pill during the flip-to-title launch splash
 }
 
 // Open the actual game screen for a cover id (the destinations the splash hands off to).
@@ -1108,6 +1134,8 @@ const keymap = installKeymap({
   accountSignOut,
   openTeamSwitch,
   closeTeamSwitch,
+  openHomeMenu,
+  closeHomeMenu,
   cycleMode,
   enterMenu,
   toPrism,
@@ -1196,6 +1224,11 @@ function syncBar(): void {
   if (mode !== 'poker') pokerNotesOpen = false; // ditto for the notes modal
   if (mode !== 'chess-game') chessMenuOpen = false; // ditto for the chess menu
   if (mode !== 'chess-game' && mode !== 'poker') confirmHomeOpen = false; // the confirm only lives in a game
+  if (mode !== 'menu') {
+    homeMenuOpen = false;
+    teamModalOpen = false;
+    teamModalFocused = false;
+  }
   // The poker/chess modal layers are popped whenever their modal isn't open (any branch).
   if (!pokerSetupOpen && keymap.hasContext('poker-setup')) keymap.popContext('poker-setup');
   if (!pokerMenuOpen && keymap.hasContext('poker-menu')) keymap.popContext('poker-menu');
@@ -1207,6 +1240,8 @@ function syncBar(): void {
   if (!shortcutsOpen && keymap.hasContext('shortcuts')) keymap.popContext('shortcuts');
   if (!confirmQuitOpen && keymap.hasContext('confirm-quit')) keymap.popContext('confirm-quit');
   if (!confirmQuitOpen) confirmQuitFocused = false; // re-focus "quit" on the next open
+  if (!homeMenuOpen && keymap.hasContext('home-menu')) keymap.popContext('home-menu');
+  if (!teamModalOpen && keymap.hasContext('teamswitch')) keymap.popContext('teamswitch');
   const popGameOver = (): void => {
     if (keymap.hasContext('gameover')) keymap.popContext('gameover');
   };
@@ -1258,13 +1293,17 @@ function syncBar(): void {
     // each frame, so it self-heals even if a resize reset the base stack).
     if (!keymap.hasContext('promoting')) keymap.pushContext('promoting', true);
     ui.setRoot(
-      buildPromotion(pc, (t) => {
-        chessGame.choosePromotion(t);
-        // Force a scene repaint (which overwrites the popup's cells) rather than
-        // a full clear — ESC[2J here would blank the screen for a frame, flashing
-        // black before the move animation paints.
-        forceFrame = true;
-      }),
+      buildPromotion(
+        pc,
+        (t) => {
+          chessGame.choosePromotion(t);
+          // Force a scene repaint (which overwrites the popup's cells) rather than
+          // a full clear — ESC[2J here would blank the screen for a frame, flashing
+          // black before the move animation paints.
+          forceFrame = true;
+        },
+        cancelPromotion,
+      ),
       { x: 0, y: 0, w: cols, h: rows },
     );
     if (!promoFocused) {
@@ -1298,7 +1337,7 @@ function syncBar(): void {
       h: rows,
     });
     if (!setupFocused) {
-      ui.setFocus('setup-white-creator'); // start in White's creator list
+      ui.setFocus('setup-mode'); // start on the mode picker (the human side has no creator list)
       setupFocused = true;
       forceFrame = true;
     }
@@ -1327,9 +1366,9 @@ function syncBar(): void {
     popGameOver();
     popSetup();
     popSwap();
-    // The Cover Flow menu: a settings gear overlay, or — while open — the team-switch
-    // modal replacing the whole root (like the chess modals). Keep the team list
-    // instance mounted either way so its rows survive the rebuild.
+    // Cover Flow gets one menu button. The menu, shortcuts, quit confirmation, and
+    // Account modal replace the overlay in turn. Keep the team list mounted so its
+    // rows survive rebuilds.
     mountTeamSwitch(ui);
     const region = { x: 0, y: 0, w: cols, h: rows };
     if (teamModalOpen) {
@@ -1350,8 +1389,21 @@ function syncBar(): void {
         teamModalFocused = true;
         forceFrame = true;
       }
+    } else if (homeMenuOpen) {
+      if (keymap.hasContext('teamswitch')) keymap.popContext('teamswitch');
+      if (!keymap.hasContext('home-menu')) keymap.pushContext('home-menu', true);
+      const groups: MenuItem[][] = [
+        [{ id: 'home-menu-display', label: 'display', value: renderMode, onClick: cycleMode }],
+        [
+          { id: 'home-menu-shortcuts', label: 'shortcuts', onClick: openShortcuts },
+          { id: 'home-menu-account', label: 'account', onClick: openTeamSwitch },
+          { id: 'home-menu-quit', label: 'quit', onClick: openConfirmQuit },
+        ],
+      ];
+      ui.setRoot(buildGameMenu({ groups, onClose: closeHomeMenu, valueColW: MODE_W }), region);
     } else {
       if (keymap.hasContext('teamswitch')) keymap.popContext('teamswitch');
+      if (keymap.hasContext('home-menu')) keymap.popContext('home-menu');
       ui.setRoot(buildMenuOverlay(), region);
     }
   } else if (mode === 'ui') {
@@ -1372,7 +1424,7 @@ function syncBar(): void {
     popSetup();
     popSwap();
     promoFocused = false;
-    // The chess in-game menu popup. Home/new game/quit act and dismiss; mode/eval bar/
+    // The chess in-game menu popup. Home/new game/quit act and dismiss; display/eval bar/
     // illegal toggle in place (menu stays open, label reflects the new state). Escape
     // (chess-menu layer) and the header ✕ close it. No default focus (uniform buttons).
     if (!keymap.hasContext('chess-menu')) keymap.pushContext('chess-menu', true);
@@ -1382,12 +1434,13 @@ function syncBar(): void {
         { id: 'chess-menu-new', label: 'new game', onClick: () => { resetGame(); closeChessMenu(); } },
       ],
       [
-        { id: 'chess-menu-mode', label: 'mode', value: renderMode, onClick: cycleMode },
+        { id: 'chess-menu-reset', label: 'reset view', onClick: () => { actions.reset(); closeChessMenu(); } },
+        { id: 'chess-menu-mode', label: 'display', value: renderMode, onClick: cycleMode },
         { id: 'chess-menu-eval', label: 'eval bar', value: evalBarVisible ? 'on' : 'off', onClick: toggleEvalBar },
         { id: 'chess-menu-illegal', label: 'illegal', value: illegalAllowed ? 'on' : 'off', onClick: toggleIllegal },
       ],
       [
-        { id: 'chess-menu-shortcuts', label: 'shortcuts', onClick: () => { closeChessMenu(); openShortcuts(); } },
+        { id: 'chess-menu-shortcuts', label: 'shortcuts', onClick: openShortcuts },
         { id: 'chess-menu-quit', label: 'quit', onClick: quit },
       ],
     ];
@@ -1437,6 +1490,7 @@ function syncBar(): void {
         onOpenMenu: openChessMenu,
         chatActive: chessGame.isMatchActive(),
         illegalOn: illegalAllowed,
+        matchup: matchSeats ? { white: chessSideLabel(matchSeats.white, WHITE), black: chessSideLabel(matchSeats.black, BLACK) } : null,
       }),
       { x: 0, y: 0, w: cols, h: rows },
     );
@@ -1482,7 +1536,7 @@ function syncBar(): void {
     popSwap();
     promoFocused = false;
     // The in-game menu popup, over the poker view. Home/Quit/Restart act and dismiss;
-    // Mode cycles the render mode in place (menu stays open). Escape (poker-menu layer)
+    // Display cycles the render style in place (menu stays open). Escape (poker-menu layer)
     // and the header ✕ close it.
     if (!keymap.hasContext('poker-menu')) keymap.pushContext('poker-menu', true);
     // No default focus: every button shares one style, so pre-focusing one would read as
@@ -1492,9 +1546,9 @@ function syncBar(): void {
         { id: 'poker-menu-home', label: 'home', onClick: enterMenu },
         { id: 'poker-menu-new', label: 'new game', onClick: pokerNewGame },
       ],
-      [{ id: 'poker-menu-mode', label: 'mode', value: renderMode, onClick: cycleMode }],
+      [{ id: 'poker-menu-mode', label: 'display', value: renderMode, onClick: cycleMode }],
       [
-        { id: 'poker-menu-shortcuts', label: 'shortcuts', onClick: () => { closePokerMenu(); openShortcuts(); } },
+        { id: 'poker-menu-shortcuts', label: 'shortcuts', onClick: openShortcuts },
         { id: 'poker-menu-quit', label: 'quit', onClick: quit },
       ],
     ];
@@ -1561,7 +1615,7 @@ function syncBar(): void {
 }
 
 // Presents the engine `target` (prism / chess) in the active
-// color/glyph mode. `withBloom` is the glowy post-process — on for the light
+// Pixel/glyph display style. `withBloom` is the glowy post-process — on for the light
 // effects, off for solid geometry like the chess pieces.
 function presentScene(withBloom = true, hybridShadow = false): string {
   if (renderMode === 'ascii') {
@@ -1570,26 +1624,19 @@ function presentScene(withBloom = true, hybridShadow = false): string {
       hybrid: hybridShadow,
     });
   }
-  if (renderMode === 'luminance') {
-    return toLuminance(target, cols, rows, { color: true });
-  }
   display = downsample(target, SS, display);
   if (withBloom) bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
   return toHalfBlock(display);
 }
 
 // Cell-writing twin of presentScene for the unified path: paints the scene into
-// `surf` (the bottom layer) instead of returning a string. Same mode logic.
+// `surf` (the bottom layer) instead of returning a string. Same display logic.
 function presentSceneInto(surf: Surface, withBloom = true, hybridShadow = false): void {
   if (renderMode === 'ascii') {
     shapeGlyphToSurface(surf, target, cols, rows, {
       color: true,
       hybrid: hybridShadow,
     });
-    return;
-  }
-  if (renderMode === 'luminance') {
-    luminanceToSurface(surf, target, cols, rows, { color: true });
     return;
   }
   display = downsample(target, SS, display);
@@ -1680,9 +1727,8 @@ function onMouseImpl(e: MouseEvent): void {
       if (e.type === 'down') launchT = LAUNCH_TOTAL;
       return;
     }
-    // Team-switch modal up: the carousel is frozen behind the scrim; route pointer
-    // input to the popup (like the chess modal block below).
-    if (teamModalOpen) {
+    // Any hub popup freezes the carousel and owns pointer input.
+    if (homeMenuOpen || teamModalOpen || shortcutsOpen || confirmQuitOpen) {
       if (e.type === 'move') ui.hover(e.x, e.y);
       else if (e.type === 'down') ui.pointerDown(e.x, e.y);
       else if (e.type === 'drag') ui.drag(e.x, e.y);
@@ -1695,13 +1741,13 @@ function onMouseImpl(e: MouseEvent): void {
     const my = e.y - 1;
     const inside = mx >= rect.x && mx < rect.x + rect.w && my >= rect.y && my < rect.y + rect.h;
     if (e.type === 'move') {
-      ui.hover(e.x, e.y); // light the settings gear when the cursor is over it
+      ui.hover(e.x, e.y); // light the menu pill when the cursor is over it
       menuHover = inside;
     } else if (e.type === 'wheel') {
       menuNav(e.wheel === -1 ? -1 : 1);
     } else if (e.type === 'down') {
-      // A hit on the gear (a UI surface) opens the modal; a miss falls through to
-      // carousel navigation.
+      // A hit on the menu pill opens the popup; a miss falls through to carousel
+      // navigation.
       if (ui.pointerDown(e.x, e.y)) return;
       if (inside) launchSelected();
       else if (mx < rect.x) menuNav(-1);
@@ -1711,12 +1757,12 @@ function onMouseImpl(e: MouseEvent): void {
     }
     return;
   }
-  // Modal popups (promotion picker, game-over result, match setup, wisp model
-  // swap): clicks/hover go to the popup; the board and camera are frozen until
-  // it's dismissed. (The poker new-match panel is NOT here — it's non-modal, so
-  // pointer input falls through the orbit branch: UI hits go to the panel, misses
-  // rotate/zoom/pan the table behind it.)
-  if (isPromoting() || gameOver || matchSetupOpen || wispSwap) {
+  // Modal popups (promotion picker, game-over result, wisp model swap): clicks/hover go
+  // to the popup; the board and camera are frozen until it's dismissed. The new-match
+  // setup panels (chess AND poker) are NOT here — they're non-modal, so pointer input
+  // falls through the orbit branch: UI hits go to the panel/pickers, misses rotate/zoom/
+  // pan the board/table behind it.
+  if (isPromoting() || gameOver || wispSwap) {
     if (e.type === 'move') ui.hover(e.x, e.y);
     else if (e.type === 'down') ui.pointerDown(e.x, e.y);
     else if (e.type === 'drag') ui.drag(e.x, e.y); // e.g. dragging a dropdown's scrollbar
@@ -1764,7 +1810,7 @@ function onMouseImpl(e: MouseEvent): void {
         lastMouseY = e.y;
         // Pan with a modifier (⌘/Option/Shift/Ctrl) or right-drag; orbit otherwise.
         // Right-click usually pops the terminal menu, so the modifier is primary.
-        if (e.meta || e.shift || e.ctrl || e.button === 2) orbit.pan(dx, dy);
+        if (e.meta || e.shift || e.ctrl || e.button === 2) orbit.pan(dx * POINTER_PAN_SCALE, dy * POINTER_PAN_SCALE);
         else orbit.orbit(dx, dy);
         return;
       }
@@ -1875,8 +1921,8 @@ function tick(dt: number): void {
     }
     // Cover Flow hub: ease the carousel toward the selected slot (snap-to-slot),
     // render the 3D covers full-screen, then draw the title + hint chrome on top.
-    // syncBar builds the settings-gear overlay (or the open team-switch modal) that
-    // frameComposited then paints above the chrome.
+    // syncBar builds the menu pill or whichever hub popup is active;
+    // frameComposited paints it above the chrome.
     coverPos += (menuSel - coverPos) * (1 - Math.exp(-MENU_EASE_RATE * step));
     if (Math.abs(menuSel - coverPos) < 0.0015) coverPos = menuSel;
     coverflow.renderScene(target, coverPos, menuHover ? menuSel : -1);

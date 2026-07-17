@@ -144,6 +144,8 @@ function blockBits(ch: string, px: number, py: number): boolean {
     case '│':
     case '┃':
       return midX;
+    case '▯':
+      return px === 1 || px === 6 || py === 1 || py === 6;
     case '●':
       return (px - 3.5) ** 2 + (py - 3.5) ** 2 <= 7;
     case '•':
@@ -162,7 +164,7 @@ function blockBits(ch: string, px: number, py: number): boolean {
       return (midY && px <= 4) || (midX && py <= 4);
     case '⚙': {
       // No gear in the 8×8 font — approximate it as a hubbed ring (annulus) so the
-      // settings snapshot shows a recognizable knob rather than a blank pill.
+      // legacy gear glyphs still render as a recognizable knob rather than a blank.
       const r2 = (px - 3.5) ** 2 + (py - 3.5) ** 2;
       return r2 <= 10 && r2 >= 2;
     }
@@ -282,7 +284,7 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot ui [cols] [rows] [hover=<id>|focus=<id>|pressed=<id>] [out]   button bar
   pnpm snapshot overlay [chess-game|prism] [cols] [rows] [out]   bar over a scene
   pnpm snapshot unified [prism|chess|chess-game|logos] [cols] [rows] [out]   unified compositing path
-  pnpm snapshot showcase [cols] [rows] [focus=<id>] [out]   the UI component playground
+  pnpm snapshot showcase [cols] [rows] [focus=<id>] [query=<text>] [blur] [out]   the UI component playground
   pnpm snapshot modal [cols] [rows] [out]          promotion modal over chess
   pnpm snapshot chess-overlay [cols] [rows] [min|empty|illegal|short] [eval] [chat] [menu] [out]   match HUD + moves panel (menu → ☰ popup)
   pnpm snapshot setup [cols] [rows] [out] [open|models|thinking]   AI match setup modal
@@ -294,7 +296,7 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot audio [cols] [rows] [out]          realtime audio scene (creator wisp)
   pnpm snapshot splash [cols] [rows] [t] [out]     boot splash at time t
   pnpm snapshot coverflow|menu [cols] [rows] [pos] [hover] [out]   Cover Flow carousel
-  pnpm snapshot settings [cols] [rows] [open [loading|switched]] [out]   menu settings gear (open → team-switch modal)
+  pnpm snapshot settings [cols] [rows] [open|account [loading|switched]] [out]   home menu button, popup, or account modal
   pnpm snapshot launch [cols] [rows] [index] [t] [out]   Cover Flow flip-to-title splash
   pnpm snapshot prism-prompt [cols] [rows] [t] [out]    prism loading screen + press-any-key marquee
   pnpm snapshot cards [single|hand|deck] [cols] [rows] [state] [out]   the cards screen
@@ -596,7 +598,7 @@ function pokerSnapshot(): void {
             { id: 'poker-menu-home', label: 'home', onClick: noop },
             { id: 'poker-menu-new', label: 'new game', onClick: noop },
           ],
-          [{ id: 'poker-menu-mode', label: 'mode', value: 'ascii', onClick: noop }],
+          [{ id: 'poker-menu-mode', label: 'display', value: 'ascii', onClick: noop }],
           [{ id: 'poker-menu-quit', label: 'quit', onClick: noop }],
         ],
         onClose: noop,
@@ -825,16 +827,15 @@ function coverflowSnapshot(): void {
   console.log(`wrote ${out} (${cols}x${rows})`);
 }
 
-// The menu's settings gear over the Cover Flow scene, or — with `open` — the
-// team-switch modal it opens (composited via a real Screen so the list Slot
-// expands, seeded with sample teams and a current selection). Mirrors the live
-// menu chrome (title + hint) so placement reads in context.
-//   pnpm exec tsx src/tools/snapshot.ts settings [cols] [rows] [open] [out.ppm]
+// The home menu button over Cover Flow; `open` shows its menu and `account`
+// shows the nested Vercel account modal. Mirrors the live menu chrome.
+//   pnpm exec tsx src/tools/snapshot.ts settings [cols] [rows] [open|account] [out.ppm]
 function settingsSnapshot(): void {
   const args = process.argv.slice(3);
   const cols = Number(args[0]) || 150;
   const rows = Number(args[1]) || 46;
   const open = args.includes('open');
+  const account = args.includes('account');
   const out = args.find((a) => a.endsWith('.ppm')) ?? '.snapshots/settings.ppm';
   const SS = 3;
   const sel = 0;
@@ -845,7 +846,7 @@ function settingsSnapshot(): void {
   const screen = new Screen(cols, rows);
   mountTeamSwitch(screen);
   const region = { x: 0, y: 0, w: cols, h: rows };
-  if (open) {
+  if (account) {
     // A long list (more than the viewport) so the still shows the fixed-height,
     // scrollable list — the current team ● marked and preselected.
     const teams = [
@@ -868,9 +869,25 @@ function settingsSnapshot(): void {
         ? { kind: 'error' as const, message: 'Could not create AI Gateway key (403 forbidden)', canReturn: true }
         : { kind: 'loaded' as const };
     screen.setRoot(buildTeamSwitch(view, { onClose: noop, onSignIn: noop, onBack: noop, onLogout: noop }), region);
+  } else if (open) {
+    screen.setRoot(
+      buildGameMenu({
+        groups: [
+          [{ id: 'home-menu-display', label: 'display', value: 'ascii', onClick: noop }],
+          [
+            { id: 'home-menu-shortcuts', label: 'shortcuts', onClick: noop },
+            { id: 'home-menu-account', label: 'account', onClick: noop },
+            { id: 'home-menu-quit', label: 'quit', onClick: noop },
+          ],
+        ],
+        valueColW: 6,
+        onClose: noop,
+      }),
+      region,
+    );
   } else {
-    const gear = { padding: [0, 1] as [number, number], background: [28, 30, 40] as Rgb, color: [200, 205, 220] as Rgb };
-    const overlay = Box({ width: cols, height: rows }, [Box({ position: 'absolute', top: 1, right: 2 }, [Button({ id: 'menu-settings', label: '⚙ settings', style: gear })])]);
+    const menuPill = { padding: [0, 1] as [number, number], background: [28, 30, 40] as Rgb, color: [200, 205, 220] as Rgb };
+    const overlay = Box({ width: cols, height: rows }, [Box({ position: 'absolute', top: 1, right: 2 }, [Button({ id: 'menu-button', label: '☰ menu', style: menuPill })])]);
     screen.setRoot(overlay, region);
   }
   const surf = screen.snapshot((s) => {
@@ -953,6 +970,7 @@ function showcaseSnapshot(): void {
   const cols = Number(args[0]) || 110;
   const rows = Number(args[1]) || 40;
   const focusArg = args.find((a) => a.startsWith('focus='));
+  const queryArg = args.find((a) => a.startsWith('query='));
   const out = args.find((a) => a.endsWith('.ppm')) ?? '.snapshots/showcase.ppm';
   const SS = 3;
 
@@ -964,6 +982,29 @@ function showcaseSnapshot(): void {
   if (focusArg) screen.setFocus(focusArg.split('=')[1]);
   const region = { x: 0, y: 0, w: cols, h: rows };
   screen.setRoot(buildShowcase(region, buildBar('ui', 'ascii', barActions)), region);
+  if (queryArg) {
+    const targetId = focusArg?.split('=')[1] ?? 'sc-model-combobox';
+    screen.setFocus(targetId);
+    // Rebuild once so the component receives focus before the synthetic text
+    // events, then again so the filtered overlay has current geometry.
+    screen.setRoot(buildShowcase(region, buildBar('ui', 'ascii', barActions)), region);
+    for (const raw of queryArg.slice('query='.length)) {
+      screen.handleKey({
+        name: raw.toLowerCase(),
+        raw,
+        sequence: raw,
+        ctrl: false,
+        shift: raw !== raw.toLowerCase(),
+        meta: false,
+        eventType: 'press',
+      });
+    }
+    screen.setRoot(buildShowcase(region, buildBar('ui', 'ascii', barActions)), region);
+  }
+  if (args.includes('blur')) {
+    screen.setFocus(null);
+    screen.setRoot(buildShowcase(region, buildBar('ui', 'ascii', barActions)), region);
+  }
   const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
   surfaceToPpm(surf, cols, rows, out);
 }
@@ -1047,7 +1088,8 @@ function chessOverlaySnapshot(): void {
             { id: 'chess-menu-new', label: 'new game', onClick: noop },
           ],
           [
-            { id: 'chess-menu-mode', label: 'mode', value: 'ascii', onClick: noop },
+            { id: 'chess-menu-reset', label: 'reset view', onClick: noop },
+            { id: 'chess-menu-mode', label: 'display', value: 'ascii', onClick: noop },
             { id: 'chess-menu-eval', label: 'eval bar', value: evalVisible ? 'on' : 'off', onClick: noop },
             { id: 'chess-menu-illegal', label: 'illegal', value: 'off', onClick: noop },
           ],
@@ -1056,7 +1098,7 @@ function chessOverlaySnapshot(): void {
             { id: 'chess-menu-quit', label: 'quit', onClick: noop },
           ],
         ],
-        valueColW: 9,
+        valueColW: 6,
         onClose: noop,
       }),
       region,
@@ -1080,6 +1122,10 @@ function chessOverlaySnapshot(): void {
       onOpenMenu: noop,
       chatActive: false,
       illegalOn: process.argv.includes('illegal'),
+      // Sample matchup for the top banner (brand-ish colors); `freeplay` shows the idle state.
+      matchup: process.argv.includes('freeplay')
+        ? null
+        : { white: { text: 'claude-opus-4.8', color: [217, 119, 87] }, black: { text: 'gpt-5.4', color: [22, 163, 127] } },
     }),
     region,
   );
@@ -1130,6 +1176,11 @@ function setupSnapshot(): void {
   // Optionally open a dropdown to show the expanded, scrollable picker floating
   // over the rest of the modal. `open` opens White's creator list; `models`
   // selects Google then opens White's MODEL list (long names wrap onto 2 lines).
+  // The default mode (Play as White) makes White the human, so its pickers are hidden.
+  // The dropdown-open variants need them visible, so switch to Watch AI vs AI first.
+  if (['thinking', 'models', 'open'].some((a) => process.argv.includes(a))) {
+    (screen.component('setup-mode') as Dropdown | undefined)?.pick(2);
+  }
   if (process.argv.includes('thinking')) {
     const wc = screen.component('setup-white-creator') as Dropdown | undefined;
     const thinking = creators().findIndex((c) => c.slug === 'thinkingmachines');
@@ -1184,7 +1235,7 @@ function modalSnapshot(): void {
   new ChessGameScene().renderScene(target);
   const surf = new Surface(cols, rows);
   shapeGlyphToSurface(surf, target, cols, rows, { color: true, hybrid: true });
-  const root = buildPromotion(0 as Color, () => {}); // WHITE
+  const root = buildPromotion(0 as Color, () => {}, () => {}); // WHITE
   layout(root, { x: 0, y: 0, w: cols, h: rows });
   paint(root, surf, { hoverId: 'promo-queen', focusId: 'promo-queen', pressedId: null });
   surfaceToPpm(surf, cols, rows, out);

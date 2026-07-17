@@ -438,7 +438,10 @@ export function buildPokerNotesModal(opts: {
   }
   notesScroll.rows = rows;
   // Dialog supplies the card + corner ✕; the pager row is the (custom) title.
-  return Modal(Dialog({ title, onClose: opts.onClose, closeId: 'poker-notes-close', padding: [1, 3] }, [Slot('poker-notes-scroll')]));
+  return Modal(
+    Dialog({ title, onClose: opts.onClose, closeId: 'poker-notes-close', padding: [1, 3] }, [Slot('poker-notes-scroll')]),
+    { onDismiss: opts.onClose },
+  );
 }
 
 // ── Pot pill (top-left) ────────────────────────────────────────────────────────────

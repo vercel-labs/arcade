@@ -18,6 +18,7 @@ const CREATOR_LABELS = CREATORS.map((c) => c.name);
 const LIST_ROWS = 7; // visible rows when a dropdown is open (lists scroll past this)
 const CREATOR_W = 22;
 const MODEL_W = 26;
+const SIDE_LABEL_W = 8; // the "white"/"black" gutter, so the side rows line up (mirrors poker-setup)
 
 interface Side {
   key: 'white' | 'black'; // drives the title tint; mutable so the swap side can be reused for either color
@@ -27,11 +28,6 @@ interface Side {
   models: ModelInfo[];
   modelId: string | null;
   human: boolean; // this side is a human at the keyboard (hides the creator/model pickers)
-}
-
-// Flip a side between an AI (the dropdowns) and a human at the board.
-function setHuman(side: Side, human: boolean): void {
-  side.human = human;
 }
 
 function creatorIndex(slug: string): number {
@@ -90,7 +86,29 @@ function makeSide(key: 'white' | 'black', idPrefix: string, defaultCreator: stri
 const white = makeSide('white', 'setup-white', 'anthropic', 'anthropic/claude-haiku-4.5');
 const black = makeSide('black', 'setup-black', 'openai', 'openai/gpt-5.4-nano');
 
+// The match mode folds the "am I playing, and which color?" choice into one control —
+// chess's analogue to poker's Play/Spectate, plus the side dimension chess needs (White
+// vs Black is a real choice, unlike a poker seat). It drives the white/black `human`
+// flags: the AI side(s) show model pickers, the human side a short "you". There is no
+// both-human option — human-vs-human is just free-play on the board, so a setup match
+// always has ≥1 AI (which is what the bar's play/pause-AI control assumes). Defaults to
+// Play as White (White moves first — the conventional default).
+export const modeDropdown = new Dropdown({
+  id: 'setup-mode',
+  items: ['Play as White', 'Play as Black', 'Watch AI vs AI'],
+  width: 18,
+  index: 0,
+  onSelect: () => applyMode(),
+});
+function applyMode(): void {
+  white.human = modeDropdown.index === 0; // Play as White → you are White
+  black.human = modeDropdown.index === 1; // Play as Black → you are Black
+  // index 2 (Watch AI vs AI) → neither side is human
+}
+applyMode(); // seed the default (Play as White) before the first build
+
 export function mountMatchSetup(ui: Screen): void {
+  ui.mount(modeDropdown);
   for (const s of [white, black]) {
     ui.mount(s.creatorDropdown);
     ui.mount(s.modelDropdown);
@@ -132,16 +150,6 @@ const CANCEL: Style = {
   hover: { background: [72, 76, 92] },
   focus: { background: [72, 76, 92] },
 };
-// The per-side AI|Human segmented control: two adjacent pills (gap 0), the active
-// one lit like Start, the inactive one dim (but hoverable/focusable).
-const SEG_ON: Style = { padding: [0, 2], background: [86, 64, 120], color: [238, 230, 250], bold: true };
-const SEG_OFF: Style = {
-  padding: [0, 2],
-  background: [40, 42, 52],
-  color: [150, 154, 166],
-  hover: { background: [60, 63, 76], color: [212, 214, 224] },
-  focus: { background: [60, 63, 76] },
-};
 
 // A side's brand hue (the creator's wisp color), as an RGB tuple for the field.
 function brandTint(side: Side): RGB {
@@ -150,59 +158,67 @@ function brandTint(side: Side): RGB {
   return [t.x | 0, t.y | 0, t.z | 0];
 }
 
-// One side's column: the title, an optional AI|Human toggle (`showSeat` — the start
-// modal has it, the swap popup doesn't), then either the creator/model pickers (AI)
-// or a short "you play this side" note (human). `alignItems:'start'` on the row lets
-// the two columns differ in height when one is human.
-function column(side: Side, title: string, showSeat = false): Node {
-  // Tint the creator field in the creator's brand hue (the same color its wisp
-  // takes in-game), set fresh each frame since the creator can change.
+// One side's column for the swap popup: the centered title, then the creator/model
+// pickers. Tints the creator field in the creator's brand hue (its in-game wisp color),
+// set fresh each frame since the creator can change.
+function column(side: Side, title: string): Node {
   side.creatorDropdown.setAccent(brandTint(side));
-  const base = side.creatorDropdown.id.replace(/-creator$/, ''); // e.g. 'setup-white' — namespaces the toggle ids
-  const seat = showSeat
-    ? Box({ flexDirection: 'row', justifyContent: 'center', gap: 0 }, [
-        Button({ id: `${base}-ai`, label: 'ai', onClick: () => setHuman(side, false), style: side.human ? SEG_OFF : SEG_ON }),
-        Button({ id: `${base}-human`, label: 'human', onClick: () => setHuman(side, true), style: side.human ? SEG_ON : SEG_OFF }),
-      ])
-    : null;
-  const body: Node[] = side.human
-    ? [
-        Text({ text: 'you play this side', style: { color: 'muted' } }),
-        // Keep the dropdown Slots in the tree (hidden, 0×0 clipped) so the Screen
-        // doesn't auto-unmount their components — toggling back to AI must find them
-        // still mounted, else the pickers come back empty.
-        Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot(side.creatorDropdown.id), Slot(side.modelDropdown.id)]),
-      ]
-    : [
-        Text({ text: 'creator', style: { color: 'muted' } }),
-        Slot(side.creatorDropdown.id),
-        Text({ text: 'model', style: { color: 'muted' } }),
-        Slot(side.modelDropdown.id),
-      ];
   return Box({ flexDirection: 'column', gap: 0, width: MODEL_W }, [
     Box({ justifyContent: 'center' }, [Text({ text: title, style: { color: TITLE_TINT[side.key], bold: true } })]),
-    ...(seat ? [Box({ height: 0 }), seat] : []),
     Box({ height: 0 }), // a blank line above the body
-    ...body,
+    Text({ text: 'creator', style: { color: 'muted' } }),
+    Slot(side.creatorDropdown.id),
+    Text({ text: 'model', style: { color: 'muted' } }),
+    Slot(side.modelDropdown.id),
   ]);
 }
 
-// Build the centered setup modal. `onStart` is wired to the Start button only when
-// both sides are ready; otherwise the button is rendered disabled (no onClick).
-export function buildMatchSetup(_region: LayoutBox, opts: { onStart: () => void; onCancel: () => void }): Node {
+// A settings row, poker-setup style: a fixed-width label gutter (tinted+bold for the side
+// rows, muted for a plain label like "mode") + its control(s), so the rows line up.
+// `alignItems:'start'` lets an open dropdown grow down without stretching the row.
+function row(label: string, tint: RGB | 'muted', controls: Node[]): Node {
+  return Box({ flexDirection: 'row', gap: 1, alignItems: 'start' }, [
+    Box({ width: SIDE_LABEL_W }, [Text({ text: label, style: { color: tint, bold: tint !== 'muted' } })]),
+    ...controls,
+  ]);
+}
+
+// One side's row: the tinted "white"/"black" gutter + the creator/model pickers (AI), or a
+// short "you" when the mode makes this side the human. When human the picker Slots stay
+// mounted (hidden, 0×0 clipped) so switching the mode back to AI finds them — else the
+// pickers would come back empty.
+function sideRow(side: Side): Node {
+  side.creatorDropdown.setAccent(brandTint(side));
+  const controls: Node[] = side.human
+    ? [
+        Text({ text: 'you', style: { color: 'muted' } }),
+        Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot(side.creatorDropdown.id), Slot(side.modelDropdown.id)]),
+      ]
+    : [Slot(side.creatorDropdown.id), Slot(side.modelDropdown.id)];
+  return row(side.key, TITLE_TINT[side.key], controls);
+}
+
+// The new-match setup: a top-left settings panel floating over the board (no modal, no
+// scrim — the board stays visible behind, like the poker setup over the felt), with the
+// start/cancel controls bottom-left. `onStart` is wired only when both sides are ready.
+export function buildMatchSetup(region: LayoutBox, opts: { onStart: () => void; onCancel: () => void }): Node {
   const ready = matchSetupReady();
   const start = Button({ id: 'setup-start', label: 'start game', onClick: ready ? opts.onStart : undefined, style: ready ? START_ON : START_OFF });
   const cancel = Button({ id: 'setup-cancel', label: 'cancel', onClick: opts.onCancel, style: CANCEL });
 
-  // alignItems:'start' would clip a list opening in the shorter column, so the
-  // columns are top-aligned and the row grows to the taller (open) one.
-  const card = Box({ flexDirection: 'column', gap: 1, padding: [1, 3], background: [22, 24, 32] }, [
-    Box({ justifyContent: 'center' }, [Text({ text: 'new match', style: { color: [222, 224, 234], bold: true } })]),
-    Box({ flexDirection: 'row', gap: 4, alignItems: 'start' }, [column(white, 'white', true), column(black, 'black', true)]),
-    Box({ flexDirection: 'row', justifyContent: 'center', gap: 2 }, [start, cancel]),
-    Box({ justifyContent: 'center' }, [Text({ text: 'tab move · enter open/pick · ↑↓ scroll · esc close', style: { color: 'muted' } })]),
+  const panel = Box({ flexDirection: 'column', gap: 1, alignItems: 'start' }, [
+    Text({ text: 'new match', style: { color: [222, 224, 234], bold: true } }),
+    row('mode', 'muted', [Slot('setup-mode')]),
+    sideRow(white),
+    sideRow(black),
   ]);
-  return Modal(card);
+
+  // Full region: panel top-left, start/cancel bottom-left (mirrors the poker HUD layout).
+  return Box({ width: region.w, height: region.h, flexDirection: 'column' }, [
+    Box({ flexDirection: 'row', justifyContent: 'start', padding: [1, 2] }, [panel]),
+    Box({ flexGrow: 1 }),
+    Box({ flexDirection: 'row', justifyContent: 'start', gap: 2, padding: [0, 0, 1, 2] }, [start, cancel]),
+  ]);
 }
 
 // ── In-match model swap ─────────────────────────────────────────────────────────
@@ -249,5 +265,5 @@ export function buildSwapSetup(_region: LayoutBox, opts: { title: string; onConf
     Box({ flexDirection: 'row', justifyContent: 'center', gap: 2 }, [confirm, cancel]),
     Box({ justifyContent: 'center' }, [Text({ text: 'tab move · enter open/pick · ↑↓ scroll · esc close', style: { color: 'muted' } })]),
   ]);
-  return Modal(card);
+  return Modal(card, { onDismiss: opts.onCancel });
 }

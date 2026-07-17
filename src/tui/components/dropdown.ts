@@ -146,6 +146,11 @@ export class Dropdown implements Component {
     this.focused = false;
     this.open = false;
   }
+  onPointerDownOutside(): boolean {
+    if (!this.open) return false;
+    this.open = false;
+    return true;
+  }
 
   private maxScroll(): number {
     return Math.max(0, this.lines.length - this.rows);

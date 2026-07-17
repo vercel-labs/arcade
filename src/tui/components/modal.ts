@@ -14,6 +14,29 @@ import type { Node } from '../types.ts';
 // Dark, ~55% opaque — enough to push the scene back without hiding it.
 const DEFAULT_SCRIM: ColorToken = [6, 8, 12, 0.55];
 
-export function Modal(content: Node, opts: { scrim?: ColorToken } = {}): Node {
-  return Box({ justifyContent: 'center', alignItems: 'center', scrim: opts.scrim ?? DEFAULT_SCRIM }, [content]);
+export interface ModalOpts {
+  scrim?: ColorToken;
+  onDismiss?: () => void;
+}
+
+export function Modal(content: Node, opts: ModalOpts = {}): Node {
+  const dismiss = opts.onDismiss;
+  if (!dismiss) return Box({ justifyContent: 'center', alignItems: 'center', scrim: opts.scrim ?? DEFAULT_SCRIM }, [content]);
+
+  // The content root absorbs blank-space clicks within the card. Interactive
+  // descendants still win hit-testing because they are painted later.
+  const contentMouse = content.onMouse;
+  const guardedContent: Node = {
+    ...content,
+    onMouse: (ev) => {
+      contentMouse?.(ev);
+      return true;
+    },
+  };
+  const modal: Node = Box({ justifyContent: 'center', alignItems: 'center', scrim: opts.scrim ?? DEFAULT_SCRIM }, [guardedContent]);
+  modal.onMouse = (ev) => {
+    if (ev.type === 'down') dismiss();
+    return true;
+  };
+  return modal;
 }

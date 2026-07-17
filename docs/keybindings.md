@@ -54,8 +54,8 @@ again) stays — so a stray key can't drop a match. Routing lives in `escBack()`
 
 **Prism / splash** — any key → menu; `esc` → quit; `ctrl+c` → quit.
 
-**Menu (home)** — `←`/`→` move · `enter`/`space` launch · `esc` → prism · `s` → team-switch ·
-`o` → sign out.
+**Menu (home)** — `←`/`→` move · `enter`/`space` launch · `m` → menu · `esc` → prism ·
+`s` → account/team switch · `o` → sign out.
 
 **Chess game** (`chess` layer):
 
@@ -108,7 +108,7 @@ automatically screen-specific and can never drift from the real bindings (poker 
 ## Modal layers (shadow everything; `esc` dismisses one level)
 
 `confirm-home` (esc cancel / stay) · `confirm-quit` (esc cancel) · `promoting` (esc cancel) · `gameover` (esc close) ·
-`setup` (esc cancel) · `swap` (esc cancel) · `teamswitch` (esc close) · `poker-notes` (esc close) ·
+`setup` (esc cancel) · `swap` (esc cancel) · `home-menu` (esc close) · `teamswitch` (esc close) · `poker-notes` (esc close) ·
 **`poker-menu` / `chess-menu`** (esc **or `m`** close — `m` toggles the menu) · `shortcuts` (esc
 **or `?`** close). `poker-setup` is non-modal — esc closes it but camera keys + `p` fall through.
 
@@ -127,13 +127,13 @@ an agent verb.
 
 | Command id | Was | Note |
 |---|---|---|
-| `view.cycleRenderMode` | `m` | `m` now toggles the ☰ menu; cycle still runs via the "mode" button. |
+| `view.cycleRenderMode` | `m` | `m` now toggles the ☰ menu; the cycle still runs via the **display** setting. |
 
 ## Removed entirely
 
 | What | Was | Note |
 |---|---|---|
-| `view.setColor/Luminance/Ascii` | `c` `l` `a` | Style is menu-driven; `c` reused for **chat**. |
+| `view.setColor/Luminance/Ascii` | `c` `l` `a` | Replaced by the menu-driven **display** setting; `c` reused for **chat**. |
 | `view.toggleJitter` (glyph jitter) | `j` | Gone — the arcade toggle + `JITTER_TEMP` removed; the engine `jitterTemp` presenter param stays (defaults to `0`). |
 | `nav.menu` command | — | Unbound exact duplicate of `nav.back`. |
 | `nav.back` key | `b` | The key is gone from every layer; the command stays (agent verb). |

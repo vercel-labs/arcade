@@ -8,6 +8,7 @@ import { hslToRgb } from '../../engine/index.ts';
 import {
   ASCIIFont,
   Box,
+  Combobox,
   FrameBuffer,
   Input,
   Select,
@@ -33,11 +34,42 @@ const scroll = new ScrollBox({
   rows: Array.from({ length: 14 }, (_, i) => `  ${String(i + 1).padStart(2)}. move ${i + 1}`),
 });
 
+// A small, deliberately static catalog for the component prototype. The actual
+// match catalog remains Arcade-owned; this scene only proves that one reusable
+// combobox can drive another without importing setup-screen code into the TUI.
+const showcaseModels: Record<string, string[]> = {
+  OpenAI: ['GPT-5', 'GPT-5 Mini', 'o3', 'GPT-4.1'],
+  Anthropic: ['Claude Opus 4.1', 'Claude Sonnet 4', 'Claude 3.7 Sonnet'],
+  Google: ['Gemini 2.5 Pro', 'Gemini 2.5 Flash', 'Gemini 2.0 Flash'],
+  xAI: ['Grok 4', 'Grok 3 Mini'],
+  Mistral: ['Mistral Large', 'Codestral', 'Ministral 8B'],
+};
+
+const modelCombobox = new Combobox({
+  id: 'sc-model-combobox',
+  items: showcaseModels.OpenAI,
+  width: 28,
+  rows: 7,
+  index: 0,
+  placeholder: 'Search models…',
+});
+const creatorCombobox = new Combobox({
+  id: 'sc-creator-combobox',
+  items: Object.keys(showcaseModels),
+  width: 28,
+  rows: 6,
+  index: 0,
+  placeholder: 'Search creators…',
+  onSelect: (_index, creator) => modelCombobox.setItems(showcaseModels[creator] ?? [], 0),
+});
+
 export function mountShowcase(ui: Screen): void {
   ui.mount(input);
   ui.mount(select);
   ui.mount(slider);
   ui.mount(scroll);
+  ui.mount(creatorCombobox);
+  ui.mount(modelCombobox);
 }
 
 // A labeled row: a muted fixed-width caption next to the component's Slot/node.
@@ -84,9 +116,36 @@ export function buildShowcase(region: LayoutBox, bar: Node): Node {
     ],
   );
 
+  // Kept out of the centered component card on purpose: this is the intended
+  // in-game placement, floating at the top-right directly over the 3D scene.
+  const pickerPanel: Node = {
+    ...Box(
+      {
+        position: 'absolute',
+        top: 1,
+        right: 2,
+        width: 32,
+        flexDirection: 'column',
+        gap: 1,
+        padding: [1, 2],
+        background: [16, 18, 26, 0.9],
+      },
+      [
+        Text({ text: 'MODEL SELECTOR', style: { bold: true, color: 'accent' } }),
+        Text({ text: 'creator', style: { color: 'muted' } }),
+        Slot('sc-creator-combobox'),
+        Text({ text: 'model', style: { color: 'muted' } }),
+        Slot('sc-model-combobox'),
+        Text({ text: 'type to search · ↑↓ choose · enter select', style: { color: 'muted' } }),
+      ],
+    ),
+    overlay: true,
+  };
+
   return Box({ width: region.w, height: region.h, flexDirection: 'column' }, [
     Box({ flexGrow: 1, justifyContent: 'center', alignItems: 'center' }, [panel]),
     bar,
     Box({ height: 1 }), // lift the bar off the very bottom edge
+    pickerPanel,
   ]);
 }
