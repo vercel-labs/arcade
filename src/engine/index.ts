@@ -43,5 +43,6 @@ export {
   STYLE_UNDERLINE,
   STYLE_REVERSE,
 } from './surface.ts';
+export { applyTerminalColorMode, rgbToAnsi256, type TerminalColorMode } from './terminal-color.ts';
 export { CellDiffer } from './diff.ts';
 export { halfBlockToSurface, shapeGlyphToSurface, luminanceToSurface } from './present-cells.ts';

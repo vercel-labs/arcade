@@ -19,7 +19,7 @@
 // SGR (solid flickering blocks). Add `?truecolor=1` for smooth 24-bit color where the
 // terminal supports it (the browser/xterm page always requests it).
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { RenderTarget, toShapeGlyph } from '../engine/index.ts';
+import { applyTerminalColorMode, RenderTarget, toShapeGlyph } from '../engine/index.ts';
 import { PrismScene } from './prism.ts';
 import { SplashScene, SPLASH_END } from './splash.ts';
 
@@ -58,28 +58,11 @@ function clampInt(v: string | null, lo: number, hi: number, dflt: number): numbe
 }
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-// RGB → nearest xterm-256 index: the 6×6×6 color cube (16–231) plus the grayscale
-// ramp (232–255) for near-gray pixels. Lets non-truecolor terminals render the art.
-function rgbTo256(r: number, g: number, b: number): number {
-  if (Math.abs(r - g) < 8 && Math.abs(g - b) < 8 && Math.abs(r - b) < 8) {
-    if (r < 8) return 16;
-    if (r > 248) return 231;
-    return 232 + Math.round(((r - 8) / 247) * 24);
-  }
-  const q = (v: number): number => Math.round((v / 255) * 5);
-  return 16 + 36 * q(r) + 6 * q(g) + q(b);
-}
-// toShapeGlyph only emits `38;2;r;g;b` (foreground), so one pass downgrades a frame.
-const TRUECOLOR_FG = /\x1b\[38;2;(\d+);(\d+);(\d+)m/g;
-function to256(frame: string): string {
-  return frame.replace(TRUECOLOR_FG, (_m, r, g, b) => `\x1b[38;5;${rgbTo256(+r, +g, +b)}m`);
-}
-
 // A centered status hint that gently "breathes" (per the shared clock `t`): a sine
 // pulse in PURE GRAY drawn on `row`, always faintly visible, never a hard cutoff.
 // Gray is the trick: in 256-color it maps to the 24-step grayscale ramp, so the pulse
 // stays smooth + neutral, instead of a tinted value snapping between cube colors
-// (which looked blue and choppy). Emits truecolor; the caller's to256 pass downgrades
+// (which looked blue and choppy). Emits truecolor; the shared output transform downgrades
 // it alongside the frame.
 function statusHint(prefix: string, url: string, suffix: string, cols: number, row: number, t: number): string {
   const width = prefix.length + url.length + suffix.length;
@@ -336,7 +319,7 @@ export async function streamPrism(req: IncomingMessage, res: ServerResponse): Pr
       if (tt < SPLASH_END) splash!.renderScene(target, tt);
       else prism!.renderScene(target, tt); // splash hands off seamlessly to the live prism
       frame = toShapeGlyph(target, cols, sceneRows, { color: true });
-      if (!truecolor) frame = to256(frame); // default → 256-color (renders in any terminal)
+      if (!truecolor) frame = applyTerminalColorMode(frame, '256-color'); // default works anywhere
       frames[i] = frame; // cache for every other viewer at this size/mode
     }
     let out = frame;
@@ -344,7 +327,7 @@ export async function streamPrism(req: IncomingMessage, res: ServerResponse): Pr
       // Hint is appended fresh each frame (it breathes); convert it to 256 separately
       // since the cached frame is already in its final color.
       let h = statusHint('visit or curl ', hintUrl, ' for options', cols, rows - 1, hintT);
-      if (h && !truecolor) h = to256(h);
+      if (h && !truecolor) h = applyTerminalColorMode(h, '256-color');
       out += h;
     }
     if (!res.write(out)) {
