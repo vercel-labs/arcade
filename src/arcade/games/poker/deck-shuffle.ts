@@ -245,11 +245,13 @@ export class DeckShuffle {
     return { x, y, z: this.cz, yaw, bendDirection, curl, dome, innerEdgeVisibility, edgeDepth, depth };
   }
 
-  // Draw the whole deck. A card uses the strip path while bent OR while its outer and
-  // inner stack depths differ; only a uniformly flat card takes the cheap two-quad path.
-  draw(target: RenderTarget, vp: Mat4): void {
+  // Draw the whole deck. `yawOverride` is only for the caller's post-shuffle turn after
+  // the rest pose has settled; the riffle/bridge choreography always uses each card's
+  // native yaw. A card uses the strip path while bent or depth-fanned.
+  draw(target: RenderTarget, vp: Mat4, yawOverride?: number): void {
     for (let i = 0; i < N; i++) {
-      const pl = this.place(i);
+      const native = this.place(i);
+      const pl = yawOverride === undefined ? native : { ...native, yaw: yawOverride };
       if (pl.curl > EPS || Math.abs(pl.depth - pl.edgeDepth) > EPS) {
         drawArchCard(target, vp, pl, DUMMY, this.back);
       } else {

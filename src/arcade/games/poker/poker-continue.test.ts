@@ -8,7 +8,23 @@ const SEATS: PokerSeatView[] = [
   { kind: 'ai', label: 'AI 2', creator: 'anthropic' },
 ];
 
-test('a continue gate auto-advances after the countdown, releasing the driver waiter', async () => {
+interface ContinueInternals {
+  cam: unknown;
+  cine: { phase: 'wait'; clock: number; saved: unknown } | null;
+}
+
+test('a board-reveal gate starts at four seconds', () => {
+  const scene = new PokerGameScene();
+  scene.beginSession(SEATS);
+  const internal = scene as unknown as ContinueInternals;
+  internal.cine = { phase: 'wait', clock: 0, saved: internal.cam };
+  const target = new RenderTarget(60, 30);
+  scene.renderScene(target, 0);
+  assert.equal(scene.continueCountdown(), 4);
+  scene.cancelContinue();
+});
+
+test('an end-of-hand gate starts at six seconds and auto-advances', async () => {
   const scene = new PokerGameScene();
   scene.beginSession(SEATS);
   let resolved = false;
@@ -33,7 +49,7 @@ test('a continue gate auto-advances after the countdown, releasing the driver wa
   assert.equal(resolved, true, 'auto-advance releases beginResult’s waiter');
 });
 
-test('a keypress still advances a gate immediately (countdown not required)', async () => {
+test('the Space-triggered continue gesture advances a gate immediately', async () => {
   const scene = new PokerGameScene();
   scene.beginSession(SEATS);
   let resolved = false;
@@ -42,7 +58,7 @@ test('a keypress still advances a gate immediately (countdown not required)', as
   });
   const target = new RenderTarget(60, 30);
   scene.renderScene(target, 0);
-  scene.continueGesture(); // the user pressed a key
+  scene.continueGesture(); // onKeyImpl calls this only for Space
   assert.equal(scene.awaitingContinue(), false);
   assert.equal(scene.continueCountdown(), null);
   await gate;

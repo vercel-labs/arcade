@@ -12,6 +12,7 @@ import type { Player } from '../../ai/player.ts';
 import { type HandPublicRecord, HoldemState, type PokerAction } from '../../rules/poker/holdem.ts';
 import type { PokerGameScene, PokerSeatView } from '../games/poker/poker-scene.ts';
 import { shortModel } from '../games/chess/hud.ts';
+import { disambiguateLabels } from './labels.ts';
 import { PokerMemory } from './poker-memory.ts';
 import { PokerVoice, pokerVoiceCapable } from './poker-voice.ts';
 import { normalizerModel } from './models.ts';
@@ -48,10 +49,10 @@ export interface PokerMatchDeps {
   scene: PokerGameScene;
   syncLive(): void;
   requestRender(): void;
-  onCommentary(text: string, name: string): void;
+  onCommentary(text: string, model: string, label: string): void;
   onHandOver(): void; // refresh the HUD / show the result between hands
   // A spoken line for the chat rail (voice heads-up): `event` lines render grey/nameless.
-  onChat?(text: string, speaker: string, event: boolean): void;
+  onChat?(text: string, speaker: string, event: boolean, label?: string): void;
   // A human action parsed from speech is staged awaiting confirm (null clears it).
   onVoiceStage?(label: string | null): void;
 }
@@ -128,8 +129,8 @@ export class PokerMatch {
     this.button = 0;
     this.memory.reset();
     this.computeLabels();
-    const views: PokerSeatView[] = seats.map((s) =>
-      s.kind === 'human' ? { kind: 'human', label: 'You' } : { kind: 'ai', label: shortModel(s.model), creator: creatorOf(s.model) },
+    const views: PokerSeatView[] = seats.map((s, seat) =>
+      s.kind === 'human' ? { kind: 'human', label: 'You' } : { kind: 'ai', label: this.labelOf(seat), creator: creatorOf(s.model) },
     );
     this.deps.scene.beginSession(views);
     this.setupVoice(); // may set this.voice for a 2-seat human-vs-AI match — before makePlayer
@@ -157,7 +158,13 @@ export class PokerMatch {
       humanSeat,
       botModel: botSpec.model, // full slug → chat name colored by the seat's wisp/provider tint
       botLabel: this.labelOf(botSeat),
-      onChat: (text, speaker, opts) => this.deps.onChat?.(text, speaker, !!opts?.event),
+      onChat: (text, speaker, opts) =>
+        this.deps.onChat?.(
+          text,
+          speaker,
+          !!opts?.event,
+          speaker === botSpec.model ? this.labelOf(botSeat) : undefined,
+        ),
       onStage: (action, label) => this.deps.onVoiceStage?.(action ? label : null),
       requestRender: () => this.deps.requestRender(),
     });
@@ -210,20 +217,19 @@ export class PokerMatch {
     return `Chip standings: ${parts.join(', ')}. Chip leader: ${this.labelOf(leader)}.`;
   }
 
-  // Player display labels: "the human" for the hero, a model's short name otherwise,
-  // seat-qualified ("gpt-5.4 #2") when the same model sits in more than one seat so notes
-  // never conflate two seats. Recomputed on session start and on a mid-session model swap.
+  // Player display labels: "the human" for prompts, a model's short name otherwise,
+  // parenthesized when the exact Gateway slug repeats. Recomputed on start and model swap.
   private computeLabels(): void {
-    const base = this.seats.map((s) => (s.kind === 'human' ? 'the human' : shortModel(s.model)));
-    const total = new Map<string, number>();
-    for (const b of base) total.set(b, (total.get(b) ?? 0) + 1);
-    const seen = new Map<string, number>();
-    this.labels = base.map((b) => {
-      if ((total.get(b) ?? 0) <= 1) return b;
-      const k = (seen.get(b) ?? 0) + 1;
-      seen.set(b, k);
-      return `${b} #${k}`;
-    });
+    this.labels = disambiguateLabels(
+      this.seats.map((seat, index) =>
+        seat.kind === 'human'
+          ? { key: `human:${index}`, label: 'the human' }
+          : { key: seat.model, label: shortModel(seat.model) },
+      ),
+    );
+    this.deps.scene.setSeatLabels(
+      this.seats.map((seat, index) => (seat.kind === 'human' ? 'You' : this.labels[index])),
+    );
   }
   private labelOf(seat: number): string {
     return this.labels[seat] ?? `P${seat}`;
@@ -289,7 +295,10 @@ export class PokerMatch {
     const state = this.deps.scene.state();
     runMatch<PokerAction>(this.deps.scene, this.players, {
       signal: ctrl.signal,
-      onCommentary: (text, player) => this.deps.onCommentary(text, player.name),
+      onCommentary: (text, player) => {
+        const seat = this.players.indexOf(player);
+        this.deps.onCommentary(text, player.name, seat >= 0 ? this.labelOf(seat) : shortModel(player.name));
+      },
     })
       .then(() => {
         if (ctrl.signal.aborted || this.abort !== ctrl) return; // paused / stopped mid-hand
