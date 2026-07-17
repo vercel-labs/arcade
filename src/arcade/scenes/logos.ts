@@ -91,14 +91,3 @@ export function logoUrl(name: string): string | null {
   const file = fileFor(name);
   return file ? `${LOGO_CDN}/${encodeURIComponent(file)}` : null;
 }
-
-/** Creator/lab logo from a model slug, e.g. "alibaba/qwen-3-14b" -> alibaba. */
-export function creatorLogo(slug: string): { url: string | null; name: string } {
-  const creator = slug.split('/')[0] ?? slug;
-  return { url: logoUrl(creator), name: creator };
-}
-
-/** Serving-provider logo, e.g. "deepinfra" / "vertex". */
-export function providerLogo(provider: string): { url: string | null; name: string } {
-  return { url: logoUrl(provider), name: provider };
-}

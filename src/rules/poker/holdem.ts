@@ -23,7 +23,6 @@ export const PREFLOP = 0;
 export const FLOP = 1;
 export const TURN = 2;
 export const RIVER = 3;
-export const SHOWDOWN = 4;
 const STREET_NAMES = ['preflop', 'flop', 'turn', 'river', 'showdown'] as const;
 
 // A player's action. `raise`/`bet` carry a TOTAL street commitment ("raise to N");
