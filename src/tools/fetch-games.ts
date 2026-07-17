@@ -3,12 +3,16 @@
 // tiny tile size. Source: Google's Noto Emoji (Apache-2.0 / OFL) — permissive and
 // hotlinkable via jsDelivr. Run:
 //
-//   pnpm exec tsx src/tools/fetch-games.ts
+//   pnpm exec tsx src/tools/fetch-games.ts [cover-id ...]
 //
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { decodePng, encodePng, type Texture } from '../engine/index.ts';
 
 const noto = (cp: string): string => `https://cdn.jsdelivr.net/gh/googlefonts/noto-emoji/png/128/emoji_u${cp}.png`;
+const artSource = (id: string, cp: string): string =>
+  id === 'achievements'
+    ? 'https://www.emoji.family/api/emojis/1f396/noto/png'
+    : noto(cp);
 
 // Menu item id → Noto emoji codepoint. Chosen to read as the game at a glance.
 const ART: Record<string, string> = {
@@ -16,6 +20,8 @@ const ART: Record<string, string> = {
   logos: '1f916', // 🤖 robot
   audio: '1f3a4', // 🎤 microphone
   ui: '1f3a8', // 🎨 artist palette
+  leaderboard: '1f3c6', // 🏆 trophy
+  achievements: '1f396', // 🎖 military medal
   codenames: '1f575', // 🕵 detective
   // pacman: not a Noto emoji — its cover is the classic sprite from Wikimedia
   // Commons (File:Original PacMan.png, transparent, "PD shape"), committed
@@ -37,10 +43,11 @@ const POKER_SUITS = [
 ] as const;
 
 const DIR = 'assets/games';
+const requested = new Set(process.argv.slice(2));
+const wanted = (id: string): boolean => requested.size === 0 || requested.has(id);
 mkdirSync(DIR, { recursive: true });
 
-async function fetchBytes(cp: string): Promise<Uint8Array> {
-  const url = noto(cp);
+async function fetchBytes(url: string): Promise<Uint8Array> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${res.status} ${res.statusText} (${url})`);
   return new Uint8Array(await res.arrayBuffer());
@@ -91,21 +98,23 @@ function grid2x2(tiles: Texture[]): Texture {
 
 // Single-emoji covers: bake the fetched PNG bytes as-is (decode first only to validate).
 for (const [id, cp] of Object.entries(ART)) {
+  if (!wanted(id)) continue;
   try {
-    const bytes = await fetchBytes(cp);
+    const source = artSource(id, cp);
+    const bytes = await fetchBytes(source);
     const tex = decodePng(bytes);
     writeFileSync(`${DIR}/${id}.png`, bytes);
-    console.log(`baked ${id} (${tex.width}x${tex.height}) <- ${noto(cp)}`);
+    console.log(`baked ${id} (${tex.width}x${tex.height}) <- ${source}`);
   } catch (err) {
     console.error(`FAIL ${id}: ${err instanceof Error ? err.message : err}`);
   }
 }
 
 // Poker: composite the four suits into a grid and re-encode as one PNG.
-try {
+if (wanted('poker')) try {
   const suits = await Promise.all(
     POKER_SUITS.map(async ({ cp, kind }) => {
-      const tile = decodePng(await fetchBytes(cp));
+      const tile = decodePng(await fetchBytes(noto(cp)));
       balanceSuit(tile, kind);
       return tile;
     }),

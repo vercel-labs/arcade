@@ -25,3 +25,4 @@ assets/chess_decimated/
 
 # git worktrees created by the agent harness (local only)
 .claude/worktrees/
+*.tgz

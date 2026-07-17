@@ -1,32 +1,32 @@
 {
-  "name": "arcade",
-  "version": "0.0.0",
+  "name": "@vercel/arcade",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Terminal-rendered ASCII arcade — 3D games in the terminal, powered by Vercel AI Gateway",
+  "description": "Terminal-rendered ASCII arcade \u2014 3D games in the terminal, powered by Vercel AI Gateway",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "dev": "tsx src/arcade/main.ts",
-    "snapshot": "tsx src/tools/snapshot.ts",
+    "dev": "ARCADE_DEV=1 tsx src/arcade/main.ts",
+    "snapshot": "ARCADE_DEV=1 tsx src/tools/snapshot.ts",
     "snapshot:png": "sh scripts/snapshot-png.sh",
     "models:audit": "tsx src/tools/model-compat-report.ts",
     "models:report": "tsx src/tools/model-compat-view.ts",
     "build:vercel": "node scripts/build-vercel-output.mjs",
-    "watch": "tsx watch src/arcade/main.ts",
+    "watch": "ARCADE_DEV=1 tsx watch src/arcade/main.ts",
     "type-check": "tsc --noEmit",
     "test": "node --import tsx --test 'src/**/*.test.ts'"
   },
   "devDependencies": {
     "@types/node": "22.10.5",
     "@types/ws": "8.18.1",
-    "tsx": "4.19.2",
     "typescript": "5.7.3"
   },
   "dependencies": {
     "@ai-sdk/gateway": "4.0.0-beta.113",
     "ai": "6.0.208",
+    "tsx": "4.19.2",
     "ws": "8.21.0",
     "zod": "4.4.3"
   },
@@ -34,6 +34,19 @@
     "speaker": "0.5.5"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["speaker"]
+    "onlyBuiltDependencies": [
+      "speaker"
+    ]
+  },
+  "bin": {
+    "arcade": "./bin/arcade.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "assets"
+  ],
+  "publishConfig": {
+    "access": "restricted"
   }
 }
