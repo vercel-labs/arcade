@@ -721,12 +721,11 @@ export function buildPokerGameRoot(
     ...(strips ? [strips] : []),
     ...matchBtn,
   ]);
-  // The band sits one row off the bottom (a trailing spacer in `main`). When the
-  // new-match / start+cancel button is showing, drop the band's own bottom padding so it
-  // sits a single row off the edge — a bottom margin that reads level with the 2-cell left
-  // inset (a terminal row is taller than a column is wide). In-session (strips, no button)
-  // keeps the roomier 2-row bottom margin.
-  const bandPadBottom = matchBtn.length ? 0 : 1;
+  // No band bottom padding: the trailing spacer row in `main` already sits the whole bottom
+  // band a single row off the edge. That 1-row bottom margin reads level with the 2-cell
+  // right inset on the pause/betting controls (a terminal row is ~twice a column's width),
+  // so the bottom-right button has matching gaps below and to its right.
+  const bandPadBottom = 0;
   const bottomRight = controls ?? pauseBtn;
   const bottomBand = Box({ flexDirection: 'row', alignItems: 'end', width: mainW, padding: [0, 0, bandPadBottom, 2] }, [
     leftCluster,

@@ -444,12 +444,24 @@ export class PokerMatch {
   // ModelPlayer + wisp. Takes effect on its next turn.
   setSeatModel(seat: number, model: string): void {
     if (seat < 0 || seat >= this.players.length) return;
-    if (this.seats[seat]?.kind !== 'ai') return;
-    this.seats[seat] = { kind: 'ai', model, runtime: this.seats[seat].runtime };
+    const current = this.seats[seat];
+    if (current?.kind !== 'ai') return;
+    const runtime = current.runtime;
+
+    // A realtime model owns the live voice session, so changing it must rebuild
+    // that session instead of leaving the old model speaking for the new wisp.
+    if (runtime === 'realtime') {
+      this.voice?.close();
+      this.voice = null;
+    }
+
+    this.seats[seat] = { kind: 'ai', model, runtime };
     this.memory.clearObserver(seat); // new model → fresh eyes (others keep their reads on this seat)
     this.computeLabels(); // the swapped-in model may change the label / de-dupe suffixes
+    if (runtime === 'realtime') this.setupVoice();
     this.players[seat] = this.makePlayer(this.seats[seat], seat);
     this.deps.scene.setSeatCreator(seat, creatorOf(model));
+    if (this.voice) void this.voice.start();
   }
 
   // The session is over (one seat has all the chips). Leave it on screen; the HUD

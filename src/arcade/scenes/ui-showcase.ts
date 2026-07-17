@@ -110,7 +110,6 @@ export function buildShowcase(region: LayoutBox, bar: Node): Node {
       row('Slider', Slot('sc-slider')),
       row('Scroll', Slot('sc-scroll')),
       row('Buffer', gradient),
-      Text({ text: 'tab cycle · type / ↑↓ ←→ interact · b back', style: { color: 'muted' } }),
     ],
   );
 
@@ -134,7 +133,6 @@ export function buildShowcase(region: LayoutBox, bar: Node): Node {
         Slot('sc-creator-dropdown'),
         Text({ text: 'model', style: { color: 'muted' } }),
         Slot('sc-model-dropdown'),
-        Text({ text: 'search · ↑↓ choose · enter', style: { color: 'muted' } }),
       ],
     ),
     overlay: true,

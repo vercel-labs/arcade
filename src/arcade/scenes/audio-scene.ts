@@ -4,7 +4,6 @@ import {
   type RenderTarget,
   type RGB,
   STYLE_BOLD,
-  STYLE_DIM,
   type Surface,
 } from '../../engine/index.ts';
 import { OrbitCamera } from '../orbit.ts';
@@ -360,9 +359,6 @@ export class AudioScene {
     if (this.userTranscript) surf.drawText(pad, rows - 6, trunc(`you: ${this.userTranscript}`, w), [180, 200, 224], PANEL_BG);
     if (this.transcript) surf.drawText(pad, rows - 5, trunc(this.transcript, w), [220, 224, 234], PANEL_BG);
     surf.drawText(pad, rows - 4, trunc(`› ${this.input}_`, w), [240, 244, 255], PANEL_BG, STYLE_BOLD);
-    const talkHint = this.audio.mode === 'handsFree' ? 'just talk' : 'space talk';
-    const hint = this.duplex ? `${talkHint} · ctrl+v mode · tab model · esc back` : 'enter send · tab model · esc back';
-    surf.drawText(Math.max(pad, cols - hint.length - pad), rows - 1, hint, [110, 116, 132], PANEL_BG, STYLE_DIM);
   }
 }
 

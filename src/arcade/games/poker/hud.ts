@@ -77,7 +77,7 @@ function controls(mode: CardsMode): Node[] {
       ]),
     ];
   }
-  return [Text({ text: 'hover to peek · click to lift', style: { color: 'muted' } })];
+  return [];
 }
 
 // Build the full-screen cards HUD: a translucent control panel (top-left) over the
