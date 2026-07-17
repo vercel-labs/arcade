@@ -26,26 +26,38 @@ const NEUTRAL_FG: ColorToken = [212, 214, 224];
 export interface RoundedButtonStyleOpts {
   color?: ColorToken; // label + border at rest
   borderColor?: ColorToken; // border at rest (defaults to `color`)
-  activeColor?: ColorToken; // label + border when hovered/focused/pressed (default white)
+  activeColor?: ColorToken; // explicit hover/focus color; omit for the default hue-brighten
   bold?: boolean; // bold the label at rest too (default false — it always bolds when active)
-  padding?: Padding; // default [0, 2]
+  padding?: Padding; // default [0, 3] — the shared rounded-button horizontal padding
 }
 
-// Outlined rounded button. Hover/focus/pressed whiten the label + border and bold
-// the label — no background fill (see file header for why).
+// Lerp a concrete RGB(A) color toward white by `t` (0 = unchanged, 1 = white). Theme
+// tokens / named colors can't be math'd on, so they pass through unchanged.
+function lift(c: ColorToken, t: number): ColorToken {
+  if (!Array.isArray(c)) return c;
+  const up = (v: number): number => Math.round(v + (255 - v) * t);
+  return (c.length === 4 ? [up(c[0]), up(c[1]), up(c[2]), c[3]] : [up(c[0]), up(c[1]), up(c[2])]) as ColorToken;
+}
+
+// Outlined rounded button. Hover/focus keep the button's own hue but brighten it — the
+// label a little, the border a bit more so the outline pops (the arc glyphs can't be
+// thickened) — and bold the label; pressed flashes full white. No fill (see file header).
+// Pass `activeColor` to override the hover color with an explicit one instead.
 export function roundedButtonStyle(o: RoundedButtonStyleOpts = {}): Style {
   const rest = o.color ?? NEUTRAL_FG;
-  const active = o.activeColor ?? WHITE;
-  const lit: Partial<Style> = { color: active, borderColor: active, bold: true };
+  const borderRest = o.borderColor ?? rest;
+  const lit: Partial<Style> = o.activeColor
+    ? { color: o.activeColor, borderColor: o.activeColor, bold: true }
+    : { color: lift(rest, 0.3), borderColor: lift(borderRest, 0.5), bold: true };
   return {
-    padding: o.padding ?? [0, 2],
+    padding: o.padding ?? [0, 3],
     border: 'round',
     color: rest,
-    borderColor: o.borderColor ?? rest,
+    borderColor: borderRest,
     bold: o.bold ?? false,
     hover: lit,
     focus: lit,
-    pressed: lit,
+    pressed: { color: WHITE, borderColor: WHITE, bold: true },
   };
 }
 

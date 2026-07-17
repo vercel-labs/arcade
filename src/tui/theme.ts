@@ -20,7 +20,7 @@ export interface Theme {
 export const defaultTheme: Theme = {
   fg: [212, 214, 224],
   bg: [0, 0, 0],
-  accent: [120, 170, 255],
+  accent: [112, 122, 188], // slate-indigo — the app's accent (matches the RoundedButton / bet-raise indigo)
   muted: [120, 124, 140],
   pillBg: [44, 46, 56],
   pillFg: [212, 214, 224],

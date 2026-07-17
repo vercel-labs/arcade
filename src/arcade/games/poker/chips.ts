@@ -19,9 +19,9 @@ const WHITE: Vec3 = { x: 224, y: 226, z: 234 };
 const DENOMS: Denom[] = [
   { value: 500, base: { x: 40, y: 42, z: 50 }, spot: WHITE }, // black
   { value: 100, base: { x: 40, y: 128, z: 68 }, spot: WHITE }, // green
-  { value: 50, base: { x: 48, y: 98, z: 172 }, spot: WHITE }, // blue
+  { value: 50, base: { x: 34, y: 72, z: 142 }, spot: WHITE }, // blue
   { value: 20, base: { x: 168, y: 46, z: 50 }, spot: WHITE }, // red
-  { value: 10, base: WHITE, spot: { x: 58, y: 100, z: 178 } }, // white (blue spots)
+  { value: 10, base: WHITE, spot: { x: 34, y: 72, z: 142 } }, // white (blue spots)
   { value: 1, base: { x: 116, y: 72, z: 142 }, spot: WHITE }, // purple change (rare split-pot remainder)
 ];
 // Player stacks balance every casino color, including black $500 chips; pots stay greedy
@@ -33,10 +33,13 @@ const POT_VALUES = [500, 100, 50, 20, 10, 1];
 // a handful of chips reads as a real little tower from the overview.
 const CHIP_R = 0.26;
 const CHIP_H = 0.07;
-const SEGMENTS = 18; // around; 18 = round enough, and divisible by 6 for even edge spots
+const SEGMENTS = 24; // around; smoother circles, still divisible into six even accents
 const TICKS = 6; // edge/face spots (the classic six-spot rim)
-const RING_INNER = 0.5; // fraction of R: inner disc radius
-const RING_LINE = 0.64; // fraction of R: outer edge of the inner ring line
+const TICK_SEGMENTS = 2; // each outer accent spans half of its six-segment period
+const RING_ACCENTS = 12; // 24 alternating inset-ring sections: 12 accent, 12 body
+const RING_INNER = 0.58; // fraction of R: larger inner field
+const RING_OUTER = 0.64; // fraction of R: outer edge of the thin inner ring
+const TICK_INNER = 0.72; // fraction of R: body-colored gap before the rim accents
 const MAX_COLUMNS_PER_COLOR = 2;
 const SECOND_COLUMN_AT = 16; // prefer height; split a color only once its first tower is tall
 const PILE_SPACING = 0.5; // tight initial grid; the collision solve below separates it
@@ -49,8 +52,8 @@ const COLLISION_GAP = 0.005;
 export const CHIP_COLLISION_DISTANCE = 2 * CHIP_R + 2 * CHIP_JIT + COLLISION_GAP;
 
 // One chip mesh per denomination, built once and drawn many. Flat clay disc: top + bottom
-// faces each carry a base disc, a spot-colored ring line, and a base annulus with six
-// spot-colored ticks; the side wall is base with the same six ticks wrapping the rim. All
+// faces each carry a larger base field, a thin segmented ring, a clean body-color gap, and six
+// broad rim accents; the side wall repeats those six accents around the edge. All
 // per-vertex color under lambert (cull: 'none', so winding is free).
 const meshCache = new Map<number, Mesh>();
 function chipMesh(value: number): Mesh {
@@ -63,7 +66,8 @@ function chipMesh(value: number): Mesh {
   const bot = -CHIP_H / 2;
   const ang = (s: number): number => (s / SEGMENTS) * Math.PI * 2;
   const rim = (s: number, rf: number): { x: number; z: number } => ({ x: Math.cos(ang(s)) * CHIP_R * rf, z: Math.sin(ang(s)) * CHIP_R * rf });
-  const isTick = (s: number): boolean => s % (SEGMENTS / TICKS) === 0;
+  const isRimAccent = (s: number): boolean => s % (SEGMENTS / TICKS) < TICK_SEGMENTS;
+  const isRingAccent = (s: number): boolean => s % (SEGMENTS / RING_ACCENTS) === 0;
   const vert = (x: number, y: number, z: number, n: Vec3, col: Vec3): number => {
     V.push({ position: { x, y, z }, normal: n, uv: [0.5, 0.5], color: { ...col } });
     return V.length - 1;
@@ -93,14 +97,17 @@ function chipMesh(value: number): Mesh {
       const a0 = vert(i0.x, y, i0.z, ny, d.base);
       const a1 = vert(i1.x, y, i1.z, ny, d.base);
       tri(center, a0, a1);
-      // Ring line (spot): thin annulus RING_INNER → RING_LINE.
-      const l0 = rim(s, RING_LINE);
-      const l1 = rim(s1, RING_LINE);
-      quad([i0, i1, l1, l0], [y, y, y, y], ny, d.spot);
-      // Outer annulus (base, or spot on a tick segment): RING_LINE → rim.
+      // Thin inset ring: 24 equal sections alternating 12 contrast dashes and 12 gaps.
+      const l0 = rim(s, RING_OUTER);
+      const l1 = rim(s1, RING_OUTER);
+      quad([i0, i1, l1, l0], [y, y, y, y], ny, isRingAccent(s) ? d.spot : d.base);
+      // A narrow body-colored gap separates the inset ring from the rim accents.
+      const g0 = rim(s, TICK_INNER);
+      const g1 = rim(s1, TICK_INNER);
+      quad([l0, l1, g1, g0], [y, y, y, y], ny, d.base);
       const o0 = rim(s, 1);
       const o1 = rim(s1, 1);
-      quad([l0, l1, o1, o0], [y, y, y, y], ny, isTick(s) ? d.spot : d.base);
+      quad([g0, g1, o1, o0], [y, y, y, y], ny, isRimAccent(s) ? d.spot : d.base);
     }
   }
   // Side wall: one quad per segment, radial normal, ticks matching the face spots.
@@ -110,7 +117,7 @@ function chipMesh(value: number): Mesh {
     const p1 = rim(s1, 1);
     const mid = ang(s + 0.5);
     const n: Vec3 = { x: Math.cos(mid), y: 0, z: Math.sin(mid) };
-    quad([p0, p1, p1, p0], [bot, bot, top, top], n, isTick(s) ? d.spot : d.base);
+    quad([p0, p1, p1, p0], [bot, bot, top, top], n, isRimAccent(s) ? d.spot : d.base);
   }
   const mesh: Mesh = { vertices: V, indices: I };
   meshCache.set(value, mesh);

@@ -7,7 +7,7 @@
 // mounted via Slot, rebuilt into a full-screen tree each frame. main owns the scene +
 // driver and wires the handlers; this module owns the controls + the table furniture.
 
-import { Box, Button, CloseButton, Dialog, Input, Modal, type Row, RoundedButton, ScrollBox, Slider, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
+import { Box, Button, CloseButton, Dialog, Dropdown, Input, Modal, type Row, RoundedButton, ScrollBox, Slider, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
 import type { RGB } from '../../../engine/index.ts';
 import { type Card, isRed, RANK_LABELS } from '../../../rules/poker/cards.ts';
 import type { SeatCardView, TableView } from './poker-scene.ts';
@@ -129,6 +129,7 @@ export function mountPokerGameHud(ui: Screen): void {
   ui.mount(betSlider);
   ui.mount(pokerChat);
   ui.mount(notesScroll);
+  ui.mount(notesObserverDropdown);
 }
 
 // A model's table-talk line → the thread. clear resets it for a fresh session.
@@ -187,7 +188,7 @@ const BTN: Style = {
 // equal-width (paint centres text only via symmetric padding, so we pad the string).
 const ACTION: Style = { ...BTN, padding: [1, 2] };
 const FOLD: Style = { ...ACTION, background: [96, 44, 44], color: [246, 220, 218], hover: { background: [150, 58, 58], color: [255, 240, 238] } };
-const RAISE: Style = { ...ACTION, background: [86, 64, 120], color: [238, 230, 250], hover: { background: [110, 84, 150], color: [248, 244, 255] } };
+const RAISE: Style = { ...ACTION, background: [62, 70, 118], color: [228, 232, 248], hover: { background: [88, 98, 154], color: [244, 246, 255] } };
 // The sizing row's pot-fraction / max chips (1 row tall, tight padding).
 const CHIP: Style = { ...BTN, padding: [0, 1], background: [38, 40, 50], color: [200, 204, 216] };
 
@@ -206,6 +207,8 @@ const MATCH_GO: RGB = [120, 205, 142]; // ready-to-go green (shared look with ch
 const MATCH_OFF_FG: RGB = [110, 114, 126]; // dim, inert "start" before every seat is set
 const MATCH_NEUTRAL: RGB = [212, 214, 224]; // cancel label
 const MATCH_NEUTRAL_BORDER: RGB = [88, 92, 110]; // cancel border at rest
+const PAUSE_FG: RGB = [200, 206, 236]; // chess-style active tint for the pause/resume button
+const PAUSE_BORDER: RGB = [112, 122, 188];
 
 // The bottom-left corner controls for this frame (null → none, e.g. mid-session).
 // `setup` picks the shape: false → a single green "new match"; true → a green "start"
@@ -337,35 +340,43 @@ function cardCell(card: Card | null, placeholder: string): Node {
 const MENU_ICON = '☰'; // U+2630 — three stacked lines
 
 // ── Notes modal (opponent reads) ─────────────────────────────────────────────────
-// A centered modal listing one AI seat's private reads on every other player, paged
-// through the seats with ‹ ›. Opened from the top-right "notes" pill; available in both
-// the human-plays and all-AI-spectate modes.
-const NOTES_NAV: Style = {
-  padding: [0, 1],
-  background: [40, 42, 52],
-  color: [212, 214, 224],
-  bold: true,
-  hover: { background: [86, 90, 108], color: [248, 248, 252] },
-  focus: { background: [86, 90, 108], color: [248, 248, 252] },
-  pressed: { background: [120, 124, 142], color: [12, 12, 18] },
-};
-const NOTES_DIM: Style = { padding: [0, 1], color: [96, 100, 116] }; // disabled ‹ › (single observer)
+// A centered, fixed-size modal listing one AI seat's private reads on every other
+// player. A colored dropdown (top-left) switches between the AI seats; the body scrolls
+// at a fixed height with the scrollbar flush to the card's right edge. Opened from the
+// top-right "notes" pill; available in both the human-plays and all-AI-spectate modes.
 
-// Modal geometry. The card is a fixed width so every observer's page is the same size;
-// notes word-wrap to fit and the body scrolls at a fixed height (see notesScroll).
-const NOTES_INNER_W = 46; // content width inside the card padding (header + scroll region)
+// Modal geometry — fixed, so every observer's page is the same size (a long model name
+// ellipsizes inside the dropdown rather than widening the card).
+const NOTES_INNER_W = 46; // scroll region width (its last column is the scrollbar)
+const NOTES_CARD_W = NOTES_INNER_W + 2; // + a 2-cell left inset; the right inset is 0 so the scrollbar hugs the edge
 const NOTES_WRAP_W = NOTES_INNER_W - 3; // minus the "• " bullet gutter and the scrollbar column
 const NOTES_VIEW_H = 16; // fixed viewport height (rows) — generous, always this tall
+const NOTES_OBSERVER_W = 34; // observer dropdown: the open list's width (the field is bare + content-sized)
 const NOTES_PLACEHOLDERS = 2; // grey placeholder bullets shown per opponent with no reads yet
 const NOTE_HEAD: RGB = [232, 214, 150]; // gold subject name
 const NOTE_FG: RGB = [206, 210, 222]; // a read's text
 const NOTE_PLACEHOLDER: RGB = [92, 96, 112]; // grey empty-slot bullet
+const NOTES_LABEL_FG: RGB = [222, 224, 234]; // the "reads" caption + no-creator fallback tint
 
 // The scrollable body: a fixed-height viewport over all the entries' rows (rebuilt each
-// frame from the current observer's reads). Persistent so its scroll offset survives the
-// per-frame rebuild; mounted in mountPokerGameHud, placed via Slot below.
+// frame). Persistent so its scroll offset survives the per-frame rebuild; mounted in
+// mountPokerGameHud, placed via Slot below.
 const notesScroll = new ScrollBox({ id: 'poker-notes-scroll', width: NOTES_INNER_W, height: NOTES_VIEW_H, rows: [] });
-let notesObserver = ''; // last observer shown, so paging back to the top resets the scroll
+let notesObserver = ''; // last observer shown, so switching resets the scroll to the top
+
+// The colored observer picker (top-left of the modal). Selecting a seat routes through
+// onObserverPick, which main wires to switch the shown reads.
+let onObserverPick: ((index: number) => void) | null = null;
+export function setNotesObserverPick(fn: (index: number) => void): void {
+  onObserverPick = fn;
+}
+const notesObserverDropdown = new Dropdown({
+  id: 'poker-notes-observer',
+  items: [],
+  width: NOTES_OBSERVER_W,
+  bare: true, // plain colored name + caret, boxed only on hover/focus
+  onSelect: (i) => onObserverPick?.(i),
+});
 
 // One subject's rows: a gold name line, then each read wrapped to the column as bullets
 // (first line "• …", continuations indented). With no reads yet, grey placeholder bullets
@@ -383,41 +394,46 @@ function notesRows(label: string, notes: string[]): Row[] {
   return rows;
 }
 
-// Build the notes modal for the given observer. `entries` are its reads on every other
-// seat (label + notes). `canCycle` enables the ‹ › pager (more than one AI seat).
+// Build the notes modal. `observers` are the AI seats (for the picker + its brand tint),
+// `activeIndex` the one shown, and `entries` are that observer's reads on every other seat.
 export function buildPokerNotesModal(opts: {
-  observerLabel: string;
+  observers: { label: string; creator?: string }[];
+  activeIndex: number;
   entries: { label: string; notes: string[] }[];
-  canCycle: boolean;
-  onPrev: () => void;
-  onNext: () => void;
   onClose: () => void;
 }): Node {
-  const prev = opts.canCycle
-    ? Button({ id: 'poker-notes-prev', label: '‹', onClick: opts.onPrev, style: NOTES_NAV })
-    : Text({ text: '‹', style: NOTES_DIM });
-  const next = opts.canCycle
-    ? Button({ id: 'poker-notes-next', label: '›', onClick: opts.onNext, style: NOTES_NAV })
-    : Text({ text: '›', style: NOTES_DIM });
-  const title = Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [
-    prev,
-    Text({ text: `${opts.observerLabel}'s reads`, style: { color: [222, 224, 234], bold: true } }),
-    next,
-  ]);
+  // Only rebuild the picker when the observer set actually changes (new session / first
+  // open) — calling setItems every frame would collapse an open dropdown on each rebuild.
+  const labels = opts.observers.map((o) => o.label);
+  if (labels.join('\x00') !== notesObserverDropdown.items.join('\x00')) {
+    notesObserverDropdown.setItems(labels, opts.activeIndex);
+  }
+  const active = opts.observers[opts.activeIndex];
+  notesObserverDropdown.setAccent(active?.creator ? seatTint(active.creator) : NOTES_LABEL_FG);
+
+  // Title: just the colored observer picker (Dialog adds the corner ✕). The bare
+  // dropdown reads as the seat's name + a ▾, boxed only on hover.
+  const title = Slot(notesObserverDropdown.id);
+
   // A blank spacer row between subjects; flatten each subject's rows into one list.
   const rows: Row[] = [];
   opts.entries.forEach((e, i) => {
     if (i > 0) rows.push(Text({ text: '' }));
     rows.push(...notesRows(e.label, e.notes));
   });
-  if (opts.observerLabel !== notesObserver) {
-    notesScroll.scroll = 0; // paged to a different observer — start at the top
-    notesObserver = opts.observerLabel;
+  if ((active?.label ?? '') !== notesObserver) {
+    notesScroll.scroll = 0; // switched to a different observer — start at the top
+    notesObserver = active?.label ?? '';
   }
   notesScroll.rows = rows;
-  // Dialog supplies the card + corner ✕; the pager row is the (custom) title.
+
+  // Fixed card width with the body flush to the right edge (right inset 0), so the
+  // scrollbar hugs the card edge and the width never shifts with the observer's name.
   return Modal(
-    Dialog({ title, onClose: opts.onClose, closeId: 'poker-notes-close', padding: [1, 3] }, [Slot('poker-notes-scroll')]),
+    Dialog(
+      { title, onClose: opts.onClose, closeId: 'poker-notes-close', width: NOTES_CARD_W, padding: [1, 0, 1, 2] },
+      [Slot('poker-notes-scroll')],
+    ),
     { onDismiss: opts.onClose },
   );
 }
@@ -612,6 +628,10 @@ export function buildPokerGameRoot(
     onOpenNotes: () => void; // "notes" pill → the opponent-notes modal
     setup: Node | null; // the new-match settings panel (top-left, in place of the pot pill)
     matchControls: MatchControls | null; // the bottom-left new-match / start+cancel controls
+    // Bottom-right pause/resume button (chess-styled). Set when a match is running or
+    // paused AND the betting controls aren't up — i.e. spectating, or the models' turns
+    // in a human game. Null when idle/ended/cinematic, or on the hero's own turn.
+    pauseControl: { paused: boolean; onToggle: () => void } | null;
     hideHud: boolean; // during a community-deal cinematic: hide all but the top-right pills + rail
     cineLabel: { label: string; cards: Card[] } | null; // top-centre "Board" + cards during that cinematic
     resultLabel: string | null; // top-centre end-of-hand winner line (over the visible table)
@@ -634,6 +654,19 @@ export function buildPokerGameRoot(
       : null;
 
   const controls = !hide && opts.hero.toAct ? bettingControls(opts.hero) : null;
+  // The bottom-right pause/resume button — mutually exclusive with the betting controls
+  // (which take that corner on the hero's turn), so pausing is one click while spectating
+  // or while the models think.
+  const pauseBtn =
+    !hide && !controls && opts.pauseControl
+      ? RoundedButton({
+          id: 'poker-pause',
+          label: opts.pauseControl.paused ? 'resume' : 'pause',
+          onClick: opts.pauseControl.onToggle,
+          color: PAUSE_FG,
+          borderColor: PAUSE_BORDER,
+        })
+      : null;
 
   // The rail (full-height chat) only reserves width when the chat is OPEN. Collapsed, main
   // takes the whole width so the bottom-right controls reach the true corner. `mainW` is the
@@ -668,13 +701,13 @@ export function buildPokerGameRoot(
   const matchBtn = !mc
     ? []
     : !mc.setup
-      ? [RoundedButton({ id: 'poker-match', label: 'new match', onClick: mc.onPrimary, color: MATCH_GO, padding: [0, 3] })]
+      ? [RoundedButton({ id: 'poker-match', label: 'new match', onClick: mc.onPrimary, color: MATCH_NEUTRAL })]
       : [
           Box({ flexDirection: 'row', gap: 2 }, [
             mc.onPrimary
-              ? RoundedButton({ id: 'poker-start', label: 'start', onClick: mc.onPrimary, color: MATCH_GO, padding: [0, 3] })
-              : RoundedButton({ id: 'poker-start', label: 'start', color: MATCH_OFF_FG, padding: [0, 3] }),
-            RoundedButton({ id: 'poker-cancel', label: 'cancel', onClick: mc.onCancel, color: MATCH_NEUTRAL, borderColor: MATCH_NEUTRAL_BORDER, padding: [0, 3] }),
+              ? RoundedButton({ id: 'poker-start', label: 'start', onClick: mc.onPrimary, color: MATCH_GO })
+              : RoundedButton({ id: 'poker-start', label: 'start', color: MATCH_OFF_FG }),
+            RoundedButton({ id: 'poker-cancel', label: 'cancel', onClick: mc.onCancel, color: MATCH_NEUTRAL, borderColor: MATCH_NEUTRAL_BORDER }),
           ]),
         ];
 
@@ -694,10 +727,11 @@ export function buildPokerGameRoot(
   // inset (a terminal row is taller than a column is wide). In-session (strips, no button)
   // keeps the roomier 2-row bottom margin.
   const bandPadBottom = matchBtn.length ? 0 : 1;
+  const bottomRight = controls ?? pauseBtn;
   const bottomBand = Box({ flexDirection: 'row', alignItems: 'end', width: mainW, padding: [0, 0, bandPadBottom, 2] }, [
     leftCluster,
     Box({ flexGrow: 1 }),
-    ...(controls ? [Box({ padding: [0, 2, 0, 0] }, [controls])] : []),
+    ...(bottomRight ? [Box({ padding: [0, 2, 0, 0] }, [bottomRight])] : []),
   ]);
 
   // The top-centre banner floats over the main column (an absolute row so it doesn't disturb
