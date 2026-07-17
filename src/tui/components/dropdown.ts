@@ -359,7 +359,7 @@ export class Dropdown implements Component {
   private onSearchMouse(ev: PointerHit): boolean {
     if (ev.type === 'down') {
       this.beginSearch();
-      this.caret = Math.max(0, Math.min(this.query.length, this.queryScroll + ev.x - 3));
+      this.caret = Math.max(0, Math.min(this.query.length, this.queryScroll + ev.x - 1));
     }
     return true;
   }
@@ -409,7 +409,7 @@ export class Dropdown implements Component {
   }
 
   private searchRoom(): number {
-    return Math.max(1, this.width - 4);
+    return Math.max(1, this.width - 2);
   }
 
   private reflowQuery(): void {
@@ -428,15 +428,15 @@ export class Dropdown implements Component {
   }
 
   private searchText(): string {
-    if (!this.editing) return '⌕ ' + (this.opts.searchPlaceholder ?? 'Search');
+    if (!this.editing) return this.opts.searchPlaceholder ?? 'Search';
     this.reflowQuery();
-    return '⌕ ' + this.query.slice(this.queryScroll, this.queryScroll + this.searchRoom());
+    return this.query.slice(this.queryScroll, this.queryScroll + this.searchRoom());
   }
 
   private paintCursor(surf: Surface, box: LayoutBox): void {
     if (!this.editing || !this.focused || box.w <= 0) return;
     this.reflowQuery();
-    const x = box.x + 2 + this.caret - this.queryScroll;
+    const x = box.x + this.caret - this.queryScroll;
     if (x < box.x || x >= box.x + box.w) return;
     const char = this.query[this.caret] ?? ' ';
     surf.setCell(x, box.y, char, CURSOR_FG, CURSOR);
