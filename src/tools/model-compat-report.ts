@@ -19,6 +19,13 @@
 //   pnpm models:audit [all|sweep|<creator>|<model>] [--team=<slug>]
 //   pnpm models:audit all --game=chess           # one game only (default: both)
 //   pnpm models:audit all --timeout=60 --out=docs # output dir (default: docs)
+//   pnpm models:audit --live                      # audit the CURRENT /v1/models language set
+//                                                 # (fetched live, no catalog exclusions)
+//
+// After the main pass it RE-TESTS soft failures (TIMEOUT/ERROR/FALLBACK, not ACCESS)
+// serially with a longer deadline and keeps the best result, so a one-off timeout can't
+// falsely fail a usually-fine model. Tune with --retry-timeout=<s> (default max(90, 2×timeout)),
+// --retry-attempts=<n> (default 2), or turn it off with --no-retry.
 //
 // Reuses Arcade's cached login + selected team; --team=<slug> switches (and persists).
 
@@ -37,9 +44,28 @@ const CONCURRENCY = 6;
 const timeoutArg = process.argv.find((a) => /^--timeout=\d+(?:\.\d+)?$/.test(a));
 const TIMEOUT_MS = timeoutArg ? Number(timeoutArg.split('=')[1]) * 1000 : 45_000;
 const NO_NORMALIZE = process.argv.includes('--no-normalize');
+// --live: audit the CURRENT /v1/models language set fetched live, instead of the baked
+// assets/models.json. Tests EVERY live language model with no catalog exclusions (incl.
+// the ones models.ts normally hides), so the model list is grounded in the endpoint, not
+// a stale snapshot or an assumption. See src/tools/fetch-models.ts for the bake path.
+const LIVE = process.argv.includes('--live');
+const MODELS_URL = 'https://ai-gateway.vercel.sh/v1/models';
 const OUT_DIR = process.argv.find((a) => a.startsWith('--out='))?.slice('--out='.length) ?? 'docs';
 const gameArg = process.argv.find((a) => a.startsWith('--game='))?.slice('--game='.length);
 const GAMES: GameKind[] = gameArg === 'chess' ? ['chess'] : gameArg === 'poker' ? ['poker'] : ['chess', 'poker'];
+// Anti-flakiness: a single 45s attempt under concurrency can falsely fail a model that
+// usually passes (a cold start, a load spike, one unlucky timeout). After the main pass
+// we re-test only the SOFT failures (never ACCESS — that's deterministic team gating)
+// one at a time, with a longer deadline, a few times, and keep the BEST result. A model
+// that "usually passes" survives; one that's genuinely broken/too-slow still fails.
+const NO_RETRY = process.argv.includes('--no-retry');
+const retryTimeoutArg = process.argv.find((a) => /^--retry-timeout=\d+(?:\.\d+)?$/.test(a));
+const RETRY_TIMEOUT_MS = retryTimeoutArg ? Number(retryTimeoutArg.split('=')[1]) * 1000 : Math.max(90_000, TIMEOUT_MS * 2);
+const retryAttemptsArg = process.argv.find((a) => /^--retry-attempts=\d+$/.test(a));
+const RETRY_ATTEMPTS = retryAttemptsArg ? Number(retryAttemptsArg.split('=')[1]) : 2;
+// Soft (retryable, likely-transient) failures. STRUCTURED>TEXT>NORMALIZED are playable;
+// among the rest, keep whichever attempt got furthest up the ladder.
+const SOFT: string[] = ['TIMEOUT', 'ERROR', 'FALLBACK'];
 
 type GameKind = 'chess' | 'poker';
 type Status = 'STRUCTURED' | 'TEXT' | 'NORMALIZED' | 'FALLBACK' | 'ACCESS' | 'TIMEOUT' | 'ERROR';
@@ -76,9 +102,9 @@ const POKER_SPEECH = 'a short line of live table talk in your own voice; never r
 // either game's fallback.
 const rawSchema = z.object({ move: z.string(), rationale: z.string() });
 const rawPrompt = 'You are playing chess as White from the start position. Reply with one legal move in SAN (e.g. "e4") and a one-sentence rationale.';
-async function rawReason(id: string): Promise<string> {
+async function rawReason(id: string, timeoutMs: number): Promise<string> {
   try {
-    await generateText({ model: id, abortSignal: AbortSignal.timeout(TIMEOUT_MS), output: Output.object({ schema: rawSchema }), prompt: rawPrompt });
+    await generateText({ model: id, abortSignal: AbortSignal.timeout(timeoutMs), output: Output.object({ schema: rawSchema }), prompt: rawPrompt });
     return 'ladder failed but a bare structured call succeeded (likely illegal/unparseable moves)';
   } catch (e) {
     const c = classifyModelError(e);
@@ -95,7 +121,7 @@ function freshState(kind: GameKind): GameState<unknown> {
   return new HoldemState({ stacks: [1000, 1000], button: 0, smallBlind: 10, bigBlind: 20 }) as unknown as GameState<unknown>;
 }
 
-async function auditGame(kind: GameKind, id: string, normalizer: string | undefined): Promise<GameResult> {
+async function auditGame(kind: GameKind, id: string, normalizer: string | undefined, timeoutMs: number): Promise<GameResult> {
   const state = freshState(kind);
   const t0 = Date.now();
   let structuredEmitted = false; // schema parsed (legal or illegal move) → structured output supported
@@ -113,7 +139,7 @@ async function auditGame(kind: GameKind, id: string, normalizer: string | undefi
       : { gameName: "no-limit Texas Hold'em poker", moveNotation: POKER_NOTATION, persona: POKER_PERSONA, speech: POKER_SPEECH }),
   });
   try {
-    const { action, rationale } = await player.chooseAction(state, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+    const { action, rationale } = await player.chooseAction(state, { signal: AbortSignal.timeout(timeoutMs) });
     const ms = Date.now() - t0;
     const structured: GameResult['structured'] = structuredEmitted ? 'yes' : 'no';
     const move = state.actionToString(action);
@@ -121,7 +147,7 @@ async function auditGame(kind: GameKind, id: string, normalizer: string | undefi
     if (legalRung.text) return { status: 'TEXT', structured, move, ms, detail: 'structured output unsupported; plain-text fallback' };
     if (legalRung.normalize) return { status: 'NORMALIZED', structured, move, ms, detail: `recovered via ${normalizer}` };
     if (rationale === FALLBACK_RATIONALE.unavailable) return { status: 'ACCESS', structured: '—', move: '', ms, detail: 'restricted provider access on this team' };
-    if (isFallbackRationale(rationale)) return { status: 'FALLBACK', structured, move: '', ms, detail: `all ladder rungs failed — ${await rawReason(id)}` };
+    if (isFallbackRationale(rationale)) return { status: 'FALLBACK', structured, move: '', ms, detail: `all ladder rungs failed — ${await rawReason(id, timeoutMs)}` };
     return { status: 'STRUCTURED', structured, move, ms, detail: '' };
   } catch (e) {
     const ms = Date.now() - t0;
@@ -133,16 +159,33 @@ async function auditGame(kind: GameKind, id: string, normalizer: string | undefi
   }
 }
 
-async function auditModel(id: string, normalizer: string | undefined): Promise<Row> {
+async function auditModel(id: string, normalizer: string | undefined, timeoutMs: number): Promise<Row> {
   const row: Row = { id, name: modelName(id) };
-  if (GAMES.includes('chess')) row.chess = await auditGame('chess', id, normalizer);
+  if (GAMES.includes('chess')) row.chess = await auditGame('chess', id, normalizer, timeoutMs);
   if (GAMES.includes('poker')) {
     // Access is provider-level: if chess couldn't reach the provider, poker can't either
     // — skip the call and reuse the diagnosis rather than pay another timeout.
     if (row.chess?.status === 'ACCESS') row.poker = { ...row.chess };
-    else row.poker = await auditGame('poker', id, normalizer);
+    else row.poker = await auditGame('poker', id, normalizer, timeoutMs);
   }
   return row;
+}
+
+// Ladder quality for keeping the best across retry attempts (higher = more playable).
+const QUALITY: Record<Status, number> = { STRUCTURED: 5, TEXT: 4, NORMALIZED: 3, FALLBACK: 2, ERROR: 1, TIMEOUT: 1, ACCESS: 0 };
+const better = (a?: GameResult, b?: GameResult): GameResult | undefined => (!a ? b : !b ? a : QUALITY[b.status] > QUALITY[a.status] ? b : a);
+const isSoft = (r?: GameResult): boolean => (r ? SOFT.includes(r.status) : false);
+
+// Live target list: every language model the gateway lists RIGHT NOW (unauthenticated
+// public catalog — team-agnostic, so per-team ACCESS gating surfaces at audit time).
+async function liveLanguageIds(): Promise<string[]> {
+  const res = await fetch(MODELS_URL);
+  if (!res.ok) throw new Error(`${MODELS_URL} → HTTP ${res.status} ${res.statusText}`);
+  const json = (await res.json()) as { data: { id: string; type?: string }[] };
+  return json.data
+    .filter((m) => m.type === 'language')
+    .map((m) => m.id)
+    .sort();
 }
 
 function targets(arg: string | undefined): string[] {
@@ -177,20 +220,40 @@ async function main(): Promise<void> {
 
   const normalizer = NO_NORMALIZE ? undefined : normalizerModel();
   const arg = process.argv.slice(2).find((a) => !a.startsWith('--'));
-  const ids = targets(arg);
-  console.log(`auditing ${ids.length} model(s) · games ${GAMES.join('+')} · team ${team.name} (${team.slug}) · normalizer ${normalizer ?? '(disabled)'} · ${TIMEOUT_MS / 1000}s timeout\n`);
+  const ids = LIVE ? await liveLanguageIds() : targets(arg);
+  const source = LIVE ? `LIVE ${MODELS_URL} (every language model, no exclusions)` : 'assets/models.json';
+  console.log(`auditing ${ids.length} model(s) · source ${source} · games ${GAMES.join('+')} · team ${team.name} (${team.slug}) · normalizer ${normalizer ?? '(disabled)'} · ${TIMEOUT_MS / 1000}s timeout\n`);
 
   const rows: Row[] = [];
   let next = 0;
   await Promise.all(
     Array.from({ length: Math.min(CONCURRENCY, ids.length) }, async () => {
       while (next < ids.length) {
-        const r = await auditModel(ids[next++], normalizer);
+        const r = await auditModel(ids[next++], normalizer, TIMEOUT_MS);
         rows.push(r);
         console.log(`${r.id.padEnd(42)}  chess: ${cell(r.chess).padEnd(16)}  poker: ${cell(r.poker)}`);
       }
     }),
   );
+
+  // Retry pass — re-test only the soft failures, serially, with the longer deadline, and
+  // keep the best result per game so a one-off timeout can't condemn a usually-fine model.
+  if (!NO_RETRY) {
+    const soft = rows.filter((r) => GAMES.some((g) => isSoft(r[g])));
+    if (soft.length) {
+      console.log(`\nretry pass: re-testing ${soft.length} soft failure(s) at concurrency 1, ${RETRY_TIMEOUT_MS / 1000}s timeout, up to ${RETRY_ATTEMPTS} attempt(s)…`);
+      for (const r of soft) {
+        const before = GAMES.map((g) => r[g]?.status).join('/');
+        for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
+          const retry = await auditModel(r.id, normalizer, RETRY_TIMEOUT_MS);
+          for (const g of GAMES) r[g] = better(r[g], retry[g]);
+          if (!GAMES.some((g) => isSoft(r[g]))) break; // fully recovered — stop early
+        }
+        const after = GAMES.map((g) => r[g]?.status).join('/');
+        console.log(`  ${r.id.padEnd(42)}  ${before} → ${after}${before === after ? '  (unchanged)' : '  ✓ recovered'}`);
+      }
+    }
+  }
   rows.sort((a, b) => a.id.localeCompare(b.id));
 
   const out = `${OUT_DIR}/model-compat.${team.slug}.json`;
@@ -199,6 +262,8 @@ async function main(): Promise<void> {
     team: { name: team.name, slug: team.slug },
     normalizer: normalizer ?? null,
     timeoutMs: TIMEOUT_MS,
+    retryTimeoutMs: NO_RETRY ? null : RETRY_TIMEOUT_MS,
+    source: LIVE ? 'live:/v1/models' : 'assets/models.json',
     games: GAMES,
     models: rows,
   };
