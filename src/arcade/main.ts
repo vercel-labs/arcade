@@ -589,7 +589,7 @@ function stopAiMatch(): void {
 // selects are (re)mounted for their Slots; pickers retain their last selection.
 function openMatchSetup(): void {
   if (!process.env.AI_GATEWAY_API_KEY) {
-    commentary = { text: 'press s to sign in to Vercel and play (or set AI_GATEWAY_API_KEY)', model: '', until: t + 6 };
+    commentary = { text: 'to sign in, go home, open the menu, then choose account', model: '', until: t + 6 };
     r.requestRender();
     return;
   }
@@ -775,7 +775,7 @@ function stopPokerMatch(): void {
 // idle scene previews the chosen seats live (chairs + creator wisps).
 function openPokerSetup(): void {
   if (!process.env.AI_GATEWAY_API_KEY) {
-    commentary = { text: 'press s to sign in to Vercel and play (or set AI_GATEWAY_API_KEY)', model: '', until: t + 6 };
+    commentary = { text: 'to sign in, go home, open the menu, then choose account', model: '', until: t + 6 };
     r.requestRender();
     return;
   }
