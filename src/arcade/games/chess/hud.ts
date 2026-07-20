@@ -320,9 +320,10 @@ export function buildChessGameRoot(
     Button({ id: 'chess-menu', label: '☰ menu', onClick: opts.onOpenMenu, style: UI_CHROME_PILL }),
     ...(opts.chatVisible ? [] : [Button({ id: 'chat-open', label: 'chat', onClick: opts.onToggleChat, style: UI_CHROME_PILL })]),
   ]);
-  // The match banner floats centered at the top, over a full-width absolute row so it
-  // stays centered on screen regardless of the left move panel / right pills.
-  const banner = Box({ position: 'absolute', top: 1, left: 0, width: region.w, flexDirection: 'row', justifyContent: 'center' }, [
+  // The match banner floats at the top, centered in the space to the LEFT of the right
+  // rail (chat + eval) rather than the full screen width — so it tracks the board area
+  // and re-centers when chat or the eval bar toggles.
+  const banner = Box({ position: 'absolute', top: 1, left: 0, width: Math.max(0, region.w - railW), flexDirection: 'row', justifyContent: 'center' }, [
     buildMatchBanner(opts.matchup),
   ]);
   return Box({ width: region.w, height: region.h }, [row, cluster, banner]);
