@@ -134,6 +134,10 @@ export interface RealtimeCodec {
 
 export class RealtimeSession {
   private open = false;
+  // Once closed, drop every inbound server event. socket.close() is async, so buffered
+  // frames (e.g. a response's audio deltas) can still arrive — and a torn-down session
+  // must not fire handlers, or it reopens the speaker and orphans it (underflow spam).
+  private closed = false;
   private outbox: unknown[] = []; // client events queued until the socket opens
 
   constructor(
@@ -223,6 +227,7 @@ export class RealtimeSession {
   }
 
   close(): void {
+    this.closed = true; // stop dispatching further server events before the async close
     try {
       this.socket.close();
     } catch {
@@ -251,6 +256,7 @@ export class RealtimeSession {
   }
 
   private onMessage(data: unknown): void {
+    if (this.closed) return; // a closed session must not deliver late/buffered frames
     let raw: unknown;
     try {
       raw = JSON.parse(typeof data === 'string' ? data : String(data));

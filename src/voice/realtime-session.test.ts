@@ -35,6 +35,19 @@ test('updateSession carries tool definitions in the session-update', async () =>
   assert.match(update!, /"name":"act"/);
 });
 
+test('a closed session drops late/buffered frames (no onAudio reopens the speaker)', () => {
+  const audio: Buffer[] = [];
+  const { session, recv } = harness({ onAudio: (pcm) => audio.push(pcm) });
+  // A normal audio delta lands while the session is open.
+  recv({ type: 'audio-delta', delta: Buffer.from('one').toString('base64') });
+  assert.equal(audio.length, 1, 'delivers frames while open');
+  // Close, then a straggler delta arrives (buffered on the still-closing socket). It
+  // must be dropped — otherwise it reopens the speaker with no response-done to end it.
+  session.close();
+  recv({ type: 'audio-delta', delta: Buffer.from('two').toString('base64') });
+  assert.equal(audio.length, 1, 'drops frames once closed');
+});
+
 test('sendContext adds a text item WITHOUT asking for a response', async () => {
   const { session, sent, flush } = harness();
   session.sendContext('Board: Ah Kd 7c. It is your turn.');

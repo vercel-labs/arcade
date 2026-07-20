@@ -193,9 +193,13 @@ export class PokerVoice {
 
   close(): void {
     this.audioLog.flush();
-    this.audio.stop();
+    // Close the session FIRST so its event dispatch stops (see RealtimeSession.close):
+    // otherwise a late audio delta could reopen the speaker right after we tear the audio
+    // path down, leaving it open and spamming CoreAudio underflow warnings (the mid-speech
+    // model-swap bug).
     this.session?.close();
     this.session = null;
+    this.audio.stop();
     this.connecting = false;
     this.pendingBot = null;
     this.responding = false;
@@ -351,6 +355,12 @@ export class PokerVoice {
           this.audio.endReply();
           this.onResponseDone(); // floor is free — drive / re-prompt the bot's turn
         }
+        if (s === 'closed') {
+          // Session ended (incl. a mid-speech drop the socket closes on its own): make
+          // sure the output device is closed so it can't sit open spamming underflow.
+          this.responding = false;
+          this.audio.stopPlayback();
+        }
       },
       onSpeechStarted: () => {
         this.audioLog.event('speech-started');
@@ -366,7 +376,10 @@ export class PokerVoice {
         this.audio.play(pcm);
       },
       onFunctionCall: ({ callId, name, argumentsJson }) => this.onToolCall(callId, name, argumentsJson),
-      onError: (m) => this.deps.onChat(`(voice error: ${m})`, '', { event: true }),
+      onError: (m) => {
+        this.audio.stopPlayback(); // an error mid-reply shouldn't leave the speaker open
+        this.deps.onChat(`(voice error: ${m})`, '', { event: true });
+      },
     };
   }
 
