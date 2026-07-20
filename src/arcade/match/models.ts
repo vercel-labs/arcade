@@ -45,6 +45,13 @@ export function modelsFor(slug: string): ModelInfo[] {
 function allowlistActive(): boolean {
   return !/^(1|on|true|yes)$/i.test(process.env.ARCADE_ALL_MODELS?.trim() ?? '');
 }
+
+// Whether to offer early-access-only models (e.g. xAI Grok realtime voice) in the pickers.
+// Same escape hatch as the full text catalog: ARCADE_ALL_MODELS=1 (dev, or an early-access
+// team). Interim until a per-team /v1/models availability signal exists (AIG-105).
+export function includeEarlyAccessModels(): boolean {
+  return !allowlistActive();
+}
 function allowed(models: ModelInfo[]): ModelInfo[] {
   return allowlistActive()
     ? models.filter((m) => BETA_MODEL_ALLOWLIST.has(m.id))

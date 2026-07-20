@@ -9,7 +9,7 @@ export { MicCapture, micAvailable } from './audio-in.ts';
 export { AudioLog } from './audio-log.ts';
 export { AecSidecar } from './aec-sidecar.ts';
 export { AUDIO_RATE, pcm16Peak, VoiceDuplex, type VoiceDuplexHandlers, type VoiceMode } from './voice-duplex.ts';
-export { DEFAULT_REALTIME_MODEL_ID, REALTIME_MODELS, type RealtimeModelInfo } from './realtime-models.ts';
+export { availableRealtimeModels, DEFAULT_REALTIME_MODEL_ID, REALTIME_MODELS, type RealtimeModelInfo } from './realtime-models.ts';
 export {
   openRealtime,
   RealtimeSession,

@@ -7,12 +7,13 @@ import {
   type Surface,
 } from '../../engine/index.ts';
 import { OrbitCamera } from '../orbit.ts';
+import { includeEarlyAccessModels } from '../match/models.ts';
 import { loadCreatorWisp, mulberry32, type Wisp } from './wisp.ts';
 import {
   AudioLog,
   AUDIO_RATE,
   openRealtime,
-  REALTIME_MODELS,
+  availableRealtimeModels,
   pcm16Peak,
   VoiceDuplex,
   type RealtimeHandlers,
@@ -39,6 +40,9 @@ export class AudioScene {
   private cam: OrbitCamera;
   private rng = mulberry32(0xa0d10);
   private modelIndex = 0;
+  // Early-access realtime models (e.g. Grok voice) are hidden unless unlocked; the cycler
+  // walks only the models this team can actually open.
+  private readonly rtModels = availableRealtimeModels(includeEarlyAccessModels());
   private wisp: Wisp;
   private wispCreator = '';
   private lastT = -1;
@@ -74,7 +78,7 @@ export class AudioScene {
   }
 
   private get modelId(): string {
-    return REALTIME_MODELS[this.modelIndex].id;
+    return this.rtModels[this.modelIndex].id;
   }
   private get creator(): string {
     return this.modelId.split('/')[0] ?? this.modelId;
@@ -144,7 +148,7 @@ export class AudioScene {
   // Cycle to the next realtime model: reload its wisp, reconnect (re-arming the
   // mic in duplex mode) so the conversation continues with the new model.
   cycleModel(): void {
-    this.modelIndex = (this.modelIndex + 1) % REALTIME_MODELS.length;
+    this.modelIndex = (this.modelIndex + 1) % this.rtModels.length;
     if (this.creator !== this.wispCreator) this.wisp = this.loadModelWisp();
     this.closeSession();
     this.transcript = '';

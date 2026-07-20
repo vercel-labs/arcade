@@ -9,8 +9,8 @@
 // leaves the creator intact).
 import { Box, Dialog, Dropdown, Modal, RoundedButton, Slot, Text, type LayoutBox, type Node, type Screen } from '../../tui/index.ts';
 import type { RGB } from '../../engine/index.ts';
-import { pickerCreators, type ModelInfo } from './models.ts';
-import { REALTIME_MODELS } from '../../voice/index.ts';
+import { includeEarlyAccessModels, pickerCreators, type ModelInfo } from './models.ts';
+import { availableRealtimeModels } from '../../voice/index.ts';
 import { SLOW_MODELS } from './beta-allowlist.ts';
 import { creatorTint } from '../scenes/wisp.ts';
 import type { Seat } from './driver.ts';
@@ -24,7 +24,7 @@ interface PickerCreator {
 
 const TEXT_CREATORS: PickerCreator[] = pickerCreators();
 const REALTIME_CREATORS: PickerCreator[] = [];
-for (const model of REALTIME_MODELS) {
+for (const model of availableRealtimeModels(includeEarlyAccessModels())) {
   let creator = REALTIME_CREATORS.find((candidate) => candidate.slug === model.creator);
   if (!creator) {
     creator = { slug: model.creator, name: model.creatorName, models: [] };

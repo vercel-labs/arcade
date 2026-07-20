@@ -9,8 +9,8 @@
 
 import { Box, Dropdown, Slider, Slot, Text, type Node, type Screen } from '../../tui/index.ts';
 import type { RGB } from '../../engine/index.ts';
-import { pickerCreators, type ModelInfo } from './models.ts';
-import { DEFAULT_REALTIME_MODEL_ID, REALTIME_MODELS } from '../../voice/index.ts';
+import { includeEarlyAccessModels, pickerCreators, type ModelInfo } from './models.ts';
+import { availableRealtimeModels, DEFAULT_REALTIME_MODEL_ID } from '../../voice/index.ts';
 import { SLOW_MODELS } from './beta-allowlist.ts';
 import { creatorTint } from '../scenes/wisp.ts';
 import { shortModel } from '../games/chess/hud.ts';
@@ -26,7 +26,7 @@ interface AiCreator {
 
 const TEXT_CREATORS: AiCreator[] = pickerCreators();
 const REALTIME_CREATORS: AiCreator[] = [];
-for (const model of REALTIME_MODELS) {
+for (const model of availableRealtimeModels(includeEarlyAccessModels())) {
   let creator = REALTIME_CREATORS.find((candidate) => candidate.slug === model.creator);
   if (!creator) {
     creator = { slug: model.creator, name: model.creatorName, models: [] };
