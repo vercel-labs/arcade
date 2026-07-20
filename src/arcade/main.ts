@@ -367,6 +367,10 @@ function fullRepaint(): void {
 }
 
 function quit(): void {
+  // Finalize any active canonical records before presentation state is destroyed;
+  // the durable record outbox is drained together with lightweight telemetry below.
+  aiMatch.stop('user_stopped');
+  pokerMatch.stop('user_stopped');
   r.destroy();
   term.leave();
   // Give any in-flight telemetry a brief window to drain, then exit regardless — the
