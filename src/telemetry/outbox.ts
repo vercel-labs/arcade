@@ -1,9 +1,13 @@
-import { chmodSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { CanonicalRecordRow, RecordTarget } from './records.ts';
 
 export type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
+
+// A record undeliverable for this long is dropped, so a persistently failing endpoint
+// can never grow the on-disk queue without bound.
+const DEFAULT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 interface OutboxEntry {
   target: RecordTarget;
@@ -16,6 +20,7 @@ export interface RecordOutboxOptions {
   endpoints: Record<RecordTarget, string>;
   fetch?: FetchLike;
   timeoutMs?: number;
+  maxAgeMs?: number;
 }
 
 function safeFilename(row: CanonicalRecordRow): string {
@@ -32,10 +37,12 @@ export class RecordOutbox {
   private draining: Promise<void> | null = null;
   private readonly fetchImpl: FetchLike;
   private readonly timeoutMs: number;
+  private readonly maxAgeMs: number;
 
   constructor(private readonly opts: RecordOutboxOptions) {
     this.fetchImpl = opts.fetch ?? fetch;
     this.timeoutMs = opts.timeoutMs ?? 12_000;
+    this.maxAgeMs = opts.maxAgeMs ?? DEFAULT_MAX_AGE_MS;
   }
 
   enqueue(target: RecordTarget, row: CanonicalRecordRow): boolean {
@@ -94,6 +101,17 @@ export class RecordOutbox {
       let removed = 0;
       for (const name of names) {
         const path = join(this.opts.directory, name);
+        // Evict records too old to still be worth delivering (bounds queue growth when
+        // the endpoint is persistently unhappy), independent of readability.
+        try {
+          if (Date.now() - statSync(path).mtimeMs > this.maxAgeMs) {
+            rmSync(path, { force: true });
+            removed++;
+            continue;
+          }
+        } catch {
+          // stat failed — fall through to normal handling below
+        }
         // A checkpoint may replace this file while an older revision is in flight.
         // Re-read and send again instead of deleting the newly written revision.
         for (;;) {
@@ -113,32 +131,34 @@ export class RecordOutbox {
               body: `${JSON.stringify(entry.row)}\n`,
               signal: AbortSignal.timeout(this.timeoutMs),
             });
-            // A 400/413 is permanent (malformed or oversized): the proxy will never
-            // accept this record, so drop it rather than retry it forever. 429/5xx and
-            // network failures stay queued for the next drain.
-            if (response.status === 400 || response.status === 413) {
+            // 2xx = the proxy durably accepted the record (it only 200s after the
+            // downstream write is acknowledged) → delete it.
+            if (response.ok) {
+              let current: string;
+              try {
+                current = readFileSync(path, 'utf8');
+              } catch {
+                break;
+              }
+              if (current !== serialized) continue; // a newer revision landed; send that
               rmSync(path, { force: true });
               removed++;
               break;
             }
-            // Otherwise only a 200 means the downstream write was acknowledged.
-            if (response.status !== 200) return;
-            let current: string;
-            try {
-              current = readFileSync(path, 'utf8');
-            } catch {
-              break;
-            }
-            if (current !== serialized) continue;
+            // 408/429 = transient throttle/timeout, 5xx = server/network trouble: stop
+            // this drain and retry the whole queue on the next launch (don't hammer).
+            if (response.status === 408 || response.status === 429 || response.status >= 500) return;
+            // Any other 4xx is permanent for THIS record (malformed, oversized, unknown
+            // route): drop it so it can't wedge delivery of newer records behind it.
             rmSync(path, { force: true });
             removed++;
             break;
           } catch {
-            return;
+            return; // network error — retry next drain
           }
         }
       }
-      // Malformed/unreadable rows remain for inspection without causing a busy loop.
+      // Nothing progressed this pass (all kept for retry) — stop to avoid a busy loop.
       if (removed === 0) return;
     }
   }

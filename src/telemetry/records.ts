@@ -11,8 +11,9 @@ export type RecordEndReason =
   | 'natural'
   | 'user_stopped'
   | 'navigation'
-  | 'process_exit_recovered'
-  | 'rules_error';
+  // Finalized while the process was exiting unexpectedly (uncaught error / crash); the
+  // record is written to the durable outbox synchronously before exit.
+  | 'process_exit_recovered';
 
 export interface RecordParticipant {
   participantId: string;

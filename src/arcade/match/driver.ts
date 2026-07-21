@@ -70,7 +70,7 @@ export class AiMatch {
   // mode (the final position stays on the board). Safe to call when idle. Used by
   // reset-game and on navigating away — NOT by pause.
   stop(reason: Exclude<RecordEndReason, 'natural'> = 'navigation'): void {
-    const partial = this.recorder?.abandoned(reason, this.deps.chessGame.state().fen());
+    const partial = this.record(() => this.recorder?.abandoned(reason, this.deps.chessGame.state().fen()));
     if (partial) trackMatchRecord(partial);
     this.recorder = null;
     this.abort?.abort();
@@ -81,6 +81,18 @@ export class AiMatch {
     this.paused = false;
     this.deps.chessGame.setMatchPaused(false);
     this.deps.chessGame.endMatch();
+  }
+
+  // Run a recorder call in isolation: telemetry must never stall a match. Any fault
+  // drops the recorder (stop recording this match) rather than throw into the game loop
+  // or the finalize path.
+  private record<T>(fn: () => T): T | undefined {
+    try {
+      return fn();
+    } catch {
+      this.recorder = null;
+      return undefined;
+    }
   }
 
   // Run the turn-loop for the current players against the live board. A new
@@ -107,24 +119,28 @@ export class AiMatch {
         this.deps.onCommentary(text, model, label);
       },
       onActionChosen: ({ player, playerIndex, choice, state }) => {
-        this.recorder?.actionChosen(
-          playerIndex,
-          player,
-          choice,
-          state as ChessState,
-          player instanceof HumanPlayer,
-          this.deps.allowIllegal(),
+        this.record(() =>
+          this.recorder?.actionChosen(
+            playerIndex,
+            player,
+            choice,
+            state as ChessState,
+            player instanceof HumanPlayer,
+            this.deps.allowIllegal(),
+          ),
         );
       },
       onActionApplied: ({ state }) => {
-        // Reuse the scene's authoritative SAN + legality history (the same source
-        // as the PGN copy button) instead of independently rebuilding move text.
-        const sans = this.deps.chessGame.moves();
-        const illegal = this.deps.chessGame.illegalFlags();
-        const last = sans.length - 1;
-        this.recorder?.actionApplied(state as ChessState, sans[last] ?? '', illegal[last] ?? false);
-        const checkpoint = this.recorder?.checkpoint((state as ChessState).fen());
-        if (checkpoint) trackMatchRecord(checkpoint);
+        this.record(() => {
+          // Reuse the scene's authoritative SAN + legality history (the same source
+          // as the PGN copy button) instead of independently rebuilding move text.
+          const sans = this.deps.chessGame.moves();
+          const illegal = this.deps.chessGame.illegalFlags();
+          const last = sans.length - 1;
+          this.recorder?.actionApplied(state as ChessState, sans[last] ?? '', illegal[last] ?? false);
+          const checkpoint = this.recorder?.checkpoint((state as ChessState).fen());
+          if (checkpoint) trackMatchRecord(checkpoint);
+        });
       },
     })
       .then((returns) => {
@@ -144,7 +160,7 @@ export class AiMatch {
           trackMatchEnded({ game: 'chess', mode: matchMode(seats), models: seats.map(seatId), winner });
           const result = this.deps.chessGame.state().result();
           if (result) {
-            const record = this.recorder?.completed(result, this.deps.chessGame.state().fen());
+            const record = this.record(() => this.recorder?.completed(result, this.deps.chessGame.state().fen()));
             if (record) trackMatchRecord(record);
           }
           this.recorder = null;

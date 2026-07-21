@@ -46,7 +46,7 @@ import * as term from '../platform/terminal.ts';
 import { availableTeams, ensureGatewayKey, isLoggedIn, loadEnv, signOut as signOutVercel, switchTeam, type Team, useTeam } from '../auth/index.ts';
 import { AiMatch, type Seat } from './match/driver.ts';
 import { disambiguateLabels } from './match/labels.ts';
-import { flushTelemetry, initTelemetry, trackSessionStart } from '../telemetry/index.ts';
+import { flushTelemetry, initTelemetry, trackSessionStart, type RecordEndReason } from '../telemetry/index.ts';
 
 // Populate process.env from .env.local before anything reads AI_GATEWAY_API_KEY.
 loadEnv();
@@ -366,16 +366,24 @@ function fullRepaint(): void {
   r.requestRender();
 }
 
+let finalizing = false;
+// One finalize path for every exit route (quit button, ctrl+c, SIGTERM/SIGHUP, uncaught
+// crash). stop() writes any active canonical record to the durable outbox synchronously,
+// so the record survives even if the async telemetry flush below can't finish. The cap
+// keeps exit from ever visibly hanging on the network.
+function finalizeAndExit(reason: Exclude<RecordEndReason, 'natural'>, code: number, err?: unknown): void {
+  if (finalizing) return;
+  finalizing = true;
+  try { aiMatch.stop(reason); } catch {}
+  try { pokerMatch.stop(reason); } catch {}
+  try { r.destroy(); } catch {}
+  try { term.leave(); } catch {}
+  if (err !== undefined) console.error(err); // after leaving the alt-screen so it's readable
+  void flushTelemetry(400).finally(() => process.exit(code));
+}
+
 function quit(): void {
-  // Finalize any active canonical records before presentation state is destroyed;
-  // the durable record outbox is drained together with lightweight telemetry below.
-  aiMatch.stop('user_stopped');
-  pokerMatch.stop('user_stopped');
-  r.destroy();
-  term.leave();
-  // Give any in-flight telemetry a brief window to drain, then exit regardless — the
-  // cap keeps quit from ever visibly hanging on the network.
-  void flushTelemetry(400).finally(() => process.exit(0));
+  finalizeAndExit('user_stopped', 0);
 }
 
 // Run an async plain-text flow outside the alt-screen: stop the frame loop,
@@ -2216,6 +2224,14 @@ trackSessionStart({
   cols: process.stdout.columns ?? 0,
   rows: process.stdout.rows ?? 0,
 });
+
+// External termination (terminal closed, `kill`) and uncaught crashes finalize through
+// the same path, so an in-progress game is still recorded. ctrl+c arrives as a keypress
+// in raw mode (handled by the quit button), not SIGINT.
+process.once('SIGTERM', () => finalizeAndExit('user_stopped', 0));
+process.once('SIGHUP', () => finalizeAndExit('user_stopped', 0));
+process.once('uncaughtException', (err) => finalizeAndExit('process_exit_recovered', 1, err));
+process.once('unhandledRejection', (err) => finalizeAndExit('process_exit_recovered', 1, err));
 
 term.enter();
 process.stdin.on('data', parse);
