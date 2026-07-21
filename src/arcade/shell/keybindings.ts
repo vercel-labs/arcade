@@ -57,6 +57,7 @@ export interface KeyHandlers {
   closeShortcuts(): void;
   openConfirmQuit(): void;
   closeConfirmQuit(): void;
+  closeUpdateModal(): void;
 }
 
 // Cells-equivalent the arrow keys pan the camera per press (held keys repeat) —
@@ -85,6 +86,7 @@ export function installKeymap(h: KeyHandlers): Keymap {
     { id: 'app.closeShortcuts', title: 'Close controls', run: h.closeShortcuts },
     { id: 'app.confirmQuit', title: 'Quit', run: h.openConfirmQuit },
     { id: 'app.closeConfirmQuit', title: 'Keep playing', run: h.closeConfirmQuit },
+    { id: 'app.closeUpdateModal', title: 'Dismiss update notice', run: h.closeUpdateModal },
     { id: 'menu.left', title: 'previous', run: () => h.menuNav(-1) },
     { id: 'menu.right', title: 'next', run: () => h.menuNav(1) },
     { id: 'menu.select', title: 'launch selected', run: h.launchSelected },
@@ -240,5 +242,8 @@ export function installKeymap(h: KeyHandlers): Keymap {
   // Quit-confirm popup (the 'q' key): Escape cancels (keep playing); the modal layer shadows
   // stray keys. Enter on the default-focused "quit" button quits; ctrl+c still hard-quits.
   keymap.bind('confirm-quit', { key: 'escape', cmd: 'app.closeConfirmQuit' });
+  // Startup update popup: Escape dismisses ("not now"); the modal layer shadows stray keys.
+  // Enter on the default-focused "quit to update" button quits so the user can upgrade.
+  keymap.bind('update', { key: 'escape', cmd: 'app.closeUpdateModal' });
   return keymap;
 }

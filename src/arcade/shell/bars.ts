@@ -243,6 +243,47 @@ export function buildConfirm(opts: {
   return Modal(card, { onDismiss: opts.onCancel });
 }
 
+// The startup "update available" popup: the version bump, the exact upgrade command on
+// its own tinted line (so it stands out and is easy to select-and-copy), and a row of
+// actions — "quit to update" (primary), "copy command" (copies to the clipboard, with a
+// "copied ✓" confirmation), and "not now". Same Dialog + Modal family as the game menu;
+// the ✕ and Escape also dismiss. `command` is chosen by the caller to match how the
+// arcade was installed (npx / npm -g / pnpm / yarn).
+export function buildUpdateModal(opts: {
+  current: string;
+  latest: string;
+  command: string;
+  copied: boolean;
+  onQuit: () => void;
+  onCopy: () => void;
+  onClose: () => void;
+}): Node {
+  const btn = (id: string, label: string, onClick: () => void, primary: boolean): Node =>
+    RoundedButton({ id, label, onClick, ...(primary ? MODAL_PRIMARY : MODAL_NEUTRAL) });
+
+  return Modal(
+    Dialog({ title: 'update available', onClose: opts.onClose, closeId: 'update-dialog-close', padding: [1, 3], closeInset: 1, background: UI_CHROME_BG }, [
+      Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1 }, [
+        Box({ justifyContent: 'center' }, [
+          Text({ text: `v${opts.current}`, style: { color: [150, 154, 168] } }),
+          Text({ text: ' → ', style: { color: [150, 154, 168] } }),
+          Text({ text: `v${opts.latest}`, style: { color: [150, 220, 180], bold: true } }),
+        ]),
+        // The command sits on its own inset, tinted line — a copy target, not a button.
+        Box({ justifyContent: 'center', padding: [0, 2], background: [30, 34, 46] }, [
+          Text({ text: opts.command, style: { color: [150, 220, 180], bold: true } }),
+        ]),
+        Box({ flexDirection: 'row', justifyContent: 'center', gap: 2 }, [
+          btn('update-quit', 'quit to update', opts.onQuit, true),
+          btn('update-copy', opts.copied ? 'copied ✓' : 'copy command', opts.onCopy, false),
+          btn('update-close', 'not now', opts.onClose, false),
+        ]),
+      ]),
+    ]),
+    { onDismiss: opts.onClose },
+  );
+}
+
 export interface MenuItem {
   id: string;
   label: string;
