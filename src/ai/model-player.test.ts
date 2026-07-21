@@ -73,10 +73,16 @@ test('access error: skips the futile text retry and returns the "unavailable" di
   const state = new ChessState();
   const { model, calls } = throwingModel(accessError());
   const player = new ModelPlayer<Move>({ model, name: 'inkling-mock', gameName: 'chess', maxRetries: 3 });
-  const { action, rationale } = await player.chooseAction(state);
+  const { action, rationale, diagnostics } = await player.chooseAction(state);
   assert.equal(rationale, FALLBACK_RATIONALE.unavailable, 'diagnosed as unavailable, not a generic fallback');
   assert.equal(calls(), 1, 'exactly one call — no schema retries, no wasted text-fallback call');
   assert.ok(legalMove(state, action), 'still returns a legal move so the match never deadlocks');
+  assert.equal(diagnostics?.resolution, 'random-fallback');
+  assert.equal(diagnostics?.fallbackReason, 'unavailable');
+  assert.deepEqual(diagnostics?.attempts.map(({ phase, result, failureKind }) => ({ phase, result, failureKind })), [
+    { phase: 'structured', result: 'error', failureKind: 'access' },
+  ]);
+  assert.ok(!JSON.stringify(diagnostics).includes('restricted access'), 'diagnostics contain no raw provider error text');
 });
 
 test('schema error: falls through to the plain-text soft-parse and plays a legal move', async () => {
@@ -85,10 +91,16 @@ test('schema error: falls through to the plain-text soft-parse and plays a legal
   const state = new ChessState();
   const { model, calls } = proseModel('I will develop toward the center.\nMOVE: e4');
   const player = new ModelPlayer<Move>({ model, name: 'prose-mock', gameName: 'chess', maxRetries: 1 });
-  const { action, rationale } = await player.chooseAction(state);
+  const { action, rationale, diagnostics } = await player.chooseAction(state);
   assert.equal(state.actionToString(action), 'e4');
   assert.ok(!isFallbackRationale(rationale), 'a real move, not a fallback');
   assert.ok(calls() >= 2, 'ran the structured call then the text fallback');
+  assert.equal(diagnostics?.resolution, 'text');
+  assert.equal(diagnostics?.attempts.at(-1)?.phase, 'text');
+  assert.equal(diagnostics?.attempts.at(-1)?.result, 'accepted');
+  assert.equal(diagnostics?.attempts.at(-1)?.inputTokens, 1);
+  assert.equal(diagnostics?.attempts.at(-1)?.outputTokens, 1);
+  assert.ok(!JSON.stringify(diagnostics).includes('develop toward the center'), 'diagnostics contain no model prose');
 });
 
 test('exhausted (legal JSON but always illegal move): diagnosed generic fallback, text path not used', async () => {
@@ -101,12 +113,19 @@ test('exhausted (legal JSON but always illegal move): diagnosed generic fallback
     },
   });
   const player = new ModelPlayer<Move>({ model, name: 'illegal-mock', gameName: 'chess', maxRetries: 2 });
-  const { action, rationale } = await player.chooseAction(state);
+  const { action, rationale, diagnostics } = await player.chooseAction(state);
   assert.equal(rationale, FALLBACK_RATIONALE.exhausted, 'generic "no valid reply" fallback, not "unavailable"');
   assert.ok(legalMove(state, action), 'random legal move played');
   // Structured succeeded (valid JSON) but the move was illegal every time → retries
   // are structured-only; the text fallback is NOT triggered (that\'s for schema errors).
   assert.equal(calls, 3, 'maxRetries(2)+1 structured attempts, no text calls');
+  assert.equal(diagnostics?.resolution, 'random-fallback');
+  assert.equal(diagnostics?.fallbackReason, 'exhausted');
+  assert.deepEqual(diagnostics?.attempts.map(({ phase, result, rejectionReason }) => ({ phase, result, rejectionReason })), [
+    { phase: 'structured', result: 'rejected', rejectionReason: 'illegal' },
+    { phase: 'structured', result: 'rejected', rejectionReason: 'illegal' },
+    { phase: 'structured', result: 'rejected', rejectionReason: 'illegal' },
+  ]);
 });
 
 test('cancellation: an aborted signal propagates instead of silently falling back', async () => {
@@ -140,11 +159,15 @@ test('normalization rung: recovers a legal move from an otherwise unparseable an
   const { model, calls: modelCalls } = proseModel(UNPARSEABLE);
   const { model: normalizer, calls: normCalls } = jsonModel(['{"move":"e4"}']);
   const player = new ModelPlayer<Move>({ model, name: 'stubborn', gameName: 'chess', maxRetries: 0, normalizer, normalizerName: 'norm' });
-  const { action, rationale } = await player.chooseAction(state);
+  const { action, rationale, diagnostics } = await player.chooseAction(state);
   assert.equal(state.actionToString(action), 'e4', 'normalizer recovered a legal move');
   assert.ok(!isFallbackRationale(rationale), 'a real (normalized) move, not a random fallback');
   assert.equal(normCalls(), 1, 'normalizer was called exactly once');
   assert.ok(modelCalls() >= 2, 'only after the structured + text rungs failed');
+  assert.equal(diagnostics?.resolution, 'normalized');
+  assert.equal(diagnostics?.normalizerModel, 'norm');
+  assert.equal(diagnostics?.attempts.at(-1)?.phase, 'normalize');
+  assert.equal(diagnostics?.attempts.at(-1)?.result, 'accepted');
 });
 
 test('normalization rung: normalizer picks an illegal move → diagnosed random fallback', async () => {
@@ -191,4 +214,33 @@ test('private-context safety: a normalized split-mode move never surfaces privat
   assert.equal(state.actionToString(action), 'e4', 'move recovered');
   assert.equal(rationale, 'Feeling lucky tonight.', 'surfaced rationale is the public SAY line');
   assert.ok(!/monstrous|pocket kings|crush|THINKING/i.test(rationale ?? ''), 'no private reasoning leaked');
+});
+
+test('structured success returns sanitized timing and token diagnostics', async () => {
+  const state = new ChessState();
+  const { model } = jsonModel(['{"move":"e4","rationale":"private-to-the-record-layer"}']);
+  const choice = await new ModelPlayer<Move>({ model, name: 'structured', gameName: 'chess' }).chooseAction(state);
+  assert.equal(choice.diagnostics?.resolution, 'structured');
+  assert.equal(choice.diagnostics?.illegalMode, false);
+  assert.ok((choice.diagnostics?.durationMs ?? -1) >= 0);
+  assert.deepEqual(choice.diagnostics?.attempts.map(({ phase, sequence, result, inputTokens, outputTokens }) => ({ phase, sequence, result, inputTokens, outputTokens })), [
+    { phase: 'structured', sequence: 0, result: 'accepted', inputTokens: 1, outputTokens: 1 },
+  ]);
+  assert.ok(!JSON.stringify(choice.diagnostics).includes('private-to-the-record-layer'));
+});
+
+test('illegal mode labels an unparseable reply without calling it an illegal move', async () => {
+  const state = new ChessState();
+  const { model } = jsonModel(['{"move":"zz99","rationale":"no move"}']);
+  const choice = await new ModelPlayer<Move>({
+    model,
+    name: 'loose',
+    gameName: 'chess',
+    maxRetries: 0,
+    allowIllegal: () => true,
+  }).chooseAction(state);
+  assert.equal(choice.diagnostics?.illegalMode, true);
+  assert.equal(choice.diagnostics?.resolution, 'random-fallback');
+  assert.equal(choice.diagnostics?.attempts[0]?.result, 'rejected');
+  assert.equal(choice.diagnostics?.attempts[0]?.rejectionReason, 'unparseable');
 });

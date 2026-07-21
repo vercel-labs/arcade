@@ -66,6 +66,65 @@ export interface HandPublicRecord {
   results: { seat: number; delta: number }[]; // net chips won/lost this hand, per seat
 }
 
+// Omniscient, structured rules record for persistence/replay. Unlike
+// HandPublicRecord this includes hidden cards and the exact action the engine
+// applied after normalizing/clamping the request. It still contains no model
+// prompt, reasoning, commentary, or player identity; the arcade driver adds the
+// match-local participant/controller metadata.
+export type EffectivePokerActionType = 'fold' | 'check' | 'call' | 'bet' | 'raise';
+export interface PokerAppliedActionRecord {
+  actionNo: number;
+  seat: number;
+  street: (typeof STREET_NAMES)[number];
+  requested: PokerAction;
+  effective: {
+    type: EffectivePokerActionType;
+    amountCommitted: number;
+    streetCommitmentAfter: number;
+    allIn: boolean;
+  };
+  adjusted: boolean;
+  potBefore: number;
+  potAfter: number;
+  stackBefore: number;
+  stackAfter: number;
+  toCallBefore: number;
+  currentBetBefore: number;
+  boardRevealed: Card[];
+}
+
+export type HoleCardDisposition =
+  | 'shown'
+  | 'folded_hidden'
+  | 'winner_not_shown'
+  | 'private_in_progress'
+  | 'not_dealt';
+
+export interface PokerRulesHandRecord {
+  completed: boolean;
+  button: number;
+  smallBlindSeat: number;
+  bigBlindSeat: number;
+  smallBlind: number;
+  bigBlind: number;
+  finalStreet: (typeof STREET_NAMES)[number];
+  startingStacks: number[];
+  endingStacks: number[];
+  holeCards: { seat: number; cards: Card[]; disposition: HoleCardDisposition; publicAtActionNo?: number }[];
+  board: { street: 'flop' | 'turn' | 'river'; cards: Card[]; publicAfterActionNo: number }[];
+  actions: PokerAppliedActionRecord[];
+  awards: { seat: number; amount: number; potIndex: number }[];
+  results: {
+    seat: number;
+    dealtIn: boolean;
+    committed: number;
+    awarded: number;
+    net: number;
+    folded: boolean;
+    reachedShowdown: boolean;
+  }[];
+}
+
 export class HoldemState implements ImperfectInfoState<PokerAction> {
   readonly n: number;
   private sb: number;
@@ -97,6 +156,8 @@ export class HoldemState implements ImperfectInfoState<PokerAction> {
   private finished = false;
   private payoffs: number[] | null = null; // per-seat net delta, cached at finish
   private awardLog: { seat: number; amount: number }[] = []; // pot awards (for the HUD)
+  private settlementLog: { seat: number; amount: number; potIndex: number }[] = []; // complete main/side-pot accounting
+  private appliedActions: PokerAppliedActionRecord[] = [];
   private readonly seatNames?: readonly string[]; // display names for the model observation (default "P{s}")
 
   constructor(opts: HoldemOpts) {
@@ -228,11 +289,21 @@ export class HoldemState implements ImperfectInfoState<PokerAction> {
     s.currentBet = this.currentBet;
     s.minRaise = this.minRaise;
     s.toAct = this.toAct;
+    s.sbSeat = this.sbSeat;
+    s.bbSeat = this.bbSeat;
     s.log = this.log.slice();
     s.loggedStreet = this.loggedStreet;
     s.finished = this.finished;
     s.payoffs = this.payoffs ? this.payoffs.slice() : null;
     s.awardLog = this.awardLog.map((a) => ({ ...a }));
+    s.settlementLog = this.settlementLog.map((a) => ({ ...a }));
+    s.appliedActions = this.appliedActions.map((a) => ({
+      ...a,
+      requested: { ...a.requested },
+      effective: { ...a.effective },
+      boardRevealed: a.boardRevealed.map((c) => ({ ...c })),
+    }));
+    Object.defineProperty(s, 'seatNames', { value: this.seatNames?.slice(), writable: false });
     return s;
   }
 
@@ -271,6 +342,12 @@ export class HoldemState implements ImperfectInfoState<PokerAction> {
     if (this.finished || this.toAct < 0) return;
     const seat = this.toAct;
     const toCall = this.currentBet - this.committedRound[seat];
+    const actionNo = this.appliedActions.length + 1;
+    const street = STREET_NAMES[this.streetNo];
+    const potBefore = this.potTotal();
+    const stackBefore = this.stacks[seat];
+    const currentBetBefore = this.currentBet;
+    const boardBefore = this.community.length;
 
     // Normalize the passive/aggressive tags against the actual state, so a mislabeled
     // action (a model "checks" facing a bet, or "bets" when it can only raise) does
@@ -281,40 +358,70 @@ export class HoldemState implements ImperfectInfoState<PokerAction> {
     else if (act.type === 'bet' && this.currentBet > 0) act = { type: 'raise', to: act.amount };
     else if (act.type === 'raise' && this.currentBet === 0) act = { type: 'bet', amount: act.to };
 
+    let adjusted = JSON.stringify(act) !== JSON.stringify(a);
+    let effectiveType: EffectivePokerActionType;
+
     switch (act.type) {
       case 'fold':
+        effectiveType = 'fold';
         this.folded[seat] = true;
         this.acted[seat] = true;
         this.record(seat, 'folds');
         break;
       case 'check':
+        effectiveType = 'check';
         this.acted[seat] = true;
         this.record(seat, 'checks');
         break;
       case 'call': {
+        effectiveType = 'call';
         this.commit(seat, toCall);
         this.acted[seat] = true;
         this.record(seat, this.allIn[seat] ? 'calls all-in' : 'calls');
         break;
       }
       case 'allin':
-        this.raiseTo(seat, this.committedRound[seat] + this.stacks[seat]);
+        effectiveType = this.raiseTo(seat, this.committedRound[seat] + this.stacks[seat]);
         break;
       case 'bet':
-        this.raiseTo(seat, act.amount);
+        effectiveType = this.raiseTo(seat, act.amount);
+        adjusted ||= this.committedRound[seat] !== act.amount;
         break;
       case 'raise':
-        this.raiseTo(seat, act.to);
+        effectiveType = this.raiseTo(seat, act.to);
+        adjusted ||= this.committedRound[seat] !== act.to;
         break;
     }
+    const stackAfterAction = this.stacks[seat];
+    const streetCommitmentAfter = this.committedRound[seat];
     this.afterAction();
+    this.appliedActions.push({
+      actionNo,
+      seat,
+      street,
+      requested: { ...a },
+      effective: {
+        type: effectiveType,
+        amountCommitted: stackBefore - stackAfterAction,
+        streetCommitmentAfter,
+        allIn: stackAfterAction === 0,
+      },
+      adjusted,
+      potBefore,
+      potAfter: this.potTotal(),
+      stackBefore,
+      stackAfter: stackAfterAction,
+      toCallBefore: Math.max(0, toCall),
+      currentBetBefore,
+      boardRevealed: this.community.slice(boardBefore).map((c) => ({ ...c })),
+    });
   }
 
   // Commit up to a target TOTAL for this street (bet / raise / all-in share this).
   // Clamps to the all-in ceiling and up to the legal minimum. A full raise (≥ the
   // min-raise increment) reopens the action and bumps the min-raise; a short all-in
   // does not raise the min-raise. Reopening lets already-acted players respond.
-  private raiseTo(seat: number, target: number): void {
+  private raiseTo(seat: number, target: number): 'bet' | 'raise' | 'call' {
     const maxTo = this.committedRound[seat] + this.stacks[seat];
     let to = Math.min(target, maxTo);
     // Enforce the legal minimum unless the player is going all-in for less.
@@ -330,11 +437,14 @@ export class HoldemState implements ImperfectInfoState<PokerAction> {
       // Reopen the action: everyone still in owes a decision again.
       for (let s = 0; s < this.n; s++) if (s !== seat && !this.folded[s] && !this.allIn[s]) this.acted[s] = false;
       this.record(seat, `${wasBet ? 'bets' : 'raises to'} ${to}${this.allIn[seat] ? ' (all-in)' : ''}`);
+      this.acted[seat] = true;
+      return wasBet ? 'bet' : 'raise';
     } else {
       // An all-in that doesn't reach the current bet is just a (short) call.
       this.record(seat, 'calls all-in');
+      this.acted[seat] = true;
+      return 'call';
     }
-    this.acted[seat] = true;
   }
 
   // After an action: end the hand if one player remains, else continue the round or
@@ -433,18 +543,21 @@ export class HoldemState implements ImperfectInfoState<PokerAction> {
       const winner = contenders[0];
       awarded[winner] = this.committedHand.reduce((a, b) => a + b, 0);
       this.awardLog.push({ seat: winner, amount: awarded[winner] });
+      this.settlementLog.push({ seat: winner, amount: awarded[winner], potIndex: 0 });
     } else {
       // Side pots by contribution layer, each awarded to the best eligible hand.
       const values = new Array<HandValue | null>(this.n).fill(null);
       for (const s of contenders) values[s] = evaluate([...this.hole[s], ...this.community]);
-      for (const pot of this.buildPots()) {
+      for (const [potIndex, pot] of this.buildPots().entries()) {
         // A layer whose contributors all folded is uncalled dead money — refund it
         // equally to the players who put it in (keeps the payout zero-sum).
         if (pot.eligible.length === 0) {
           const share = Math.floor(pot.amount / pot.contributors.length);
           let rem = pot.amount - share * pot.contributors.length;
           for (const c of pot.contributors.slice().sort((a, b) => this.seatOrder(a) - this.seatOrder(b))) {
-            awarded[c] += share + (rem-- > 0 ? 1 : 0);
+            const amount = share + (rem-- > 0 ? 1 : 0);
+            awarded[c] += amount;
+            this.settlementLog.push({ seat: c, amount, potIndex });
           }
           continue;
         }
@@ -473,6 +586,7 @@ export class HoldemState implements ImperfectInfoState<PokerAction> {
           }
           awarded[w] += amt;
           this.awardLog.push({ seat: w, amount: amt });
+          this.settlementLog.push({ seat: w, amount: amt, potIndex });
         }
       }
     }
@@ -612,6 +726,83 @@ export class HoldemState implements ImperfectInfoState<PokerAction> {
     };
   }
 
+  // Full mechanical record for persistence/replay. Hidden cards are included with
+  // an explicit public-visibility disposition; callers must keep this separate
+  // from the public opponent-memory projection above.
+  canonicalRecord(): PokerRulesHandRecord {
+    const showdown = new Set(this.showdownSeats());
+    const revealAt = this.appliedActions.length;
+    const boardAction = (cardIndex: number): number => {
+      for (const action of this.appliedActions) {
+        const prior = this.appliedActions
+          .filter((a) => a.actionNo < action.actionNo)
+          .reduce((sum, a) => sum + a.boardRevealed.length, 0);
+        if (cardIndex < prior + action.boardRevealed.length) return action.actionNo;
+      }
+      return 0; // board runout with no voluntary action (e.g. blinds already all-in)
+    };
+    const board: PokerRulesHandRecord['board'] = [];
+    if (this.community.length >= 3) board.push({ street: 'flop', cards: this.community.slice(0, 3).map((c) => ({ ...c })), publicAfterActionNo: boardAction(0) });
+    if (this.community.length >= 4) board.push({ street: 'turn', cards: [{ ...this.community[3] }], publicAfterActionNo: boardAction(3) });
+    if (this.community.length >= 5) board.push({ street: 'river', cards: [{ ...this.community[4] }], publicAfterActionNo: boardAction(4) });
+
+    const payoffs = this.returns();
+    return {
+      completed: this.finished,
+      button: this.button,
+      smallBlindSeat: this.sbSeat,
+      bigBlindSeat: this.bbSeat,
+      smallBlind: this.sb,
+      bigBlind: this.bb,
+      finalStreet: STREET_NAMES[this.streetNo],
+      startingStacks: this.startStacks.slice(),
+      // A stopped in-progress hand is rolled back by the session driver, so its
+      // realized ending stacks remain the carried starting stacks. The exact chips
+      // currently behind/in the pot are still recoverable from actions + committed.
+      endingStacks: this.finished
+        ? this.stacks.map((stack, seat) => stack + this.committedHand[seat] + payoffs[seat])
+        : this.startStacks.slice(),
+      holeCards: this.hole.map((cards, seat) => {
+        const disposition: HoleCardDisposition =
+          cards.length === 0
+            ? 'not_dealt'
+            : showdown.has(seat)
+              ? 'shown'
+              : !this.finished
+                ? 'private_in_progress'
+                : this.folded[seat]
+                  ? 'folded_hidden'
+                  : 'winner_not_shown';
+        return {
+          seat,
+          cards: cards.map((c) => ({ ...c })),
+          disposition,
+          ...(disposition === 'shown' ? { publicAtActionNo: revealAt } : {}),
+        };
+      }),
+      board,
+      actions: this.appliedActions.map((a) => ({
+        ...a,
+        requested: { ...a.requested },
+        effective: { ...a.effective },
+        boardRevealed: a.boardRevealed.map((c) => ({ ...c })),
+      })),
+      awards: this.settlementLog.map((award) => ({ ...award })),
+      results: this.startStacks.map((starting, seat) => {
+        const net = this.finished ? payoffs[seat] : 0;
+        return {
+          seat,
+          dealtIn: this.hole[seat].length > 0,
+          committed: this.committedHand[seat],
+          awarded: this.finished ? this.committedHand[seat] + net : 0,
+          net,
+          folded: this.folded[seat],
+          reachedShowdown: showdown.has(seat),
+        };
+      }),
+    };
+  }
+
   // ── Public read accessors for the presentation layer ───────────────────────────
   street(): number {
     return this.streetNo;
@@ -666,6 +857,9 @@ export class HoldemState implements ImperfectInfoState<PokerAction> {
   }
   history(): readonly string[] {
     return this.log;
+  }
+  appliedActionHistory(): readonly PokerAppliedActionRecord[] {
+    return this.appliedActions;
   }
   awards(): readonly { seat: number; amount: number }[] {
     return this.awardLog;

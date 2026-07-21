@@ -9,10 +9,13 @@ import { FALLBACK_RATIONALE, isFallbackRationale, ModelPlayer } from '../../ai/m
 import { HumanPlayer } from '../../ai/human-player.ts';
 import type { Player } from '../../ai/player.ts';
 import type { ChessGameScene } from '../games/chess/scene.ts';
+import type { ChessState } from '../../rules/chess/chess.ts';
 import type { Move } from '../../rules/chess/types.ts';
 import { disambiguateLabels } from './labels.ts';
 import { normalizerModel } from './models.ts';
-import { trackMatchEnded, trackMatchStarted, trackModelFallback } from '../../telemetry/index.ts';
+import { isTelemetryEnabled, localPlayerKey, trackMatchEnded, trackMatchRecord, trackMatchStarted, trackModelFallback } from '../../telemetry/index.ts';
+import { ChessGameRecorder, type RecorderController } from './game-recorders.ts';
+import type { RecordEndReason } from '../../telemetry/records.ts';
 
 // A seat's telemetry identity: the model slug, or 'human' for a keyboard seat.
 const seatId = (seat: Seat): string => (seat.kind === 'ai' ? seat.model : 'human');
@@ -55,6 +58,7 @@ export class AiMatch {
   // Halts the loop on the current turn (no thinking/moves) while keeping the match
   // alive.
   private paused = false;
+  private recorder: ChessGameRecorder | null = null;
 
   constructor(private readonly deps: AiMatchDeps) {}
 
@@ -65,7 +69,10 @@ export class AiMatch {
   // Fully stop the match: cancel the loop, drop the players, and leave spectator
   // mode (the final position stays on the board). Safe to call when idle. Used by
   // reset-game and on navigating away — NOT by pause.
-  stop(): void {
+  stop(reason: Exclude<RecordEndReason, 'natural'> = 'navigation'): void {
+    const partial = this.recorder?.abandoned(reason, this.deps.chessGame.state().fen());
+    if (partial) trackMatchRecord(partial);
+    this.recorder = null;
     this.abort?.abort();
     this.abort = null;
     this.players = null;
@@ -99,6 +106,26 @@ export class AiMatch {
         }
         this.deps.onCommentary(text, model, label);
       },
+      onActionChosen: ({ player, playerIndex, choice, state }) => {
+        this.recorder?.actionChosen(
+          playerIndex,
+          player,
+          choice,
+          state as ChessState,
+          player instanceof HumanPlayer,
+          this.deps.allowIllegal(),
+        );
+      },
+      onActionApplied: ({ state }) => {
+        // Reuse the scene's authoritative SAN + legality history (the same source
+        // as the PGN copy button) instead of independently rebuilding move text.
+        const sans = this.deps.chessGame.moves();
+        const illegal = this.deps.chessGame.illegalFlags();
+        const last = sans.length - 1;
+        this.recorder?.actionApplied(state as ChessState, sans[last] ?? '', illegal[last] ?? false);
+        const checkpoint = this.recorder?.checkpoint((state as ChessState).fen());
+        if (checkpoint) trackMatchRecord(checkpoint);
+      },
     })
       .then((returns) => {
         finalReturns = returns;
@@ -115,6 +142,12 @@ export class AiMatch {
           const [w, b] = finalReturns;
           const winner = w > b ? seatId(seats[0]) : b > w ? seatId(seats[1]) : 'draw';
           trackMatchEnded({ game: 'chess', mode: matchMode(seats), models: seats.map(seatId), winner });
+          const result = this.deps.chessGame.state().result();
+          if (result) {
+            const record = this.recorder?.completed(result, this.deps.chessGame.state().fen());
+            if (record) trackMatchRecord(record);
+          }
+          this.recorder = null;
         }
         this.deps.chessGame.endMatch(); // ended (terminal or stopped); final position stays up
         this.players = null;
@@ -128,12 +161,24 @@ export class AiMatch {
   // HumanPlayer and a ModelPlayer are interchangeable in `runMatch`. Human sides get
   // no wisp (beginMatch is passed null for them).
   start(white: Seat, black: Seat): void {
+    if (this.recorder) this.stop('user_stopped');
     this.seats = [white, black];
     this.computeLabels();
     this.deps.chessGame.beginMatch(
       white.kind === 'ai' ? creatorOf(white.model) : null,
       black.kind === 'ai' ? creatorOf(black.model) : null,
     );
+    const controller = (seat: Seat): RecorderController =>
+      seat.kind === 'human' ? { kind: 'human' } : { kind: 'model', model: seat.model };
+    this.recorder = isTelemetryEnabled()
+      ? new ChessGameRecorder(
+          matchMode(this.seats) as 'ai_vs_ai' | 'human_vs_ai' | 'hotseat',
+          this.seats.map(controller),
+          this.deps.chessGame.state().fen(),
+          this.deps.allowIllegal(),
+          localPlayerKey(),
+        )
+      : null;
     trackMatchStarted({
       game: 'chess',
       mode: matchMode(this.seats),
