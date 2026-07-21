@@ -380,7 +380,10 @@ function catanSnapshot(): void {
 
   const scene = new TileScene();
   scene.setTerrain(terrain);
-  // `top` orbits toward a near top-down view; `spin` (a decimal) rotates the azimuth.
+  // `varN` selects procedural variant N (e.g. var2); `top` orbits toward top-down; a decimal
+  // rotates the azimuth.
+  const varArg = args.find((a) => /^var\d+$/.test(a));
+  for (let i = 0; i < (varArg ? Number(varArg.slice(3)) : 0); i++) scene.reroll();
   if (args.includes('top')) scene.orbit(0, 34);
   if (spinTo) scene.orbit(-spinTo * 120, 0);
   const target = new RenderTarget(cols * SS, rows * 2 * SS);

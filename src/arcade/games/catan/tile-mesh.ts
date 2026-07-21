@@ -406,7 +406,6 @@ const PAL = {
   forest: { top: [126, 168, 96] as RGB, pineDark: [56, 108, 66] as RGB, pineLite: [78, 138, 84] as RGB, leaf: [96, 150, 86] as RGB },
   hills: { top: [190, 118, 84] as RGB, brick: [176, 96, 66] as RGB, rock: [150, 96, 72] as RGB },
   pasture: { top: [150, 194, 108] as RGB, rock: [120, 156, 104] as RGB },
-  mountains: { top: [150, 154, 164] as RGB, rock: [120, 124, 136] as RGB, crystalLite: [226, 230, 238] as RGB, crystalGrey: [150, 156, 168] as RGB },
   desert: { top: [230, 210, 156] as RGB, dune: [220, 198, 140] as RGB },
 } as const;
 const TRUNK: RGB = [104, 72, 44];
@@ -431,10 +430,6 @@ function sheep(m: Build, cx: number, cz: number, y0: number, ry: number): void {
 }
 function rock(m: Build, cx: number, cz: number, y0: number, scale: number, color: RGB, seed: number): void {
   blob(m, cx, y0 + 0.07 * scale, cz, 0.2 * scale, 0.13 * scale, 0.18 * scale, color, seed, 0.4, 3, 6);
-}
-function crystal(m: Build, cx: number, cz: number, y0: number, h: number, color: RGB, seed: number): void {
-  const rng = mulberry32(seed | 0 || 1);
-  cone(m, cx, cz, 0.12 + rng() * 0.05, h, 4, color, y0, rng() * Math.PI, (rng() - 0.5) * 0.16, (rng() - 0.5) * 0.16);
 }
 function brickPile(m: Build, cx: number, cz: number, y0: number, ry: number, color: RGB): void {
   const c = Math.cos(ry);
@@ -514,16 +509,86 @@ function pastureTile(): Build {
   return m;
 }
 
-function mountainsTile(): Build {
+// ORE — the whole tile is ONE raised rocky massif (not flat ground + spikes): a plateau that
+// rises from the rim, several summit bumps, strong per-vertex jitter for angular rock facets,
+// flat-shaded grey, with the highest facets capped in snow.
+// Several distinct ROUNDED rock mounds (local maxima) spread across the tile, fused above a
+// modest base lift into one massif — a bit shorter and more varied than a single dome. Snow
+// only reaches the tallest one or two.
+// Generate the mound set from a seeded RNG so every ore tile shares the STYLE but differs:
+// an irregular, clustered group of VARIED width/height mounds — one big broad mound, a couple
+// of taller narrow peaks (which catch the snow), and a few smaller bumps, scattered with a
+// minimum gap. On a real board each ore hex would seed this from its position.
+function mountainPeaks(rng: () => number): [number, number, number, number][] {
+  const pts: { x: number; z: number }[] = [];
+  const n = 5 + Math.floor(rng() * 3); // 5–7 mounds
+  let guard = 0;
+  while (pts.length < n && guard++ < 300) {
+    const a = rng() * Math.PI * 2;
+    const rad = Math.sqrt(rng()) * 0.5;
+    const x = rad * Math.cos(a);
+    const z = rad * Math.sin(a);
+    if (pts.every((p) => Math.hypot(p.x - x, p.z - z) > 0.22)) pts.push({ x, z });
+  }
+  return pts.map((p, i): [number, number, number, number] => {
+    if (i === 0) return [p.x, p.z, 0.22 + rng() * 0.06, 0.36 + rng() * 0.06]; // big broad mound
+    if (i <= 2) return [p.x, p.z, 0.3 + rng() * 0.08, 0.24 + rng() * 0.05]; // tall narrow → snow
+    return [p.x, p.z, 0.15 + rng() * 0.12, 0.2 + rng() * 0.12]; // smaller bumps
+  });
+}
+function mountainsTile(seed: number): Build {
   const m = build();
-  const p = PAL.mountains;
-  const seed = 8.3;
-  const amp = 0.16;
-  tileBase(m, { color: p.top, amp, seed, facet: 0.1 });
-  for (const [cx, cz, h, col] of [[0, 0, 0.95, p.crystalLite], [-0.28, 0.18, 0.68, p.crystalGrey], [0.26, 0.2, 0.6, p.crystalLite], [0.05, -0.3, 0.5, p.crystalGrey]] as [number, number, number, RGB][])
-    crystal(m, cx, cz, surfaceY(cx, cz, amp, seed), h, col, (cx * 200 + cz * 50) | 0);
-  const rng = mulberry32(0x303030);
-  for (const pt of scatter(rng, 2, 0.6, 0.4)) rock(m, pt.x, pt.z, surfaceY(pt.x, pt.z, amp, seed), 0.9, p.rock, (pt.x * 77) | 0);
+  const rng = mulberry32((Math.abs(seed) * 2654435761 + 0x9e3779b9) >>> 0 || 1);
+  const peaks = mountainPeaks(rng);
+  const ROCK: RGB = [156, 160, 172];
+  const SNOW: RGB = [240, 243, 250];
+  const M = 6; // finer facets for rocky detail
+  const V = hexCorners(R_RIM, 0);
+  const jit = (R_RIM / M) * 0.5;
+  const snowLine = EDGE_Y + 0.3;
+  const height = (x: number, z: number): number => {
+    const r = Math.hypot(x, z);
+    const rimFade = smooth((R_RIM - r) / 0.24); // full height until close to the rim
+    let h = 0.09; // modest base lift so the mounds fuse into one raised mass
+    for (const [px, pz, ph, pr] of peaks) {
+      const d = Math.hypot(x - px, z - pz);
+      if (d < pr) h += ph * smooth(1 - d / pr); // rounded dome (smoothstep, not conical)
+    }
+    h += (hash2(x * 9.3 + seed, z * 9.3 - seed) - 0.5) * 0.09; // light rocky facet jitter
+    return EDGE_Y + Math.max(0, h) * rimFade;
+  };
+  const at = (b: Vec3, c: Vec3, i: number, j: number): Vec3 => {
+    const ox = (i / M) * b.x + (j / M) * c.x;
+    const oz = (i / M) * b.z + (j / M) * c.z;
+    let x = ox;
+    let z = oz;
+    if (i + j < M && (i > 0 || j > 0)) {
+      x = ox + (hash2(ox * 41 + seed, oz * 41 - seed) - 0.5) * 2 * jit;
+      z = oz + (hash2(ox * 23 - seed, oz * 23 + seed) - 0.5) * 2 * jit;
+    }
+    return v(x, height(x, z), z);
+  };
+  const face = (p0: Vec3, p1: Vec3, p2: Vec3): void => {
+    const cy = (p0.y + p1.y + p2.y) / 3;
+    const snowy = cy > snowLine + (hash2(p0.x * 5, p0.z * 5) - 0.5) * 0.1; // irregular snow line
+    const base = snowy ? SNOW : ROCK;
+    const k = 1 + (hash2(p0.x + p0.z, p0.z - p0.x) - 0.5) * 2 * (snowy ? 0.03 : 0.13);
+    faceTri(m, p0, p1, p2, shade(base, k), UP);
+  };
+  for (let s = 0; s < 6; s++) {
+    const b = V[s];
+    const c = V[(s + 1) % 6];
+    for (let i = 0; i < M; i++) {
+      for (let j = 0; j < M - i; j++) {
+        const p00 = at(b, c, i, j);
+        const p10 = at(b, c, i + 1, j);
+        const p01 = at(b, c, i, j + 1);
+        face(p00, p10, p01);
+        if (j < M - i - 1) face(p10, at(b, c, i + 1, j + 1), p01);
+      }
+    }
+  }
+  rimAndWall(m, ROCK);
   return m;
 }
 
@@ -539,7 +604,9 @@ function desertTile(): Build {
   return m;
 }
 
-const BUILDERS: Record<Terrain, () => Build> = {
+// Builders take a per-tile `seed` (ore varies with it; the others ignore it for now — a
+// parameterless builder is assignable, so only mountainsTile declares the param).
+const BUILDERS: Record<Terrain, (seed: number) => Build> = {
   forest: forestTile,
   hills: hillsTile,
   pasture: pastureTile,
@@ -548,12 +615,14 @@ const BUILDERS: Record<Terrain, () => Build> = {
   desert: desertTile,
 };
 
-const cache = new Map<Terrain, Mesh>();
-export function tileMesh(terrain: Terrain): Mesh {
-  let m = cache.get(terrain);
+// Cache one baked mesh per (terrain, seed) — so a given ore variant is built once.
+const cache = new Map<string, Mesh>();
+export function tileMesh(terrain: Terrain, seed = 0): Mesh {
+  const key = `${terrain}:${seed}`;
+  let m = cache.get(key);
   if (!m) {
-    m = BUILDERS[terrain]();
-    cache.set(terrain, m);
+    m = BUILDERS[terrain](seed);
+    cache.set(key, m);
   }
   return m;
 }

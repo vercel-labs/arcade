@@ -1133,6 +1133,11 @@ setCatanTileHandlers({
     forceFrame = true;
     r.requestRender();
   },
+  onReroll: () => {
+    tileScene.reroll();
+    forceFrame = true;
+    r.requestRender();
+  },
 });
 
 function toPrism(): void {

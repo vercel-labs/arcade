@@ -29,6 +29,7 @@ const MODEL: Mat4 = mat4Identity();
 export class TileScene {
   private cam: OrbitCamera;
   private terrain: Terrain = 'forest';
+  private variant = 0; // per-tile seed: same style, different layout
   private dirty = true;
 
   constructor() {
@@ -41,6 +42,11 @@ export class TileScene {
   }
   currentTerrain(): Terrain {
     return this.terrain;
+  }
+  // Advance to the next procedural variant of the current tile (a new seed).
+  reroll(): void {
+    this.variant++;
+    this.dirty = true;
   }
 
   // ── camera ──
@@ -72,7 +78,7 @@ export class TileScene {
     const eye = this.cam.eye();
     const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 100 };
     const vp = cameraMatrices(camera, target.width / target.height).viewProjection;
-    rasterize(target, tileMesh(this.terrain), lambertMaterial, { mvp: mat4Multiply(vp, MODEL), model: MODEL, lightDir: LIGHT, ambient: AMBIENT });
+    rasterize(target, tileMesh(this.terrain, this.variant), lambertMaterial, { mvp: mat4Multiply(vp, MODEL), model: MODEL, lightDir: LIGHT, ambient: AMBIENT });
     this.dirty = false;
   }
 }
