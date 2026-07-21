@@ -8,7 +8,7 @@ import { BISHOP, BLACK, type Color, KNIGHT, type PieceType, QUEEN, ROOK } from '
 import type { RGB } from '../../engine/index.ts';
 import { UI_CHROME_BG } from '../theme.ts';
 
-export type Mode = 'prism' | 'menu' | 'chess-game' | 'logos' | 'ui' | 'audio' | 'cards' | 'poker';
+export type Mode = 'prism' | 'menu' | 'chess-game' | 'logos' | 'ui' | 'audio' | 'cards' | 'poker' | 'catan-tiles';
 export type RenderMode = 'ascii' | 'pixels';
 
 export interface BarActions {
@@ -97,9 +97,9 @@ export function buildBar(
     // already reads "new match", so it would be redundant there. Same "reset board"
     // the ☰ menu offers, surfaced on the felt for one-click reset.
     if (ai.active) buttons.push(RoundedButton({ id: 'new-game', label: 'reset board', onClick: a.newGame }));
-  } else if (mode === 'cards') {
-    // The cards screen: the mode picker + per-mode controls live in the poker HUD
-    // panel; the bar just carries nav / camera reset / display style / quit.
+  } else if (mode === 'cards' || mode === 'catan-tiles') {
+    // The cards / catan-tile test beds: the picker lives in the top-left HUD panel;
+    // the bar just carries nav / camera reset / display style / quit.
     buttons = [
       Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
       Button({ id: 'reset', label: 'reset view', onClick: a.reset, style: PILL }),
@@ -307,7 +307,7 @@ function prettyChord(k: string): string {
 // The mouse controls documented in the controls overlay, per screen. Orbit screens
 // share drag/pan/zoom; the menu browses covers + launches; chess adds click-to-select/
 // move on top of orbit. Screens absent here (e.g. the prism) have no mouse row.
-const ORBIT_MODES: Mode[] = ['chess-game', 'poker', 'logos', 'audio', 'cards', 'ui'];
+const ORBIT_MODES: Mode[] = ['chess-game', 'poker', 'logos', 'audio', 'cards', 'catan-tiles', 'ui'];
 export function mouseControlsFor(mode: Mode): { keys: string; label: string }[] {
   if (mode === 'menu') return [{ keys: 'scroll', label: 'prev / next' }, { keys: 'click', label: 'launch' }];
   const rows: { keys: string; label: string }[] = [];

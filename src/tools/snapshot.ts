@@ -25,6 +25,9 @@ import { buildMatchSetup, mountMatchSetup } from '../arcade/match/setup.ts';
 import { creators } from '../arcade/match/models.ts';
 import { CardsScene, type CardsMode } from '../arcade/games/poker/cards-scene.ts';
 import { buildPokerRoot, mountPokerHud } from '../arcade/games/poker/hud.ts';
+import { TileScene } from '../arcade/games/catan/tile-scene.ts';
+import { buildCatanTileRoot, mountCatanTileHud } from '../arcade/games/catan/tile-hud.ts';
+import { type Terrain, TERRAINS } from '../rules/catan/types.ts';
 import { PokerGameScene, type PokerSeatView } from '../arcade/games/poker/poker-scene.ts';
 import { betInput as pokerBetInput, buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, mountPokerGameHud, pushPokerChat } from '../arcade/games/poker/poker-hud.ts';
 import { buildPokerSetupPanel, modeDropdown as pokerModeDropdown, mountPokerSetup, playersDropdown as pokerPlayersDropdown, pokerPreviewSeats, pokerStartingStack } from '../arcade/match/poker-setup.ts';
@@ -304,6 +307,8 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot prism-prompt [cols] [rows] [t] [out]    prism loading screen + press-any-key marquee
   pnpm snapshot cards [single|hand|deck] [cols] [rows] [state] [out]   the cards screen
       (single: a code like Kh/10s/As · hand: peek|up · deck: shuffle|deal)
+  pnpm snapshot catan [forest|hills|pasture|fields|mountains|desert] [cols] [rows] [<t>] [hud] [out]   a 3D Catan tile
+      (<t> a decimal spins the turntable · hud composites the terrain dropdown panel)
   pnpm snapshot poker [cols] [rows] [preflop|flop|river|showdown] [players=N] [stack=N] [hud|setup|cine|result|menu|notes] [bet=N] [spectate] [longnames] [muck|gather|shuffle] [color] [out]   the poker table
       (muck: fold seats to a burn pile, needs players≥3 · gather/shuffle: the between-hands interlude, mid-sweep / mid-shuffle)
 
@@ -353,8 +358,45 @@ if (process.argv[2] === 'help' || process.argv[2] === '--help' || process.argv[2
   cardsSnapshot();
 } else if (process.argv[2] === 'poker') {
   pokerSnapshot();
+} else if (process.argv[2] === 'catan') {
+  catanSnapshot();
 } else {
   sceneSnapshot();
+}
+
+// The Catan tile test bed: one 3D hex tile for a terrain, on its turntable. Defaults to the
+// truer half-block color path (this is a graphics test); `hud` composites the dropdown panel
+// + bar through the app's ASCII path; a decimal arg spins the turntable to that time.
+//   pnpm exec tsx src/tools/snapshot.ts catan [forest|hills|pasture|fields|mountains|desert] [cols] [rows] [<t>] [hud] [out.ppm]
+function catanSnapshot(): void {
+  const args = process.argv.slice(3);
+  const terrain = ((TERRAINS as readonly string[]).find((x) => args.includes(x)) ?? 'forest') as Terrain;
+  const nums = args.filter((a) => /^\d+$/.test(a)).map(Number);
+  const cols = nums[0] || 120;
+  const rows = nums[1] || 44;
+  const spinTo = Number(args.find((a) => /^\d+\.\d+$/.test(a))) || 0;
+  const out = args.find((a) => a.endsWith('.ppm')) ?? `.snapshots/catan-${terrain}.ppm`;
+  const SS = 4;
+
+  const scene = new TileScene();
+  scene.setTerrain(terrain);
+  // `top` orbits toward a near top-down view; `spin` (a decimal) rotates the azimuth.
+  if (args.includes('top')) scene.orbit(0, 34);
+  if (spinTo) scene.orbit(-spinTo * 120, 0);
+  const target = new RenderTarget(cols * SS, rows * 2 * SS);
+  scene.renderScene(target, 0);
+
+  if (args.includes('hud')) {
+    const screen = new Screen(cols, rows);
+    mountCatanTileHud(screen);
+    (screen.component('catan-terrain') as Dropdown | undefined)?.pick(TERRAINS.indexOf(terrain));
+    const region = { x: 0, y: 0, w: cols, h: rows };
+    screen.setRoot(buildCatanTileRoot(region, buildBar('catan-tiles', 'ascii', barActions), noop), region);
+    const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
+    surfaceToPpm(surf, cols, rows, out);
+    return;
+  }
+  writeDisplayPpm(downsample(target, SS), out);
 }
 
 // The poker table with a dealt hand at a chosen street, presented through the app's
