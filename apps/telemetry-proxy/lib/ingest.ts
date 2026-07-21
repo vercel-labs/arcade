@@ -19,10 +19,14 @@ export interface IngestRequest {
 
 export interface IngestDeps {
   sink: Sink;
+  // Coarse per-IP limiter + blocklist (the primary control; KV-backed in prod).
   rateLimiter?: RateLimiter;
+  // Tighter per-playerKey limiter, checked after validation for records that carry one.
+  // Anti-naive-abuse only — playerKey is a client-supplied, rotatable hash.
+  perKeyLimiter?: RateLimiter;
 }
 
-export type IngestStatus = 200 | 400 | 413 | 429 | 503;
+export type IngestStatus = 200 | 400 | 403 | 413 | 429 | 503;
 export interface IngestResult {
   status: IngestStatus;
   body: { ok: true; count: number } | { ok: false; error: string };
@@ -32,7 +36,11 @@ const bytes = (s: string): number => Buffer.byteLength(s, 'utf8');
 const reject = (status: Exclude<IngestStatus, 200>, error: string): IngestResult => ({ status, body: { ok: false, error } });
 
 export async function ingest(req: IngestRequest, deps: IngestDeps): Promise<IngestResult> {
-  if (deps.rateLimiter && !deps.rateLimiter.allow(req.ip)) return reject(429, 'rate_limited');
+  if (deps.rateLimiter) {
+    const verdict = await deps.rateLimiter.check(req.ip);
+    if (verdict === 'blocked') return reject(403, 'blocked');
+    if (verdict === 'limited') return reject(429, 'rate_limited');
+  }
   if (bytes(req.bodyText) > MAX_BODY_BYTES) return reject(413, 'request_too_large');
 
   const lines = req.bodyText.split('\n').map((l) => l.trim()).filter((l) => l !== '');
@@ -51,6 +59,15 @@ export async function ingest(req: IngestRequest, deps: IngestDeps): Promise<Inge
     const reason = validateRow(req.kind, parsed);
     if (reason) return reject(400, reason);
     rows.push(parsed);
+  }
+
+  if (deps.perKeyLimiter) {
+    for (const row of rows) {
+      const playerKey = (row as { playerKey?: unknown }).playerKey;
+      if (typeof playerKey === 'string' && playerKey !== '' && (await deps.perKeyLimiter.check(`pk:${playerKey}`)) === 'limited') {
+        return reject(429, 'player_rate_limited');
+      }
+    }
   }
 
   const delivered = await deps.sink.deliver(req.kind, rows);
