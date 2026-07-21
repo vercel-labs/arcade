@@ -256,7 +256,11 @@ const FORBIDDEN_KEYS = new Set([
   'message',
 ]);
 
-const MAX_RECORD_BYTES = 8 * 1024 * 1024;
+// Ceiling for one canonical record. Kept well under downstream ingestion limits
+// (o11y-ingestion's request cap and Firehose's ~1 MB record) so a well-formed game is
+// never rejected mid-pipeline; real chess/poker records are only kilobytes. The proxy
+// enforces the same bound, so the client does not enqueue a record the proxy would 413.
+export const MAX_RECORD_BYTES = 900 * 1024;
 
 // Defense in depth for callers crossing a type boundary. Reject the whole record rather
 // than risk persisting an accidentally attached prompt or transcript in the local outbox.

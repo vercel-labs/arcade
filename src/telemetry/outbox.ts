@@ -113,7 +113,15 @@ export class RecordOutbox {
               body: `${JSON.stringify(entry.row)}\n`,
               signal: AbortSignal.timeout(this.timeoutMs),
             });
-            // The proxy returns 200 only after the downstream write is acknowledged.
+            // A 400/413 is permanent (malformed or oversized): the proxy will never
+            // accept this record, so drop it rather than retry it forever. 429/5xx and
+            // network failures stay queued for the next drain.
+            if (response.status === 400 || response.status === 413) {
+              rmSync(path, { force: true });
+              removed++;
+              break;
+            }
+            // Otherwise only a 200 means the downstream write was acknowledged.
             if (response.status !== 200) return;
             let current: string;
             try {

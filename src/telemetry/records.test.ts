@@ -89,6 +89,16 @@ test('privacy guard rejects accidentally attached prompt/chat/reasoning fields',
   }
 });
 
+test('an oversized canonical record is rejected rather than enqueued', () => {
+  // A payload past the record ceiling (real games are kilobytes; this is pathological).
+  // The filler key is privacy-safe, so this exercises the size guard specifically.
+  const big = { ...hand(), filler: 'x'.repeat(1_000_000) } as unknown as PokerHandRecord;
+  assert.equal(
+    toCanonicalRecordRow(big, { session: 's', env: 'prod', appVersion: 'v' }),
+    null,
+  );
+});
+
 test('privacy guard accepts omitted optional fields represented as undefined', () => {
   assert.equal(isPrivacySafeRecord({ requestedModel: 'openai/test', runtime: undefined }), true);
 });

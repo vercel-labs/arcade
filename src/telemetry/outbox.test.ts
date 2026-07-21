@@ -82,6 +82,25 @@ test('outbox posts to the record-type route with no auth header and removes only
   }
 });
 
+test('a 400/413 rejection drops the record instead of retrying it forever', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'arcade-outbox-'));
+  let calls = 0;
+  try {
+    const outbox = new RecordOutbox(options(root, async () => {
+      calls++;
+      return new Response('', { status: 400 });
+    }));
+    assert.equal(outbox.enqueue('match', row), true);
+    await outbox.drain();
+    assert.equal(calls, 1);
+    assert.equal(outbox.queuedCount(), 0); // dropped, not retained
+    await outbox.drain();
+    assert.equal(calls, 1); // and never retried
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('disabled outbox writes and sends nothing', async () => {
   const root = mkdtempSync(join(tmpdir(), 'arcade-outbox-'));
   let calls = 0;
