@@ -54,9 +54,33 @@ a request's rows as a single Events-API call with `wait=true`, and treats any
 
 ## Deploy
 
-Own Vercel project `arcade-telemetry`, Root Directory `apps/telemetry-proxy`, isolated from
-the prism project. Enable "Include source files outside of the Root Directory" (the bundle
-reaches `../../../src/telemetry/records.ts`). Env: `TINYBIRD_TOKEN` (append-only, scoped to
-the three arcade datasources), `TINYBIRD_HOST`, and `KV_REST_API_URL` / `KV_REST_API_TOKEN`.
-Disable Deployment Protection — this is a public unauthenticated endpoint by design. With no
-`TINYBIRD_TOKEN`, the proxy uses `consoleSink`, so local/preview runs need no credential.
+Its own Vercel project, isolated from the prism (`ascii-prisms`) project. First deploy is
+manual; after that it auto-deploys on push to `main` (the `ignoreCommand` above rebuilds only
+when the proxy or the shared record guard changed).
+
+Provisioning checklist (one-time):
+
+1. **Claim the name early.** Create the Vercel project `arcade-telemetry` (Vercel Labs team)
+   before the first deploy so the production hostname is reserved.
+2. **Root Directory** `apps/telemetry-proxy`, and enable **"Include source files outside of
+   the Root Directory in the Build Step"** — the bundle reaches `../../../src/telemetry/records.ts`.
+3. **Disable Deployment Protection.** This is a public unauthenticated endpoint by design; the
+   CLI posts with no credential.
+4. **Env vars:** `TINYBIRD_TOKEN` (append-only, scoped to only the three `arcade_*_v1`
+   datasources — never a workspace-admin token), `TINYBIRD_HOST` (the workspace region host),
+   and `KV_REST_API_URL` / `KV_REST_API_TOKEN` (Upstash / Vercel-KV REST). With no
+   `TINYBIRD_TOKEN` the proxy uses `consoleSink`, so local/preview runs need no credential.
+5. **WAF rate-limit rule.** Add a platform WAF rate-limit rule on the project as the hard
+   backstop. The KV limiter fails *open* on KV errors, so the WAF rule is what makes fail-open
+   acceptable — it caps a flood even when KV is down.
+
+## Data trust (leaderboard posture)
+
+Because the client is open source and ships no credential, **records are forgeable** — anyone
+can POST a well-formed row. Treat the datasets as **adversarial and non-authoritative**: the
+proxy enforces shape, size, privacy, and rate limits, but cannot attest that a record reflects
+a real game. The leaderboard that reads these tables must therefore filter at query time
+(dedupe by `recordId`, sanity-bound counts, ignore implausible rows) and never present raw
+per-player stats as ranked/authoritative. Trustworthy "ranked" personal stats would need
+server-side identity or an HMAC the client can't hold — deliberately deferred past the private
+beta.
