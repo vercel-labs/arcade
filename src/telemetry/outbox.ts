@@ -13,20 +13,9 @@ interface OutboxEntry {
 export interface RecordOutboxOptions {
   directory: string;
   enabled: boolean;
-  token: string;
   endpoints: Record<RecordTarget, string>;
   fetch?: FetchLike;
   timeoutMs?: number;
-}
-
-function acknowledgedEndpoint(endpoint: string): string {
-  try {
-    const url = new URL(endpoint);
-    url.searchParams.set('wait', 'true');
-    return url.toString();
-  } catch {
-    return endpoint;
-  }
 }
 
 function safeFilename(row: CanonicalRecordRow): string {
@@ -118,13 +107,13 @@ export class RecordOutbox {
             break;
           }
           try {
-            const response = await this.fetchImpl(acknowledgedEndpoint(this.opts.endpoints[entry.target]), {
+            const response = await this.fetchImpl(this.opts.endpoints[entry.target], {
               method: 'POST',
-              headers: { Authorization: `Bearer ${this.opts.token}`, 'Content-Type': 'application/x-ndjson' },
+              headers: { 'Content-Type': 'application/x-ndjson' },
               body: `${JSON.stringify(entry.row)}\n`,
               signal: AbortSignal.timeout(this.timeoutMs),
             });
-            // wait=true returns 200 only after the database acknowledges the write.
+            // The proxy returns 200 only after the downstream write is acknowledged.
             if (response.status !== 200) return;
             let current: string;
             try {

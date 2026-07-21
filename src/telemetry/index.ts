@@ -1,20 +1,19 @@
-// Anonymous telemetry for the arcade CLI. Lightweight usage events remain detached
-// fire-and-forget POSTs; canonical game records use explicitly versioned Tinybird
-// datasources plus an acknowledged local outbox. The hosted workspace lives on
-// Tinybird's cloud; see tinybird/README.md for schemas and scoped-token setup.
+// Anonymous telemetry for the arcade CLI. Lightweight usage events are detached
+// fire-and-forget POSTs; canonical game records use an acknowledged local outbox. Both
+// go to the Arcade telemetry proxy — a hosted Vercel service that holds the only
+// credential and forwards into ClickHouse — so the published client ships no token or key.
 //
 // Two hard rules: it never blocks the UI (fire-and-forget, short timeout) and it never
 // throws (every failure is swallowed). Analytics must not degrade the app.
 //
 // Configuration (env, resolved once at import):
 //   ARCADE_TELEMETRY=0             opt out entirely (also: off/false/no)
-//   ARCADE_TELEMETRY_TOKEN=<tok>   Tinybird append-only token — REQUIRED to send anything
-//   ARCADE_TELEMETRY_ENDPOINT=...  override the ingest URL (region / datasource name)
-//   ARCADE_TELEMETRY_MATCH_ENDPOINT=...       override canonical match ingest
-//   ARCADE_TELEMETRY_POKER_HAND_ENDPOINT=...  override canonical poker-hand ingest
+//   ARCADE_TELEMETRY_ENDPOINT=...  override the proxy base URL (a local mock or preview);
+//                                  ingest routes /v1/events, /v1/matches, /v1/poker-hands
+//                                  hang off it
 //
-// With no token configured telemetry is silently disabled, so an unconfigured checkout
-// (and every external user until a token is baked in) sends nothing.
+// A local checkout (ARCADE_DEV=1 — pnpm dev/watch/snapshot) sends nothing unless an
+// endpoint is set explicitly, so development never writes to the production pipeline.
 
 import { randomUUID } from 'node:crypto';
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -33,21 +32,22 @@ import {
 
 export * from './records.ts';
 
-// US region + the `arcade_events_v1` datasource. Override wholesale via env if the workspace
-// lives in another region (e.g. https://api.eu-central-1.tinybird.co/v0/events?name=...).
-const DEFAULT_ENDPOINT = 'https://api.us-east.tinybird.co/v0/events?name=arcade_events_v1';
-const DEFAULT_MATCH_ENDPOINT = 'https://api.us-east.tinybird.co/v0/events?name=arcade_match_records_v1';
-const DEFAULT_POKER_HAND_ENDPOINT = 'https://api.us-east.tinybird.co/v0/events?name=arcade_poker_hand_records_v1';
+// The hosted Arcade telemetry proxy. The three ingest routes hang off this base; override
+// it via env to target a local mock or a preview deployment.
+const DEFAULT_ENDPOINT = 'https://arcade-telemetry.vercel.app';
 const SEND_TIMEOUT_MS = 2000;
 const NOTICE_VERSION = 2;
 
-const token = process.env.ARCADE_TELEMETRY_TOKEN?.trim() || '';
 const optedOut = /^(0|off|false|no)$/i.test(process.env.ARCADE_TELEMETRY?.trim() ?? '');
-const endpoint = process.env.ARCADE_TELEMETRY_ENDPOINT?.trim() || DEFAULT_ENDPOINT;
-const matchEndpoint = process.env.ARCADE_TELEMETRY_MATCH_ENDPOINT?.trim() || DEFAULT_MATCH_ENDPOINT;
-const pokerHandEndpoint = process.env.ARCADE_TELEMETRY_POKER_HAND_ENDPOINT?.trim() || DEFAULT_POKER_HAND_ENDPOINT;
-const enabled = token !== '' && !optedOut;
+const endpointOverride = process.env.ARCADE_TELEMETRY_ENDPOINT?.trim() || '';
+const base = (endpointOverride || DEFAULT_ENDPOINT).replace(/\/+$/, '');
+const eventsEndpoint = `${base}/v1/events`;
+const matchEndpoint = `${base}/v1/matches`;
+const pokerHandEndpoint = `${base}/v1/poker-hands`;
 const env: 'dev' | 'prod' = process.env.ARCADE_DEV === '1' ? 'dev' : 'prod';
+// No token — the proxy is the trust boundary. A local checkout (env 'dev') stays silent
+// unless an endpoint is set, so only published installs write to the real pipeline.
+const enabled = !optedOut && (env === 'prod' || endpointOverride !== '');
 
 // Stamped on every event so any of them can be sliced by run / install / build / env.
 const sessionId = randomUUID();
@@ -125,7 +125,6 @@ export function initTelemetry(): void {
 const recordOutbox = new RecordOutbox({
   directory: outboxPath(),
   enabled,
-  token,
   endpoints: { match: matchEndpoint, poker_hand: pokerHandEndpoint },
 });
 
@@ -137,8 +136,8 @@ export function isTelemetryEnabled(): boolean {
   return enabled;
 }
 
-// Fire-and-forget: enqueue one NDJSON row to the Events API. Returns immediately; the
-// POST runs detached with a hard timeout and every error is swallowed.
+// Fire-and-forget: enqueue one NDJSON row to the proxy. Returns immediately; the POST
+// runs detached with a hard timeout and every error is swallowed.
 export function track(event: TelemetryEvent): void {
   if (!enabled) return;
   const row =
@@ -150,9 +149,9 @@ export function track(event: TelemetryEvent): void {
       appVersion: version,
       timestamp: new Date().toISOString(),
     }) + '\n';
-  const send = fetch(endpoint, {
+  const send = fetch(eventsEndpoint, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/x-ndjson' },
+    headers: { 'Content-Type': 'application/x-ndjson' },
     body: row,
     signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
     keepalive: true,

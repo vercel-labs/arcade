@@ -29,12 +29,14 @@ const row: CanonicalRecordRow = {
   payloadJson: '{"recordType":"match"}',
 };
 
+const MATCH_ENDPOINT = 'https://proxy.test/v1/matches';
+const POKER_HAND_ENDPOINT = 'https://proxy.test/v1/poker-hands';
+
 function options(directory: string, fetchImpl: FetchLike, enabled = true) {
   return {
     directory,
     enabled,
-    token: 'append-token',
-    endpoints: { match: 'https://tinybird.test/v0/events?name=matches', poker_hand: 'https://tinybird.test/v0/events?name=hands' },
+    endpoints: { match: MATCH_ENDPOINT, poker_hand: POKER_HAND_ENDPOINT },
     fetch: fetchImpl,
     timeoutMs: 1000,
   } as const;
@@ -55,7 +57,7 @@ test('outbox keeps a mode-0600 record when an acknowledged send fails', async ()
   }
 });
 
-test('outbox requests wait=true and removes only an HTTP-200 acknowledged row', async () => {
+test('outbox posts to the record-type route with no auth header and removes only an HTTP-200 row', async () => {
   const root = mkdtempSync(join(tmpdir(), 'arcade-outbox-'));
   const calls: { url: string; init?: RequestInit }[] = [];
   try {
@@ -68,8 +70,12 @@ test('outbox requests wait=true and removes only an HTTP-200 acknowledged row', 
     await outbox.drain();
     assert.equal(outbox.queuedCount(), 0);
     assert.equal(calls.length, 1);
-    assert.equal(new URL(calls[0].url).searchParams.get('wait'), 'true');
-    assert.equal((calls[0].init?.headers as Record<string, string>).Authorization, 'Bearer append-token');
+    // Plain route (no Tinybird wait=true query), no client credential — the proxy is
+    // the trust boundary and only 200 means the downstream write was acknowledged.
+    assert.equal(calls[0].url, MATCH_ENDPOINT);
+    const headers = calls[0].init?.headers as Record<string, string>;
+    assert.equal(headers.Authorization, undefined);
+    assert.equal(headers['Content-Type'], 'application/x-ndjson');
     assert.match(String(calls[0].init?.body), /"recordId":"record-1"/);
   } finally {
     rmSync(root, { recursive: true, force: true });
