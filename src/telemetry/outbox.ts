@@ -35,18 +35,26 @@ function safeFilename(row: CanonicalRecordRow): string {
 // swallow filesystem/network failures so telemetry can never degrade the arcade.
 export class RecordOutbox {
   private draining: Promise<void> | null = null;
+  private enabled: boolean;
   private readonly fetchImpl: FetchLike;
   private readonly timeoutMs: number;
   private readonly maxAgeMs: number;
 
   constructor(private readonly opts: RecordOutboxOptions) {
+    this.enabled = opts.enabled;
     this.fetchImpl = opts.fetch ?? fetch;
     this.timeoutMs = opts.timeoutMs ?? 12_000;
     this.maxAgeMs = opts.maxAgeMs ?? DEFAULT_MAX_AGE_MS;
   }
 
+  // Telemetry consent is resolved after construction (the store is read at startup) and
+  // can flip at runtime via the in-app toggle, so enabled is mutable.
+  setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+  }
+
   enqueue(target: RecordTarget, row: CanonicalRecordRow): boolean {
-    if (!this.opts.enabled) return false;
+    if (!this.enabled) return false;
     try {
       mkdirSync(this.opts.directory, { recursive: true, mode: 0o700 });
       chmodSync(this.opts.directory, 0o700);
@@ -63,7 +71,7 @@ export class RecordOutbox {
   }
 
   drain(): Promise<void> {
-    if (!this.opts.enabled) return Promise.resolve();
+    if (!this.enabled) return Promise.resolve();
     if (this.draining) return this.draining;
     this.draining = this.drainQueued().finally(() => {
       this.draining = null;

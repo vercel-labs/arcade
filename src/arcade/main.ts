@@ -46,7 +46,7 @@ import * as term from '../platform/terminal.ts';
 import { availableTeams, ensureGatewayKey, isLoggedIn, loadEnv, signOut as signOutVercel, switchTeam, type Team, useTeam } from '../auth/index.ts';
 import { AiMatch, type Seat } from './match/driver.ts';
 import { disambiguateLabels } from './match/labels.ts';
-import { flushTelemetry, initTelemetry, trackSessionStart, type RecordEndReason } from '../telemetry/index.ts';
+import { flushTelemetry, initTelemetry, isTelemetryEnabled, setTelemetryEnabled, telemetryStatus, trackSessionStart, type RecordEndReason } from '../telemetry/index.ts';
 
 // Populate process.env from .env.local before anything reads AI_GATEWAY_API_KEY.
 loadEnv();
@@ -1020,6 +1020,14 @@ function toggleEvalBar(): void {
   r.requestRender();
 }
 
+// Persist the anonymous-telemetry opt-in/out from the home menu (no key binding), the
+// in-app companion to `arcade telemetry enable|disable`.
+function toggleTelemetry(): void {
+  setTelemetryEnabled(!isTelemetryEnabled());
+  forceFrame = true;
+  r.requestRender();
+}
+
 // The AI button / 'p' key: play (idle) → pause (running) → resume (paused).
 // Entering from elsewhere first opens the chess game.
 function aiButton(): void {
@@ -1492,6 +1500,7 @@ function syncBar(): void {
         [
           { id: 'home-menu-shortcuts', label: 'controls', onClick: openShortcuts },
           { id: 'home-menu-account', label: 'account', onClick: openTeamSwitch },
+          { id: 'home-menu-telemetry', label: 'telemetry', value: isTelemetryEnabled() ? 'on' : 'off', onClick: toggleTelemetry },
           { id: 'home-menu-quit', label: 'quit', onClick: openConfirmQuit },
         ],
       ];
@@ -2203,6 +2212,20 @@ const argv = process.argv.slice(2);
 if (argv.includes('--logout')) {
   const was = signOutVercel();
   console.log(was ? 'Signed out of Vercel.' : 'Not signed in.');
+  process.exit(0);
+}
+// `arcade telemetry [status|enable|disable]` — mirrors `vercel telemetry …`. Runs before
+// the OAuth/render setup and exits, so it's scriptable and never launches the UI.
+if (argv[0] === 'telemetry') {
+  const sub = argv[1];
+  if (sub === 'enable' || sub === 'disable') {
+    setTelemetryEnabled(sub === 'enable');
+    console.log(`Telemetry ${sub}d.`);
+  } else if (sub === undefined || sub === 'status') {
+    console.log(`Telemetry is ${telemetryStatus()}.`);
+  } else {
+    console.log('Usage: arcade telemetry [status|enable|disable]');
+  }
   process.exit(0);
 }
 colorMode = await detectTerminalColorMode();
