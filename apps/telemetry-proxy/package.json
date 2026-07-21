@@ -1,0 +1,10 @@
+{
+  "name": "@vercel/arcade-telemetry-proxy",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Arcade telemetry proxy — validates and forwards anonymous gameplay records into ClickHouse; holds the only credential so the published CLI ships none.",
+  "engines": {
+    "node": ">=20"
+  }
+}
