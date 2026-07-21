@@ -55,7 +55,7 @@ class ControllerTimeline {
   private readonly assignments: ControllerAssignment[] = [];
   private readonly active = new Map<number, ControllerAssignment>();
 
-  constructor(roles: string[], initial: RecorderController[]) {
+  constructor(roles: string[], initial: RecorderController[], private readonly playerKey = '') {
     this.participants = roles.map((role, seat) => ({ participantId: id(), kind: initial[seat].kind, role }));
     for (let seat = 0; seat < roles.length; seat++) this.open(seat, initial[seat], 1);
   }
@@ -94,7 +94,9 @@ class ControllerTimeline {
             requestedModel: controller.model,
             ...(controller.runtime ? { runtime: controller.runtime } : {}),
           }
-        : {}),
+        : this.playerKey
+          ? { playerKey: this.playerKey }
+          : {}),
       startActionSeq,
     };
     this.assignments.push(assignment);
@@ -171,8 +173,9 @@ export class ChessGameRecorder {
     initial: RecorderController[],
     private readonly initialFen: string,
     allowIllegalMoves: boolean,
+    playerKey = '',
   ) {
-    this.timeline = new ControllerTimeline(['white', 'black'], initial);
+    this.timeline = new ControllerTimeline(['white', 'black'], initial, playerKey);
     this.illegalModeUsed = allowIllegalMoves;
   }
 
@@ -334,8 +337,9 @@ export class PokerSessionRecorder {
     stacks: number[],
     private readonly smallBlind: number,
     private readonly bigBlind: number,
+    playerKey = '',
   ) {
-    this.timeline = new ControllerTimeline(initial.map((_, seat) => `seat-${seat}`), initial);
+    this.timeline = new ControllerTimeline(initial.map((_, seat) => `seat-${seat}`), initial, playerKey);
     this.initialStacks = stacks.slice();
   }
 

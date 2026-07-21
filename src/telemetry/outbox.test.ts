@@ -9,6 +9,7 @@ import type { CanonicalRecordRow } from './records.ts';
 const row: CanonicalRecordRow = {
   emittedAt: '2026-07-17T10:02:00.000Z',
   sessionId: 'session-1',
+  playerKey: '',
   environment: 'prod',
   appVersion: '0.1.1',
   recordType: 'match',

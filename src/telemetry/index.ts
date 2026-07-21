@@ -15,7 +15,7 @@
 // A local checkout (ARCADE_DEV=1 — pnpm dev/watch/snapshot) sends nothing unless an
 // endpoint is set explicitly, so development never writes to the production pipeline.
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -53,6 +53,10 @@ const enabled = !optedOut && (env === 'prod' || endpointOverride !== '');
 const sessionId = randomUUID();
 const version = readVersion();
 let installId = '';
+// A hash of the install id — a pseudonymous, unguessable key that identifies THIS install
+// as a "player" without exposing the install id itself. Attached to a human's own game
+// records so a user can see their own stats; never carries Vercel account identity.
+let playerKey = '';
 
 // In-flight sends, so quit can best-effort drain them (see flushTelemetry).
 const pending = new Set<Promise<unknown>>();
@@ -108,6 +112,7 @@ export function initTelemetry(): void {
     writeStore(store);
   }
   installId = store.installId;
+  playerKey = installId ? createHash('sha256').update(installId).digest('hex') : '';
   if (optedOut) {
     recordOutbox.discardAll();
     return;
@@ -134,6 +139,13 @@ export type TelemetryEvent = { event: string } & Record<string, unknown>;
 // explicitly disabled. This keeps the no-token/opt-out path at effectively zero cost.
 export function isTelemetryEnabled(): boolean {
   return enabled;
+}
+
+// Pseudonymous key for the local install (hash of the anonymous install id), stamped on a
+// human's own game records so they can be attributed for personal stats. '' until
+// initTelemetry has run or when telemetry is disabled.
+export function localPlayerKey(): string {
+  return playerKey;
 }
 
 // Fire-and-forget: enqueue one NDJSON row to the proxy. Returns immediately; the POST
@@ -200,7 +212,7 @@ export function trackModelFallback(info: { game: string; model: string; reason: 
 // Raw records omit the install id; only the per-run session links them operationally.
 export function trackGameRecord(record: CanonicalGameRecord): boolean {
   if (!enabled) return false;
-  const row = toCanonicalRecordRow(record, { session: sessionId, env, appVersion: version });
+  const row = toCanonicalRecordRow(record, { session: sessionId, env, appVersion: version, playerKey });
   if (!row) return false;
   return recordOutbox.enqueue(recordTarget(record), row);
 }

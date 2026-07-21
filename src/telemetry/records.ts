@@ -28,6 +28,12 @@ export interface ControllerAssignment {
   requestedModel?: string;
   resolvedModel?: string;
   runtime?: 'text' | 'realtime';
+  /**
+   * Pseudonymous per-install key for a HUMAN controller (a hash of the anonymous install
+   * id) — the human's equivalent of a model's slug, so a person and a model are compared
+   * as uniform "competitors". Absent for model controllers; carries no account identity.
+   */
+  playerKey?: string;
   startActionSeq: number;
   endActionSeq?: number;
 }
@@ -218,6 +224,8 @@ export type RecordTarget = 'match' | 'poker_hand';
 export interface CanonicalRecordRow {
   emittedAt: string;
   sessionId: string;
+  /** Pseudonymous per-install key when a human played (else ''); links a user's own games. */
+  playerKey: string;
   environment: 'dev' | 'prod';
   appVersion: string;
   recordType: CanonicalGameRecord['recordType'];
@@ -289,16 +297,20 @@ export function recordTarget(record: CanonicalGameRecord): RecordTarget {
 
 export function toCanonicalRecordRow(
   record: CanonicalGameRecord,
-  envelope: { session: string; env: 'dev' | 'prod'; appVersion: string; emittedAt?: string },
+  envelope: { session: string; env: 'dev' | 'prod'; appVersion: string; playerKey?: string; emittedAt?: string },
 ): CanonicalRecordRow | null {
   if (!isPrivacySafeRecord(record)) return null;
   try {
     const payload = JSON.stringify(record);
     if (Buffer.byteLength(payload) > MAX_RECORD_BYTES) return null;
     const hand = record.recordType === 'poker_hand' ? record : null;
+    // Tag the envelope with the player key only when a human actually played — an
+    // AI-vs-AI game the user merely ran is not "their" gameplay.
+    const hasHuman = record.participants.some((p) => p.kind === 'human');
     return {
       emittedAt: envelope.emittedAt ?? new Date().toISOString(),
       sessionId: envelope.session,
+      playerKey: hasHuman ? (envelope.playerKey ?? '') : '',
       environment: envelope.env,
       appVersion: envelope.appVersion,
       recordType: record.recordType,

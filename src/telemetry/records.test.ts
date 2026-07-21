@@ -89,6 +89,24 @@ test('privacy guard rejects accidentally attached prompt/chat/reasoning fields',
   }
 });
 
+test('playerKey tags the envelope only when a human participated', () => {
+  // hand() has two model participants → not the user's own gameplay.
+  const aiOnly = toCanonicalRecordRow(hand(), { session: 's', env: 'prod', appVersion: 'v', playerKey: 'pk-abc' });
+  assert.ok(aiOnly);
+  assert.equal(aiOnly.playerKey, '');
+
+  const withHuman = {
+    ...hand(),
+    participants: [
+      { participantId: 'p0', kind: 'human', role: 'seat-0' },
+      { participantId: 'p1', kind: 'model', role: 'seat-1' },
+    ],
+  } as PokerHandRecord;
+  const row = toCanonicalRecordRow(withHuman, { session: 's', env: 'prod', appVersion: 'v', playerKey: 'pk-abc' });
+  assert.ok(row);
+  assert.equal(row.playerKey, 'pk-abc');
+});
+
 test('an oversized canonical record is rejected rather than enqueued', () => {
   // A payload past the record ceiling (real games are kilobytes; this is pathological).
   // The filler key is privacy-safe, so this exercises the size guard specifically.

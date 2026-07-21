@@ -13,7 +13,7 @@ import type { ChessState } from '../../rules/chess/chess.ts';
 import type { Move } from '../../rules/chess/types.ts';
 import { disambiguateLabels } from './labels.ts';
 import { normalizerModel } from './models.ts';
-import { isTelemetryEnabled, trackMatchEnded, trackMatchRecord, trackMatchStarted, trackModelFallback } from '../../telemetry/index.ts';
+import { isTelemetryEnabled, localPlayerKey, trackMatchEnded, trackMatchRecord, trackMatchStarted, trackModelFallback } from '../../telemetry/index.ts';
 import { ChessGameRecorder, type RecorderController } from './game-recorders.ts';
 import type { RecordEndReason } from '../../telemetry/records.ts';
 
@@ -176,6 +176,7 @@ export class AiMatch {
           this.seats.map(controller),
           this.deps.chessGame.state().fen(),
           this.deps.allowIllegal(),
+          localPlayerKey(),
         )
       : null;
     trackMatchStarted({

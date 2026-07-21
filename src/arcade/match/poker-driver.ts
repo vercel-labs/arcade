@@ -8,7 +8,7 @@
 import { runMatch } from '../../ai/match.ts';
 import { FALLBACK_RATIONALE, isFallbackRationale, ModelPlayer, type MoveNotation } from '../../ai/model-player.ts';
 import { HumanPlayer } from '../../ai/human-player.ts';
-import { isTelemetryEnabled, trackHandEnded, trackMatchRecord, trackMatchStarted, trackModelFallback, trackPokerHandRecord } from '../../telemetry/index.ts';
+import { isTelemetryEnabled, localPlayerKey, trackHandEnded, trackMatchRecord, trackMatchStarted, trackModelFallback, trackPokerHandRecord } from '../../telemetry/index.ts';
 import type { Player } from '../../ai/player.ts';
 import { type HandPublicRecord, HoldemState, type PokerAction } from '../../rules/poker/holdem.ts';
 import type { PokerGameScene, PokerSeatView } from '../games/poker/poker-scene.ts';
@@ -152,6 +152,7 @@ export class PokerMatch {
           this.stacks,
           SMALL_BLIND,
           BIG_BLIND,
+          localPlayerKey(),
         )
       : null;
     trackMatchStarted({

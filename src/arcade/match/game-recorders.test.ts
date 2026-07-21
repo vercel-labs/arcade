@@ -54,6 +54,28 @@ test('chess recorder persists replay state and temporal model assignments', () =
   assert.ok(toCanonicalRecordRow(record, { session: 'test', env: 'dev', appVersion: 'test' }));
 });
 
+test('a human controller carries the pseudonymous playerKey; a model carries its slug', () => {
+  const state = new ChessState();
+  const recorder = new ChessGameRecorder(
+    'human_vs_ai',
+    [{ kind: 'human' }, { kind: 'model', model: 'openai/a' }],
+    state.fen(),
+    false,
+    'pk-hash-123',
+  );
+  const record = recorder.abandoned('user_stopped', state.fen());
+  assert.ok(record);
+  const human = record.participants.find((p) => p.kind === 'human');
+  const model = record.participants.find((p) => p.kind === 'model');
+  assert.ok(human && model);
+  const humanAssignment = record.controllerAssignments.find((a) => a.participantId === human.participantId);
+  const modelAssignment = record.controllerAssignments.find((a) => a.participantId === model.participantId);
+  assert.equal(humanAssignment?.playerKey, 'pk-hash-123'); // the human's "slug"
+  assert.equal(humanAssignment?.requestedModel, undefined);
+  assert.equal(modelAssignment?.playerKey, undefined);
+  assert.equal(modelAssignment?.requestedModel, 'openai/a');
+});
+
 test('chess recorder checkpoints coarsely and keeps a FEN chain only in illegal mode', () => {
   const state = new ChessState();
   const recorder = new ChessGameRecorder(

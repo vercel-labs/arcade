@@ -31,7 +31,7 @@ src/
   ai/         game AI: Player interface + LLM-backed ModelPlayer + match loop
   auth/       Vercel sign-in (OAuth device flow) + AI Gateway key resolution
   voice/      realtime speech-to-speech session + mic/speaker I/O + echo cancel
-  telemetry/  anonymous usage + canonical game records → Tinybird Events API (opt-out)
+  telemetry/  anonymous usage + canonical game records → Arcade telemetry proxy → ClickHouse (opt-out)
   arcade/     THE app: orchestrator (main.ts) + per-game/scene/shell presentation
     games/<game>/   per-game presentation (chess: scene, hud, turntable)
     match/          AI-vs-AI plumbing (driver, setup modal, model catalog)
@@ -89,12 +89,15 @@ vercel-api,gateway-key}.ts`; `src/platform/open-browser.ts` opens the browser.
 
 `src/telemetry/` sends anonymous usage events plus canonical chess match and poker
 match/hand records (moves, actions, outcomes, and cards with their visibility). It never
-sends prompts, reasoning, chat, voice, or account identity. Delivery uses a durable local
-outbox but remains non-blocking and non-throwing; it is silent unless
-`ARCADE_TELEMETRY_TOKEN` is set and can be disabled with `ARCADE_TELEMETRY=0`. The hosted
-workspace lives on Tinybird's cloud — setup and all datasource schemas are in
-[tinybird/README.md](tinybird/README.md). This is the data layer the leaderboard milestone
-builds on.
+sends prompts, reasoning, chat, voice, or account identity. Human-played records carry a
+pseudonymous `playerKey` (a hash of the anonymous install id) so a player's own games can
+be attributed for personal stats — the human's equivalent of a model's slug, never a
+Vercel account id. Everything goes to the Arcade telemetry proxy (`apps/telemetry-proxy`,
+a hosted Vercel service that holds the only credential and forwards into ClickHouse), so
+the published client ships no token or key. Delivery is non-blocking and non-throwing:
+lightweight events are fire-and-forget; canonical records use a durable acknowledged
+outbox (deleted only on a 200). Opt out with `ARCADE_TELEMETRY=0`. This is the data layer
+the leaderboard milestone builds on.
 
 ## Deploying the curl prism
 
