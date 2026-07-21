@@ -19,7 +19,7 @@ npm i -g @vercel/arcade          # or install globally (pnpm add -g / yarn globa
 arcade                           # …then launch it from anywhere
 ```
 
-Arcade checks for a newer published version at launch and, if one exists, surfaces the exact upgrade command three ways: a line before it starts, a popup over the opening prism (with a copy button), and a line on exit. `npx @vercel/arcade@latest` always pulls the newest build; a global install stays put until you run the upgrade command.
+Arcade checks for a newer published version at launch and, if one exists, surfaces the exact upgrade command two ways: a line among the startup output, and a popup over the opening prism (with a copy button). `npx @vercel/arcade@latest` always pulls the newest build; a global install stays put until you run the upgrade command.
 
 On first launch it signs you into Vercel with a browser-based device login (like `vercel login`), then asks which team to bill AI usage to and mints an AI Gateway key for it. Tokens are cached under `~/.config/arcade/`; the key itself is re-derived each launch, never stored. Switch team or sign out from the in-app **Account** menu, or with `--switch-team` / `--logout`.
 

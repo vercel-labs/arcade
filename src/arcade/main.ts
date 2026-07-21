@@ -143,8 +143,8 @@ let updateModalOpen = false; // the startup popup (opened at boot when `update` 
 let updateModalFocused = false; // open→closed edge, so the popup focuses its default button once
 let updateCopied = false; // the "copy command" button flipped to its "copied ✓" confirmation
 
-// The two plain-text update notices (last boot line + on exit) share this exact wording,
-// so the message reads identically wherever it appears. The modal is the third surface.
+// The plain-text startup notice (printed as the last boot line). The modal over the prism
+// is the second, more prominent surface.
 function updateNotice(u: UpdateInfo): string {
   return (
     `\x1b[38;2;120;200;150m↑ Update available: v${u.current} → v${u.latest}\x1b[0m\n` +
@@ -390,9 +390,6 @@ function quit(): void {
   pokerMatch.stop('user_stopped');
   r.destroy();
   term.leave();
-  // Update notice (exit): printed after leaving the alt-screen so it lands in the restored
-  // scrollback — the last thing the user sees, right above the shell prompt.
-  if (update) process.stdout.write(`\n${updateNotice(update)}\n\n`);
   // Give any in-flight telemetry a brief window to drain, then exit regardless — the
   // cap keeps quit from ever visibly hanging on the network.
   void flushTelemetry(400).finally(() => process.exit(0));
