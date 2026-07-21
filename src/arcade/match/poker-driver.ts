@@ -345,17 +345,19 @@ export class PokerMatch {
         this.deps.onCommentary(text, player.name, seat >= 0 ? this.labelOf(seat) : shortModel(player.name));
       },
       onActionChosen: ({ player, playerIndex, choice }) => {
-        const spec = this.seats[playerIndex];
-        this.recorder?.actionChosen(
-          playerIndex,
-          player,
-          choice,
-          spec?.kind === 'human',
-          spec?.kind === 'ai' ? spec.runtime : undefined,
-          spec?.kind === 'ai' ? spec.model : undefined,
-        );
+        this.record(() => {
+          const spec = this.seats[playerIndex];
+          this.recorder?.actionChosen(
+            playerIndex,
+            player,
+            choice,
+            spec?.kind === 'human',
+            spec?.kind === 'ai' ? spec.runtime : undefined,
+            spec?.kind === 'ai' ? spec.model : undefined,
+          );
+        });
       },
-      onActionApplied: () => this.recorder?.actionApplied(),
+      onActionApplied: () => this.record(() => this.recorder?.actionApplied()),
     })
       .then(() => {
         if (ctrl.signal.aborted || this.abort !== ctrl) return; // paused / stopped mid-hand
@@ -370,17 +372,21 @@ export class PokerMatch {
           winners: won.map(([seat]) => (this.seats[seat]?.kind === 'ai' ? (this.seats[seat] as { model: string }).model : 'human')),
           pot: won.reduce((sum, [, amt]) => sum + amt, 0),
         });
-        const handRecord = this.recorder?.finishHand(state.canonicalRecord(), true);
-        if (handRecord) trackPokerHandRecord(handRecord);
+        // Recording is isolated: a fault here must not skip the gameplay continuation
+        // below (button rotation, onHandOver, next hand), or the table would hang.
+        this.record(() => {
+          const handRecord = this.recorder?.finishHand(state.canonicalRecord(), true);
+          if (handRecord) trackPokerHandRecord(handRecord);
+          if (this.aliveCount() < 2) {
+            const matchRecord = this.recorder?.finishMatch(this.stacks, true, 'natural');
+            if (matchRecord) trackMatchRecord(matchRecord);
+            this.recorder = null;
+          } else {
+            const checkpoint = this.recorder?.checkpointMatch(this.stacks);
+            if (checkpoint) trackMatchRecord(checkpoint);
+          }
+        });
         this.recordingHandOpen = false;
-        if (this.aliveCount() < 2) {
-          const matchRecord = this.recorder?.finishMatch(this.stacks, true, 'natural');
-          if (matchRecord) trackMatchRecord(matchRecord);
-          this.recorder = null;
-        } else {
-          const checkpoint = this.recorder?.checkpointMatch(this.stacks);
-          if (checkpoint) trackMatchRecord(checkpoint);
-        }
         this.abort = null;
         this.deps.onHandOver();
         this.deps.requestRender();
@@ -487,6 +493,17 @@ export class PokerMatch {
     else this.dealHand();
   }
 
+  // Run a recorder call in isolation: telemetry must never stall the table. Any fault
+  // drops the recorder rather than throw into the hand loop or the teardown path.
+  private record<T>(fn: () => T): T | undefined {
+    try {
+      return fn();
+    } catch {
+      this.recorder = null;
+      return undefined;
+    }
+  }
+
   // Fully stop the session: cancel the loop + timer and tear down the scene session.
   stop(reason: Exclude<RecordEndReason, 'natural'> = 'user_stopped'): void {
     this.abort?.abort();
@@ -509,10 +526,8 @@ export class PokerMatch {
       this.recordingHandOpen = false;
     }
     const completedNaturally = settledFinalHand && this.aliveCount() < 2;
-    const matchRecord = this.recorder?.finishMatch(
-      this.stacks,
-      completedNaturally,
-      completedNaturally ? 'natural' : reason,
+    const matchRecord = this.record(() =>
+      this.recorder?.finishMatch(this.stacks, completedNaturally, completedNaturally ? 'natural' : reason),
     );
     if (matchRecord) trackMatchRecord(matchRecord);
     this.recorder = null;
@@ -553,10 +568,9 @@ export class PokerMatch {
   }
 
   // The session is over (one seat has all the chips). Leave it on screen; the HUD
-  // shows the winner. main clears it on navigating away / new match.
+  // shows the winner. main clears it on navigating away / new match. The terminal match
+  // record was already emitted by the hand-completion path that eliminated the last seat.
   private finishSession(): void {
-    const matchRecord = this.recorder?.finishMatch(this.stacks, true, 'natural');
-    if (matchRecord) trackMatchRecord(matchRecord);
     this.recorder = null;
     this.running = false;
     this.deps.onHandOver();
