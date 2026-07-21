@@ -34,7 +34,7 @@ import { CHAT_WIDTH, clearChat, pushChatMessage } from './games/chess/chat.ts';
 import { insetRightSceneViewport, pointerNdcInSceneViewport } from './scene-viewport.ts';
 import { buildMatchSetup, buildSwapSetup, matchSetupSelection, mountMatchSetup, mountSwapSetup, openSwapSetup, swapSetupSelection } from './match/setup.ts';
 import { copyToClipboard } from '../platform/clipboard.ts';
-import { checkForUpdate, refreshLatestInBackground } from './update.ts';
+import { checkForUpdate, refreshLatestInBackground, type UpdateInfo } from './update.ts';
 import { BLACK, type Color, WHITE } from '../rules/chess/types.ts';
 import { evaluate } from '../rules/chess/eval.ts';
 import type { ChessResult } from '../rules/chess/chess.ts';
@@ -142,6 +142,15 @@ const update = checkForUpdate();
 let updateModalOpen = false; // the startup popup (opened at boot when `update` is set)
 let updateModalFocused = false; // open→closed edge, so the popup focuses its default button once
 let updateCopied = false; // the "copy command" button flipped to its "copied ✓" confirmation
+
+// The two plain-text update notices (last boot line + on exit) share this exact wording,
+// so the message reads identically wherever it appears. The modal is the third surface.
+function updateNotice(u: UpdateInfo): string {
+  return (
+    `\x1b[38;2;120;200;150m↑ Update available: v${u.current} → v${u.latest}\x1b[0m\n` +
+    `  Run \x1b[38;2;150;220;180m${u.command}\x1b[0m to update.`
+  );
+}
 // Start from the universally safe palette. Startup detection upgrades this to
 // truecolor before the alternate screen or first rendered frame is shown.
 let colorMode: TerminalColorMode = '256-color';
@@ -381,14 +390,9 @@ function quit(): void {
   pokerMatch.stop('user_stopped');
   r.destroy();
   term.leave();
-  // Update notice #3: printed after leaving the alt-screen (so it lands in the restored
-  // scrollback) — the last thing the user sees, with the exact upgrade command.
-  if (update) {
-    process.stdout.write(
-      `\n\x1b[38;2;120;200;150m↑ Update available: v${update.current} → v${update.latest}\x1b[0m\n` +
-        `  Run \x1b[38;2;150;220;180m${update.command}\x1b[0m to update.\n\n`,
-    );
-  }
+  // Update notice (exit): printed after leaving the alt-screen so it lands in the restored
+  // scrollback — the last thing the user sees, right above the shell prompt.
+  if (update) process.stdout.write(`\n${updateNotice(update)}\n\n`);
   // Give any in-flight telemetry a brief window to drain, then exit regardless — the
   // cap keeps quit from ever visibly hanging on the network.
   void flushTelemetry(400).finally(() => process.exit(0));
@@ -2274,16 +2278,9 @@ const colorStatus =
   colorMode === 'truecolor' ? 'Truecolor detected.' : 'Truecolor not detected. Using 256-color.';
 process.stdout.write(`\x1b[38;2;135;135;175m  \u2713 ${colorStatus}\x1b[0m\n`);
 
-// Update notice #1: a plain line among the other boot lines, before the alt-screen. Also
-// arms the modal (shown over the prism) for later. #3 is printed on exit (see quit()).
-// The background refresh keeps the cache current for the next launch.
-if (update) {
-  process.stdout.write(
-    `\x1b[38;2;120;200;150m  \u2191 update available: v${update.current} \u2192 v${update.latest}\x1b[0m` +
-      `\x1b[38;2;120;124;140m  \u00b7  ${update.command}\x1b[0m\n`,
-  );
-  updateModalOpen = true;
-}
+// Arm the modal (shown over the prism) and refresh the version cache for the next launch.
+// The plain-text startup notice itself is printed below, after the auth/team line.
+if (update) updateModalOpen = true;
 refreshLatestInBackground();
 
 await ensureGatewayKey({
@@ -2300,6 +2297,10 @@ trackSessionStart({
   cols: process.stdout.columns ?? 0,
   rows: process.stdout.rows ?? 0,
 });
+
+// Update notice (startup): the last boot line before the alt-screen — beneath the
+// truecolor + AI Gateway lines — with the same wording as the on-exit notice.
+if (update) process.stdout.write(`\n${updateNotice(update)}\n`);
 
 term.enter();
 process.stdin.on('data', parse);
