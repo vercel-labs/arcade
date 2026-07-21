@@ -2239,7 +2239,8 @@ await ensureGatewayKey({
 });
 
 // Resolve the anonymous install id + (once) print the opt-out notice while still in
-// plain text, then record the launch. Both are no-ops unless a telemetry token is set.
+// plain text, then record the launch. Both are no-ops when telemetry is off (opt-out
+// or a dev checkout without an endpoint override).
 initTelemetry();
 trackSessionStart({
   colorMode,

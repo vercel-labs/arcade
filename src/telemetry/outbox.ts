@@ -153,11 +153,13 @@ export class RecordOutbox {
               removed++;
               break;
             }
-            // 408/429 = transient throttle/timeout, 5xx = server/network trouble: stop
-            // this drain and retry the whole queue on the next launch (don't hammer).
-            if (response.status === 408 || response.status === 429 || response.status >= 500) return;
-            // Any other 4xx is permanent for THIS record (malformed, oversized, unknown
-            // route): drop it so it can't wedge delivery of newer records behind it.
+            // 408/429 = transient throttle/timeout, 5xx = server/network trouble, and
+            // 404 = endpoint-level (the URL is fixed per target, so a 404 is never a
+            // verdict on this record — e.g. a not-yet-provisioned proxy): stop this
+            // drain and retry the whole queue on the next launch (don't hammer).
+            if (response.status === 404 || response.status === 408 || response.status === 429 || response.status >= 500) return;
+            // Any other 4xx is permanent for THIS record (malformed, oversized,
+            // rejected): drop it so it can't wedge delivery of newer records behind it.
             rmSync(path, { force: true });
             removed++;
             break;

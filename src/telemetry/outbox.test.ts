@@ -83,9 +83,8 @@ test('outbox posts to the record-type route with no auth header and removes only
   }
 });
 
-test('any non-408/429 4xx drops the record instead of wedging the queue forever', async () => {
-  // 404 (not just 400/413): the earlier bug retried/halted on this forever.
-  for (const status of [400, 404, 413, 422]) {
+test('a per-record 4xx drops the record instead of wedging the queue forever', async () => {
+  for (const status of [400, 413, 422]) {
     const root = mkdtempSync(join(tmpdir(), 'arcade-outbox-'));
     let calls = 0;
     try {
@@ -104,8 +103,10 @@ test('any non-408/429 4xx drops the record instead of wedging the queue forever'
   }
 });
 
-test('a 429/5xx is kept and retried on the next drain', async () => {
-  for (const status of [429, 500, 503]) {
+test('a 404/429/5xx is kept and retried on the next drain', async () => {
+  // 404 is endpoint-level, not a per-record verdict: the baked proxy URL 404s until the
+  // project is provisioned, and dropping would permanently destroy queued records.
+  for (const status of [404, 429, 500, 503]) {
     const root = mkdtempSync(join(tmpdir(), 'arcade-outbox-'));
     try {
       const outbox = new RecordOutbox(options(root, async () => new Response('', { status })));
@@ -121,10 +122,10 @@ test('a 429/5xx is kept and retried on the next drain', async () => {
 test('a poison record does not wedge delivery of newer records behind it', async () => {
   const root = mkdtempSync(join(tmpdir(), 'arcade-outbox-'));
   try {
-    // record-1 sorts first and always 404s (poison); record-2 would succeed.
+    // record-1 sorts first and is always rejected (poison); record-2 would succeed.
     const outbox = new RecordOutbox(options(root, async (_input, init) => {
       const poison = String(init?.body).includes('"recordId":"record-1"');
-      return new Response('', { status: poison ? 404 : 200 });
+      return new Response('', { status: poison ? 400 : 200 });
     }));
     assert.equal(outbox.enqueue('match', row), true);
     assert.equal(outbox.enqueue('match', { ...row, recordId: 'record-2', matchId: 'match-2' }), true);

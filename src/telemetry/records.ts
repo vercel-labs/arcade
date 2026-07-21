@@ -241,7 +241,8 @@ export interface CanonicalRecordRow {
   status: RecordStatus;
   endReason: string;
   startedAt: string;
-  endedAt: string;
+  /** Omitted while in progress; the datasource's DEFAULT (epoch) fills the column. */
+  endedAt?: string;
   participantCount: number;
   actionCount: number;
   payloadJson: string;
@@ -326,7 +327,9 @@ export function toCanonicalRecordRow(
       status: record.status,
       endReason: record.endReason ?? '',
       startedAt: record.startedAt,
-      endedAt: record.endedAt ?? '1970-01-01T00:00:00.000Z',
+      // Omitted (not a sentinel) when the game hasn't ended: JSON.stringify drops the
+      // undefined, and a missing field takes the column DEFAULT — it can never quarantine.
+      endedAt: record.endedAt,
       participantCount: record.participants.length,
       actionCount: record.actions.length,
       payloadJson: payload,
