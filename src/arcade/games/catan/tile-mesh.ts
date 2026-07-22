@@ -53,6 +53,17 @@ function faceQuad(m: Build, a: Vec3, b: Vec3, c: Vec3, d: Vec3, color: RGB, outw
   faceTri(m, a, b, c, color, outward);
   faceTri(m, a, c, d, color, outward);
 }
+// Emit a low-poly cell as ONE flat quadrilateral: both triangles share a single averaged
+// normal + color, so it reads as a quad (not two triangles). Winding is irrelevant — lambert
+// lights from the stored normal and cull is 'none'.
+function faceQuadFlat(m: Build, a: Vec3, b: Vec3, c: Vec3, d: Vec3, color: RGB, outward: Vec3): void {
+  let n = norm(cross(sub(c, a), sub(b, d))); // normal from the diagonals
+  if (n.x * outward.x + n.y * outward.y + n.z * outward.z < 0) n = { x: -n.x, y: -n.y, z: -n.z };
+  const col = { x: color[0], y: color[1], z: color[2] };
+  const base = m.vertices.length;
+  for (const p of [a, b, c, d]) m.vertices.push({ position: { ...p }, normal: n, uv: [0, 0], color: col });
+  m.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+}
 const UP: Vec3 = { x: 0, y: 1, z: 0 };
 const shade = (c: RGB, k: number): RGB => [c[0] * k, c[1] * k, c[2] * k];
 
@@ -134,8 +145,8 @@ function rimAndWall(m: Build, fieldColor: RGB): void {
 // the hex edge is clean; sector seams match because jitter + height are pure functions of the
 // pre-jitter (x,z).
 function irregularGround(m: Build, o: GroundOpts & { M?: number }): void {
-  const M = o.M ?? 4;
-  const facet = o.facet ?? 0.06;
+  const M = o.M ?? 3; // coarse: fewer, larger facets like the reference
+  const facet = o.facet ?? 0.05;
   const V = hexCorners(R_RIM, 0);
   const jit = (R_RIM / M) * 0.42;
   const at = (b: Vec3, c: Vec3, i: number, j: number): Vec3 => {
@@ -149,6 +160,8 @@ function irregularGround(m: Build, o: GroundOpts & { M?: number }): void {
     }
     return v(x, groundNoise(x, z, o.amp, o.seed), z);
   };
+  // Most cells render as a single flat QUAD; the diagonal edge cells are lone triangles — a
+  // mix of quads + triangles, like the hand-modeled reference.
   for (let s = 0; s < 6; s++) {
     const b = V[s];
     const c = V[(s + 1) % 6];
@@ -157,11 +170,9 @@ function irregularGround(m: Build, o: GroundOpts & { M?: number }): void {
         const p00 = at(b, c, i, j);
         const p10 = at(b, c, i + 1, j);
         const p01 = at(b, c, i, j + 1);
-        faceTri(m, p00, p10, p01, shade(o.color, 1 + (hash2(p00.x + s, p00.z - s) - 0.5) * 2 * facet), UP);
-        if (j < M - i - 1) {
-          const p11 = at(b, c, i + 1, j + 1);
-          faceTri(m, p10, p11, p01, shade(o.color, 1 + (hash2(p11.x - s, p11.z + s) - 0.5) * 2 * facet), UP);
-        }
+        const col = shade(o.color, 1 + (hash2(p00.x + s * 3, p00.z - s * 3) - 0.5) * 2 * facet);
+        if (j < M - i - 1) faceQuadFlat(m, p00, p10, at(b, c, i + 1, j + 1), p01, col, UP);
+        else faceTri(m, p00, p10, p01, col, UP);
       }
     }
   }
@@ -185,24 +196,27 @@ interface Pad {
   dh: number;
   seed: number;
 }
-// Three SMALLER, NON-overlapping raised grain patches in a triangle — separated so the flat
-// base level shows in wide channels between and around them, giving the fences and hay real
-// non-raised ground to sit on (never perched on a patch).
-const WHEAT_PADS: Pad[] = [
-  { cx: 0.0, cz: -0.48, r: 0.3, dh: 0.07, seed: 0x11 },
-  { cx: 0.42, cz: 0.24, r: 0.3, dh: 0.05, seed: 0x22 },
-  { cx: -0.42, cz: 0.24, r: 0.28, dh: 0.09, seed: 0x33 },
-];
-
+// Three raised grain patches near the rim (≈120° apart) so they don't overlap and leave clear
+// channels + a clear centre for the props. Seeded: an overall rotation plus per-pad angle,
+// radius, size, and height jitter, so no two grain hexes are identical.
+function wheatPads(rng: () => number, baseRot: number, seed: number): Pad[] {
+  const pads: Pad[] = [];
+  for (let k = 0; k < 3; k++) {
+    const th = baseRot + (k * 2 * Math.PI) / 3 + (rng() - 0.5) * 0.5;
+    const rp = 0.44 + rng() * 0.06;
+    pads.push({ cx: rp * Math.cos(th), cz: rp * Math.sin(th), r: 0.27 + rng() * 0.05, dh: 0.04 + rng() * 0.06, seed: (seed * 97 + k * 31) | 0 });
+  }
+  return pads;
+}
 // Height of the terraced field at (x,z): the highest pad whose octagon covers it, else base.
-function wheatHeightAt(x: number, z: number): number {
+function wheatHeightAt(pads: Pad[], x: number, z: number): number {
   let h = EDGE_Y;
-  for (const p of WHEAT_PADS) if (Math.hypot(x - p.cx, z - p.cz) < p.r * 0.86) h = Math.max(h, EDGE_Y + p.dh);
+  for (const p of pads) if (Math.hypot(x - p.cx, z - p.cz) < p.r * 0.86) h = Math.max(h, EDGE_Y + p.dh);
   return h;
 }
-// True if (x,z) sits on a raised pad (so props can avoid perching on top of one).
-function onPad(x: number, z: number): boolean {
-  return wheatHeightAt(x, z) > EDGE_Y + 0.005;
+// True if (x,z) (with a prop of half-extent `ext`) stays clear of every raised pad.
+function clearOfPads(pads: Pad[], x: number, z: number, ext: number): boolean {
+  return pads.every((p) => Math.hypot(x - p.cx, z - p.cz) > p.r * 1.05 + ext);
 }
 
 // One irregular octagonal pad, CLIPPED to the tile hexagon: a flat-ish faceted top + a short
@@ -231,12 +245,6 @@ function octaPad(m: Build, p: Pad, color: RGB): void {
   }
 }
 
-// The wheat base: a coarse flat plane (lowest level) + the 3 terrace pads + rim/wall.
-function wheatBase(m: Build, color: RGB): void {
-  irregularGround(m, { color: shade(color, 0.95), amp: 0.05, seed: 4.2, facet: 0.05 }); // gently-uneven base
-  for (const p of WHEAT_PADS) octaPad(m, p, color);
-  rimAndWall(m, color);
-}
 
 // ── Prop primitives ───────────────────────────────────────────────────────────
 
@@ -268,9 +276,13 @@ function cone(m: Build, cx: number, cz: number, r: number, h: number, sides: num
   }
 }
 
-// A faceted ellipsoid ("blob"), optional radial jitter for rocks.
-function blob(m: Build, cx: number, cy: number, cz: number, rx: number, ry: number, rz: number, color: RGB, seed = 1, jit = 0, latN = 3, lonN = 6): void {
+// A faceted ellipsoid ("blob"), optional radial jitter for rocks. `belly` two-tones the faces
+// below center (e.g. a sheep's white top over a cream underside); `yaw` rotates it about Y so
+// an elongated blob (rx ≠ rz) can point along a facing direction.
+function blob(m: Build, cx: number, cy: number, cz: number, rx: number, ry: number, rz: number, color: RGB, seed = 1, jit = 0, latN = 3, lonN = 6, belly?: RGB, yaw = 0): void {
   const rng = mulberry32(seed | 0 || 1);
+  const cyaw = Math.cos(yaw);
+  const syaw = Math.sin(yaw);
   const rows: Vec3[][] = [];
   for (let i = 0; i <= latN; i++) {
     const theta = (Math.PI * i) / latN;
@@ -281,12 +293,15 @@ function blob(m: Build, cx: number, cy: number, cz: number, rx: number, ry: numb
     for (let j = 0; j < count; j++) {
       const phi = (2 * Math.PI * j) / lonN;
       const jf = 1 + (jit ? (rng() - 0.5) * jit : 0);
-      ring.push(v(cx + sy0 * Math.cos(phi) * rx * jf, cy + cy0 * ry * jf, cz + sy0 * Math.sin(phi) * rz * jf));
+      const dx = sy0 * Math.cos(phi) * rx * jf;
+      const dz = sy0 * Math.sin(phi) * rz * jf;
+      ring.push(v(cx + dx * cyaw - dz * syaw, cy + cy0 * ry * jf, cz + dx * syaw + dz * cyaw));
     }
     rows.push(ring);
   }
   const center = v(cx, cy, cz);
   const out = (p: Vec3): Vec3 => norm(sub(p, center));
+  const col = (p0: Vec3, p1: Vec3, p2: Vec3): RGB => (belly && (p0.y + p1.y + p2.y) / 3 < cy ? belly : color);
   for (let i = 0; i < latN; i++) {
     const a = rows[i];
     const b = rows[i + 1];
@@ -295,13 +310,31 @@ function blob(m: Build, cx: number, cy: number, cz: number, rx: number, ry: numb
       const a1 = a[a.length === 1 ? 0 : (j + 1) % a.length];
       const b0 = b[b.length === 1 ? 0 : j % b.length];
       const b1 = b[b.length === 1 ? 0 : (j + 1) % b.length];
-      if (a.length === 1) faceTri(m, a0, b0, b1, color, out(b0));
-      else if (b.length === 1) faceTri(m, a0, a1, b0, color, out(a0));
+      if (a.length === 1) faceTri(m, a0, b0, b1, col(a0, b0, b1), out(b0));
+      else if (b.length === 1) faceTri(m, a0, a1, b0, col(a0, a1, b0), out(a0));
       else {
-        faceTri(m, a0, a1, b1, color, out(a1));
-        faceTri(m, a0, b1, b0, color, out(b0));
+        faceTri(m, a0, a1, b1, col(a0, a1, b1), out(a1));
+        faceTri(m, a0, b1, b0, col(a0, b1, b0), out(b0));
       }
     }
+  }
+}
+
+// A thin square-section beam between two 3D points (for angled struts like sheep legs).
+function beam(m: Build, a: Vec3, b: Vec3, w: number, color: RGB): void {
+  const dir = norm(sub(b, a));
+  const ref: Vec3 = Math.abs(dir.y) > 0.9 ? { x: 1, y: 0, z: 0 } : { x: 0, y: 1, z: 0 };
+  const u = norm(cross(dir, ref));
+  const wv = norm(cross(dir, u));
+  const off = (p: Vec3, su: number, sw: number): Vec3 => v(p.x + (u.x * su + wv.x * sw) * w, p.y + (u.y * su + wv.y * sw) * w, p.z + (u.z * su + wv.z * sw) * w);
+  const cs: [number, number][] = [[1, 1], [1, -1], [-1, -1], [-1, 1]];
+  const ca = cs.map(([su, sw]) => off(a, su, sw));
+  const cb = cs.map(([su, sw]) => off(b, su, sw));
+  const center = v((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+  for (let k = 0; k < 4; k++) {
+    const j = (k + 1) % 4;
+    const mid = v((ca[k].x + ca[j].x + cb[k].x + cb[j].x) / 4, (ca[k].y + ca[j].y + cb[k].y + cb[j].y) / 4, (ca[k].z + ca[j].z + cb[k].z + cb[j].z) / 4);
+    faceQuad(m, ca[k], ca[j], cb[j], cb[k], color, norm(sub(mid, center)));
   }
 }
 
@@ -416,28 +449,92 @@ function pine(m: Build, cx: number, cz: number, y0: number, scale: number, dark:
     cone(m, cx, cz, r * scale, h * scale, 6, i === 2 ? lite : dark, y0 + yy * scale, cx + cz),
   );
 }
+// A broadleaf tree: a short brown trunk under a big rounded faceted canopy (flat shading
+// gives the two-tone sunlit/shadow look).
 function roundTree(m: Build, cx: number, cz: number, y0: number, scale: number, leaf: RGB, seed: number): void {
-  box(m, cx, cz, 0.05 * scale, 0.16 * scale, 0.05 * scale, TRUNK, 0, y0);
-  blob(m, cx, cz, y0 + 0.34 * scale, 0.24 * scale, 0.24 * scale, 0.24 * scale, leaf, seed, 0.14, 3, 6);
+  box(m, cx, cz, 0.075 * scale, 0.2 * scale, 0.075 * scale, TRUNK, 0, y0);
+  blob(m, cx, y0 + 0.44 * scale, cz, 0.26 * scale, 0.27 * scale, 0.26 * scale, leaf, seed, 0.16, 4, 7);
 }
-function sheep(m: Build, cx: number, cz: number, y0: number, ry: number): void {
-  const wool: RGB = [238, 236, 230];
-  const dark: RGB = [58, 54, 54];
-  for (const [lx, lz] of [[0.06, 0.05], [0.06, -0.05], [-0.06, 0.05], [-0.06, -0.05]] as const)
-    box(m, cx + Math.cos(ry) * lx - Math.sin(ry) * lz, cz + Math.sin(ry) * lx + Math.cos(ry) * lz, 0.03, 0.06, 0.03, dark, ry, y0);
-  blob(m, cx, y0 + 0.13, cz, 0.14, 0.1, 0.1, wool, 3, 0, 3, 6);
-  blob(m, cx + Math.cos(ry) * 0.13, y0 + 0.14, cz + Math.sin(ry) * 0.13, 0.055, 0.06, 0.05, dark, 5, 0, 2, 5);
+
+// A bush: a rounded faceted green blob sitting directly on the ground (no trunk).
+function bush(m: Build, cx: number, cz: number, y0: number, scale: number, color: RGB, seed: number): void {
+  blob(m, cx, y0 + 0.11 * scale, cz, 0.16 * scale, 0.13 * scale, 0.16 * scale, color, seed, 0.2, 3, 6);
+}
+// A low-poly sheep: a fat rounded body (white top → cream belly), a black head tilted up at
+// the front with two ear nubs, and four short thin black legs. Faces along `ry`.
+function sheep(m: Build, cx: number, cz: number, y0: number, ry: number, seed: number): void {
+  const rng = mulberry32(seed | 0 || 1);
+  const WHITE: RGB = [246, 246, 242];
+  const CREAM: RGB = [226, 212, 184];
+  const BLACK: RGB = [36, 36, 42];
+  const s = 0.38 + rng() * 0.12; // roughly half the old size — closer to the trees
+  const cos = Math.cos(ry);
+  const sin = Math.sin(ry);
+  const at = (fwd: number, side: number): { x: number; z: number } => ({ x: cx + cos * fwd - sin * side, z: cz + sin * fwd + cos * side });
+  // legs: short and splayed — inner/high near the body, outer/low at the ground.
+  for (const [fw, sd] of [[0.11, 0.06], [0.11, -0.06], [-0.11, 0.06], [-0.11, -0.06]] as const) {
+    const top = at(fw * 0.8 * s, sd * 0.7 * s);
+    const bot = at(fw * s, sd * 1.25 * s);
+    beam(m, v(top.x, y0 + 0.13 * s, top.z), v(bot.x, y0, bot.z), 0.016 * s, BLACK);
+  }
+  // Body: a fat ovoid, LONGER front-to-back (along the facing) than it is wide/tall, white
+  // over a cream belly — like the reference, not a round ball.
+  blob(m, cx, y0 + 0.2 * s, cz, 0.21 * s, 0.135 * s, 0.15 * s, WHITE, seed + 1, 0.05, 4, 9, CREAM, ry);
+  const h = at(0.2 * s, 0);
+  blob(m, h.x, y0 + 0.25 * s, h.z, 0.078 * s, 0.082 * s, 0.072 * s, BLACK, seed + 2, 0.06, 3, 5); // head
+  for (const sd of [0.07, -0.07] as const) {
+    const e = at(0.16 * s, sd * s);
+    box(m, e.x, e.z, 0.02 * s, 0.028 * s, 0.045 * s, BLACK, ry, y0 + 0.26 * s); // ear nub
+  }
 }
 function rock(m: Build, cx: number, cz: number, y0: number, scale: number, color: RGB, seed: number): void {
   blob(m, cx, y0 + 0.07 * scale, cz, 0.2 * scale, 0.13 * scale, 0.18 * scale, color, seed, 0.4, 3, 6);
 }
-function brickPile(m: Build, cx: number, cz: number, y0: number, ry: number, color: RGB): void {
+// A single small clay brick (cuboid), long axis along `ry`.
+function brick(m: Build, cx: number, cz: number, y0: number, ry: number, color: RGB): void {
+  box(m, cx, cz, 0.105, 0.052, 0.064, color, ry, y0);
+}
+// A low brick wall: a course (or two, half-staggered) of bricks laid end-to-end along the
+// segment, each dropped to the clay surface.
+function brickWall(m: Build, x0: number, z0: number, x1: number, z1: number, hAt: (x: number, z: number) => number, color: RGB, rng: () => number): void {
+  const dx = x1 - x0;
+  const dz = z1 - z0;
+  const len = Math.hypot(dx, dz);
+  const ang = Math.atan2(dz, dx);
+  const bl = 0.105;
+  const n = Math.max(2, Math.round(len / bl));
+  const courses = rng() < 0.5 ? 2 : 1;
+  for (let c = 0; c < courses; c++) {
+    for (let i = 0; i < n; i++) {
+      const d = i * bl + c * 0.5 * bl;
+      if (d > len) break;
+      const t = d / len;
+      const px = x0 + dx * t;
+      const pz = z0 + dz * t;
+      brick(m, px, pz, hAt(px, pz) + c * 0.047, ang, color);
+    }
+  }
+}
+// A low double-row patch of bricks (two parallel rows, one course, with a couple laid on top)
+// — like the low pile by the chip. NOT a tall tower.
+function brickStack(m: Build, cx: number, cz: number, y0: number, ry: number, color: RGB, rng: () => number): void {
   const c = Math.cos(ry);
   const s = Math.sin(ry);
-  const put = (ox: number, oy: number, oz: number): void => box(m, cx + ox * c - oz * s, cz + ox * s + oz * c, 0.09, 0.05, 0.05, color, ry, y0 + oy);
-  for (let row = 0; row < 2; row++) for (let i = -1; i <= 1; i++) put(i * 0.1, row * 0.055, 0);
-  put(-0.05, 0.11, 0);
-  put(0.05, 0.11, 0);
+  const put = (ox: number, oz: number, oy: number): void => brick(m, cx + ox * c - oz * s, cz + ox * s + oz * c, y0 + oy, ry, color);
+  for (let r = 0; r < 2; r++) for (let i = -1; i <= 1; i++) put(i * 0.1, (r - 0.5) * 0.075, 0);
+  if (rng() < 0.8) put(-0.05, 0, 0.05); // one or two on the 2nd course (still low)
+  if (rng() < 0.6) put(0.05, 0, 0.05);
+}
+// A small offset heap: a couple of bricks per layer, staggered over 1–2 low layers.
+function brickHeap(m: Build, cx: number, cz: number, y0: number, ry: number, color: RGB, rng: () => number): void {
+  const layers = 1 + Math.floor(rng() * 2);
+  for (let l = 0; l < layers; l++) {
+    const a = ry + (rng() - 0.5) * 0.6;
+    const jx = (rng() - 0.5) * 0.04;
+    const jz = (rng() - 0.5) * 0.04;
+    brick(m, cx + jx, cz + jz, y0 + l * 0.05, a, color);
+    if (rng() < 0.75) brick(m, cx + jx + Math.cos(a) * 0.11, cz + jz + Math.sin(a) * 0.11, y0 + l * 0.05, a, color);
+  }
 }
 function cairn(m: Build, cx: number, cz: number, y0: number): void {
   const grey: RGB = [96, 98, 104];
@@ -451,21 +548,49 @@ function cairn(m: Build, cx: number, cz: number, y0: number): void {
 // WHEAT — rebuilt to reference: a terraced golden field (3 overlapping octagonal pads), three
 // short post-and-rail fences at varied angles, and octagonal round-bale stacks tucked beside
 // them. No number chip.
-function fieldsTile(): Build {
+function fieldsTile(seed: number): Build {
   const m = build();
-  wheatBase(m, [242, 210, 74]);
-  // Props spread around the flat gaps between the patches and near the edges (with one hay
-  // kept central), matching the reference's scattered layout — never on a raised patch.
-  // The three patches sit near the rim (top, lower-left, lower-right), opening a clear channel
-  // opposite each (upper-left, upper-right, bottom) plus the center — props spread across those.
-  // Fences: each a different length + angle + slightly off position (not mirrored/centered),
-  // so they read as hand-placed rather than machine-perfect.
-  fence(m, -0.48, -0.14, -0.3, -0.32, wheatHeightAt); // upper-left channel
-  fence(m, 0.36, -0.3, 0.47, -0.12, wheatHeightAt); // upper-right channel (shorter, steeper)
-  fence(m, -0.16, 0.48, 0.12, 0.52, wheatHeightAt); // bottom channel (tilted, off-centre)
-  baleStack(m, 0.0, 0.05, wheatHeightAt, 0.3, true); // center pair
-  baleStack(m, -0.26, -0.1, wheatHeightAt, 1.0, false); // upper-left single
-  baleStack(m, 0.26, -0.1, wheatHeightAt, 1.0, false); // upper-right single
+  const WHEAT: RGB = [242, 210, 74];
+  const rng = mulberry32((Math.abs(seed) * 2246822519 + 0x85ebca6b) >>> 0 || 1);
+  const baseRot = rng() * Math.PI * 2; // whole-composition rotation → biggest variation
+  const pads = wheatPads(rng, baseRot, seed);
+  const hAt = (x: number, z: number): number => wheatHeightAt(pads, x, z);
+
+  irregularGround(m, { color: shade(WHEAT, 0.95), amp: 0.05, seed: seed + 4.2, facet: 0.05 }); // gently-uneven base
+  for (const p of pads) octaPad(m, p, WHEAT);
+  rimAndWall(m, WHEAT);
+
+  // One post-and-rail fence in each of the three gaps between pads (bisector angles), each at a
+  // jittered radius, orientation, and length so they read hand-placed and vary per tile.
+  for (let k = 0; k < 3; k++) {
+    const gap = baseRot + Math.PI / 3 + (k * 2 * Math.PI) / 3 + (rng() - 0.5) * 0.4;
+    const rad = 0.4 + rng() * 0.08;
+    const cx = rad * Math.cos(gap);
+    const cz = rad * Math.sin(gap);
+    const ori = gap + Math.PI / 2 + (rng() - 0.5) * 0.9; // ~tangential to the gap, jittered
+    const half = (0.18 + rng() * 0.12) / 2;
+    fence(m, cx - Math.cos(ori) * half, cz - Math.sin(ori) * half, cx + Math.cos(ori) * half, cz + Math.sin(ori) * half, hAt);
+  }
+
+  // Hay: a centre cluster plus 1–2 in the gaps — varied count, clumping (pair vs single), and
+  // rotation. Each is nudged toward the centre until it clears the raised patches.
+  const place = (x0: number, z0: number, pair: boolean): void => {
+    const ext = pair ? 0.16 : 0.1;
+    let x = x0;
+    let z = z0;
+    for (let t = 0; t < 6 && !clearOfPads(pads, x, z, ext); t++) {
+      x *= 0.85;
+      z *= 0.85;
+    }
+    baleStack(m, x, z, hAt, rng() * Math.PI, pair);
+  };
+  place((rng() - 0.5) * 0.16, (rng() - 0.5) * 0.16, rng() < 0.6); // centre cluster
+  const extra = 1 + Math.floor(rng() * 2); // 1–2 more clusters in gaps
+  for (let e = 0; e < extra; e++) {
+    const gap = baseRot + Math.PI / 3 + Math.floor(rng() * 3) * (2 * Math.PI / 3) + (rng() - 0.5) * 0.4;
+    const rad = 0.28 + rng() * 0.12;
+    place(rad * Math.cos(gap), rad * Math.sin(gap), rng() < 0.45);
+  }
   return m;
 }
 
@@ -485,27 +610,113 @@ function forestTile(): Build {
   return m;
 }
 
-function hillsTile(): Build {
+// BRICK — a raised, bumpy clay dome with a recessed hexagonal center pocket (where the number
+// chip nestles). Height = broad dome + clay-clump bumps − a flat-bottomed hex indent.
+const HILL_AMP = 0.13; // a LOW, broad, gentle mound (not a jagged mountain)
+const HILL_INDENT_R = 0.38; // center pocket circumradius (flat-top hex)
+const HILL_INDENT_DEPTH = 0.08;
+function hillHeight(x: number, z: number, seed: number): number {
+  const r = Math.hypot(x, z);
+  const dome = HILL_AMP * smooth((R_RIM - r) / 0.34); // broad raised mound, falls near the rim
+  const ca = HILL_INDENT_R * Math.cos(Math.PI / 6);
+  const ang = Math.atan2(z, x);
+  const nrm = Math.round((ang - Math.PI / 6) / (Math.PI / 3)) * (Math.PI / 3) + Math.PI / 6;
+  const inside = ca / Math.cos(ang - nrm) - r; // >0 inside the centre hex
+  const dip = smooth(Math.max(0, Math.min(1, inside / 0.14))); // flat pocket floor, gently sloped walls
+  const bump = (hash2(x * 8 + seed, z * 8 - seed) - 0.5) * 0.035 * (1 - dip); // very gentle clay undulation
+  return EDGE_Y + Math.max(0, dome + bump - HILL_INDENT_DEPTH * dip);
+}
+function clayFloor(m: Build, color: RGB, seed: number): void {
+  const M = 4; // coarse — few large facets
+  const V = hexCorners(R_RIM, 0);
+  const jit = (R_RIM / M) * 0.4;
+  const at = (b: Vec3, c: Vec3, i: number, j: number): Vec3 => {
+    const ox = (i / M) * b.x + (j / M) * c.x;
+    const oz = (i / M) * b.z + (j / M) * c.z;
+    let x = ox;
+    let z = oz;
+    // Suppress the position-jitter near the centre so the chip pocket stays clean; the outer
+    // clay keeps its irregular bumpy facets.
+    const jitS = smooth(Math.max(0, Math.min(1, (Math.hypot(ox, oz) - 0.28) / 0.32)));
+    if (i + j < M && (i > 0 || j > 0) && jitS > 0) {
+      x = ox + (hash2(ox * 41 + seed, oz * 41 - seed) - 0.5) * 2 * jit * jitS;
+      z = oz + (hash2(ox * 23 - seed, oz * 23 + seed) - 0.5) * 2 * jit * jitS;
+    }
+    return v(x, hillHeight(x, z, seed), z);
+  };
+  for (let s = 0; s < 6; s++) {
+    const b = V[s];
+    const c = V[(s + 1) % 6];
+    for (let i = 0; i < M; i++) {
+      for (let j = 0; j < M - i; j++) {
+        const p00 = at(b, c, i, j);
+        const p10 = at(b, c, i + 1, j);
+        const p01 = at(b, c, i, j + 1);
+        const col = shade(color, 1 + (hash2(p00.x + s * 3, p00.z - s * 3) - 0.5) * 0.09);
+        if (j < M - i - 1) faceQuadFlat(m, p00, p10, at(b, c, i + 1, j + 1), p01, col, UP);
+        else faceTri(m, p00, p10, p01, col, UP);
+      }
+    }
+  }
+  rimAndWall(m, color);
+}
+function hillsTile(seed: number): Build {
   const m = build();
-  const p = PAL.hills;
-  const seed = 5.7;
-  const amp = 0.12;
-  tileBase(m, { color: p.top, amp, seed, facet: 0.08 });
-  const rng = mulberry32(0x515151);
-  for (const pt of scatter(rng, 3, 0.5, 0.4)) brickPile(m, pt.x, pt.z, surfaceY(pt.x, pt.z, amp, seed), rng() * Math.PI, p.brick);
-  for (const pt of scatter(rng, 2, 0.6, 0.4)) rock(m, pt.x, pt.z, surfaceY(pt.x, pt.z, amp, seed), 0.8, p.rock, (pt.x * 100) | 0);
+  const CLAY: RGB = [182, 100, 76];
+  const BRICK: RGB = [196, 112, 84]; // essentially the clay shade — bricks read by shape/shadow, not color
+  const hseed = seed + 5.7;
+  clayFloor(m, CLAY, hseed);
+  const hAt = (x: number, z: number): number => hillHeight(x, z, hseed);
+  const rng = mulberry32((Math.abs(seed) * 2654435761 + 12345) >>> 0 || 1);
+  const baseRot = rng() * Math.PI * 2;
+  const pol = (a: number, rr: number): { x: number; z: number } => ({ x: Math.cos(a) * rr, z: Math.sin(a) * rr });
+  // A long low wall along one outer side (tangential-ish to the rim).
+  const wc = pol(baseRot, 0.44);
+  const wdir = baseRot + Math.PI / 2 + (rng() - 0.5) * 0.5;
+  const wl = 0.58;
+  brickWall(m, wc.x - Math.cos(wdir) * wl / 2, wc.z - Math.sin(wdir) * wl / 2, wc.x + Math.cos(wdir) * wl / 2, wc.z + Math.sin(wdir) * wl / 2, hAt, BRICK, rng);
+  // A tall stack just outside the centre pocket.
+  const sa = baseRot + 2.4 + (rng() - 0.5) * 0.6;
+  const sp = pol(sa, 0.46);
+  brickStack(m, sp.x, sp.z, hAt(sp.x, sp.z), sa, BRICK, rng);
+  // 2–3 small heaps scattered around the mid-field (outside the pocket).
+  for (let k = 0, n = 2 + Math.floor(rng() * 2); k < n; k++) {
+    const p = pol(baseRot + 1.1 + k * 1.7 + (rng() - 0.5) * 0.5, 0.4 + rng() * 0.16);
+    brickHeap(m, p.x, p.z, hAt(p.x, p.z), rng() * Math.PI, BRICK, rng);
+  }
   return m;
 }
 
-function pastureTile(): Build {
+// SHEEP — a soft mint-green meadow (gently rolling low-poly ground) with sheep, round-canopy
+// trees, and green bushes scattered across it. Seeded so every pasture hex varies.
+function pastureTile(seed: number): Build {
   const m = build();
-  const p = PAL.pasture;
-  const seed = 1.9;
-  const amp = 0.14;
-  tileBase(m, { color: p.top, amp, seed });
-  const rng = mulberry32(0x5eeb);
-  for (const pt of scatter(rng, 4, 0.6, 0.34)) sheep(m, pt.x, pt.z, surfaceY(pt.x, pt.z, amp, seed), rng() * Math.PI * 2);
-  for (const pt of scatter(rng, 3, 0.66, 0.3)) rock(m, pt.x, pt.z, surfaceY(pt.x, pt.z, amp, seed), 0.7, p.rock, (pt.z * 90) | 0);
+  const GRASS: RGB = [150, 200, 148];
+  const CANOPY: RGB = [116, 158, 104];
+  const BUSH: RGB = [86, 132, 78]; // darker + smaller than tree canopies, so clearly distinct
+  const amp = 0.15; // clearly rolling meadow (was too flat)
+  const gseed = seed + 1.9;
+  tileBase(m, { color: GRASS, amp, seed: gseed });
+  const hAt = (x: number, z: number): number => surfaceY(x, z, amp, gseed);
+  const rng = mulberry32((Math.abs(seed) * 374761393 + 0x9e3779b9) >>> 0 || 1);
+  // Scatter positions with a shared min-gap (big enough that even two sheep never touch),
+  // then assign types. Sheep are taken FIRST so they always get spots.
+  const pts = scatter(rng, 12, 0.68, 0.26);
+  let i = 0;
+  const take = (): { x: number; z: number } | undefined => pts[i++];
+  for (let s = 0, n = 3 + Math.floor(rng() * 2); s < n; s++) {
+    const p = take();
+    if (p) sheep(m, p.x, p.z, hAt(p.x, p.z), rng() * Math.PI * 2, (seed * 23 + i) | 0);
+  }
+  // Small trees — only a bit taller than a sheep, like the reference (canopy ~0.1 radius).
+  for (let t = 0, n = 2 + Math.floor(rng() * 2); t < n; t++) {
+    const p = take();
+    if (p) roundTree(m, p.x, p.z, hAt(p.x, p.z), 0.36 + rng() * 0.12, CANOPY, (seed * 13 + i) | 0);
+  }
+  for (let b = 0, n = 3 + Math.floor(rng() * 3); b < n; b++) {
+    const p = take();
+    if (p) bush(m, p.x, p.z, hAt(p.x, p.z), 0.48 + rng() * 0.32, BUSH, (seed * 17 + i) | 0);
+  }
   return m;
 }
 
