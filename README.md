@@ -10,13 +10,16 @@ Arcade is the first build-out of **Vercel Arcade**: play classic games against f
 
 ## Play it
 
-Arcade is published as a **private, Vercel-internal** npm package. With `@vercel` npm access:
+Arcade is published as a **private, Vercel-internal** npm package. With `@vercel` npm access you can run it on demand, or install it once and just type `arcade`:
 
 ```bash
-npx @vercel/arcade@latest
+npx @vercel/arcade@latest        # run the latest without installing
+
+npm i -g @vercel/arcade          # or install globally (pnpm add -g / yarn global add also work)
+arcade                           # …then launch it from anywhere
 ```
 
-`@latest` always pulls the newest build, so you stay current without reinstalling.
+Arcade checks for a newer published version at launch and, if one exists, surfaces the exact upgrade command two ways: a line among the startup output, and a popup over the opening prism (with a copy button). `npx @vercel/arcade@latest` always pulls the newest build; a global install stays put until you run the upgrade command.
 
 On first launch it signs you into Vercel with a browser-based device login (like `vercel login`), then asks which team to bill AI usage to and mints an AI Gateway key for it. Tokens are cached under `~/.config/arcade/`; the key itself is re-derived each launch, never stored. Switch team or sign out from the in-app **Account** menu, or with `--switch-team` / `--logout`.
 

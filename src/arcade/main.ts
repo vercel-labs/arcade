@@ -26,7 +26,7 @@ import { LogosScene } from './scenes/logos-scene.ts';
 import { AudioScene } from './scenes/audio-scene.ts';
 import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/input.ts';
 import { detectTerminalColorMode } from '../platform/terminal-color-detection.ts';
-import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, mouseControlsFor, type BarActions, type MenuItem, type Mode, type RenderMode } from './shell/bars.ts';
+import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, buildUpdateModal, mouseControlsFor, type BarActions, type MenuItem, type Mode, type RenderMode } from './shell/bars.ts';
 import { buildShowcase, mountShowcase } from './scenes/ui-showcase.ts';
 import { buildChessGameRoot, chessMoveChat, type Commentary, type MatchSide, mountChessHud, movesToPgn, refreshMoveHistory, shortModel } from './games/chess/hud.ts';
 import { creatorTint } from './scenes/wisp.ts';
@@ -34,6 +34,7 @@ import { CHAT_WIDTH, clearChat, pushChatMessage } from './games/chess/chat.ts';
 import { insetRightSceneViewport, pointerNdcInSceneViewport } from './scene-viewport.ts';
 import { buildMatchSetup, buildSwapSetup, matchSetupSelection, mountMatchSetup, mountSwapSetup, openSwapSetup, swapSetupSelection } from './match/setup.ts';
 import { copyToClipboard } from '../platform/clipboard.ts';
+import { checkForUpdate, refreshLatestInBackground, type UpdateInfo } from './update.ts';
 import { BLACK, type Color, WHITE } from '../rules/chess/types.ts';
 import { evaluate } from '../rules/chess/eval.ts';
 import type { ChessResult } from '../rules/chess/chess.ts';
@@ -134,6 +135,22 @@ function activeOrbit(): ChessGameScene | LogosScene | AudioScene | CardsScene | 
 
 let mode: Mode = 'prism';
 let renderMode: RenderMode = 'ascii';
+// Update notifier: resolved once at startup (synchronous — reads a cache the previous
+// run refreshed). Non-null iff a newer version is published. Surfaced three ways: a
+// plain line before the alt-screen, a modal over the boot prism, and a line on exit.
+const update = checkForUpdate();
+let updateModalOpen = false; // the startup popup (opened at boot when `update` is set)
+let updateModalFocused = false; // open→closed edge, so the popup focuses its default button once
+let updateCopied = false; // the "copy command" button flipped to its "copied ✓" confirmation
+
+// The plain-text startup notice (printed as the last boot line). The modal over the prism
+// is the second, more prominent surface.
+function updateNotice(u: UpdateInfo): string {
+  return (
+    `\x1b[38;2;120;200;150m↑ Update available: v${u.current} → v${u.latest}\x1b[0m\n` +
+    `  Run \x1b[38;2;150;220;180m${u.command}\x1b[0m to update.`
+  );
+}
 // Start from the universally safe palette. Startup detection upgrades this to
 // truecolor before the alternate screen or first rendered frame is shown.
 let colorMode: TerminalColorMode = '256-color';
@@ -963,6 +980,28 @@ function closeConfirmQuit(): void {
   r.requestRender();
 }
 
+// The startup update popup. It only ever lives over the boot prism, so closing it tears
+// down its overlay + keymap layer directly (syncBar isn't run for the prism once it's
+// gone) and leaves the prism bare. "quit to update" just quits — the on-exit line then
+// prints the upgrade command. "copy command" copies it to the clipboard and flips the
+// button to a "copied ✓" confirmation.
+function closeUpdateModal(): void {
+  updateModalOpen = false;
+  updateModalFocused = false;
+  updateCopied = false;
+  if (keymap.hasContext('update')) keymap.popContext('update');
+  ui.setRoot(null); // the prism screen has no overlay
+  forceFrame = true;
+  r.requestRender();
+}
+function copyUpdateCommand(): void {
+  if (!update) return;
+  copyToClipboard(update.command);
+  updateCopied = true;
+  forceFrame = true;
+  r.requestRender();
+}
+
 // New game (menu): tear the current session down to the idle empty table (the looping
 // shuffling deck), then open the setup modal to pick opponents for a fresh match.
 function pokerNewGame(): void {
@@ -1270,6 +1309,7 @@ const keymap = installKeymap({
   closeShortcuts,
   openConfirmQuit,
   closeConfirmQuit,
+  closeUpdateModal,
 });
 
 // Point the keymap's base layer at the current mode (chess-game uses the shared
@@ -1337,6 +1377,7 @@ function syncBar(): void {
   if (!shortcutsOpen && keymap.hasContext('shortcuts')) keymap.popContext('shortcuts');
   if (!confirmQuitOpen && keymap.hasContext('confirm-quit')) keymap.popContext('confirm-quit');
   if (!confirmQuitOpen) confirmQuitFocused = false; // re-focus "quit" on the next open
+  if (!updateModalOpen && keymap.hasContext('update')) keymap.popContext('update');
   if (!homeMenuOpen && keymap.hasContext('home-menu')) keymap.popContext('home-menu');
   if (!teamModalOpen && keymap.hasContext('teamswitch')) keymap.popContext('teamswitch');
   const popGameOver = (): void => {
@@ -1350,7 +1391,33 @@ function syncBar(): void {
   };
 
   const pc = promoColor();
-  if (shortcutsOpen) {
+  if (updateModalOpen && update) {
+    // The startup update popup takes precedence over everything (it only appears at boot,
+    // over the prism, before any game screen exists — the pops are defensive/self-healing).
+    if (keymap.hasContext('promoting')) keymap.popContext('promoting');
+    popGameOver();
+    popSetup();
+    popSwap();
+    promoFocused = false;
+    if (!keymap.hasContext('update')) keymap.pushContext('update', true);
+    ui.setRoot(
+      buildUpdateModal({
+        current: update.current,
+        latest: update.latest,
+        command: update.command,
+        copied: updateCopied,
+        onQuit: quit,
+        onCopy: copyUpdateCommand,
+        onClose: closeUpdateModal,
+      }),
+      { x: 0, y: 0, w: cols, h: rows },
+    );
+    if (!updateModalFocused) {
+      ui.setFocus('update-quit'); // default highlight so Enter quits to update
+      updateModalFocused = true;
+      forceFrame = true;
+    }
+  } else if (shortcutsOpen) {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     popGameOver();
     popSetup();
@@ -1813,12 +1880,15 @@ function onKeyImpl(ev: KeyEvent): void {
   // Prism loading screen: any key starts (→ menu), EXCEPT Escape, which falls through to the
   // keymap (global esc → quit) so esc stays a consistent "back one level" and prism is the
   // last level. (ctrl+c is already handled at the top of this function.)
-  if (mode === 'prism') {
+  if (mode === 'prism' && !updateModalOpen) {
     if (ev.name !== 'escape') {
       enterMenu();
       return;
     }
   }
+  // While the startup update popup is up (over the prism), keys drive it instead of
+  // advancing to the menu: non-escape keys fall to ui.handleKey (the popup's buttons),
+  // and escape falls to the keymap's 'update' modal layer (dismiss).
   // Audio screen: type-to-talk. Printable keys + enter/backspace/tab feed the
   // prompt; everything else (escape → back, arrows → pan) falls to the keymap.
   if (mode === 'audio') {
@@ -1846,8 +1916,9 @@ function onMouseImpl(e: MouseEvent): void {
   }
   // The poker continue gate advances on Space only (see onKeyImpl); the mouse stays free
   // here to orbit/zoom/pan the scene while the banner and prompt are up.
-  // Prism loading screen: a click starts (→ menu).
-  if (mode === 'prism' && e.type === 'down') {
+  // Prism loading screen: a click starts (→ menu) — unless the startup update popup is up,
+  // in which case clicks fall through to its buttons (the prism pointer routing below).
+  if (mode === 'prism' && e.type === 'down' && !updateModalOpen) {
     enterMenu();
     return;
   }
@@ -2033,7 +2104,9 @@ function tick(dt: number): void {
   }
 
   if (mode === 'prism') {
-    // Prism loading screen: live prism + a breathing "press any key" prompt, no bar.
+    // Prism loading screen: live prism + a breathing "press any key" prompt, no bar —
+    // except the startup update popup, which syncBar mounts as an overlay over the prism.
+    if (updateModalOpen) syncBar();
     prism.renderScene(target, t);
     writeFrame(
       UNIFIED
@@ -2233,6 +2306,11 @@ const colorStatus =
   colorMode === 'truecolor' ? 'Truecolor detected.' : 'Truecolor not detected. Using 256-color.';
 process.stdout.write(`\x1b[38;2;135;135;175m  \u2713 ${colorStatus}\x1b[0m\n`);
 
+// Arm the modal (shown over the prism) and refresh the version cache for the next launch.
+// The plain-text startup notice itself is printed below, after the auth/team line.
+if (update) updateModalOpen = true;
+refreshLatestInBackground();
+
 await ensureGatewayKey({
   forceLogin: argv.includes('--login'),
   forceTeamPick: argv.includes('--switch-team'),
@@ -2256,6 +2334,10 @@ process.once('SIGTERM', () => finalizeAndExit('user_stopped', 0));
 process.once('SIGHUP', () => finalizeAndExit('user_stopped', 0));
 process.once('uncaughtException', (err) => finalizeAndExit('process_exit_recovered', 1, err));
 process.once('unhandledRejection', (err) => finalizeAndExit('process_exit_recovered', 1, err));
+
+// Update notice (startup): the last boot line before the alt-screen — beneath the
+// truecolor + AI Gateway lines. The modal over the prism is the more prominent surface.
+if (update) process.stdout.write(`\n${updateNotice(update)}\n`);
 
 term.enter();
 process.stdin.on('data', parse);
