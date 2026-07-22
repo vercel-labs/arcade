@@ -47,7 +47,7 @@ import * as term from '../platform/terminal.ts';
 import { availableTeams, ensureGatewayKey, isLoggedIn, loadEnv, signOut as signOutVercel, switchTeam, type Team, useTeam } from '../auth/index.ts';
 import { AiMatch, type Seat } from './match/driver.ts';
 import { disambiguateLabels } from './match/labels.ts';
-import { flushTelemetry, initTelemetry, trackSessionStart } from '../telemetry/index.ts';
+import { flushTelemetry, initTelemetry, isTelemetryEnabled, setTelemetryEnabled, telemetryStatus, trackSessionStart, type RecordEndReason } from '../telemetry/index.ts';
 
 // Populate process.env from .env.local before anything reads AI_GATEWAY_API_KEY.
 loadEnv();
@@ -383,16 +383,24 @@ function fullRepaint(): void {
   r.requestRender();
 }
 
+let finalizing = false;
+// One finalize path for every exit route (quit button, ctrl+c, SIGTERM/SIGHUP, uncaught
+// crash). stop() writes any active canonical record to the durable outbox synchronously,
+// so the record survives even if the async telemetry flush below can't finish. The cap
+// keeps exit from ever visibly hanging on the network.
+function finalizeAndExit(reason: Exclude<RecordEndReason, 'natural'>, code: number, err?: unknown): void {
+  if (finalizing) return;
+  finalizing = true;
+  try { aiMatch.stop(reason); } catch {}
+  try { pokerMatch.stop(reason); } catch {}
+  try { r.destroy(); } catch {}
+  try { term.leave(); } catch {}
+  if (err !== undefined) console.error(err); // after leaving the alt-screen so it's readable
+  void flushTelemetry(400).finally(() => process.exit(code));
+}
+
 function quit(): void {
-  // Finalize any active canonical records before presentation state is destroyed;
-  // the durable record outbox is drained together with lightweight telemetry below.
-  aiMatch.stop('user_stopped');
-  pokerMatch.stop('user_stopped');
-  r.destroy();
-  term.leave();
-  // Give any in-flight telemetry a brief window to drain, then exit regardless — the
-  // cap keeps quit from ever visibly hanging on the network.
-  void flushTelemetry(400).finally(() => process.exit(0));
+  finalizeAndExit('user_stopped', 0);
 }
 
 // Run an async plain-text flow outside the alt-screen: stop the frame loop,
@@ -1051,6 +1059,14 @@ function toggleEvalBar(): void {
   r.requestRender();
 }
 
+// Persist the anonymous-telemetry opt-in/out from the home menu (no key binding), the
+// in-app companion to `arcade telemetry enable|disable`.
+function toggleTelemetry(): void {
+  setTelemetryEnabled(!isTelemetryEnabled());
+  forceFrame = true;
+  r.requestRender();
+}
+
 // The AI button / 'p' key: play (idle) → pause (running) → resume (paused).
 // Entering from elsewhere first opens the chess game.
 function aiButton(): void {
@@ -1551,6 +1567,7 @@ function syncBar(): void {
         [
           { id: 'home-menu-shortcuts', label: 'controls', onClick: openShortcuts },
           { id: 'home-menu-account', label: 'account', onClick: openTeamSwitch },
+          { id: 'home-menu-telemetry', label: 'telemetry', value: isTelemetryEnabled() ? 'on' : 'off', onClick: toggleTelemetry },
           { id: 'home-menu-quit', label: 'quit', onClick: openConfirmQuit },
         ],
       ];
@@ -2270,6 +2287,20 @@ if (argv.includes('--logout')) {
   console.log(was ? 'Signed out of Vercel.' : 'Not signed in.');
   process.exit(0);
 }
+// `arcade telemetry [status|enable|disable]` — mirrors `vercel telemetry …`. Runs before
+// the OAuth/render setup and exits, so it's scriptable and never launches the UI.
+if (argv[0] === 'telemetry') {
+  const sub = argv[1];
+  if (sub === 'enable' || sub === 'disable') {
+    setTelemetryEnabled(sub === 'enable');
+    console.log(`Telemetry ${sub}d.`);
+  } else if (sub === undefined || sub === 'status') {
+    console.log(`Telemetry is ${telemetryStatus()}.`);
+  } else {
+    console.log('Usage: arcade telemetry [status|enable|disable]');
+  }
+  process.exit(0);
+}
 colorMode = await detectTerminalColorMode();
 const colorStatus =
   colorMode === 'truecolor' ? 'Truecolor detected.' : 'Truecolor not detected. Using 256-color.';
@@ -2286,7 +2317,8 @@ await ensureGatewayKey({
 });
 
 // Resolve the anonymous install id + (once) print the opt-out notice while still in
-// plain text, then record the launch. Both are no-ops unless a telemetry token is set.
+// plain text, then record the launch. Both are no-ops when telemetry is off (opt-out
+// or a dev checkout without an endpoint override).
 initTelemetry();
 trackSessionStart({
   colorMode,
@@ -2295,8 +2327,16 @@ trackSessionStart({
   rows: process.stdout.rows ?? 0,
 });
 
+// External termination (terminal closed, `kill`) and uncaught crashes finalize through
+// the same path, so an in-progress game is still recorded. ctrl+c arrives as a keypress
+// in raw mode (handled by the quit button), not SIGINT.
+process.once('SIGTERM', () => finalizeAndExit('user_stopped', 0));
+process.once('SIGHUP', () => finalizeAndExit('user_stopped', 0));
+process.once('uncaughtException', (err) => finalizeAndExit('process_exit_recovered', 1, err));
+process.once('unhandledRejection', (err) => finalizeAndExit('process_exit_recovered', 1, err));
+
 // Update notice (startup): the last boot line before the alt-screen — beneath the
-// truecolor + AI Gateway lines — with the same wording as the on-exit notice.
+// truecolor + AI Gateway lines. The modal over the prism is the more prominent surface.
 if (update) process.stdout.write(`\n${updateNotice(update)}\n`);
 
 term.enter();

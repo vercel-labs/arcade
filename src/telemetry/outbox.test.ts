@@ -83,20 +83,74 @@ test('outbox posts to the record-type route with no auth header and removes only
   }
 });
 
-test('a 400/413 rejection drops the record instead of retrying it forever', async () => {
+test('a per-record 4xx drops the record instead of wedging the queue forever', async () => {
+  for (const status of [400, 413, 422]) {
+    const root = mkdtempSync(join(tmpdir(), 'arcade-outbox-'));
+    let calls = 0;
+    try {
+      const outbox = new RecordOutbox(options(root, async () => {
+        calls++;
+        return new Response('', { status });
+      }));
+      assert.equal(outbox.enqueue('match', row), true);
+      await outbox.drain();
+      assert.equal(outbox.queuedCount(), 0, `status ${status} should drop`);
+      await outbox.drain();
+      assert.equal(calls, 1, `status ${status} should never retry`);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+});
+
+test('a 404/429/5xx is kept and retried on the next drain', async () => {
+  // 404 is endpoint-level, not a per-record verdict: the baked proxy URL 404s until the
+  // project is provisioned, and dropping would permanently destroy queued records.
+  for (const status of [404, 429, 500, 503]) {
+    const root = mkdtempSync(join(tmpdir(), 'arcade-outbox-'));
+    try {
+      const outbox = new RecordOutbox(options(root, async () => new Response('', { status })));
+      assert.equal(outbox.enqueue('match', row), true);
+      await outbox.drain();
+      assert.equal(outbox.queuedCount(), 1, `status ${status} should stay queued`);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+});
+
+test('a poison record does not wedge delivery of newer records behind it', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'arcade-outbox-'));
+  try {
+    // record-1 sorts first and is always rejected (poison); record-2 would succeed.
+    const outbox = new RecordOutbox(options(root, async (_input, init) => {
+      const poison = String(init?.body).includes('"recordId":"record-1"');
+      return new Response('', { status: poison ? 400 : 200 });
+    }));
+    assert.equal(outbox.enqueue('match', row), true);
+    assert.equal(outbox.enqueue('match', { ...row, recordId: 'record-2', matchId: 'match-2' }), true);
+    await outbox.drain();
+    assert.equal(outbox.queuedCount(), 0); // poison dropped, good record delivered
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a record older than the max age is evicted without sending', async () => {
   const root = mkdtempSync(join(tmpdir(), 'arcade-outbox-'));
   let calls = 0;
   try {
-    const outbox = new RecordOutbox(options(root, async () => {
-      calls++;
-      return new Response('', { status: 400 });
-    }));
+    const outbox = new RecordOutbox({
+      ...options(root, async () => {
+        calls++;
+        return new Response('', { status: 503 });
+      }),
+      maxAgeMs: -1, // everything is immediately "too old"
+    });
     assert.equal(outbox.enqueue('match', row), true);
     await outbox.drain();
-    assert.equal(calls, 1);
-    assert.equal(outbox.queuedCount(), 0); // dropped, not retained
-    await outbox.drain();
-    assert.equal(calls, 1); // and never retried
+    assert.equal(outbox.queuedCount(), 0); // evicted
+    assert.equal(calls, 0); // and not sent
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

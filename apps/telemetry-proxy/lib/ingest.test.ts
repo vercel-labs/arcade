@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ingest, type IngestRequest } from './ingest.ts';
-import { createRateLimiter } from './rate-limit.ts';
+import { createMemoryRateLimiter } from './rate-limit.ts';
 import type { RecordKind } from './validation.ts';
 import type { DeliveryResult, Sink } from './sink.ts';
 
@@ -111,11 +111,29 @@ test('an oversized single record is 413 record_too_large; an oversized request i
 
 test('a client over its rate limit gets 429', async () => {
   const { sink } = capturingSink();
-  const rateLimiter = createRateLimiter({ limit: 1, windowMs: 60_000 });
+  const rateLimiter = createMemoryRateLimiter({ limit: 1, windowMs: 60_000 });
   assert.equal((await ingest(req('event', { event: 'a' }), { sink, rateLimiter })).status, 200);
   const limited = await ingest(req('event', { event: 'b' }), { sink, rateLimiter });
   assert.equal(limited.status, 429);
   assert.deepEqual(limited.body, { ok: false, error: 'rate_limited' });
+});
+
+test('a blocked client gets 403 and nothing is forwarded', async () => {
+  const { sink, calls } = capturingSink();
+  const rateLimiter = { async check() { return 'blocked' as const; } };
+  const res = await ingest(req('event', { event: 'a' }), { sink, rateLimiter });
+  assert.equal(res.status, 403);
+  assert.deepEqual(res.body, { ok: false, error: 'blocked' });
+  assert.equal(calls.length, 0);
+});
+
+test('a record over its per-playerKey limit gets 429 and is not forwarded', async () => {
+  const { sink, calls } = capturingSink();
+  const perKeyLimiter = { async check(key: string) { return key === 'pk:pk1' ? ('limited' as const) : ('ok' as const); } };
+  const res = await ingest(req('match', matchRow({ playerKey: 'pk1' })), { sink, perKeyLimiter });
+  assert.equal(res.status, 429);
+  assert.deepEqual(res.body, { ok: false, error: 'player_rate_limited' });
+  assert.equal(calls.length, 0);
 });
 
 test('a downstream failure surfaces as 503 (client keeps the record queued)', async () => {
