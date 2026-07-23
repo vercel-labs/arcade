@@ -7,7 +7,7 @@
 // only once BOTH sides have a model committed; picking a different creator clears
 // that side's model (re-picking the same creator, or a different model under it,
 // leaves the creator intact).
-import { Box, Dialog, Dropdown, Modal, RoundedButton, Slot, Text, type LayoutBox, type Node, type Screen } from '../../tui/index.ts';
+import { Box, Button, Dialog, Dropdown, Modal, RoundedButton, Slot, Text, type LayoutBox, type Node, type Screen } from '../../tui/index.ts';
 import type { RGB } from '../../engine/index.ts';
 import { includeEarlyAccessModels, pickerCreators, type ModelInfo } from './models.ts';
 import { availableRealtimeModels } from '../../voice/index.ts';
@@ -37,11 +37,23 @@ const CREATOR_W = 22;
 const MODEL_W = 26;
 const SIDE_LABEL_W = 8; // the "white"/"black" gutter, so the side rows line up (mirrors poker-setup)
 
+// Fires on every committed change (mode / creator / model), so main can refresh the
+// live king-wisp preview behind the panel. Null until main wires it (module init
+// commits the defaults before the hook exists — nothing to preview yet).
+let onChanged: (() => void) | null = null;
+export function setMatchSetupChanged(fn: () => void): void {
+  onChanged = fn;
+}
+const changed = (): void => {
+  onChanged?.();
+};
+
 interface Side {
   creators: readonly PickerCreator[];
   key: 'white' | 'black'; // drives the title tint; mutable so the swap side can be reused for either color
   readonly creatorDropdown: Dropdown;
   readonly modelDropdown: Dropdown;
+  readonly randomId: string; // the side's "↻ random" affordance id
   creator: string | null;
   models: ModelInfo[];
   modelId: string | null;
@@ -51,6 +63,29 @@ interface Side {
 function creatorIndex(creators: readonly PickerCreator[], slug: string): number {
   const i = creators.findIndex((c) => c.slug === slug);
   return i < 0 ? 0 : i;
+}
+
+// Drop a random creator+model combo into a side. Drives the side's own dropdowns
+// via pick() (clearing `creator` first so an unchanged creator still repopulates),
+// so pickCreator + the model handler run and the field + model list update exactly
+// as a manual pick would. Prefers a combo different from the current one (bounded
+// retries) so a click always feels like it did something; every offered combo is
+// pre-validated by pickerCreators().
+function randomizeSide(side: Side): void {
+  const creators = side.creators;
+  if (creators.length === 0) return;
+  const prev = side.modelId;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const c = creators[(Math.random() * creators.length) | 0];
+    if (c.models.length === 0) continue;
+    const m = c.models[(Math.random() * c.models.length) | 0];
+    if (m.id === prev && attempt < 7) continue; // avoid re-picking the current model when we can
+    side.creator = null;
+    side.creatorDropdown.pick(creatorIndex(creators, c.slug));
+    const i = side.models.findIndex((mm) => mm.id === m.id);
+    if (i >= 0) side.modelDropdown.pick(i);
+    return;
+  }
 }
 
 // Set a side's creator: repopulate its model list and clear the committed model.
@@ -85,7 +120,10 @@ function makeSide(
     width: CREATOR_W,
     rows: LIST_ROWS,
     index: creatorIndex(creators, defaultCreator), // a creator is pre-chosen…
-    onSelect: (i) => pickCreator(side, side.creators[i].slug),
+    onSelect: (i) => {
+      pickCreator(side, side.creators[i].slug);
+      changed();
+    },
   });
   const modelDropdown = new Dropdown({
     searchable: true,
@@ -97,9 +135,10 @@ function makeSide(
     placeholder: 'pick a model…', // …but the model must be chosen explicitly
     onSelect: (i) => {
       side.modelId = side.models[i]?.id ?? null;
+      changed();
     },
   });
-  side = { creators, key, creator: null, models: [], modelId: null, human: false, creatorDropdown, modelDropdown };
+  side = { creators, key, creator: null, models: [], modelId: null, human: false, creatorDropdown, modelDropdown, randomId: `${idPrefix}-random` };
   pickCreator(side, defaultCreator); // populate the model list (modelId stays null)
   if (defaultModelId) {
     const i = side.models.findIndex((m) => m.id === defaultModelId);
@@ -126,7 +165,10 @@ export const modeDropdown = new Dropdown({
   items: ['play white', 'play black', 'spectate ai'],
   width: 16,
   index: 0,
-  onSelect: () => applyMode(),
+  onSelect: () => {
+    applyMode();
+    changed();
+  },
 });
 function applyMode(): void {
   white.human = modeDropdown.index === 0; // Play White → you are White
@@ -160,6 +202,16 @@ export function matchSetupSelection(): { white: Seat; black: Seat } | null {
   return w && b ? { white: w, black: b } : null;
 }
 
+// The white/black creators to preview as king wisps while the setup panel is open.
+// A human side contributes no wisp (null) — the in-match convention, mirroring
+// poker's human seat. The creator is pre-committed, so it's rarely null in practice.
+export function chessPreviewSides(): { white: string | null; black: string | null } {
+  return {
+    white: white.human ? null : white.creator,
+    black: black.human ? null : black.creator,
+  };
+}
+
 const TITLE_TINT: Record<Side['key'], RGB> = { white: [232, 228, 216], black: [184, 126, 74] };
 // Rounded action colors. Green is reserved for starting a match; switching an
 // in-progress model uses the app's slate-indigo action color.
@@ -181,8 +233,22 @@ function brandTint(side: Side): RGB {
 const SLOW_FG: RGB = [210, 168, 90];
 function slowBadge(modelId: string | null): Node[] {
   return modelId && SLOW_MODELS.has(modelId)
-    ? [Text({ text: 'slow', style: { color: SLOW_FG } })]
+    ? [Text({ text: '(slow)', style: { color: SLOW_FG } })]
     : [];
+}
+
+// A muted "↻ random" affordance beside a side's model picker — one click rerolls
+// the side to a random creator+model. Rests at 'muted' grey and brightens to white
+// on hover/focus (the dialog-affordance convention); no tooltip needed since the
+// label says what it does.
+const RANDOM_HOVER_FG: RGB = [255, 255, 255];
+function randomBadge(side: Side): Node {
+  return Button({
+    id: side.randomId,
+    label: '↻ random',
+    onClick: () => randomizeSide(side),
+    style: { padding: [0, 0], color: 'muted', hover: { color: RANDOM_HOVER_FG }, focus: { color: RANDOM_HOVER_FG } },
+  });
 }
 
 // One side's column for the swap popup: the centered title, then the creator/model
@@ -222,7 +288,7 @@ function sideRow(side: Side): Node {
         Text({ text: 'you', style: { color: 'muted' } }),
         Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot(side.creatorDropdown.id), Slot(side.modelDropdown.id)]),
       ]
-    : [Slot(side.creatorDropdown.id), Slot(side.modelDropdown.id), ...slowBadge(side.modelId)];
+    : [Slot(side.creatorDropdown.id), Slot(side.modelDropdown.id), randomBadge(side), ...slowBadge(side.modelId)];
   return row(side.key, TITLE_TINT[side.key], controls);
 }
 

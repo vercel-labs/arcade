@@ -192,11 +192,15 @@ export class ChessGameScene {
   private blackWisp: Wisp | null = null;
   private wispRng = mulberry32(0xc4e55);
   private lastT = -1;
+  // While the match-setup panel is open (before any match), preview the two sides'
+  // creator wisps over the kings — the chess analogue of poker's seat-wisp preview.
+  private previewActive = false;
 
-  // Whether the visible scene has changed since the last render. Starts true so
-  // the first frame always paints; an active match animates every frame (wisps).
+  // Whether the visible scene has changed since the last render. Starts true so the
+  // first frame always paints; an active match — or an open setup preview — animates
+  // every frame (the wisps), keeping the render loop self-perpetuating.
   needsRender(): boolean {
-    return this.dirty || this.matchActive;
+    return this.dirty || this.matchActive || this.previewActive;
   }
 
   constructor(dir = asset('chess_blender')) {
@@ -368,6 +372,7 @@ export class ChessGameScene {
   // (no wisp — the mark space stays empty; the clickable board is their interface).
   beginMatch(white: string | null = 'anthropic', black: string | null = 'openai'): void {
     this.resetBoard();
+    this.previewActive = false; // the live match takes over the HUD wisps
     this.whiteWisp = white ? this.loadHudWisp(white, 0) : null;
     this.blackWisp = black ? this.loadHudWisp(black, 1.7) : null;
     this.matchActive = true;
@@ -445,6 +450,20 @@ export class ChessGameScene {
     test(WHITE, this.whiteWisp);
     test(BLACK, this.blackWisp);
     return best;
+  }
+
+  // Preview the two sides' creator wisps over the kings while the match-setup panel
+  // is open (before any match starts) — the chess mirror of the poker setup's live
+  // seat-wisp preview. `null` clears it. Ignored during a live match so it never
+  // clobbers the real HUD wisps. A side with a null creator (a human seat) shows no
+  // wisp, matching the in-match convention. Marks dirty so the change paints, and
+  // sets `previewActive` so needsRender() keeps frames flowing and the wisps animate.
+  setPreview(sides: { white: string | null; black: string | null } | null): void {
+    if (this.matchActive) return;
+    this.previewActive = sides !== null;
+    this.whiteWisp = sides?.white ? this.loadHudWisp(sides.white, 0) : null;
+    this.blackWisp = sides?.black ? this.loadHudWisp(sides.black, 1.7) : null;
+    this.dirty = true;
   }
 
   // Swap one side's HUD wisp to a new creator after an in-match model change
@@ -765,14 +784,14 @@ export class ChessGameScene {
     // king, tracking it as it moves and scaling with the camera. The side to move
     // pulses (neither once the game is over). Drawn after the board so the flame
     // glows over it.
-    if (this.matchActive && (this.whiteWisp || this.blackWisp)) {
+    if ((this.matchActive || this.previewActive) && (this.whiteWisp || this.blackWisp)) {
       const W = target.width;
       const H = target.height;
       const dt = this.lastT < 0 ? 1 / 30 : Math.min(0.1, Math.max(0, t - this.lastT));
       this.lastT = t;
       const { right, up } = this.cam.basis();
-      // Side to move pulses ("thinking"); when paused, no one pulses (idle).
-      const turn = this.matchPaused ? -1 : this.game.currentPlayer();
+      // Side to move pulses ("thinking"); when paused, over, or previewing, no one pulses.
+      const turn = this.matchActive && !this.matchPaused ? this.game.currentPlayer() : -1;
       const drawKingWisp = (wisp: Wisp | null, color: Color): void => {
         if (!wisp) return;
         const c = this.kingWorldPos(color);
