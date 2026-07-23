@@ -205,7 +205,7 @@ function brandTint(side: Side): RGB {
 const SLOW_FG: RGB = [210, 168, 90];
 function slowBadge(modelId: string | null): Node[] {
   return modelId && SLOW_MODELS.has(modelId)
-    ? [Text({ text: 'slow', style: { color: SLOW_FG } })]
+    ? [Text({ text: '(slow)', style: { color: SLOW_FG } })]
     : [];
 }
 

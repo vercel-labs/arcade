@@ -320,7 +320,7 @@ function randomBadge(side: AiSide): Node {
 // spreads cleanly into a row and is nothing when the model is fast.
 function slowBadge(modelId: string | null): Node[] {
   return modelId && SLOW_MODELS.has(modelId)
-    ? [Text({ text: 'slow', style: { color: SLOW_FG } })]
+    ? [Text({ text: '(slow)', style: { color: SLOW_FG } })]
     : [];
 }
 
