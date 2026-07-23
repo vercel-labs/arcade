@@ -33,10 +33,10 @@ export interface CatanTileHandlers {
   onReroll(): void;
   onToggleRobber(on: boolean): void;
   onMode(mode: 'tile' | 'board'): void;
+  onRollDice(): void;
 }
 let H: CatanTileHandlers | null = null;
 let robberOn = false; // whether the robber is currently shown (toggled from the panel)
-let boardMode = false; // false = single-tile mode, true = full-board mode
 export function setCatanTileHandlers(h: CatanTileHandlers): void {
   H = h;
 }
@@ -69,14 +69,11 @@ const REROLL_BTN: Style = {
 // The full-screen HUD: a translucent control panel (top-left) with the terrain dropdown + a
 // "vary" button (new procedural variant), a ☰ menu button (top-right), and the standard bar
 // beneath. `bar` is buildBar('catan-tiles', …) from main; `onOpenMenu` opens the game menu.
-export function buildCatanTileRoot(region: LayoutBox, bar: Node, onOpenMenu: () => void, tokens: BoardToken[] = []): Node {
+export function buildCatanTileRoot(region: LayoutBox, bar: Node, onOpenMenu: () => void, tokens: BoardToken[] = [], boardMode = false): Node {
   const modeBtn = Button({
     id: 'catan-mode',
     label: boardMode ? '⬡ board' : '▢ tile',
-    onClick: () => {
-      boardMode = !boardMode;
-      H?.onMode(boardMode ? 'board' : 'tile');
-    },
+    onClick: () => H?.onMode(boardMode ? 'tile' : 'board'),
     style: REROLL_BTN,
   });
   // Board mode: just a regenerate button. Tile mode: terrain picker + vary + robber toggle.
@@ -105,5 +102,7 @@ export function buildCatanTileRoot(region: LayoutBox, bar: Node, onOpenMenu: () 
       Box({ height: 1 }),
     ]),
     Box({ position: 'absolute', top: 1, right: 2 }, [Button({ id: 'catan-menu-button', label: '☰ menu', onClick: onOpenMenu, style: UI_CHROME_PILL })]),
+    // Board mode: a roll button tucked into the very bottom-right corner; triggers the dice.
+    ...(boardMode ? [Box({ position: 'absolute', bottom: 0, right: 1 }, [Button({ id: 'catan-roll', label: '⚄ roll dice', onClick: () => H?.onRollDice(), style: REROLL_BTN })])] : []),
   ]);
 }

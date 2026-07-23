@@ -48,18 +48,22 @@ const STACK_POS = { x: -0.5, z: -5.0 }; // the face-down deck, behind the board 
 const STACK_THICK = 0.11; // vertical spacing of tiles in the deck
 const STACK_BASE_Y = 0.1;
 
-// A pair of dice, shown in the bottom-right corner in board mode; click to roll.
-const DICE_ROLL_DUR = 1.1; // seconds of tumble
-const DICE_HOP = 0.55; // little bounce during the roll
-const DICE_EYE: Vec3 = { x: 0.7, y: 2.5, z: 3.2 };
-const DICE_TARGET: Vec3 = { x: 0, y: 0.4, z: 0 };
-const DICE_FOVY = (38 * Math.PI) / 180;
+// Triggered by the HUD "roll" button: BIG dice appear over the board, tumble, land, the
+// matching chips light, then the dice vanish. Drawn on top of everything (depth cleared first)
+// and large, so the pips are unmistakable even in ASCII.
+type DicePhase = 'idle' | 'rolling' | 'hold';
+const DICE_ROLL_DUR = 1.1; // tumble
+const DICE_HOLD = 1.2; // linger on the landed result (while the chips light) before vanishing
+const DICE_HOP = 0.7; // bounce during the roll
+const DICE_EYE: Vec3 = { x: 0, y: 2.7, z: 4.7 };
+const DICE_TARGET: Vec3 = { x: 0, y: 0.35, z: 0 };
+const DICE_FOVY = (34 * Math.PI) / 180;
 const DICE_POS: Vec3[] = [
-  { x: -0.72, y: 0.5, z: 0.05 },
-  { x: 0.72, y: 0.5, z: -0.05 },
+  { x: -0.95, y: 0.5, z: 0 },
+  { x: 0.95, y: 0.5, z: 0 },
 ];
-// The bottom-right NDC box the dice render into (and its click target).
-const CORNER = { sx: 0.2, sy: 0.26, tx: 0.76, ty: -0.62 };
+// NDC box the dice render into — the right side, near the roll button (not centered).
+const DICE_BOX = { sx: 0.32, sy: 0.4, tx: 0.62, ty: -0.12 };
 const easeOut = (t: number): number => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
 // (ax, az) that, applied as rotZ(az)·rotX(ax), bring each face value to the top.
 function faceAngles(val: number): { ax: number; az: number } {
@@ -78,13 +82,13 @@ function faceAngles(val: number): { ax: number; az: number } {
       return { ax: 0, az: 0 }; // 1
   }
 }
-// The clip-space remap that squeezes a full-frame render into the corner NDC box.
-function cornerMatrix(): Mat4 {
+// Clip-space remap that squeezes the dice's full-frame render into the right-side NDC box.
+function diceViewport(): Mat4 {
   const s = mat4Identity();
-  s[0] = CORNER.sx;
-  s[5] = CORNER.sy;
-  s[12] = CORNER.tx;
-  s[13] = CORNER.ty;
+  s[0] = DICE_BOX.sx;
+  s[5] = DICE_BOX.sy;
+  s[12] = DICE_BOX.tx;
+  s[13] = DICE_BOX.ty;
   return s;
 }
 interface Die {
@@ -140,7 +144,7 @@ export class TileScene {
   private lastT = -1; // previous frame time, for dt
   private tokensDirty = false; // force one composite when the tokens (re)appear after placing
   private dice: [Die, Die] = [{ val: 1, spinsX: 0, spinsZ: 0 }, { val: 1, spinsX: 0, spinsZ: 0 }];
-  private rolling = false;
+  private dicePhase: DicePhase = 'idle';
   private rollClock = 0;
   private rollLastT = -1;
   private rolledSum: number | null = null; // the last landed roll (lights matching chips); null until first roll
@@ -190,8 +194,8 @@ export class TileScene {
     this.dirty = true;
   }
 
-  // Roll the pair of dice (board mode). Picks results, arms the tumble; the lit chips update
-  // when it lands.
+  // Roll the pair of dice (board mode): big dice appear, tumble, land, light the matching
+  // chips, then vanish. Picks results + tumble spins and starts the sequence.
   rollDice(): void {
     if (this.modeName !== 'board') return;
     for (const d of this.dice) {
@@ -199,18 +203,11 @@ export class TileScene {
       d.spinsX = 2 + Math.floor(Math.random() * 3);
       d.spinsZ = 1 + Math.floor(Math.random() * 2);
     }
-    this.rolling = true;
+    this.dicePhase = 'rolling';
     this.rollClock = 0;
     this.rollLastT = -1;
-    this.rolledSum = null;
+    this.rolledSum = null; // clear the previous highlight while the new roll tumbles
     this.dirty = true;
-  }
-  // Click hit-test for the dice corner (NDC). Rolls and returns true if the click was on them.
-  diceClick(ndcX: number, ndcY: number): boolean {
-    if (this.modeName !== 'board') return false;
-    const hit = ndcX >= CORNER.tx - CORNER.sx && ndcX <= CORNER.tx + CORNER.sx && ndcY >= CORNER.ty - CORNER.sy && ndcY <= CORNER.ty + CORNER.sy;
-    if (hit) this.rollDice();
-    return hit;
   }
 
   setTerrain(t: Terrain): void {
@@ -259,7 +256,7 @@ export class TileScene {
   // On-demand: re-render after a camera/scene change, every frame while placing, and once more
   // when the animation ends so the tokens get composited.
   needsRender(): boolean {
-    return this.dirty || this.placing || this.tokensDirty || this.rolling;
+    return this.dirty || this.placing || this.tokensDirty || this.dicePhase !== 'idle';
   }
 
   // The number tokens to overlay right now: one per non-desert hex, projected to the screen
@@ -345,24 +342,31 @@ export class TileScene {
     this.renderDice(target, t);
   }
 
-  // The pair of dice in the bottom-right corner (their own fixed camera, squeezed into the
-  // corner NDC box so they stay put regardless of the board camera). Advances the roll here.
+  // Advance the roll sequence, then (unless idle) draw the BIG dice on top of the board. The
+  // depth buffer is cleared first so the dice always sit over the scene, never occluded.
   private renderDice(target: RenderTarget, t: number): void {
-    if (this.rolling) {
+    if (this.dicePhase !== 'idle') {
       if (this.rollLastT < 0) this.rollLastT = t;
       this.rollClock += Math.max(0, t - this.rollLastT);
       this.rollLastT = t;
-      if (this.rollClock >= DICE_ROLL_DUR) {
-        this.rolling = false;
+      if (this.dicePhase === 'rolling' && this.rollClock >= DICE_ROLL_DUR) {
+        this.dicePhase = 'hold';
         this.rolledSum = this.dice[0].val + this.dice[1].val;
         this.tokensDirty = true; // light the matching chips on the next composite
       }
+      if (this.dicePhase === 'hold' && this.rollClock >= DICE_ROLL_DUR + DICE_HOLD) {
+        this.dicePhase = 'idle'; // dice vanish; the lit chips remain
+      }
     }
+    if (this.dicePhase === 'idle') return;
+
+    target.depth.fill(Infinity); // draw the dice over everything already rendered
     const cam: Camera = { eye: DICE_EYE, target: DICE_TARGET, up: { x: 0, y: 1, z: 0 }, fovy: DICE_FOVY, near: 0.05, far: 100 };
-    const aspect = (CORNER.sx / CORNER.sy) * (target.width / target.height); // keep the dice square in the corner box
-    const vpCorner = mat4Multiply(cornerMatrix(), cameraMatrices(cam, aspect).viewProjection);
-    const e = this.rolling ? easeOut(this.rollClock / DICE_ROLL_DUR) : 1;
-    const hop = this.rolling ? Math.sin(Math.PI * (this.rollClock / DICE_ROLL_DUR)) * DICE_HOP : 0;
+    const aspect = (DICE_BOX.sx / DICE_BOX.sy) * (target.width / target.height); // keep the dice undistorted in the box
+    const vp = mat4Multiply(diceViewport(), cameraMatrices(cam, aspect).viewProjection);
+    const rolling = this.dicePhase === 'rolling';
+    const e = rolling ? easeOut(this.rollClock / DICE_ROLL_DUR) : 1;
+    const hop = rolling ? Math.sin(Math.PI * (this.rollClock / DICE_ROLL_DUR)) * DICE_HOP : 0;
     for (let i = 0; i < 2; i++) {
       const d = this.dice[i];
       const a = faceAngles(d.val);
@@ -370,7 +374,7 @@ export class TileScene {
       const az = (a.az + d.spinsZ * 2 * Math.PI) * e;
       const p = DICE_POS[i];
       const model = mat4Multiply(mat4Translate(p.x, p.y + hop, p.z), mat4Multiply(mat4RotZ(az), mat4RotX(ax)));
-      rasterize(target, dieMesh(), lambertMaterial, { mvp: mat4Multiply(vpCorner, model), model, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
+      rasterize(target, dieMesh(), lambertMaterial, { mvp: mat4Multiply(vp, model), model, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
     }
   }
 }

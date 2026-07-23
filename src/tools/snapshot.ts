@@ -415,7 +415,7 @@ function catanSnapshot(): void {
     mountCatanTileHud(screen);
     (screen.component('catan-terrain') as Dropdown | undefined)?.pick(TERRAINS.indexOf(terrain));
     const region = { x: 0, y: 0, w: cols, h: rows };
-    screen.setRoot(buildCatanTileRoot(region, buildBar('catan-tiles', 'ascii', barActions), noop, scene.boardTokens(cols, rows)), region);
+    screen.setRoot(buildCatanTileRoot(region, buildBar('catan-tiles', 'ascii', barActions), noop, scene.boardTokens(cols, rows), scene.currentMode() === 'board'), region);
     const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
     surfaceToPpm(surf, cols, rows, out);
     return;

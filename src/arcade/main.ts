@@ -1148,6 +1148,11 @@ setCatanTileHandlers({
     forceFrame = true;
     r.requestRender();
   },
+  onRollDice: () => {
+    tileScene.rollDice();
+    forceFrame = true;
+    r.requestRender();
+  },
 });
 
 function toPrism(): void {
@@ -1669,7 +1674,7 @@ function syncBar(): void {
     // Re-mount the terrain dropdown (a prior modal root may have dropped its Slot), then
     // build the control panel + bar + ☰ menu button over the scene.
     mountCatanTileHud(ui);
-    ui.setRoot(buildCatanTileRoot({ x: 0, y: 0, w: cols, h: rows }, buildBar('catan-tiles', renderMode, actions), openCatanTilesMenu, tileScene.boardTokens(cols, rows)), { x: 0, y: 0, w: cols, h: rows });
+    ui.setRoot(buildCatanTileRoot({ x: 0, y: 0, w: cols, h: rows }, buildBar('catan-tiles', renderMode, actions), openCatanTilesMenu, tileScene.boardTokens(cols, rows), tileScene.currentMode() === 'board'), { x: 0, y: 0, w: cols, h: rows });
   } else if (pokerNotesOpen) {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     popGameOver();
@@ -2049,13 +2054,6 @@ function onMouseImpl(e: MouseEvent): void {
         const seat = pokerScene.wispAt(ndcX, ndcY, aspect);
         if (seat !== null) openPokerWispSwap(seat);
         else pokerScene.clickCard(ndcX, ndcY, aspect);
-      } else if (isClick && mode === 'catan-tiles') {
-        // Board mode: click the corner dice to roll them.
-        const { ndcX, ndcY } = pointerNdc(e.x, e.y);
-        if (tileScene.diceClick(ndcX, ndcY)) {
-          forceFrame = true;
-          r.requestRender();
-        }
       }
       draggingCamera = false;
       return;

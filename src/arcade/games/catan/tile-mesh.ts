@@ -1122,16 +1122,17 @@ export function tileBackMesh(): Mesh {
 }
 
 let dieCache: Mesh | null = null;
-// A single die: an ivory cube (half-size 0.5, centered at the origin) with black pips. Face
-// values by axis: +Y=1, −Y=6, +Z=2, −Z=5, +X=3, −X=4 (opposite faces sum to 7).
+// A single die: an ivory cube (half-size 0.5, centered at the origin) with big, near-black
+// pips. Face values by axis: +Y=1, −Y=6, +Z=2, −Z=5, +X=3, −X=4 (opposite faces sum to 7).
+// Pips are large + high-contrast so they survive the ASCII glyph mapper's per-cell averaging.
 export function dieMesh(): Mesh {
   if (dieCache) return dieCache;
   const m = build();
   const H = 0.5;
-  const IVORY: RGB = [236, 232, 220];
-  const PIP: RGB = [34, 30, 34];
-  const o = 0.5; // pip offset from face center (half-size units)
-  const ps = 0.12; // pip half-size
+  const IVORY: RGB = [238, 234, 222];
+  const PIP: RGB = [18, 16, 20];
+  const o = 0.6; // pip offset from face center (half-size units)
+  const ps = 0.125; // pip half-size — as large as fits without adjacent pips merging
   // A quad centered at (cx,cy,cz) spanning ±hu along u and ±hv along vv.
   const quad = (c: Vec3, u: Vec3, vv: Vec3, hu: number, hv: number, color: RGB, n: Vec3): void => {
     const a = v(c.x - u.x * hu - vv.x * hv, c.y - u.y * hu - vv.y * hv, c.z - u.z * hu - vv.z * hv);
@@ -1159,7 +1160,7 @@ export function dieMesh(): Mesh {
   for (const f of faces) {
     const c = v(f.n.x * H, f.n.y * H, f.n.z * H);
     quad(c, f.u, f.vv, H, H, IVORY, f.n); // the face
-    const pc = v(c.x + f.n.x * 0.02, c.y + f.n.y * 0.02, c.z + f.n.z * 0.02); // pips sit just proud
+    const pc = v(c.x + f.n.x * 0.03, c.y + f.n.y * 0.03, c.z + f.n.z * 0.03); // pips sit proud
     for (const [pu, pv] of PIPS[f.val]) {
       const center = v(pc.x + f.u.x * pu * o * H + f.vv.x * pv * o * H, pc.y + f.u.y * pu * o * H + f.vv.y * pv * o * H, pc.z + f.u.z * pu * o * H + f.vv.z * pv * o * H);
       quad(center, f.u, f.vv, ps, ps, PIP, f.n);
