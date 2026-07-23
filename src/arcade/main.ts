@@ -32,7 +32,7 @@ import { buildChessGameRoot, chessMoveChat, type Commentary, type MatchSide, mou
 import { creatorTint } from './scenes/wisp.ts';
 import { CHAT_WIDTH, clearChat, pushChatMessage } from './games/chess/chat.ts';
 import { insetRightSceneViewport, pointerNdcInSceneViewport } from './scene-viewport.ts';
-import { buildMatchSetup, buildSwapSetup, matchSetupSelection, mountMatchSetup, mountSwapSetup, openSwapSetup, swapSetupSelection } from './match/setup.ts';
+import { buildMatchSetup, buildSwapSetup, chessPreviewSides, matchSetupSelection, mountMatchSetup, mountSwapSetup, openSwapSetup, setMatchSetupChanged, swapSetupSelection } from './match/setup.ts';
 import { copyToClipboard } from '../platform/clipboard.ts';
 import { checkForUpdate, refreshLatestInBackground, type UpdateInfo } from './update.ts';
 import { BLACK, type Color, WHITE } from '../rules/chess/types.ts';
@@ -625,6 +625,7 @@ function openMatchSetup(): void {
   mountMatchSetup(ui);
   matchSetupOpen = true;
   setupFocused = false;
+  chessGame.setPreview(chessPreviewSides()); // king wisps preview the chosen creators
   forceFrame = true;
   r.requestRender();
 }
@@ -632,6 +633,7 @@ function openMatchSetup(): void {
 function closeMatchSetup(): void {
   matchSetupOpen = false;
   setupFocused = false;
+  chessGame.setPreview(null);
   forceFrame = true;
 }
 
@@ -836,6 +838,16 @@ function cancelPokerSetup(): void {
 setPokerSetupChanged(() => {
   if (!pokerSetupOpen) return;
   pokerScene.setPreview(pokerPreviewSeats(), pokerStartingStack());
+  forceFrame = true;
+  r.requestRender();
+});
+
+// The chess mirror: any committed setup change (mode / creator / model) updates the
+// king-wisp preview behind the panel — each side's wisp follows its chosen creator,
+// a human side shows none.
+setMatchSetupChanged(() => {
+  if (!matchSetupOpen) return;
+  chessGame.setPreview(chessPreviewSides());
   forceFrame = true;
   r.requestRender();
 });

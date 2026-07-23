@@ -21,7 +21,7 @@ import { buildChessGameRoot, chessMoveChat, mountChessHud, refreshMoveHistory } 
 import { CHAT_WIDTH, type ChatMessage, clearChat, pushChatMessage } from '../arcade/games/chess/chat.ts';
 import { insetRightSceneViewport } from '../arcade/scene-viewport.ts';
 import { evaluate } from '../rules/chess/eval.ts';
-import { buildMatchSetup, mountMatchSetup } from '../arcade/match/setup.ts';
+import { buildMatchSetup, chessPreviewSides, mountMatchSetup } from '../arcade/match/setup.ts';
 import { creators } from '../arcade/match/models.ts';
 import { CardsScene, type CardsMode } from '../arcade/games/poker/cards-scene.ts';
 import { buildPokerRoot, mountPokerHud } from '../arcade/games/poker/hud.ts';
@@ -1276,7 +1276,7 @@ function setupSnapshot(): void {
   const out = process.argv[5] ?? '.snapshots/setup.ppm';
   const SS = 3;
   const target = new RenderTarget(cols * SS, rows * 2 * SS);
-  new ChessGameScene().renderScene(target, 0.6);
+  const chess = new ChessGameScene();
   const screen = new Screen(cols, rows);
   mountMatchSetup(screen);
   // The modal's module defaults already pre-commit a model per side (Start enabled).
@@ -1302,6 +1302,10 @@ function setupSnapshot(): void {
     const enter = { name: 'enter', raw: '', sequence: '', ctrl: false, shift: false, meta: false, eventType: 'press' as const };
     (screen.component('setup-white-creator') as Dropdown | undefined)?.onKey?.(enter);
   }
+  // Preview the chosen creators as king wisps behind the panel (what main wires up
+  // via setPreview), then render the board so the wisps composite over it.
+  chess.setPreview(chessPreviewSides());
+  chess.renderScene(target, 0.6);
   const region = { x: 0, y: 0, w: cols, h: rows };
   screen.setRoot(buildMatchSetup(region, { onStart: noop, onCancel: noop }), region);
   const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));

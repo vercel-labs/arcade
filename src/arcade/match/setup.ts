@@ -37,6 +37,17 @@ const CREATOR_W = 22;
 const MODEL_W = 26;
 const SIDE_LABEL_W = 8; // the "white"/"black" gutter, so the side rows line up (mirrors poker-setup)
 
+// Fires on every committed change (mode / creator / model), so main can refresh the
+// live king-wisp preview behind the panel. Null until main wires it (module init
+// commits the defaults before the hook exists — nothing to preview yet).
+let onChanged: (() => void) | null = null;
+export function setMatchSetupChanged(fn: () => void): void {
+  onChanged = fn;
+}
+const changed = (): void => {
+  onChanged?.();
+};
+
 interface Side {
   creators: readonly PickerCreator[];
   key: 'white' | 'black'; // drives the title tint; mutable so the swap side can be reused for either color
@@ -109,7 +120,10 @@ function makeSide(
     width: CREATOR_W,
     rows: LIST_ROWS,
     index: creatorIndex(creators, defaultCreator), // a creator is pre-chosen…
-    onSelect: (i) => pickCreator(side, side.creators[i].slug),
+    onSelect: (i) => {
+      pickCreator(side, side.creators[i].slug);
+      changed();
+    },
   });
   const modelDropdown = new Dropdown({
     searchable: true,
@@ -121,6 +135,7 @@ function makeSide(
     placeholder: 'pick a model…', // …but the model must be chosen explicitly
     onSelect: (i) => {
       side.modelId = side.models[i]?.id ?? null;
+      changed();
     },
   });
   side = { creators, key, creator: null, models: [], modelId: null, human: false, creatorDropdown, modelDropdown, randomId: `${idPrefix}-random` };
@@ -150,7 +165,10 @@ export const modeDropdown = new Dropdown({
   items: ['play white', 'play black', 'spectate ai'],
   width: 16,
   index: 0,
-  onSelect: () => applyMode(),
+  onSelect: () => {
+    applyMode();
+    changed();
+  },
 });
 function applyMode(): void {
   white.human = modeDropdown.index === 0; // Play White → you are White
@@ -182,6 +200,16 @@ export function matchSetupSelection(): { white: Seat; black: Seat } | null {
   const w = seat(white);
   const b = seat(black);
   return w && b ? { white: w, black: b } : null;
+}
+
+// The white/black creators to preview as king wisps while the setup panel is open.
+// A human side contributes no wisp (null) — the in-match convention, mirroring
+// poker's human seat. The creator is pre-committed, so it's rarely null in practice.
+export function chessPreviewSides(): { white: string | null; black: string | null } {
+  return {
+    white: white.human ? null : white.creator,
+    black: black.human ? null : black.creator,
+  };
 }
 
 const TITLE_TINT: Record<Side['key'], RGB> = { white: [232, 228, 216], black: [184, 126, 74] };
