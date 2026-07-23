@@ -8,6 +8,7 @@ export interface LambertUniforms {
   model: Mat4;
   lightDir: Vec3; // normalized, world space, points toward the light
   ambient: number; // 0..1 floor
+  wrap?: number; // 0/undefined = hard Lambert; →1 wraps the falloff toward half-Lambert so a larger share of the surface is lit
 }
 
 // Flat/diffuse lit material: the per-vertex base color scaled by N·L.
@@ -28,7 +29,8 @@ export const lambertMaterial: Material<LambertUniforms> = {
     const nz = vy.normal.z;
     const l = Math.hypot(nx, ny, nz) || 1;
     const ndl = (nx / l) * u.lightDir.x + (ny / l) * u.lightDir.y + (nz / l) * u.lightDir.z;
-    const intensity = Math.max(u.ambient, ndl);
+    const w = u.wrap;
+    const intensity = Math.max(u.ambient, w ? (ndl + w) / (1 + w) : ndl);
     LAMBERT_RGBA.r = vy.color.x * intensity;
     LAMBERT_RGBA.g = vy.color.y * intensity;
     LAMBERT_RGBA.b = vy.color.z * intensity;

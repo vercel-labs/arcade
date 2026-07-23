@@ -13,8 +13,10 @@ const LABELS = ['Forest · lumber', 'Hills · brick', 'Pasture · wool', 'Fields
 export interface CatanTileHandlers {
   onTerrain(t: Terrain): void;
   onReroll(): void;
+  onToggleRobber(on: boolean): void;
 }
 let H: CatanTileHandlers | null = null;
+let robberOn = false; // whether the robber is currently shown (toggled from the panel)
 export function setCatanTileHandlers(h: CatanTileHandlers): void {
   H = h;
 }
@@ -51,6 +53,15 @@ export function buildCatanTileRoot(region: LayoutBox, bar: Node, onOpenMenu: () 
   const panel = Box({ flexDirection: 'column', gap: 1, padding: [1, 2], background: [16, 18, 26, 0.9] }, [
     labeled('Tile', Slot('catan-terrain')),
     Button({ id: 'catan-reroll', label: '⟳ vary', onClick: () => H?.onReroll(), style: REROLL_BTN }),
+    Button({
+      id: 'catan-robber',
+      label: robberOn ? '● robber: on' : '○ robber: off',
+      onClick: () => {
+        robberOn = !robberOn;
+        H?.onToggleRobber(robberOn);
+      },
+      style: REROLL_BTN,
+    }),
   ]);
   return Box({ width: region.w, height: region.h }, [
     Box({ width: region.w, height: region.h, flexDirection: 'column' }, [

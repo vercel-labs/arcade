@@ -380,6 +380,7 @@ function catanSnapshot(): void {
 
   const scene = new TileScene();
   scene.setTerrain(terrain);
+  if (args.includes('robber')) scene.setRobber(true);
   // `varN` selects procedural variant N (e.g. var2); `top` orbits toward top-down; a decimal
   // rotates the azimuth.
   const varArg = args.find((a) => /^var\d+$/.test(a));

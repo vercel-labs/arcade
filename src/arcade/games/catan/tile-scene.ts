@@ -24,12 +24,16 @@ const FOVY = (44 * Math.PI) / 180;
 // form; a high ambient floor keeps side faces legible (especially in ASCII mode).
 const LIGHT: Vec3 = normalize3({ x: 0.42, y: 0.86, z: 0.5 });
 const AMBIENT = 0.52;
+// Wrap the diffuse falloff toward half-Lambert so much more of each tile sits in the lit
+// gradient instead of pinned at the flat ambient floor (≈24% lit at wrap 0 → ≈45% at 0.85).
+const WRAP = 0.85;
 const MODEL: Mat4 = mat4Identity();
 
 export class TileScene {
   private cam: OrbitCamera;
   private terrain: Terrain = 'forest';
   private variant = 0; // per-tile seed: same style, different layout
+  private robber = false; // show/hide the robber (works on any terrain)
   private dirty = true;
 
   constructor() {
@@ -46,6 +50,10 @@ export class TileScene {
   // Advance to the next procedural variant of the current tile (a new seed).
   reroll(): void {
     this.variant++;
+    this.dirty = true;
+  }
+  setRobber(on: boolean): void {
+    this.robber = on;
     this.dirty = true;
   }
 
@@ -78,7 +86,7 @@ export class TileScene {
     const eye = this.cam.eye();
     const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 100 };
     const vp = cameraMatrices(camera, target.width / target.height).viewProjection;
-    rasterize(target, tileMesh(this.terrain, this.variant), lambertMaterial, { mvp: mat4Multiply(vp, MODEL), model: MODEL, lightDir: LIGHT, ambient: AMBIENT });
+    rasterize(target, tileMesh(this.terrain, this.variant, this.robber), lambertMaterial, { mvp: mat4Multiply(vp, MODEL), model: MODEL, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
     this.dirty = false;
   }
 }

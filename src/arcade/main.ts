@@ -1138,6 +1138,11 @@ setCatanTileHandlers({
     forceFrame = true;
     r.requestRender();
   },
+  onToggleRobber: (on) => {
+    tileScene.setRobber(on);
+    forceFrame = true;
+    r.requestRender();
+  },
 });
 
 function toPrism(): void {
