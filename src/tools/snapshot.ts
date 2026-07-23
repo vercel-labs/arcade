@@ -400,6 +400,14 @@ function catanSnapshot(): void {
   } else {
     if (args.includes('board')) scene.settle();
     scene.renderScene(target, 0);
+    // `roll` (board mode): roll the dice and step to a chosen time (default past the landing,
+    // so the dice rest and the matching chips are lit gold). `roll<seconds>` for a mid-roll.
+    const rollArg = args.find((a) => /^roll[\d.]*$/.test(a));
+    if (args.includes('board') && rollArg) {
+      scene.rollDice();
+      const secs = rollArg.length > 4 ? Number(rollArg.slice(4)) : 1.4;
+      for (let f = 1; f <= Math.round(secs * 60); f++) scene.renderScene(target, f / 60);
+    }
   }
 
   if (args.includes('hud')) {
@@ -407,7 +415,7 @@ function catanSnapshot(): void {
     mountCatanTileHud(screen);
     (screen.component('catan-terrain') as Dropdown | undefined)?.pick(TERRAINS.indexOf(terrain));
     const region = { x: 0, y: 0, w: cols, h: rows };
-    screen.setRoot(buildCatanTileRoot(region, buildBar('catan-tiles', 'ascii', barActions), noop), region);
+    screen.setRoot(buildCatanTileRoot(region, buildBar('catan-tiles', 'ascii', barActions), noop, scene.boardTokens(cols, rows)), region);
     const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
     surfaceToPpm(surf, cols, rows, out);
     return;

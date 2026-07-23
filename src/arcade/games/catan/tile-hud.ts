@@ -4,7 +4,25 @@
 
 import { Box, Button, Dropdown, type LayoutBox, type Node, type Screen, Slot, type Style, Text } from '../../../tui/index.ts';
 import { type Terrain } from '../../../rules/catan/types.ts';
+import { type BoardToken } from './tile-scene.ts';
 import { UI_CHROME_PILL } from '../../theme.ts';
+
+const CHIP_BG: [number, number, number] = [12, 12, 16]; // black token
+const CHIP_INK: [number, number, number] = [238, 236, 230]; // light number on black
+const CHIP_RED: [number, number, number] = [232, 74, 74]; // 6 & 8 — the high-frequency reds
+const CHIP_GOLD: [number, number, number] = [232, 190, 60]; // lit when it matches the dice roll
+const CHIP_GOLD_INK: [number, number, number] = [40, 30, 8]; // dark number on the gold chip
+
+// A number token centered over a hex: a black chip with just the number (red for 6/8), lit to
+// gold when it matches the last dice roll. Absolutely positioned at the projected hex center.
+function tokenChip(tk: BoardToken): Node {
+  const label = `${tk.num}`;
+  const bg = tk.hot ? CHIP_GOLD : CHIP_BG;
+  const ink = tk.hot ? CHIP_GOLD_INK : tk.red ? CHIP_RED : CHIP_INK;
+  return Box({ position: 'absolute', top: tk.row, left: tk.col - Math.floor((label.length + 2) / 2), background: bg, padding: [0, 1] }, [
+    Text({ text: label, style: { color: ink, bold: true } }),
+  ]);
+}
 
 // The six terrains, labeled by what they produce (desert produces nothing).
 const TERRAINS: Terrain[] = ['forest', 'hills', 'pasture', 'fields', 'mountains', 'desert'];
@@ -51,7 +69,7 @@ const REROLL_BTN: Style = {
 // The full-screen HUD: a translucent control panel (top-left) with the terrain dropdown + a
 // "vary" button (new procedural variant), a ☰ menu button (top-right), and the standard bar
 // beneath. `bar` is buildBar('catan-tiles', …) from main; `onOpenMenu` opens the game menu.
-export function buildCatanTileRoot(region: LayoutBox, bar: Node, onOpenMenu: () => void): Node {
+export function buildCatanTileRoot(region: LayoutBox, bar: Node, onOpenMenu: () => void, tokens: BoardToken[] = []): Node {
   const modeBtn = Button({
     id: 'catan-mode',
     label: boardMode ? '⬡ board' : '▢ tile',
@@ -79,6 +97,7 @@ export function buildCatanTileRoot(region: LayoutBox, bar: Node, onOpenMenu: () 
       ];
   const panel = Box({ flexDirection: 'column', gap: 1, padding: [1, 2], background: [16, 18, 26, 0.9] }, [labeled('Mode', modeBtn), ...controls]);
   return Box({ width: region.w, height: region.h }, [
+    ...tokens.map(tokenChip), // number tokens over the board (bottom layer, under the chrome)
     Box({ width: region.w, height: region.h, flexDirection: 'column' }, [
       Box({ flexDirection: 'row', padding: [1, 0, 0, 2] }, [panel]),
       Box({ flexGrow: 1 }),
