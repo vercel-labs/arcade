@@ -180,6 +180,15 @@ function blockBits(ch: string, px: number, py: number): boolean {
     case '✗':
       // Cross: the two diagonals of the cell.
       return Math.abs(px - py) <= 1 || Math.abs(px + py - 7) <= 1;
+    case '↻': {
+      // No circular-arrow glyph in the 8×8 font — synthesize a clockwise ring broken
+      // at the top-right with a small arrowhead, so the "↻ random" reroll affordance
+      // reads as a refresh mark rather than a blank (mirrors the ⚙/☰ approximations).
+      const r2 = (px - 3.5) ** 2 + (py - 3.5) ** 2;
+      const ring = r2 <= 8 && r2 >= 2.5 && !(py <= 1 && px >= 4); // gap at the top-right
+      const head = (px === 4 || px === 5) && py >= 0 && py <= 2; // arrowhead across the gap
+      return ring || head;
+    }
     default:
       return false;
   }

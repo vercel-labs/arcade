@@ -7,7 +7,7 @@
 // only once BOTH sides have a model committed; picking a different creator clears
 // that side's model (re-picking the same creator, or a different model under it,
 // leaves the creator intact).
-import { Box, Dialog, Dropdown, Modal, RoundedButton, Slot, Text, type LayoutBox, type Node, type Screen } from '../../tui/index.ts';
+import { Box, Button, Dialog, Dropdown, Modal, RoundedButton, Slot, Text, type LayoutBox, type Node, type Screen } from '../../tui/index.ts';
 import type { RGB } from '../../engine/index.ts';
 import { includeEarlyAccessModels, pickerCreators, type ModelInfo } from './models.ts';
 import { availableRealtimeModels } from '../../voice/index.ts';
@@ -42,6 +42,7 @@ interface Side {
   key: 'white' | 'black'; // drives the title tint; mutable so the swap side can be reused for either color
   readonly creatorDropdown: Dropdown;
   readonly modelDropdown: Dropdown;
+  readonly randomId: string; // the side's "↻ random" affordance id
   creator: string | null;
   models: ModelInfo[];
   modelId: string | null;
@@ -51,6 +52,29 @@ interface Side {
 function creatorIndex(creators: readonly PickerCreator[], slug: string): number {
   const i = creators.findIndex((c) => c.slug === slug);
   return i < 0 ? 0 : i;
+}
+
+// Drop a random creator+model combo into a side. Drives the side's own dropdowns
+// via pick() (clearing `creator` first so an unchanged creator still repopulates),
+// so pickCreator + the model handler run and the field + model list update exactly
+// as a manual pick would. Prefers a combo different from the current one (bounded
+// retries) so a click always feels like it did something; every offered combo is
+// pre-validated by pickerCreators().
+function randomizeSide(side: Side): void {
+  const creators = side.creators;
+  if (creators.length === 0) return;
+  const prev = side.modelId;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const c = creators[(Math.random() * creators.length) | 0];
+    if (c.models.length === 0) continue;
+    const m = c.models[(Math.random() * c.models.length) | 0];
+    if (m.id === prev && attempt < 7) continue; // avoid re-picking the current model when we can
+    side.creator = null;
+    side.creatorDropdown.pick(creatorIndex(creators, c.slug));
+    const i = side.models.findIndex((mm) => mm.id === m.id);
+    if (i >= 0) side.modelDropdown.pick(i);
+    return;
+  }
 }
 
 // Set a side's creator: repopulate its model list and clear the committed model.
@@ -99,7 +123,7 @@ function makeSide(
       side.modelId = side.models[i]?.id ?? null;
     },
   });
-  side = { creators, key, creator: null, models: [], modelId: null, human: false, creatorDropdown, modelDropdown };
+  side = { creators, key, creator: null, models: [], modelId: null, human: false, creatorDropdown, modelDropdown, randomId: `${idPrefix}-random` };
   pickCreator(side, defaultCreator); // populate the model list (modelId stays null)
   if (defaultModelId) {
     const i = side.models.findIndex((m) => m.id === defaultModelId);
@@ -185,6 +209,20 @@ function slowBadge(modelId: string | null): Node[] {
     : [];
 }
 
+// A muted "↻ random" affordance beside a side's model picker — one click rerolls
+// the side to a random creator+model. Rests at 'muted' grey and brightens to white
+// on hover/focus (the dialog-affordance convention); no tooltip needed since the
+// label says what it does.
+const RANDOM_HOVER_FG: RGB = [255, 255, 255];
+function randomBadge(side: Side): Node {
+  return Button({
+    id: side.randomId,
+    label: '↻ random',
+    onClick: () => randomizeSide(side),
+    style: { padding: [0, 0], color: 'muted', hover: { color: RANDOM_HOVER_FG }, focus: { color: RANDOM_HOVER_FG } },
+  });
+}
+
 // One side's column for the swap popup: the centered title, then the creator/model
 // pickers. Tints the creator field in the creator's brand hue (its in-game wisp color),
 // set fresh each frame since the creator can change.
@@ -222,7 +260,7 @@ function sideRow(side: Side): Node {
         Text({ text: 'you', style: { color: 'muted' } }),
         Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot(side.creatorDropdown.id), Slot(side.modelDropdown.id)]),
       ]
-    : [Slot(side.creatorDropdown.id), Slot(side.modelDropdown.id), ...slowBadge(side.modelId)];
+    : [Slot(side.creatorDropdown.id), Slot(side.modelDropdown.id), randomBadge(side), ...slowBadge(side.modelId)];
   return row(side.key, TITLE_TINT[side.key], controls);
 }
 

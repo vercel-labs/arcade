@@ -7,7 +7,7 @@
 // previews the choices live — chairs follow the player count and each AI seat's wisp
 // follows its creator — via the onChanged hook (main wires it to scene.setPreview).
 
-import { Box, Dropdown, Slider, Slot, Text, type Node, type Screen } from '../../tui/index.ts';
+import { Box, Button, Dropdown, Slider, Slot, Text, type Node, type Screen } from '../../tui/index.ts';
 import type { RGB } from '../../engine/index.ts';
 import { includeEarlyAccessModels, pickerCreators, type ModelInfo } from './models.ts';
 import { availableRealtimeModels, DEFAULT_REALTIME_MODEL_ID } from '../../voice/index.ts';
@@ -55,6 +55,7 @@ interface AiSide {
   readonly creators: readonly AiCreator[];
   readonly creatorDropdown: Dropdown;
   readonly modelDropdown: Dropdown;
+  readonly randomId: string; // the seat's "↻ random" affordance id
   creator: string | null;
   models: ModelInfo[];
   modelId: string | null;
@@ -63,6 +64,29 @@ interface AiSide {
 function creatorIndex(creators: readonly AiCreator[], slug: string): number {
   const i = creators.findIndex((c) => c.slug === slug);
   return i < 0 ? 0 : i;
+}
+
+// Drop a random creator+model combo into a seat. Drives the seat's own dropdowns
+// via pick() (clearing `creator` first so an unchanged creator still repopulates),
+// so pickCreator + the model handler + changed() all fire and the field, model
+// list, and live preview update exactly as a manual pick would. Prefers a combo
+// different from the current one (bounded retries) so a click always feels like it
+// did something; every offered combo is pre-validated by pickerCreators().
+function randomizeSide(side: AiSide): void {
+  const creators = side.creators;
+  if (creators.length === 0) return;
+  const prev = side.modelId;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const c = creators[(Math.random() * creators.length) | 0];
+    if (c.models.length === 0) continue;
+    const m = c.models[(Math.random() * c.models.length) | 0];
+    if (m.id === prev && attempt < 7) continue; // avoid re-picking the current model when we can
+    side.creator = null;
+    side.creatorDropdown.pick(creatorIndex(creators, c.slug));
+    const i = side.models.findIndex((mm) => mm.id === m.id);
+    if (i >= 0) side.modelDropdown.pick(i);
+    return;
+  }
 }
 
 function pickCreator(side: AiSide, slug: string): void {
@@ -101,7 +125,7 @@ function makeSide(idPrefix: string, creators: readonly AiCreator[], defaultCreat
       changed();
     },
   });
-  side = { creators, creator: null, models: [], modelId: null, creatorDropdown, modelDropdown };
+  side = { creators, creator: null, models: [], modelId: null, creatorDropdown, modelDropdown, randomId: `${idPrefix}-random` };
   pickCreator(side, defaultCreator);
   const i = side.models.findIndex((m) => m.id === defaultModelId);
   if (i >= 0) modelDropdown.pick(i);
@@ -276,6 +300,20 @@ export function pokerPreviewSeats(): PokerSeatView[] {
 const TITLE_FG: RGB = [222, 224, 234];
 const HERO_FG: RGB = [224, 226, 236];
 const SLOW_FG: RGB = [210, 168, 90]; // amber hint for slow-but-working models
+const RANDOM_HOVER_FG: RGB = [255, 255, 255]; // "↻ random" brightens on hover/focus
+
+// A muted "↻ random" affordance beside a seat's model picker — one click rerolls
+// the seat to a random creator+model, surfacing the breadth of the catalog. Rests
+// at 'muted' grey and brightens to white on hover/focus (the dialog-affordance
+// convention); no tooltip needed since the label says what it does.
+function randomBadge(side: AiSide): Node {
+  return Button({
+    id: side.randomId,
+    label: '↻ random',
+    onClick: () => randomizeSide(side),
+    style: { padding: [0, 0], color: 'muted', hover: { color: RANDOM_HOVER_FG }, focus: { color: RANDOM_HOVER_FG } },
+  });
+}
 
 // A dim "slow" hint shown beside a seat's model when it's a known-slow pick
 // (SLOW_MODELS) — it still plays, just takes a while (mostly poker). Node[] so it
@@ -317,6 +355,7 @@ function seatRow(side: AiSide, seatNo: number): Node {
     Box({ width: SEAT_LABEL_W }, [Text({ text: `seat ${seatNo}`, style: { color: brandTint(side), bold: true } })]),
     Slot(side.creatorDropdown.id),
     Slot(side.modelDropdown.id),
+    randomBadge(side),
     ...slowBadge(side.modelId),
   ]);
 }
