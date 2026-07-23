@@ -381,6 +381,7 @@ function catanSnapshot(): void {
   const scene = new TileScene();
   scene.setTerrain(terrain);
   if (args.includes('robber')) scene.setRobber(true);
+  if (args.includes('board')) scene.setMode('board');
   // `varN` selects procedural variant N (e.g. var2); `top` orbits toward top-down; a decimal
   // rotates the azimuth.
   const varArg = args.find((a) => /^var\d+$/.test(a));
@@ -388,7 +389,18 @@ function catanSnapshot(): void {
   if (args.includes('top')) scene.orbit(0, 34);
   if (spinTo) scene.orbit(-spinTo * 120, 0);
   const target = new RenderTarget(cols * SS, rows * 2 * SS);
-  scene.renderScene(target, 0);
+  // `anim<seconds>` (board mode) plays the placement fly-in and captures that instant by
+  // stepping frames at 60fps; otherwise a board snapshot settles straight to the finished
+  // layout.
+  const animArg = args.find((a) => /^anim[\d.]+$/.test(a));
+  if (args.includes('board') && animArg) {
+    scene.reroll();
+    const frames = Math.max(1, Math.round(Number(animArg.slice(4)) * 60));
+    for (let f = 1; f <= frames; f++) scene.renderScene(target, f / 60);
+  } else {
+    if (args.includes('board')) scene.settle();
+    scene.renderScene(target, 0);
+  }
 
   if (args.includes('hud')) {
     const screen = new Screen(cols, rows);

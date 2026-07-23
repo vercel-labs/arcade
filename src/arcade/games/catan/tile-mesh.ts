@@ -137,6 +137,10 @@ function rimAndWall(m: Build, fieldColor: RGB): void {
     faceQuad(m, Ri[i], Ri[j], O[j], O[i], FRAME_TOP, UP); // flat rim ledge
     faceQuad(m, O[i], O[j], Ob[j], Ob[i], FRAME_SIDE, radial); // short outer wall
   }
+  // Closed underside — only ever seen when a tile is flipped face-down during the board's
+  // placement animation; keeps the stack/flip looking solid rather than hollow.
+  const cb = v(0, -WALL, 0);
+  for (let i = 0; i < 6; i++) faceTri(m, cb, Ob[(i + 1) % 6], Ob[i], FRAME_SIDE, DOWN);
 }
 
 // Flat-shaded low-poly terrain over the hex: a coarse triangulation whose INTERIOR vertices
@@ -1102,6 +1106,21 @@ const BUILDERS: Record<Terrain, (seed: number) => Build> = {
 const cache = new Map<string, Mesh>();
 // `robberOn` bakes the robber (seated on the tile's centre surface) into the returned mesh —
 // the robber is available on every terrain and toggled from the HUD, never part of the tile.
+let backMesh: Mesh | null = null;
+// A blank tile back — a flat hex top on the same rim/wall — shown while a tile is face-down
+// during the board's placement animation, before it flips to reveal its terrain.
+export function tileBackMesh(): Mesh {
+  if (backMesh) return backMesh;
+  const m = build();
+  const BACK: RGB = [206, 186, 150];
+  const V = hexCorners(R_RIM, EDGE_Y);
+  const c = v(0, EDGE_Y, 0);
+  for (let i = 0; i < 6; i++) faceTri(m, c, V[i], V[(i + 1) % 6], BACK, UP);
+  rimAndWall(m, BACK);
+  backMesh = m;
+  return m;
+}
+
 export function tileMesh(terrain: Terrain, seed = 0, robberOn = false): Mesh {
   const key = `${terrain}:${seed}:${robberOn ? 1 : 0}`;
   let m = cache.get(key);

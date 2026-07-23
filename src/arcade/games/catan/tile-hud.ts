@@ -14,9 +14,11 @@ export interface CatanTileHandlers {
   onTerrain(t: Terrain): void;
   onReroll(): void;
   onToggleRobber(on: boolean): void;
+  onMode(mode: 'tile' | 'board'): void;
 }
 let H: CatanTileHandlers | null = null;
 let robberOn = false; // whether the robber is currently shown (toggled from the panel)
+let boardMode = false; // false = single-tile mode, true = full-board mode
 export function setCatanTileHandlers(h: CatanTileHandlers): void {
   H = h;
 }
@@ -50,19 +52,32 @@ const REROLL_BTN: Style = {
 // "vary" button (new procedural variant), a ☰ menu button (top-right), and the standard bar
 // beneath. `bar` is buildBar('catan-tiles', …) from main; `onOpenMenu` opens the game menu.
 export function buildCatanTileRoot(region: LayoutBox, bar: Node, onOpenMenu: () => void): Node {
-  const panel = Box({ flexDirection: 'column', gap: 1, padding: [1, 2], background: [16, 18, 26, 0.9] }, [
-    labeled('Tile', Slot('catan-terrain')),
-    Button({ id: 'catan-reroll', label: '⟳ vary', onClick: () => H?.onReroll(), style: REROLL_BTN }),
-    Button({
-      id: 'catan-robber',
-      label: robberOn ? '● robber: on' : '○ robber: off',
-      onClick: () => {
-        robberOn = !robberOn;
-        H?.onToggleRobber(robberOn);
-      },
-      style: REROLL_BTN,
-    }),
-  ]);
+  const modeBtn = Button({
+    id: 'catan-mode',
+    label: boardMode ? '⬡ board' : '▢ tile',
+    onClick: () => {
+      boardMode = !boardMode;
+      H?.onMode(boardMode ? 'board' : 'tile');
+    },
+    style: REROLL_BTN,
+  });
+  // Board mode: just a regenerate button. Tile mode: terrain picker + vary + robber toggle.
+  const controls: Node[] = boardMode
+    ? [Button({ id: 'catan-reroll', label: '⟳ regenerate', onClick: () => H?.onReroll(), style: REROLL_BTN })]
+    : [
+        labeled('Tile', Slot('catan-terrain')),
+        Button({ id: 'catan-reroll', label: '⟳ vary', onClick: () => H?.onReroll(), style: REROLL_BTN }),
+        Button({
+          id: 'catan-robber',
+          label: robberOn ? '● robber: on' : '○ robber: off',
+          onClick: () => {
+            robberOn = !robberOn;
+            H?.onToggleRobber(robberOn);
+          },
+          style: REROLL_BTN,
+        }),
+      ];
+  const panel = Box({ flexDirection: 'column', gap: 1, padding: [1, 2], background: [16, 18, 26, 0.9] }, [labeled('Mode', modeBtn), ...controls]);
   return Box({ width: region.w, height: region.h }, [
     Box({ width: region.w, height: region.h, flexDirection: 'column' }, [
       Box({ flexDirection: 'row', padding: [1, 0, 0, 2] }, [panel]),
