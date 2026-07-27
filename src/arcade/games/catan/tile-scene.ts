@@ -48,23 +48,45 @@ const STACK_POS = { x: -0.5, z: -5.0 }; // the face-down deck, behind the board 
 const STACK_THICK = 0.11; // vertical spacing of tiles in the deck
 const STACK_BASE_Y = 0.1;
 
+// Number-token reveal after the tiles land: every chip spins through random numbers, then
+// locks onto its real value ring-by-ring from the centre out (a slot-machine settle).
+const REVEAL_FLICKER = 0.07; // seconds each spinning value shows
+const REVEAL_BASE = 0.35; // when the centre hex locks
+const REVEAL_STEP = 0.2; // extra delay per ring outward
+const REVEAL_END = REVEAL_BASE + 2 * REVEAL_STEP + 0.05; // all settled (outer ring is 2)
+
 // Triggered by the HUD "roll" button: BIG dice appear over the board, tumble, land, the
 // matching chips light, then the dice vanish. Drawn on top of everything (depth cleared first)
 // and large, so the pips are unmistakable even in ASCII.
 type DicePhase = 'idle' | 'rolling' | 'hold';
-const DICE_ROLL_DUR = 1.1; // tumble
-const DICE_HOLD = 1.2; // linger on the landed result (while the chips light) before vanishing
-const DICE_HOP = 0.7; // bounce during the roll
-const DICE_EYE: Vec3 = { x: 0, y: 2.7, z: 4.7 };
-const DICE_TARGET: Vec3 = { x: 0, y: 0.35, z: 0 };
+const DICE_ROLL_DUR = 1.5; // fall + spin, spread out for a natural roll
+const DICE_HOLD = 1.7; // linger on the landed result (while the chips light) before vanishing
+const FALL_H = 5.5; // drop distance (screen-space units) — large enough to start fully above the window
+const DICE_STAGGER = 0.1; // the second die drops a beat after the first
+// A raised, ~45°-elevation eye: the result (top) face tilts toward the viewer (readable, not a
+// flat top-down plane) while the front faces keep the 3D form. The x is computed per-frame in
+// renderDice so the right die's edge lands near the box's right edge at any aspect (DIE_RIGHT).
+const DICE_EYE: Vec3 = { x: 0, y: 3.0, z: 2.5 };
+const DICE_TARGET: Vec3 = { x: 0, y: 1.0, z: 0 }; // aimed above the landing so the drop is visible, landing near the frame bottom
+const DIE_RIGHT = 0.65 + 0.5; // the right die's outer x (DICE_POS[1].x + half-size)
 const DICE_FOVY = (34 * Math.PI) / 180;
 const DICE_POS: Vec3[] = [
-  { x: -0.95, y: 0.5, z: 0 },
-  { x: 0.95, y: 0.5, z: 0 },
+  { x: -0.65, y: 0.5, z: 0 },
+  { x: 0.65, y: 0.5, z: 0 },
 ];
-// NDC box the dice render into — the right side, near the roll button (not centered).
-const DICE_BOX = { sx: 0.32, sy: 0.4, tx: 0.62, ty: -0.12 };
+// NDC box the dice render into — right-aligned with (and directly above) the roll button in
+// the bottom-right. Tall enough for the more front-on framing without squashing the pair.
+const DICE_BOX = { sx: 0.26, sy: 0.34, tx: 0.72, ty: -0.52 };
 const easeOut = (t: number): number => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
+// Standard bounce-out (0→1 with settling bounces) — drives the dice's drop + landing bounce.
+function bounceOut(x: number): number {
+  const n = 7.5625;
+  const d = 2.75;
+  if (x < 1 / d) return n * x * x;
+  if (x < 2 / d) return n * (x -= 1.5 / d) * x + 0.75;
+  if (x < 2.5 / d) return n * (x -= 2.25 / d) * x + 0.9375;
+  return n * (x -= 2.625 / d) * x + 0.984375;
+}
 // (ax, az) that, applied as rotZ(az)·rotX(ax), bring each face value to the top.
 function faceAngles(val: number): { ax: number; az: number } {
   switch (val) {
@@ -142,6 +164,9 @@ export class TileScene {
   private placing = false; // a placement animation is in flight
   private placeClock = 0; // seconds since the animation began
   private lastT = -1; // previous frame time, for dt
+  private revealing = false; // the number-token slot-settle is playing
+  private revealClock = 0;
+  private revealLastT = -1;
   private tokensDirty = false; // force one composite when the tokens (re)appear after placing
   private dice: [Die, Die] = [{ val: 1, spinsX: 0, spinsZ: 0 }, { val: 1, spinsX: 0, spinsZ: 0 }];
   private dicePhase: DicePhase = 'idle';
@@ -152,7 +177,7 @@ export class TileScene {
 
   constructor() {
     this.camTile = new OrbitCamera({ azimuth: 0.62, elevation: 0.62, distance: 2.7, target: { x: 0, y: 0.02, z: 0 } }, 1.6, 6);
-    this.camBoard = new OrbitCamera({ azimuth: 0.62, elevation: 0.82, distance: 11.5, target: { x: 0, y: 0.1, z: -0.8 } }, 2, 24);
+    this.camBoard = new OrbitCamera({ azimuth: 0.62, elevation: 0.82, distance: 11.5, target: { x: 0.42, y: -0.58, z: -0.2 } }, 2, 24);
   }
   private cam(): OrbitCamera {
     return this.modeName === 'board' ? this.camBoard : this.camTile;
@@ -186,6 +211,8 @@ export class TileScene {
     this.placing = animate;
     this.placeClock = 0;
     this.lastT = -1;
+    this.revealing = false; // reset any in-progress token reveal for the new board
+    this.rolledSum = null; // clear a stale dice highlight from the previous board
     this.dirty = true;
   }
   // Snap any in-progress placement to done (used for static snapshots).
@@ -256,7 +283,7 @@ export class TileScene {
   // On-demand: re-render after a camera/scene change, every frame while placing, and once more
   // when the animation ends so the tokens get composited.
   needsRender(): boolean {
-    return this.dirty || this.placing || this.tokensDirty || this.dicePhase !== 'idle';
+    return this.dirty || this.placing || this.revealing || this.tokensDirty || this.dicePhase !== 'idle';
   }
 
   // The number tokens to overlay right now: one per non-desert hex, projected to the screen
@@ -267,6 +294,7 @@ export class TileScene {
     const cam = this.camBoard;
     const camera: Camera = { eye: cam.eye(), target: cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 100 };
     const vp = cameraMatrices(camera, cols / (rows * 2)).viewProjection; // aspect matches the render target
+    const spinStep = Math.floor(this.revealClock / REVEAL_FLICKER);
     const out: BoardToken[] = [];
     for (let h = 0; h < NUM_HEXES; h++) {
       const cell = this.board.hexes[h];
@@ -275,12 +303,16 @@ export class TileScene {
       const { x, z } = hexWorld(q, r);
       const c = mat4MulVec4(vp, { x, y: 0.14, z, w: 1 });
       if (c.w <= 0) continue;
+      // During the reveal each chip spins until its ring's settle time, then shows the real
+      // value (centre ring settles first).
+      const settled = !this.revealing || this.revealClock >= REVEAL_BASE + hexRing(q, r) * REVEAL_STEP;
+      const num = settled ? cell.token : 2 + ((spinStep * 7 + h * 5) % 11);
       out.push({
         col: Math.round(((c.x / c.w) * 0.5 + 0.5) * cols),
         row: Math.round((1 - ((c.y / c.w) * 0.5 + 0.5)) * rows),
-        num: cell.token,
-        red: RED_NUMBERS.includes(cell.token),
-        hot: this.rolledSum !== null && cell.token === this.rolledSum,
+        num,
+        red: settled && RED_NUMBERS.includes(num),
+        hot: settled && this.rolledSum !== null && num === this.rolledSum,
       });
     }
     return out;
@@ -310,8 +342,16 @@ export class TileScene {
       this.lastT = t;
       if (this.placeClock > (NUM_HEXES - 1) * PLACE_STEP + PLACE_FLY) {
         this.placing = false;
-        this.tokensDirty = true; // draw one more frame so the tokens appear
+        this.revealing = true; // hand off to the number-token slot-settle
+        this.revealClock = 0;
+        this.revealLastT = -1;
       }
+    }
+    if (this.revealing) {
+      if (this.revealLastT < 0) this.revealLastT = t;
+      this.revealClock += Math.max(0, t - this.revealLastT);
+      this.revealLastT = t;
+      if (this.revealClock >= REVEAL_END) this.revealing = false;
     }
     for (let oi = 0; oi < NUM_HEXES; oi++) {
       const hex = this.order[oi];
@@ -349,7 +389,7 @@ export class TileScene {
       if (this.rollLastT < 0) this.rollLastT = t;
       this.rollClock += Math.max(0, t - this.rollLastT);
       this.rollLastT = t;
-      if (this.dicePhase === 'rolling' && this.rollClock >= DICE_ROLL_DUR) {
+      if (this.dicePhase === 'rolling' && this.rollClock >= DICE_ROLL_DUR + DICE_STAGGER) {
         this.dicePhase = 'hold';
         this.rolledSum = this.dice[0].val + this.dice[1].val;
         this.tokensDirty = true; // light the matching chips on the next composite
@@ -361,19 +401,35 @@ export class TileScene {
     if (this.dicePhase === 'idle') return;
 
     target.depth.fill(Infinity); // draw the dice over everything already rendered
-    const cam: Camera = { eye: DICE_EYE, target: DICE_TARGET, up: { x: 0, y: 1, z: 0 }, fovy: DICE_FOVY, near: 0.05, far: 100 };
     const aspect = (DICE_BOX.sx / DICE_BOX.sy) * (target.width / target.height); // keep the dice undistorted in the box
+    // Shift the eye left so the right die's outer edge maps to the box's right edge (~flush) —
+    // computed from the frame's half-width at the dice plane, so it holds at any aspect.
+    const dist = Math.hypot(DICE_EYE.y - DICE_TARGET.y, DICE_EYE.z - DICE_TARGET.z);
+    const halfW = dist * Math.tan(DICE_FOVY / 2) * aspect;
+    const camX = DIE_RIGHT - halfW * 0.82; // <1 leaves right-edge margin so the tumbling corners never clip
+    const cam: Camera = { eye: { x: camX, y: DICE_EYE.y, z: DICE_EYE.z }, target: { x: camX, y: DICE_TARGET.y, z: DICE_TARGET.z }, up: { x: 0, y: 1, z: 0 }, fovy: DICE_FOVY, near: 0.05, far: 100 };
     const vp = mat4Multiply(diceViewport(), cameraMatrices(cam, aspect).viewProjection);
     const rolling = this.dicePhase === 'rolling';
-    const e = rolling ? easeOut(this.rollClock / DICE_ROLL_DUR) : 1;
-    const hop = rolling ? Math.sin(Math.PI * (this.rollClock / DICE_ROLL_DUR)) * DICE_HOP : 0;
+    // The camera's screen-vertical axis in world space (perpendicular to the view direction) —
+    // dropping the dice ALONG this keeps their depth, and therefore their SIZE, constant as they
+    // fall (rather than growing/shrinking like a straight world-Y drop under a tilted camera).
+    const fY = DICE_TARGET.y - DICE_EYE.y;
+    const fZ = DICE_TARGET.z - DICE_EYE.z;
+    const fMag = Math.hypot(fY, fZ) || 1;
+    const upY = -fZ / fMag;
+    const upZ = fY / fMag;
     for (let i = 0; i < 2; i++) {
       const d = this.dice[i];
+      // Per-die drop: its own (staggered) progress, a bounce-out fall from FALL_H, and a spin
+      // that settles onto the result face by the time it lands.
+      const pd = rolling ? Math.min(1, Math.max(0, (this.rollClock - i * DICE_STAGGER) / DICE_ROLL_DUR)) : 1;
+      const spinE = easeOut(Math.min(1, pd / 0.55));
+      const drop = rolling ? FALL_H * (1 - bounceOut(pd)) : 0;
       const a = faceAngles(d.val);
-      const ax = (a.ax + d.spinsX * 2 * Math.PI) * e;
-      const az = (a.az + d.spinsZ * 2 * Math.PI) * e;
+      const ax = (a.ax + d.spinsX * 2 * Math.PI) * spinE;
+      const az = (a.az + d.spinsZ * 2 * Math.PI) * spinE;
       const p = DICE_POS[i];
-      const model = mat4Multiply(mat4Translate(p.x, p.y + hop, p.z), mat4Multiply(mat4RotZ(az), mat4RotX(ax)));
+      const model = mat4Multiply(mat4Translate(p.x, p.y + upY * drop, p.z + upZ * drop), mat4Multiply(mat4RotZ(az), mat4RotX(ax)));
       rasterize(target, dieMesh(), lambertMaterial, { mvp: mat4Multiply(vp, model), model, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
     }
   }

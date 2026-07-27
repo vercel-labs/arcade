@@ -102,7 +102,8 @@ export function buildCatanTileRoot(region: LayoutBox, bar: Node, onOpenMenu: () 
       Box({ height: 1 }),
     ]),
     Box({ position: 'absolute', top: 1, right: 2 }, [Button({ id: 'catan-menu-button', label: '☰ menu', onClick: onOpenMenu, style: UI_CHROME_PILL })]),
-    // Board mode: a roll button tucked into the very bottom-right corner; triggers the dice.
-    ...(boardMode ? [Box({ position: 'absolute', bottom: 0, right: 1 }, [Button({ id: 'catan-roll', label: '⚄ roll dice', onClick: () => H?.onRollDice(), style: REROLL_BTN })])] : []),
+    // Board mode: a roll button in the bottom-right; triggers the big dice overlay. Same
+    // margin from the right as the ☰ menu button, same from the bottom as the bottom bar.
+    ...(boardMode ? [Box({ position: 'absolute', bottom: 1, right: 2 }, [Button({ id: 'catan-roll', label: 'roll dice', onClick: () => H?.onRollDice(), style: REROLL_BTN })])] : []),
   ]);
 }

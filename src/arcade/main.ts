@@ -1083,6 +1083,8 @@ function enterCatanTiles(): void {
   draggingCamera = false;
   mountCatanTileHud(ui);
   tileScene.setTerrain(catanTileTerrain()); // match the scene to the HUD's committed tile
+  tileScene.setMode('board'); // default to the full board
+  tileScene.reroll(); // play the tile-placement + number reveal on entry
   fullRepaint();
 }
 
