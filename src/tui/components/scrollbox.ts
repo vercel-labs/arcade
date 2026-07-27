@@ -45,6 +45,12 @@ export class ScrollBox implements Component {
     this.height = opts.height;
   }
 
+  // Resize the viewport (e.g. to fill the available screen height). Clamps the
+  // current scroll into the new range on the next build.
+  setHeight(height: number): void {
+    this.height = Math.max(1, Math.floor(height));
+  }
+
   // Rows actually shown: the full list until it reaches the cap (autoHeight), then
   // the cap. Fixed mode always shows `height` rows (the classic viewport).
   private visibleHeight(): number {

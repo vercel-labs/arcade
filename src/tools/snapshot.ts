@@ -17,6 +17,9 @@ import { MENU_ITEMS } from '../arcade/shell/menu.ts';
 import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, mouseControlsFor, type Mode } from '../arcade/shell/bars.ts';
 import { installKeymap } from '../arcade/shell/keybindings.ts';
 import { buildShowcase, mountShowcase } from '../arcade/scenes/ui-showcase.ts';
+import { activeWispCreators, buildLeaderboard, mountLeaderboard, setGame, setLeaderboardData, setMetric } from '../arcade/leaderboard/view.ts';
+import { LeaderboardScene } from '../arcade/leaderboard/scene.ts';
+import { dummyLeaderboardData } from '../arcade/leaderboard/data.ts';
 import { buildChessGameRoot, chessMoveChat, mountChessHud, refreshMoveHistory } from '../arcade/games/chess/hud.ts';
 import { CHAT_WIDTH, type ChatMessage, clearChat, pushChatMessage } from '../arcade/games/chess/chat.ts';
 import { insetRightSceneViewport } from '../arcade/scene-viewport.ts';
@@ -297,6 +300,7 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot overlay [chess-game|prism] [cols] [rows] [out]   bar over a scene
   pnpm snapshot unified [prism|chess|chess-game|logos] [cols] [rows] [out]   unified compositing path
   pnpm snapshot showcase [cols] [rows] [focus=<id>] [query=<text>] [blur] [out]   the UI component playground
+  pnpm snapshot leaderboard [cols] [rows] [chess|poker] [winrate|headtohead|activity] [out]   the model leaderboard (dummy data)
   pnpm snapshot modal [cols] [rows] [out]          promotion modal over chess
   pnpm snapshot chess-overlay [cols] [rows] [min|empty|illegal|short] [eval] [chat] [menu] [out]   match HUD + moves panel (menu → ☰ popup)
   pnpm snapshot setup [cols] [rows] [out] [open|models|thinking]   AI match setup modal
@@ -336,6 +340,8 @@ if (process.argv[2] === 'help' || process.argv[2] === '--help' || process.argv[2
   confirmQuitSnapshot();
 } else if (process.argv[2] === 'shortcuts') {
   shortcutsSnapshot();
+} else if (process.argv[2] === 'leaderboard') {
+  leaderboardSnapshot();
 } else if (process.argv[2] === 'showcase') {
   showcaseSnapshot();
 } else if (process.argv[2] === 'chess-overlay') {
@@ -1050,6 +1056,28 @@ function splashSnapshot(): void {
 // The 'ui' component playground composited over the chess scene via the real
 // Screen (so Slots expand to their live components). `focus=<id>` focuses one
 // component so its focused styling (caret/highlight/thumb) shows.
+function leaderboardSnapshot(): void {
+  const args = process.argv.slice(3);
+  const cols = Number(args[0]) || 120;
+  const rows = Number(args[1]) || 40;
+  const out = args.find((a) => a.endsWith('.ppm')) ?? '.snapshots/leaderboard.ppm';
+  const SS = 3;
+
+  const target = new RenderTarget(cols * SS, rows * 2 * SS);
+  const screen = new Screen(cols, rows);
+  mountLeaderboard(screen);
+  setLeaderboardData(dummyLeaderboardData());
+  setMetric(args.includes('headtohead') ? 'headtohead' : args.includes('activity') ? 'activity' : 'winrate');
+  setGame(args.includes('poker') ? 'poker' : 'chess');
+  const scene = new LeaderboardScene();
+  scene.setCreators(activeWispCreators());
+  scene.renderScene(target, 0.7);
+  const region = { x: 0, y: 0, w: cols, h: rows };
+  screen.setRoot(buildLeaderboard(region, () => {}), region);
+  const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
+  surfaceToPpm(surf, cols, rows, out);
+}
+
 function showcaseSnapshot(): void {
   const args = process.argv.slice(3);
   const cols = Number(args[0]) || 110;

@@ -8,7 +8,7 @@ import { BISHOP, BLACK, type Color, KNIGHT, type PieceType, QUEEN, ROOK } from '
 import type { RGB } from '../../engine/index.ts';
 import { UI_CHROME_BG } from '../theme.ts';
 
-export type Mode = 'prism' | 'menu' | 'chess-game' | 'logos' | 'ui' | 'audio' | 'cards' | 'poker';
+export type Mode = 'prism' | 'menu' | 'chess-game' | 'logos' | 'ui' | 'audio' | 'cards' | 'poker' | 'leaderboard';
 export type RenderMode = 'ascii' | 'pixels';
 
 export interface BarActions {
@@ -63,6 +63,12 @@ export function buildBar(
     buttons = [
       Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
       Button({ id: 'mode', label: displayLabel(renderMode), onClick: a.mode, style: PILL }),
+      Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
+    ];
+  } else if (mode === 'leaderboard') {
+    // A data screen (no camera / display toggle): just nav + quit.
+    buttons = [
+      Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
       Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
     ];
   } else if (mode === 'logos') {
@@ -359,7 +365,7 @@ function prettyChord(k: string): string {
 // The mouse controls documented in the controls overlay, per screen. Orbit screens
 // share drag/pan/zoom; the menu browses covers + launches; chess adds click-to-select/
 // move on top of orbit. Screens absent here (e.g. the prism) have no mouse row.
-const ORBIT_MODES: Mode[] = ['chess-game', 'poker', 'logos', 'audio', 'cards', 'ui'];
+const ORBIT_MODES: Mode[] = ['chess-game', 'poker', 'logos', 'audio', 'cards', 'ui', 'leaderboard'];
 export function mouseControlsFor(mode: Mode): { keys: string; label: string }[] {
   if (mode === 'menu') return [{ keys: 'scroll', label: 'prev / next' }, { keys: 'click', label: 'launch' }];
   const rows: { keys: string; label: string }[] = [];

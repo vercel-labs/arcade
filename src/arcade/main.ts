@@ -28,13 +28,16 @@ import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/i
 import { detectTerminalColorMode } from '../platform/terminal-color-detection.ts';
 import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, buildUpdateModal, mouseControlsFor, type BarActions, type MenuItem, type Mode, type RenderMode } from './shell/bars.ts';
 import { buildShowcase, mountShowcase } from './scenes/ui-showcase.ts';
+import { activeWispCreators, buildLeaderboard, mountLeaderboard, setGame as lbSetGame, setLeaderboardData, setMetric as lbSetMetric } from './leaderboard/view.ts';
+import { dummyLeaderboardData } from './leaderboard/data.ts';
+import { LeaderboardScene } from './leaderboard/scene.ts';
 import { buildChessGameRoot, chessMoveChat, type Commentary, type MatchSide, mountChessHud, movesToPgn, refreshMoveHistory, shortModel } from './games/chess/hud.ts';
 import { creatorTint } from './scenes/wisp.ts';
 import { CHAT_WIDTH, clearChat, pushChatMessage } from './games/chess/chat.ts';
 import { insetRightSceneViewport, pointerNdcInSceneViewport } from './scene-viewport.ts';
 import { buildMatchSetup, buildSwapSetup, chessPreviewSides, matchSetupSelection, mountMatchSetup, mountSwapSetup, openSwapSetup, setMatchSetupChanged, swapSetupSelection } from './match/setup.ts';
 import { copyToClipboard } from '../platform/clipboard.ts';
-import { checkForUpdate, refreshLatestInBackground, type UpdateInfo } from './update.ts';
+import { checkForUpdate, packageInfo, refreshLatestInBackground, type UpdateInfo } from './update.ts';
 import { BLACK, type Color, WHITE } from '../rules/chess/types.ts';
 import { evaluate } from '../rules/chess/eval.ts';
 import type { ChessResult } from '../rules/chess/chess.ts';
@@ -93,6 +96,7 @@ const logosScene = new LogosScene();
 const audioScene = new AudioScene();
 const cardsScene = new CardsScene();
 const pokerScene = new PokerGameScene();
+const leaderboardScene = new LeaderboardScene();
 // Game events (new hand, flop/turn/river, who won) go into the table-talk thread as grey
 // lines. Betting actions are NOT here — those live on the bottom-left seat strips.
 pokerScene.setEventSink((text) => pushPokerChat({ text, model: '', event: true }));
@@ -124,12 +128,13 @@ function orbitScene(): ChessGameScene | null {
 // is camera-controllable too, so dragging on the scene behind the panel rotates
 // it.) `orbitScene()` stays null for 'ui' so the tick uses the dedicated 'ui'
 // branch, which always recomposites for live component edits.
-function activeOrbit(): ChessGameScene | LogosScene | AudioScene | CardsScene | PokerGameScene | null {
+function activeOrbit(): ChessGameScene | LogosScene | AudioScene | CardsScene | PokerGameScene | LeaderboardScene | null {
   if (mode === 'logos') return logosScene;
   if (mode === 'audio') return audioScene;
   if (mode === 'cards') return cardsScene;
   if (mode === 'poker') return pokerScene;
   if (mode === 'ui') return chessGame;
+  if (mode === 'leaderboard') return leaderboardScene;
   return orbitScene();
 }
 
@@ -1213,6 +1218,7 @@ function enterGame(id: string): void {
   else if (id === 'poker') enterPoker();
   else if (id === 'poker-test') enterCards();
   else if (id === 'ui') enterUi();
+  else if (id === 'leaderboard') enterLeaderboard();
 }
 
 // Step the Cover Flow selection by ±1 (clamped). The carousel eases to it in tick.
@@ -1259,6 +1265,31 @@ function enterUi(): void {
   fullRepaint();
 }
 
+// The model leaderboard. Dummy data for now (deterministic); a live provider that
+// fetches the proxy's read endpoint drops in behind setLeaderboardData later.
+// Reuses the 'ui' render/input path (the panel composited over a chess backdrop);
+// entering focuses the ranked table so ↑/↓ scroll it immediately.
+function enterLeaderboard(): void {
+  stopAiMatch();
+  mode = 'leaderboard';
+  mountLeaderboard(ui);
+  setLeaderboardData(dummyLeaderboardData());
+  lbSetMetric('winrate');
+  lbSetGame('chess');
+  ui.setFocus('lb-winlist');
+  fullRepaint();
+}
+
+let leaderboardMenuOpen = false;
+function openLeaderboardMenu(): void {
+  leaderboardMenuOpen = true;
+  fullRepaint();
+}
+function closeLeaderboardMenu(): void {
+  leaderboardMenuOpen = false;
+  fullRepaint();
+}
+
 // Bar button actions, wired to the screen-transition functions above. buildBar
 // closes each Button's onClick over these, so clicks and Enter dispatch the same
 // way the old onMouse id→action branch did.
@@ -1293,6 +1324,9 @@ const keymap = installKeymap({
   audioCycleModel: () => audioScene.cycleModel(),
   enterChessGame,
   enterUi,
+  enterLeaderboard,
+  openLeaderboardMenu,
+  closeLeaderboardMenu,
   activeOrbit,
   cancelPromotion,
   aiButton,
@@ -1372,6 +1406,7 @@ function syncBar(): void {
   if (mode !== 'poker') pokerMenuOpen = false; // the in-game menu only lives in the poker view
   if (mode !== 'poker') pokerNotesOpen = false; // ditto for the notes modal
   if (mode !== 'chess-game') chessMenuOpen = false; // ditto for the chess menu
+  if (mode !== 'leaderboard') leaderboardMenuOpen = false;
   if (mode !== 'chess-game' && mode !== 'poker') confirmHomeOpen = false; // the confirm only lives in a game
   if (mode !== 'menu') {
     homeMenuOpen = false;
@@ -1384,6 +1419,7 @@ function syncBar(): void {
   if (!pokerNotesOpen && keymap.hasContext('poker-notes')) keymap.popContext('poker-notes');
   if (!pokerNotesOpen) pokerNotesFocused = false; // re-focus the scroll body on the next open
   if (!chessMenuOpen && keymap.hasContext('chess-menu')) keymap.popContext('chess-menu');
+  if (!leaderboardMenuOpen && keymap.hasContext('leaderboard-menu')) keymap.popContext('leaderboard-menu');
   if (!confirmHomeOpen && keymap.hasContext('confirm-home')) keymap.popContext('confirm-home');
   if (!confirmHomeOpen) confirmHomeFocused = false; // re-focus "Return home" on the next open
   if (!shortcutsOpen && keymap.hasContext('shortcuts')) keymap.popContext('shortcuts');
@@ -1601,6 +1637,27 @@ function syncBar(): void {
       w: cols,
       h: rows,
     });
+  } else if (mode === 'leaderboard') {
+    popGameOver();
+    popSetup();
+    popSwap();
+    if (leaderboardMenuOpen) {
+      // The leaderboard's ☰ menu popup (home / controls / account / telemetry / quit).
+      if (!keymap.hasContext('leaderboard-menu')) keymap.pushContext('leaderboard-menu', true);
+      const groups: MenuItem[][] = [
+        [{ id: 'lb-menu-home', label: 'home', onClick: enterMenu }],
+        [
+          { id: 'lb-menu-controls', label: 'controls', onClick: openShortcuts },
+          { id: 'lb-menu-account', label: 'account', onClick: openTeamSwitch },
+          { id: 'lb-menu-telemetry', label: 'telemetry', value: isTelemetryEnabled() ? 'on' : 'off', onClick: toggleTelemetry },
+        ],
+        [{ id: 'lb-menu-quit', label: 'quit', onClick: openConfirmQuit }],
+      ];
+      ui.setRoot(buildGameMenu({ groups, onClose: closeLeaderboardMenu, valueColW: MENU_VALUE_W }), { x: 0, y: 0, w: cols, h: rows });
+    } else {
+      if (keymap.hasContext('leaderboard-menu')) keymap.popContext('leaderboard-menu');
+      ui.setRoot(buildLeaderboard({ x: 0, y: 0, w: cols, h: rows }, openLeaderboardMenu), { x: 0, y: 0, w: cols, h: rows });
+    }
   } else if (chessMenuOpen) {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     popGameOver();
@@ -2185,6 +2242,20 @@ function tick(dt: number): void {
     return;
   }
 
+  if (mode === 'leaderboard') {
+    // The leaderboard's own wisp backdrop (creator wisps on the right, decided by
+    // activeWispCreators); the data panels composite over the left. The wisps
+    // animate, so always recomposite and keep the loop alive.
+    syncBar();
+    leaderboardScene.setCreators(activeWispCreators());
+    leaderboardScene.renderScene(target, t);
+    if (UNIFIED) writeFrame(ui.frameComposited((s) => presentSceneInto(s, false, true), true));
+    else writeFrame(presentScene(false, true) + ui.frame());
+    forceFrame = false;
+    r.requestRender();
+    return;
+  }
+
   if (mode === 'ui') {
     // The component playground sits over the chess board, which is itself
     // camera-controllable (drag to orbit, scroll to zoom, arrows to pan when no
@@ -2294,6 +2365,32 @@ process.stdout.on('resize', () => {
 // flow runs BEFORE term.enter(); once resolved, model/voice calls read the
 // process-local AI_GATEWAY_API_KEY minted for Arcade.
 const argv = process.argv.slice(2);
+// `--version` / `--help` run before any side effect (no auth, network, or alt-screen)
+// and exit, so they stay fast and scriptable — the standard CLI convention.
+if (argv.includes('--version') || argv.includes('-v')) {
+  console.log(packageInfo().version);
+  process.exit(0);
+}
+if (argv.includes('--help') || argv.includes('-h')) {
+  const { name, version, description } = packageInfo();
+  console.log(
+    [
+      `${name} ${version}`,
+      description,
+      '',
+      'Usage: arcade [options]',
+      '       arcade telemetry [status|enable|disable]',
+      '',
+      'Options:',
+      '  --login          re-run the Vercel sign-in device flow',
+      '  --switch-team    pick a different team for the AI Gateway key',
+      '  --logout         sign out of Vercel',
+      '  -v, --version    print the version and exit',
+      '  -h, --help       print this help and exit',
+    ].join('\n'),
+  );
+  process.exit(0);
+}
 if (argv.includes('--logout')) {
   const was = signOutVercel();
   console.log(was ? 'Signed out of Vercel.' : 'Not signed in.');
