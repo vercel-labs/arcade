@@ -24,12 +24,21 @@ const ROUTES = [
   { path: 'v1/events', entry: 'api/v1/events.ts' },
   { path: 'v1/matches', entry: 'api/v1/matches.ts' },
   { path: 'v1/poker-hands', entry: 'api/v1/poker-hands.ts' },
+  { path: 'index', entry: 'api/index.ts' }, // browser/curl landing page — the fallback below routes here
 ];
 
 mkdirSync(outDir, { recursive: true });
 writeFileSync(
   join(outDir, 'config.json'),
-  JSON.stringify({ version: 3, routes: ROUTES.map((r) => ({ src: `/${r.path}`, dest: `/${r.path}` })) }, null, 2) + '\n',
+  // Exact ingest routes first; a catch-all sends `/` and any other path to the landing page.
+  JSON.stringify(
+    {
+      version: 3,
+      routes: [...ROUTES.filter((r) => r.path !== 'index').map((r) => ({ src: `/${r.path}`, dest: `/${r.path}` })), { src: '/(.*)', dest: '/index' }],
+    },
+    null,
+    2,
+  ) + '\n',
 );
 
 const sleepSync = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -65,4 +74,4 @@ for (const r of ROUTES) {
   }
 }
 
-console.log('\n✓ wrote .vercel/output for arcade-telemetry (3 functions)');
+console.log(`\n✓ wrote .vercel/output for arcade-telemetry (${ROUTES.length} functions)`);
