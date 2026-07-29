@@ -1670,6 +1670,10 @@ function syncBar(): void {
     popGameOver();
     popSetup();
     popSwap();
+    // Re-mount every frame: switching metric (or opening the ☰ menu) drops the win-rate
+    // Slots from the tree, so the Screen auto-unmounts winList/creatorDrop — without this
+    // they'd be gone when win-rate comes back. mount() is idempotent (mirrors mountSwapSetup).
+    mountLeaderboard(ui);
     if (leaderboardMenuOpen) {
       // The leaderboard's ☰ menu popup (home / controls / account / telemetry / quit).
       if (!keymap.hasContext('leaderboard-menu')) keymap.pushContext('leaderboard-menu', true);
