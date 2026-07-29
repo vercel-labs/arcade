@@ -2,6 +2,7 @@
   "name": "@vercel/arcade",
   "version": "0.1.2",
   "type": "module",
+  "packageManager": "pnpm@10.34.5",
   "description": "Terminal-rendered ASCII arcade \u2014 3D games in the terminal, powered by Vercel AI Gateway",
   "engines": {
     "node": ">=20"
