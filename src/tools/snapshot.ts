@@ -17,12 +17,12 @@ import { MENU_ITEMS } from '../arcade/shell/menu.ts';
 import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, mouseControlsFor, type Mode } from '../arcade/shell/bars.ts';
 import { installKeymap } from '../arcade/shell/keybindings.ts';
 import { buildShowcase, mountShowcase } from '../arcade/scenes/ui-showcase.ts';
-import { activeWispCreators, buildLeaderboard, mountLeaderboard, setGame, setLeaderboardData, setMetric } from '../arcade/leaderboard/view.ts';
+import { activeWispCreators, buildLeaderboard, leaderboardSceneReserve, mountLeaderboard, setGame, setLeaderboardData, setMetric } from '../arcade/leaderboard/view.ts';
 import { LeaderboardScene } from '../arcade/leaderboard/scene.ts';
 import { dummyLeaderboardData } from '../arcade/leaderboard/data.ts';
 import { buildChessGameRoot, chessMoveChat, mountChessHud, refreshMoveHistory } from '../arcade/games/chess/hud.ts';
 import { CHAT_WIDTH, type ChatMessage, clearChat, pushChatMessage } from '../arcade/games/chess/chat.ts';
-import { insetRightSceneViewport } from '../arcade/scene-viewport.ts';
+import { insetLeftSceneViewport, insetRightSceneViewport } from '../arcade/scene-viewport.ts';
 import { evaluate } from '../rules/chess/eval.ts';
 import { buildMatchSetup, chessPreviewSides, mountMatchSetup } from '../arcade/match/setup.ts';
 import { creators } from '../arcade/match/models.ts';
@@ -1063,18 +1063,22 @@ function leaderboardSnapshot(): void {
   const out = args.find((a) => a.endsWith('.ppm')) ?? '.snapshots/leaderboard.ppm';
   const SS = 3;
 
-  const target = new RenderTarget(cols * SS, rows * 2 * SS);
   const screen = new Screen(cols, rows);
   mountLeaderboard(screen);
   setLeaderboardData(dummyLeaderboardData());
   setMetric(args.includes('headtohead') ? 'headtohead' : args.includes('activity') ? 'activity' : 'winrate');
   setGame(args.includes('poker') ? 'poker' : 'chess');
+  // Inset the scene to the region the panels don't cover — matches main.ts so the
+  // snapshot shows the same centered/rotatable framing the live app renders.
+  const { left, top } = leaderboardSceneReserve();
+  const vp = insetLeftSceneViewport(cols, rows, left, top);
+  const target = new RenderTarget(vp.w * SS, vp.h * 2 * SS);
   const scene = new LeaderboardScene();
   scene.setCreators(activeWispCreators());
   scene.renderScene(target, 0.7);
   const region = { x: 0, y: 0, w: cols, h: rows };
   screen.setRoot(buildLeaderboard(region, () => {}), region);
-  const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
+  const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, vp.w, vp.h, { color: true, hybrid: true }, vp.x, vp.y));
   surfaceToPpm(surf, cols, rows, out);
 }
 

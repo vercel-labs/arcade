@@ -1,18 +1,16 @@
-// The leaderboard's own wisp backdrop: 0, 1, or 2 creator wisps floating on the
-// RIGHT of the frame (the left is covered by the opaque data panels; the right
-// region of the overlay is transparent, so these show through). A fixed camera —
-// the leaderboard has no camera controls. Wisps are cached per creator and keep
-// breathing, so the scene reports dirty every frame like the audio/poker scenes.
+// The leaderboard's own wisp backdrop: 0, 1, or 2 creator wisps. The scene is inset to
+// the region the data panels DON'T cover (see activeSceneViewport / insetLeftSceneViewport),
+// so the wisps simply center in that frame — one in the middle, two split symmetrically —
+// and mouse-orbit pivots around the visible center rather than behind the panel. Wisps are
+// cached per creator and keep breathing, so the scene reports dirty every frame.
 
 import { type Camera, cameraMatrices, type RenderTarget } from '../../engine/index.ts';
 import { OrbitCamera } from '../orbit.ts';
 import { loadCreatorWisp, mulberry32, type Wisp } from '../scenes/wisp.ts';
 
 const FOVY = (50 * Math.PI) / 180;
-// World X that projects into the right region; two wisps sit side by side.
-const RIGHT_X = 1.6;
-const SIDE_X_A = 0.6;
-const SIDE_X_B = 1.95;
+// Two wisps split symmetrically about the frame center (world origin); one wisp centers.
+const SIDE_X = 0.95;
 
 export class LeaderboardScene {
   private cam = new OrbitCamera({ azimuth: 0.35, elevation: 0.1, distance: 4.8, target: { x: 0, y: 0, z: 0 } }, 2, 30);
@@ -41,10 +39,10 @@ export class LeaderboardScene {
     const { right, up } = this.cam.basis();
     const wisps = this.creators.map((c) => this.cache.get(c)).filter((w): w is Wisp => !!w);
     if (wisps.length === 1) {
-      wisps[0].renderWorld(target, vp, right, up, { x: RIGHT_X, y: 0, z: 0 }, W, H, t, dt, 1.4);
+      wisps[0].renderWorld(target, vp, right, up, { x: 0, y: 0, z: 0 }, W, H, t, dt, 1.4);
     } else if (wisps.length >= 2) {
-      wisps[0].renderWorld(target, vp, right, up, { x: SIDE_X_A, y: 0, z: 0 }, W, H, t, dt, 0.85);
-      wisps[1].renderWorld(target, vp, right, up, { x: SIDE_X_B, y: 0, z: 0 }, W, H, t, dt, 0.85);
+      wisps[0].renderWorld(target, vp, right, up, { x: -SIDE_X, y: 0, z: 0 }, W, H, t, dt, 0.85);
+      wisps[1].renderWorld(target, vp, right, up, { x: SIDE_X, y: 0, z: 0 }, W, H, t, dt, 0.85);
     }
   }
 

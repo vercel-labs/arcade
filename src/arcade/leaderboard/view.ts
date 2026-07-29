@@ -20,34 +20,42 @@ const BAD: RGB = [220, 110, 110];
 const CHESS_BLUE: RGB = [110, 140, 220];
 const POKER_GREEN: RGB = [120, 190, 120];
 const PANEL: [number, number, number, number] = [16, 18, 26, 0.96];
-const PLATE: [number, number, number, number] = [16, 18, 26, 0.72];
 const ALL = 'all creators';
+
+// Layout constants shared by the flex tree AND the 3D scene's viewport, so the wisp
+// backdrop is inset to exactly the region the opaque panels don't cover (mirrors how
+// chess reserves CHAT_WIDTH). Left reserve = root left pad + panel width + body gap.
+const ROOT_PAD_X = 3;
+const BODY_GAP = 2;
+const WINRATE_PANEL_W = 86;
+const H2H_CARD_W = 46;
+const TOP_RESERVE = 3; // top pad (1) + tab row (1) + column gap (1)
+
+// The cells the left panel + top tab bar cover for the active metric, so main.ts /
+// the snapshot can inset the LeaderboardScene into the uncovered region.
+export function leaderboardSceneReserve(): { left: number; top: number } {
+  if (metric === 'winrate') return { left: ROOT_PAD_X + WINRATE_PANEL_W + BODY_GAP, top: TOP_RESERVE };
+  if (metric === 'headtohead') return { left: ROOT_PAD_X + H2H_CARD_W + BODY_GAP, top: TOP_RESERVE };
+  return { left: 0, top: TOP_RESERVE }; // activity: no wisps
+}
 
 let metric: Metric = 'winrate';
 let game: LeaderGame = 'chess';
 let current: LeaderboardData | null = null;
-let screen: Screen | null = null;
+// Head-to-head's two compared model slugs — swapped ONLY by clicking a wisp, which
+// opens the shared chess/poker model-swap modal (see main.ts). No inline dropdown lives
+// in the 3D scene.
+let h2hA = '';
+let h2hB = '';
 
 const winList = new ScrollBox({ id: 'lb-winlist', width: 84, height: 20, rows: [] });
 const creatorDrop = new Dropdown({ id: 'lb-creator', items: [ALL], width: 22, rows: 12, searchable: true, searchPlaceholder: 'filter creator…', index: 0 });
-const modelA = new Dropdown({ id: 'lb-model-a', items: [], width: 30, rows: 8, searchable: true, searchPlaceholder: 'search model…' });
-const modelB = new Dropdown({ id: 'lb-model-b', items: [], width: 30, rows: 8, searchable: true, searchPlaceholder: 'search model…' });
 
 export function mountLeaderboard(ui: Screen): void {
-  screen = ui;
   ui.mount(winList);
   ui.mount(creatorDrop);
-  ui.mount(modelA);
-  ui.mount(modelB);
 }
 
-// Open + focus a head-to-head model dropdown — clicking a wisp's name-plate does
-// this, so you can change the compared model by wisp or by the dropdown itself.
-function openModelDropdown(which: 'a' | 'b'): void {
-  const d = which === 'a' ? modelA : modelB;
-  d.open = true;
-  screen?.setFocus(d.id);
-}
 export function setLeaderboardData(data: LeaderboardData): void {
   current = data;
   creatorDrop.setItems([ALL, ...leaderboardCreators().map((c) => c.slug)], 0);
@@ -62,10 +70,23 @@ export function setGame(g: LeaderGame): void {
   refillModels();
 }
 
+// Seed the two head-to-head slugs from the current game's catalog (first two).
 function refillModels(): void {
   const ms = current ? modelsForGame(current, game) : [];
-  modelA.setItems(ms, ms.length > 0 ? 0 : -1);
-  modelB.setItems(ms, ms.length > 1 ? 1 : -1);
+  h2hA = ms[0] ?? '';
+  h2hB = ms[1] ?? ms[0] ?? '';
+}
+
+// Head-to-head plumbing for main.ts's wisp-click → shared swap modal.
+export function leaderboardH2HActive(): boolean {
+  return metric === 'headtohead';
+}
+export function leaderboardH2HModel(which: 'a' | 'b'): string {
+  return which === 'a' ? h2hA : h2hB;
+}
+export function setLeaderboardH2HModel(which: 'a' | 'b', slug: string): void {
+  if (which === 'a') h2hA = slug;
+  else h2hB = slug;
 }
 
 function shortModel(slug: string): string {
@@ -126,7 +147,7 @@ export function activeWispCreators(): string[] {
     return rows[0] ? [creatorOf(rows[0].model)] : [];
   }
   if (metric === 'headtohead') {
-    return [modelA.value, modelB.value].filter((m): m is string => !!m).map(creatorOf);
+    return [h2hA, h2hB].filter((m) => !!m).map(creatorOf);
   }
   return [];
 }
@@ -161,15 +182,6 @@ function controls(onMenu: () => void): Node {
   // ☰ menu (home / controls / account / telemetry / quit) top-right, like the other screens.
   const menuBtn = Button({ id: 'lb-menu-button', label: '☰ menu', onClick: onMenu, style: UI_CHROME_PILL });
   return Box({ flexDirection: 'row', alignItems: 'center', justifyContent: 'between' }, [left, menuBtn]);
-}
-
-// ---- name-plate labels over the (transparent) wisp region ----
-
-function plate(lines: string[]): Node {
-  return Box({ flexDirection: 'column', alignItems: 'center', padding: [0, 2], background: PLATE }, lines.map((l, i) => Text({ text: l, style: { color: i === 0 ? 'fg' : 'muted', bold: i === 0 } })));
-}
-function oneWispRegion(lines: string[]): Node {
-  return Box({ flexGrow: 1, justifyContent: 'center', alignItems: 'center' }, [plate(lines)]);
 }
 
 // ---- win-rate view ----
@@ -218,20 +230,12 @@ function pokerRows(rows: PokerRow[]): Node[] {
 function winRateView(data: LeaderboardData, listH: number): Node {
   winList.setHeight(listH);
   let header: Node;
-  let top: ChessRow | PokerRow | undefined;
-  let topLines: string[];
   if (game === 'chess') {
-    const rows = filteredChess(data);
-    winList.rows = chessRows(rows);
+    winList.rows = chessRows(filteredChess(data));
     header = chessHeader();
-    top = rows[0];
-    topLines = top ? [shortModel(top.model), creatorOf(top.model), `win rate ${pct((top as ChessRow).winRate)}`] : ['no models'];
   } else {
-    const rows = filteredPoker(data);
-    winList.rows = pokerRows(rows);
+    winList.rows = pokerRows(filteredPoker(data));
     header = pokerHeader();
-    top = rows[0];
-    topLines = top ? [shortModel(top.model), creatorOf(top.model), `net ${(top as PokerRow).netChips >= 0 ? '+' : '-'}${Math.abs((top as PokerRow).netChips).toLocaleString()}`] : ['no models'];
   }
   // Title row with the creator filter baked into the panel's top-right corner. The
   // right pad reserves the scrollbar's column so the selector lines up with the list.
@@ -240,16 +244,17 @@ function winRateView(data: LeaderboardData, listH: number): Node {
     Box({ flexDirection: 'row', alignItems: 'center', gap: 1 }, [Text({ text: 'creator', style: { color: 'muted' } }), Slot('lb-creator')]),
   ]);
   // Right padding 0 so the list's scrollbar sits flush against the panel's right edge.
-  const left = panel([title, Box({ height: 1 }), header, Slot('lb-winlist')], { width: 86, padding: [1, 0, 1, 2], alignItems: 'stretch' });
-  const right = top ? oneWispRegion(['#1 model', ...topLines]) : Box({ flexGrow: 1 });
-  return Box({ flexDirection: 'row', gap: 2, alignItems: 'stretch', flexGrow: 1 }, [left, right]);
+  const left = panel([title, Box({ height: 1 }), header, Slot('lb-winlist')], { width: WINRATE_PANEL_W, padding: [1, 0, 1, 2], alignItems: 'stretch' });
+  // Right region stays transparent — the #1 model's wisp (LeaderboardScene) shows through
+  // it with no overlay.
+  return Box({ flexDirection: 'row', gap: BODY_GAP, alignItems: 'stretch', flexGrow: 1 }, [left, Box({ flexGrow: 1 })]);
 }
 
 // ---- head-to-head view ----
 
-function h2hView(data: LeaderboardData): Node {
-  const a = modelA.value ?? '';
-  const b = modelB.value ?? '';
+function h2hView(): Node {
+  const a = h2hA;
+  const b = h2hB;
   const rec = dummyHeadToHead(a, b, game);
   const recCard = panel(
     [
@@ -262,21 +267,13 @@ function h2hView(data: LeaderboardData): Node {
             rowBox([cell(fit(shortModel(b), 24), 26), cell(`${rec.bWins} wins`, 10, rec.bWins > rec.aWins ? GOOD : 'fg')]),
             ...(game === 'chess' ? [rowBox([cell('draws', 20, 'muted'), cell(String(rec.draws), 6)])] : []),
           ]
-        : [Text({ text: 'pick two models to compare — click a wisp or its dropdown.', style: { color: 'muted' } })]),
+        : [Text({ text: 'click a wisp to pick a model.', style: { color: 'muted' } })]),
     ],
-    { width: 46 },
+    { width: H2H_CARD_W },
   );
-  // Each wisp is directly clickable (opens its model dropdown below it) — like
-  // clicking a player's wisp to swap models in a game. The dropdown is also
-  // usable directly, and shows the current model name.
-  const wispCol = (which: 'a' | 'b', id: string): Node =>
-    Box({ flexGrow: 1, flexDirection: 'column', alignItems: 'center', gap: 1 }, [
-      { ...Box({ flexGrow: 3, hover: { background: [50, 54, 74, 0.4] } }), focusable: true, onClick: () => openModelDropdown(which) },
-      Slot(id),
-      Box({ flexGrow: 2 }),
-    ]);
-  const right = Box({ flexGrow: 1, flexDirection: 'row', gap: 2, alignItems: 'stretch' }, [wispCol('a', 'lb-model-a'), wispCol('b', 'lb-model-b')]);
-  return Box({ flexDirection: 'row', gap: 2, alignItems: 'stretch', flexGrow: 1 }, [recCard, right]);
+  // The right region is transparent — the two models' wisps (LeaderboardScene) show
+  // through it side by side. Clicking a wisp opens the shared model-swap modal (main.ts).
+  return Box({ flexDirection: 'row', gap: BODY_GAP, alignItems: 'stretch', flexGrow: 1 }, [recCard, Box({ flexGrow: 1 })]);
 }
 
 // ---- activity view ----
@@ -319,10 +316,10 @@ export function buildLeaderboard(region: LayoutBox, onMenu: () => void): Node {
     : metric === 'winrate'
       ? winRateView(current, listH)
       : metric === 'headtohead'
-        ? h2hView(current)
+        ? h2hView()
         : activityView(current);
 
   // Transparent root: the left panels are opaque cards; the right region shows the
   // LeaderboardScene wisp(s) through. Nav lives in the top-right ☰ menu (no bottom bar).
-  return Box({ width: region.w, height: region.h, flexDirection: 'column', alignItems: 'stretch', padding: [1, 3], gap: 1 }, [controls(onMenu), body]);
+  return Box({ width: region.w, height: region.h, flexDirection: 'column', alignItems: 'stretch', padding: [1, ROOT_PAD_X], gap: 1 }, [controls(onMenu), body]);
 }

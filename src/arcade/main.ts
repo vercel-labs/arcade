@@ -28,13 +28,13 @@ import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/i
 import { detectTerminalColorMode } from '../platform/terminal-color-detection.ts';
 import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, buildUpdateModal, mouseControlsFor, type BarActions, type MenuItem, type Mode, type RenderMode } from './shell/bars.ts';
 import { buildShowcase, mountShowcase } from './scenes/ui-showcase.ts';
-import { activeWispCreators, buildLeaderboard, mountLeaderboard, setGame as lbSetGame, setLeaderboardData, setMetric as lbSetMetric } from './leaderboard/view.ts';
+import { activeWispCreators, buildLeaderboard, leaderboardH2HActive, leaderboardH2HModel, leaderboardSceneReserve, mountLeaderboard, setGame as lbSetGame, setLeaderboardData, setLeaderboardH2HModel, setMetric as lbSetMetric } from './leaderboard/view.ts';
 import { dummyLeaderboardData } from './leaderboard/data.ts';
 import { LeaderboardScene } from './leaderboard/scene.ts';
 import { buildChessGameRoot, chessMoveChat, type Commentary, type MatchSide, mountChessHud, movesToPgn, refreshMoveHistory, shortModel } from './games/chess/hud.ts';
 import { creatorTint } from './scenes/wisp.ts';
 import { CHAT_WIDTH, clearChat, pushChatMessage } from './games/chess/chat.ts';
-import { insetRightSceneViewport, pointerNdcInSceneViewport } from './scene-viewport.ts';
+import { insetLeftSceneViewport, insetRightSceneViewport, pointerNdcInSceneViewport } from './scene-viewport.ts';
 import { buildMatchSetup, buildSwapSetup, chessPreviewSides, matchSetupSelection, mountMatchSetup, mountSwapSetup, openSwapSetup, setMatchSetupChanged, swapSetupSelection } from './match/setup.ts';
 import { copyToClipboard } from '../platform/clipboard.ts';
 import { checkForUpdate, packageInfo, refreshLatestInBackground, type UpdateInfo } from './update.ts';
@@ -248,7 +248,8 @@ function chessMatchupLabels(seats: { white: Seat; black: Seat }): { white: Match
 // being edited and whether its match was already paused when it opened.
 type WispSwap =
   | { game: 'chess'; color: Color; wasPaused: boolean }
-  | { game: 'poker'; seat: number; wasPaused: boolean };
+  | { game: 'poker'; seat: number; wasPaused: boolean }
+  | { game: 'leaderboard'; which: 'a' | 'b'; wasPaused: boolean };
 let wispSwap: WispSwap | null = null;
 let wispSwapFocused = false;
 // The poker new-match settings panel (an in-scene top-left stack, not a modal — the
@@ -291,6 +292,12 @@ let pokerChatOpen = false;
 // The HUDs use the same CHAT_WIDTH, so the renderer, camera projection, and UI
 // agree on the exact left-side viewport that remains visible.
 function activeSceneViewport(): LayoutBox {
+  // The leaderboard's data panels sit on the LEFT (and a tab bar on top), so inset the
+  // wisp scene to the uncovered region — camera + orbit pivot centered on what's visible.
+  if (mode === 'leaderboard') {
+    const { left, top } = leaderboardSceneReserve();
+    return insetLeftSceneViewport(cols, rows, left, top);
+  }
   const reservedRight =
     mode === 'chess-game' && chatVisible
       ? CHAT_WIDTH
@@ -688,6 +695,17 @@ function openPokerWispSwap(seat: number): void {
   r.requestRender();
 }
 
+// Leaderboard head-to-head: clicking a wisp opens the SAME model-swap modal the games
+// use, preseeded with that side's current model. There's no match to pause.
+function openLeaderboardWispSwap(which: 'a' | 'b'): void {
+  wispSwap = { game: 'leaderboard', which, wasPaused: false };
+  wispSwapFocused = false;
+  mountSwapSetup(ui);
+  openSwapSetup('white', leaderboardH2HModel(which));
+  forceFrame = true;
+  r.requestRender();
+}
+
 // Close the popup, restoring only the match that was paused to open it.
 function closeWispSwap(): void {
   const swapState = wispSwap;
@@ -713,6 +731,12 @@ function confirmWispSwap(): void {
 
   if (swapState.game === 'poker') {
     pokerMatch.setSeatModel(swapState.seat, slug);
+    closeWispSwap();
+    return;
+  }
+
+  if (swapState.game === 'leaderboard') {
+    setLeaderboardH2HModel(swapState.which, slug);
     closeWispSwap();
     return;
   }
@@ -1563,9 +1587,14 @@ function syncBar(): void {
     // Re-mount the swap dropdowns (a prior modal root may have dropped their Slots)
     // before rebuilding the one-column picker for the clicked side.
     mountSwapSetup(ui);
-    const title = wispSwap.game === 'chess'
-      ? (wispSwap.color === WHITE ? 'white' : 'black')
-      : 'seat ' + (wispSwap.seat + 1);
+    const title =
+      wispSwap.game === 'chess'
+        ? wispSwap.color === WHITE
+          ? 'white'
+          : 'black'
+        : wispSwap.game === 'poker'
+          ? 'seat ' + (wispSwap.seat + 1)
+          : 'model ' + wispSwap.which.toUpperCase();
     ui.setRoot(buildSwapSetup({ x: 0, y: 0, w: cols, h: rows }, { title, onConfirm: confirmWispSwap, onCancel: cancelWispSwap }), {
       x: 0,
       y: 0,
@@ -1898,12 +1927,15 @@ function presentScene(withBloom = true, hybridShadow = false): string {
 // `surf` (the bottom layer) instead of returning a string. Same display logic.
 function presentSceneInto(surf: Surface, withBloom = true, hybridShadow = false): void {
   const viewport = activeSceneViewport();
-  const reservedX = viewport.x + viewport.w;
-  if (reservedX < surf.cols) {
-    // The UI rail is translucent. Paint its reserved area black so opening it
-    // cannot blend over scene colors left behind by the previous full-width frame.
-    surf.fillRect(reservedX, 0, surf.cols - reservedX, surf.rows, [0, 0, 0]);
-  }
+  // Paint every margin outside the scene viewport black, so translucent UI over the
+  // reserved area — a right rail (chess/poker) or the leaderboard's left/top panels —
+  // cannot blend over scene colors left behind by a previous full-region frame.
+  const rx = viewport.x + viewport.w;
+  const by = viewport.y + viewport.h;
+  if (viewport.x > 0) surf.fillRect(0, 0, viewport.x, surf.rows, [0, 0, 0]);
+  if (rx < surf.cols) surf.fillRect(rx, 0, surf.cols - rx, surf.rows, [0, 0, 0]);
+  if (viewport.y > 0) surf.fillRect(viewport.x, 0, viewport.w, viewport.y, [0, 0, 0]);
+  if (by < surf.rows) surf.fillRect(viewport.x, by, viewport.w, surf.rows - by, [0, 0, 0]);
   if (renderMode === 'ascii') {
     shapeGlyphToSurface(
       surf,
@@ -2126,6 +2158,11 @@ function onMouseImpl(e: MouseEvent): void {
         const seat = pokerScene.wispAt(ndcX, ndcY, aspect);
         if (seat !== null) openPokerWispSwap(seat);
         else pokerScene.clickCard(ndcX, ndcY, aspect);
+      } else if (isClick && mode === 'leaderboard' && leaderboardH2HActive()) {
+        // Head-to-head: click a wisp (left half = A, right half = B) to open the shared
+        // model-swap modal. Only within the wisp region — not the record card on the left.
+        const vp = activeSceneViewport();
+        if (e.x - 1 >= vp.x) openLeaderboardWispSwap(e.x - 1 < vp.x + vp.w / 2 ? 'a' : 'b');
       }
       draggingCamera = false;
       return;
