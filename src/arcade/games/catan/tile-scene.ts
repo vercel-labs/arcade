@@ -22,11 +22,12 @@ import {
   type Vec3,
 } from '../../../engine/index.ts';
 import { OrbitCamera } from '../../orbit.ts';
-import { HEX_COORDS, NUM_HEXES } from '../../../rules/catan/board-topology.ts';
+import { edgeNodes, HEX_COORDS, hexNodes, NUM_EDGES, NUM_HEXES, NUM_NODES } from '../../../rules/catan/board-topology.ts';
+import { type BoardOccupancy, canPlaceRoad, canPlaceSettlement } from '../../../rules/catan/placement.ts';
 import { type BoardSetup, generateBoard } from '../../../rules/catan/setup.ts';
-import { RED_NUMBERS, type Terrain } from '../../../rules/catan/types.ts';
+import { type PlayerColor, RED_NUMBERS, type Terrain } from '../../../rules/catan/types.ts';
 import { mulberry32 } from '../../scenes/wisp.ts';
-import { dieMesh, tileBackMesh, tileMesh } from './tile-mesh.ts';
+import { boardOverlayMesh, dieMesh, hoverColorFor, type OverlaySpec, piecesMesh, tileBackMesh, tileMesh } from './tile-mesh.ts';
 
 const FOVY = (44 * Math.PI) / 180;
 // A warm key from the upper front-right so tops read bright and the raised content casts its
@@ -54,6 +55,11 @@ const REVEAL_FLICKER = 0.07; // seconds each spinning value shows
 const REVEAL_BASE = 0.35; // when the centre hex locks
 const REVEAL_STEP = 0.2; // extra delay per ring outward
 const REVEAL_END = REVEAL_BASE + 2 * REVEAL_STEP + 0.05; // all settled (outer ring is 2)
+
+// Build-drop: a newly built/upgraded piece appears elevated over its spot and drops onto the
+// rim with a small settle (rather than popping in instantly).
+const BUILD_DROP_DUR = 0.45; // seconds for the drop
+const BUILD_DROP_H = 1.2; // elevation above the rim the piece starts from (world units)
 
 // Triggered by the HUD "roll" button: BIG dice appear over the board, tumble, land, the
 // matching chips light, then the dice vanish. Drawn on top of everything (depth cleared first)
@@ -119,7 +125,7 @@ interface Die {
   spinsZ: number;
 }
 
-export type CatanMode = 'tile' | 'board';
+export type CatanMode = 'tile' | 'board' | 'pieces';
 
 // A number token to draw over a hex: its screen cell, the rolled number, whether it's a red
 // high-frequency number (6/8), and whether it's currently lit (matches the last dice roll).
@@ -145,6 +151,31 @@ function hexWorld(q: number, r: number): { x: number; z: number } {
 function hexRing(q: number, r: number): number {
   return (Math.abs(q) + Math.abs(r) + Math.abs(q + r)) / 2;
 }
+
+// World (x,z) of every settlement/road node (a shared hex corner) and edge, derived once from
+// the topology + flat-top layout. Corner k of a hex sits at angle −60°·k, radius R_OUT (=1).
+const NODE_XZ: { x: number; z: number }[] = (() => {
+  const out: { x: number; z: number }[] = new Array(NUM_NODES);
+  HEX_COORDS.forEach((coord, h) => {
+    const w = hexWorld(coord.q, coord.r);
+    for (let k = 0; k < 6; k++) {
+      const nid = hexNodes[h][k];
+      if (out[nid]) continue;
+      const a = (-Math.PI / 3) * k;
+      out[nid] = { x: w.x + Math.cos(a), z: w.z + Math.sin(a) };
+    }
+  });
+  return out;
+})();
+const EDGE_ENDS = edgeNodes.map(([a, b]) => ({ x0: NODE_XZ[a].x, z0: NODE_XZ[a].z, x1: NODE_XZ[b].x, z1: NODE_XZ[b].z }));
+const EDGE_MID = EDGE_ENDS.map((e) => ({ x: (e.x0 + e.x1) / 2, z: (e.z0 + e.z1) / 2 }));
+const PROBE_Y = 0.05; // height at which nodes/edges are projected for hit-testing
+// Project a board (x,z) point to NDC with the given view-projection; null if behind the camera.
+function projXZ(vp: Mat4, x: number, z: number): { x: number; y: number } | null {
+  const c = mat4MulVec4(vp, { x, y: PROBE_Y, z, w: 1 });
+  if (c.w <= 0.0001) return null;
+  return { x: c.x / c.w, y: c.y / c.w };
+}
 // model = Translate · RotX (the flip). Normals rotate with it (lambert uses the model's
 // rotation), so the tile lights correctly as it tumbles face-up.
 function poseMatrix(x: number, y: number, z: number, rotX: number): Mat4 {
@@ -154,6 +185,8 @@ function poseMatrix(x: number, y: number, z: number, rotX: number): Mat4 {
 export class TileScene {
   private camTile: OrbitCamera;
   private camBoard: OrbitCamera;
+  private camPieces: OrbitCamera;
+  private pieceColor: PlayerColor = 'red';
   private terrain: Terrain = 'forest';
   private variant = 0; // per-tile seed: same style, different layout
   private robber = false; // show/hide the robber (tile mode)
@@ -173,18 +206,227 @@ export class TileScene {
   private rollClock = 0;
   private rollLastT = -1;
   private rolledSum: number | null = null; // the last landed roll (lights matching chips); null until first roll
+  // Board editor: placed pieces, the hovered vertex/edge, and the color new pieces get.
+  private buildings = new Map<number, { city: boolean; color: PlayerColor }>();
+  private roads = new Map<number, PlayerColor>();
+  private hoverNode: number | null = null;
+  private hoverEdge: number | null = null;
+  private placeColor: PlayerColor = 'red';
+  // The piece currently playing its build-drop (elevated → seated), or null.
+  private dropping: { kind: 'building' | 'road'; id: number } | null = null;
+  private dropClock = 0;
+  private dropLastT = -1;
+  private lastAspect = 1.6; // target aspect from the last render, for hit-test projection
   private dirty = true;
 
   constructor() {
     this.camTile = new OrbitCamera({ azimuth: 0.62, elevation: 0.62, distance: 2.7, target: { x: 0, y: 0.02, z: 0 } }, 1.6, 6);
     this.camBoard = new OrbitCamera({ azimuth: 0.62, elevation: 0.82, distance: 11.5, target: { x: 0.42, y: -0.58, z: -0.2 } }, 2, 24);
+    this.camPieces = new OrbitCamera({ azimuth: 0.5, elevation: 0.4, distance: 3.7, target: { x: 0.1, y: 0.24, z: 0 } }, 1.5, 10);
   }
   private cam(): OrbitCamera {
-    return this.modeName === 'board' ? this.camBoard : this.camTile;
+    if (this.modeName === 'board') return this.camBoard;
+    if (this.modeName === 'pieces') return this.camPieces;
+    return this.camTile;
+  }
+  // The active player color: the default for pieces mode and for buildings/roads placed (and
+  // ghost-previewed) in the board editor. Set from the HUD color dropdown.
+  setActiveColor(c: PlayerColor): void {
+    this.pieceColor = c;
+    this.placeColor = c;
+    this.dirty = true;
+  }
+
+  // ── board editor: hover / place / edit ──
+  // A read-only occupancy view over the editor's placed pieces, for the shared placement rules.
+  private occ(): BoardOccupancy<PlayerColor> {
+    return {
+      building: (n) => {
+        const b = this.buildings.get(n);
+        return b ? { owner: b.color, city: b.city } : undefined;
+      },
+      road: (e) => this.roads.get(e),
+    };
+  }
+  private boardVp(): Mat4 {
+    const cam = this.camBoard;
+    const camera: Camera = { eye: cam.eye(), target: cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 100 };
+    return cameraMatrices(camera, this.lastAspect).viewProjection;
+  }
+  // Nearest node and nearest edge to the cursor (NDC), with their screen distances (x weighted
+  // by aspect so it's a true on-screen distance).
+  private nearest(ndcX: number, ndcY: number): { node: number; nodeD: number; edge: number; edgeD: number } {
+    const vp = this.boardVp();
+    const asp = this.lastAspect;
+    let node = -1;
+    let nodeD = Infinity;
+    let edge = -1;
+    let edgeD = Infinity;
+    for (let n = 0; n < NUM_NODES; n++) {
+      const p = projXZ(vp, NODE_XZ[n].x, NODE_XZ[n].z);
+      if (!p) continue;
+      const d = Math.hypot((p.x - ndcX) * asp, p.y - ndcY);
+      if (d < nodeD) {
+        nodeD = d;
+        node = n;
+      }
+    }
+    for (let e = 0; e < NUM_EDGES; e++) {
+      const p = projXZ(vp, EDGE_MID[e].x, EDGE_MID[e].z);
+      if (!p) continue;
+      const d = Math.hypot((p.x - ndcX) * asp, p.y - ndcY);
+      if (d < edgeD) {
+        edgeD = d;
+        edge = e;
+      }
+    }
+    return { node, nodeD, edge, edgeD };
+  }
+  // Update the hovered vertex/edge from the cursor (board mode only; ignored mid-animation).
+  // Sticky: the current hover is kept until the cursor leaves a wider radius, so the ghost
+  // doesn't flicker between neighbours as the mouse moves.
+  hoverBoard(ndcX: number, ndcY: number): void {
+    if (this.modeName !== 'board' || this.placing || this.revealing) return;
+    const vp = this.boardVp();
+    const asp = this.lastAspect;
+    const dist = (p: { x: number; z: number }): number => {
+      const s = projXZ(vp, p.x, p.z);
+      return s ? Math.hypot((s.x - ndcX) * asp, s.y - ndcY) : Infinity;
+    };
+    let node = -1;
+    let nodeD = Infinity;
+    for (let n = 0; n < NUM_NODES; n++) {
+      const d = dist(NODE_XZ[n]);
+      if (d < nodeD) {
+        nodeD = d;
+        node = n;
+      }
+    }
+    let edge = -1;
+    let edgeD = Infinity;
+    for (let e = 0; e < NUM_EDGES; e++) {
+      const d = dist(EDGE_MID[e]);
+      if (d < edgeD) {
+        edgeD = d;
+        edge = e;
+      }
+    }
+    const bestNode = nodeD <= edgeD;
+    const bestId = bestNode ? node : edge;
+    const bestD = bestNode ? nodeD : edgeD;
+    const curD = this.hoverNode !== null ? dist(NODE_XZ[this.hoverNode]) : this.hoverEdge !== null ? dist(EDGE_MID[this.hoverEdge]) : Infinity;
+    const ENTER = 0.06;
+    const KEEP = 0.11;
+    let hn: number | null = null;
+    let he: number | null = null;
+    if ((this.hoverNode !== null || this.hoverEdge !== null) && curD <= KEEP && curD <= bestD + 0.02) {
+      hn = this.hoverNode; // sticky: keep the current hover
+      he = this.hoverEdge;
+    } else if (bestD <= ENTER) {
+      if (bestNode) hn = bestId;
+      else he = bestId;
+    }
+    if (hn !== this.hoverNode || he !== this.hoverEdge) {
+      this.hoverNode = hn;
+      this.hoverEdge = he;
+      this.dirty = true;
+    }
+  }
+  // A click on the board: place a piece on an empty spot (per the rules), or — if the spot is
+  // occupied — return a descriptor so the caller can open the edit modal.
+  clickBoard(ndcX: number, ndcY: number): { kind: 'building' | 'road'; id: number } | null {
+    if (this.modeName !== 'board' || this.placing || this.revealing) return null;
+    const { node, nodeD, edge, edgeD } = this.nearest(ndcX, ndcY);
+    const TH = 0.07;
+    if (nodeD <= edgeD && nodeD < TH) {
+      if (this.buildings.has(node)) return { kind: 'building', id: node };
+      if (canPlaceSettlement(node, this.occ())) {
+        this.buildings.set(node, { city: false, color: this.placeColor }); // distance rule enforced
+        this.startDrop('building', node);
+      }
+      return null;
+    }
+    if (edgeD < TH) {
+      if (this.roads.has(edge)) return { kind: 'road', id: edge };
+      if (this.roadPlaceable(edge)) {
+        this.roads.set(edge, this.placeColor);
+        this.startDrop('road', edge);
+      }
+      return null;
+    }
+    return null;
+  }
+  // Begin the build-drop for a just-placed/upgraded piece: it renders elevated, then eases down.
+  private startDrop(kind: 'building' | 'road', id: number): void {
+    this.dropping = { kind, id };
+    this.dropClock = 0;
+    this.dropLastT = -1;
+    this.dirty = true;
+  }
+  // A road is placeable for the active color per the Catan connectivity rules: it must extend a
+  // same-color road or settlement/city and can't route through an opponent's building.
+  private roadPlaceable(e: number): boolean {
+    return canPlaceRoad(e, this.placeColor, this.occ());
+  }
+  buildingInfo(node: number): { city: boolean; color: PlayerColor } | undefined {
+    return this.buildings.get(node);
+  }
+  roadInfo(edge: number): PlayerColor | undefined {
+    return this.roads.get(edge);
+  }
+  upgradeBuilding(node: number): void {
+    const b = this.buildings.get(node);
+    if (b && !b.city) {
+      b.city = true;
+      this.startDrop('building', node); // the city drops in like a fresh build
+    }
+  }
+  removeBuilding(node: number): void {
+    if (this.buildings.delete(node)) this.dirty = true;
+  }
+  removeRoad(edge: number): void {
+    if (this.roads.delete(edge)) this.dirty = true;
+  }
+  setBuildingColor(node: number, c: PlayerColor): void {
+    const b = this.buildings.get(node);
+    if (b) {
+      b.color = c;
+      this.placeColor = c;
+      this.dirty = true;
+    }
+  }
+  setRoadColor(edge: number, c: PlayerColor): void {
+    if (this.roads.has(edge)) {
+      this.roads.set(edge, c);
+      this.placeColor = c;
+      this.dirty = true;
+    }
+  }
+  // Seed a few sample pieces + a hover marker — used by the snapshot tool to preview the editor.
+  seedDemo(): void {
+    this.buildings.set(0, { city: false, color: 'red' });
+    this.buildings.set(20, { city: true, color: 'blue' });
+    this.roads.set(0, 'orange');
+    this.roads.set(12, 'white');
+    this.hoverNode = 30;
+    this.dirty = true;
+  }
+
+  // Snapshot-only: place a settlement and start its build-drop, so the drop animation can be
+  // previewed by stepping frames (see the `build<secs>` snapshot arg).
+  demoDrop(): void {
+    this.setMode('board');
+    if (!this.board) this.regenerate(false);
+    this.settle();
+    const node = 10;
+    this.buildings.set(node, { city: false, color: this.placeColor });
+    this.startDrop('building', node);
   }
 
   setMode(m: CatanMode): void {
     this.modeName = m;
+    this.hoverNode = null; // hover is board-only
+    this.hoverEdge = null;
     if (m === 'board' && !this.board) this.regenerate(false); // first entry: no animation
     this.dirty = true;
   }
@@ -213,6 +455,10 @@ export class TileScene {
     this.lastT = -1;
     this.revealing = false; // reset any in-progress token reveal for the new board
     this.rolledSum = null; // clear a stale dice highlight from the previous board
+    this.buildings.clear(); // a fresh board has no pieces
+    this.roads.clear();
+    this.hoverNode = null;
+    this.hoverEdge = null;
     this.dirty = true;
   }
   // Snap any in-progress placement to done (used for static snapshots).
@@ -283,7 +529,7 @@ export class TileScene {
   // On-demand: re-render after a camera/scene change, every frame while placing, and once more
   // when the animation ends so the tokens get composited.
   needsRender(): boolean {
-    return this.dirty || this.placing || this.revealing || this.tokensDirty || this.dicePhase !== 'idle';
+    return this.dirty || this.placing || this.revealing || this.tokensDirty || this.dicePhase !== 'idle' || this.dropping !== null;
   }
 
   // The number tokens to overlay right now: one per non-desert hex, projected to the screen
@@ -320,12 +566,14 @@ export class TileScene {
 
   renderScene(target: RenderTarget, t = 0): void {
     this.tokensDirty = false; // consume the previous frame's one-shot
+    this.lastAspect = target.width / target.height; // remember for hit-test projection
     target.clear(14, 16, 22);
     const cam = this.cam();
     const eye = cam.eye();
     const camera: Camera = { eye, target: cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 100 };
     const vp = cameraMatrices(camera, target.width / target.height).viewProjection;
     if (this.modeName === 'board') this.renderBoard(target, vp, t);
+    else if (this.modeName === 'pieces') rasterize(target, piecesMesh(this.pieceColor), lambertMaterial, { mvp: mat4Multiply(vp, MODEL), model: MODEL, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
     else rasterize(target, tileMesh(this.terrain, this.variant, this.robber), lambertMaterial, { mvp: mat4Multiply(vp, MODEL), model: MODEL, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
     this.dirty = false;
   }
@@ -379,7 +627,37 @@ export class TileScene {
       const mesh = faceUp ? tileMesh(board.hexes[hex].terrain, this.boardSeed * NUM_HEXES + hex, hex === board.robberHex) : tileBackMesh();
       rasterize(target, mesh, lambertMaterial, { mvp: mat4Multiply(vp, model), model, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
     }
+    if (!this.placing) this.renderOverlay(target, vp, t); // placed pieces + hover marker (once tiles are down)
     this.renderDice(target, t);
+  }
+
+  // The board editor overlay: all placed pieces plus the hovered vertex/edge highlight.
+  private renderOverlay(target: RenderTarget, vp: Mat4, t: number): void {
+    // Advance the build-drop: the just-built piece starts elevated and eases onto the rim.
+    let dropLift = 0;
+    if (this.dropping) {
+      if (this.dropLastT < 0) this.dropLastT = t;
+      this.dropClock += Math.max(0, t - this.dropLastT);
+      this.dropLastT = t;
+      const p = Math.min(1, this.dropClock / BUILD_DROP_DUR);
+      dropLift = BUILD_DROP_H * (1 - bounceOut(p));
+      if (p >= 1) this.dropping = null;
+    }
+    const dropB = this.dropping?.kind === 'building' ? this.dropping.id : -1;
+    const dropR = this.dropping?.kind === 'road' ? this.dropping.id : -1;
+    // Ghosts only preview a *legal* placement (distance rule for a settlement, connectivity for
+    // a road), so hovering an illegal spot shows nothing.
+    const hoverEmptyNode = this.hoverNode !== null && canPlaceSettlement(this.hoverNode, this.occ());
+    const hoverEmptyEdge = this.hoverEdge !== null && !this.roads.has(this.hoverEdge) && this.roadPlaceable(this.hoverEdge);
+    const spec: OverlaySpec = {
+      buildings: [...this.buildings].map(([n, b]) => ({ x: NODE_XZ[n].x, z: NODE_XZ[n].z, city: b.city, color: b.color, hot: n === this.hoverNode, lift: n === dropB ? dropLift : 0 })),
+      roads: [...this.roads].map(([e, c]) => ({ x0: EDGE_ENDS[e].x0, z0: EDGE_ENDS[e].z0, x1: EDGE_ENDS[e].x1, z1: EDGE_ENDS[e].z1, color: c, hot: e === this.hoverEdge, lift: e === dropR ? dropLift : 0 })),
+      ghostSettlement: hoverEmptyNode ? NODE_XZ[this.hoverNode as number] : null,
+      ghostRoad: hoverEmptyEdge ? EDGE_ENDS[this.hoverEdge as number] : null,
+      hoverColor: hoverColorFor(this.placeColor),
+    };
+    if (!spec.buildings.length && !spec.roads.length && !spec.ghostSettlement && !spec.ghostRoad) return;
+    rasterize(target, boardOverlayMesh(spec), lambertMaterial, { mvp: mat4Multiply(vp, MODEL), model: MODEL, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
   }
 
   // Advance the roll sequence, then (unless idle) draw the BIG dice on top of the board. The

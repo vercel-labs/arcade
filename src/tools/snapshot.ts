@@ -26,7 +26,7 @@ import { creators } from '../arcade/match/models.ts';
 import { CardsScene, type CardsMode } from '../arcade/games/poker/cards-scene.ts';
 import { buildPokerRoot, mountPokerHud } from '../arcade/games/poker/hud.ts';
 import { TileScene } from '../arcade/games/catan/tile-scene.ts';
-import { buildCatanTileRoot, mountCatanTileHud } from '../arcade/games/catan/tile-hud.ts';
+import { buildCatanPieceModal, buildCatanTileRoot, mountCatanTileHud } from '../arcade/games/catan/tile-hud.ts';
 import { type Terrain, TERRAINS } from '../rules/catan/types.ts';
 import { PokerGameScene, type PokerSeatView } from '../arcade/games/poker/poker-scene.ts';
 import { betInput as pokerBetInput, buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, mountPokerGameHud, pushPokerChat } from '../arcade/games/poker/poker-hud.ts';
@@ -382,6 +382,14 @@ function catanSnapshot(): void {
   scene.setTerrain(terrain);
   if (args.includes('robber')) scene.setRobber(true);
   if (args.includes('board')) scene.setMode('board');
+  if (args.includes('pieces')) scene.setMode('pieces');
+  if (args.includes('edit')) {
+    scene.setMode('board');
+    scene.settle();
+    scene.seedDemo();
+  }
+  const pieceColor = (['red', 'blue', 'white', 'orange'] as const).find((x) => args.includes(x));
+  if (pieceColor) scene.setActiveColor(pieceColor);
   // `varN` selects procedural variant N (e.g. var2); `top` orbits toward top-down; a decimal
   // rotates the azimuth.
   const varArg = args.find((a) => /^var\d+$/.test(a));
@@ -408,14 +416,32 @@ function catanSnapshot(): void {
       const secs = rollArg.length > 4 ? Number(rollArg.slice(4)) : 1.4;
       for (let f = 1; f <= Math.round(secs * 60); f++) scene.renderScene(target, f / 60);
     }
+    // `build<seconds>` (board mode): place a settlement and step to a chosen instant of its
+    // build-drop (default mid-air) so the elevated → seated animation can be inspected.
+    const buildArg = args.find((a) => /^build[\d.]*$/.test(a));
+    if (args.includes('board') && buildArg) {
+      scene.demoDrop();
+      const secs = buildArg.length > 5 ? Number(buildArg.slice(5)) : 0.12;
+      for (let f = 1; f <= Math.round(secs * 60); f++) scene.renderScene(target, f / 60);
+    }
   }
 
+  if (args.includes('modal')) {
+    const screen = new Screen(cols, rows);
+    const region = { x: 0, y: 0, w: cols, h: rows };
+    screen.setRoot(buildCatanPieceModal({ road: false, city: false, color: 'blue', onUpgrade: noop, onRemove: noop, onColor: () => {}, onClose: noop }), region);
+    const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
+    surfaceToPpm(surf, cols, rows, out);
+    return;
+  }
   if (args.includes('hud')) {
     const screen = new Screen(cols, rows);
     mountCatanTileHud(screen);
     (screen.component('catan-terrain') as Dropdown | undefined)?.pick(TERRAINS.indexOf(terrain));
+    (screen.component('catan-mode') as Dropdown | undefined)?.pick(['tile', 'board', 'pieces'].indexOf(scene.currentMode()));
+    if (pieceColor) (screen.component('catan-color') as Dropdown | undefined)?.pick(['red', 'blue', 'white', 'orange'].indexOf(pieceColor));
     const region = { x: 0, y: 0, w: cols, h: rows };
-    screen.setRoot(buildCatanTileRoot(region, buildBar('catan-tiles', 'ascii', barActions), noop, scene.boardTokens(cols, rows), scene.currentMode() === 'board'), region);
+    screen.setRoot(buildCatanTileRoot(region, buildBar('catan-tiles', 'ascii', barActions), noop, scene.boardTokens(cols, rows), scene.currentMode()), region);
     const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
     surfaceToPpm(surf, cols, rows, out);
     return;

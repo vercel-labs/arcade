@@ -18,7 +18,7 @@ import { MENU_ITEMS } from './shell/menu.ts';
 import { ChessGameScene } from './games/chess/scene.ts';
 import { CardsScene } from './games/poker/cards-scene.ts';
 import { TileScene } from './games/catan/tile-scene.ts';
-import { buildCatanTileRoot, catanTileTerrain, mountCatanTileHud, setCatanTileHandlers } from './games/catan/tile-hud.ts';
+import { buildCatanPieceModal, buildCatanTileRoot, catanTileTerrain, mountCatanTileHud, setCatanTileHandlers, setCatanTileMode } from './games/catan/tile-hud.ts';
 import { buildPokerRoot, mountPokerHud, pokerMode, setPokerHandlers } from './games/poker/hud.ts';
 import { PokerGameScene } from './games/poker/poker-scene.ts';
 import { buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, type HeroContext, mountPokerGameHud, nudgePokerBet, pushPokerChat, setNotesObserverPick, setPokerGameHandlers, setPokerVoiceStage } from './games/poker/poker-hud.ts';
@@ -918,6 +918,13 @@ function closeCatanTilesMenu(): void {
   forceFrame = true;
   r.requestRender();
 }
+// The Catan board piece-edit modal (opened by clicking a placed piece).
+let catanPieceEdit: { kind: 'building' | 'road'; id: number } | null = null;
+function closeCatanPieceModal(): void {
+  catanPieceEdit = null;
+  forceFrame = true;
+  r.requestRender();
+}
 
 // Esc = back one level. Inside a game (chess-game / poker) it opens the "return home?"
 // confirm so a stray keypress can't drop a match; every other non-menu screen goes straight
@@ -1084,6 +1091,7 @@ function enterCatanTiles(): void {
   mountCatanTileHud(ui);
   tileScene.setTerrain(catanTileTerrain()); // match the scene to the HUD's committed tile
   tileScene.setMode('board'); // default to the full board
+  setCatanTileMode('board'); // sync the Mode dropdown to match
   tileScene.reroll(); // play the tile-placement + number reveal on entry
   fullRepaint();
 }
@@ -1152,6 +1160,11 @@ setCatanTileHandlers({
   },
   onRollDice: () => {
     tileScene.rollDice();
+    forceFrame = true;
+    r.requestRender();
+  },
+  onColor: (c) => {
+    tileScene.setActiveColor(c);
     forceFrame = true;
     r.requestRender();
   },
@@ -1364,6 +1377,7 @@ function syncBar(): void {
   if (mode !== 'poker') pokerNotesOpen = false; // ditto for the notes modal
   if (mode !== 'chess-game') chessMenuOpen = false; // ditto for the chess menu
   if (mode !== 'catan-tiles') catanMenuOpen = false; // ditto for the catan tile menu
+  if (mode !== 'catan-tiles') catanPieceEdit = null; // and the piece-edit modal
   if (mode !== 'chess-game' && mode !== 'poker') confirmHomeOpen = false; // the confirm only lives in a game
   if (mode !== 'menu') {
     homeMenuOpen = false;
@@ -1669,6 +1683,65 @@ function syncBar(): void {
       ],
     ];
     ui.setRoot(buildGameMenu({ groups, onClose: closeCatanTilesMenu, valueColW: MENU_VALUE_W }), { x: 0, y: 0, w: cols, h: rows });
+  } else if (mode === 'catan-tiles' && catanPieceEdit) {
+    popGameOver();
+    popSetup();
+    popSwap();
+    // The piece-edit modal over the board. If the piece vanished (stale), drop the modal.
+    const edit = catanPieceEdit;
+    const region = { x: 0, y: 0, w: cols, h: rows };
+    if (edit.kind === 'road') {
+      const color = tileScene.roadInfo(edit.id);
+      if (color === undefined) catanPieceEdit = null;
+      else {
+        ui.setRoot(
+          buildCatanPieceModal({
+            road: true,
+            city: false,
+            color,
+            onUpgrade: () => {},
+            onRemove: () => {
+              tileScene.removeRoad(edit.id);
+              closeCatanPieceModal();
+            },
+            onColor: (c) => {
+              tileScene.setRoadColor(edit.id, c);
+              forceFrame = true;
+              r.requestRender();
+            },
+            onClose: closeCatanPieceModal,
+          }),
+          region,
+        );
+      }
+    } else {
+      const b = tileScene.buildingInfo(edit.id);
+      if (b === undefined) catanPieceEdit = null;
+      else {
+        ui.setRoot(
+          buildCatanPieceModal({
+            road: false,
+            city: b.city,
+            color: b.color,
+            onUpgrade: () => {
+              tileScene.upgradeBuilding(edit.id);
+              closeCatanPieceModal();
+            },
+            onRemove: () => {
+              tileScene.removeBuilding(edit.id);
+              closeCatanPieceModal();
+            },
+            onColor: (c) => {
+              tileScene.setBuildingColor(edit.id, c);
+              forceFrame = true;
+              r.requestRender();
+            },
+            onClose: closeCatanPieceModal,
+          }),
+          region,
+        );
+      }
+    }
   } else if (mode === 'catan-tiles') {
     popGameOver();
     popSetup();
@@ -1676,7 +1749,7 @@ function syncBar(): void {
     // Re-mount the terrain dropdown (a prior modal root may have dropped its Slot), then
     // build the control panel + bar + ☰ menu button over the scene.
     mountCatanTileHud(ui);
-    ui.setRoot(buildCatanTileRoot({ x: 0, y: 0, w: cols, h: rows }, buildBar('catan-tiles', renderMode, actions), openCatanTilesMenu, tileScene.boardTokens(cols, rows), tileScene.currentMode() === 'board'), { x: 0, y: 0, w: cols, h: rows });
+    ui.setRoot(buildCatanTileRoot({ x: 0, y: 0, w: cols, h: rows }, buildBar('catan-tiles', renderMode, actions), openCatanTilesMenu, tileScene.boardTokens(cols, rows), tileScene.currentMode()), { x: 0, y: 0, w: cols, h: rows });
   } else if (pokerNotesOpen) {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     popGameOver();
@@ -1967,7 +2040,7 @@ function onMouseImpl(e: MouseEvent): void {
   // setup panels (chess AND poker) are NOT here — they're non-modal, so pointer input
   // falls through the orbit branch: UI hits go to the panel/pickers, misses rotate/zoom/
   // pan the board/table behind it.
-  if (isPromoting() || gameOver || wispSwap) {
+  if (isPromoting() || gameOver || wispSwap || catanPieceEdit) {
     if (e.type === 'move') ui.hover(e.x, e.y);
     else if (e.type === 'down') ui.pointerDown(e.x, e.y);
     else if (e.type === 'drag') ui.drag(e.x, e.y); // e.g. dragging a dropdown's scrollbar
@@ -1993,6 +2066,11 @@ function onMouseImpl(e: MouseEvent): void {
       } else if (mode === 'poker') {
         const { ndcX, ndcY, aspect } = pointerNdc(e.x, e.y);
         pokerScene.hoverCard(ndcX, ndcY, aspect);
+      } else if (mode === 'catan-tiles') {
+        // Board mode: highlight the vertex/edge under the cursor.
+        const { ndcX, ndcY } = pointerNdc(e.x, e.y);
+        tileScene.hoverBoard(ndcX, ndcY);
+        if (tileScene.needsRender()) r.requestRender();
       }
       return;
     }
@@ -2056,6 +2134,13 @@ function onMouseImpl(e: MouseEvent): void {
         const seat = pokerScene.wispAt(ndcX, ndcY, aspect);
         if (seat !== null) openPokerWispSwap(seat);
         else pokerScene.clickCard(ndcX, ndcY, aspect);
+      } else if (isClick && mode === 'catan-tiles') {
+        // Board mode: place a piece on an empty vertex/edge, or open the edit modal on a piece.
+        const { ndcX, ndcY } = pointerNdc(e.x, e.y);
+        const hit = tileScene.clickBoard(ndcX, ndcY);
+        if (hit) catanPieceEdit = hit;
+        forceFrame = true;
+        r.requestRender();
       }
       draggingCamera = false;
       return;
