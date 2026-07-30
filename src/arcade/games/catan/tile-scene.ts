@@ -14,6 +14,7 @@ import {
   mat4Multiply,
   mat4MulVec4,
   mat4RotX,
+  mat4RotY,
   mat4RotZ,
   mat4Translate,
   normalize3,
@@ -27,7 +28,7 @@ import { type BoardOccupancy, canPlaceRoad, canPlaceSettlement } from '../../../
 import { type BoardSetup, generateBoard } from '../../../rules/catan/setup.ts';
 import { type PlayerColor, RED_NUMBERS, type Terrain } from '../../../rules/catan/types.ts';
 import { mulberry32 } from '../../scenes/wisp.ts';
-import { boardOverlayMesh, dieMesh, hoverColorFor, type OverlaySpec, piecesMesh, tileBackMesh, tileMesh } from './tile-mesh.ts';
+import { boardOverlayMesh, dieMesh, hoverColorFor, type OverlaySpec, piecesMesh, type PortKind, portMesh, tileBackMesh, tileMesh } from './tile-mesh.ts';
 
 const FOVY = (44 * Math.PI) / 180;
 // A warm key from the upper front-right so tops read bright and the raised content casts its
@@ -37,6 +38,13 @@ const AMBIENT = 0.52;
 // Wrap the diffuse falloff toward half-Lambert so much more of each tile sits in the lit
 // gradient instead of pinned at the flat ambient floor (≈24% lit at wrap 0 → ≈45% at 0.85).
 const WRAP = 0.85;
+// The boat's hull sides flare outward (their normals point out-and-down), so the tiles' near
+// top-down key barely grazes them and they read too dark — especially in ASCII — while the
+// up-facing deck stays bright. Port mode uses a lower, more raking key from the camera-front
+// quarter so the visible hull walls catch angular light, plus a wider wrap so the shadow side
+// lifts a touch. This is angle-dependent, not a flat lightening of the hull color.
+const PORT_LIGHT: Vec3 = normalize3({ x: 0.62, y: 0.4, z: 0.52 });
+const PORT_WRAP = 0.95;
 const MODEL: Mat4 = mat4Identity();
 const SQRT3 = Math.sqrt(3);
 
@@ -65,10 +73,15 @@ const BUILD_DROP_H = 1.2; // elevation above the rim the piece starts from (worl
 // matching chips light, then the dice vanish. Drawn on top of everything (depth cleared first)
 // and large, so the pips are unmistakable even in ASCII.
 type DicePhase = 'idle' | 'rolling' | 'hold';
-const DICE_ROLL_DUR = 1.5; // fall + spin, spread out for a natural roll
+const DICE_ROLL_DUR = 1.8; // fall + tumble, spread out for a natural roll
 const DICE_HOLD = 1.7; // linger on the landed result (while the chips light) before vanishing
-const FALL_H = 5.5; // drop distance (screen-space units) — large enough to start fully above the window
-const DICE_STAGGER = 0.1; // the second die drops a beat after the first
+const DICE_STAGGER = 0.12; // the second die drops a beat after the first
+// Vertical profile: an accelerating free-fall from well above the window, then a few decaying
+// on-screen bounces before rest. The entry height and the bounce height are decoupled so the
+// dice can enter from above the terminal without the bounces flinging back off-screen.
+const DICE_FALL_H = 6.5; // entry height along the camera-up axis (starts above the window)
+const DICE_BOUNCE_H = 1.3; // peak of the first post-contact bounce (world units)
+const DICE_FALL_FRAC = 0.42; // fraction of the roll spent in the entry fall before bouncing
 // A raised, ~45°-elevation eye: the result (top) face tilts toward the viewer (readable, not a
 // flat top-down plane) while the front faces keep the 3D form. The x is computed per-frame in
 // renderDice so the right die's edge lands near the box's right edge at any aspect (DIE_RIGHT).
@@ -80,11 +93,13 @@ const DICE_POS: Vec3[] = [
   { x: -0.65, y: 0.5, z: 0 },
   { x: 0.65, y: 0.5, z: 0 },
 ];
+// As a die settles, tip its top (the result) toward the camera so that face reads bigger and
+// more legibly than the one pointing into the screen. Eases in with the spin settle.
+const DICE_LAND_TILT = 0.34; // radians (~19°)
 // NDC box the dice render into — right-aligned with (and directly above) the roll button in
 // the bottom-right. Tall enough for the more front-on framing without squashing the pair.
 const DICE_BOX = { sx: 0.26, sy: 0.34, tx: 0.72, ty: -0.52 };
-const easeOut = (t: number): number => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
-// Standard bounce-out (0→1 with settling bounces) — drives the dice's drop + landing bounce.
+// Standard bounce-out (0→1 with settling bounces) — drives the build-drop's landing bounce.
 function bounceOut(x: number): number {
   const n = 7.5625;
   const d = 2.75;
@@ -92,6 +107,26 @@ function bounceOut(x: number): number {
   if (x < 2 / d) return n * (x -= 1.5 / d) * x + 0.75;
   if (x < 2.5 / d) return n * (x -= 2.25 / d) * x + 0.9375;
   return n * (x -= 2.625 / d) * x + 0.984375;
+}
+const TAU = Math.PI * 2;
+// Post-contact bounce profile: three decaying parabolic arcs (each 0→peak→0), so a die that
+// has hit the surface hops a few times with shrinking height before coming to rest.
+function bounceArcs(b: number): number {
+  const arc = (x: number): number => 4 * x * (1 - x); // a 0→1→0 hump
+  if (b < 0.5) return arc(b / 0.5);
+  if (b < 0.8) return 0.32 * arc((b - 0.5) / 0.3);
+  return 0.1 * arc((b - 0.8) / 0.2);
+}
+// A die's height above its resting spot at roll progress `pd`: an accelerating free-fall from
+// DICE_FALL_H for the first DICE_FALL_FRAC of the roll (so it visibly drops in from above the
+// window), then the decaying bounces.
+function diceHeight(pd: number): number {
+  if (pd >= 1) return 0;
+  if (pd < DICE_FALL_FRAC) {
+    const f = pd / DICE_FALL_FRAC;
+    return DICE_FALL_H * (1 - f * f);
+  }
+  return DICE_BOUNCE_H * bounceArcs((pd - DICE_FALL_FRAC) / (1 - DICE_FALL_FRAC));
 }
 // (ax, az) that, applied as rotZ(az)·rotX(ax), bring each face value to the top.
 function faceAngles(val: number): { ax: number; az: number } {
@@ -121,11 +156,18 @@ function diceViewport(): Mat4 {
 }
 interface Die {
   val: number;
-  spinsX: number;
-  spinsZ: number;
+  spinX: number; // gross tumble turns about its X axis
+  spinZ: number; // gross tumble turns about its Z axis
+  yaw: number; // resting yaw about vertical (variety; the result stays on top regardless)
+  yawSpin: number; // gross yaw turns during the tumble
+  jx: number; // lateral landing offset (entropy in the spacing)
+  jz: number; // depth landing offset
+  wob: number; // amplitude of the settle-rock as it comes to rest
+  dur: number; // per-die duration scale (desyncs the two dice)
 }
+const freshDie = (): Die => ({ val: 1, spinX: 0, spinZ: 0, yaw: 0, yawSpin: 0, jx: 0, jz: 0, wob: 0, dur: 1 });
 
-export type CatanMode = 'tile' | 'board' | 'pieces';
+export type CatanMode = 'tile' | 'board' | 'pieces' | 'port';
 
 // A number token to draw over a hex: its screen cell, the rolled number, whether it's a red
 // high-frequency number (6/8), and whether it's currently lit (matches the last dice roll).
@@ -186,7 +228,9 @@ export class TileScene {
   private camTile: OrbitCamera;
   private camBoard: OrbitCamera;
   private camPieces: OrbitCamera;
+  private camPort: OrbitCamera;
   private pieceColor: PlayerColor = 'red';
+  private portKind: PortKind = 'generic';
   private terrain: Terrain = 'forest';
   private variant = 0; // per-tile seed: same style, different layout
   private robber = false; // show/hide the robber (tile mode)
@@ -201,7 +245,7 @@ export class TileScene {
   private revealClock = 0;
   private revealLastT = -1;
   private tokensDirty = false; // force one composite when the tokens (re)appear after placing
-  private dice: [Die, Die] = [{ val: 1, spinsX: 0, spinsZ: 0 }, { val: 1, spinsX: 0, spinsZ: 0 }];
+  private dice: [Die, Die] = [freshDie(), freshDie()];
   private dicePhase: DicePhase = 'idle';
   private rollClock = 0;
   private rollLastT = -1;
@@ -223,11 +267,17 @@ export class TileScene {
     this.camTile = new OrbitCamera({ azimuth: 0.62, elevation: 0.62, distance: 2.7, target: { x: 0, y: 0.02, z: 0 } }, 1.6, 6);
     this.camBoard = new OrbitCamera({ azimuth: 0.62, elevation: 0.82, distance: 11.5, target: { x: 0.42, y: -0.58, z: -0.2 } }, 2, 24);
     this.camPieces = new OrbitCamera({ azimuth: 0.5, elevation: 0.4, distance: 3.7, target: { x: 0.1, y: 0.24, z: 0 } }, 1.5, 10);
+    this.camPort = new OrbitCamera({ azimuth: 0.72, elevation: 0.36, distance: 3.5, target: { x: 0, y: 0.5, z: 0 } }, 1.5, 12);
   }
   private cam(): OrbitCamera {
     if (this.modeName === 'board') return this.camBoard;
     if (this.modeName === 'pieces') return this.camPieces;
+    if (this.modeName === 'port') return this.camPort;
     return this.camTile;
+  }
+  setPortKind(k: PortKind): void {
+    this.portKind = k;
+    this.dirty = true;
   }
   // The active player color: the default for pieces mode and for buildings/roads placed (and
   // ghost-previewed) in the board editor. Set from the HUD color dropdown.
@@ -473,8 +523,17 @@ export class TileScene {
     if (this.modeName !== 'board') return;
     for (const d of this.dice) {
       d.val = 1 + Math.floor(Math.random() * 6);
-      d.spinsX = 2 + Math.floor(Math.random() * 3);
-      d.spinsZ = 1 + Math.floor(Math.random() * 2);
+      // Fractional turn counts (not whole) so the tumble looks free rather than clocked; each
+      // die gets its own spin, yaw, landing offset, wobble, and duration for variety. Kept
+      // modest so the descent reads as a clean accelerating drop, not a frantic tumble.
+      d.spinX = 1.2 + Math.random() * 1.2; // 1.2–2.4 turns
+      d.spinZ = 0.8 + Math.random() * 1.0; // 0.8–1.8 turns
+      d.yaw = (Math.random() - 0.5) * 1.4; // resting yaw ±0.7 rad
+      d.yawSpin = 0.4 + Math.random() * 0.9; // 0.4–1.3 yaw turns
+      d.jx = (Math.random() - 0.5) * 0.14; // ±0.07 lateral (varies the gap)
+      d.jz = (Math.random() - 0.5) * 0.3; // ±0.15 depth
+      d.wob = 0.12 + Math.random() * 0.1; // settle-rock 0.12–0.22 rad
+      d.dur = 0.92 + Math.random() * 0.22; // 0.92–1.14× duration
     }
     this.dicePhase = 'rolling';
     this.rollClock = 0;
@@ -574,6 +633,7 @@ export class TileScene {
     const vp = cameraMatrices(camera, target.width / target.height).viewProjection;
     if (this.modeName === 'board') this.renderBoard(target, vp, t);
     else if (this.modeName === 'pieces') rasterize(target, piecesMesh(this.pieceColor), lambertMaterial, { mvp: mat4Multiply(vp, MODEL), model: MODEL, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
+    else if (this.modeName === 'port') rasterize(target, portMesh(this.portKind), lambertMaterial, { mvp: mat4Multiply(vp, MODEL), model: MODEL, lightDir: PORT_LIGHT, ambient: AMBIENT, wrap: PORT_WRAP });
     else rasterize(target, tileMesh(this.terrain, this.variant, this.robber), lambertMaterial, { mvp: mat4Multiply(vp, MODEL), model: MODEL, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
     this.dirty = false;
   }
@@ -667,12 +727,14 @@ export class TileScene {
       if (this.rollLastT < 0) this.rollLastT = t;
       this.rollClock += Math.max(0, t - this.rollLastT);
       this.rollLastT = t;
-      if (this.dicePhase === 'rolling' && this.rollClock >= DICE_ROLL_DUR + DICE_STAGGER) {
+      // Both dice have come to rest once the later of the two (its own duration + stagger) lands.
+      const allLanded = Math.max(DICE_ROLL_DUR * this.dice[0].dur, DICE_STAGGER + DICE_ROLL_DUR * this.dice[1].dur);
+      if (this.dicePhase === 'rolling' && this.rollClock >= allLanded) {
         this.dicePhase = 'hold';
         this.rolledSum = this.dice[0].val + this.dice[1].val;
         this.tokensDirty = true; // light the matching chips on the next composite
       }
-      if (this.dicePhase === 'hold' && this.rollClock >= DICE_ROLL_DUR + DICE_HOLD) {
+      if (this.dicePhase === 'hold' && this.rollClock >= allLanded + DICE_HOLD) {
         this.dicePhase = 'idle'; // dice vanish; the lit chips remain
       }
     }
@@ -698,16 +760,30 @@ export class TileScene {
     const upZ = fY / fMag;
     for (let i = 0; i < 2; i++) {
       const d = this.dice[i];
-      // Per-die drop: its own (staggered) progress, a bounce-out fall from FALL_H, and a spin
-      // that settles onto the result face by the time it lands.
-      const pd = rolling ? Math.min(1, Math.max(0, (this.rollClock - i * DICE_STAGGER) / DICE_ROLL_DUR)) : 1;
-      const spinE = easeOut(Math.min(1, pd / 0.55));
-      const drop = rolling ? FALL_H * (1 - bounceOut(pd)) : 0;
+      // Per-die (staggered, duration-scaled) progress. It tumbles fast then slows — keeping the
+      // spin alive through the bounces and rocking onto its face at the end — so it never snaps
+      // flat onto the result early.
+      const pd = rolling ? Math.min(1, Math.max(0, (this.rollClock - i * DICE_STAGGER) / (DICE_ROLL_DUR * d.dur))) : 1;
+      const drop = rolling ? diceHeight(pd) : 0;
+      const decay = (1 - pd) * (1 - pd); // gross-tumble energy bleeding off (fast → slow)
+      const settle = 1 - decay; // 0→1 lock-in; drives the camera-lean tilt
+      // Damped rock over the last third: the die rocks onto its face rather than freezing flat.
+      const w = Math.min(1, Math.max(0, (pd - 0.68) / 0.32));
+      const rock = rolling ? d.wob * Math.sin(w * Math.PI * 3) * (1 - w) : 0;
+      const rockZ = rolling ? d.wob * 0.6 * Math.cos(w * Math.PI * 2) * (1 - w) : 0;
       const a = faceAngles(d.val);
-      const ax = (a.ax + d.spinsX * 2 * Math.PI) * spinE;
-      const az = (a.az + d.spinsZ * 2 * Math.PI) * spinE;
-      const p = DICE_POS[i];
-      const model = mat4Multiply(mat4Translate(p.x, p.y + upY * drop, p.z + upZ * drop), mat4Multiply(mat4RotZ(az), mat4RotX(ax)));
+      const ax = a.ax + d.spinX * TAU * decay + rock;
+      const az = a.az + d.spinZ * TAU * decay + rockZ;
+      const yaw = d.yaw + d.yawSpin * TAU * decay;
+      const px = DICE_POS[i].x + d.jx;
+      const pz = DICE_POS[i].z + d.jz;
+      // Outer world-X tilt leans the settled top face toward the viewer; a world-Y yaw (over the
+      // value orientation) keeps the result on top while varying which side faces show.
+      const tilt = DICE_LAND_TILT * settle;
+      const model = mat4Multiply(
+        mat4Translate(px, DICE_POS[i].y + upY * drop, pz + upZ * drop),
+        mat4Multiply(mat4RotX(tilt), mat4Multiply(mat4RotY(yaw), mat4Multiply(mat4RotZ(az), mat4RotX(ax)))),
+      );
       rasterize(target, dieMesh(), lambertMaterial, { mvp: mat4Multiply(vp, model), model, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
     }
   }

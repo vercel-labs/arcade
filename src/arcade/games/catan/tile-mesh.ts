@@ -497,12 +497,12 @@ function bush(m: Build, cx: number, cz: number, y0: number, scale: number, color
 }
 // A low-poly sheep: a fat rounded body (white top → cream belly), a black head tilted up at
 // the front with two ear nubs, and four short thin black legs. Faces along `ry`.
-function sheep(m: Build, cx: number, cz: number, y0: number, ry: number, seed: number): void {
+function sheep(m: Build, cx: number, cz: number, y0: number, ry: number, seed: number, scale = 1): void {
   const rng = mulberry32(seed | 0 || 1);
   const WHITE: RGB = [246, 246, 242];
   const CREAM: RGB = [226, 212, 184];
   const BLACK: RGB = [36, 36, 42];
-  const s = 0.437 + rng() * 0.138; // ~15% larger than the trimmed size — a bit chunkier vs the trees
+  const s = (0.437 + rng() * 0.138) * scale; // ~15% larger than the trimmed size — a bit chunkier vs the trees
   const cos = Math.cos(ry);
   const sin = Math.sin(ry);
   const at = (fwd: number, side: number): { x: number; z: number } => ({ x: cx + cos * fwd - sin * side, z: cz + sin * fwd + cos * side });
@@ -1297,6 +1297,235 @@ export function boardOverlayMesh(o: OverlaySpec): Mesh {
   // Ghost previews (3D, in the highlight color) of what a click would place.
   if (o.ghostSettlement) addSettlement(m, o.ghostSettlement.x, o.ghostSettlement.z, RIM_Y, BUILDING_SCALE, o.hoverColor);
   if (o.ghostRoad) drawRoad(m, o.ghostRoad, o.hoverColor);
+  return m;
+}
+
+// ── Port boat (harbor ship) ──────────────────────────────────────────────────
+// A low-poly Catan harbor ship: a dark reddish-brown hull with a raised pointed prow and a
+// raised squared stern, an open deck ringed by a lighter lip, a forward mast flying a
+// billowing two-tone sail + a small pennant, and cargo that depends on the port's trade type.
+// A 3:1 port is the empty (generic) ship; each 2:1 port carries a load of its resource.
+export type PortKind = 'generic' | 'brick' | 'grain' | 'lumber' | 'ore' | 'wool';
+
+// A warm, fairly LIGHT wood so the hull reads in ASCII on the dark background — a Lambert face
+// can't get brighter than its base color, so a dark brown crushes to near-black there no matter
+// the light. Form still comes from the raking key + wrap shading these faces differently.
+const HULL: RGB = [154, 100, 72]; // outer planking
+const HULL_DK: RGB = [124, 80, 58]; // keel underside + inner walls (shadowed, for form)
+const LIP: RGB = [184, 130, 98]; // the gunwale rim band (lighter, catches the light)
+const DECK: RGB = [180, 122, 90]; // interior floor
+const MASTC: RGB = [112, 78, 58]; // mast + spar
+const SAIL_TAN: RGB = [227, 219, 203]; // warm cream for the masthead pennant
+const SAIL_WHITE: RGB = [244, 242, 236]; // the sail (one consistent color)
+
+// Longitudinal stations from stern (−x) to bow (+x): deck-edge half-width/height (T) and keel
+// half-width/height (B) at each. Both the sheer (TY) and the keel (BY) rise toward the ends for
+// the raised prow + stern; the widths taper to near-points at bow and stern.
+const ST_X = [-0.70, -0.50, -0.24, 0.04, 0.32, 0.58, 0.80];
+const ST_TW = [0.17, 0.30, 0.35, 0.35, 0.32, 0.24, 0.08];
+const ST_TY = [0.52, 0.46, 0.42, 0.30, 0.32, 0.38, 0.44];
+const ST_BW = [0.09, 0.18, 0.22, 0.21, 0.18, 0.11, 0.03];
+const ST_BY = [0.30, 0.1, 0.03, 0.02, 0.04, 0.12, 0.31];
+const LIPW = 0.055; // rim band width
+const FLOOR_Y = 0.19; // main (cargo well) deck height — cargo sits here
+const AFT_Y = 0.38; // raised aft-deck (poop) height: below the stern rim, above the well floor
+const STEP = 2; // station where the poop deck steps down to the well
+const BOW = 5; // bow bulkhead station (forward end of the well)
+
+// One hull side wall (`s` = +1 / −1) as a smooth-shaded strip: per-vertex normals are averaged
+// across the wall facets, so the curved side lights as one smooth gradient instead of stepping
+// facet-to-facet (which, under the raking key, left a dark wedge where two flat facets met).
+function smoothWall(m: Build, s: number): void {
+  const N = ST_X.length;
+  const top = ST_X.map((x, i) => v(x, ST_TY[i], s * ST_TW[i]));
+  const bot = ST_X.map((x, i) => v(x, ST_BY[i], s * ST_BW[i]));
+  const nt = top.map(() => v(0, 0, 0));
+  const nb = bot.map(() => v(0, 0, 0));
+  const out = v(0, 0.25, s);
+  for (let i = 0; i < N - 1; i++) {
+    let n = norm(cross(sub(top[i + 1], top[i]), sub(bot[i], top[i])));
+    if (n.x * out.x + n.y * out.y + n.z * out.z < 0) n = v(-n.x, -n.y, -n.z);
+    for (const acc of [nt[i], nt[i + 1], nb[i], nb[i + 1]]) {
+      acc.x += n.x;
+      acc.y += n.y;
+      acc.z += n.z;
+    }
+  }
+  const col = { x: HULL[0], y: HULL[1], z: HULL[2] };
+  const push = (p: Vec3, nn: Vec3): void => void m.vertices.push({ position: { ...p }, normal: norm(nn), uv: [0, 0], color: col });
+  for (let i = 0; i < N - 1; i++) {
+    const base = m.vertices.length;
+    push(top[i], nt[i]);
+    push(top[i + 1], nt[i + 1]);
+    push(bot[i + 1], nb[i + 1]);
+    push(bot[i], nb[i]);
+    m.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  }
+}
+
+function boatHull(m: Build): void {
+  const N = ST_X.length;
+  const IW = ST_TW.map((w) => Math.max(0.02, w - LIPW)); // inner (deck-opening) half-width
+  // Outer side walls (smooth-shaded) + the lip band on top, both sides.
+  smoothWall(m, 1);
+  smoothWall(m, -1);
+  for (let i = 0; i < N - 1; i++) {
+    for (const s of [1, -1]) {
+      faceQuadFlat(m, v(ST_X[i], ST_TY[i], s * ST_TW[i]), v(ST_X[i + 1], ST_TY[i + 1], s * ST_TW[i + 1]), v(ST_X[i + 1], ST_TY[i + 1], s * IW[i + 1]), v(ST_X[i], ST_TY[i], s * IW[i]), LIP, UP);
+    }
+  }
+  // Keel underside.
+  for (let i = 0; i < N - 1; i++) {
+    faceQuadFlat(m, v(ST_X[i], ST_BY[i], ST_BW[i]), v(ST_X[i + 1], ST_BY[i + 1], ST_BW[i + 1]), v(ST_X[i + 1], ST_BY[i + 1], -ST_BW[i + 1]), v(ST_X[i], ST_BY[i], -ST_BW[i]), HULL_DK, DOWN);
+  }
+  // Bow & stern end caps + the lip closing across each end.
+  for (const e of [0, N - 1]) {
+    const nx = e === 0 ? -1 : 1;
+    faceQuadFlat(m, v(ST_X[e], ST_TY[e], ST_TW[e]), v(ST_X[e], ST_BY[e], ST_BW[e]), v(ST_X[e], ST_BY[e], -ST_BW[e]), v(ST_X[e], ST_TY[e], -ST_TW[e]), HULL, v(nx, 0.25, 0));
+    faceQuadFlat(m, v(ST_X[e], ST_TY[e], ST_TW[e]), v(ST_X[e], ST_TY[e], IW[e]), v(ST_X[e], ST_TY[e], -IW[e]), v(ST_X[e], ST_TY[e], -ST_TW[e]), LIP, UP);
+  }
+  // Helper: a lofted deck floor between two stations at height `y`, plus the short inner
+  // bulwark walls from that floor up to the rim on both sides.
+  // Inner bulwark walls use the lit DECK tone (not the dark keel color): they face inward/away
+  // from the key, so a dark color made them read as a black gouge across the open deck.
+  const deckSeg = (i: number, y: number): void => {
+    faceQuadFlat(m, v(ST_X[i], y, IW[i]), v(ST_X[i + 1], y, IW[i + 1]), v(ST_X[i + 1], y, -IW[i + 1]), v(ST_X[i], y, -IW[i]), DECK, UP);
+    for (const s of [1, -1]) {
+      faceQuadFlat(m, v(ST_X[i], ST_TY[i], s * IW[i]), v(ST_X[i + 1], ST_TY[i + 1], s * IW[i + 1]), v(ST_X[i + 1], y, s * IW[i + 1]), v(ST_X[i], y, s * IW[i]), DECK, v(0, 0.2, -s));
+    }
+  };
+  // Raised aft deck (poop) from the stern to the step — a solid deck flush inside the hull.
+  for (let i = 0; i < STEP; i++) deckSeg(i, AFT_Y);
+  // Step riser: the front face of the poop deck, down to the well.
+  faceQuadFlat(m, v(ST_X[STEP], AFT_Y, IW[STEP]), v(ST_X[STEP], AFT_Y, -IW[STEP]), v(ST_X[STEP], FLOOR_Y, -IW[STEP]), v(ST_X[STEP], FLOOR_Y, IW[STEP]), DECK, v(1, 0.2, 0));
+  // Open cargo well from the step to the bow.
+  for (let i = STEP; i < BOW; i++) deckSeg(i, FLOOR_Y);
+  // Bow bulkhead + a small solid foredeck capping the prow (so there's no hole at the tip).
+  faceQuadFlat(m, v(ST_X[BOW], ST_TY[BOW], IW[BOW]), v(ST_X[BOW], ST_TY[BOW], -IW[BOW]), v(ST_X[BOW], FLOOR_Y, -IW[BOW]), v(ST_X[BOW], FLOOR_Y, IW[BOW]), DECK, v(-1, 0.2, 0));
+  for (let i = BOW; i < N - 1; i++) {
+    faceQuadFlat(m, v(ST_X[i], ST_TY[i], IW[i]), v(ST_X[i + 1], ST_TY[i + 1], IW[i + 1]), v(ST_X[i + 1], ST_TY[i + 1], -IW[i + 1]), v(ST_X[i], ST_TY[i], -IW[i]), DECK, UP);
+  }
+}
+
+// Mast + billowing sail + masthead pennant, stepped on the raised aft deck so the open bow
+// well ahead of it carries the cargo, as in the reference ships.
+const MAST_X = -0.3;
+const MAST_BASE = 0.34;
+const MAST_H = 1.02;
+function boatRig(m: Build): void {
+  const topY = MAST_BASE + MAST_H;
+  box(m, MAST_X, 0, 0.045, MAST_H, 0.045, MASTC, 0, MAST_BASE);
+  // Sail: a grid in the Y–Z plane hanging from the upper mast, bulging toward the bow (+x) —
+  // more at the foot than the head — so it reads as wind-filled fabric. One consistent color.
+  const halfW = 0.35;
+  const botY = 0.63;
+  const topSailY = 1.16;
+  const nz = 4;
+  const ny = 3;
+  const billow = 0.24;
+  const P: Vec3[][] = [];
+  for (let iy = 0; iy <= ny; iy++) {
+    const ty = iy / ny;
+    const y = botY + (topSailY - botY) * ty;
+    const row: Vec3[] = [];
+    for (let iz = 0; iz <= nz; iz++) {
+      const tz = iz / nz;
+      const hump = Math.sin(Math.PI * tz); // 0 at the luff/leech edges, 1 in the belly
+      const x = MAST_X + billow * hump * (0.55 + 0.45 * (1 - ty));
+      row.push(v(x, y, -halfW + 2 * halfW * tz));
+    }
+    P.push(row);
+  }
+  for (let iy = 0; iy < ny; iy++) {
+    for (let iz = 0; iz < nz; iz++) {
+      faceQuadFlat(m, P[iy][iz], P[iy][iz + 1], P[iy + 1][iz + 1], P[iy + 1][iz], SAIL_WHITE, v(1, 0, 0));
+    }
+  }
+  // A thin spar across the head of the sail, and a small swallowtail pennant above it.
+  box(m, MAST_X, 0, 0.03, 0.03, 2 * halfW + 0.04, MASTC, 0, topSailY - 0.02);
+  const fy = topY;
+  faceQuad(m, v(MAST_X, fy, 0), v(MAST_X - 0.22, fy - 0.02, 0), v(MAST_X - 0.16, fy - 0.09, 0), v(MAST_X, fy - 0.13, 0), SAIL_TAN, v(0, 0, 1));
+}
+
+// A cone whose axis points in an arbitrary direction — the segment of a felled tree. A ring
+// perpendicular to `axis` at `base`, tapering to an apex `len` along the axis.
+function coneAxis(m: Build, base: Vec3, axis: Vec3, r: number, len: number, sides: number, color: RGB, spin = 0): void {
+  const a = norm(axis);
+  const ref: Vec3 = Math.abs(a.y) > 0.9 ? { x: 1, y: 0, z: 0 } : { x: 0, y: 1, z: 0 };
+  const u = norm(cross(a, ref));
+  const w = norm(cross(a, u));
+  const apex = v(base.x + a.x * len, base.y + a.y * len, base.z + a.z * len);
+  const ring: Vec3[] = [];
+  for (let i = 0; i < sides; i++) {
+    const t = (Math.PI * 2 * i) / sides + spin;
+    const cc = Math.cos(t) * r;
+    const ss = Math.sin(t) * r;
+    ring.push(v(base.x + u.x * cc + w.x * ss, base.y + u.y * cc + w.y * ss, base.z + u.z * cc + w.z * ss));
+  }
+  for (let i = 0; i < sides; i++) {
+    const b = ring[i];
+    const c = ring[(i + 1) % sides];
+    const mid = v((b.x + c.x) / 2, (b.y + c.y) / 2, (b.z + c.z) / 2);
+    faceTri(m, apex, b, c, color, norm(sub(mid, base)));
+  }
+}
+// A felled conifer lying on its side along `ry` (a slight upward tilt) — three stacked skirts
+// down a near-horizontal axis plus a short trunk stub. A chopped-down tree, not a standing one.
+function felledPine(m: Build, cx: number, cz: number, y0: number, ry: number, scale: number, green: RGB, seed: number): void {
+  const a = norm(v(Math.cos(ry), 0.14, Math.sin(ry)));
+  let start = v(cx, y0 + 0.09 * scale, cz);
+  const r = [0.15, 0.115, 0.075];
+  const seg = [0.2, 0.19, 0.22];
+  for (let t = 0; t < 3; t++) {
+    coneAxis(m, start, a, r[t] * scale, (seg[t] + (t < 2 ? 0.05 : 0)) * scale, 6, shade(green, 1 - t * 0.03), seed + t);
+    start = v(start.x + a.x * seg[t] * 0.6 * scale, start.y + a.y * seg[t] * 0.6 * scale, start.z + a.z * seg[t] * 0.6 * scale);
+  }
+  const tb = v(cx - a.x * 0.06 * scale, y0 + 0.06 * scale, cz - a.z * 0.06 * scale);
+  beam(m, tb, v(tb.x - a.x * 0.12 * scale, tb.y, tb.z - a.z * 0.12 * scale), 0.02 * scale, TRUNK);
+}
+
+// Cargo for a 2:1 port: a large load of that resource filling the open bow deck ahead of the
+// mast (the generic 3:1 ship carries nothing). Sized to the reference — the load nearly fills
+// the deck.
+function boatCargo(m: Build, kind: PortKind, seed: number): void {
+  const y = FLOOR_Y;
+  if (kind === 'grain') {
+    const CORN: RGB = [232, 198, 82];
+    const CAP: RGB = [246, 214, 108];
+    logBeam(m, 0.22, 0.12, y, 0.36, 0.12, 0, CORN, CAP);
+    logBeam(m, 0.22, -0.12, y, 0.36, 0.12, 0, CORN, CAP);
+    logBeam(m, 0.04, 0.0, y + 0.02, 0.32, 0.11, 0.1, CORN, CAP);
+  } else if (kind === 'ore') {
+    const GREY: RGB = [150, 154, 164];
+    blob(m, 0.24, y + 0.22, 0.12, 0.25, 0.22, 0.24, GREY, seed, 0.4, 3, 6);
+    blob(m, 0.1, y + 0.19, -0.12, 0.22, 0.19, 0.22, shade(GREY, 0.92), seed + 3, 0.4, 3, 6);
+  } else if (kind === 'lumber') {
+    const GREEN: RGB = [78, 122, 68];
+    felledPine(m, 0.02, 0.11, y, 0.18, 1.05, GREEN, seed);
+    felledPine(m, 0.24, -0.06, y, -0.12, 1.05, GREEN, seed + 3);
+    felledPine(m, 0.12, 0.02, y + 0.06, 0.48, 0.95, GREEN, seed + 6);
+  } else if (kind === 'wool') {
+    sheep(m, 0.28, 0.09, y, 0.2, seed, 1.55);
+    sheep(m, 0.05, -0.05, y, -0.4, seed + 4, 1.55);
+    sheep(m, 0.34, -0.14, y, 0.05, seed + 8, 1.4);
+  } else if (kind === 'brick') {
+    const BRICK: RGB = [196, 112, 84];
+    box(m, 0.16, 0.11, 0.3, 0.13, 0.2, BRICK, 0, y);
+    box(m, 0.16, -0.11, 0.3, 0.13, 0.2, BRICK, 0, y);
+    box(m, 0.2, 0.0, 0.28, 0.13, 0.34, shade(BRICK, 0.94), 0, y + 0.13);
+  }
+}
+
+const portCache = new Map<string, Mesh>();
+export function portMesh(kind: PortKind, seed = 1): Mesh {
+  const key = `${kind}:${seed}`;
+  const cached = portCache.get(key);
+  if (cached) return cached;
+  const m = build();
+  boatHull(m);
+  boatRig(m);
+  boatCargo(m, kind, seed);
+  portCache.set(key, m);
   return m;
 }
 
