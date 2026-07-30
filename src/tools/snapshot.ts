@@ -445,7 +445,7 @@ function catanSnapshot(): void {
     if (pieceColor) (screen.component('catan-color') as Dropdown | undefined)?.pick(['red', 'blue', 'white', 'orange'].indexOf(pieceColor));
     if (portKind) (screen.component('catan-port') as Dropdown | undefined)?.pick(['generic', 'brick', 'grain', 'lumber', 'ore', 'wool'].indexOf(portKind));
     const region = { x: 0, y: 0, w: cols, h: rows };
-    screen.setRoot(buildCatanTileRoot(region, noop, scene.boardTokens(cols, rows), scene.currentMode()), region);
+    screen.setRoot(buildCatanTileRoot(region, noop, scene.boardTokens(cols, rows), scene.currentMode(), scene.portSailLabel(cols, rows)), region);
     const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
     surfaceToPpm(surf, cols, rows, out);
     return;

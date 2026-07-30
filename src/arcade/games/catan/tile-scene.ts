@@ -28,7 +28,7 @@ import { type BoardOccupancy, canPlaceRoad, canPlaceSettlement } from '../../../
 import { type BoardSetup, generateBoard } from '../../../rules/catan/setup.ts';
 import { type PlayerColor, RED_NUMBERS, type Terrain } from '../../../rules/catan/types.ts';
 import { mulberry32 } from '../../scenes/wisp.ts';
-import { boardOverlayMesh, dieMesh, hoverColorFor, type OverlaySpec, piecesMesh, type PortKind, portMesh, tileBackMesh, tileMesh } from './tile-mesh.ts';
+import { boardOverlayMesh, dieMesh, hoverColorFor, type OverlaySpec, piecesMesh, PORT_SAIL_CENTER, type PortKind, portMesh, tileBackMesh, tileMesh } from './tile-mesh.ts';
 
 const FOVY = (44 * Math.PI) / 180;
 // A warm key from the upper front-right so tops read bright and the raised content casts its
@@ -178,6 +178,28 @@ export interface BoardToken {
   red: boolean;
   hot: boolean;
 }
+
+// A 2D chip overlaid on a port's sail (projected to a screen cell, like the hex number
+// tokens): the trade ratio as text, with a resource emoji naming what it trades. The chip
+// itself is drawn black by the HUD (like the number tokens) — the resource is carried by the
+// emoji, not a fill color. Emoji render in the terminal but are blank in snapshot PNGs (the
+// snapshot's 8×8 ASCII bitmap font has no emoji glyphs).
+export interface SailLabel {
+  col: number;
+  row: number;
+  ratio: string; // '2:1' or '3:1'
+  icon: string; // the traded resource's emoji, or '?' for the generic any-resource port
+}
+// Each port's ratio + resource emoji. The generic port trades anything, so it gets a question mark
+// instead of a resource.
+const PORT_SAIL_INFO: Record<PortKind, { ratio: string; icon: string }> = {
+  generic: { ratio: '3:1', icon: '?' },
+  brick: { ratio: '2:1', icon: '🧱' },
+  grain: { ratio: '2:1', icon: '🌾' },
+  lumber: { ratio: '2:1', icon: '🌲' },
+  ore: { ratio: '2:1', icon: '🪨' },
+  wool: { ratio: '2:1', icon: '🐑' },
+};
 
 const smooth = (x: number): number => {
   const t = x < 0 ? 0 : x > 1 ? 1 : x;
@@ -621,6 +643,27 @@ export class TileScene {
       });
     }
     return out;
+  }
+
+  // The trade-info chip to overlay on the sail (port mode only): the resource icon + ratio,
+  // projected to the sail's screen cell with the port camera — the same 2D-overlay approach as
+  // the hex number tokens, so it stays legible where painting on the 3D sail wouldn't.
+  portSailLabel(cols: number, rows: number): SailLabel | null {
+    if (this.modeName !== 'port') return null;
+    const cam = this.camPort;
+    const camera: Camera = { eye: cam.eye(), target: cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 100 };
+    const vp = cameraMatrices(camera, cols / (rows * 2)).viewProjection;
+    const c = mat4MulVec4(vp, { x: PORT_SAIL_CENTER.x, y: PORT_SAIL_CENTER.y, z: PORT_SAIL_CENTER.z, w: 1 });
+    if (c.w <= 0) return null;
+    const info = PORT_SAIL_INFO[this.portKind];
+    // Return the sail's midpoint cell (col, row). Centering the chip on it is the HUD's job, since
+    // only the HUD knows the chip's width.
+    return {
+      col: Math.round(((c.x / c.w) * 0.5 + 0.5) * cols),
+      row: Math.round((1 - ((c.y / c.w) * 0.5 + 0.5)) * rows),
+      ratio: info.ratio,
+      icon: info.icon,
+    };
   }
 
   renderScene(target: RenderTarget, t = 0): void {

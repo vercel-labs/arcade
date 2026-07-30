@@ -3,8 +3,9 @@
 // HUD's shape — persistent component instances mounted via Slot, rebuilt each frame.
 
 import { Box, Button, Dialog, Dropdown, type LayoutBox, Modal, type Node, RoundedButton, type Screen, Slot, type Style, Text } from '../../../tui/index.ts';
+import { stringWidth } from '../../../engine/index.ts';
 import { type PlayerColor, type Terrain } from '../../../rules/catan/types.ts';
-import { type BoardToken, type CatanMode } from './tile-scene.ts';
+import { type BoardToken, type CatanMode, type SailLabel } from './tile-scene.ts';
 import { type PortKind } from './tile-mesh.ts';
 import { UI_CHROME_BG, UI_CHROME_PILL } from '../../theme.ts';
 
@@ -22,6 +23,18 @@ function tokenChip(tk: BoardToken): Node {
   const ink = tk.hot ? CHIP_GOLD_INK : tk.red ? CHIP_RED : CHIP_INK;
   return Box({ position: 'absolute', top: tk.row, left: tk.col - Math.floor((label.length + 2) / 2), background: bg, padding: [0, 1] }, [
     Text({ text: label, style: { color: ink, bold: true } }),
+  ]);
+}
+
+// The trade-info chip on a port's sail: a one-row badge on a plain black chip — the same look as
+// the hex number tokens, so it reads as a distinct label against the white sail without a border or
+// fill. Reads as what it trades then the rate: "🐑 2:1". Absolutely positioned on the sail's
+// projected center cell, centered horizontally on it — the label's width varies with the icon
+// (a 2-cell emoji or a 1-cell '?'), hence the measure.
+function sailChip(s: SailLabel): Node {
+  const label = s.icon + ' ' + s.ratio;
+  return Box({ position: 'absolute', top: s.row, left: s.col - Math.floor((stringWidth(label) + 2) / 2), background: CHIP_BG, padding: [0, 1] }, [
+    Text({ text: label, style: { color: CHIP_INK, bold: true } }),
   ]);
 }
 
@@ -133,8 +146,9 @@ export function buildCatanPieceModal(o: PieceModalOpts): Node {
 
 // The full-screen HUD: a translucent control panel (top-left) with the per-mode controls and a
 // ☰ menu button (top-right). No bottom bar — home/reset/display/etc. all live in the menu.
-// `onOpenMenu` opens the game menu.
-export function buildCatanTileRoot(region: LayoutBox, onOpenMenu: () => void, tokens: BoardToken[] = [], mode: CatanMode = 'tile'): Node {
+// `onOpenMenu` opens the game menu; `tokens` are the board number chips; `sail` is the port
+// trade chip (both are 2D overlays projected onto the scene).
+export function buildCatanTileRoot(region: LayoutBox, onOpenMenu: () => void, tokens: BoardToken[] = [], mode: CatanMode = 'tile', sail: SailLabel | null = null): Node {
   // Per-mode controls: board → regenerate; pieces → color picker; tile → terrain + vary + robber.
   const controls: Node[] =
     mode === 'board'
@@ -159,6 +173,7 @@ export function buildCatanTileRoot(region: LayoutBox, onOpenMenu: () => void, to
   const panel = Box({ flexDirection: 'column', gap: 1, padding: [1, 2], background: [16, 18, 26, 0.9] }, [labeled('Mode', Slot('catan-mode')), ...controls]);
   return Box({ width: region.w, height: region.h }, [
     ...tokens.map(tokenChip), // number tokens over the board (bottom layer, under the chrome)
+    ...(sail ? [sailChip(sail)] : []), // port mode: the trade-info chip on the sail
     Box({ width: region.w, height: region.h, flexDirection: 'column' }, [Box({ flexDirection: 'row', padding: [1, 0, 0, 2] }, [panel])]),
     Box({ position: 'absolute', top: 1, right: 2 }, [Button({ id: 'catan-menu-button', label: '☰ menu', onClick: onOpenMenu, style: UI_CHROME_PILL })]),
     // Board mode: a roll button in the bottom-right; triggers the big dice overlay. Same

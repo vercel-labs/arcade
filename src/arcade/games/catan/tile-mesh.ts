@@ -1411,18 +1411,27 @@ function boatHull(m: Build): void {
 // well ahead of it carries the cargo, as in the reference ships.
 const MAST_X = -0.3;
 const MAST_BASE = 0.34;
-const MAST_H = 1.02;
+const MAST_H = 1.14;
+// Sail: a wide, fairly flat billboard (it carries the projected trade-info chip). PORT_SAIL_CENTER
+// is the world-space anchor the chip projects onto. Its Y sits a touch above the geometric midpoint:
+// the sail billows more at the foot than the head, so the closer, larger lower half eats more screen
+// rows in perspective and drags the visible center down — biasing the anchor up re-centers the chip.
+const SAIL_HALFW = 0.44;
+const SAIL_BOT = 0.64;
+const SAIL_TOP = 1.3;
+const SAIL_BILLOW = 0.14;
+export const PORT_SAIL_CENTER = { x: MAST_X + SAIL_BILLOW * 0.775, y: SAIL_BOT + (SAIL_TOP - SAIL_BOT) * 0.6, z: 0 };
 function boatRig(m: Build): void {
   const topY = MAST_BASE + MAST_H;
   box(m, MAST_X, 0, 0.045, MAST_H, 0.045, MASTC, 0, MAST_BASE);
   // Sail: a grid in the Y–Z plane hanging from the upper mast, bulging toward the bow (+x) —
   // more at the foot than the head — so it reads as wind-filled fabric. One consistent color.
-  const halfW = 0.35;
-  const botY = 0.63;
-  const topSailY = 1.16;
+  const halfW = SAIL_HALFW;
+  const botY = SAIL_BOT;
+  const topSailY = SAIL_TOP;
   const nz = 4;
   const ny = 3;
-  const billow = 0.24;
+  const billow = SAIL_BILLOW;
   const P: Vec3[][] = [];
   for (let iy = 0; iy <= ny; iy++) {
     const ty = iy / ny;
