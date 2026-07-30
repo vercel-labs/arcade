@@ -325,6 +325,75 @@ function blob(m: Build, cx: number, cy: number, cz: number, rx: number, ry: numb
   }
 }
 
+type RockProfile = 'crag' | 'slab' | 'wedge';
+
+// Three deliberately different angular-rock constructions: a peaked crag, a broad flat slab,
+// or a sharp ridge-backed wedge. Their distinct topology—not only random vertex jitter—keeps a
+// pile from reading as copies of one procedural boulder.
+function angularRock(m: Build, cx: number, cz: number, y0: number, rx: number, h: number, rz: number, color: RGB, seed: number, profile: RockProfile, spin = 0): void {
+  const rng = mulberry32(seed | 0 || 1);
+  const cs = Math.cos(spin);
+  const ss = Math.sin(spin);
+  const point = (dx: number, dy: number, dz: number): Vec3 =>
+    v(cx + dx * cs - dz * ss, y0 + dy, cz + dx * ss + dz * cs);
+
+  if (profile === 'wedge') {
+    const l0 = rx * (0.9 + rng() * 0.14);
+    const l1 = rx * (0.86 + rng() * 0.16);
+    const w0 = rz * (0.82 + rng() * 0.16);
+    const w1 = rz * (0.88 + rng() * 0.14);
+    const base = [
+      point(-l0, 0.006, -w0),
+      point(l1, 0.006, -w1),
+      point(l1 * 0.9, 0.006, w1),
+      point(-l0 * 0.88, 0.006, w0),
+    ];
+    const ridgeA = point(-rx * 0.48, h * (0.9 + rng() * 0.08), rz * 0.04);
+    const ridgeB = point(rx * 0.46, h * (0.78 + rng() * 0.1), -rz * 0.05);
+    const sideA = norm(v(-ss, 0.25, cs));
+    const sideB = norm(v(ss, 0.25, -cs));
+    faceQuadFlat(m, base[0], base[1], ridgeB, ridgeA, shade(color, 0.94), sideA);
+    faceQuadFlat(m, base[3], ridgeA, ridgeB, base[2], shade(color, 1.06), sideB);
+    faceTri(m, base[0], ridgeA, base[3], shade(color, 0.86), norm(v(-cs, 0.2, -ss)));
+    faceTri(m, base[1], base[2], ridgeB, shade(color, 0.9), norm(v(cs, 0.2, ss)));
+    return;
+  }
+
+  const sides = profile === 'slab' ? 5 : 5 + (Math.abs(seed) % 2);
+  const angles = Array.from({ length: sides }, (_, i) => (Math.PI * 2 * i) / sides + spin + (rng() - 0.5) * 0.18);
+  const ring = (y: number, scale: number, shiftX: number, shiftZ: number, verticalJitter: number): Vec3[] =>
+    angles.map((a) => {
+      const radial = scale * (0.78 + rng() * 0.34);
+      return v(
+        cx + shiftX + Math.cos(a) * rx * radial,
+        y + (rng() - 0.5) * verticalJitter,
+        cz + shiftZ + Math.sin(a) * rz * radial,
+      );
+    });
+  const bottom = ring(y0 + 0.006, 0.72, 0, 0, h * 0.025);
+  const shoulder = ring(y0 + h * (profile === 'slab' ? 0.4 : 0.52), 1, (rng() - 0.5) * rx * 0.1, (rng() - 0.5) * rz * 0.1, h * 0.1);
+  const ridgeShiftX = (rng() - 0.5) * rx * 0.42;
+  const ridgeShiftZ = (rng() - 0.5) * rz * 0.42;
+  const ridge = ring(y0 + h * (profile === 'slab' ? 0.76 : 0.8), profile === 'slab' ? 0.7 : 0.43, ridgeShiftX, ridgeShiftZ, h * 0.08);
+  const peak = v(
+    cx + ridgeShiftX + (rng() - 0.5) * rx * 0.2,
+    y0 + h * (profile === 'slab' ? 0.82 : 1),
+    cz + ridgeShiftZ + (rng() - 0.5) * rz * 0.2,
+  );
+
+  for (let i = 0; i < sides; i++) {
+    const j = (i + 1) % sides;
+    const outward = norm(v(
+      shoulder[i].x + shoulder[j].x - 2 * cx,
+      0.16,
+      shoulder[i].z + shoulder[j].z - 2 * cz,
+    ));
+    faceQuadFlat(m, bottom[i], bottom[j], shoulder[j], shoulder[i], shade(color, 0.88 + rng() * 0.12), outward);
+    faceQuadFlat(m, shoulder[i], shoulder[j], ridge[j], ridge[i], shade(color, 0.9 + rng() * 0.16), outward);
+    faceTri(m, ridge[i], ridge[j], peak, shade(color, 0.94 + rng() * 0.16), profile === 'slab' ? UP : outward);
+  }
+}
+
 // A thin square-section beam between two 3D points (for angled struts like sheep legs).
 function beam(m: Build, a: Vec3, b: Vec3, w: number, color: RGB): void {
   const dir = norm(sub(b, a));
@@ -469,6 +538,15 @@ function baleStack(m: Build, cx: number, cz: number, hAt: (x: number, z: number)
 
 // ── Palette (non-wheat tiles, pending their rebuilds) ────────────────────────────
 const TRUNK: RGB = [104, 72, 44];
+const PINE_RADII = [0.17, 0.13, 0.085] as const;
+const PINE_TIER_BASES = [0.03, 0.14, 0.25] as const;
+const PINE_TIER_HEIGHTS = [0.16, 0.16, 0.185] as const;
+const PINE_GREENS: readonly RGB[] = [
+  [56, 108, 66],
+  [72, 132, 82],
+  [92, 152, 92],
+  [62, 118, 74],
+];
 
 // A low-poly conifer: a thin trunk under THREE prominent skirts. Each skirt is a cone whose
 // flared base clearly overhangs the narrowing tip of the one below, so the tree reads as three
@@ -477,11 +555,8 @@ function pine(m: Build, cx: number, cz: number, y0: number, scale: number, green
   box(m, cx, cz, 0.032 * scale, 0.08 * scale, 0.032 * scale, TRUNK, 0, y0 - 0.02);
   // Wide-based, short skirts that only just overlap: each tier's flared base juts well past the
   // narrowing tip below it, giving a strongly stepped silhouette (not a smooth cone) from afar.
-  const r = [0.17, 0.13, 0.085];
-  const baseY = [0.03, 0.14, 0.25];
-  const h = [0.16, 0.16, 0.185];
   for (let t = 0; t < 3; t++) {
-    cone(m, cx, cz, r[t] * scale, h[t] * scale, 6, shade(green, 1 - t * 0.03), y0 + baseY[t] * scale, seed + t * 0.9);
+    cone(m, cx, cz, PINE_RADII[t] * scale, PINE_TIER_HEIGHTS[t] * scale, 6, shade(green, 1 - t * 0.03), y0 + PINE_TIER_BASES[t] * scale, seed + t * 0.9);
   }
 }
 // A broadleaf tree: a short brown trunk under a big rounded faceted canopy (flat shading
@@ -623,13 +698,6 @@ function fieldsTile(seed: number): Build {
 function forestTile(seed: number): Build {
   const m = build();
   const GRASS: RGB = [104, 152, 108]; // deep shady green — reads clearly darker than pasture mint from afar
-  // A spread of pine greens — dark forest through medium — assigned per tree for variety.
-  const GREENS: RGB[] = [
-    [56, 108, 66],
-    [72, 132, 82],
-    [92, 152, 92],
-    [62, 118, 74],
-  ];
   const amp = 0.12;
   const gseed = seed + 3.1;
   tileBase(m, { color: GRASS, amp, seed: gseed });
@@ -656,7 +724,7 @@ function forestTile(seed: number): Build {
   let i = 0;
   for (const p of pts) {
     if (used.has(p)) continue;
-    pine(m, p.x, p.z, hAt(p.x, p.z), 0.68 + rng() * 0.26, GREENS[Math.floor(rng() * GREENS.length)], (seed * 31 + i++) | 0);
+    pine(m, p.x, p.z, hAt(p.x, p.z), 0.68 + rng() * 0.26, PINE_GREENS[Math.floor(rng() * PINE_GREENS.length)], (seed * 31 + i++) | 0);
   }
   return m;
 }
@@ -1327,6 +1395,7 @@ const ST_TY = [0.52, 0.46, 0.42, 0.30, 0.32, 0.38, 0.44];
 const ST_BW = [0.09, 0.18, 0.22, 0.21, 0.18, 0.11, 0.03];
 const ST_BY = [0.30, 0.1, 0.03, 0.02, 0.04, 0.12, 0.31];
 const LIPW = 0.055; // rim band width
+const DECK_INSET = 0.03; // keep horizontal floors safely inside the narrowing hull shell
 const FLOOR_Y = 0.19; // main (cargo well) deck height — cargo sits here
 const AFT_Y = 0.38; // raised aft-deck (poop) height: below the stern rim, above the well floor
 const STEP = 2; // station where the poop deck steps down to the well
@@ -1366,6 +1435,14 @@ function smoothWall(m: Build, s: number): void {
 function boatHull(m: Build): void {
   const N = ST_X.length;
   const IW = ST_TW.map((w) => Math.max(0.02, w - LIPW)); // inner (deck-opening) half-width
+  // The outer wall narrows linearly from the sheer to the keel at each station. A floor lower
+  // in the hull must use the width at that height—not the much wider opening at the rim—or its
+  // edge pierces the side wall and renders as a horizontal shelf outside the boat.
+  const deckWidth = (i: number, y: number): number => {
+    const t = Math.max(0, Math.min(1, (y - ST_BY[i]) / (ST_TY[i] - ST_BY[i])));
+    const outerAtY = ST_BW[i] + (ST_TW[i] - ST_BW[i]) * t;
+    return Math.max(0.02, Math.min(IW[i], outerAtY - DECK_INSET));
+  };
   // Outer side walls (smooth-shaded) + the lip band on top, both sides.
   smoothWall(m, 1);
   smoothWall(m, -1);
@@ -1374,34 +1451,53 @@ function boatHull(m: Build): void {
       faceQuadFlat(m, v(ST_X[i], ST_TY[i], s * ST_TW[i]), v(ST_X[i + 1], ST_TY[i + 1], s * ST_TW[i + 1]), v(ST_X[i + 1], ST_TY[i + 1], s * IW[i + 1]), v(ST_X[i], ST_TY[i], s * IW[i]), LIP, UP);
     }
   }
+  // Stern gunwale: bridge the two side lips with a real fore-aft surface. The former end
+  // "lip" varied only in Z, so all four points were collinear and rendered as a paper edge.
+  const sternLipT = Math.min(1, LIPW / (ST_X[1] - ST_X[0]));
+  const sternLipX = ST_X[0] + (ST_X[1] - ST_X[0]) * sternLipT;
+  const sternLipY = ST_TY[0] + (ST_TY[1] - ST_TY[0]) * sternLipT;
+  const sternLipW = ST_TW[0] + (ST_TW[1] - ST_TW[0]) * sternLipT;
+  faceQuadFlat(
+    m,
+    v(ST_X[0], ST_TY[0], ST_TW[0]),
+    v(sternLipX, sternLipY, sternLipW),
+    v(sternLipX, sternLipY, -sternLipW),
+    v(ST_X[0], ST_TY[0], -ST_TW[0]),
+    LIP,
+    UP,
+  );
   // Keel underside.
   for (let i = 0; i < N - 1; i++) {
     faceQuadFlat(m, v(ST_X[i], ST_BY[i], ST_BW[i]), v(ST_X[i + 1], ST_BY[i + 1], ST_BW[i + 1]), v(ST_X[i + 1], ST_BY[i + 1], -ST_BW[i + 1]), v(ST_X[i], ST_BY[i], -ST_BW[i]), HULL_DK, DOWN);
   }
-  // Bow & stern end caps + the lip closing across each end.
+  // Bow & stern end caps.
   for (const e of [0, N - 1]) {
     const nx = e === 0 ? -1 : 1;
     faceQuadFlat(m, v(ST_X[e], ST_TY[e], ST_TW[e]), v(ST_X[e], ST_BY[e], ST_BW[e]), v(ST_X[e], ST_BY[e], -ST_BW[e]), v(ST_X[e], ST_TY[e], -ST_TW[e]), HULL, v(nx, 0.25, 0));
-    faceQuadFlat(m, v(ST_X[e], ST_TY[e], ST_TW[e]), v(ST_X[e], ST_TY[e], IW[e]), v(ST_X[e], ST_TY[e], -IW[e]), v(ST_X[e], ST_TY[e], -ST_TW[e]), LIP, UP);
   }
   // Helper: a lofted deck floor between two stations at height `y`, plus the short inner
   // bulwark walls from that floor up to the rim on both sides.
   // Inner bulwark walls use the lit DECK tone (not the dark keel color): they face inward/away
   // from the key, so a dark color made them read as a black gouge across the open deck.
   const deckSeg = (i: number, y: number): void => {
-    faceQuadFlat(m, v(ST_X[i], y, IW[i]), v(ST_X[i + 1], y, IW[i + 1]), v(ST_X[i + 1], y, -IW[i + 1]), v(ST_X[i], y, -IW[i]), DECK, UP);
+    const wi = deckWidth(i, y);
+    const wj = deckWidth(i + 1, y);
+    faceQuadFlat(m, v(ST_X[i], y, wi), v(ST_X[i + 1], y, wj), v(ST_X[i + 1], y, -wj), v(ST_X[i], y, -wi), DECK, UP);
     for (const s of [1, -1]) {
-      faceQuadFlat(m, v(ST_X[i], ST_TY[i], s * IW[i]), v(ST_X[i + 1], ST_TY[i + 1], s * IW[i + 1]), v(ST_X[i + 1], y, s * IW[i + 1]), v(ST_X[i], y, s * IW[i]), DECK, v(0, 0.2, -s));
+      faceQuadFlat(m, v(ST_X[i], ST_TY[i], s * IW[i]), v(ST_X[i + 1], ST_TY[i + 1], s * IW[i + 1]), v(ST_X[i + 1], y, s * wj), v(ST_X[i], y, s * wi), DECK, v(0, 0.2, -s));
     }
   };
   // Raised aft deck (poop) from the stern to the step — a solid deck flush inside the hull.
   for (let i = 0; i < STEP; i++) deckSeg(i, AFT_Y);
   // Step riser: the front face of the poop deck, down to the well.
-  faceQuadFlat(m, v(ST_X[STEP], AFT_Y, IW[STEP]), v(ST_X[STEP], AFT_Y, -IW[STEP]), v(ST_X[STEP], FLOOR_Y, -IW[STEP]), v(ST_X[STEP], FLOOR_Y, IW[STEP]), DECK, v(1, 0.2, 0));
+  const stepAftW = deckWidth(STEP, AFT_Y);
+  const stepFloorW = deckWidth(STEP, FLOOR_Y);
+  faceQuadFlat(m, v(ST_X[STEP], AFT_Y, stepAftW), v(ST_X[STEP], AFT_Y, -stepAftW), v(ST_X[STEP], FLOOR_Y, -stepFloorW), v(ST_X[STEP], FLOOR_Y, stepFloorW), DECK, v(1, 0.2, 0));
   // Open cargo well from the step to the bow.
   for (let i = STEP; i < BOW; i++) deckSeg(i, FLOOR_Y);
   // Bow bulkhead + a small solid foredeck capping the prow (so there's no hole at the tip).
-  faceQuadFlat(m, v(ST_X[BOW], ST_TY[BOW], IW[BOW]), v(ST_X[BOW], ST_TY[BOW], -IW[BOW]), v(ST_X[BOW], FLOOR_Y, -IW[BOW]), v(ST_X[BOW], FLOOR_Y, IW[BOW]), DECK, v(-1, 0.2, 0));
+  const bowFloorW = deckWidth(BOW, FLOOR_Y);
+  faceQuadFlat(m, v(ST_X[BOW], ST_TY[BOW], IW[BOW]), v(ST_X[BOW], ST_TY[BOW], -IW[BOW]), v(ST_X[BOW], FLOOR_Y, -bowFloorW), v(ST_X[BOW], FLOOR_Y, bowFloorW), DECK, v(-1, 0.2, 0));
   for (let i = BOW; i < N - 1; i++) {
     faceQuadFlat(m, v(ST_X[i], ST_TY[i], IW[i]), v(ST_X[i + 1], ST_TY[i + 1], IW[i + 1]), v(ST_X[i + 1], ST_TY[i + 1], -IW[i + 1]), v(ST_X[i], ST_TY[i], -IW[i]), DECK, UP);
   }
@@ -1456,6 +1552,40 @@ function boatRig(m: Build): void {
   faceQuad(m, v(MAST_X, fy, 0), v(MAST_X - 0.22, fy - 0.02, 0), v(MAST_X - 0.16, fy - 0.09, 0), v(MAST_X, fy - 0.13, 0), SAIL_TAN, v(0, 0, 1));
 }
 
+// An octagonal capped log between arbitrary 3D endpoints. The ordinary `logBeam` rests
+// horizontally on a surface; this variant lets a felled tree pitch upward as it leans across
+// other cargo while keeping its trunk exactly aligned with the foliage axis.
+function logBeamAxis(m: Build, start: Vec3, end: Vec3, r: number, side: RGB, cap: RGB): void {
+  const sides = 8;
+  const axis = norm(sub(end, start));
+  const ref: Vec3 = Math.abs(axis.y) > 0.9 ? v(1, 0, 0) : UP;
+  const u = norm(cross(axis, ref));
+  const w = norm(cross(axis, u));
+  const ringAt = (center: Vec3): Vec3[] =>
+    Array.from({ length: sides }, (_, i) => {
+      const a = (Math.PI * 2 * i) / sides + Math.PI / 8;
+      return v(
+        center.x + (u.x * Math.cos(a) + w.x * Math.sin(a)) * r,
+        center.y + (u.y * Math.cos(a) + w.y * Math.sin(a)) * r,
+        center.z + (u.z * Math.cos(a) + w.z * Math.sin(a)) * r,
+      );
+    });
+  const r0 = ringAt(start);
+  const r1 = ringAt(end);
+  const center = v((start.x + end.x) / 2, (start.y + end.y) / 2, (start.z + end.z) / 2);
+  for (let i = 0; i < sides; i++) {
+    const j = (i + 1) % sides;
+    const mid = v(
+      (r0[i].x + r0[j].x + r1[i].x + r1[j].x) / 4,
+      (r0[i].y + r0[j].y + r1[i].y + r1[j].y) / 4,
+      (r0[i].z + r0[j].z + r1[i].z + r1[j].z) / 4,
+    );
+    faceQuad(m, r0[i], r0[j], r1[j], r1[i], side, norm(sub(mid, center)));
+    faceTri(m, start, r0[j], r0[i], cap, v(-axis.x, -axis.y, -axis.z));
+    faceTri(m, end, r1[i], r1[j], cap, axis);
+  }
+}
+
 // A cone whose axis points in an arbitrary direction — the segment of a felled tree. A ring
 // perpendicular to `axis` at `base`, tapering to an apex `len` along the axis.
 function coneAxis(m: Build, base: Vec3, axis: Vec3, r: number, len: number, sides: number, color: RGB, spin = 0): void {
@@ -1478,19 +1608,39 @@ function coneAxis(m: Build, base: Vec3, axis: Vec3, r: number, len: number, side
     faceTri(m, apex, b, c, color, norm(sub(mid, base)));
   }
 }
-// A felled conifer lying on its side along `ry` (a slight upward tilt) — three stacked skirts
-// down a near-horizontal axis plus a short trunk stub. A chopped-down tree, not a standing one.
-function felledPine(m: Build, cx: number, cz: number, y0: number, ry: number, scale: number, green: RGB, seed: number): void {
-  const a = norm(v(Math.cos(ry), 0.14, Math.sin(ry)));
-  let start = v(cx, y0 + 0.09 * scale, cz);
-  const r = [0.15, 0.115, 0.075];
-  const seg = [0.2, 0.19, 0.22];
-  for (let t = 0; t < 3; t++) {
-    coneAxis(m, start, a, r[t] * scale, (seg[t] + (t < 2 ? 0.05 : 0)) * scale, 6, shade(green, 1 - t * 0.03), seed + t);
-    start = v(start.x + a.x * seg[t] * 0.6 * scale, start.y + a.y * seg[t] * 0.6 * scale, start.z + a.z * seg[t] * 0.6 * scale);
+// A felled version of the forest tile's pine: the same broad, stepped three-skirt silhouette,
+// rotated onto its side. One continuous capped trunk runs through the foliage, with only the cut
+// end exposed behind the widest skirt; the far end stops short of the leafy tip.
+function felledPine(m: Build, cx: number, cz: number, y0: number, ry: number, pitch: number, scale: number, green: RGB, seed: number): void {
+  const cp = Math.cos(pitch);
+  const axis = v(Math.cos(ry) * cp, Math.sin(pitch), Math.sin(ry) * cp);
+  const axisY = y0 + PINE_RADII[0] * scale * Math.sqrt(1 - axis.y * axis.y) + 0.01;
+  const origin = v(cx, axisY, cz);
+  const along = (distance: number): Vec3 =>
+    v(
+      origin.x + axis.x * distance,
+      origin.y + axis.y * distance,
+      origin.z + axis.z * distance,
+    );
+
+  const trunkStart = -0.07 * scale;
+  const trunkEnd = 0.385 * scale;
+  const trunkRadius = 0.018 * scale;
+  logBeamAxis(m, along(trunkStart), along(trunkEnd), trunkRadius, TRUNK, shade(TRUNK, 1.14));
+
+  for (let i = 0; i < PINE_RADII.length; i++) {
+    const off = PINE_TIER_BASES[i] * scale;
+    coneAxis(
+      m,
+      along(off),
+      axis,
+      PINE_RADII[i] * scale,
+      PINE_TIER_HEIGHTS[i] * scale,
+      6,
+      shade(green, 1 - i * 0.035),
+      seed + i * 0.9,
+    );
   }
-  const tb = v(cx - a.x * 0.06 * scale, y0 + 0.06 * scale, cz - a.z * 0.06 * scale);
-  beam(m, tb, v(tb.x - a.x * 0.12 * scale, tb.y, tb.z - a.z * 0.12 * scale), 0.02 * scale, TRUNK);
 }
 
 // Cargo for a 2:1 port: a large load of that resource filling the open bow deck ahead of the
@@ -1506,13 +1656,15 @@ function boatCargo(m: Build, kind: PortKind, seed: number): void {
     logBeam(m, 0.04, 0.0, y + 0.02, 0.32, 0.11, 0.1, CORN, CAP);
   } else if (kind === 'ore') {
     const GREY: RGB = [150, 154, 164];
-    blob(m, 0.24, y + 0.22, 0.12, 0.25, 0.22, 0.24, GREY, seed, 0.4, 3, 6);
-    blob(m, 0.1, y + 0.19, -0.12, 0.22, 0.19, 0.22, shade(GREY, 0.92), seed + 3, 0.4, 3, 6);
+    angularRock(m, -0.02, 0.08, y, 0.16, 0.23, 0.13, GREY, seed, 'slab', 0.1);
+    angularRock(m, 0.15, -0.08, y, 0.17, 0.25, 0.14, shade(GREY, 0.93), seed + 3, 'crag', -0.18);
+    angularRock(m, 0.32, 0.04, y, 0.13, 0.18, 0.1, shade(GREY, 1.05), seed + 6, 'wedge', 0.32);
+    angularRock(m, 0.16, 0.11, y, 0.095, 0.15, 0.08, shade(GREY, 0.98), seed + 9, 'wedge', -0.4);
+    angularRock(m, 0.09, 0.0, y + 0.09, 0.11, 0.16, 0.09, shade(GREY, 1.08), seed + 12, 'crag', 0.22);
   } else if (kind === 'lumber') {
-    const GREEN: RGB = [78, 122, 68];
-    felledPine(m, 0.02, 0.11, y, 0.18, 1.05, GREEN, seed);
-    felledPine(m, 0.24, -0.06, y, -0.12, 1.05, GREEN, seed + 3);
-    felledPine(m, 0.12, 0.02, y + 0.06, 0.48, 0.95, GREEN, seed + 6);
+    felledPine(m, -0.07, -0.135, y, -0.22, 0.05, 0.94, PINE_GREENS[0], seed);
+    felledPine(m, 0.01, 0.135, y + 0.01, 0.32, 0.08, 0.88, PINE_GREENS[1], seed + 3);
+    felledPine(m, 0.04, -0.02, y + 0.14, 1.0, 0.2, 0.9, PINE_GREENS[2], seed + 6);
   } else if (kind === 'wool') {
     sheep(m, 0.28, 0.09, y, 0.2, seed, 1.55);
     sheep(m, 0.05, -0.05, y, -0.4, seed + 4, 1.55);

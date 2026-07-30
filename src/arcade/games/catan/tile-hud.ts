@@ -28,11 +28,11 @@ function tokenChip(tk: BoardToken): Node {
 
 // The trade-info chip on a port's sail: a one-row badge on a plain black chip — the same look as
 // the hex number tokens, so it reads as a distinct label against the white sail without a border or
-// fill. Reads as what it trades then the rate: "🐑 2:1". Absolutely positioned on the sail's
-// projected center cell, centered horizontally on it — the label's width varies with the icon
-// (a 2-cell emoji or a 1-cell '?'), hence the measure.
+// fill. Resource ports read as what they trade then the rate ("🐑 2:1"); the generic port
+// shows only "3:1". Absolutely positioned on the sail's projected center cell, centered
+// horizontally on it — the label's width varies with the icon, hence the measure.
 function sailChip(s: SailLabel): Node {
-  const label = s.icon + ' ' + s.ratio;
+  const label = s.icon === '?' ? s.ratio : s.icon + ' ' + s.ratio;
   return Box({ position: 'absolute', top: s.row, left: s.col - Math.floor((stringWidth(label) + 2) / 2), background: CHIP_BG, padding: [0, 1] }, [
     Text({ text: label, style: { color: CHIP_INK, bold: true } }),
   ]);
