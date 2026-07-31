@@ -296,8 +296,8 @@ function activeSceneViewport(): LayoutBox {
   // The leaderboard's data panels sit on the LEFT (and a tab bar on top), so inset the
   // wisp scene to the uncovered region — camera + orbit pivot centered on what's visible.
   if (mode === 'leaderboard') {
-    const { left, top } = leaderboardSceneReserve();
-    return insetLeftSceneViewport(cols, rows, left, top);
+    const { left, top, bottom } = leaderboardSceneReserve(cols);
+    return insetLeftSceneViewport(cols, rows, left, top, bottom);
   }
   const reservedRight =
     mode === 'chess-game' && chatVisible
@@ -1301,7 +1301,7 @@ function enterLeaderboard(): void {
   mode = 'leaderboard';
   mountLeaderboard(ui);
   setLeaderboardData(dummyLeaderboardData());
-  lbSetMetric('winrate');
+  lbSetMetric('standings');
   lbSetGame('chess');
   ui.setFocus('lb-winlist');
   fullRepaint();

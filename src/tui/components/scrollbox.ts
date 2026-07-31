@@ -51,6 +51,12 @@ export class ScrollBox implements Component {
     this.height = Math.max(1, Math.floor(height));
   }
 
+  // Resize the viewport's width, for a list inside a panel that adapts to the
+  // terminal (the leaderboard's standings panel narrows on small terminals).
+  setWidth(width: number): void {
+    this.opts.width = Math.max(1, Math.floor(width));
+  }
+
   // Rows actually shown: the full list until it reaches the cap (autoHeight), then
   // the cap. Fixed mode always shows `height` rows (the classic viewport).
   private visibleHeight(): number {

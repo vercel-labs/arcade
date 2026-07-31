@@ -17,7 +17,7 @@ import { MENU_ITEMS } from '../arcade/shell/menu.ts';
 import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, mouseControlsFor, type Mode } from '../arcade/shell/bars.ts';
 import { installKeymap } from '../arcade/shell/keybindings.ts';
 import { buildShowcase, mountShowcase } from '../arcade/scenes/ui-showcase.ts';
-import { activeWispCreators, buildLeaderboard, leaderboardSceneReserve, mountLeaderboard, setGame, setLeaderboardData, setMetric } from '../arcade/leaderboard/view.ts';
+import { activeWispCreators, buildLeaderboard, leaderboardSceneReserve, mountLeaderboard, setGame, setLeaderboardData, setLeaderboardSelection, setMetric } from '../arcade/leaderboard/view.ts';
 import { LeaderboardScene } from '../arcade/leaderboard/scene.ts';
 import { dummyLeaderboardData } from '../arcade/leaderboard/data.ts';
 import { buildChessGameRoot, chessMoveChat, mountChessHud, refreshMoveHistory } from '../arcade/games/chess/hud.ts';
@@ -126,15 +126,16 @@ function blockBits(ch: string, px: number, py: number): boolean {
   }
   const midX = px === 3 || px === 4;
   const midY = py === 3 || py === 4;
+  // Eighth blocks: lower ▁▂▃▄▅▆▇ and left ▏▎▍▌▋▊▉ fill N/8 of the cell from that
+  // edge. Sparkline columns and sub-cell bar ends need the whole family, not just
+  // the halves — spelled out as a lookup so the ramp stays obvious.
+  const lower = '▁▂▃▄▅▆▇█'.indexOf(ch);
+  if (lower >= 0) return py >= 7 - lower;
+  const left = '▏▎▍▌▋▊▉█'.indexOf(ch);
+  if (left >= 0) return px <= left;
   switch (ch) {
-    case '█':
-      return true;
     case '▀':
       return py < 4;
-    case '▄':
-      return py >= 4;
-    case '▌':
-      return px < 4;
     case '▐':
       return px >= 4;
     case '░':
@@ -155,6 +156,43 @@ function blockBits(ch: string, px: number, py: number): boolean {
       return (px - 3.5) ** 2 + (py - 3.5) ** 2 <= 7;
     case '•':
       return (px - 3.5) ** 2 + (py - 3.5) ** 2 <= 3;
+    case '○': {
+      // Ring: the ● disc minus its core, so a hollow marker reads as "same place,
+      // less certain" beside a filled one.
+      const r2 = (px - 3.5) ** 2 + (py - 3.5) ** 2;
+      return r2 <= 8 && r2 >= 2;
+    }
+    case '◐': {
+      const r2 = (px - 3.5) ** 2 + (py - 3.5) ** 2;
+      return r2 <= 8 && (px < 4 || r2 >= 2);
+    }
+    case '·':
+      return (px === 3 || px === 4) && (py === 3 || py === 4);
+    case '–': // en dash
+    case '—': // em dash
+    case '−': // U+2212 minus sign — absent from the 8x8 font, unlike ASCII '-'
+      return midY && px >= 1 && px <= 6;
+    case '…':
+      // Truncation ellipsis — used by every clipped label on the leaderboard, so a
+      // blank here silently eats the "this name is cut off" signal.
+      return py >= 5 && py <= 6 && (px === 0 || px === 1 || px === 3 || px === 4 || px === 6 || px === 7);
+    case '▔':
+      return py < 1;
+    case '├':
+      return midX || (midY && px >= 3);
+    case '┤':
+      return midX || (midY && px <= 4);
+    case '┬':
+      return midY || (midX && py >= 3);
+    case '┴':
+      return midY || (midX && py <= 4);
+    case '┼':
+      return midX || midY;
+    case '▸':
+      // Right-pointing triangle: a wedge narrowing toward px = 6.
+      return px >= 2 && px <= 6 && Math.abs(py - 3.5) <= (6 - px) * 0.9;
+    case '▾':
+      return py >= 2 && py <= 6 && Math.abs(px - 3.5) <= (6 - py) * 0.9;
     case '╭':
     case '┌':
       return (midY && px >= 3) || (midX && py >= 3);
@@ -300,7 +338,7 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot overlay [chess-game|prism] [cols] [rows] [out]   bar over a scene
   pnpm snapshot unified [prism|chess|chess-game|logos] [cols] [rows] [out]   unified compositing path
   pnpm snapshot showcase [cols] [rows] [focus=<id>] [query=<text>] [blur] [out]   the UI component playground
-  pnpm snapshot leaderboard [cols] [rows] [chess|poker] [winrate|headtohead|activity] [out]   the model leaderboard (dummy data)
+  pnpm snapshot leaderboard [cols] [rows] [chess|poker] [standings|headtohead|matrix] [row=N] [out]   the model leaderboard (dummy data)
   pnpm snapshot modal [cols] [rows] [out]          promotion modal over chess
   pnpm snapshot chess-overlay [cols] [rows] [min|empty|illegal|short] [eval] [chat] [menu] [out]   match HUD + moves panel (menu → ☰ popup)
   pnpm snapshot setup [cols] [rows] [out] [open|models|thinking]   AI match setup modal
@@ -1066,12 +1104,21 @@ function leaderboardSnapshot(): void {
   const screen = new Screen(cols, rows);
   mountLeaderboard(screen);
   setLeaderboardData(dummyLeaderboardData());
-  setMetric(args.includes('headtohead') ? 'headtohead' : args.includes('activity') ? 'activity' : 'winrate');
+  setMetric(args.includes('headtohead') ? 'headtohead' : args.includes('matrix') ? 'matrix' : 'standings');
   setGame(args.includes('poker') ? 'poker' : 'chess');
+  // row=N selects the Nth ranked model, so the selected-row styling AND the wisp it
+  // drives can both be reviewed (the default selection is rank 1).
+  const rowArg = args.find((a) => a.startsWith('row='));
+  if (rowArg) {
+    const data = dummyLeaderboardData();
+    const list = args.includes('poker') ? data.poker : data.chess;
+    const pick = list[Math.max(1, Number(rowArg.split('=')[1])) - 1];
+    if (pick) setLeaderboardSelection(pick.model);
+  }
   // Inset the scene to the region the panels don't cover — matches main.ts so the
   // snapshot shows the same centered/rotatable framing the live app renders.
-  const { left, top } = leaderboardSceneReserve();
-  const vp = insetLeftSceneViewport(cols, rows, left, top);
+  const { left, top, bottom } = leaderboardSceneReserve(cols);
+  const vp = insetLeftSceneViewport(cols, rows, left, top, bottom);
   const target = new RenderTarget(vp.w * SS, vp.h * 2 * SS);
   const scene = new LeaderboardScene();
   scene.setCreators(activeWispCreators());

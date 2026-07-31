@@ -60,3 +60,17 @@ export function hitTest(root: Node, x: number, y: number): Node | null {
 export function hitSurface(root: Node, x: number, y: number): Node | null {
   return deepest(root, x, y, isSurface);
 }
+
+// Topmost node that handles a POINTER GESTURE (wheel/drag), i.e. has onMouse.
+// Distinct from hitTest because a clickable child inside a scrollable is
+// "interactive" but handles no gesture: routing the wheel to it would silently
+// kill scrolling for any list whose rows are themselves clickable.
+export function hitGesture(root: Node, x: number, y: number): Node | null {
+  return deepest(root, x, y, (n) => Boolean(n.onMouse));
+}
+
+// Topmost node that handles keys — same reasoning as hitGesture, for the
+// hover-scroll keys (↑/↓/PageUp/PageDown).
+export function hitKey(root: Node, x: number, y: number): Node | null {
+  return deepest(root, x, y, (n) => Boolean(n.onKey));
+}

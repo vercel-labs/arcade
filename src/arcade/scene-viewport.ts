@@ -18,10 +18,11 @@ export function insetRightSceneViewport(cols: number, rows: number, reservedRigh
 // panels + tab bar). Rendering the scene into only the uncovered region gives its
 // camera — and the mouse-orbit pivot — the same center as what's actually visible,
 // instead of pivoting around the full-screen center hidden behind the panel.
-export function insetLeftSceneViewport(cols: number, rows: number, reservedLeft = 0, reservedTop = 0): LayoutBox {
+export function insetLeftSceneViewport(cols: number, rows: number, reservedLeft = 0, reservedTop = 0, reservedBottom = 0): LayoutBox {
   const x = Math.max(0, Math.round(reservedLeft));
   const y = Math.max(0, Math.round(reservedTop));
-  return { x, y, w: Math.max(1, Math.round(cols) - x), h: Math.max(1, Math.round(rows) - y) };
+  const b = Math.max(0, Math.round(reservedBottom));
+  return { x, y, w: Math.max(1, Math.round(cols) - x), h: Math.max(1, Math.round(rows) - y - b) };
 }
 
 // Terminal pointer cells are 1-based; scene/layout coordinates are 0-based.
