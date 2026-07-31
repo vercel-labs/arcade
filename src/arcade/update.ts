@@ -30,10 +30,12 @@ interface Cache {
 const REFRESH_INTERVAL_MS = 1000 * 60 * 60 * 6; // 6 hours
 const FETCH_TIMEOUT_MS = 1500;
 
-function pkg(): { name: string; version: string } {
+// The running package's identity, from the bundled package.json. The update check needs the
+// name and version; `--version` / `--help` print the description too.
+export function packageInfo(): { name: string; version: string; description: string } {
   const p = fileURLToPath(new URL('../../package.json', import.meta.url));
-  const raw = JSON.parse(readFileSync(p, 'utf8')) as { name?: string; version?: string };
-  return { name: raw.name ?? '@vercel/arcade', version: raw.version ?? '0.0.0' };
+  const raw = JSON.parse(readFileSync(p, 'utf8')) as { name?: string; version?: string; description?: string };
+  return { name: raw.name ?? '@vercel/arcade', version: raw.version ?? '0.0.0', description: raw.description ?? '' };
 }
 
 function cachePath(): string {
@@ -123,7 +125,7 @@ export function detectInstall(
 // Synchronous launch check: returns update info when a newer version is known, else
 // null. Reads only the cache (and the ARCADE_UPDATE_TEST override) — no network.
 export function checkForUpdate(): UpdateInfo | null {
-  const { name, version: current } = pkg();
+  const { name, version: current } = packageInfo();
 
   const forced = process.env.ARCADE_UPDATE_TEST?.trim();
   let latest: string | undefined;
@@ -147,7 +149,7 @@ export function refreshLatestInBackground(): void {
   const cache = readCache();
   if (cache.checkedAt && Date.now() - cache.checkedAt < REFRESH_INTERVAL_MS) return;
 
-  const { name } = pkg();
+  const { name } = packageInfo();
   void fetchLatest(name)
     .then((latest) => {
       if (latest) writeCache({ latest, checkedAt: Date.now() });

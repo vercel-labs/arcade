@@ -57,6 +57,9 @@ game). Inside a library, modules import each other directly, not through the bar
 - `pnpm type-check` — `tsc --noEmit`
 - `pnpm test` — unit tests via `node:test` under `tsx` (auto-discovers `src/**/*.test.ts`; no extra deps)
 
+The published CLI also answers `arcade --version` / `--help`, which print and exit before
+any auth, network, or alt-screen work so they stay fast and scriptable.
+
 ## Issue tracking (Linear)
 
 Work is tracked in Linear — team **AI Gateway**, project **Arcade**; issues are `AIG-###`
