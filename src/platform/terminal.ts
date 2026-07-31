@@ -42,18 +42,8 @@ function registerCleanup(): void {
   if (cleanupRegistered) return;
   cleanupRegistered = true;
 
+  // This library owns terminal restoration, not application shutdown. The app
+  // coordinates signals, match persistence, telemetry flush, and the final exit;
+  // this exit hook is only the last-resort guarantee that raw mode never leaks.
   process.on('exit', leave);
-  process.on('SIGINT', () => {
-    leave();
-    process.exit(0);
-  });
-  process.on('SIGTERM', () => {
-    leave();
-    process.exit(0);
-  });
-  process.on('uncaughtException', (err) => {
-    leave();
-    console.error(err);
-    process.exit(1);
-  });
 }

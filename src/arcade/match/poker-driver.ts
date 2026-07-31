@@ -19,6 +19,7 @@ import { PokerVoice, pokerVoiceCapable } from './poker-voice.ts';
 import { normalizerModel } from './models.ts';
 import { PokerSessionRecorder, type RecorderController } from './game-recorders.ts';
 import type { RecordEndReason } from '../../telemetry/records.ts';
+import { reportUnexpectedAsyncError } from './async-error.ts';
 
 // One seat in the session: the human hero or an AI model (a Gateway slug).
 export type PokerSeatSpec =
@@ -57,6 +58,9 @@ export interface PokerMatchDeps {
   requestRender(): void;
   onCommentary(text: string, model: string, label: string): void;
   onHandOver(): void; // refresh the HUD / show the result between hands
+  // Unexpected async failures are fatal to the live match. Main routes them
+  // through the same graceful shutdown path as an uncaught process error.
+  onError(error: unknown): void;
   // A spoken line for the chat rail (voice heads-up): `event` lines render grey/nameless.
   onChat?(text: string, speaker: string, event: boolean, label?: string): void;
   // A human action parsed from speech is staged awaiting confirm (null clears it).
@@ -321,7 +325,9 @@ export class PokerMatch {
         // resumed, which starts the loop itself) double-starting the turn loop.
         if (this.running && !this.paused && this.abort === null) this.runCurrentHand();
       })
-      .catch(() => {});
+      .catch((error) =>
+        reportUnexpectedAsyncError(error, !this.running || this.paused, this.deps.onError),
+      );
   }
 
   // Run the turn-loop over the scene's current hand (used to start a hand and to
@@ -396,7 +402,9 @@ export class PokerMatch {
         this.startReflections(state.publicRecord());
         if (this.running && !this.paused) this.proceedAfterHand(state);
       })
-      .catch(() => {}); // aborted mid-decision — fine
+      .catch((error) =>
+        reportUnexpectedAsyncError(error, ctrl.signal.aborted, this.deps.onError),
+      );
   }
 
   // Kick off per-seat note-taking on the just-finished hand. Each AI seat still in the
@@ -440,7 +448,9 @@ export class PokerMatch {
         }
         if (this.running && !this.paused) this.dealHand();
       })
-      .catch(() => {});
+      .catch((error) =>
+        reportUnexpectedAsyncError(error, !this.running || this.paused, this.deps.onError),
+      );
   }
 
   // The winner banner text: "You win $240" / "claude-haiku-4.5 wins $240" (a model's short

@@ -50,7 +50,8 @@ import * as term from '../platform/terminal.ts';
 import { availableTeams, ensureGatewayKey, isLoggedIn, loadEnv, signOut as signOutVercel, switchTeam, type Team, useTeam } from '../auth/index.ts';
 import { AiMatch, type Seat } from './match/driver.ts';
 import { disambiguateLabels } from './match/labels.ts';
-import { flushTelemetry, initTelemetry, isTelemetryEnabled, setTelemetryEnabled, telemetryStatus, trackSessionStart, type RecordEndReason } from '../telemetry/index.ts';
+import { flushTelemetry, initTelemetry, isTelemetryEnabled, setTelemetryEnabled, telemetryStatus, trackSessionStart } from '../telemetry/index.ts';
+import { createShutdownCoordinator } from './lifecycle.ts';
 
 // Populate process.env from .env.local before anything reads AI_GATEWAY_API_KEY.
 loadEnv();
@@ -395,24 +396,24 @@ function fullRepaint(): void {
   r.requestRender();
 }
 
-let finalizing = false;
 // One finalize path for every exit route (quit button, ctrl+c, SIGTERM/SIGHUP, uncaught
 // crash). stop() writes any active canonical record to the durable outbox synchronously,
 // so the record survives even if the async telemetry flush below can't finish. The cap
 // keeps exit from ever visibly hanging on the network.
-function finalizeAndExit(reason: Exclude<RecordEndReason, 'natural'>, code: number, err?: unknown): void {
-  if (finalizing) return;
-  finalizing = true;
-  try { aiMatch.stop(reason); } catch {}
-  try { pokerMatch.stop(reason); } catch {}
-  try { r.destroy(); } catch {}
-  try { term.leave(); } catch {}
-  if (err !== undefined) console.error(err); // after leaving the alt-screen so it's readable
-  void flushTelemetry(400).finally(() => process.exit(code));
-}
+const shutdown = createShutdownCoordinator({
+  cleanup: [
+    (reason) => aiMatch.stop(reason),
+    (reason) => pokerMatch.stop(reason),
+    () => r.destroy(),
+    () => term.leave(),
+  ],
+  flush: flushTelemetry,
+  report: (error) => console.error(error), // terminal cleanup runs first, so this is readable
+  exit: (code) => process.exit(code),
+});
 
 function quit(): void {
-  finalizeAndExit('user_stopped', 0);
+  shutdown.signal();
 }
 
 // Run an async plain-text flow outside the alt-screen: stop the frame loop,
@@ -608,6 +609,7 @@ const aiMatch = new AiMatch({
     r.requestRender();
   },
   allowIllegal: () => illegalAllowed,
+  onError: shutdown.crash,
 });
 
 // Fully stop the match and return chess to a clean free-play slate. Used by
@@ -766,6 +768,7 @@ const pokerMatch = new PokerMatch({
     forceFrame = true;
     r.requestRender();
   },
+  onError: shutdown.crash,
   // Heads-up voice: spoken lines (bot + human) and game-event lines to the chat rail.
   onChat: (text, speaker, event, label) => {
     pushPokerChat({ text, model: event ? '' : speaker, label: event ? undefined : label, event });
@@ -2454,10 +2457,11 @@ trackSessionStart({
 // External termination (terminal closed, `kill`) and uncaught crashes finalize through
 // the same path, so an in-progress game is still recorded. ctrl+c arrives as a keypress
 // in raw mode (handled by the quit button), not SIGINT.
-process.once('SIGTERM', () => finalizeAndExit('user_stopped', 0));
-process.once('SIGHUP', () => finalizeAndExit('user_stopped', 0));
-process.once('uncaughtException', (err) => finalizeAndExit('process_exit_recovered', 1, err));
-process.once('unhandledRejection', (err) => finalizeAndExit('process_exit_recovered', 1, err));
+process.once('SIGINT', shutdown.signal);
+process.once('SIGTERM', shutdown.signal);
+process.once('SIGHUP', shutdown.signal);
+process.once('uncaughtException', shutdown.crash);
+process.once('unhandledRejection', shutdown.crash);
 
 // Update notice (startup): the last boot line before the alt-screen — beneath the
 // truecolor + AI Gateway lines. The modal over the prism is the more prominent surface.
