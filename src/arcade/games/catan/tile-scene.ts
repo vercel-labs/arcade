@@ -29,7 +29,7 @@ import { type BoardOccupancy, canPlaceRoad, canPlaceSettlement } from '../../../
 import { type BoardSetup, generateBoard } from '../../../rules/catan/setup.ts';
 import { type PlayerColor, RED_NUMBERS, type Terrain } from '../../../rules/catan/types.ts';
 import { mulberry32 } from '../../scenes/wisp.ts';
-import { animatedTileMesh, boardOverlayMesh, dieMesh, hoverColorFor, type OverlaySpec, piecesMesh, PORT_SAIL_CENTER, type PortKind, portMesh, tileBackMesh, tileMesh } from './tile-mesh.ts';
+import { animatedTileMesh, boardOverlayMesh, dieMesh, hoverColorFor, type OverlaySpec, piecesMesh, PORT_SAIL_CENTER, type PortKind, portMesh, tileBackMesh, tileMesh } from './mesh/index.ts';
 import { catanWaterMesh } from './water.ts';
 
 const FOVY = (44 * Math.PI) / 180;

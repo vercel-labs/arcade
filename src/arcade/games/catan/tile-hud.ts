@@ -6,7 +6,7 @@ import { Box, Button, Dialog, Dropdown, type LayoutBox, Modal, type Node, Rounde
 import { stringWidth } from '../../../engine/index.ts';
 import { type PlayerColor, type Terrain } from '../../../rules/catan/types.ts';
 import { type BoardToken, type CatanMode, type SailLabel } from './tile-scene.ts';
-import { type PortKind } from './tile-mesh.ts';
+import { type PortKind } from './mesh/index.ts';
 import { UI_CHROME_BG, UI_CHROME_PILL } from '../../theme.ts';
 
 const CHIP_BG: [number, number, number] = [12, 12, 16]; // black token

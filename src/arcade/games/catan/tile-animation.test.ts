@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Mesh } from '../../../engine/index.ts';
-import { animatedTileMesh, tileMesh } from './tile-mesh.ts';
+import { animatedTileMesh, tileMesh } from './mesh/index.ts';
 
 const positions = (mesh: Mesh): number[] => mesh.vertices.flatMap((vertex) => [
   Number(vertex.position.x.toFixed(6)),
