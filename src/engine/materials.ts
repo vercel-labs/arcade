@@ -116,6 +116,221 @@ function feltHash(ix: number, iz: number): number {
   return (h >>> 0) / 4294967296;
 }
 
+export interface WaterUniforms {
+  mvp: Mat4;
+  model: Mat4;
+  time: number;
+  cameraPos: Vec3;
+  sunDirection: Vec3;
+  deepColor: Vec3;
+  surfaceColor: Vec3;
+  skyColor: Vec3;
+  horizonColor: Vec3;
+  currentColor: Vec3;
+  flowSpeed: number;
+}
+
+// Low-poly water in two scales: the vertex stage displaces a subdivided surface with broad,
+// low-amplitude swells; the fragment stage layers much smaller moving normal detail over the
+// interpolated geometric normal. Specular light is camera-aware, so highlights follow surface
+// shape instead of being painted bands. This is the CPU analogue of layered scrolling water
+// normals, without textures, reflection passes, or GPU-only simulation.
+const WATER_RGBA = { r: 0, g: 0, b: 0, a: 1 };
+export const waterMaterial: Material<WaterUniforms> = {
+  cull: 'none',
+  vertex(u, vin) {
+    const wave = waterGeometrySample(vin.position.x, vin.position.z, u.time, u.flowSpeed);
+    const position = { x: vin.position.x, y: vin.position.y + wave.height, z: vin.position.z };
+    const objectNormal = { x: -wave.gx, y: 1, z: -wave.gz };
+    const clip = mat4MulVec4(u.mvp, { x: position.x, y: position.y, z: position.z, w: 1 });
+    const world = mat4MulVec4(u.model, { x: position.x, y: position.y, z: position.z, w: 1 });
+    return {
+      clip,
+      world: { x: world.x, y: world.y, z: world.z },
+      normal: mat4MulDir(u.model, objectNormal),
+      uv: vin.uv,
+      color: vin.color,
+      bary: { x: 0, y: 0, z: 0 },
+    };
+  },
+  fragment(u, vy) {
+    const x = vy.world.x;
+    const z = vy.world.z;
+    const t = u.time;
+
+    // Two drifting noise octaves warp three sub-tile normal waves. Their short wavelengths
+    // create several ripples per tile; because only their combined normal is lit, none appears
+    // as a complete repeating line.
+    const coarse = waterNoise(x * 0.17 + t * 0.012, z * 0.17 - t * 0.009);
+    const fine = waterNoise(x * 0.83 - t * 0.031 + 11.7, z * 0.83 + t * 0.023 - 4.3);
+    const warpX = (coarse - 0.5) * 0.62 + (fine - 0.5) * 0.24;
+    const warpZ = (coarse - 0.5) * -0.38 + (fine - 0.5) * 0.31;
+    // A cheap curl field around an off-centre eddy bends the local flow direction. It plays
+    // the role of a procedural flow map: each normal layer samples a different projection of
+    // the same smooth vortex plus independently weighted domain noise.
+    const eddyX = x + 4.6;
+    const eddyZ = z - 2.3;
+    const eddyFalloff = 1 / (1 + (eddyX * eddyX + eddyZ * eddyZ) * 0.085);
+    const curlX = -eddyZ * eddyFalloff;
+    const curlZ = eddyX * eddyFalloff;
+    const flowWarp1 = warpX * 7.2 + warpZ * 3 + (curlX * 1.4 + curlZ * 10.4) * 0.11;
+    const flowWarp2 = -warpX * 5.1 + warpZ * 6.3 + (curlX * -8.8 + curlZ * 7.9) * -0.085;
+    const flowWarp3 = (fine - 0.5) * 6.6 + (coarse - 0.5) * 3.2 + (curlX * 12.6 - curlZ * 6.7) * 0.065;
+    const p1 = x * 1.4 + z * 10.4 - t * u.flowSpeed * 2.3 + flowWarp1;
+    const p2 = x * -8.8 + z * 7.9 - t * u.flowSpeed * 2.9 + flowWarp2 + 1.7;
+    const p3 = x * 12.6 - z * 6.7 - t * u.flowSpeed * 3.7 + flowWarp3 - 0.6;
+    let vx = u.cameraPos.x - x;
+    let vyEye = u.cameraPos.y - vy.world.y;
+    let vz = u.cameraPos.z - z;
+    const viewDistance = Math.sqrt(vx * vx + vyEye * vyEye + vz * vz);
+    const detailLod = Math.max(0.12, Math.min(1, (22 - viewDistance) / 12));
+    const c1 = Math.cos(p1);
+    const c2 = Math.cos(p2);
+    const c3 = Math.cos(p3);
+    const fineGx = (c1 * 0.0112 - c2 * 0.0792 + c3 * 0.0756) * detailLod;
+    const fineGz = (c1 * 0.0832 + c2 * 0.0711 - c3 * 0.0402) * detailLod;
+
+    // Combine physical mesh slope and finer normal-map-like detail, then use a camera/light
+    // half vector for specular response (the same core relationship used by reflective water).
+    let nx = vy.normal.x - fineGx * 1.35;
+    let ny = vy.normal.y;
+    let nz = vy.normal.z - fineGz * 1.35;
+    let inv = 1 / Math.sqrt(nx * nx + ny * ny + nz * nz);
+    nx *= inv;
+    ny *= inv;
+    nz *= inv;
+    inv = 1 / viewDistance;
+    vx *= inv;
+    vyEye *= inv;
+    vz *= inv;
+    let hx = vx + u.sunDirection.x;
+    let hy = vyEye + u.sunDirection.y;
+    let hz = vz + u.sunDirection.z;
+    inv = 1 / Math.sqrt(hx * hx + hy * hy + hz * hz);
+    hx *= inv;
+    hy *= inv;
+    hz *= inv;
+    const reflectionFacing = Math.max(0, nx * hx + ny * hy + nz * hz);
+    const softReflection = smoothstep(0.78, 0.9, reflectionFacing);
+    const sharpReflection = smoothstep(0.87, 0.97, reflectionFacing);
+    const reflectionNoise = coarse * 0.38 + fine * 0.62;
+    const interference = 0.5 + c1 * 0.18 + c2 * 0.13 + c3 * 0.1;
+    const microPatch = smoothstep(0.46, 0.7, interference);
+    // A broad, broken crest signal remains visible under diffuse sky light even when the
+    // camera is nowhere near the sun's reflection vector. Domain-warped phases keep this from
+    // becoming parallel contour lines; centering it at zero preserves the overall water value.
+    const rippleCrest = 0.5 + c1 * 0.22 + c2 * 0.18 + c3 * 0.1;
+    const diffuseCrest = smoothstep(0.56, 0.88, rippleCrest) * (0.25 + fine * 0.75) * detailLod;
+    const glintPatch = smoothstep(0.32, 0.74, reflectionNoise) * (0.04 + smoothstep(0.36, 0.72, fine) * 0.48 + microPatch * 0.48);
+    const reflection = Math.min(1, (softReflection * 0.16 + sharpReflection * 0.84) * (0.08 + glintPatch * 0.92));
+
+    // Fresnel-like edge lift is subtle at this camera angle but keeps glancing water brighter
+    // than facets facing the camera head-on. Broad noise supplies restrained depth variation.
+    const viewFacing = Math.max(0, nx * vx + ny * vyEye + nz * vz);
+    const oneMinusView = 1 - viewFacing;
+    const fresnel = 0.04 + 0.96 * oneMinusView * oneMinusView * oneMinusView * oneMinusView * oneMinusView;
+    // Reflect the eye ray into a tiny procedural environment. Looking down samples muted sky;
+    // grazing facets sample a narrow warm horizon band. This makes a low camera read as water
+    // reflecting a world rather than as cyan stripes painted onto a dark plane.
+    const reflectedY = -vyEye + 2 * viewFacing * ny;
+    const horizonBand = 1 - smoothstep(0.012, 0.2, Math.abs(reflectedY));
+    const skyUp = smoothstep(-0.08, 0.82, reflectedY);
+    const brokenHorizon = horizonBand * (0.16 + glintPatch * 0.58 + microPatch * 0.26);
+    const horizonWarmth = brokenHorizon * (0.72 + glintPatch * 0.28);
+    const er0 = u.deepColor.x + (u.skyColor.x - u.deepColor.x) * (0.34 + skyUp * 0.66);
+    const eg0 = u.deepColor.y + (u.skyColor.y - u.deepColor.y) * (0.34 + skyUp * 0.66);
+    const eb0 = u.deepColor.z + (u.skyColor.z - u.deepColor.z) * (0.34 + skyUp * 0.66);
+    const er = er0 + (u.horizonColor.x - er0) * horizonWarmth;
+    const eg = eg0 + (u.horizonColor.y - eg0) * horizonWarmth;
+    const eb = eb0 + (u.horizonColor.z - eb0) * horizonWarmth;
+    const sunFacing = Math.max(0, nx * u.sunDirection.x + ny * u.sunDirection.y + nz * u.sunDirection.z);
+    // Two broad sky lobes illuminate opposing slope directions. They are deliberately much
+    // softer than the sun reflection: their job is to preserve readable surface variation as
+    // the board rotates, without making the water glow or pinning all highlights to one edge.
+    const skyFacingA = Math.max(0, nx * -0.28 + ny * 0.93 + nz * 0.24);
+    const skyFacingB = Math.max(0, nx * 0.36 + ny * 0.91 + nz * -0.18);
+    const broadSkyA = smoothstep(0.84, 0.98, skyFacingA) * (0.5 + glintPatch * 0.5);
+    const broadSkyB = smoothstep(0.855, 0.982, skyFacingB) * (0.46 + microPatch * 0.54);
+    const broadSky = Math.min(1, broadSkyA * 0.58 + broadSkyB * 0.42);
+    const baseMix = Math.max(
+      0,
+      Math.min(
+        1,
+        // Centred noise creates broad, irregular light pools that remain resolvable when a
+        // shallow camera foreshortens the finer crests into less than one terminal cell.
+        0.4 + (coarse - 0.5) * 0.16 + (fine - 0.5) * 0.18 + (rippleCrest - 0.5) * 0.28 + microPatch * 0.045 + fresnel * 0.1 + (sunFacing - 0.72) * 0.2,
+      ),
+    );
+    const br = u.deepColor.x + (u.surfaceColor.x - u.deepColor.x) * baseMix;
+    const bg = u.deepColor.y + (u.surfaceColor.y - u.deepColor.y) * baseMix;
+    const bb = u.deepColor.z + (u.surfaceColor.z - u.deepColor.z) * baseMix;
+    const environmentMix = Math.min(0.66, 0.115 + fresnel * 0.4 + broadSky * 0.22 + brokenHorizon * 0.06 + (1 - detailLod) * fresnel * 0.04);
+    const envR = br + (er - br) * environmentMix;
+    const envG = bg + (eg - bg) * environmentMix;
+    const envB = bb + (eb - bb) * environmentMix;
+    // Sparse crest fragments scatter muted sky light. Unlike the view-dependent specular
+    // term, this survives unfavorable camera rotations and gives ASCII matching an actual
+    // within-cell edge to describe instead of a field of identical dark punctuation.
+    const crestLift = diffuseCrest * 0.28;
+    const crestR = envR + (u.skyColor.x - envR) * crestLift;
+    const crestG = envG + (u.skyColor.y - envG) * crestLift;
+    const crestB = envB + (u.skyColor.z - envB) * crestLift;
+    const glintMix = reflection * (0.44 + fresnel * 0.34);
+    WATER_RGBA.r = crestR + (u.currentColor.x - crestR) * glintMix;
+    WATER_RGBA.g = crestG + (u.currentColor.y - crestG) * glintMix;
+    WATER_RGBA.b = crestB + (u.currentColor.z - crestB) * glintMix;
+    return WATER_RGBA;
+  },
+};
+
+const WATER_GEOMETRY_SAMPLE = { height: 0, gx: 0, gz: 0 };
+
+// Coarse physical swells for the subdivided mesh. These are deliberately broader and much
+// lower than the fragment ripples: geometry supplies an uneven silhouette/facets, while the
+// normal detail supplies the many small reflections the terminal can actually resolve.
+function waterGeometrySample(x: number, z: number, time: number, flowSpeed: number): typeof WATER_GEOMETRY_SAMPLE {
+  const broad = waterNoise(x * 0.095 + time * 0.008, z * 0.095 - time * 0.006) - 0.5;
+  const detail = waterNoise(x * 0.29 - time * 0.011 + 5.7, z * 0.29 + time * 0.009 - 3.4) - 0.5;
+  const eddyX = x - 3.2;
+  const eddyZ = z + 4.1;
+  const eddyFalloff = 1 / (1 + (eddyX * eddyX + eddyZ * eddyZ) * 0.07);
+  const curlX = -eddyZ * eddyFalloff;
+  const curlZ = eddyX * eddyFalloff;
+  const p1 = x * 0.32 + z * 1.38 - time * flowSpeed * 0.55 + broad * 3.1 + detail * 1.3 + (curlX * 0.32 + curlZ * 1.38) * 0.24;
+  const p2 = x * -0.74 + z * 1.92 - time * flowSpeed * 0.82 - broad * 2.2 + detail * 2.4 - (curlX * -0.74 + curlZ * 1.92) * 0.18 + 2.1;
+  const p3 = x * 1.46 + z * 0.68 - time * flowSpeed * 1.07 + broad * 1.4 - detail * 2.7 + (curlX * 1.46 + curlZ * 0.68) * 0.14 - 0.7;
+  const c1 = Math.cos(p1);
+  const c2 = Math.cos(p2);
+  const c3 = Math.cos(p3);
+  WATER_GEOMETRY_SAMPLE.height = Math.sin(p1) * 0.032 + Math.sin(p2) * 0.021 + Math.sin(p3) * 0.013;
+  WATER_GEOMETRY_SAMPLE.gx = c1 * 0.01024 - c2 * 0.01554 + c3 * 0.01898;
+  WATER_GEOMETRY_SAMPLE.gz = c1 * 0.04416 + c2 * 0.04032 + c3 * 0.00884;
+  return WATER_GEOMETRY_SAMPLE;
+}
+
+function waterNoise(x: number, z: number): number {
+  const ix = Math.floor(x);
+  const iz = Math.floor(z);
+  const fx = x - ix;
+  const fz = z - iz;
+  const sx = fx * fx * (3 - 2 * fx);
+  const sz = fz * fz * (3 - 2 * fz);
+  const a = waterHash(ix, iz);
+  const b = waterHash(ix + 1, iz);
+  const c = waterHash(ix, iz + 1);
+  const d = waterHash(ix + 1, iz + 1);
+  const ab = a + (b - a) * sx;
+  const cd = c + (d - c) * sx;
+  return ab + (cd - ab) * sz;
+}
+
+function waterHash(ix: number, iz: number): number {
+  let h = (Math.imul(ix, 0x1f123bb5) ^ Math.imul(iz, 0x5f356495)) | 0;
+  h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d) | 0;
+  h ^= h >>> 12;
+  return (h >>> 0) / 4294967296;
+}
+
 export interface PieceUniforms {
   mvp: Mat4;
   model: Mat4;

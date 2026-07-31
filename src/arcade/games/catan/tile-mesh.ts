@@ -4,10 +4,11 @@
 // gently-undulating, coarsely-triangulated surface so facets catch the light. Number chips
 // are intentionally NOT baked in — they're a separate component added later.
 //
-// Everything bakes into one mesh per tile (positions + per-face normals), drawn in one
-// lambert pass. Faces go through `faceTri`/`faceQuad`, which orient winding to an "outward"
-// hint. Terrain height is a pure function of (x,z) so independently-built sectors meet
-// seamlessly and props can be sat exactly on the surface.
+// Static terrain bakes into one cached mesh per tile (positions + per-face normals); the
+// windmill rotor and sheep use small time-varying overlay meshes. Faces go through
+// `faceTri`/`faceQuad`, which orient winding to an "outward" hint. Terrain height is a pure
+// function of (x,z) so independently-built sectors meet seamlessly and props can be sat
+// exactly on the surface.
 //
 // Status: WHEAT (fields) is rebuilt to reference. The other five still use their older props
 // on the new thin base and will be redone tile-by-tile.
@@ -209,24 +210,30 @@ function tileBase(m: Build, o: GroundOpts): void {
 // ── Wheat ground: dense standing crop cut by curved harvested lanes ────────────
 
 interface HarvestLane {
-  angle: number;
-  offset: number;
-  halfWidth: number;
-  start: number;
-  end: number;
-  bend: number;
-  wave: number;
+  p0: { x: number; z: number };
+  p1: { x: number; z: number };
+  p2: { x: number; z: number };
+  p3: { x: number; z: number };
+  startWidth: number;
+  endWidth: number;
   phase: number;
-  flare: number;
 }
 
+type FarmPoint = readonly [u: number, w: number];
+type FarmPolygon = readonly FarmPoint[];
+
 interface FieldLayout {
+  angle: number;
   rowAngle: number;
   spacing: number;
   phase: number;
   bend: number;
   wave: number;
-  lanes: HarvestLane[];
+  harvestLanes: readonly HarvestLane[];
+  grassParcel: FarmPolygon;
+  windmillPosition: FarmPoint;
+  shackPosition: FarmPoint;
+  bushPosition: FarmPoint;
 }
 
 const fieldToWorld = (angle: number, u: number, w: number): { x: number; z: number } => ({
@@ -235,80 +242,194 @@ const fieldToWorld = (angle: number, u: number, w: number): { x: number; z: numb
 });
 
 function fieldLayout(rng: () => number, seed: number): FieldLayout {
-  const rowAngle = rng() * Math.PI;
-  // Distinct harvest families: a lone sweep, parallel passes, an elbow, opposing staggered
-  // passes, and a three-way fork. Rounded/widening ends make each pass read as a tractor route
-  // rather than a geometric cut-out; standing wheat is everything those routes miss.
-  const templates = [
-    // One broad, gently wandering pass: two large uninterrupted wheat banks.
-    [
-      [0.02, -0.04, 0.17, -1.08, 1.08, 0.09, 0.03, 0.22],
-    ],
-    // Two near-parallel passes, one stopping early, for long striped parcels.
-    [
-      [-0.04, -0.2, 0.095, -1.08, 1.08, -0.035, 0.02, 0.12],
-      [0.05, 0.22, 0.105, -1.02, 0.58, 0.045, 0.018, 0.28],
-    ],
-    // A long pass with one strong turn: the familiar elbow/T composition.
-    [
-      [0.02, -0.045, 0.13, -1.08, 1.08, 0.07, 0.025, 0.18],
-      [0.76, 0.035, 0.13, -1, 0.22, -0.04, 0.018, 0.42],
-    ],
-    // Two parallel passes entering from opposite ends and sliding past one another.
-    [
-      [-0.04, -0.17, 0.12, -1.06, 0.18, 0.055, 0.021, 0.38],
-      [0.05, 0.18, 0.115, -0.2, 1.05, -0.05, 0.02, 0.36],
-    ],
-    // A rarer fork: three distinct standing parcels around a branching harvested route.
-    [
-      [0.08, -0.09, 0.13, -1.08, 1.08, 0.08, 0.026, 0.18],
-      [0.64, 0.14, 0.1, -0.94, 0.4, -0.05, 0.017, 0.48],
-      [-0.56, -0.03, 0.085, 0.14, 0.96, 0.035, 0.014, 0.3],
-    ],
-  ] as const;
-  // Tile-mode "vary" increments `seed`, so cycle families deterministically before repeating.
-  // The remaining dimensions within a family still use the seeded RNG.
-  const template = templates[((Math.trunc(seed) % templates.length) + templates.length) % templates.length];
-  const lanes = template.map(([da, offset, halfWidth, start, end, bend, wave, flare], i): HarvestLane => ({
-    angle: rowAngle + da + (rng() - 0.5) * 0.08,
-    offset: offset + (rng() - 0.5) * 0.055,
-    halfWidth: halfWidth * (0.9 + rng() * 0.18),
-    start: start + (rng() - 0.5) * 0.08,
-    end: end + (rng() - 0.5) * 0.08,
-    bend: bend * (0.82 + rng() * 0.34),
-    wave: wave * (0.85 + rng() * 0.3),
-    phase: seed * 0.31 + i * 1.7 + rng(),
-    flare: flare * (0.85 + rng() * 0.3),
-  }));
-  const spacing = 0.05 + rng() * 0.006;
+  // Coordinates use screen-right (u) and screen-down (w), matching the reference photograph.
+  // Every seed keeps the same farm topology while moving the dividers, grass boundary, and props.
+  // Rotate the WHOLE composition in 60-degree steps so adjacent board tiles do not all pin the
+  // pasture to the same corner or send their harvested pass between the same pair of edges.
+  const orientation = ((Math.trunc(seed) % 6) + 6) % 6;
+  const angle = -0.62 + orientation * (Math.PI / 3) + (rng() - 0.5) * 0.05;
+  const laneStart = -0.09 + (rng() - 0.5) * 0.16;
+  const laneEnd = 0.37 + (rng() - 0.5) * 0.2;
+  const laneBend = (rng() - 0.5) * 0.24;
+  const grassRight = -0.12 + (rng() - 0.5) * 0.32;
+  const grassBottom = -0.14 + (rng() - 0.5) * 0.26;
+  const grassShoulder = -0.43 + (rng() - 0.5) * 0.24;
+  const swapFarmProps = rng() < 0.5;
+  const toLane = (
+    points: readonly [FarmPoint, FarmPoint, FarmPoint, FarmPoint],
+    width: number,
+    phase: number,
+    endWidth = width * 0.94,
+  ): HarvestLane => {
+    const p = points.map(([u, w]) => fieldToWorld(angle, u, w)) as [
+      { x: number; z: number },
+      { x: number; z: number },
+      { x: number; z: number },
+      { x: number; z: number },
+    ];
+    return { p0: p[0], p1: p[1], p2: p[2], p3: p[3], startWidth: width, endWidth, phase };
+  };
+  // Cycle three clearly different but compatible combine passes: almost straight, one broad
+  // curve, and the same broad curve with a short fork. This is shape variation, not a return to
+  // the unrelated full-tile pattern families that previously made the wheat incoherent.
+  const harvestStyle = ((Math.trunc(seed) % 3) + 3) % 3;
+  // A little broader than the first reference-derived pass: still narrow close up, but legible
+  // as a band of cut stalks when all nineteen tiles are viewed together.
+  const laneWidth = 0.059 + rng() * 0.018;
+  const deltaW = laneEnd - laneStart;
+  const mainPoints: [FarmPoint, FarmPoint, FarmPoint, FarmPoint] = harvestStyle === 0
+    ? [
+        [-1.03, laneStart],
+        [-0.35, laneStart + deltaW / 3 + (rng() - 0.5) * 0.025],
+        [0.35, laneStart + (deltaW * 2) / 3 + (rng() - 0.5) * 0.025],
+        [1.03, laneEnd],
+      ]
+    : [
+        [-1.03, laneStart],
+        [-0.56 + (rng() - 0.5) * 0.18, laneStart - 0.03 - laneBend],
+        [0.02 + (rng() - 0.5) * 0.18, laneEnd - 0.09 + laneBend],
+        [1.03, laneEnd],
+      ];
+  const mainLane = toLane(mainPoints, laneWidth, seed * 0.31);
+  const harvestLanes: HarvestLane[] = [mainLane];
+  if (harvestStyle === 2) {
+    const join = cubicCurvePoint(mainLane, 0.54 + (rng() - 0.5) * 0.08);
+    const middleW = laneStart + deltaW * 0.55;
+    const p1 = fieldToWorld(angle, 0.18, middleW - 0.035);
+    const p2 = fieldToWorld(angle, 0.38 + (rng() - 0.5) * 0.06, middleW - 0.18 + (rng() - 0.5) * 0.06);
+    const p3 = fieldToWorld(angle, 0.57 + (rng() - 0.5) * 0.08, middleW - 0.34 + (rng() - 0.5) * 0.08);
+    harvestLanes.push({
+      p0: join,
+      p1,
+      p2,
+      p3,
+      startWidth: laneWidth * 1.05,
+      endWidth: laneWidth * 0.72,
+      phase: seed * 0.53 + 2.1,
+    });
+  }
   return {
-    rowAngle,
-    spacing,
-    phase: (rng() - 0.5) * spacing,
-    bend: (rng() - 0.5) * 0.065,
-    wave: 0.009 + rng() * 0.012,
-    lanes,
+    angle,
+    rowAngle: angle + (rng() - 0.5) * 0.09,
+    spacing: 0.05 + rng() * 0.005,
+    phase: (rng() - 0.5) * 0.05,
+    bend: (rng() - 0.5) * 0.035,
+    wave: 0.006 + rng() * 0.008,
+    harvestLanes,
+    // The outer points deliberately extend past the inner hex and are clipped onto its edge.
+    grassParcel: [
+      [-1.04, -0.86],
+      [grassRight, -0.84],
+      [grassRight + (rng() - 0.5) * 0.045, grassBottom],
+      [grassShoulder, grassBottom + 0.04 + (rng() - 0.5) * 0.05],
+      [-1.04, -0.18 + (rng() - 0.5) * 0.09],
+    ],
+    windmillPosition: [-0.47 + (rng() - 0.5) * 0.08, -0.48 + (rng() - 0.5) * 0.08],
+    shackPosition: swapFarmProps
+      ? [Math.max(-0.34, grassRight - 0.09) + (rng() - 0.5) * 0.04, -0.27 + (rng() - 0.5) * 0.06]
+      : [-0.62 + (rng() - 0.5) * 0.05, -0.29 + (rng() - 0.5) * 0.06],
+    bushPosition: [grassRight - 0.07 - rng() * 0.04, grassBottom - 0.015 - rng() * 0.035],
+  };
+}
+
+function cubicCurvePoint(lane: HarvestLane, t: number): { x: number; z: number } {
+  const inv = 1 - t;
+  const a = inv * inv * inv;
+  const b = 3 * inv * inv * t;
+  const c = 3 * inv * t * t;
+  const d = t * t * t;
+  return {
+    x: lane.p0.x * a + lane.p1.x * b + lane.p2.x * c + lane.p3.x * d,
+    z: lane.p0.z * a + lane.p1.z * b + lane.p2.z * c + lane.p3.z * d,
   };
 }
 
 function harvestedWeight(lane: HarvestLane, x: number, z: number): number {
-  const c = Math.cos(lane.angle);
-  const s = Math.sin(lane.angle);
-  const u = x * c + z * s;
-  const w = -x * s + z * c;
-  const span = Math.max(0.1, lane.end - lane.start);
-  const progress = Math.max(0, Math.min(1, (u - lane.start) / span));
-  const center = lane.offset + lane.bend * (u * u - 0.32) + lane.wave * Math.sin(u * 4.1 + lane.phase);
-  const width = lane.halfWidth * (1 + lane.flare * progress + Math.sin(u * 3.2 + lane.phase) * 0.08);
-  const across = smooth((width + 0.045 - Math.abs(w - center)) / 0.09);
-  const along = smooth((u - lane.start + 0.055) / 0.11) * smooth((lane.end - u + 0.055) / 0.11);
-  return across * along;
+  const segments = 14;
+  let best = 0;
+  let a = lane.p0;
+  for (let i = 1; i <= segments; i++) {
+    const b = cubicCurvePoint(lane, i / segments);
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const lengthSq = dx * dx + dz * dz || 1;
+    const q = Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / lengthSq));
+    const nearestX = a.x + dx * q;
+    const nearestZ = a.z + dz * q;
+    const distance = Math.hypot(x - nearestX, z - nearestZ);
+    const t = (i - 1 + q) / segments;
+    const baseWidth = lane.startWidth + (lane.endWidth - lane.startWidth) * t;
+    const width = baseWidth * (1 + Math.sin(t * Math.PI * 4 + lane.phase) * 0.055);
+    best = Math.max(best, smooth((width + 0.045 - distance) / 0.09));
+    a = b;
+  }
+  return best;
+}
+
+function polygonCoverage(x: number, z: number, polygon: FarmPolygon): number {
+  let inside = false;
+  let minDistance = Infinity;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, zi] = polygon[i];
+    const [xj, zj] = polygon[j];
+    if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
+    const dx = xi - xj;
+    const dz = zi - zj;
+    const lengthSq = dx * dx + dz * dz || 1;
+    const t = Math.max(0, Math.min(1, ((x - xj) * dx + (z - zj) * dz) / lengthSq));
+    minDistance = Math.min(minDistance, Math.hypot(x - (xj + dx * t), z - (zj + dz * t)));
+  }
+  const signedDistance = inside ? -minDistance : minDistance;
+  return smooth((0.055 - signedDistance) / 0.11);
+}
+
+function scaleFarmPolygon(polygon: FarmPolygon, scale: number): FarmPolygon {
+  const centerU = polygon.reduce((sum, [u]) => sum + u, 0) / polygon.length;
+  const centerW = polygon.reduce((sum, [, w]) => sum + w, 0) / polygon.length;
+  return polygon.map(([u, w]) => [centerU + (u - centerU) * scale, centerW + (w - centerW) * scale] as const);
+}
+
+function worldToField(layout: FieldLayout, x: number, z: number): { u: number; w: number } {
+  const c = Math.cos(layout.angle);
+  const s = Math.sin(layout.angle);
+  return { u: x * c + z * s, w: -x * s + z * c };
 }
 
 function fieldCoverage(layout: FieldLayout, x: number, z: number): number {
+  const { u, w } = worldToField(layout, x, z);
+  const grass = polygonCoverage(u, w, layout.grassParcel);
   let harvested = 0;
-  for (const lane of layout.lanes) harvested = Math.max(harvested, harvestedWeight(lane, x, z));
-  return 1 - harvested;
+  for (const lane of layout.harvestLanes) harvested = Math.max(harvested, harvestedWeight(lane, x, z));
+  return (1 - grass) * (1 - harvested);
+}
+
+function harvestedFieldCoverage(layout: FieldLayout, x: number, z: number): number {
+  const { u, w } = worldToField(layout, x, z);
+  const grass = polygonCoverage(u, w, layout.grassParcel);
+  let harvested = 0;
+  for (const lane of layout.harvestLanes) harvested = Math.max(harvested, harvestedWeight(lane, x, z));
+  return harvested * (1 - grass);
+}
+
+function farmParcelPatch(
+  m: Build,
+  layout: FieldLayout,
+  polygon: FarmPolygon,
+  yAt: (x: number, z: number) => number,
+  color: RGB,
+  lift = 0.006,
+): void {
+  const points = polygon.map(([u, w]) => {
+    const p = fieldToWorld(layout.angle, u, w);
+    const q = clampToHex(p.x, p.z, R_RIM - 0.018);
+    return v(q.x, yAt(q.x, q.z) + lift, q.z);
+  });
+  const centerX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+  const centerZ = points.reduce((sum, p) => sum + p.z, 0) / points.length;
+  const center = v(centerX, yAt(centerX, centerZ) + lift, centerZ);
+  for (let i = 0; i < points.length; i++) {
+    faceTriWithNormal(m, center, points[i], points[(i + 1) % points.length], shade(color, 0.97 + (i % 3) * 0.025), UP);
+  }
 }
 
 function insideFieldHex(x: number, z: number): boolean {
@@ -338,7 +459,7 @@ function harvestedRows(m: Build, layout: FieldLayout, soilY: (x: number, z: numb
       if (!insideFieldHex(a.x, a.z) || !insideFieldHex(b.x, b.z)) continue;
       const midX = (a.x + b.x) / 2;
       const midZ = (a.z + b.z) / 2;
-      if (fieldCoverage(layout, midX, midZ) > 0.56) continue;
+      if (harvestedFieldCoverage(layout, midX, midZ) < 0.48) continue;
       const dx = b.x - a.x;
       const dz = b.z - a.z;
       const len = Math.hypot(dx, dz) || 1;
@@ -595,7 +716,13 @@ function beam(m: Build, a: Vec3, b: Vec3, w: number, color: RGB): void {
   }
 }
 
-function scatter(rng: () => number, n: number, rMax: number, minGap: number): { x: number; z: number }[] {
+function scatter(
+  rng: () => number,
+  n: number,
+  rMax: number,
+  minGap: number,
+  accepts: (x: number, z: number) => boolean = () => true,
+): { x: number; z: number }[] {
   const pts: { x: number; z: number }[] = [];
   let guard = 0;
   while (pts.length < n && guard++ < n * 60) {
@@ -603,16 +730,15 @@ function scatter(rng: () => number, n: number, rMax: number, minGap: number): { 
     const r = Math.sqrt(rng()) * rMax;
     const x = r * Math.cos(a);
     const z = r * Math.sin(a);
-    if (pts.every((p) => Math.hypot(p.x - x, p.z - z) > minGap)) pts.push({ x, z });
+    if (accepts(x, z) && pts.every((p) => Math.hypot(p.x - x, p.z - z) > minGap)) pts.push({ x, z });
   }
   return pts;
 }
 
 // ── Wheat-specific props ──────────────────────────────────────────────────────
 
-const WHEAT_STEM: RGB = [238, 194, 62];
-const WHEAT_HEAD: RGB = [255, 226, 105];
-const SHEAF_TIE: RGB = [126, 76, 38];
+const WHEAT_STEM: RGB = [248, 202, 48];
+const WHEAT_HEAD: RGB = [255, 229, 86];
 
 // Wheat heads are tiny enough that true cone normals make the unlit faces turn muddy.
 // Keep a little radial component for shape, but bias every face upward so the crop stays
@@ -742,25 +868,145 @@ function stubbleTuft(m: Build, cx: number, cz: number, y0: number, angle: number
   }
 }
 
-function wheatSheaf(m: Build, cx: number, cz: number, y0: number, scale: number, angle: number, seed: number): void {
+function windmillStyle(seed: number): { scale: number; baseSpin: number; speed: number } {
   const rng = mulberry32(seed | 0 || 1);
-  const count = 8;
+  return {
+    scale: 0.92 + rng() * 0.1,
+    baseSpin: 0.35 + (rng() - 0.5) * 0.45,
+    speed: 0.78 + rng() * 0.24,
+  };
+}
+
+function farmWindmillBody(m: Build, cx: number, cz: number, y0: number, angle: number, seed: number): void {
+  const STONE: RGB = [124, 124, 112];
+  const PLASTER: RGB = [223, 218, 196];
+  const ROOF: RGB = [94, 76, 58];
+  const { scale } = windmillStyle(seed);
+  const sides = 7;
+  const lower: Vec3[] = [];
+  const upper: Vec3[] = [];
+  for (let i = 0; i < sides; i++) {
+    const a = angle + (Math.PI * 2 * i) / sides;
+    lower.push(v(cx + Math.cos(a) * 0.085 * scale, y0, cz + Math.sin(a) * 0.085 * scale));
+    upper.push(v(cx + Math.cos(a) * 0.055 * scale, y0 + 0.19 * scale, cz + Math.sin(a) * 0.055 * scale));
+  }
+  for (let i = 0; i < sides; i++) {
+    const j = (i + 1) % sides;
+    const color = i % 3 === 0 ? shade(PLASTER, 0.92) : PLASTER;
+    faceQuad(m, lower[i], lower[j], upper[j], upper[i], color, norm(v(lower[i].x + lower[j].x - cx * 2, 0.2, lower[i].z + lower[j].z - cz * 2)));
+  }
+  // A low dark stone footing and compact roof anchor the pale tapered mill body.
+  for (let i = 0; i < sides; i++) {
+    const j = (i + 1) % sides;
+    const a = v(lower[i].x, y0 + 0.045 * scale, lower[i].z);
+    const b = v(lower[j].x, y0 + 0.045 * scale, lower[j].z);
+    faceQuad(m, lower[i], lower[j], b, a, shade(STONE, 0.9 + (i % 2) * 0.08), norm(v(lower[i].x + lower[j].x - cx * 2, 0.1, lower[i].z + lower[j].z - cz * 2)));
+  }
+  cone(m, cx, cz, 0.073 * scale, 0.055 * scale, sides, ROOF, y0 + 0.19 * scale, angle);
+}
+
+function farmWindmillRotor(m: Build, cx: number, cz: number, y0: number, angle: number, seed: number, time: number): void {
+  const WOOD: RGB = [111, 73, 43];
+  const BLADE: RGB = [225, 217, 189];
+  const { scale, baseSpin, speed } = windmillStyle(seed);
+  // The rotor faces the tile camera. Four broad tapered paddles read clearly at terminal scale;
+  // only this compact overlay is rebuilt as time advances, not the dense wheat geometry.
+  const facing = fieldToWorld(angle, 0, 1);
+  const axis = norm(v(facing.x, 0.34, facing.z));
+  const side = norm(v(axis.z, 0, -axis.x));
+  const vertical = norm(cross(axis, side));
+  const hub = v(
+    cx + axis.x * 0.071 * scale,
+    y0 + 0.2 * scale + axis.y * 0.071 * scale,
+    cz + axis.z * 0.071 * scale,
+  );
+  beam(m, v(cx, y0 + 0.195 * scale, cz), hub, 0.013 * scale, WOOD);
+  const spin = baseSpin + time * speed;
+  const add = (a: Vec3, b: Vec3, amount: number): Vec3 => v(a.x + b.x * amount, a.y + b.y * amount, a.z + b.z * amount);
+  for (let i = 0; i < 4; i++) {
+    const a = spin + (Math.PI * i) / 2;
+    const dir = v(
+      side.x * Math.cos(a) + vertical.x * Math.sin(a),
+      vertical.y * Math.sin(a),
+      side.z * Math.cos(a) + vertical.z * Math.sin(a),
+    );
+    const across = v(
+      -side.x * Math.sin(a) + vertical.x * Math.cos(a),
+      vertical.y * Math.cos(a),
+      -side.z * Math.sin(a) + vertical.z * Math.cos(a),
+    );
+    const inner = add(hub, dir, 0.024 * scale);
+    const outer = add(hub, dir, (0.165 + (i % 2) * 0.012) * scale);
+    const p0 = add(inner, across, -0.014 * scale);
+    const p1 = add(inner, across, 0.014 * scale);
+    const p2 = add(outer, across, 0.034 * scale);
+    const p3 = add(outer, across, -0.034 * scale);
+    faceQuadWithNormal(m, p0, p1, p2, p3, shade(BLADE, 0.96 + (i % 2) * 0.06), axis);
+    faceQuadWithNormal(m, p3, p2, p1, p0, shade(BLADE, 0.9), v(-axis.x, 0, -axis.z));
+  }
+  blob(m, hub.x, hub.y, hub.z, 0.026 * scale, 0.026 * scale, 0.026 * scale, WOOD, seed + 31, 0.05, 2, 6);
+}
+
+function farmShack(m: Build, cx: number, cz: number, y0: number, angle: number, seed: number): void {
+  const rng = mulberry32(seed | 0 || 1);
+  const WALL: RGB = [147, 98, 57];
+  const ROOF: RGB = [92, 59, 40];
+  const DOOR: RGB = [73, 49, 35];
+  const scale = 0.9 + rng() * 0.12;
+  const width = 0.18 * scale;
+  const depth = 0.12 * scale;
+  const wallH = 0.09 * scale;
+  box(m, cx, cz, width, wallH, depth, shade(WALL, 0.95 + rng() * 0.08), angle, y0);
   const c = Math.cos(angle);
   const s = Math.sin(angle);
-  for (let i = 0; i < count; i++) {
-    const around = (Math.PI * 2 * i) / count + (rng() - 0.5) * 0.28;
-    const baseR = (0.022 + rng() * 0.018) * scale;
-    const crownR = (0.032 + rng() * 0.028) * scale;
-    const bx = cx + Math.cos(around) * baseR;
-    const bz = cz + Math.sin(around) * baseR;
-    const h = (0.108 + rng() * 0.026) * scale;
-    const tx = cx + Math.cos(around) * crownR + c * (rng() - 0.35) * 0.012 * scale;
-    const tz = cz + Math.sin(around) * crownR + s * (rng() - 0.35) * 0.012 * scale;
-    const top = v(tx, y0 + h, tz);
-    beam(m, v(bx, y0, bz), top, 0.004 * scale, WHEAT_STEM);
-    blob(m, top.x, top.y + 0.011 * scale, top.z, 0.011 * scale, 0.019 * scale, 0.011 * scale, shade(WHEAT_HEAD, 0.93 + rng() * 0.1), seed + i * 13, 0.09, 2, 4);
+  const pt = (x: number, y: number, z: number): Vec3 => v(cx + x * c - z * s, y0 + y, cz + x * s + z * c);
+  const x = width * 0.58;
+  const z = depth * 0.68;
+  const eaveY = wallH;
+  const ridgeY = wallH + 0.065 * scale;
+  const a = pt(-x, eaveY, -z);
+  const b = pt(x, eaveY, -z);
+  const c0 = pt(x, eaveY, z);
+  const d = pt(-x, eaveY, z);
+  const r0 = pt(-x, ridgeY, 0);
+  const r1 = pt(x, ridgeY, 0);
+  faceQuad(m, a, b, r1, r0, shade(ROOF, 0.94), norm(v(Math.sin(angle), 0.7, -Math.cos(angle))));
+  faceQuad(m, r0, r1, c0, d, shade(ROOF, 1.04), norm(v(-Math.sin(angle), 0.7, Math.cos(angle))));
+  faceTri(m, a, r0, d, WALL, norm(v(-Math.cos(angle), 0.2, -Math.sin(angle))));
+  faceTri(m, b, c0, r1, WALL, norm(v(Math.cos(angle), 0.2, Math.sin(angle))));
+  const frontX = cx - Math.sin(angle) * (depth * 0.5 + 0.004);
+  const frontZ = cz + Math.cos(angle) * (depth * 0.5 + 0.004);
+  box(m, frontX, frontZ, 0.045 * scale, 0.058 * scale, 0.008, DOOR, angle, y0);
+}
+
+function farmBush(m: Build, cx: number, cz: number, y0: number, scale: number, seed: number): void {
+  const rng = mulberry32(seed | 0 || 1);
+  const colors: RGB[] = [[66, 119, 60], [77, 132, 65], [88, 142, 72]];
+  const clusters = [
+    [0, 0, 1],
+    [-0.055, 0.012, 0.82],
+    [0.052, 0.016, 0.88],
+    [-0.016, -0.048, 0.76],
+    [0.035, -0.042, 0.7],
+  ] as const;
+  for (let i = 0; i < clusters.length; i++) {
+    const [ox, oz, size] = clusters[i];
+    const r = 0.07 * scale * size;
+    blob(
+      m,
+      cx + ox * scale,
+      y0 + r * (0.9 + rng() * 0.18),
+      cz + oz * scale,
+      r,
+      r * 0.9,
+      r,
+      colors[i % colors.length],
+      seed + i * 17,
+      0.18,
+      3,
+      6,
+    );
   }
-  box(m, cx, cz, 0.065 * scale, 0.022 * scale, 0.055 * scale, SHEAF_TIE, angle, y0 + 0.043 * scale);
 }
 
 // A horizontal octagonal-prism log/beam (axis along `ry`, resting on the ground): `side` for
@@ -861,9 +1107,16 @@ function roundTree(m: Build, cx: number, cz: number, y0: number, scale: number, 
 function bush(m: Build, cx: number, cz: number, y0: number, scale: number, color: RGB, seed: number): void {
   blob(m, cx, y0 + 0.11 * scale, cz, 0.16 * scale, 0.13 * scale, 0.16 * scale, color, seed, 0.2, 3, 6);
 }
+interface SheepPose {
+  gait?: number; // -1..1: diagonal hoof swing while walking
+  headDip?: number; // 0..1: lower the head to graze
+  groundY?: (x: number, z: number) => number; // rendered terrain beneath each individual hoof
+}
+
 // A low-poly sheep: a fat rounded body (white top → cream belly), a black head tilted up at
-// the front with two ear nubs, and four short thin black legs. Faces along `ry`.
-function sheep(m: Build, cx: number, cz: number, y0: number, ry: number, seed: number, scale = 1): void {
+// the front with two ear nubs, and four short thin black legs. Faces along `ry`. Animated poses
+// swing diagonal leg pairs, add a restrained body bob, and lower the head all the way to grass.
+function sheep(m: Build, cx: number, cz: number, y0: number, ry: number, seed: number, scale = 1, pose: SheepPose = {}): void {
   const rng = mulberry32(seed | 0 || 1);
   const WHITE: RGB = [246, 246, 242];
   const CREAM: RGB = [226, 212, 184];
@@ -871,21 +1124,39 @@ function sheep(m: Build, cx: number, cz: number, y0: number, ry: number, seed: n
   const s = (0.437 + rng() * 0.138) * scale; // ~15% larger than the trimmed size — a bit chunkier vs the trees
   const cos = Math.cos(ry);
   const sin = Math.sin(ry);
+  const gait = Math.max(-1, Math.min(1, pose.gait ?? 0));
+  const headDip = smooth(Math.max(0, Math.min(1, pose.headDip ?? 0)));
+  const bodyBob = Math.abs(gait) * 0.0035 * s;
+  const groundY = pose.groundY ?? (() => y0);
   const at = (fwd: number, side: number): { x: number; z: number } => ({ x: cx + cos * fwd - sin * side, z: cz + sin * fwd + cos * side });
   // legs: short and splayed — inner/high near the body, outer/low at the ground.
   for (const [fw, sd] of [[0.11, 0.06], [0.11, -0.06], [-0.11, 0.06], [-0.11, -0.06]] as const) {
     const top = at(fw * 0.8 * s, sd * 0.7 * s);
-    const bot = at(fw * s, sd * 1.25 * s);
-    beam(m, v(top.x, y0 + 0.13 * s, top.z), v(bot.x, y0, bot.z), 0.016 * s, BLACK);
+    const diagonal = fw * sd > 0 ? 1 : -1;
+    const stride = gait * diagonal;
+    const bot = at(fw * s + stride * 0.055 * s, sd * 1.25 * s);
+    const hoofLift = Math.max(0, stride) * 0.034 * s;
+    beam(m, v(top.x, y0 + 0.13 * s + bodyBob, top.z), v(bot.x, groundY(bot.x, bot.z) + hoofLift, bot.z), 0.016 * s, BLACK);
   }
   // Body: a fat ovoid, LONGER front-to-back (along the facing) than it is wide/tall, white
   // over a cream belly — like the reference, not a round ball.
-  blob(m, cx, y0 + 0.2 * s, cz, 0.21 * s, 0.135 * s, 0.15 * s, WHITE, seed + 1, 0.05, 4, 9, CREAM, ry);
-  const h = at(0.2 * s, 0);
-  blob(m, h.x, y0 + 0.25 * s, h.z, 0.078 * s, 0.082 * s, 0.072 * s, BLACK, seed + 2, 0.06, 3, 5); // head
+  blob(m, cx, y0 + 0.2 * s + bodyBob, cz, 0.21 * s, 0.135 * s, 0.15 * s, WHITE, seed + 1, 0.05, 4, 9, CREAM, ry);
+  const h = at((0.2 + headDip * 0.06) * s, 0);
+  const uprightHeadY = y0 + 0.25 * s + bodyBob;
+  const grazingHeadY = groundY(h.x, h.z) + 0.082 * s;
+  const headY = uprightHeadY + (grazingHeadY - uprightHeadY) * headDip;
+  const shoulder = at(0.135 * s, 0);
+  beam(
+    m,
+    v(shoulder.x, y0 + 0.22 * s + bodyBob, shoulder.z),
+    v(h.x, headY + 0.012 * s, h.z),
+    0.04 * s,
+    BLACK,
+  );
+  blob(m, h.x, headY, h.z, 0.078 * s, 0.082 * s, 0.072 * s, BLACK, seed + 2, 0.06, 3, 5); // head
   for (const sd of [0.07, -0.07] as const) {
-    const e = at(0.16 * s, sd * s);
-    box(m, e.x, e.z, 0.02 * s, 0.028 * s, 0.045 * s, BLACK, ry, y0 + 0.26 * s); // ear nub
+    const e = at((0.16 + headDip * 0.06) * s, sd * s);
+    box(m, e.x, e.z, 0.02 * s, 0.028 * s, 0.045 * s, BLACK, ry, headY + 0.01 * s); // ear nub
   }
 }
 // A single small clay brick (cuboid), long axis along `ry`.
@@ -937,40 +1208,49 @@ function brickHeap(m: Build, cx: number, cz: number, y0: number, ry: number, col
 
 // ── Per-terrain tiles ─────────────────────────────────────────────────────────
 
-// WHEAT — one continuous field whose dense standing crop has been cut by curved combine passes.
-// The exposed areas retain raised rows and short stubble (not painted dirt lines), while short
-// tied sheaves occupy a couple of the broad harvested turns.
+// WHEAT — one reference-derived farm composition with three dense crop parcels, an upper-left
+// grass parcel, and one thin curved strip of cut stalks. Seeds reshape those boundaries and move
+// the farm details without swapping the tile into an unrelated pattern family.
 function fieldsTile(seed: number): Build {
   const m = build();
-  const SOIL: RGB = [145, 94, 44];
-  const STUBBLE_ROW: RGB = [178, 128, 52];
-  const WHEAT_CANOPY: RGB = [246, 207, 76];
+  const FIELD_GROUND: RGB = [220, 169, 60];
+  const GRASS_BLEND: RGB = [194, 163, 69];
+  const GRASS: RGB = [124, 143, 78];
+  const STUBBLE_ROW: RGB = [235, 183, 66];
+  const WHEAT_CANOPY: RGB = [255, 221, 63];
   const amp = 0.025;
   const groundSeed = seed + 4.2;
   const rng = mulberry32((Math.abs(seed) * 2246822519 + 0x85ebca6b) >>> 0 || 1);
   const layout = fieldLayout(rng, seed);
   const soilY = (x: number, z: number): number => surfaceY(x, z, amp, groundSeed);
 
-  irregularGround(m, { color: SOIL, amp, seed: groundSeed, facet: 0.09 });
+  irregularGround(m, { color: FIELD_GROUND, amp, seed: groundSeed, facet: 0.065 });
+  farmParcelPatch(m, layout, scaleFarmPolygon(layout.grassParcel, 1.16), soilY, GRASS_BLEND, 0.007);
+  farmParcelPatch(m, layout, layout.grassParcel, soilY, GRASS, 0.011);
   harvestedRows(m, layout, soilY, STUBBLE_ROW, seed);
   standingCanopy(m, layout, soilY, WHEAT_CANOPY);
   standingWheat(m, layout, soilY, seed);
-  rimAndWall(m, shade(SOIL, 1.05));
 
-  // Place one or two tied sheaves only inside the broad harvested passes. Rejection sampling
-  // keeps every sheaf clear of standing crop, the number chip, the rim, and one another.
-  const sheaves: { x: number; z: number }[] = [];
-  const target = 1 + (rng() < 0.58 ? 1 : 0);
-  for (let attempt = 0; attempt < 120 && sheaves.length < target; attempt++) {
-    const a = rng() * Math.PI * 2;
-    const r = 0.27 + Math.sqrt(rng()) * 0.4;
-    const x = Math.cos(a) * r;
-    const z = Math.sin(a) * r;
-    if (!insideFieldHex(x, z) || fieldCoverage(layout, x, z) > 0.22) continue;
-    if (sheaves.some((q) => Math.hypot(q.x - x, q.z - z) < 0.22)) continue;
-    sheaves.push({ x, z });
-    wheatSheaf(m, x, z, soilY(x, z) + 0.01, 0.78 + rng() * 0.12, layout.rowAngle + (rng() - 0.5) * 0.5, seed * 113 + attempt * 19);
-  }
+  const windmill = fieldToWorld(layout.angle, layout.windmillPosition[0], layout.windmillPosition[1]);
+  const shack = fieldToWorld(layout.angle, layout.shackPosition[0], layout.shackPosition[1]);
+  const shrub = fieldToWorld(layout.angle, layout.bushPosition[0], layout.bushPosition[1]);
+  farmWindmillBody(m, windmill.x, windmill.z, soilY(windmill.x, windmill.z) + 0.014, layout.angle, seed * 101 + 7);
+  farmShack(m, shack.x, shack.z, soilY(shack.x, shack.z) + 0.014, layout.angle + 0.1 + (rng() - 0.5) * 0.24, seed * 107 + 11);
+  farmBush(m, shrub.x, shrub.z, soilY(shrub.x, shrub.z) + 0.01, 0.78 + rng() * 0.08, seed * 109 + 13);
+
+  rimAndWall(m, shade(FIELD_GROUND, 1.03));
+  return m;
+}
+
+function animatedFieldsTile(seed: number, time: number): Build {
+  const m = build();
+  const amp = 0.025;
+  const groundSeed = seed + 4.2;
+  const rng = mulberry32((Math.abs(seed) * 2246822519 + 0x85ebca6b) >>> 0 || 1);
+  const layout = fieldLayout(rng, seed);
+  const windmill = fieldToWorld(layout.angle, layout.windmillPosition[0], layout.windmillPosition[1]);
+  const y0 = surfaceY(windmill.x, windmill.z, amp, groundSeed) + 0.014;
+  farmWindmillRotor(m, windmill.x, windmill.z, y0, layout.angle, seed * 101 + 7, time);
   return m;
 }
 
@@ -1087,6 +1367,221 @@ function hillsTile(seed: number): Build {
 
 // SHEEP — a soft mint-green meadow (gently rolling low-poly ground) with sheep, round-canopy
 // trees, and green bushes scattered across it. Seeded so every pasture hex varies.
+interface PastureSheepSpec {
+  x: number;
+  z: number;
+  seed: number;
+  pathAngle: number;
+  amplitude: number;
+  phase: number;
+  cycle: number;
+}
+
+interface PastureTreeSpec {
+  x: number;
+  z: number;
+  scale: number;
+  seed: number;
+}
+
+interface PastureBushSpec extends PastureTreeSpec {}
+
+interface PastureLayout {
+  sheep: PastureSheepSpec[];
+  trees: PastureTreeSpec[];
+  bushes: PastureBushSpec[];
+}
+
+function pastureLayout(seed: number): PastureLayout {
+  const rng = mulberry32((Math.abs(seed) * 374761393 + 0x9e3779b9) >>> 0 || 1);
+  const sheepCount = 3 + Math.floor(rng() * 2);
+  const treeCount = 2 + Math.floor(rng() * 2);
+  const bushCount = 3 + Math.floor(rng() * 3);
+  const pts = scatter(rng, sheepCount + treeCount + bushCount, 0.68, 0.28, (x, z) => Math.hypot(x, z) > 0.22);
+  let i = 0;
+  const take = (): { x: number; z: number } | undefined => pts[i++];
+  const sheepSpecs: PastureSheepSpec[] = [];
+  for (let s = 0; s < sheepCount; s++) {
+    const p = take();
+    if (!p) break;
+    sheepSpecs.push({
+      ...p,
+      seed: (seed * 23 + i) | 0,
+      pathAngle: rng() * Math.PI * 2,
+      amplitude: 0.068 + rng() * 0.022,
+      phase: rng(),
+      cycle: 11.5 + rng() * 4.5,
+    });
+  }
+  const trees: PastureTreeSpec[] = [];
+  for (let t = 0; t < treeCount; t++) {
+    const p = take();
+    if (!p) break;
+    trees.push({ ...p, scale: 0.36 + rng() * 0.12, seed: (seed * 13 + i) | 0 });
+  }
+  const bushes: PastureBushSpec[] = [];
+  for (let b = 0; b < bushCount; b++) {
+    const p = take();
+    if (!p) break;
+    bushes.push({ ...p, scale: 0.48 + rng() * 0.32, seed: (seed * 17 + i) | 0 });
+  }
+  return { sheep: sheepSpecs, trees, bushes };
+}
+
+interface MovingSheep {
+  x: number;
+  z: number;
+  yaw: number;
+  gait: number;
+  headDip: number;
+  moving: number;
+}
+
+function sheepMotion(spec: PastureSheepSpec, time: number): MovingSheep {
+  const forward = { x: Math.cos(spec.pathAngle), z: Math.sin(spec.pathAngle) };
+  const side = { x: -forward.z, z: forward.x };
+  const point = (f: number, s: number): { x: number; z: number } => ({
+    x: spec.x + (forward.x * f + side.x * s) * spec.amplitude,
+    z: spec.z + (forward.z * f + side.z * s) * spec.amplitude,
+  });
+  const points = [point(-0.62, -0.12), point(0.62, 0.2), point(-0.08, 0.72)] as const;
+  const p = (((time / spec.cycle + spec.phase) % 1) + 1) % 1;
+  let from = points[0];
+  let to = points[1];
+  let progress = 0;
+  let moving = 0;
+  let headDip = 0;
+  if (p < 0.27) {
+    progress = p / 0.27;
+    moving = 1;
+  } else if (p < 0.39) {
+    from = points[1];
+    to = points[1];
+  } else if (p < 0.58) {
+    from = points[1];
+    to = points[2];
+    progress = (p - 0.39) / 0.19;
+    moving = 1;
+  } else if (p < 0.78) {
+    from = points[2];
+    to = points[2];
+    const graze = (p - 0.58) / 0.2;
+    headDip = smooth(Math.min(graze / 0.2, (1 - graze) / 0.2));
+  } else if (p < 0.94) {
+    from = points[2];
+    to = points[0];
+    progress = (p - 0.78) / 0.16;
+    moving = 1;
+  } else {
+    from = points[0];
+    to = points[0];
+  }
+  const eased = smooth(progress);
+  const x = from.x + (to.x - from.x) * eased;
+  const z = from.z + (to.z - from.z) * eased;
+  // Hold the just-travelled heading through a pause or grazing stop; do not snap back to the
+  // seed angle merely because the current segment has zero length.
+  const heading = (fromPoint: { x: number; z: number }, toPoint: { x: number; z: number }): number => Math.atan2(toPoint.z - fromPoint.z, toPoint.x - fromPoint.x);
+  const h01 = heading(points[0], points[1]);
+  const h12 = heading(points[1], points[2]);
+  const h20 = heading(points[2], points[0]);
+  const turn = (a: number, b: number, amount: number): number => {
+    const delta = Math.atan2(Math.sin(b - a), Math.cos(b - a));
+    return a + delta * smooth(amount);
+  };
+  const yaw = p < 0.27
+    ? h01
+    : p < 0.39
+      ? turn(h01, h12, (p - 0.27) / 0.12)
+      : p < 0.68
+        ? h12
+        : p < 0.78
+          ? turn(h12, h20, (p - 0.68) / 0.1)
+          : p < 0.94
+            ? h20
+            : turn(h20, h01, (p - 0.94) / 0.06);
+  const gaitEnvelope = moving ? Math.sin(progress * Math.PI) : 0;
+  const gait = gaitEnvelope * Math.sin((time / spec.cycle) * Math.PI * 18 + spec.phase * Math.PI * 2);
+  return { x, z, yaw, gait, headDip, moving };
+}
+
+function sheepBodyRadius(seed: number): number {
+  const rng = mulberry32(seed | 0 || 1);
+  return (0.437 + rng() * 0.138) * 0.225;
+}
+
+// Intersect a vertical probe with the already-baked meadow triangles. This follows the actual
+// piecewise-planar surface the player sees, rather than resampling the procedural vertex noise
+// at a moving coordinate (which made a walking sheep jump between unrelated noise values).
+function meshSurfaceYAt(mesh: Mesh, x: number, z: number, fallback: number): number {
+  let best = Infinity;
+  for (let i = 0; i < mesh.indices.length; i += 3) {
+    const a = mesh.vertices[mesh.indices[i]];
+    const b = mesh.vertices[mesh.indices[i + 1]];
+    const c = mesh.vertices[mesh.indices[i + 2]];
+    if (a.normal.y < 0.45 || b.normal.y < 0.45 || c.normal.y < 0.45) continue;
+    const ax = a.position.x;
+    const az = a.position.z;
+    const bx = b.position.x;
+    const bz = b.position.z;
+    const cx = c.position.x;
+    const cz = c.position.z;
+    const denominator = (bz - cz) * (ax - cx) + (cx - bx) * (az - cz);
+    if (Math.abs(denominator) < 1e-9) continue;
+    const wa = ((bz - cz) * (x - cx) + (cx - bx) * (z - cz)) / denominator;
+    const wb = ((cz - az) * (x - cx) + (ax - cx) * (z - cz)) / denominator;
+    const wc = 1 - wa - wb;
+    if (wa < -1e-6 || wb < -1e-6 || wc < -1e-6) continue;
+    const y = wa * a.position.y + wb * b.position.y + wc * c.position.y;
+    if (y < best) best = y;
+  }
+  return best === Infinity ? fallback : best;
+}
+
+function animatedPastureTile(seed: number, time: number): Build {
+  const m = build();
+  const layout = pastureLayout(seed);
+  const amp = 0.15;
+  const gseed = seed + 1.9;
+  const meadow = tileMesh('pasture', seed);
+  const hAt = (x: number, z: number): number => meshSurfaceYAt(meadow, x, z, surfaceY(x, z, amp, gseed));
+  const obstacles = [
+    ...layout.trees.map((tree) => ({ x: tree.x, z: tree.z, radius: 0.26 * tree.scale + 0.025 })),
+    ...layout.bushes.map((bushSpec) => ({ x: bushSpec.x, z: bushSpec.z, radius: 0.16 * bushSpec.scale + 0.025 })),
+  ];
+  const placed: { x: number; z: number; radius: number }[] = [];
+  for (const spec of layout.sheep) {
+    const target = sheepMotion(spec, time);
+    const radius = sheepBodyRadius(spec.seed);
+    const reserved = layout.sheep
+      .filter((other) => other !== spec)
+      .map((other) => ({ x: other.x, z: other.z, radius: sheepBodyRadius(other.seed) }));
+    const clear = (x: number, z: number): boolean => [...obstacles, ...reserved, ...placed].every((disc) => Math.hypot(x - disc.x, z - disc.z) >= radius + disc.radius);
+    let factor = 0;
+    // Each sheep owns a small motion cell around a pre-spaced anchor. If a long body or nearby
+    // shrub narrows that cell, shorten this step toward the guaranteed-clear anchor instead of
+    // allowing bodies to phase through one another or scenery.
+    for (let step = 0; step <= 20; step++) {
+      const candidate = 1 - step / 20;
+      const x = spec.x + (target.x - spec.x) * candidate;
+      const z = spec.z + (target.z - spec.z) * candidate;
+      if (clear(x, z)) {
+        factor = candidate;
+        break;
+      }
+    }
+    const x = spec.x + (target.x - spec.x) * factor;
+    const z = spec.z + (target.z - spec.z) * factor;
+    placed.push({ x, z, radius });
+    sheep(m, x, z, hAt(x, z), target.yaw, spec.seed, 1, {
+      gait: target.gait * factor,
+      headDip: target.headDip,
+      groundY: hAt,
+    });
+  }
+  return m;
+}
+
 function pastureTile(seed: number): Build {
   const m = build();
   const GRASS: RGB = [150, 200, 148];
@@ -1096,24 +1591,14 @@ function pastureTile(seed: number): Build {
   const gseed = seed + 1.9;
   tileBase(m, { color: GRASS, amp, seed: gseed });
   const hAt = (x: number, z: number): number => surfaceY(x, z, amp, gseed);
-  const rng = mulberry32((Math.abs(seed) * 374761393 + 0x9e3779b9) >>> 0 || 1);
-  // Scatter positions with a shared min-gap (big enough that even two sheep never touch),
-  // then assign types. Sheep are taken FIRST so they always get spots.
-  const pts = scatter(rng, 12, 0.68, 0.26);
-  let i = 0;
-  const take = (): { x: number; z: number } | undefined => pts[i++];
-  for (let s = 0, n = 3 + Math.floor(rng() * 2); s < n; s++) {
-    const p = take();
-    if (p) sheep(m, p.x, p.z, hAt(p.x, p.z), rng() * Math.PI * 2, (seed * 23 + i) | 0);
-  }
+  const layout = pastureLayout(seed);
+  // Sheep are a small dynamic overlay; the rolling ground and vegetation remain cached.
   // Small trees — only a bit taller than a sheep, like the reference (canopy ~0.1 radius).
-  for (let t = 0, n = 2 + Math.floor(rng() * 2); t < n; t++) {
-    const p = take();
-    if (p) roundTree(m, p.x, p.z, hAt(p.x, p.z), 0.36 + rng() * 0.12, CANOPY, (seed * 13 + i) | 0);
+  for (const tree of layout.trees) {
+    roundTree(m, tree.x, tree.z, hAt(tree.x, tree.z), tree.scale, CANOPY, tree.seed);
   }
-  for (let b = 0, n = 3 + Math.floor(rng() * 3); b < n; b++) {
-    const p = take();
-    if (p) bush(m, p.x, p.z, hAt(p.x, p.z), 0.48 + rng() * 0.32, BUSH, (seed * 17 + i) | 0);
+  for (const bushSpec of layout.bushes) {
+    bush(m, bushSpec.x, bushSpec.z, hAt(bushSpec.x, bushSpec.z), bushSpec.scale, BUSH, bushSpec.seed);
   }
   return m;
 }
@@ -1449,7 +1934,7 @@ const BUILDERS: Record<Terrain, (seed: number) => Build> = {
   desert: desertTile,
 };
 
-// Cache one baked mesh per (terrain, seed) — so a given ore variant is built once.
+// Cache one baked static mesh per (terrain, seed); animated props live in a separate overlay.
 const cache = new Map<string, Mesh>();
 // `robberOn` bakes the robber (seated on the tile's centre surface) into the returned mesh —
 // the robber is available on every terrain and toggled from the HUD, never part of the tile.
@@ -1922,17 +2407,123 @@ function felledPine(m: Build, cx: number, cz: number, y0: number, ry: number, pi
   }
 }
 
+// ── Sheaves (the grain port's cargo) ────────────────────────────────────────
+// A sheaf is a bundle of cut stalks corded at the waist, so it flares at both ends and pinches
+// in the middle — the bowtie silhouette of the physical wheat token. Built around an arbitrary
+// axis so bundles can lie on their sides at any angle, the way a load settles in a hold.
+const STRAW: RGB = [226, 184, 84]; // stalk sides
+const STRAW_CUT: RGB = [242, 216, 152]; // the packed disc of cut ends at the butt
+const STRAW_HEAD: RGB = [208, 156, 66]; // the grain end, browner than the straw
+const TWINE: RGB = [124, 84, 46]; // the cord — dark enough to draw the waist as a line
+
+// Bundle radius at `t` along its length (0 = butt, 1 = grain end). The exponent makes the flare
+// concave: stalks splay quickly near the ends and stay gathered through the tie.
+const sheafRadius = (t: number, waist: number, end: number): number => waist + (end - waist) * Math.abs(2 * t - 1) ** 2;
+
+function wheatBundle(m: Build, cx: number, cy: number, cz: number, yaw: number, pitch: number, len: number, endR: number, seed: number): void {
+  const rng = mulberry32(seed | 0 || 1);
+  const cp = Math.cos(pitch);
+  const axis = norm(v(Math.cos(yaw) * cp, Math.sin(pitch), Math.sin(yaw) * cp));
+  const ref: Vec3 = Math.abs(axis.y) > 0.9 ? v(1, 0, 0) : UP;
+  const u = norm(cross(axis, ref));
+  const w = norm(cross(axis, u));
+  const waist = endR * 0.42;
+  const STALKS = 12;
+  const SEGS = 4;
+  // A point `t` along the axis, `ang` around it, `r` out from it, slid `tan` across (tangentially)
+  // — enough to lay a narrow ribbon along each stalk.
+  const at = (t: number, ang: number, r: number, tan = 0): Vec3 => {
+    const d = (t - 0.5) * len;
+    const ca = Math.cos(ang);
+    const sa = Math.sin(ang);
+    const ru = ca * r - sa * tan;
+    const rw = sa * r + ca * tan;
+    return v(cx + axis.x * d + u.x * ru + w.x * rw, cy + axis.y * d + u.y * ru + w.y * rw, cz + axis.z * d + u.z * ru + w.z * rw);
+  };
+  const radial = (ang: number): Vec3 => norm(v(u.x * Math.cos(ang) + w.x * Math.sin(ang), u.y * Math.cos(ang) + w.y * Math.sin(ang), u.z * Math.cos(ang) + w.z * Math.sin(ang)));
+
+  // Whole-bundle tint, so a stack doesn't read as one repeated object.
+  const tint = 0.93 + rng() * 0.15;
+  // Each stalk is its own ribbon, lit from its own radial normal, so the bundle reads as ribbed
+  // straw instead of one smooth spindle. Per-stalk flare keeps the flared ends off-round, and
+  // each ribbon overruns the cap by its own margin so the cut ends bristle instead of lining up
+  // on a machined plane.
+  for (let i = 0; i < STALKS; i++) {
+    const ang = (Math.PI * 2 * i) / STALKS + (rng() - 0.5) * 0.14;
+    const flare = 0.88 + rng() * 0.24;
+    const tone = shade(STRAW, tint * (0.84 + rng() * 0.28));
+    const n = radial(ang);
+    const from = -rng() * 0.055;
+    const span = 1 - from + rng() * 0.06;
+    for (let s = 0; s < SEGS; s++) {
+      const t0 = from + (span * s) / SEGS;
+      const t1 = from + (span * (s + 1)) / SEGS;
+      const r0 = sheafRadius(t0, waist, endR) * flare;
+      const r1 = sheafRadius(t1, waist, endR) * flare;
+      // Ribbons cover most of the spacing between stalks, so the bundle stays solid where it
+      // splays and the leftover seams read as ribs rather than gaps into a hollow shell.
+      const hw0 = ((Math.PI * r0) / STALKS) * 0.88;
+      const hw1 = ((Math.PI * r1) / STALKS) * 0.88;
+      faceQuadFlat(m, at(t0, ang, r0, -hw0), at(t0, ang, r0, hw0), at(t1, ang, r1, hw1), at(t1, ang, r1, -hw1), tone, n);
+    }
+  }
+
+  // Both ends are capped so the bundle isn't hollow seen end-on: a nearly flat pale disc of cut
+  // stalks at the butt, a blunt dome of grain at the far end. Normals lean out from the axis
+  // toward the rim so the grain end rounds off instead of reading as one flat plate. Each rim
+  // point also rides in or out along the axis, which breaks the disc off a clean plane; the
+  // points are shared between neighbouring wedges so that jitter can't tear it open.
+  for (const end of [0, 1]) {
+    const sides = 12;
+    const rEnd = sheafRadius(end, waist, endR);
+    const out = end === 0 ? -1 : 1;
+    const rim = Array.from({ length: sides }, (_, i) => {
+      const p = at(end, (Math.PI * 2 * i) / sides, rEnd * (0.88 + rng() * 0.18));
+      const lift = out * rEnd * (rng() - 0.45) * 0.34;
+      return v(p.x + axis.x * lift, p.y + axis.y * lift, p.z + axis.z * lift);
+    });
+    const bulge = rEnd * (end === 0 ? 0.08 : 0.2) * out;
+    const c = at(end, 0, 0);
+    const hub = v(c.x + axis.x * bulge, c.y + axis.y * bulge, c.z + axis.z * bulge);
+    const base = end === 0 ? STRAW_CUT : STRAW_HEAD;
+    for (let i = 0; i < sides; i++) {
+      const rad = radial((Math.PI * 2 * (i + 0.5)) / sides);
+      const n = norm(v(axis.x * out * 0.85 + rad.x * 0.55, axis.y * out * 0.85 + rad.y * 0.55, axis.z * out * 0.85 + rad.z * 0.55));
+      faceTriWithNormal(m, hub, rim[i], rim[(i + 1) % sides], shade(base, tint * (0.9 + rng() * 0.2)), n);
+    }
+  }
+
+  // The cord: two wraps cinching the waist, standing clear of the pinched stalks so the dark
+  // band draws a line across the bundle at the size this is actually seen.
+  const bandR = waist * 1.3;
+  for (const bt of [0.42, 0.58]) {
+    const sides = 10;
+    for (let i = 0; i < sides; i++) {
+      const a0 = (Math.PI * 2 * i) / sides;
+      const a1 = (Math.PI * 2 * (i + 1)) / sides;
+      faceQuadFlat(m, at(bt - 0.05, a0, bandR), at(bt + 0.05, a0, bandR), at(bt + 0.05, a1, bandR), at(bt - 0.05, a1, bandR), shade(TWINE, 0.88 + (i % 2) * 0.22), radial((a0 + a1) / 2));
+    }
+  }
+}
+
 // Cargo for a 2:1 port: a large load of that resource filling the open bow deck ahead of the
 // mast (the generic 3:1 ship carries nothing). Sized to the reference — the load nearly fills
 // the deck.
 function boatCargo(m: Build, kind: PortKind, seed: number): void {
   const y = FLOOR_Y;
   if (kind === 'grain') {
-    const CORN: RGB = [232, 198, 82];
-    const CAP: RGB = [246, 214, 108];
-    logBeam(m, 0.22, 0.12, y, 0.36, 0.12, 0, CORN, CAP);
-    logBeam(m, 0.22, -0.12, y, 0.36, 0.12, 0, CORN, CAP);
-    logBeam(m, 0.04, 0.0, y + 0.02, 0.32, 0.11, 0.1, CORN, CAP);
+    // Sheaves pitched into the well: four laid across the floor, two more settled into the seams
+    // between them, each at its own angle. `rest` sits a bundle's flared ends on what's below it —
+    // the second layer rides a seam, so it clears the floor by less than a full bundle width.
+    // Lengths and offsets keep each bundle's flared ends inside the well floor, which narrows
+    // sharply toward the bow — overrun the floor and an end pokes out through the planking.
+    const rest = (endR: number, on = 0): number => y + on + endR * 0.92;
+    wheatBundle(m, -0.12, rest(0.086), 0.02, 1.18, 0.03, 0.28, 0.086, seed + 1);
+    wheatBundle(m, 0.05, rest(0.098), -0.07, 1.48, 0.02, 0.33, 0.098, seed + 5);
+    wheatBundle(m, 0.24, rest(0.096), 0.04, 1.66, -0.02, 0.31, 0.096, seed + 9);
+    wheatBundle(m, 0.42, rest(0.078), -0.02, 0.92, 0.04, 0.24, 0.078, seed + 13);
+    wheatBundle(m, 0.13, rest(0.09, 0.112), 0.02, 0.26, 0.06, 0.32, 0.09, seed + 17);
+    wheatBundle(m, 0.34, rest(0.082, 0.1), -0.03, -0.34, -0.05, 0.28, 0.082, seed + 21);
   } else if (kind === 'ore') {
     const GREY: RGB = [150, 154, 164];
     angularRock(m, -0.02, 0.08, y, 0.16, 0.23, 0.13, GREY, seed, 'slab', 0.1);
@@ -1979,4 +2570,13 @@ export function tileMesh(terrain: Terrain, seed = 0, robberOn = false): Mesh {
     cache.set(key, m);
   }
   return m;
+}
+
+// Small time-varying overlays for the two animated terrain types. The terrain, wheat canopy,
+// vegetation, and tile slab stay in tileMesh's cache; only blades and sheep are rebuilt.
+export function animatedTileMesh(terrain: Terrain, seed = 0, time = 0): Mesh | null {
+  const t = Number.isFinite(time) ? time : 0;
+  if (terrain === 'fields') return animatedFieldsTile(seed, t);
+  if (terrain === 'pasture') return animatedPastureTile(seed, t);
+  return null;
 }

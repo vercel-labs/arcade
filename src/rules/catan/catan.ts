@@ -4,11 +4,10 @@
 // dev-deck order, and opponents' exact hand breakdowns are hidden; `informationStateString`
 // is the per-seat observation an AI is prompted on.
 //
-// STATUS — foundation skeleton. The state model, board setup, and turn/phase machine are in
-// place, along with the trivial harness-contract methods (currentPlayer / isTerminal /
-// returns / clone / observation / notation). The two seams that make the game *playable* —
-// `legalActions()` and `applyAction()` — are staged: they throw until Phase 1 fills in each
-// phase's rules. See docs/catan.md (Part III design, Part IV phasing).
+// STATUS — initial placement is playable through the generic model harness: legal settlement
+// and road actions, snake-order progression, and starting-resource grants are implemented.
+// Regular turns are still staged and throw when their prompt reaches `legalActions()` or
+// `applyAction()`. See docs/catan.md (Part III design, Part IV phasing).
 //
 // Chance is resolved INTERNALLY (dice rolls, dev-card draws, robber steals) via an injected
 // seeded RNG, so `isChanceNode()` is always false — this keeps Catan compatible with the
@@ -19,7 +18,9 @@
 
 import { type Game, type GameState, type ImperfectInfoState, TERMINAL } from '../game.ts';
 import { registerGame } from '../registry.ts';
-import { type BoardSetup, generateBoard } from './setup.ts';
+import { edgeNodes, nodeEdges, nodeHexes, NUM_NODES } from './board-topology.ts';
+import { canPlaceSettlement, type BoardOccupancy } from './placement.ts';
+import { type BoardSetup, generateBoard, nodeProduction } from './setup.ts';
 import {
   type BuildingType,
   type CatanAction,
@@ -30,8 +31,14 @@ import {
   type FreqDeck,
   freqTotal,
   fullBank,
+  type Port,
   type Prompt,
   RESOURCES,
+  type Resource,
+  resourceIndex,
+  TERRAIN_RESOURCE,
+  type Terrain,
+  TOKEN_DOTS,
   VP_TO_WIN,
 } from './types.ts';
 
@@ -48,7 +55,37 @@ interface Building {
   type: BuildingType;
 }
 
-const NOT_IMPLEMENTED = 'CatanState: not implemented in the foundation phase — see docs/catan.md Part IV (Phase 1: playable rules core).';
+export interface SettlementSite {
+  node: number;
+  adjacentHexes: {
+    hex: number;
+    terrain: Terrain;
+    resource: Resource | null;
+    token: number | null;
+    pips: number;
+  }[];
+  production: Partial<Record<Resource, number>>;
+  totalPips: number;
+  resourceDiversity: number;
+  port: Port | null;
+}
+
+export interface InitialSettlementOption extends SettlementSite {
+  action: Extract<CatanAction, { type: 'initialSettlement' }>;
+}
+
+export interface InitialRoadOption {
+  action: Extract<CatanAction, { type: 'initialRoad' }>;
+  edge: number;
+  fromNode: number;
+  towardNode: number;
+  // Legal settlement sites reachable after extending one more road from `towardNode`.
+  // The immediate endpoint itself cannot host a settlement because of the distance rule.
+  expansionSites: SettlementSite[];
+}
+
+const NOT_IMPLEMENTED =
+  'CatanState: regular turns are not implemented yet — initial placement is playable; see docs/catan.md Part IV (Phase 1).';
 
 export class CatanState implements ImperfectInfoState<CatanAction> {
   readonly n: number;
@@ -57,6 +94,7 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
 
   // Static-ish board (terrain/tokens/harbors never change after setup; the robber moves).
   private board: BoardSetup;
+  private productionByNode: Partial<Record<Resource, number>>[];
   private robberHex: number;
 
   // Resources: the bank plus each seat's hand, both order-free count vectors (freqdecks).
@@ -72,6 +110,11 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
   // Placed pieces, keyed by topology id.
   private buildings = new Map<number, Building>(); // node → building
   private roads = new Map<number, number>(); // edge → seat
+
+  // Initial placement: number of settlements placed by each seat plus the node whose
+  // immediately-adjacent road is currently awaited. Counts drive the 0..n-1,n-1..0 snake.
+  private initialSettlements: number[];
+  private pendingInitialRoadNode: number | null = null;
 
   // Special cards (holder seat, or -1 for none).
   private longestRoadHolder = -1;
@@ -90,11 +133,15 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
   private finished = false;
 
   constructor(opts: CatanOpts) {
+    if (!Number.isInteger(opts.numPlayers) || opts.numPlayers < 2 || opts.numPlayers > 4) {
+      throw new RangeError(`Catan supports 2–4 players; received ${opts.numPlayers}`);
+    }
     this.n = opts.numPlayers;
     this.rng = opts.rng ?? Math.random;
     this.seatNames = opts.seatNames;
 
     this.board = generateBoard(this.rng);
+    this.productionByNode = nodeProduction(this.board);
     this.robberHex = this.board.robberHex;
 
     this.bank = fullBank();
@@ -102,10 +149,10 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
     this.devDeck = buildDevDeck(this.rng);
     this.devHand = Array.from({ length: this.n }, () => new Array(DEV_CARD_TYPES.length).fill(0));
     this.playedKnights = new Array(this.n).fill(0);
+    this.initialSettlements = new Array(this.n).fill(0);
 
-    // Open in the initial-placement (snake) phase. First-player determination and the full
-    // snake progression are Phase 1; the skeleton opens the first prompt so currentPlayer()
-    // and the observation are meaningful.
+    // First-player determination is fixed at seat 0 for now; callers randomize seat/model
+    // assignments if desired. The progression itself is the standard two-round snake.
     this.prompt = { kind: 'initialSettlement', player: 0 };
   }
 
@@ -139,6 +186,7 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
     s.rng = this.rng; // same-class access reaches private fields
     s.seatNames = this.seatNames;
     s.board = this.board; // immutable after setup — share by ref
+    s.productionByNode = this.productionByNode; // derived from immutable board setup
     s.robberHex = this.robberHex;
     s.bank = this.bank.slice();
     s.hands = this.hands.map((h) => h.slice());
@@ -147,6 +195,8 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
     s.playedKnights = this.playedKnights.slice();
     s.buildings = new Map(this.buildings);
     s.roads = new Map(this.roads);
+    s.initialSettlements = this.initialSettlements.slice();
+    s.pendingInitialRoadNode = this.pendingInitialRoadNode;
     s.longestRoadHolder = this.longestRoadHolder;
     s.largestArmyHolder = this.largestArmyHolder;
     s.turnOwner = this.turnOwner;
@@ -159,13 +209,47 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
     return s;
   }
 
-  // ── Playable seams (Phase 1) ───────────────────────────────────────────────────
+  // ── Playable seams (initial-placement slice of Phase 1) ─────────────────────────
   // The single source of truth for what the awaited player may do, and the validated
-  // transition. Staged until Phase 1 — see docs/catan.md Part IV.
+  // transition. Regular-turn prompts remain staged — see docs/catan.md Part IV.
   legalActions(): CatanAction[] {
-    throw new Error(NOT_IMPLEMENTED);
+    if (this.finished) return [];
+    switch (this.prompt.kind) {
+      case 'initialSettlement':
+        return this.initialSettlementOptions().map((option) => option.action);
+      case 'initialRoad':
+        return this.initialRoadOptions().map((option) => option.action);
+      default:
+        throw new Error(NOT_IMPLEMENTED);
+    }
   }
-  applyAction(_action: CatanAction): void {
+
+  applyAction(action: CatanAction): void {
+    const legal = this.legalActions();
+    if (!legal.some((candidate) => sameAction(candidate, action))) {
+      throw new Error(`Illegal Catan action for ${this.prompt.kind}: ${this.actionToString(action)}`);
+    }
+
+    if (action.type === 'initialSettlement' && this.prompt.kind === 'initialSettlement') {
+      const player = this.prompt.player;
+      this.buildings.set(action.node, { player, type: 'settlement' });
+      this.initialSettlements[player]++;
+      this.pendingInitialRoadNode = action.node;
+      if (this.initialSettlements[player] === 2) this.grantStartingResources(player, action.node);
+      this.prompt = { kind: 'initialRoad', player };
+      return;
+    }
+
+    if (action.type === 'initialRoad' && this.prompt.kind === 'initialRoad') {
+      const player = this.prompt.player;
+      this.roads.set(action.edge, player);
+      this.pendingInitialRoadNode = null;
+      this.advanceInitialPlacement(player);
+      return;
+    }
+
+    // The legal-action check above currently prevents reaching this branch; keeping an
+    // explicit guard makes a future action-union expansion fail loudly rather than no-op.
     throw new Error(NOT_IMPLEMENTED);
   }
 
@@ -216,28 +300,41 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
   }
 
   // Lenient parse of a model/human answer into an action. Keywords + integer topology ids;
-  // returns null on anything unrecognized (the caller re-prompts). Full validation happens
-  // in applyAction (Phase 1).
+  // returns null on anything unrecognized OR currently illegal (the caller re-prompts).
   actionFromString(s: string): CatanAction | null {
     const t = s.trim().toLowerCase();
     const nums = (t.match(/-?\d+/g) ?? []).map(Number);
     const res = RESOURCES.filter((r) => t.includes(r));
-    if (/^roll/.test(t)) return { type: 'roll' };
-    if (/^end/.test(t)) return { type: 'endTurn' };
-    if (/init.*sett/.test(t) && nums.length) return { type: 'initialSettlement', node: nums[0] };
-    if (/init.*road/.test(t) && nums.length) return { type: 'initialRoad', edge: nums[0] };
-    if (/^road-b|road building/.test(t)) return { type: 'playRoadBuilding', edges: nums };
-    if (/^road/.test(t) && nums.length) return { type: 'buildRoad', edge: nums[0] };
-    if (/^sett/.test(t) && nums.length) return { type: 'buildSettlement', node: nums[0] };
-    if (/^city/.test(t) && nums.length) return { type: 'buildCity', node: nums[0] };
-    if (/buy.*dev|dev.*card/.test(t)) return { type: 'buyDevCard' };
-    if (/knight/.test(t) && nums.length) return { type: 'playKnight', hex: nums[0], victim: nums[1] ?? null };
-    if (/year.*plenty|plenty/.test(t)) return { type: 'playYearOfPlenty', resources: res };
-    if (/monopoly/.test(t) && res.length) return { type: 'playMonopoly', resource: res[0] };
-    if (/discard/.test(t)) return { type: 'discard', resources: res };
-    if (/robber/.test(t) && nums.length) return { type: 'moveRobber', hex: nums[0], victim: nums[1] ?? null };
-    if (/trade/.test(t) && res.length >= 2) return { type: 'maritimeTrade', give: res[0], get: res[1] };
-    return null;
+    let parsed: CatanAction | null = null;
+
+    // During setup, accept the canonical form, a friendly "settlement/node" or
+    // "road/edge" form, and a bare id. The phase disambiguates node ids from edge ids.
+    if (this.prompt.kind === 'initialSettlement' && nums.length && (/sett|node/.test(t) || /^-?\d+$/.test(t))) {
+      parsed = { type: 'initialSettlement', node: nums[0] };
+    } else if (this.prompt.kind === 'initialRoad' && nums.length && (/road|edge/.test(t) || /^-?\d+$/.test(t))) {
+      parsed = { type: 'initialRoad', edge: nums[0] };
+    } else if (/^roll/.test(t)) parsed = { type: 'roll' };
+    else if (/^end/.test(t)) parsed = { type: 'endTurn' };
+    else if (/init.*sett/.test(t) && nums.length) parsed = { type: 'initialSettlement', node: nums[0] };
+    else if (/init.*road/.test(t) && nums.length) parsed = { type: 'initialRoad', edge: nums[0] };
+    else if (/^road-b|road building/.test(t)) parsed = { type: 'playRoadBuilding', edges: nums };
+    else if (/^road/.test(t) && nums.length) parsed = { type: 'buildRoad', edge: nums[0] };
+    else if (/^sett/.test(t) && nums.length) parsed = { type: 'buildSettlement', node: nums[0] };
+    else if (/^city/.test(t) && nums.length) parsed = { type: 'buildCity', node: nums[0] };
+    else if (/buy.*dev|dev.*card/.test(t)) parsed = { type: 'buyDevCard' };
+    else if (/knight/.test(t) && nums.length) parsed = { type: 'playKnight', hex: nums[0], victim: nums[1] ?? null };
+    else if (/year.*plenty|plenty/.test(t)) parsed = { type: 'playYearOfPlenty', resources: res };
+    else if (/monopoly/.test(t) && res.length) parsed = { type: 'playMonopoly', resource: res[0] };
+    else if (/discard/.test(t)) parsed = { type: 'discard', resources: res };
+    else if (/robber/.test(t) && nums.length) parsed = { type: 'moveRobber', hex: nums[0], victim: nums[1] ?? null };
+    else if (/trade/.test(t) && res.length >= 2) parsed = { type: 'maritimeTrade', give: res[0], get: res[1] };
+
+    if (parsed === null) return null;
+    try {
+      return this.legalActions().some((candidate) => sameAction(candidate, parsed)) ? parsed : null;
+    } catch {
+      return null; // the parsed action belongs to a regular-turn slice not implemented yet
+    }
   }
 
   // ── Observation ───────────────────────────────────────────────────────────────
@@ -270,6 +367,25 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
       others.push(`${this.seatName(s)}: ${this.victoryPoints(s, false)} VP, ${freqTotal(this.hands[s])} cards, ${freqTotal(this.devHand[s])} dev, ${this.playedKnights[s]} knights`);
     }
     lines.push(`Opponents: ${others.join('; ')}.`);
+    lines.push(`Setup settlements placed: ${this.initialSettlements.map((count, seat) => `${this.seatName(seat)}=${count}/2`).join(', ')}.`);
+    lines.push(
+      `Board hexes: ${this.board.hexes
+        .map((hex, id) => `H${id}=${hex.terrain}/${hex.token ?? 'none'}${id === this.robberHex ? '/robber' : ''}`)
+        .join(', ')}.`,
+    );
+    lines.push(`Buildings: ${this.publicBuildings()}. Roads: ${this.publicRoads()}.`);
+    if (this.prompt.kind === 'initialSettlement' && this.prompt.player === player) {
+      lines.push('Choose one legal setup settlement using "init-settlement NODE":');
+      for (const option of this.initialSettlementOptions()) lines.push(`- ${this.settlementOptionString(option)}`);
+    } else if (this.prompt.kind === 'initialRoad' && this.prompt.player === player) {
+      lines.push('Choose one road adjacent to the settlement you just placed using "init-road EDGE":');
+      for (const option of this.initialRoadOptions()) {
+        const expansion = option.expansionSites.length
+          ? option.expansionSites.map((site) => `N${site.node} (${this.siteYieldString(site)})`).join(' | ')
+          : '(no currently legal frontier settlement)';
+        lines.push(`- init-road ${option.edge}: N${option.fromNode} → N${option.towardNode}; future settlement frontiers: ${expansion}`);
+      }
+    }
     return lines.join('\n');
   }
 
@@ -306,6 +422,54 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
     return this.largestArmyHolder;
   }
 
+  initialPlacementComplete(): boolean {
+    return this.initialSettlements.every((count) => count === 2) && this.prompt.kind === 'roll';
+  }
+
+  initialSettlementCount(seat: number): number {
+    return this.initialSettlements[seat] ?? 0;
+  }
+
+  // Typed decision metadata for heuristic/search players. Models receive the same facts in
+  // informationStateString, while code-native players can rank sites without parsing text.
+  initialSettlementOptions(): InitialSettlementOption[] {
+    if (this.prompt.kind !== 'initialSettlement') return [];
+    const occ = this.occupancy();
+    const options: InitialSettlementOption[] = [];
+    for (let node = 0; node < NUM_NODES; node++) {
+      if (!canPlaceSettlement(node, occ)) continue;
+      options.push({ ...this.settlementSite(node), action: { type: 'initialSettlement', node } });
+    }
+    return options;
+  }
+
+  initialRoadOptions(): InitialRoadOption[] {
+    if (this.prompt.kind !== 'initialRoad' || this.pendingInitialRoadNode === null) return [];
+    const fromNode = this.pendingInitialRoadNode;
+    const occ = this.occupancy();
+    return nodeEdges[fromNode]
+      .filter((edge) => this.roads.get(edge) === undefined)
+      .map((edge) => {
+        const [a, b] = edgeNodes[edge];
+        const towardNode = a === fromNode ? b : a;
+        const expansionSites = nodeEdges[towardNode]
+          .filter((nextEdge) => nextEdge !== edge && this.roads.get(nextEdge) === undefined)
+          .map((nextEdge) => {
+            const [x, y] = edgeNodes[nextEdge];
+            return x === towardNode ? y : x;
+          })
+          .filter((node) => canPlaceSettlement(node, occ))
+          .map((node) => this.settlementSite(node));
+        return {
+          action: { type: 'initialRoad' as const, edge },
+          edge,
+          fromNode,
+          towardNode,
+          expansionSites,
+        };
+      });
+  }
+
   // Victory points for a seat. Public VP (settlements 1, cities 2, Longest Road 2, Largest
   // Army 2) plus, when `includeHidden`, the seat's hidden VP development cards.
   victoryPoints(seat: number, includeHidden = false): number {
@@ -328,6 +492,95 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
     const parts = RESOURCES.map((r, i) => (d[i] ? `${d[i]}${r[0]}` : '')).filter(Boolean);
     return parts.join(' ') || '(none)';
   }
+
+  private occupancy(): BoardOccupancy<number> {
+    return {
+      building: (node) => {
+        const building = this.buildings.get(node);
+        return building ? { owner: building.player, city: building.type === 'city' } : undefined;
+      },
+      road: (edge) => this.roads.get(edge),
+    };
+  }
+
+  private settlementSite(node: number): SettlementSite {
+    const production = this.productionByNode[node];
+    const adjacentHexes = nodeHexes[node].map((hex) => {
+      const setup = this.board.hexes[hex];
+      return {
+        hex,
+        terrain: setup.terrain,
+        resource: TERRAIN_RESOURCE[setup.terrain],
+        token: setup.token,
+        pips: setup.token === null ? 0 : (TOKEN_DOTS[setup.token] ?? 0),
+      };
+    });
+    return {
+      node,
+      adjacentHexes,
+      production: { ...production },
+      totalPips: Object.values(production).reduce((sum, pips) => sum + (pips ?? 0), 0),
+      resourceDiversity: Object.keys(production).length,
+      port: this.board.harbors.find((harbor) => harbor.nodes.includes(node))?.port ?? null,
+    };
+  }
+
+  private grantStartingResources(player: number, node: number): void {
+    for (const hex of nodeHexes[node]) {
+      const resource = TERRAIN_RESOURCE[this.board.hexes[hex].terrain];
+      if (resource === null) continue;
+      const index = resourceIndex(resource);
+      if (this.bank[index] === 0) continue;
+      this.bank[index]--;
+      this.hands[player][index]++;
+    }
+  }
+
+  private advanceInitialPlacement(player: number): void {
+    if (this.initialSettlements[player] === 1) {
+      // Forward round. The last seat immediately starts the reverse round, hence its
+      // back-to-back settlement+road pairs in the middle of the snake.
+      const next = player === this.n - 1 ? player : player + 1;
+      this.prompt = { kind: 'initialSettlement', player: next };
+      return;
+    }
+    if (player > 0) {
+      this.prompt = { kind: 'initialSettlement', player: player - 1 };
+      return;
+    }
+    this.turnOwner = 0;
+    this.prompt = { kind: 'roll', player: this.turnOwner };
+  }
+
+  private publicBuildings(): string {
+    const parts = [...this.buildings.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([node, building]) => `N${node}=${this.seatName(building.player)}-${building.type}`);
+    return parts.join(', ') || '(none)';
+  }
+
+  private publicRoads(): string {
+    const parts = [...this.roads.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([edge, player]) => `E${edge}=${this.seatName(player)}`);
+    return parts.join(', ') || '(none)';
+  }
+
+  private settlementOptionString(option: InitialSettlementOption): string {
+    return `init-settlement ${option.node}: ${this.siteYieldString(option)}`;
+  }
+
+  private siteYieldString(site: SettlementSite): string {
+    const hexes = site.adjacentHexes
+      .map((hex) => `H${hex.hex} ${hex.resource ?? 'desert'} ${hex.token ?? '-'} (${hex.pips} pips)`)
+      .join(', ');
+    const port = site.port ? `; port=${site.port.resource ?? 'any'} ${site.port.ratio}:1` : '';
+    return `${hexes}; total=${site.totalPips} pips; diversity=${site.resourceDiversity}${port}`;
+  }
+}
+
+function sameAction(a: CatanAction, b: CatanAction): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 // The shuffled 25-card development deck (order is hidden information).

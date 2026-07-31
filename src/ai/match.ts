@@ -19,6 +19,12 @@ export interface MatchHooks<A> {
   onCommentary?(text: string, player: Player<A>, playerIndex: number): void;
   /** Cancels the match between/within turns. */
   signal?: AbortSignal;
+  /**
+   * Optional phase boundary for partial-game harnesses. Checked before asking the next
+   * player to act. Catan uses this to run model-driven initial placement without entering
+   * its not-yet-implemented regular turns; full chess/poker matches leave it unset.
+   */
+  shouldStop?(state: GameState<A>): boolean;
 }
 
 // Drive two (or more) players through a game to its terminal state, alternating
@@ -34,7 +40,7 @@ export async function runMatch<A>(
 ): Promise<number[]> {
   const { signal } = hooks;
   let lastSaid: string | undefined; // the previous mover's line, for opponent banter
-  while (!scene.state().isTerminal()) {
+  while (!scene.state().isTerminal() && !hooks.shouldStop?.(scene.state())) {
     if (signal?.aborted) break;
     const state = scene.state();
     const idx = state.currentPlayer();

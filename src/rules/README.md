@@ -42,9 +42,10 @@ counts for the start and "kiwipete" positions.
 
 ## Catan (`rules/catan/`)
 
-Base 3–4 player game. **Foundation phase** — topology, types, and setup are done; the
-`CatanState` playable seams (`legalActions`/`applyAction`) are staged for Phase 1. The full
-rules, phase model, and harness-mapping design (plus the phasing plan and sources) are in
+Base 3–4 player game. **Phase 1 in progress** — topology and board setup are done, and the
+initial snake placement is playable through `legalActions`/`applyAction` and the generic
+model harness. Regular roll/build/trade turns remain staged. The full rules, phase model,
+and harness-mapping design (plus the phasing plan and sources) are in
 [docs/catan.md](../../docs/catan.md).
 
 - `types.ts` — resources, terrain, pieces, ports, dev cards, the resource **freqdeck**,
@@ -54,9 +55,13 @@ rules, phase model, and harness-mapping design (plus the phasing plan and source
   perimeter ring for harbors. Pure, computed once, frozen.
 - `setup.ts` — seeded "variable setup": terrain, number tokens (enforcing the 6/8-not-
   adjacent rule), and harbors; plus `nodeProduction` (expected per-roll yield per vertex).
+- `placement.ts` — shared settlement-distance, city-upgrade, and road-connectivity rules.
 - `catan.ts` — `CatanState` (implements `ImperfectInfoState`) + `catanGame` + registration.
-  One state = one full game to 10 VP. Chance (dice/draws/steals) resolves **internally** via
-  an injected seeded RNG, so no chance node is surfaced (compatible with `runMatch`).
+  Initial placement enforces the `0..n-1,n-1..0` snake, an adjacent road after each
+  settlement, and starting resources from each second settlement. Its typed placement
+  options expose pips, resource diversity, ports, and road expansion frontiers to bots.
+  One state = one full game to 10 VP. Chance (dice/draws/steals) resolves **internally**
+  via an injected seeded RNG, so no chance node is surfaced (compatible with `runMatch`).
 
 One state = one whole game (like chess), not one hand (like poker). Players are seat indices
 `0..n-1`; `returns()` is +1 winner / −1 others.

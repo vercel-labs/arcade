@@ -21,6 +21,8 @@ export {
   type LambertUniforms,
   feltMaterial,
   type FeltUniforms,
+  waterMaterial,
+  type WaterUniforms,
   glassMaterial,
   type GlassUniforms,
   pieceMaterial,

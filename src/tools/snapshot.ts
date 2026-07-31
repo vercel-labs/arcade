@@ -308,7 +308,7 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot cards [single|hand|deck] [cols] [rows] [state] [out]   the cards screen
       (single: a code like Kh/10s/As · hand: peek|up · deck: shuffle|deal)
   pnpm snapshot catan [forest|hills|pasture|fields|mountains|desert] [cols] [rows] [<t>] [hud] [out]   a 3D Catan tile
-      (<t> a decimal spins the turntable · hud composites the terrain dropdown panel)
+      (<t> a decimal spins the turntable · azN/elN rotate in degrees · zoomN scales camera distance · hud composites the terrain dropdown panel)
   pnpm snapshot poker [cols] [rows] [preflop|flop|river|showdown] [players=N] [stack=N] [hud|setup|cine|result|menu|notes] [bet=N] [spectate] [longnames] [muck|gather|shuffle] [color] [out]   the poker table
       (muck: fold seats to a burn pile, needs players≥3 · gather/shuffle: the between-hands interlude, mid-sweep / mid-shuffle)
 
@@ -367,7 +367,8 @@ if (process.argv[2] === 'help' || process.argv[2] === '--help' || process.argv[2
 // The Catan tile test bed: one 3D hex tile for a terrain, on its turntable. Defaults to the
 // truer half-block color path (this is a graphics test); `hud` composites the dropdown panel
 // + bar through the app's ASCII path; a decimal arg spins the turntable to that time.
-//   pnpm exec tsx src/tools/snapshot.ts catan [forest|hills|pasture|fields|mountains|desert] [cols] [rows] [<t>] [hud] [out.ppm]
+// `waterN` captures board-mode current time N so motion can be compared across stills.
+//   pnpm exec tsx src/tools/snapshot.ts catan [forest|hills|pasture|fields|mountains|desert] [cols] [rows] [<t>] [board] [waterN] [azN] [elN] [zoomN] [hud] [out.ppm]
 function catanSnapshot(): void {
   const args = process.argv.slice(3);
   const terrain = ((TERRAINS as readonly string[]).find((x) => args.includes(x)) ?? 'forest') as Terrain;
@@ -375,6 +376,8 @@ function catanSnapshot(): void {
   const cols = nums[0] || 120;
   const rows = nums[1] || 44;
   const spinTo = Number(args.find((a) => /^\d+\.\d+$/.test(a))) || 0;
+  const waterArg = args.find((a) => /^water[\d.]+$/.test(a));
+  const waterTime = waterArg ? Number(waterArg.slice(5)) : 0;
   const out = args.find((a) => a.endsWith('.ppm')) ?? `.snapshots/catan-${terrain}.ppm`;
   const SS = 4;
 
@@ -399,6 +402,12 @@ function catanSnapshot(): void {
   for (let i = 0; i < (varArg ? Number(varArg.slice(3)) : 0); i++) scene.reroll();
   if (args.includes('top')) scene.orbit(0, 34);
   if (spinTo) scene.orbit(-spinTo * 120, 0);
+  const azArg = args.find((a) => /^az-?[\d.]+$/.test(a));
+  const elArg = args.find((a) => /^el-?[\d.]+$/.test(a));
+  const zoomArg = args.find((a) => /^zoom[\d.]+$/.test(a));
+  if (azArg) scene.orbit((-Number(azArg.slice(2)) * Math.PI) / (180 * 0.012), 0);
+  if (elArg) scene.orbit(0, (Number(elArg.slice(2)) * Math.PI) / (180 * 0.02));
+  if (zoomArg) scene.zoomBy(Number(zoomArg.slice(4)));
   const target = new RenderTarget(cols * SS, rows * 2 * SS);
   // `anim<seconds>` (board mode) plays the placement fly-in and captures that instant by
   // stepping frames at 60fps; otherwise a board snapshot settles straight to the finished
@@ -410,7 +419,7 @@ function catanSnapshot(): void {
     for (let f = 1; f <= frames; f++) scene.renderScene(target, f / 60);
   } else {
     if (args.includes('board')) scene.settle();
-    scene.renderScene(target, 0);
+    scene.renderScene(target, waterTime);
     // `roll` (board mode): roll the dice and step to a chosen time (default past the landing,
     // so the dice rest and the matching chips are lit gold). `roll<seconds>` for a mid-roll.
     const rollArg = args.find((a) => /^roll[\d.]*$/.test(a));

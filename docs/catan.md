@@ -458,6 +458,13 @@ Mirrors how poker shipped (`git log`: imperfect-info harness + card primitives �
 table/graphics test bed → playable rules → chips/voice/HUD polish). Each phase is
 independently reviewable and additive.
 
+**Current checkpoint:** the initial-placement slice of Phase 1 is playable. `CatanState`
+now exposes legal settlement/road actions, applies the two-round snake, grants resources
+from each second settlement, and emits typed/text decision metadata for pips, diversity,
+ports, and road expansion. `runCatanInitialPlacement` drives generic `Player`/
+`ModelPlayer` seats through those 16 setup actions and stops at the first roll prompt;
+regular turns remain staged.
+
 - **Phase 0 — foundation (this pass).** Research + this doc; `src/rules/catan/`
   board topology, core types, and board setup; a `CatanState` skeleton (state model + phase
   machine + harness-contract scaffolding) with `legalActions`/`applyAction` as documented

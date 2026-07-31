@@ -2,8 +2,8 @@
 //   • tile  — one 3D hex at the origin, switchable between terrains (dial in the tile look).
 //   • board — the full 19-hex board laid out per the rules (correct terrain counts, robber on
 //     the desert). "vary" regenerates the arrangement instantly.
-// Static and orbit-controlled (no auto-rotate), like the chess turntable: renders only when
-// the camera moves or the scene changes.
+// Orbit-controlled (no auto-rotate), like the chess turntable. Tile/piece/port modes render
+// on demand; board mode also receives a low-rate dirty pulse for its subtle water current.
 
 import {
   type Camera,
@@ -21,6 +21,7 @@ import {
   rasterize,
   type RenderTarget,
   type Vec3,
+  waterMaterial,
 } from '../../../engine/index.ts';
 import { OrbitCamera } from '../../orbit.ts';
 import { edgeNodes, HEX_COORDS, hexNodes, NUM_EDGES, NUM_HEXES, NUM_NODES } from '../../../rules/catan/board-topology.ts';
@@ -28,7 +29,8 @@ import { type BoardOccupancy, canPlaceRoad, canPlaceSettlement } from '../../../
 import { type BoardSetup, generateBoard } from '../../../rules/catan/setup.ts';
 import { type PlayerColor, RED_NUMBERS, type Terrain } from '../../../rules/catan/types.ts';
 import { mulberry32 } from '../../scenes/wisp.ts';
-import { boardOverlayMesh, dieMesh, hoverColorFor, type OverlaySpec, piecesMesh, PORT_SAIL_CENTER, type PortKind, portMesh, tileBackMesh, tileMesh } from './tile-mesh.ts';
+import { animatedTileMesh, boardOverlayMesh, dieMesh, hoverColorFor, type OverlaySpec, piecesMesh, PORT_SAIL_CENTER, type PortKind, portMesh, tileBackMesh, tileMesh } from './tile-mesh.ts';
+import { catanWaterMesh } from './water.ts';
 
 const FOVY = (44 * Math.PI) / 180;
 // A warm key from the upper front-right so tops read bright and the raised content casts its
@@ -47,6 +49,16 @@ const PORT_LIGHT: Vec3 = normalize3({ x: 0.62, y: 0.4, z: 0.52 });
 const PORT_WRAP = 0.95;
 const MODEL: Mat4 = mat4Identity();
 const SQRT3 = Math.sqrt(3);
+const WATER_MESH = catanWaterMesh();
+// Catan's sea frame is a clear cyan-blue rather than near-black ocean. Keep enough depth for
+// the island to pop, but lift the palette into multiple ASCII luminance buckets so the ripple
+// shape remains visible when a camera rotation moves the narrow sun reflection off-screen.
+const WATER_DEEP: Vec3 = { x: 6, y: 40, z: 66 };
+const WATER_SURFACE: Vec3 = { x: 20, y: 119, z: 157 };
+const WATER_SKY: Vec3 = { x: 94, y: 152, z: 174 };
+const WATER_HORIZON: Vec3 = { x: 205, y: 185, z: 146 };
+const WATER_CURRENT: Vec3 = { x: 183, y: 229, z: 225 };
+const WATER_FLOW_SPEED = 0.22;
 
 // Board placement animation: hexes start stacked face-down off the board, then fly in one by
 // one — arcing over, flipping face-up, and dropping onto their spot (center-out).
@@ -607,10 +619,15 @@ export class TileScene {
     this.dirty = true;
   }
 
-  // On-demand: re-render after a camera/scene change, every frame while placing, and once more
-  // when the animation ends so the tokens get composited.
+  // On-demand: re-render after a camera/scene change, while an animation runs, and once more
+  // when the tokens change. The controller marks board mode, plus animated single-tile terrain,
+  // dirty at a low fixed rate so subtle environmental motion does not force a 60 fps loop.
   needsRender(): boolean {
     return this.dirty || this.placing || this.revealing || this.tokensDirty || this.dicePhase !== 'idle' || this.dropping !== null;
+  }
+
+  requestAnimationFrame(): void {
+    if (this.modeName === 'board' || (this.modeName === 'tile' && (this.terrain === 'fields' || this.terrain === 'pasture'))) this.dirty = true;
   }
 
   // The number tokens to overlay right now: one per non-desert hex, projected to the screen
@@ -674,19 +691,36 @@ export class TileScene {
     const eye = cam.eye();
     const camera: Camera = { eye, target: cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 100 };
     const vp = cameraMatrices(camera, target.width / target.height).viewProjection;
-    if (this.modeName === 'board') this.renderBoard(target, vp, t);
+    if (this.modeName === 'board') this.renderBoard(target, vp, eye, t);
     else if (this.modeName === 'pieces') rasterize(target, piecesMesh(this.pieceColor), lambertMaterial, { mvp: mat4Multiply(vp, MODEL), model: MODEL, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
     else if (this.modeName === 'port') rasterize(target, portMesh(this.portKind), lambertMaterial, { mvp: mat4Multiply(vp, MODEL), model: MODEL, lightDir: PORT_LIGHT, ambient: AMBIENT, wrap: PORT_WRAP });
-    else rasterize(target, tileMesh(this.terrain, this.variant, this.robber), lambertMaterial, { mvp: mat4Multiply(vp, MODEL), model: MODEL, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
+    else {
+      rasterize(target, tileMesh(this.terrain, this.variant, this.robber), lambertMaterial, { mvp: mat4Multiply(vp, MODEL), model: MODEL, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
+      const animated = animatedTileMesh(this.terrain, this.variant, t);
+      if (animated) rasterize(target, animated, lambertMaterial, { mvp: mat4Multiply(vp, MODEL), model: MODEL, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
+    }
     this.dirty = false;
   }
 
   // The full 19-hex board. Each hex has a distinct per-tile seed for procedural variation and
   // the robber is baked onto the desert. While `placing`, each tile is posed along its fly-in
   // (stack → arc → drop) and shows its blank back until it flips past edge-on.
-  private renderBoard(target: RenderTarget, vp: Mat4, t: number): void {
+  private renderBoard(target: RenderTarget, vp: Mat4, eye: Vec3, t: number): void {
     if (!this.board) this.regenerate(false);
     const board = this.board!;
+    rasterize(target, WATER_MESH, waterMaterial, {
+      mvp: mat4Multiply(vp, MODEL),
+      model: MODEL,
+      time: t,
+      cameraPos: eye,
+      sunDirection: LIGHT,
+      deepColor: WATER_DEEP,
+      surfaceColor: WATER_SURFACE,
+      skyColor: WATER_SKY,
+      horizonColor: WATER_HORIZON,
+      currentColor: WATER_CURRENT,
+      flowSpeed: WATER_FLOW_SPEED,
+    });
     if (this.placing) {
       if (this.lastT < 0) this.lastT = t;
       this.placeClock += Math.max(0, t - this.lastT);
@@ -727,8 +761,14 @@ export class TileScene {
         model = poseMatrix(x, y, z, flip);
         faceUp = flip <= Math.PI / 2;
       }
-      const mesh = faceUp ? tileMesh(board.hexes[hex].terrain, this.boardSeed * NUM_HEXES + hex, hex === board.robberHex) : tileBackMesh();
+      const terrain = board.hexes[hex].terrain;
+      const seed = this.boardSeed * NUM_HEXES + hex;
+      const mesh = faceUp ? tileMesh(terrain, seed, hex === board.robberHex) : tileBackMesh();
       rasterize(target, mesh, lambertMaterial, { mvp: mat4Multiply(vp, model), model, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
+      if (faceUp) {
+        const animated = animatedTileMesh(terrain, seed, t);
+        if (animated) rasterize(target, animated, lambertMaterial, { mvp: mat4Multiply(vp, model), model, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
+      }
     }
     if (!this.placing) this.renderOverlay(target, vp, t); // placed pieces + hover marker (once tiles are down)
     this.renderDice(target, t);

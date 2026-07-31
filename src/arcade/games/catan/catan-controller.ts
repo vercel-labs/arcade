@@ -13,6 +13,8 @@ import { buildGameMenu, type MenuItem } from '../../shell/bars.ts';
 import { buildCatanPieceModal, buildCatanTileRoot, catanTileTerrain, mountCatanTileHud, setCatanTileHandlers, setCatanTileMode } from './tile-hud.ts';
 import { TileScene } from './tile-scene.ts';
 
+const ANIMATION_FRAME_MS = 90; // ~11 fps: enough for water, blades, and livestock without repainting at 60 fps
+
 // The Catan in-game menu is the standard shell menu; its items dispatch shared app actions,
 // which main.ts supplies here (evaluated lazily so ordering/late-bound values are fine).
 export interface CatanShell {
@@ -40,6 +42,7 @@ export class CatanController {
   private shell: CatanShell;
   private menuOpen = false;
   private pieceEdit: { kind: 'building' | 'road'; id: number } | null = null;
+  private animationTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(deps: CatanDeps) {
     this.ui = deps.ui;
@@ -71,12 +74,25 @@ export class CatanController {
     this.scene.setMode('board'); // default to the full board
     setCatanTileMode('board'); // sync the Mode dropdown to match
     this.scene.reroll(); // play the tile-placement + number reveal on entry
+    this.startEnvironmentAnimation();
   }
 
   // Leaving the Catan screen: drop the menu + piece-edit modal state.
   reset(): void {
     this.menuOpen = false;
     this.pieceEdit = null;
+    if (this.animationTimer !== null) {
+      clearInterval(this.animationTimer);
+      this.animationTimer = null;
+    }
+  }
+
+  private startEnvironmentAnimation(): void {
+    if (this.animationTimer !== null) clearInterval(this.animationTimer);
+    this.animationTimer = setInterval(() => {
+      this.scene.requestAnimationFrame();
+      if (this.scene.needsRender()) this.requestRender();
+    }, ANIMATION_FRAME_MS);
   }
 
   // ── in-game menu ───────────────────────────────────────────────────────────
