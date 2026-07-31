@@ -64,6 +64,22 @@ function faceQuadFlat(m: Build, a: Vec3, b: Vec3, c: Vec3, d: Vec3, color: RGB, 
   for (const p of [a, b, c, d]) m.vertices.push({ position: { ...p }, normal: n, uv: [0, 0], color: col });
   m.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
 }
+// Emit faces with an intentionally softened lighting normal. Useful for tiny corrugations
+// whose true geometric slope would over-darken at terminal resolution.
+function faceTriWithNormal(m: Build, a: Vec3, b: Vec3, c: Vec3, color: RGB, normal: Vec3): void {
+  const col = { x: color[0], y: color[1], z: color[2] };
+  const n = norm(normal);
+  const base = m.vertices.length;
+  for (const p of [a, b, c]) m.vertices.push({ position: { ...p }, normal: n, uv: [0, 0], color: col });
+  m.indices.push(base, base + 1, base + 2);
+}
+function faceQuadWithNormal(m: Build, a: Vec3, b: Vec3, c: Vec3, d: Vec3, color: RGB, normal: Vec3): void {
+  const col = { x: color[0], y: color[1], z: color[2] };
+  const n = norm(normal);
+  const base = m.vertices.length;
+  for (const p of [a, b, c, d]) m.vertices.push({ position: { ...p }, normal: n, uv: [0, 0], color: col });
+  m.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+}
 const UP: Vec3 = { x: 0, y: 1, z: 0 };
 const DOWN: Vec3 = { x: 0, y: -1, z: 0 };
 const shade = (c: RGB, k: number): RGB => [c[0] * k, c[1] * k, c[2] * k];
@@ -190,63 +206,230 @@ function tileBase(m: Build, o: GroundOpts): void {
   rimAndWall(m, o.color);
 }
 
-// ── Wheat ground: overlapping octagonal terrace pads ────────────────────────────
-// The field is ~3 large, slightly-irregular octagonal pads that overlap at slightly
-// different heights, over a coarse base plane — a low-poly terraced surface with visible
-// step-edges (not fine uniform triangles). `dh` is the pad's rise above the base.
-interface Pad {
-  cx: number;
-  cz: number;
-  r: number;
-  dh: number;
-  seed: number;
-}
-// Three raised grain patches near the rim (≈120° apart) so they don't overlap and leave clear
-// channels + a clear centre for the props. Seeded: an overall rotation plus per-pad angle,
-// radius, size, and height jitter, so no two grain hexes are identical.
-function wheatPads(rng: () => number, baseRot: number, seed: number): Pad[] {
-  const pads: Pad[] = [];
-  for (let k = 0; k < 3; k++) {
-    const th = baseRot + (k * 2 * Math.PI) / 3 + (rng() - 0.5) * 0.5;
-    const rp = 0.44 + rng() * 0.06;
-    pads.push({ cx: rp * Math.cos(th), cz: rp * Math.sin(th), r: 0.27 + rng() * 0.05, dh: 0.04 + rng() * 0.06, seed: (seed * 97 + k * 31) | 0 });
-  }
-  return pads;
-}
-// Height of the terraced field at (x,z): the highest pad whose octagon covers it, else base.
-function wheatHeightAt(pads: Pad[], x: number, z: number): number {
-  let h = EDGE_Y;
-  for (const p of pads) if (Math.hypot(x - p.cx, z - p.cz) < p.r * 0.86) h = Math.max(h, EDGE_Y + p.dh);
-  return h;
-}
-// True if (x,z) (with a prop of half-extent `ext`) stays clear of every raised pad.
-function clearOfPads(pads: Pad[], x: number, z: number, ext: number): boolean {
-  return pads.every((p) => Math.hypot(x - p.cx, z - p.cz) > p.r * 1.05 + ext);
+// ── Wheat ground: dense standing crop cut by curved harvested lanes ────────────
+
+interface HarvestLane {
+  angle: number;
+  offset: number;
+  halfWidth: number;
+  start: number;
+  end: number;
+  bend: number;
+  wave: number;
+  phase: number;
+  flare: number;
 }
 
-// One irregular octagonal pad, CLIPPED to the tile hexagon: a flat-ish faceted top + a short
-// skirt down to the base level. Oversized pads therefore end flush at the rim.
-function octaPad(m: Build, p: Pad, color: RGB): void {
-  const rng = mulberry32(p.seed);
-  const top = EDGE_Y + p.dh;
-  const sides = 8;
-  const ring: Vec3[] = [];
-  for (let i = 0; i < sides; i++) {
-    const ang = (2 * Math.PI * i) / sides + 0.15;
-    const rr = p.r * (0.88 + rng() * 0.24); // irregular radius
-    const c = clampToHex(p.cx + rr * Math.cos(ang), p.cz + rr * Math.sin(ang), R_RIM);
-    ring.push(v(c.x, top, c.z)); // flat top (no height jitter)
+interface FieldLayout {
+  rowAngle: number;
+  spacing: number;
+  phase: number;
+  bend: number;
+  wave: number;
+  lanes: HarvestLane[];
+}
+
+const fieldToWorld = (angle: number, u: number, w: number): { x: number; z: number } => ({
+  x: Math.cos(angle) * u - Math.sin(angle) * w,
+  z: Math.sin(angle) * u + Math.cos(angle) * w,
+});
+
+function fieldLayout(rng: () => number, seed: number): FieldLayout {
+  const rowAngle = rng() * Math.PI;
+  // Distinct harvest families: a lone sweep, parallel passes, an elbow, opposing staggered
+  // passes, and a three-way fork. Rounded/widening ends make each pass read as a tractor route
+  // rather than a geometric cut-out; standing wheat is everything those routes miss.
+  const templates = [
+    // One broad, gently wandering pass: two large uninterrupted wheat banks.
+    [
+      [0.02, -0.04, 0.17, -1.08, 1.08, 0.09, 0.03, 0.22],
+    ],
+    // Two near-parallel passes, one stopping early, for long striped parcels.
+    [
+      [-0.04, -0.2, 0.095, -1.08, 1.08, -0.035, 0.02, 0.12],
+      [0.05, 0.22, 0.105, -1.02, 0.58, 0.045, 0.018, 0.28],
+    ],
+    // A long pass with one strong turn: the familiar elbow/T composition.
+    [
+      [0.02, -0.045, 0.13, -1.08, 1.08, 0.07, 0.025, 0.18],
+      [0.76, 0.035, 0.13, -1, 0.22, -0.04, 0.018, 0.42],
+    ],
+    // Two parallel passes entering from opposite ends and sliding past one another.
+    [
+      [-0.04, -0.17, 0.12, -1.06, 0.18, 0.055, 0.021, 0.38],
+      [0.05, 0.18, 0.115, -0.2, 1.05, -0.05, 0.02, 0.36],
+    ],
+    // A rarer fork: three distinct standing parcels around a branching harvested route.
+    [
+      [0.08, -0.09, 0.13, -1.08, 1.08, 0.08, 0.026, 0.18],
+      [0.64, 0.14, 0.1, -0.94, 0.4, -0.05, 0.017, 0.48],
+      [-0.56, -0.03, 0.085, 0.14, 0.96, 0.035, 0.014, 0.3],
+    ],
+  ] as const;
+  // Tile-mode "vary" increments `seed`, so cycle families deterministically before repeating.
+  // The remaining dimensions within a family still use the seeded RNG.
+  const template = templates[((Math.trunc(seed) % templates.length) + templates.length) % templates.length];
+  const lanes = template.map(([da, offset, halfWidth, start, end, bend, wave, flare], i): HarvestLane => ({
+    angle: rowAngle + da + (rng() - 0.5) * 0.08,
+    offset: offset + (rng() - 0.5) * 0.055,
+    halfWidth: halfWidth * (0.9 + rng() * 0.18),
+    start: start + (rng() - 0.5) * 0.08,
+    end: end + (rng() - 0.5) * 0.08,
+    bend: bend * (0.82 + rng() * 0.34),
+    wave: wave * (0.85 + rng() * 0.3),
+    phase: seed * 0.31 + i * 1.7 + rng(),
+    flare: flare * (0.85 + rng() * 0.3),
+  }));
+  const spacing = 0.05 + rng() * 0.006;
+  return {
+    rowAngle,
+    spacing,
+    phase: (rng() - 0.5) * spacing,
+    bend: (rng() - 0.5) * 0.065,
+    wave: 0.009 + rng() * 0.012,
+    lanes,
+  };
+}
+
+function harvestedWeight(lane: HarvestLane, x: number, z: number): number {
+  const c = Math.cos(lane.angle);
+  const s = Math.sin(lane.angle);
+  const u = x * c + z * s;
+  const w = -x * s + z * c;
+  const span = Math.max(0.1, lane.end - lane.start);
+  const progress = Math.max(0, Math.min(1, (u - lane.start) / span));
+  const center = lane.offset + lane.bend * (u * u - 0.32) + lane.wave * Math.sin(u * 4.1 + lane.phase);
+  const width = lane.halfWidth * (1 + lane.flare * progress + Math.sin(u * 3.2 + lane.phase) * 0.08);
+  const across = smooth((width + 0.045 - Math.abs(w - center)) / 0.09);
+  const along = smooth((u - lane.start + 0.055) / 0.11) * smooth((lane.end - u + 0.055) / 0.11);
+  return across * along;
+}
+
+function fieldCoverage(layout: FieldLayout, x: number, z: number): number {
+  let harvested = 0;
+  for (const lane of layout.lanes) harvested = Math.max(harvested, harvestedWeight(lane, x, z));
+  return 1 - harvested;
+}
+
+function insideFieldHex(x: number, z: number): boolean {
+  const c = clampToHex(x, z, R_RIM - 0.025);
+  return Math.hypot(c.x - x, c.z - z) < 1e-5;
+}
+
+function fieldRowPoint(layout: FieldLayout, row: number, u: number): { x: number; z: number } {
+  const baseW = row * layout.spacing + layout.phase;
+  const w = baseW + layout.bend * (u * u - 0.35) + layout.wave * Math.sin(u * 3.2 + row * 0.43);
+  return fieldToWorld(layout.rowAngle, u, w);
+}
+
+// A harvested row is genuinely raised: two sloping faces meet along its crest, and short cut
+// stems protrude from that crest. These rows only exist in the combine lanes, rather than being
+// flat lines painted across the soil.
+function harvestedRows(m: Build, layout: FieldLayout, soilY: (x: number, z: number) => number, color: RGB, seed: number): void {
+  const count = 33;
+  const segments = 28;
+  for (let k = 0; k < count; k++) {
+    const row = k - (count - 1) / 2;
+    for (let i = 0; i < segments; i++) {
+      const u0 = -1.02 + (2.04 * i) / segments;
+      const u1 = -1.02 + (2.04 * (i + 1)) / segments;
+      const a = fieldRowPoint(layout, row, u0);
+      const b = fieldRowPoint(layout, row, u1);
+      if (!insideFieldHex(a.x, a.z) || !insideFieldHex(b.x, b.z)) continue;
+      const midX = (a.x + b.x) / 2;
+      const midZ = (a.z + b.z) / 2;
+      if (fieldCoverage(layout, midX, midZ) > 0.56) continue;
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      const len = Math.hypot(dx, dz) || 1;
+      const wx = (-dz / len) * 0.024;
+      const wz = (dx / len) * 0.024;
+      const leftA = v(a.x - wx, soilY(a.x - wx, a.z - wz) + 0.004, a.z - wz);
+      const crestA = v(a.x, soilY(a.x, a.z) + 0.021, a.z);
+      const rightA = v(a.x + wx, soilY(a.x + wx, a.z + wz) + 0.004, a.z + wz);
+      const leftB = v(b.x - wx, soilY(b.x - wx, b.z - wz) + 0.004, b.z - wz);
+      const crestB = v(b.x, soilY(b.x, b.z) + 0.021, b.z);
+      const rightB = v(b.x + wx, soilY(b.x + wx, b.z + wz) + 0.004, b.z + wz);
+      const col = shade(color, 0.94 + ((k + i) % 3) * 0.035);
+      faceQuadFlat(m, leftA, leftB, crestB, crestA, col, UP);
+      faceQuadFlat(m, crestA, crestB, rightB, rightA, shade(col, 1.05), UP);
+
+      if ((i + k) % 2 === 0) {
+        stubbleTuft(m, midX, midZ, soilY(midX, midZ) + 0.018, layout.rowAngle, seed + k * 37 + i * 11);
+      }
+    }
   }
-  const center = v(p.cx, top, p.cz);
-  for (let i = 0; i < sides; i++) {
-    const a = ring[i];
-    const b = ring[(i + 1) % sides];
-    faceTri(m, center, a, b, color, UP); // FLAT, uniform top face
-    const abot = v(a.x, EDGE_Y, a.z);
-    const bbot = v(b.x, EDGE_Y, b.z);
-    const rad = norm(v((a.x + b.x) / 2 - p.cx, 0.25, (a.z + b.z) / 2 - p.cz));
-    faceTri(m, a, b, bbot, shade(color, 0.82), rad); // skirt down to base
-    faceTri(m, a, bbot, abot, shade(color, 0.82), rad);
+}
+
+// A low corrugated under-canopy gives the standing crop enough continuous golden coverage to
+// survive board-distance rasterization. It follows the same curved rows and harvested mask as
+// the stalks, so it never becomes a rectangular pad; individual tufts still provide the close
+// silhouette and grain detail above it.
+function standingCanopy(m: Build, layout: FieldLayout, soilY: (x: number, z: number) => number, color: RGB): void {
+  const rows = 33;
+  const segments = 30;
+  for (let k = 0; k < rows; k++) {
+    const row = k - (rows - 1) / 2;
+    for (let i = 0; i < segments; i++) {
+      const u0 = -1.02 + (2.04 * i) / segments;
+      const u1 = -1.02 + (2.04 * (i + 1)) / segments;
+      const a = fieldRowPoint(layout, row, u0);
+      const b = fieldRowPoint(layout, row, u1);
+      if (!insideFieldHex(a.x, a.z) || !insideFieldHex(b.x, b.z)) continue;
+      const wa = smooth((fieldCoverage(layout, a.x, a.z) - 0.44) / 0.28);
+      const wb = smooth((fieldCoverage(layout, b.x, b.z) - 0.44) / 0.28);
+      if (wa < 0.04 && wb < 0.04) continue;
+
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      const len = Math.hypot(dx, dz) || 1;
+      const half = layout.spacing * 0.51;
+      const wx = (-dz / len) * half;
+      const wz = (dx / len) * half;
+      const edgeA = soilY(a.x, a.z) + 0.009 + wa * 0.021;
+      const crestA = soilY(a.x, a.z) + 0.009 + wa * 0.046;
+      const edgeB = soilY(b.x, b.z) + 0.009 + wb * 0.021;
+      const crestB = soilY(b.x, b.z) + 0.009 + wb * 0.046;
+      const leftA = v(a.x - wx, edgeA, a.z - wz);
+      const midA = v(a.x, crestA, a.z);
+      const rightA = v(a.x + wx, edgeA, a.z + wz);
+      const leftB = v(b.x - wx, edgeB, b.z - wz);
+      const midB = v(b.x, crestB, b.z);
+      const rightB = v(b.x + wx, edgeB, b.z + wz);
+      const band = shade(color, 0.97 + ((k + i) % 3) * 0.025);
+      const px = wx / half;
+      const pz = wz / half;
+      faceQuadWithNormal(m, leftA, leftB, midB, midA, shade(band, 0.98), v(-px * 0.24, 1, -pz * 0.24));
+      faceQuadWithNormal(m, midA, midB, rightB, rightA, shade(band, 1.035), v(px * 0.24, 1, pz * 0.24));
+    }
+  }
+}
+
+// Dense, individually modelled stalks fill every unharvested portion of the tile. Their rows
+// follow the same gentle curves as the stubble, so the cut and standing crop read as one field.
+function standingWheat(m: Build, layout: FieldLayout, soilY: (x: number, z: number) => number, seed: number): void {
+  const rows = 33;
+  const along = 41;
+  for (let k = 0; k < rows; k++) {
+    const row = k - (rows - 1) / 2;
+    for (let i = 0; i < along; i++) {
+      const jitter = hash2(i * 3.7 + seed, k * 5.1 - seed);
+      const u = -0.98 + (1.96 * (i + 0.5 + (jitter - 0.5) * 0.62)) / along;
+      const q = fieldRowPoint(layout, row, u);
+      const acrossJitter = (hash2(i * 5.9 - seed, k * 3.3 + seed) - 0.5) * 0.03;
+      q.x -= Math.sin(layout.rowAngle) * acrossJitter;
+      q.z += Math.cos(layout.rowAngle) * acrossJitter;
+      const coverage = fieldCoverage(layout, q.x, q.z);
+      if (!insideFieldHex(q.x, q.z) || coverage < 0.48) continue;
+      const r = Math.hypot(q.x, q.z);
+      if (r < 0.205) continue;
+      const h = 0.112 + hash2(i * 11.3 + seed, k * 8.7 - seed) * 0.032;
+      const lean = layout.rowAngle + (hash2(i - seed * 0.7, k + seed * 0.3) - 0.5) * 0.34;
+      const stalkSeed = seed + k * 43 + i * 17;
+      const y0 = soilY(q.x, q.z) + 0.006;
+      if (coverage < 0.76 || r > 0.72) wheatStalk(m, q.x, q.z, y0, h, lean, stalkSeed);
+      else wheatTuft(m, q.x, q.z, y0, h, lean, stalkSeed);
+    }
   }
 }
 
@@ -427,34 +610,161 @@ function scatter(rng: () => number, n: number, rMax: number, minGap: number): { 
 
 // ── Wheat-specific props ──────────────────────────────────────────────────────
 
-const FENCE_WOOD: RGB = [92, 58, 36];
+const WHEAT_STEM: RGB = [238, 194, 62];
+const WHEAT_HEAD: RGB = [255, 226, 105];
+const SHEAF_TIE: RGB = [126, 76, 38];
 
-// A post-and-rail fence between (x0,z0) and (x1,z1): thin dark posts that stick up above two
-// thin rails. Each post drops to the terraced surface via `hAt`.
-function fence(m: Build, x0: number, z0: number, x1: number, z1: number, hAt: (x: number, z: number) => number): void {
-  const dx = x1 - x0;
-  const dz = z1 - z0;
-  const len = Math.hypot(dx, dz);
-  const ang = Math.atan2(dz, dx);
-  const n = Math.max(2, Math.round(len / 0.16));
-  const postH = 0.22;
-  for (let i = 0; i <= n; i++) {
-    const t = i / n;
-    const px = x0 + dx * t;
-    const pz = z0 + dz * t;
-    box(m, px, pz, 0.03, postH, 0.03, FENCE_WOOD, ang, hAt(px, pz));
+// Wheat heads are tiny enough that true cone normals make the unlit faces turn muddy.
+// Keep a little radial component for shape, but bias every face upward so the crop stays
+// warm and golden across camera angles.
+function wheatGrainHead(
+  m: Build,
+  cx: number,
+  cz: number,
+  r: number,
+  h: number,
+  sides: number,
+  color: RGB,
+  yBase: number,
+  spin: number,
+  leanX: number,
+  leanZ: number,
+): void {
+  const apex = v(cx + leanX, yBase + h, cz + leanZ);
+  const ring: Vec3[] = [];
+  for (let i = 0; i < sides; i++) {
+    const a = (Math.PI * 2 * i) / sides + spin;
+    ring.push(v(cx + r * Math.cos(a), yBase, cz + r * Math.sin(a)));
   }
-  const mx = (x0 + x1) / 2;
-  const mz = (z0 + z1) / 2;
-  const y = hAt(mx, mz);
-  box(m, mx, mz, len, 0.025, 0.018, FENCE_WOOD, ang, y + 0.17); // top rail
-  box(m, mx, mz, len, 0.025, 0.018, FENCE_WOOD, ang, y + 0.09); // lower rail
+  for (let i = 0; i < sides; i++) {
+    const j = (i + 1) % sides;
+    const a = (Math.PI * 2 * (i + 0.5)) / sides + spin;
+    faceTriWithNormal(
+      m,
+      ring[i],
+      ring[j],
+      apex,
+      shade(color, 0.985 + (i % 2) * 0.025),
+      v(Math.cos(a) * 0.3, 1, Math.sin(a) * 0.3),
+    );
+  }
 }
 
-// A round hay bale: an OCTAGONAL PRISM lying on its side, so the octagon end-faces point
-// sideways (a low-poly round bale). Axis is horizontal along `ry`; it rests on the surface.
+function wheatStalk(m: Build, cx: number, cz: number, y0: number, h: number, leanAngle: number, seed: number): void {
+  const rng = mulberry32(seed | 0 || 1);
+  const lx = Math.cos(leanAngle);
+  const lz = Math.sin(leanAngle);
+  const lean = 0.008 + rng() * 0.008;
+  const shoulder = v(cx + lx * lean, y0 + h, cz + lz * lean);
+  beam(m, v(cx, y0, cz), shoulder, 0.0033, shade(WHEAT_STEM, 0.94 + rng() * 0.1));
+  wheatGrainHead(
+    m,
+    shoulder.x,
+    shoulder.z,
+    0.014 + rng() * 0.003,
+    0.03 + rng() * 0.008,
+    4,
+    shade(WHEAT_HEAD, 0.95 + rng() * 0.1),
+    shoulder.y - 0.003,
+    leanAngle + Math.PI / 4,
+    lx * 0.006,
+    lz * 0.006,
+  );
+}
+
+// Three close stalks for the body of a standing field. Each keeps a separate stem and grain
+// head, but the stems are single low-poly blades instead of four-sided beams. Detailed beam
+// stalks remain at every harvested boundary and around the tile silhouette.
+function wheatTuft(m: Build, cx: number, cz: number, y0: number, h: number, angle: number, seed: number): void {
+  const rng = mulberry32(seed | 0 || 1);
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  const wx = -s;
+  const wz = c;
+  const offsets = [
+    [-0.013, -0.015],
+    [0.014, -0.001],
+    [-0.002, 0.016],
+  ] as const;
+
+  for (let i = 0; i < offsets.length; i++) {
+    const along = offsets[i][0] + (rng() - 0.5) * 0.006;
+    const across = offsets[i][1] + (rng() - 0.5) * 0.006;
+    const bx = cx + c * along + wx * across;
+    const bz = cz + s * along + wz * across;
+    const stalkAngle = angle + (i - 1) * 0.18 + (rng() - 0.5) * 0.13;
+    const lx = Math.cos(stalkAngle);
+    const lz = Math.sin(stalkAngle);
+    const px = -lz;
+    const pz = lx;
+    const stalkH = h * (0.9 + rng() * 0.15);
+    const lean = 0.007 + rng() * 0.009;
+    const half = 0.0033;
+    const tx = bx + lx * lean;
+    const tz = bz + lz * lean;
+    faceQuadFlat(
+      m,
+      v(bx - px * half, y0, bz - pz * half),
+      v(bx + px * half, y0, bz + pz * half),
+      v(tx + px * half, y0 + stalkH, tz + pz * half),
+      v(tx - px * half, y0 + stalkH, tz - pz * half),
+      shade(WHEAT_STEM, 0.9 + rng() * 0.16),
+      norm(v(lx, 0.08, lz)),
+    );
+    wheatGrainHead(
+      m,
+      tx,
+      tz,
+      0.013 + rng() * 0.0025,
+      0.029 + rng() * 0.007,
+      3,
+      shade(WHEAT_HEAD, 0.95 + rng() * 0.1),
+      y0 + stalkH - 0.003,
+      stalkAngle,
+      lx * 0.006,
+      lz * 0.006,
+    );
+  }
+}
+
+function stubbleTuft(m: Build, cx: number, cz: number, y0: number, angle: number, seed: number): void {
+  const rng = mulberry32(seed | 0 || 1);
+  const wx = -Math.sin(angle);
+  const wz = Math.cos(angle);
+  const count = 2 + (Math.abs(seed) % 2);
+  for (let i = 0; i < count; i++) {
+    const side = (i - (count - 1) / 2) * 0.012;
+    const bx = cx + wx * side;
+    const bz = cz + wz * side;
+    const h = 0.028 + rng() * 0.017;
+    const lean = (rng() - 0.5) * 0.009;
+    beam(m, v(bx, y0, bz), v(bx + wx * lean, y0 + h, bz + wz * lean), 0.0028, shade(WHEAT_STEM, 0.88 + rng() * 0.1));
+  }
+}
+
+function wheatSheaf(m: Build, cx: number, cz: number, y0: number, scale: number, angle: number, seed: number): void {
+  const rng = mulberry32(seed | 0 || 1);
+  const count = 8;
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  for (let i = 0; i < count; i++) {
+    const around = (Math.PI * 2 * i) / count + (rng() - 0.5) * 0.28;
+    const baseR = (0.022 + rng() * 0.018) * scale;
+    const crownR = (0.032 + rng() * 0.028) * scale;
+    const bx = cx + Math.cos(around) * baseR;
+    const bz = cz + Math.sin(around) * baseR;
+    const h = (0.108 + rng() * 0.026) * scale;
+    const tx = cx + Math.cos(around) * crownR + c * (rng() - 0.35) * 0.012 * scale;
+    const tz = cz + Math.sin(around) * crownR + s * (rng() - 0.35) * 0.012 * scale;
+    const top = v(tx, y0 + h, tz);
+    beam(m, v(bx, y0, bz), top, 0.004 * scale, WHEAT_STEM);
+    blob(m, top.x, top.y + 0.011 * scale, top.z, 0.011 * scale, 0.019 * scale, 0.011 * scale, shade(WHEAT_HEAD, 0.93 + rng() * 0.1), seed + i * 13, 0.09, 2, 4);
+  }
+  box(m, cx, cz, 0.065 * scale, 0.022 * scale, 0.055 * scale, SHEAF_TIE, angle, y0 + 0.043 * scale);
+}
+
 // A horizontal octagonal-prism log/beam (axis along `ry`, resting on the ground): `side` for
-// the staves, `cap` for the octagon end faces. Shared by hay bales (gold) and lumber (brown).
+// the staves, `cap` for the octagon end faces. Shared by grain cargo and lumber.
 function logBeam(m: Build, cx: number, cz: number, y0: number, len: number, r: number, ry: number, side: RGB, cap: RGB): void {
   const sides = 8;
   const Ax = Math.cos(ry);
@@ -489,9 +799,6 @@ function logBeam(m: Build, cx: number, cz: number, y0: number, len: number, r: n
     faceTri(m, c1, r1[i], r1[j], cap, v(Ax, 0, Az));
   }
 }
-function roundBale(m: Build, cx: number, cz: number, y0: number, ry: number): void {
-  logBeam(m, cx, cz, y0, 0.16, 0.062, ry, [232, 198, 82], [246, 214, 108]);
-}
 // A stack of cut logs: three on the bottom, two on top (a bundled woodpile), lying along `ry`.
 // A casually-piled bundle of cut logs: a bottom row of 2-3 with 1-2 resting on top, each log
 // jittered in position, length, and angle so the stack looks tossed together, not stacked to a
@@ -518,22 +825,6 @@ function lumberStack(m: Build, cx: number, cz: number, y0: number, ry: number, r
 // A single felled tree — one thin log lying on the ground.
 function felledTree(m: Build, cx: number, cz: number, y0: number, ry: number): void {
   logBeam(m, cx, cz, y0, 0.3, 0.038, ry, [112, 74, 48], [144, 100, 70]);
-}
-
-// A stack of round bales: two side by side + (optionally) one on top, beside the fences.
-function baleStack(m: Build, cx: number, cz: number, hAt: (x: number, z: number) => number, ry: number, pair = true): void {
-  // `pair` = two bales side by side; otherwise a single bale. Small footprint so it tucks
-  // into the flat gaps without touching a grain patch.
-  const Wx = -Math.sin(ry);
-  const Wz = Math.cos(ry);
-  const g = 0.07;
-  const y0 = hAt(cx, cz);
-  if (pair) {
-    roundBale(m, cx - Wx * g, cz - Wz * g, y0, ry);
-    roundBale(m, cx + Wx * g, cz + Wz * g, y0, ry);
-  } else {
-    roundBale(m, cx, cz, y0, ry);
-  }
 }
 
 // ── Palette (non-wheat tiles, pending their rebuilds) ────────────────────────────
@@ -646,51 +937,39 @@ function brickHeap(m: Build, cx: number, cz: number, y0: number, ry: number, col
 
 // ── Per-terrain tiles ─────────────────────────────────────────────────────────
 
-// WHEAT — rebuilt to reference: a terraced golden field (3 overlapping octagonal pads), three
-// short post-and-rail fences at varied angles, and octagonal round-bale stacks tucked beside
-// them. No number chip.
+// WHEAT — one continuous field whose dense standing crop has been cut by curved combine passes.
+// The exposed areas retain raised rows and short stubble (not painted dirt lines), while short
+// tied sheaves occupy a couple of the broad harvested turns.
 function fieldsTile(seed: number): Build {
   const m = build();
-  const WHEAT: RGB = [242, 210, 74];
+  const SOIL: RGB = [145, 94, 44];
+  const STUBBLE_ROW: RGB = [178, 128, 52];
+  const WHEAT_CANOPY: RGB = [246, 207, 76];
+  const amp = 0.025;
+  const groundSeed = seed + 4.2;
   const rng = mulberry32((Math.abs(seed) * 2246822519 + 0x85ebca6b) >>> 0 || 1);
-  const baseRot = rng() * Math.PI * 2; // whole-composition rotation → biggest variation
-  const pads = wheatPads(rng, baseRot, seed);
-  const hAt = (x: number, z: number): number => wheatHeightAt(pads, x, z);
+  const layout = fieldLayout(rng, seed);
+  const soilY = (x: number, z: number): number => surfaceY(x, z, amp, groundSeed);
 
-  irregularGround(m, { color: shade(WHEAT, 0.95), amp: 0.05, seed: seed + 4.2, facet: 0.05 }); // gently-uneven base
-  for (const p of pads) octaPad(m, p, WHEAT);
-  rimAndWall(m, WHEAT);
+  irregularGround(m, { color: SOIL, amp, seed: groundSeed, facet: 0.09 });
+  harvestedRows(m, layout, soilY, STUBBLE_ROW, seed);
+  standingCanopy(m, layout, soilY, WHEAT_CANOPY);
+  standingWheat(m, layout, soilY, seed);
+  rimAndWall(m, shade(SOIL, 1.05));
 
-  // One post-and-rail fence in each of the three gaps between pads (bisector angles), each at a
-  // jittered radius, orientation, and length so they read hand-placed and vary per tile.
-  for (let k = 0; k < 3; k++) {
-    const gap = baseRot + Math.PI / 3 + (k * 2 * Math.PI) / 3 + (rng() - 0.5) * 0.4;
-    const rad = 0.4 + rng() * 0.08;
-    const cx = rad * Math.cos(gap);
-    const cz = rad * Math.sin(gap);
-    const ori = gap + Math.PI / 2 + (rng() - 0.5) * 0.9; // ~tangential to the gap, jittered
-    const half = (0.18 + rng() * 0.12) / 2;
-    fence(m, cx - Math.cos(ori) * half, cz - Math.sin(ori) * half, cx + Math.cos(ori) * half, cz + Math.sin(ori) * half, hAt);
-  }
-
-  // Hay: a centre cluster plus 1–2 in the gaps — varied count, clumping (pair vs single), and
-  // rotation. Each is nudged toward the centre until it clears the raised patches.
-  const place = (x0: number, z0: number, pair: boolean): void => {
-    const ext = pair ? 0.16 : 0.1;
-    let x = x0;
-    let z = z0;
-    for (let t = 0; t < 6 && !clearOfPads(pads, x, z, ext); t++) {
-      x *= 0.85;
-      z *= 0.85;
-    }
-    baleStack(m, x, z, hAt, rng() * Math.PI, pair);
-  };
-  place((rng() - 0.5) * 0.16, (rng() - 0.5) * 0.16, rng() < 0.6); // centre cluster
-  const extra = 1 + Math.floor(rng() * 2); // 1–2 more clusters in gaps
-  for (let e = 0; e < extra; e++) {
-    const gap = baseRot + Math.PI / 3 + Math.floor(rng() * 3) * (2 * Math.PI / 3) + (rng() - 0.5) * 0.4;
-    const rad = 0.28 + rng() * 0.12;
-    place(rad * Math.cos(gap), rad * Math.sin(gap), rng() < 0.45);
+  // Place one or two tied sheaves only inside the broad harvested passes. Rejection sampling
+  // keeps every sheaf clear of standing crop, the number chip, the rim, and one another.
+  const sheaves: { x: number; z: number }[] = [];
+  const target = 1 + (rng() < 0.58 ? 1 : 0);
+  for (let attempt = 0; attempt < 120 && sheaves.length < target; attempt++) {
+    const a = rng() * Math.PI * 2;
+    const r = 0.27 + Math.sqrt(rng()) * 0.4;
+    const x = Math.cos(a) * r;
+    const z = Math.sin(a) * r;
+    if (!insideFieldHex(x, z) || fieldCoverage(layout, x, z) > 0.22) continue;
+    if (sheaves.some((q) => Math.hypot(q.x - x, q.z - z) < 0.22)) continue;
+    sheaves.push({ x, z });
+    wheatSheaf(m, x, z, soilY(x, z) + 0.01, 0.78 + rng() * 0.12, layout.rowAngle + (rng() - 0.5) * 0.5, seed * 113 + attempt * 19);
   }
   return m;
 }
