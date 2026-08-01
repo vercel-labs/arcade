@@ -1,5 +1,5 @@
 import type { GameState } from '../rules/game.ts';
-import type { Player, TurnContext } from './player.ts';
+import type { ActionChoice, Player, TurnContext } from './player.ts';
 
 // The rendering surface a match drives: the live game state plus a way to play
 // (and visibly animate) one action. `ChessGameScene` implements this. Keeping it
@@ -17,6 +17,13 @@ export interface MatchHooks<A> {
   onThinking?(player: Player<A>, playerIndex: number): void;
   /** Fired with a player's rationale just before its move animates. */
   onCommentary?(text: string, player: Player<A>, playerIndex: number): void;
+  /**
+   * Fired after a decision is accepted but before the action is applied. `state`
+   * is authoritative for the pre-action position during this synchronous callback.
+   */
+  onActionChosen?(info: MatchActionEvent<A>): void;
+  /** Fired after playMove settles and the authoritative state contains the action. */
+  onActionApplied?(info: MatchActionEvent<A>): void;
   /** Cancels the match between/within turns. */
   signal?: AbortSignal;
   /**
@@ -25,6 +32,14 @@ export interface MatchHooks<A> {
    * its not-yet-implemented regular turns; full chess/poker matches leave it unset.
    */
   shouldStop?(state: GameState<A>): boolean;
+}
+
+export interface MatchActionEvent<A> {
+  /** The exact Player captured at the start of the turn, even if the seats swap later. */
+  player: Player<A>;
+  playerIndex: number;
+  choice: ActionChoice<A>;
+  state: GameState<A>;
 }
 
 // Drive two (or more) players through a game to its terminal state, alternating
@@ -60,11 +75,14 @@ export async function runMatch<A>(
       },
       opponentSaid: lastSaid,
     };
-    const { action, rationale } = await player.chooseAction(state, ctx);
+    const choice = await player.chooseAction(state, ctx);
     if (signal?.aborted) break;
+    const { action, rationale } = choice;
+    hooks.onActionChosen?.({ player, playerIndex: idx, choice, state });
     if (!emitted && rationale) hooks.onCommentary?.(rationale, player, idx);
     if (rationale) lastSaid = rationale;
     await scene.playMove(action);
+    hooks.onActionApplied?.({ player, playerIndex: idx, choice, state: scene.state() });
   }
   return scene.state().returns();
 }

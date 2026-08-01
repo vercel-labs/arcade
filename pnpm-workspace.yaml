@@ -1,6 +1,14 @@
+# Dependency build scripts pnpm is allowed to run (pnpm blocks all others by default).
+# pnpm 10+ reads this from here, not package.json. esbuild backs tsx; speaker is native audio.
+onlyBuiltDependencies:
+  - esbuild
+  - speaker
 # Supply-chain safety (company policy): refuse to install any dependency version
 # published less than 2 days ago, so a freshly-compromised release can't propagate into
 # a `pnpm install` here. 2880 (2 days) is the only allowed value. This governs ONLY how
 # arcade's own dependencies are installed in dev/CI — consumers of the published
 # @vercel/arcade package are unaffected (that gate lives in each consumer's own config).
 minimumReleaseAge: 2880
+allowBuilds:
+  esbuild: set this to true or false
+  speaker: set this to true or false

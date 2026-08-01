@@ -91,6 +91,23 @@ test('applyAction clamps a below-min raise up to the legal minimum', () => {
   const s = heads([1000, 1000], 0);
   s.applyAction({ type: 'raise', to: 25 }); // below min-raise (40); clamps to 40
   assert.equal(s.currentBetAmount(), 40);
+  const recorded = s.appliedActionHistory()[0];
+  assert.deepEqual(recorded.requested, { type: 'raise', to: 25 });
+  assert.equal(recorded.effective.type, 'raise');
+  assert.equal(recorded.effective.streetCommitmentAfter, 40);
+  assert.equal(recorded.adjusted, true);
+});
+
+test('structured action ledger records normalization without model text', () => {
+  const s = heads([1000, 1000], 0);
+  s.applyAction({ type: 'check' }); // facing the BB: normalized to a call
+  const [a] = s.appliedActionHistory();
+  assert.deepEqual(a.requested, { type: 'check' });
+  assert.equal(a.effective.type, 'call');
+  assert.equal(a.effective.amountCommitted, 10);
+  assert.equal(a.adjusted, true);
+  assert.equal(a.potBefore, 30);
+  assert.equal(a.potAfter, 40);
 });
 
 test('a short all-in does not raise the min-raise floor for the next raiser', () => {
@@ -125,6 +142,9 @@ test('side pots: 3-way all-in splits correctly (the worked example)', () => {
   assert.equal(r[0] + r[1] + r[2], 0, 'zero-sum');
   // Total chips conserved.
   assert.equal(50 + 200 + 200, s.potTotal());
+  const awards = s.canonicalRecord().awards;
+  assert.equal(awards.reduce((sum, award) => sum + award.amount, 0), 450);
+  assert.deepEqual([...new Set(awards.map((award) => award.potIndex))], [0, 1]);
 });
 
 test('returns() is zero-sum across many random all-AI hands (never deadlocks / never CHANCE)', () => {
@@ -175,6 +195,41 @@ test('clone() is independent', () => {
   s.applyAction({ type: 'raise', to: 100 });
   assert.notEqual(s.currentBetAmount(), c.currentBetAmount());
   assert.equal(c.currentBetAmount(), 20); // clone untouched
+  assert.equal(c.smallBlindSeat(), 0);
+  assert.equal(c.bigBlindSeat(), 1);
+});
+
+test('canonical record stores every hole card with public visibility semantics', () => {
+  const folded = heads([1000, 1000], 0);
+  folded.applyAction({ type: 'fold' });
+  const hidden = folded.canonicalRecord();
+  assert.equal(hidden.holeCards[0].disposition, 'folded_hidden');
+  assert.equal(hidden.holeCards[1].disposition, 'winner_not_shown');
+  assert.equal(hidden.holeCards.flatMap((h) => h.cards).length, 4);
+  assert.equal(hidden.results.length, 2);
+  assert.equal(hidden.results.reduce((sum, r) => sum + r.net, 0), 0);
+
+  const shown = heads([1000, 1000], 0);
+  shown.applyAction({ type: 'call' });
+  shown.applyAction({ type: 'check' });
+  for (let street = 0; street < 3; street++) {
+    shown.applyAction({ type: 'check' });
+    shown.applyAction({ type: 'check' });
+  }
+  const showdown = shown.canonicalRecord();
+  assert.ok(showdown.holeCards.every((h) => h.disposition === 'shown'));
+  assert.deepEqual(showdown.board.map((b) => b.street), ['flop', 'turn', 'river']);
+  assert.equal(showdown.board.flatMap((b) => b.cards).length, 5);
+  assert.equal(showdown.actions.length, 8);
+});
+
+test('an incomplete canonical record rolls unrealized commitments back to carried stacks', () => {
+  const s = heads([1000, 1000], 0);
+  const record = s.canonicalRecord();
+  assert.equal(record.completed, false);
+  assert.deepEqual(record.endingStacks, record.startingStacks);
+  assert.ok(record.results.some((result) => result.committed > 0)); // posted blinds remain observable
+  assert.ok(record.results.every((result) => result.net === 0 && record.endingStacks[result.seat] === record.startingStacks[result.seat]));
 });
 
 test('informationStateString never leaks another seat hole card', () => {

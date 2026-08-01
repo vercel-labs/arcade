@@ -28,14 +28,15 @@ import { LogosScene } from './scenes/logos-scene.ts';
 import { AudioScene } from './scenes/audio-scene.ts';
 import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/input.ts';
 import { detectTerminalColorMode } from '../platform/terminal-color-detection.ts';
-import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, mouseControlsFor, type BarActions, type MenuItem, type Mode, type RenderMode } from './shell/bars.ts';
+import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, buildUpdateModal, mouseControlsFor, type BarActions, type MenuItem, type Mode, type RenderMode } from './shell/bars.ts';
 import { buildShowcase, mountShowcase } from './scenes/ui-showcase.ts';
 import { buildChessGameRoot, chessMoveChat, type Commentary, type MatchSide, mountChessHud, movesToPgn, refreshMoveHistory, shortModel } from './games/chess/hud.ts';
 import { creatorTint } from './scenes/wisp.ts';
 import { CHAT_WIDTH, clearChat, pushChatMessage } from './games/chess/chat.ts';
 import { insetRightSceneViewport, pointerNdcInSceneViewport } from './scene-viewport.ts';
-import { buildMatchSetup, buildSwapSetup, matchSetupSelection, mountMatchSetup, mountSwapSetup, openSwapSetup, swapSetupSelection } from './match/setup.ts';
+import { buildMatchSetup, buildSwapSetup, chessPreviewSides, matchSetupSelection, mountMatchSetup, mountSwapSetup, openSwapSetup, setMatchSetupChanged, swapSetupSelection } from './match/setup.ts';
 import { copyToClipboard } from '../platform/clipboard.ts';
+import { checkForUpdate, refreshLatestInBackground, type UpdateInfo } from './update.ts';
 import { BLACK, type Color, WHITE } from '../rules/chess/types.ts';
 import { evaluate } from '../rules/chess/eval.ts';
 import type { ChessResult } from '../rules/chess/chess.ts';
@@ -48,7 +49,7 @@ import * as term from '../platform/terminal.ts';
 import { availableTeams, ensureGatewayKey, isLoggedIn, loadEnv, signOut as signOutVercel, switchTeam, type Team, useTeam } from '../auth/index.ts';
 import { AiMatch, type Seat } from './match/driver.ts';
 import { disambiguateLabels } from './match/labels.ts';
-import { flushTelemetry, initTelemetry, trackSessionStart } from '../telemetry/index.ts';
+import { flushTelemetry, initTelemetry, isTelemetryEnabled, setTelemetryEnabled, telemetryStatus, trackSessionStart, type RecordEndReason } from '../telemetry/index.ts';
 
 // Populate process.env from .env.local before anything reads AI_GATEWAY_API_KEY.
 loadEnv();
@@ -159,6 +160,22 @@ function activeOrbit(): ChessGameScene | LogosScene | AudioScene | CardsScene | 
 
 let mode: Mode = 'prism';
 let renderMode: RenderMode = 'ascii';
+// Update notifier: resolved once at startup (synchronous — reads a cache the previous
+// run refreshed). Non-null iff a newer version is published. Surfaced three ways: a
+// plain line before the alt-screen, a modal over the boot prism, and a line on exit.
+const update = checkForUpdate();
+let updateModalOpen = false; // the startup popup (opened at boot when `update` is set)
+let updateModalFocused = false; // open→closed edge, so the popup focuses its default button once
+let updateCopied = false; // the "copy command" button flipped to its "copied ✓" confirmation
+
+// The plain-text startup notice (printed as the last boot line). The modal over the prism
+// is the second, more prominent surface.
+function updateNotice(u: UpdateInfo): string {
+  return (
+    `\x1b[38;2;120;200;150m↑ Update available: v${u.current} → v${u.latest}\x1b[0m\n` +
+    `  Run \x1b[38;2;150;220;180m${u.command}\x1b[0m to update.`
+  );
+}
 // Start from the universally safe palette. Startup detection upgrades this to
 // truecolor before the alternate screen or first rendered frame is shown.
 let colorMode: TerminalColorMode = '256-color';
@@ -391,12 +408,24 @@ function fullRepaint(): void {
   r.requestRender();
 }
 
+let finalizing = false;
+// One finalize path for every exit route (quit button, ctrl+c, SIGTERM/SIGHUP, uncaught
+// crash). stop() writes any active canonical record to the durable outbox synchronously,
+// so the record survives even if the async telemetry flush below can't finish. The cap
+// keeps exit from ever visibly hanging on the network.
+function finalizeAndExit(reason: Exclude<RecordEndReason, 'natural'>, code: number, err?: unknown): void {
+  if (finalizing) return;
+  finalizing = true;
+  try { aiMatch.stop(reason); } catch {}
+  try { pokerMatch.stop(reason); } catch {}
+  try { r.destroy(); } catch {}
+  try { term.leave(); } catch {}
+  if (err !== undefined) console.error(err); // after leaving the alt-screen so it's readable
+  void flushTelemetry(400).finally(() => process.exit(code));
+}
+
 function quit(): void {
-  r.destroy();
-  term.leave();
-  // Give any in-flight telemetry a brief window to drain, then exit regardless — the
-  // cap keeps quit from ever visibly hanging on the network.
-  void flushTelemetry(400).finally(() => process.exit(0));
+  finalizeAndExit('user_stopped', 0);
 }
 
 // Run an async plain-text flow outside the alt-screen: stop the frame loop,
@@ -621,6 +650,7 @@ function openMatchSetup(): void {
   mountMatchSetup(ui);
   matchSetupOpen = true;
   setupFocused = false;
+  chessGame.setPreview(chessPreviewSides()); // king wisps preview the chosen creators
   forceFrame = true;
   r.requestRender();
 }
@@ -628,6 +658,7 @@ function openMatchSetup(): void {
 function closeMatchSetup(): void {
   matchSetupOpen = false;
   setupFocused = false;
+  chessGame.setPreview(null);
   forceFrame = true;
 }
 
@@ -836,6 +867,16 @@ setPokerSetupChanged(() => {
   r.requestRender();
 });
 
+// The chess mirror: any committed setup change (mode / creator / model) updates the
+// king-wisp preview behind the panel — each side's wisp follows its chosen creator,
+// a human side shows none.
+setMatchSetupChanged(() => {
+  if (!matchSetupOpen) return;
+  chessGame.setPreview(chessPreviewSides());
+  forceFrame = true;
+  r.requestRender();
+});
+
 // Start-match button: begin a session with the chosen seats (guaranteed present).
 function confirmPokerSetup(): void {
   const seats = pokerSetupSelection();
@@ -976,6 +1017,28 @@ function closeConfirmQuit(): void {
   r.requestRender();
 }
 
+// The startup update popup. It only ever lives over the boot prism, so closing it tears
+// down its overlay + keymap layer directly (syncBar isn't run for the prism once it's
+// gone) and leaves the prism bare. "quit to update" just quits — the on-exit line then
+// prints the upgrade command. "copy command" copies it to the clipboard and flips the
+// button to a "copied ✓" confirmation.
+function closeUpdateModal(): void {
+  updateModalOpen = false;
+  updateModalFocused = false;
+  updateCopied = false;
+  if (keymap.hasContext('update')) keymap.popContext('update');
+  ui.setRoot(null); // the prism screen has no overlay
+  forceFrame = true;
+  r.requestRender();
+}
+function copyUpdateCommand(): void {
+  if (!update) return;
+  copyToClipboard(update.command);
+  updateCopied = true;
+  forceFrame = true;
+  r.requestRender();
+}
+
 // New game (menu): tear the current session down to the idle empty table (the looping
 // shuffling deck), then open the setup modal to pick opponents for a fresh match.
 function pokerNewGame(): void {
@@ -1029,6 +1092,14 @@ function toggleIllegal(): void {
 // Show/hide the right-edge eval bar (bar button / 'e' key).
 function toggleEvalBar(): void {
   evalBarVisible = !evalBarVisible;
+  forceFrame = true;
+  r.requestRender();
+}
+
+// Persist the anonymous-telemetry opt-in/out from the home menu (no key binding), the
+// in-app companion to `arcade telemetry enable|disable`.
+function toggleTelemetry(): void {
+  setTelemetryEnabled(!isTelemetryEnabled());
   forceFrame = true;
   r.requestRender();
 }
@@ -1287,6 +1358,7 @@ const keymap = installKeymap({
   closeShortcuts,
   openConfirmQuit,
   closeConfirmQuit,
+  closeUpdateModal,
 });
 
 // Point the keymap's base layer at the current mode (chess-game uses the shared
@@ -1355,6 +1427,7 @@ function syncBar(): void {
   if (!shortcutsOpen && keymap.hasContext('shortcuts')) keymap.popContext('shortcuts');
   if (!confirmQuitOpen && keymap.hasContext('confirm-quit')) keymap.popContext('confirm-quit');
   if (!confirmQuitOpen) confirmQuitFocused = false; // re-focus "quit" on the next open
+  if (!updateModalOpen && keymap.hasContext('update')) keymap.popContext('update');
   if (!homeMenuOpen && keymap.hasContext('home-menu')) keymap.popContext('home-menu');
   if (!teamModalOpen && keymap.hasContext('teamswitch')) keymap.popContext('teamswitch');
   const popGameOver = (): void => {
@@ -1368,7 +1441,33 @@ function syncBar(): void {
   };
 
   const pc = promoColor();
-  if (shortcutsOpen) {
+  if (updateModalOpen && update) {
+    // The startup update popup takes precedence over everything (it only appears at boot,
+    // over the prism, before any game screen exists — the pops are defensive/self-healing).
+    if (keymap.hasContext('promoting')) keymap.popContext('promoting');
+    popGameOver();
+    popSetup();
+    popSwap();
+    promoFocused = false;
+    if (!keymap.hasContext('update')) keymap.pushContext('update', true);
+    ui.setRoot(
+      buildUpdateModal({
+        current: update.current,
+        latest: update.latest,
+        command: update.command,
+        copied: updateCopied,
+        onQuit: quit,
+        onCopy: copyUpdateCommand,
+        onClose: closeUpdateModal,
+      }),
+      { x: 0, y: 0, w: cols, h: rows },
+    );
+    if (!updateModalFocused) {
+      ui.setFocus('update-quit'); // default highlight so Enter quits to update
+      updateModalFocused = true;
+      forceFrame = true;
+    }
+  } else if (shortcutsOpen) {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     popGameOver();
     popSetup();
@@ -1518,6 +1617,7 @@ function syncBar(): void {
         [
           { id: 'home-menu-shortcuts', label: 'controls', onClick: openShortcuts },
           { id: 'home-menu-account', label: 'account', onClick: openTeamSwitch },
+          { id: 'home-menu-telemetry', label: 'telemetry', value: isTelemetryEnabled() ? 'on' : 'off', onClick: toggleTelemetry },
           { id: 'home-menu-quit', label: 'quit', onClick: openConfirmQuit },
         ],
       ];
@@ -1848,12 +1948,15 @@ function onKeyImpl(ev: KeyEvent): void {
   // Prism loading screen: any key starts (→ menu), EXCEPT Escape, which falls through to the
   // keymap (global esc → quit) so esc stays a consistent "back one level" and prism is the
   // last level. (ctrl+c is already handled at the top of this function.)
-  if (mode === 'prism') {
+  if (mode === 'prism' && !updateModalOpen) {
     if (ev.name !== 'escape') {
       enterMenu();
       return;
     }
   }
+  // While the startup update popup is up (over the prism), keys drive it instead of
+  // advancing to the menu: non-escape keys fall to ui.handleKey (the popup's buttons),
+  // and escape falls to the keymap's 'update' modal layer (dismiss).
   // Audio screen: type-to-talk. Printable keys + enter/backspace/tab feed the
   // prompt; everything else (escape → back, arrows → pan) falls to the keymap.
   if (mode === 'audio') {
@@ -1881,8 +1984,9 @@ function onMouseImpl(e: MouseEvent): void {
   }
   // The poker continue gate advances on Space only (see onKeyImpl); the mouse stays free
   // here to orbit/zoom/pan the scene while the banner and prompt are up.
-  // Prism loading screen: a click starts (→ menu).
-  if (mode === 'prism' && e.type === 'down') {
+  // Prism loading screen: a click starts (→ menu) — unless the startup update popup is up,
+  // in which case clicks fall through to its buttons (the prism pointer routing below).
+  if (mode === 'prism' && e.type === 'down' && !updateModalOpen) {
     enterMenu();
     return;
   }
@@ -2076,7 +2180,9 @@ function tick(dt: number): void {
   }
 
   if (mode === 'prism') {
-    // Prism loading screen: live prism + a breathing "press any key" prompt, no bar.
+    // Prism loading screen: live prism + a breathing "press any key" prompt, no bar —
+    // except the startup update popup, which syncBar mounts as an overlay over the prism.
+    if (updateModalOpen) syncBar();
     prism.renderScene(target, t);
     writeFrame(
       UNIFIED
@@ -2275,10 +2381,29 @@ if (argv.includes('--logout')) {
   console.log(was ? 'Signed out of Vercel.' : 'Not signed in.');
   process.exit(0);
 }
+// `arcade telemetry [status|enable|disable]` — mirrors `vercel telemetry …`. Runs before
+// the OAuth/render setup and exits, so it's scriptable and never launches the UI.
+if (argv[0] === 'telemetry') {
+  const sub = argv[1];
+  if (sub === 'enable' || sub === 'disable') {
+    setTelemetryEnabled(sub === 'enable');
+    console.log(`Telemetry ${sub}d.`);
+  } else if (sub === undefined || sub === 'status') {
+    console.log(`Telemetry is ${telemetryStatus()}.`);
+  } else {
+    console.log('Usage: arcade telemetry [status|enable|disable]');
+  }
+  process.exit(0);
+}
 colorMode = await detectTerminalColorMode();
 const colorStatus =
   colorMode === 'truecolor' ? 'Truecolor detected.' : 'Truecolor not detected. Using 256-color.';
 process.stdout.write(`\x1b[38;2;135;135;175m  \u2713 ${colorStatus}\x1b[0m\n`);
+
+// Arm the modal (shown over the prism) and refresh the version cache for the next launch.
+// The plain-text startup notice itself is printed below, after the auth/team line.
+if (update) updateModalOpen = true;
+refreshLatestInBackground();
 
 await ensureGatewayKey({
   forceLogin: argv.includes('--login'),
@@ -2286,7 +2411,8 @@ await ensureGatewayKey({
 });
 
 // Resolve the anonymous install id + (once) print the opt-out notice while still in
-// plain text, then record the launch. Both are no-ops unless a telemetry token is set.
+// plain text, then record the launch. Both are no-ops when telemetry is off (opt-out
+// or a dev checkout without an endpoint override).
 initTelemetry();
 trackSessionStart({
   colorMode,
@@ -2294,6 +2420,18 @@ trackSessionStart({
   cols: process.stdout.columns ?? 0,
   rows: process.stdout.rows ?? 0,
 });
+
+// External termination (terminal closed, `kill`) and uncaught crashes finalize through
+// the same path, so an in-progress game is still recorded. ctrl+c arrives as a keypress
+// in raw mode (handled by the quit button), not SIGINT.
+process.once('SIGTERM', () => finalizeAndExit('user_stopped', 0));
+process.once('SIGHUP', () => finalizeAndExit('user_stopped', 0));
+process.once('uncaughtException', (err) => finalizeAndExit('process_exit_recovered', 1, err));
+process.once('unhandledRejection', (err) => finalizeAndExit('process_exit_recovered', 1, err));
+
+// Update notice (startup): the last boot line before the alt-screen — beneath the
+// truecolor + AI Gateway lines. The modal over the prism is the more prominent surface.
+if (update) process.stdout.write(`\n${updateNotice(update)}\n`);
 
 term.enter();
 process.stdin.on('data', parse);

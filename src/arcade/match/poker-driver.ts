@@ -8,7 +8,7 @@
 import { runMatch } from '../../ai/match.ts';
 import { FALLBACK_RATIONALE, isFallbackRationale, ModelPlayer, type MoveNotation } from '../../ai/model-player.ts';
 import { HumanPlayer } from '../../ai/human-player.ts';
-import { trackHandEnded, trackMatchStarted, trackModelFallback } from '../../telemetry/index.ts';
+import { isTelemetryEnabled, localPlayerKey, trackHandEnded, trackMatchRecord, trackMatchStarted, trackModelFallback, trackPokerHandRecord } from '../../telemetry/index.ts';
 import type { Player } from '../../ai/player.ts';
 import { type HandPublicRecord, HoldemState, type PokerAction } from '../../rules/poker/holdem.ts';
 import type { PokerGameScene, PokerSeatView } from '../games/poker/poker-scene.ts';
@@ -17,6 +17,8 @@ import { disambiguateLabels } from './labels.ts';
 import { PokerMemory } from './poker-memory.ts';
 import { PokerVoice, pokerVoiceCapable } from './poker-voice.ts';
 import { normalizerModel } from './models.ts';
+import { PokerSessionRecorder, type RecorderController } from './game-recorders.ts';
+import type { RecordEndReason } from '../../telemetry/records.ts';
 
 // One seat in the session: the human hero or an AI model (a Gateway slug).
 export type PokerSeatSpec =
@@ -79,6 +81,8 @@ export class PokerMatch {
   // Realtime voice opponent, created only when a heads-up seat explicitly uses the
   // realtime runtime and duplex audio is available. Null for standard text seats.
   private voice: PokerVoice | null = null;
+  private recorder: PokerSessionRecorder | null = null;
+  private recordingHandOpen = false;
 
   constructor(private readonly deps: PokerMatchDeps) {}
 
@@ -128,7 +132,7 @@ export class PokerMatch {
   // A realtime seat explicitly identifies the voice runtime and actual model.
   // `opts.stack` sets the per-player starting chips (from the setup slider); defaults to STARTING_STACK.
   start(seats: PokerSeatSpec[], opts?: { stack?: number }): void {
-    this.stop();
+    this.stop('user_stopped');
     this.seats = seats.slice();
     this.stacks = seats.map(() => opts?.stack ?? STARTING_STACK);
     this.button = 0;
@@ -138,9 +142,22 @@ export class PokerMatch {
       s.kind === 'human' ? { kind: 'human', label: 'You' } : { kind: 'ai', label: this.labelOf(seat), creator: creatorOf(s.model) },
     );
     this.deps.scene.beginSession(views);
+    const mode = seats.every((s) => s.kind === 'ai') ? 'ai_table' : seats.some((s) => s.kind === 'human') && seats.some((s) => s.kind === 'ai') ? 'mixed' : 'human_table';
+    const controller = (seat: PokerSeatSpec): RecorderController =>
+      seat.kind === 'human' ? { kind: 'human' } : { kind: 'model', model: seat.model, runtime: seat.runtime };
+    this.recorder = isTelemetryEnabled()
+      ? new PokerSessionRecorder(
+          mode,
+          seats.map(controller),
+          this.stacks,
+          SMALL_BLIND,
+          BIG_BLIND,
+          localPlayerKey(),
+        )
+      : null;
     trackMatchStarted({
       game: 'poker',
-      mode: seats.every((s) => s.kind === 'ai') ? 'ai_table' : seats.some((s) => s.kind === 'human') && seats.some((s) => s.kind === 'ai') ? 'mixed' : 'human_table',
+      mode,
       models: seats.map((s) => (s.kind === 'ai' ? s.model : 'human')),
       humans: seats.filter((s) => s.kind === 'human').length,
       stack: opts?.stack ?? STARTING_STACK,
@@ -291,6 +308,8 @@ export class PokerMatch {
       bigBlind: BIG_BLIND,
       seatNames: this.labels.length ? this.labels.slice() : undefined,
     });
+    this.recorder?.beginHand();
+    this.recordingHandOpen = true;
     this.deps.scene.beginHand(state);
     this.voice?.beginHand(state); // seed the bot with its own hole cards for this hand
     this.deps.onHandOver(); // refresh HUD for the fresh hand
@@ -317,14 +336,28 @@ export class PokerMatch {
     const state = this.deps.scene.state();
     runMatch<PokerAction>(this.deps.scene, this.players, {
       signal: ctrl.signal,
-      onCommentary: (text, player) => {
-        const seat = this.players.indexOf(player);
+      onCommentary: (text, player, playerIndex) => {
+        const seat = playerIndex;
         const spec = seat >= 0 ? this.seats[seat] : undefined;
         if (spec?.kind === 'ai' && isFallbackRationale(text)) {
           trackModelFallback({ game: 'poker', model: spec.model, reason: text === FALLBACK_RATIONALE.unavailable ? 'unavailable' : 'exhausted' });
         }
         this.deps.onCommentary(text, player.name, seat >= 0 ? this.labelOf(seat) : shortModel(player.name));
       },
+      onActionChosen: ({ player, playerIndex, choice }) => {
+        this.record(() => {
+          const spec = this.seats[playerIndex];
+          this.recorder?.actionChosen(
+            playerIndex,
+            player,
+            choice,
+            spec?.kind === 'human',
+            spec?.kind === 'ai' ? spec.runtime : undefined,
+            spec?.kind === 'ai' ? spec.model : undefined,
+          );
+        });
+      },
+      onActionApplied: () => this.record(() => this.recorder?.actionApplied()),
     })
       .then(() => {
         if (ctrl.signal.aborted || this.abort !== ctrl) return; // paused / stopped mid-hand
@@ -339,6 +372,21 @@ export class PokerMatch {
           winners: won.map(([seat]) => (this.seats[seat]?.kind === 'ai' ? (this.seats[seat] as { model: string }).model : 'human')),
           pot: won.reduce((sum, [, amt]) => sum + amt, 0),
         });
+        // Recording is isolated: a fault here must not skip the gameplay continuation
+        // below (button rotation, onHandOver, next hand), or the table would hang.
+        this.record(() => {
+          const handRecord = this.recorder?.finishHand(state.canonicalRecord(), true);
+          if (handRecord) trackPokerHandRecord(handRecord);
+          if (this.aliveCount() < 2) {
+            const matchRecord = this.recorder?.finishMatch(this.stacks, true, 'natural');
+            if (matchRecord) trackMatchRecord(matchRecord);
+            this.recorder = null;
+          } else {
+            const checkpoint = this.recorder?.checkpointMatch(this.stacks);
+            if (checkpoint) trackMatchRecord(checkpoint);
+          }
+        });
+        this.recordingHandOpen = false;
         this.abort = null;
         this.deps.onHandOver();
         this.deps.requestRender();
@@ -445,10 +493,44 @@ export class PokerMatch {
     else this.dealHand();
   }
 
+  // Run a recorder call in isolation: telemetry must never stall the table. Any fault
+  // drops the recorder rather than throw into the hand loop or the teardown path.
+  private record<T>(fn: () => T): T | undefined {
+    try {
+      return fn();
+    } catch {
+      this.recorder = null;
+      return undefined;
+    }
+  }
+
   // Fully stop the session: cancel the loop + timer and tear down the scene session.
-  stop(): void {
+  stop(reason: Exclude<RecordEndReason, 'natural'> = 'user_stopped'): void {
     this.abort?.abort();
     this.abort = null;
+    let settledFinalHand = false;
+    if (this.recorder && this.recordingHandOpen) {
+      try {
+        const rulesRecord = this.deps.scene.state().canonicalRecord();
+        // A terminal rules state can exist briefly before runMatch's completion
+        // continuation updates the carried session stacks. Preserve it as a completed
+        // hand when navigation/quit lands in that window instead of mislabelling it
+        // abandoned and checkpointing the pre-hand stacks.
+        settledFinalHand = rulesRecord.completed;
+        const handRecord = this.recorder.finishHand(rulesRecord, settledFinalHand, reason);
+        trackPokerHandRecord(handRecord);
+        if (settledFinalHand) this.stacks = rulesRecord.endingStacks.slice();
+      } catch {
+        // no active hand yet
+      }
+      this.recordingHandOpen = false;
+    }
+    const completedNaturally = settledFinalHand && this.aliveCount() < 2;
+    const matchRecord = this.record(() =>
+      this.recorder?.finishMatch(this.stacks, completedNaturally, completedNaturally ? 'natural' : reason),
+    );
+    if (matchRecord) trackMatchRecord(matchRecord);
+    this.recorder = null;
     this.reflectAbort?.abort();
     this.reflectAbort = null;
     this.reflecting = null;
@@ -486,8 +568,10 @@ export class PokerMatch {
   }
 
   // The session is over (one seat has all the chips). Leave it on screen; the HUD
-  // shows the winner. main clears it on navigating away / new match.
+  // shows the winner. main clears it on navigating away / new match. The terminal match
+  // record was already emitted by the hand-completion path that eliminated the last seat.
   private finishSession(): void {
+    this.recorder = null;
     this.running = false;
     this.deps.onHandOver();
     this.deps.syncLive();

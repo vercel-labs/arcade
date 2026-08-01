@@ -1,5 +1,46 @@
 import type { GameState } from '../rules/game.ts';
 
+// Privacy-safe diagnostics for one model-generation attempt. Deliberately no raw
+// reply, prompt, rationale, or error message lives here: callers may persist this
+// object as game telemetry without accidentally recording model/user text.
+export type DecisionAttemptPhase = 'structured' | 'text' | 'normalize';
+export type DecisionAttemptResult = 'accepted' | 'rejected' | 'error';
+export type DecisionFailureKind = 'access' | 'schema' | 'timeout' | 'transient' | 'unknown';
+
+export interface DecisionAttempt {
+  phase: DecisionAttemptPhase;
+  sequence: number;
+  result: DecisionAttemptResult;
+  /** Why a syntactically successful response was rejected. */
+  rejectionReason?: 'illegal' | 'unparseable';
+  /** Sanitized classification only; provider error text is intentionally omitted. */
+  failureKind?: DecisionFailureKind;
+  latencyMs: number;
+  inputTokens?: number;
+  outputTokens?: number;
+}
+
+export type DecisionResolution = 'human' | 'structured' | 'text' | 'normalized' | 'random-fallback';
+
+export interface DecisionDiagnostics {
+  resolution: DecisionResolution;
+  /** End-to-end chooseAction time, excluding move animation/application. */
+  durationMs: number;
+  attempts: DecisionAttempt[];
+  /** Whether the game-specific permissive/illegal parser was active. */
+  illegalMode: boolean;
+  fallbackReason?: 'exhausted' | 'unavailable';
+  /** The assisting model when resolution is `normalized`. */
+  normalizerModel?: string;
+}
+
+export interface ActionChoice<A> {
+  action: A;
+  rationale?: string;
+  /** Optional so simple/search/realtime Player implementations remain lightweight. */
+  diagnostics?: DecisionDiagnostics;
+}
+
 // Per-turn context handed to a player when it's asked to move. Bundles the abort
 // signal with the seams a real-time / voice player needs: an `emit` sink to
 // STREAM commentary as it's produced (rather than only returning it at the end),
@@ -34,5 +75,5 @@ export interface Player<A> {
    * through `ctx.emit` when possible. `ctx` is optional so trivial players can
    * ignore it; `ctx.signal` aborts an in-flight decision.
    */
-  chooseAction(state: GameState<A>, ctx?: TurnContext): Promise<{ action: A; rationale?: string }>;
+  chooseAction(state: GameState<A>, ctx?: TurnContext): Promise<ActionChoice<A>>;
 }

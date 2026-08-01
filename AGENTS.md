@@ -31,7 +31,7 @@ src/
   ai/         game AI: Player interface + LLM-backed ModelPlayer + match loop
   auth/       Vercel sign-in (OAuth device flow) + AI Gateway key resolution
   voice/      realtime speech-to-speech session + mic/speaker I/O + echo cancel
-  telemetry/  fire-and-forget anonymous usage counts → Tinybird Events API (opt-out)
+  telemetry/  anonymous usage + canonical game records → Arcade telemetry proxy → Tinybird (opt-out)
   arcade/     THE app: orchestrator (main.ts) + per-game/scene/shell presentation
     games/<game>/   per-game presentation (chess: scene, hud, turntable)
     match/          AI-vs-AI plumbing (driver, setup modal, model catalog)
@@ -87,12 +87,22 @@ vercel-api,gateway-key}.ts`; `src/platform/open-browser.ts` opens the browser.
 
 ## Telemetry
 
-`src/telemetry/` sends anonymous usage counts (launches, model picks, match/hand results,
-model fallbacks — never prompts or game content) to a Tinybird Events API datasource. It's
-fire-and-forget: never blocks the UI, never throws, silent unless `ARCADE_TELEMETRY_TOKEN`
-is set, and opt-out via `ARCADE_TELEMETRY=0`. The hosted workspace lives on Tinybird's
-cloud — setup + the datasource schema are in [tinybird/README.md](tinybird/README.md). This
-is the data layer the leaderboard milestone builds on.
+`src/telemetry/` sends anonymous usage events plus canonical chess match and poker
+match/hand records (moves, actions, outcomes, and cards with their visibility). It never
+sends prompts, reasoning, chat, voice, or account identity. Human-played records carry a
+pseudonymous `playerKey` (a hash of the anonymous install id) so a player's own games can
+be attributed for personal stats — the human's equivalent of a model's slug, never a
+Vercel account id. Everything goes to the Arcade telemetry proxy (`apps/telemetry-proxy`,
+a standalone hosted Vercel service that holds the only credential — a resource-scoped
+append token — and forwards into Tinybird), so the published client ships no token or key.
+Delivery is non-blocking and non-throwing: lightweight events are fire-and-forget;
+canonical records use a durable acknowledged outbox (deleted only on a 200). Opt out three
+ways: `ARCADE_TELEMETRY=0`, the `arcade telemetry disable` subcommand, or the home-menu
+toggle — the latter two persist to `~/.config/arcade/telemetry.json`. The Tinybird datasource schemas
+live in the gateway repo (`ai-gateway/tinybird-src/datasources/arcade_*_v1.datasource`),
+deployed to the Vercel_AI workspace via `tb push`. Proxy deploy + provisioning notes are in
+[apps/telemetry-proxy/README.md](apps/telemetry-proxy/README.md). This is the data layer
+the leaderboard milestone builds on.
 
 ## Deploying the curl prism
 

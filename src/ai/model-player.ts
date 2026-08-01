@@ -2,7 +2,14 @@ import { generateText, type LanguageModel, Output } from 'ai';
 import { z } from 'zod';
 import type { GameState } from '../rules/game.ts';
 import { classifyModelError } from './model-errors.ts';
-import type { Player, TurnContext } from './player.ts';
+import type {
+  ActionChoice,
+  DecisionAttempt,
+  DecisionDiagnostics,
+  DecisionResolution,
+  Player,
+  TurnContext,
+} from './player.ts';
 
 // The rationale we attach when no real move could be obtained and a random legal
 // move is played instead — so a match never deadlocks. Distinct strings so the
@@ -58,6 +65,31 @@ const buildSchema = (notation: MoveNotation, opts: { rationale?: string; speech?
   }
   return z.object({ move, rationale: z.string().describe(opts.rationale ?? DEFAULT_RATIONALE) });
 };
+
+// AI SDK token counts are currently `{ total }`, but keeping this extractor
+// structural also tolerates older providers that return a number directly.
+function tokenTotal(value: unknown): number | undefined {
+  const n =
+    typeof value === 'number'
+      ? value
+      : value && typeof value === 'object' && typeof (value as { total?: unknown }).total === 'number'
+        ? (value as { total: number }).total
+        : undefined;
+  return n !== undefined && Number.isFinite(n) ? Math.max(0, Math.round(n)) : undefined;
+}
+
+function tokenUsage(usage: unknown): Pick<DecisionAttempt, 'inputTokens' | 'outputTokens'> {
+  if (!usage || typeof usage !== 'object') return {};
+  const u = usage as { inputTokens?: unknown; outputTokens?: unknown };
+  const inputTokens = tokenTotal(u.inputTokens);
+  const outputTokens = tokenTotal(u.outputTokens);
+  return {
+    ...(inputTokens !== undefined ? { inputTokens } : {}),
+    ...(outputTokens !== undefined ? { outputTokens } : {}),
+  };
+}
+
+const elapsedMs = (started: number): number => Math.max(0, Math.round(performance.now() - started));
 
 export interface ModelPlayerOpts {
   /**
@@ -183,7 +215,9 @@ export class ModelPlayer<A> implements Player<A> {
     this.schema = buildSchema(this.notation, { rationale: opts.rationaleGuide, speech: opts.speech });
   }
 
-  async chooseAction(state: GameState<A>, ctx?: TurnContext): Promise<{ action: A; rationale?: string }> {
+  async chooseAction(state: GameState<A>, ctx?: TurnContext): Promise<ActionChoice<A>> {
+    const decisionStarted = performance.now();
+    const attempts: DecisionAttempt[] = [];
     const signal = ctx?.signal;
     const legal = state.legalActions();
     // Banter (when enabled) reacts to the opponent; the move-decision prompt is
@@ -196,6 +230,22 @@ export class ModelPlayer<A> implements Player<A> {
     const useLoose = (this.allowIllegal?.() ?? false) && typeof looseFn === 'function';
     const parse = (s: string): A | null => (useLoose ? looseFn!.call(state, s) : state.actionFromString(s));
     const legalSan = legal.map((a) => state.actionToString(a));
+    const finish = (
+      action: A,
+      rationale: string | undefined,
+      resolution: DecisionResolution,
+      extra: Partial<Pick<DecisionDiagnostics, 'fallbackReason' | 'normalizerModel'>> = {},
+    ): ActionChoice<A> => ({
+      action,
+      rationale,
+      diagnostics: {
+        resolution,
+        durationMs: elapsedMs(decisionStarted),
+        attempts,
+        illegalMode: useLoose,
+        ...extra,
+      },
+    });
 
     // Phase 1 — structured output (clean move + rationale). Re-prompt a rejected
     // move (legal mode: illegal; illegal mode: unparseable); but if the call ERRORS,
@@ -214,24 +264,35 @@ export class ModelPlayer<A> implements Player<A> {
     let lastRaw: string | undefined;
     let lastRationale: string | undefined;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      const attemptStarted = performance.now();
       let move: string;
       let rationale: string | undefined;
+      let usage: unknown;
       try {
-        const { output } = await generateText({
+        const generated = await generateText({
           model: this.model,
           system: this.persona,
           abortSignal: signal,
           output: Output.object({ schema: this.schema }),
           prompt: this.buildPrompt(state, 'json', feedback, opponentSaid),
         });
+        usage = generated.usage;
         // Split schema (speech) surfaces only `say`; `thinking` is private and dropped.
-        const out = output as { move: string; rationale?: string; say?: string };
+        const out = generated.output as { move: string; rationale?: string; say?: string };
         move = out.move;
         rationale = this.speech !== undefined ? out.say : out.rationale;
       } catch (err) {
         if (signal?.aborted) throw err; // cancellation — let it propagate
+        const failure = classifyModelError(err);
+        attempts.push({
+          phase: 'structured',
+          sequence: attempts.length,
+          result: 'error',
+          failureKind: failure.kind,
+          latencyMs: elapsedMs(attemptStarted),
+        });
         this.onAttempt?.({ phase: 'structured', raw: (err as Error).message ?? String(err), result: 'error' });
-        if (classifyModelError(err).kind === 'access') {
+        if (failure.kind === 'access') {
           unavailable = true;
           break; // provider unreachable on this team — the text path fails identically
         }
@@ -239,8 +300,16 @@ export class ModelPlayer<A> implements Player<A> {
         break; // schema unsupported → try the text fallback instead of re-trying
       }
       const action = parse(move);
+      attempts.push({
+        phase: 'structured',
+        sequence: attempts.length,
+        result: action ? 'accepted' : 'rejected',
+        ...(action ? {} : { rejectionReason: useLoose ? 'unparseable' as const : 'illegal' as const }),
+        latencyMs: elapsedMs(attemptStarted),
+        ...tokenUsage(usage),
+      });
       this.onAttempt?.({ phase: 'structured', raw: move, result: action ? 'legal' : 'illegal' });
-      if (action !== null) return { action, rationale };
+      if (action !== null) return finish(action, rationale, 'structured');
       lastRaw = move;
       lastRationale = rationale;
       feedback = this.retryNote(move, useLoose, legalSan);
@@ -254,7 +323,9 @@ export class ModelPlayer<A> implements Player<A> {
     if (structuredErrored) {
       feedback = '';
       for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+        const attemptStarted = performance.now();
         let text: string;
+        let usage: unknown;
         try {
           const r = await generateText({
             model: this.model,
@@ -263,14 +334,30 @@ export class ModelPlayer<A> implements Player<A> {
             prompt: this.buildPrompt(state, 'text', feedback, opponentSaid),
           });
           text = r.text;
+          usage = r.usage;
         } catch (err) {
           if (signal?.aborted) throw err;
+          attempts.push({
+            phase: 'text',
+            sequence: attempts.length,
+            result: 'error',
+            failureKind: classifyModelError(err).kind,
+            latencyMs: elapsedMs(attemptStarted),
+          });
           this.onAttempt?.({ phase: 'text', raw: (err as Error).message ?? String(err), result: 'error' });
           break; // text generation also failing → give up on this model
         }
         const parsed = this.parseText(state, text, parse);
+        attempts.push({
+          phase: 'text',
+          sequence: attempts.length,
+          result: parsed ? 'accepted' : 'rejected',
+          ...(parsed ? {} : { rejectionReason: useLoose ? 'unparseable' as const : 'illegal' as const }),
+          latencyMs: elapsedMs(attemptStarted),
+          ...tokenUsage(usage),
+        });
         this.onAttempt?.({ phase: 'text', raw: text.replace(/\s+/g, ' ').trim().slice(0, 120), result: parsed ? 'legal' : 'illegal' });
-        if (parsed) return parsed;
+        if (parsed) return finish(parsed.action, parsed.rationale, 'text');
         lastRaw = text;
         lastRationale = this.speech !== undefined ? this.sayFrom(text) : this.rationaleFrom(text);
         feedback = this.retryNote(text.replace(/\s+/g, ' ').trim().slice(0, 60), useLoose, legalSan);
@@ -283,14 +370,19 @@ export class ModelPlayer<A> implements Player<A> {
     // (which deliberately bypasses the legal set). The play stays attributed to THIS
     // model; only its own public rationale is surfaced (never the normalizer's).
     if (this.normalizer && lastRaw !== undefined && !unavailable && !useLoose) {
-      const action = await this.normalize(state, lastRaw, legalSan, signal);
-      if (action !== null) return { action, rationale: lastRationale };
+      const action = await this.normalize(state, lastRaw, legalSan, attempts, signal);
+      if (action !== null) {
+        return finish(action, lastRationale, 'normalized', {
+          ...(this.normalizerName ? { normalizerModel: this.normalizerName } : {}),
+        });
+      }
     }
 
     // Exhausted everything — play a legal move so a match never deadlocks, tagged
     // with WHY so the fallback is visibly diagnosed rather than a silent random move.
     const fallback = legal[Math.floor(Math.random() * legal.length)];
-    return { action: fallback, rationale: unavailable ? FALLBACK_RATIONALE.unavailable : FALLBACK_RATIONALE.exhausted };
+    const fallbackReason = unavailable ? 'unavailable' : 'exhausted';
+    return finish(fallback, FALLBACK_RATIONALE[fallbackReason], 'random-fallback', { fallbackReason });
   }
 
   // Rung 4 helper: ask the normalizer which single legal move the player intended,
@@ -298,8 +390,15 @@ export class ModelPlayer<A> implements Player<A> {
   // structured-capable model (the whole point — the playing model may not be). It
   // recovers the move, never substitutes a stronger one, and its reply is validated
   // against the legal set (strict parse — normalization only runs in legal mode).
-  private async normalize(state: GameState<A>, rawAnswer: string, legalSan: string[], signal?: AbortSignal): Promise<A | null> {
+  private async normalize(
+    state: GameState<A>,
+    rawAnswer: string,
+    legalSan: string[],
+    attempts: DecisionAttempt[],
+    signal?: AbortSignal,
+  ): Promise<A | null> {
     if (!this.normalizer) return null;
+    const attemptStarted = performance.now();
     const schema = z.object({ move: z.string().describe(`Exactly one move from the legal list, in ${this.notation.description}.`) });
     const prompt = [
       `A ${this.gameName} player was asked for a single move and replied:`,
@@ -309,13 +408,28 @@ export class ModelPlayer<A> implements Player<A> {
       ` do NOT substitute a different or stronger move. Reply with exactly one move from the list.`,
     ].join('');
     try {
-      const { output } = await generateText({ model: this.normalizer, abortSignal: signal, output: Output.object({ schema }), prompt });
-      const move = (output as { move: string }).move;
+      const generated = await generateText({ model: this.normalizer, abortSignal: signal, output: Output.object({ schema }), prompt });
+      const move = (generated.output as { move: string }).move;
       const action = state.actionFromString(move); // normalization always targets the legal set
+      attempts.push({
+        phase: 'normalize',
+        sequence: attempts.length,
+        result: action ? 'accepted' : 'rejected',
+        ...(action ? {} : { rejectionReason: 'illegal' as const }),
+        latencyMs: elapsedMs(attemptStarted),
+        ...tokenUsage(generated.usage),
+      });
       this.onAttempt?.({ phase: 'normalize', raw: `${this.normalizerName ?? 'normalizer'} → ${move}`, result: action ? 'legal' : 'illegal' });
       return action;
     } catch (err) {
       if (signal?.aborted) throw err; // cancellation — let it propagate
+      attempts.push({
+        phase: 'normalize',
+        sequence: attempts.length,
+        result: 'error',
+        failureKind: classifyModelError(err).kind,
+        latencyMs: elapsedMs(attemptStarted),
+      });
       this.onAttempt?.({ phase: 'normalize', raw: (err as Error).message ?? String(err), result: 'error' });
       return null;
     }

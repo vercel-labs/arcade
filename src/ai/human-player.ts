@@ -1,5 +1,5 @@
 import type { GameState } from '../rules/game.ts';
-import type { Player, TurnContext } from './player.ts';
+import type { ActionChoice, Player, TurnContext } from './player.ts';
 
 // A human-controlled `Player`: instead of computing a move, it awaits one from the
 // UI. `awaitMove` is the seam the app wires to its board (e.g. ChessGameScene's
@@ -16,7 +16,17 @@ export class HumanPlayer<A> implements Player<A> {
     this.name = opts.name ?? 'you';
   }
 
-  async chooseAction(state: GameState<A>, ctx?: TurnContext): Promise<{ action: A; rationale?: string }> {
-    return { action: await this.opts.awaitMove(state, ctx) };
+  async chooseAction(state: GameState<A>, ctx?: TurnContext): Promise<ActionChoice<A>> {
+    const started = performance.now();
+    const action = await this.opts.awaitMove(state, ctx);
+    return {
+      action,
+      diagnostics: {
+        resolution: 'human',
+        durationMs: Math.max(0, Math.round(performance.now() - started)),
+        attempts: [],
+        illegalMode: false,
+      },
+    };
   }
 }

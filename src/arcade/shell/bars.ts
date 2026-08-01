@@ -243,6 +243,58 @@ export function buildConfirm(opts: {
   return Modal(card, { onDismiss: opts.onCancel });
 }
 
+// The startup "update available" popup: the version bump, the exact upgrade command on
+// its own tinted line (so it stands out and is easy to select-and-copy), and a centered
+// row of two actions — "quit to update" (primary) and a copy button that copies the
+// command to the clipboard and flips to a "copied ✓" confirmation. The ✕ and Escape
+// dismiss (there's no explicit "not now"). Same Dialog + Modal family as the game menu.
+// `command` is chosen by the caller to match how the arcade was installed
+// (npx / npm -g / pnpm / yarn).
+const COPY_IDLE = 'copy command';
+const COPY_DONE = 'copied ✓';
+// Center-pad to a fixed width so the copy button — and therefore the whole modal — keeps
+// a constant width when its label flips between the two states.
+const COPY_W = Math.max(COPY_IDLE.length, COPY_DONE.length);
+function centerPad(s: string, w: number): string {
+  const total = Math.max(0, w - s.length);
+  const left = Math.floor(total / 2);
+  return ' '.repeat(left) + s + ' '.repeat(total - left);
+}
+
+export function buildUpdateModal(opts: {
+  current: string;
+  latest: string;
+  command: string;
+  copied: boolean;
+  onQuit: () => void;
+  onCopy: () => void;
+  onClose: () => void;
+}): Node {
+  const btn = (id: string, label: string, onClick: () => void, primary: boolean): Node =>
+    RoundedButton({ id, label, onClick, ...(primary ? MODAL_PRIMARY : MODAL_NEUTRAL) });
+
+  return Modal(
+    Dialog({ title: 'update available', onClose: opts.onClose, closeId: 'update-dialog-close', padding: [1, 3], closeInset: 1, background: UI_CHROME_BG }, [
+      Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1 }, [
+        Box({ justifyContent: 'center' }, [
+          Text({ text: `v${opts.current}`, style: { color: [150, 154, 168] } }),
+          Text({ text: ' → ', style: { color: [150, 154, 168] } }),
+          Text({ text: `v${opts.latest}`, style: { color: [150, 220, 180], bold: true } }),
+        ]),
+        // The command sits on its own inset, tinted line — a copy target, not a button.
+        Box({ justifyContent: 'center', padding: [0, 2], background: [30, 34, 46] }, [
+          Text({ text: opts.command, style: { color: [150, 220, 180], bold: true } }),
+        ]),
+        Box({ flexDirection: 'row', justifyContent: 'center', gap: 2 }, [
+          btn('update-quit', 'quit to update', opts.onQuit, true),
+          btn('update-copy', centerPad(opts.copied ? COPY_DONE : COPY_IDLE, COPY_W), opts.onCopy, false),
+        ]),
+      ]),
+    ]),
+    { onDismiss: opts.onClose },
+  );
+}
+
 export interface MenuItem {
   id: string;
   label: string;

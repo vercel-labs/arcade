@@ -26,3 +26,9 @@ assets/chess_decimated/
 # git worktrees created by the agent harness (local only)
 .claude/worktrees/
 *.tgz
+
+# local-only clutter: nested checkouts of other repos, and a stray repo-local
+# pnpm store (arcade uses the global store — this only appears when another
+# project's newer pnpm drops a v11 store here)
+.worktrees/
+.pnpm-store/
