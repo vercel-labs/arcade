@@ -42,13 +42,17 @@ export {
 export { GeometryBuilder, type VertexOptions } from './geometry.ts';
 export {
   Group,
+  MaterialInstance,
   MeshObject,
   Object3D,
+  ObjectPool,
   Scene,
   SceneRenderer,
   type RenderContext,
   type UniformSource,
   type WorldUniforms,
+  WorldMaterialInstance,
+  type WorldMaterialValues,
   worldUniforms,
 } from './scene.ts';
 export {

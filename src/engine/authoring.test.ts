@@ -5,7 +5,9 @@ import {
   FrameClock,
   GeometryBuilder,
   Group,
+  MeshObject,
   Object3D,
+  ObjectPool,
   RenderTarget,
   Scene,
   SceneRenderer,
@@ -13,6 +15,7 @@ import {
   cameraMatrices,
   intersectRayPlane,
   lambertMaterial,
+  type LambertUniforms,
   mat4Identity,
   mat4Multiply,
   mat4Translate,
@@ -22,6 +25,7 @@ import {
   travelPoint,
   type Camera,
   type Vec3,
+  WorldMaterialInstance,
   worldUniforms,
 } from './index.ts';
 
@@ -77,6 +81,34 @@ test('SceneRenderer preserves the existing rasterizer output', () => {
   new SceneRenderer().render(authored, scene, camera);
   assert.deepEqual(authored.color, direct.color);
   assert.deepEqual(authored.depth, direct.depth);
+});
+
+test('retained materials and object pools reuse identities across frames', () => {
+  const geometry = new GeometryBuilder().triangle(
+    { x: -1, y: 0, z: 0 },
+    { x: 1, y: 0, z: 0 },
+    { x: 0, y: 1, z: 0 },
+  ).mesh();
+  let created = 0;
+  const pool = new ObjectPool(() => {
+    created++;
+    return new MeshObject(geometry, new WorldMaterialInstance(lambertMaterial, {
+      lightDir: { x: 0, y: 0, z: 1 },
+      ambient: 0.4,
+    }));
+  });
+  pool.begin();
+  const first = pool.acquire();
+  const second = pool.acquire();
+  assert.equal(created, 2);
+  pool.begin();
+  const reused = pool.acquire();
+  assert.equal(reused, first);
+  assert.equal(created, 2);
+  assert.equal(second.visible, false);
+  const material = reused.material as WorldMaterialInstance<LambertUniforms>;
+  material.values.ambient = 0.8;
+  assert.equal(material.values.ambient, 0.8);
 });
 
 test('shared camera picking intersects the board plane', () => {

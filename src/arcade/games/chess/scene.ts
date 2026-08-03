@@ -11,7 +11,9 @@ import {
   mat4Translate,
   meshBounds,
   type Mesh,
+  MeshObject,
   normalize3,
+  ObjectPool,
   OrbitCamera,
   parseObj,
   pieceMaterial,
@@ -22,9 +24,10 @@ import {
   SceneRenderer,
   smoothstep,
   travelPoint,
+  type PieceUniforms,
   type Vec3,
   type VertexIn,
-  worldUniforms,
+  WorldMaterialInstance,
 } from '../../../engine/index.ts';
 import { ChessState } from '../../../rules/chess/chess.ts';
 import {
@@ -89,6 +92,7 @@ const HILITE_LIFT = 0.004; // selected-square tint sits just above the board, un
 const ARC_HEIGHT = 0.5; // peak lift of a parabolic arc (captures + knight hops), world units
 const JAIL_GAP = 0.9; // x-gap between the board edge and the first jail column (× square)
 const JAIL_STEP = 0.9; // jail slot spacing, a touch tighter than a board square (× square)
+const EMPTY_MESH: Mesh = { vertices: [], indices: [] };
 
 // How a piece travels between two world points: `slide` stays on the board
 // plane; `arc` adds a low parabolic hop (captured pieces leaving the board, and
@@ -131,6 +135,18 @@ export class ChessGameScene {
   private cam: OrbitCamera;
   private readonly authoredScene = new Scene();
   private readonly sceneRenderer = new SceneRenderer();
+  private readonly authoredPool = new ObjectPool(() => new MeshObject(
+    EMPTY_MESH,
+    new WorldMaterialInstance(pieceMaterial, {
+      cameraPos: { x: 0, y: 0, z: 0 },
+      keyDir: KEY_DIR,
+      fillDir: FILL_DIR,
+      keyStrength: KEY_STRENGTH,
+      fillStrength: FILL_STRENGTH,
+      ambient: AMBIENT,
+      tint: IVORY,
+    }),
+  ));
 
   // Interaction state.
   private selectedSq = -1; // selected piece's square, or -1
@@ -238,6 +254,7 @@ export class ChessGameScene {
       this.square,
       boardWidth * 3,
     );
+    this.authoredScene.add(this.authoredPool);
   }
 
   // World center of a square. White's bottom-right (h1) is +X,+Z; ranks increase
@@ -680,7 +697,7 @@ export class ChessGameScene {
   // it defaults to 0 for the snapshot/bench tools that render a single still frame.
   renderScene(target: RenderTarget, t = 0): void {
     target.clear(10, 11, 14);
-    this.authoredScene.clear();
+    this.authoredPool.begin();
     const eye = this.cam.eye();
     const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 400 };
     const { viewProjection } = cameraMatrices(camera, target.width / target.height);
@@ -688,15 +705,12 @@ export class ChessGameScene {
     const blackOrient = mat4Multiply(mat4RotY(Math.PI), scaleM);
 
     const draw = (mesh: Mesh, model: number[], tint: Vec3): void => {
-      this.authoredScene.mesh(mesh, pieceMaterial, worldUniforms(() => ({
-        cameraPos: eye,
-        keyDir: KEY_DIR,
-        fillDir: FILL_DIR,
-        keyStrength: KEY_STRENGTH,
-        fillStrength: FILL_STRENGTH,
-        ambient: AMBIENT,
-        tint,
-      })), model);
+      const object = this.authoredPool.acquire();
+      object.geometry = mesh;
+      const material = object.material as WorldMaterialInstance<PieceUniforms>;
+      material.values.cameraPos = eye;
+      material.values.tint = tint;
+      object.setMatrix(model);
     };
     const orient = (color: Color): number[] => (color === WHITE ? scaleM : blackOrient);
 

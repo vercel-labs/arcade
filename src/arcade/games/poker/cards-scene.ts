@@ -23,14 +23,16 @@ import {
   mat4Multiply,
   mat4RotY,
   mat4Translate,
+  MeshObject,
   normalize3,
+  ObjectPool,
   OrbitCamera,
   type RenderTarget,
   Scene,
   SceneRenderer,
   smoothstep,
   type Texture,
-  worldUniforms,
+  WorldMaterialInstance,
 } from '../../../engine/index.ts';
 import type { OrbitState } from '../../../engine/index.ts';
 import { mulberry32 } from '../../scenes/wisp.ts';
@@ -83,6 +85,29 @@ export class CardsScene {
   private back: Texture;
   private readonly authoredScene = new Scene();
   private readonly sceneRenderer = new SceneRenderer();
+  private readonly chairGeometry = chairMesh();
+  private readonly frameObject = new MeshObject(
+    frameMesh(),
+    new WorldMaterialInstance(lambertMaterial, {
+      lightDir: TABLE_LIGHT,
+      ambient: TABLE_AMBIENT,
+    }),
+  );
+  private readonly feltObject = new MeshObject(
+    feltMesh(),
+    new WorldMaterialInstance(feltMaterial, {
+      lightDir: TABLE_LIGHT,
+      ambient: TABLE_AMBIENT,
+      ...FELT_STIPPLE,
+    }),
+  );
+  private readonly chairPool = new ObjectPool(() => new MeshObject(
+    this.chairGeometry,
+    new WorldMaterialInstance(lambertMaterial, {
+      lightDir: TABLE_LIGHT,
+      ambient: TABLE_AMBIENT,
+    }),
+  ));
 
   // single
   private single: Card = { rank: 0, suit: 0 };
@@ -107,6 +132,11 @@ export class CardsScene {
     this.resetHand();
     const h = HOMES.single;
     this.cam = new OrbitCamera(h.home, h.min, h.max);
+    this.frameObject.setMatrix(TABLE_MODEL);
+    this.feltObject.setMatrix(TABLE_MODEL);
+    this.authoredScene.add(this.frameObject);
+    this.authoredScene.add(this.feltObject);
+    this.authoredScene.add(this.chairPool);
   }
 
   private resetHand(): void {
@@ -259,23 +289,10 @@ export class CardsScene {
   // The poker table (felt green, wood brown), felt at y=0. `seats` chairs are
   // placed around the rail facing center — 1 (hero) for hand mode, N for deck.
   private drawTable(target: RenderTarget, camera: Camera, seats: number[]): void {
-    this.authoredScene.clear();
-    this.authoredScene.mesh(frameMesh(), lambertMaterial, worldUniforms({
-      lightDir: TABLE_LIGHT,
-      ambient: TABLE_AMBIENT,
-    }), TABLE_MODEL);
-    this.authoredScene.mesh(feltMesh(), feltMaterial, worldUniforms({
-      lightDir: TABLE_LIGHT,
-      ambient: TABLE_AMBIENT,
-      ...FELT_STIPPLE,
-    }), TABLE_MODEL);
-    const chair = chairMesh();
+    this.chairPool.begin();
     for (const a of seats) {
       const model = chairModel(a);
-      this.authoredScene.mesh(chair, lambertMaterial, worldUniforms({
-        lightDir: TABLE_LIGHT,
-        ambient: TABLE_AMBIENT,
-      }), model);
+      this.chairPool.acquire().setMatrix(model);
     }
     this.sceneRenderer.render(target, this.authoredScene, camera);
   }

@@ -39,15 +39,19 @@ export function mat4Identity(): Mat4 {
 
 // Returns a·b (apply b first, then a — e.g. projection · view · model).
 export function mat4Multiply(a: Mat4, b: Mat4): Mat4 {
-  const o = new Array(16).fill(0);
+  return mat4MultiplyInto(new Array(16), a, b);
+}
+
+/** Write a·b into retained storage. `out` must not alias either input. */
+export function mat4MultiplyInto(out: Mat4, a: Mat4, b: Mat4): Mat4 {
   for (let c = 0; c < 4; c++) {
     for (let r = 0; r < 4; r++) {
       let s = 0;
       for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k];
-      o[c * 4 + r] = s;
+      out[c * 4 + r] = s;
     }
   }
-  return o;
+  return out;
 }
 
 export function mat4Perspective(fovy: number, aspect: number, near: number, far: number): Mat4 {

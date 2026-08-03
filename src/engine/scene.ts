@@ -2,6 +2,7 @@ import { cameraMatrices, type Camera, type CameraMatrices } from './camera.ts';
 import {
   mat4Identity,
   mat4Multiply,
+  mat4MultiplyInto,
   mat4RotX,
   mat4RotY,
   mat4RotZ,
@@ -21,6 +22,11 @@ function compose(position: Vec3, rotation: Vec3, scale: Vec3): Mat4 {
     mat4Translate(position.x, position.y, position.z),
     mat4Multiply(rotate, mat4Scale(scale.x, scale.y, scale.z)),
   );
+}
+
+function copyMatrix(out: Mat4, source: Mat4): Mat4 {
+  for (let i = 0; i < 16; i++) out[i] = source[i];
+  return out;
 }
 
 export class Object3D {
@@ -55,7 +61,7 @@ export class Object3D {
   }
 
   setMatrix(matrix: Mat4): this {
-    this.matrix = matrix.slice();
+    copyMatrix(this.matrix, matrix);
     this.matrixAutoUpdate = false;
     return this;
   }
@@ -66,7 +72,8 @@ export class Object3D {
 
   updateWorldMatrix(parentWorld: Mat4 | null = null): void {
     this.updateMatrix();
-    this.worldMatrix = parentWorld ? mat4Multiply(parentWorld, this.matrix) : this.matrix.slice();
+    if (parentWorld) mat4MultiplyInto(this.worldMatrix, parentWorld, this.matrix);
+    else copyMatrix(this.worldMatrix, this.matrix);
     for (const child of this.children) child.updateWorldMatrix(this.worldMatrix);
   }
 }
@@ -81,6 +88,20 @@ export interface RenderContext {
 }
 
 export type UniformSource<U> = U | ((context: RenderContext) => U);
+
+/** A retained shader definition plus the uniforms used by one or more objects. */
+export class MaterialInstance<U> {
+  constructor(
+    readonly definition: Material<U>,
+    public uniforms: UniformSource<U>,
+  ) {}
+
+  resolve(context: RenderContext): U {
+    return typeof this.uniforms === 'function'
+      ? (this.uniforms as (context: RenderContext) => U)(context)
+      : this.uniforms;
+  }
+}
 
 export interface WorldUniforms {
   mvp: Mat4;
@@ -98,31 +119,109 @@ export function worldUniforms<E extends object>(
   });
 }
 
+export type WorldMaterialValues<U extends WorldUniforms> = Omit<U, keyof WorldUniforms>;
+
+/** Retained material values whose model/MVP fields are supplied by scene traversal. */
+export class WorldMaterialInstance<U extends WorldUniforms> extends MaterialInstance<U> {
+  private readonly resolved: U;
+
+  constructor(
+    definition: Material<U>,
+    readonly values: WorldMaterialValues<U>,
+  ) {
+    const resolved = {
+      ...values,
+      mvp: mat4Identity(),
+      model: mat4Identity(),
+    } as U;
+    super(definition, resolved);
+    this.resolved = resolved;
+  }
+
+  override resolve(context: RenderContext): U {
+    Object.assign(this.resolved, this.values);
+    mat4MultiplyInto(this.resolved.mvp, context.cameraMatrices.viewProjection, context.worldMatrix);
+    copyMatrix(this.resolved.model, context.worldMatrix);
+    return this.resolved;
+  }
+}
+
 abstract class RenderableObject extends Object3D {
   abstract draw(context: RenderContext): void;
 }
 
 export class MeshObject<U> extends RenderableObject {
+  geometry: Mesh;
+  material: MaterialInstance<U>;
+
+  constructor(geometry: Mesh, material: MaterialInstance<U>);
   constructor(
-    readonly geometry: Mesh,
-    readonly material: Material<U>,
-    readonly uniforms: UniformSource<U>,
+    geometry: Mesh,
+    material: Material<U>,
+    uniforms: UniformSource<U>,
+  );
+  constructor(
+    geometry: Mesh,
+    material: Material<U> | MaterialInstance<U>,
+    uniforms?: UniformSource<U>,
   ) {
     super();
+    this.geometry = geometry;
+    this.material = material instanceof MaterialInstance
+      ? material
+      : new MaterialInstance(material, uniforms as UniformSource<U>);
   }
 
   draw(context: RenderContext): void {
-    const uniforms = typeof this.uniforms === 'function'
-      ? (this.uniforms as (context: RenderContext) => U)(context)
-      : this.uniforms;
-    rasterize(context.target, this.geometry, this.material, uniforms);
+    rasterize(context.target, this.geometry, this.material.definition, this.material.resolve(context));
+  }
+}
+
+/** Retains objects between frames while exposing a sequential authoring API. */
+export class ObjectPool<T extends Object3D> extends Group {
+  private cursor = 0;
+
+  constructor(private readonly factory: () => T) {
+    super();
+  }
+
+  begin(): void {
+    this.cursor = 0;
+    for (const child of this.children) child.visible = false;
+  }
+
+  acquire(): T {
+    let object = this.children[this.cursor] as T | undefined;
+    if (!object) object = this.add(this.factory());
+    object.visible = true;
+    this.cursor++;
+    return object;
+  }
+
+  get activeCount(): number {
+    return this.cursor;
+  }
+
+  get pooledCount(): number {
+    return this.children.length;
   }
 }
 
 export class Scene extends Group {
-  mesh<U>(geometry: Mesh, material: Material<U>, uniforms: UniformSource<U>, matrix?: Mat4): MeshObject<U> {
-    const object = new MeshObject(geometry, material, uniforms);
-    if (matrix) object.setMatrix(matrix);
+  mesh<U>(geometry: Mesh, material: MaterialInstance<U>, matrix?: Mat4): MeshObject<U>;
+  mesh<U>(geometry: Mesh, material: Material<U>, uniforms: UniformSource<U>, matrix?: Mat4): MeshObject<U>;
+  mesh<U>(
+    geometry: Mesh,
+    material: Material<U> | MaterialInstance<U>,
+    uniformsOrMatrix?: UniformSource<U> | Mat4,
+    matrix?: Mat4,
+  ): MeshObject<U> {
+    const retained = material instanceof MaterialInstance;
+    const object = retained
+      ? new MeshObject(geometry, material)
+      : new MeshObject(geometry, material, uniformsOrMatrix as UniformSource<U>);
+    const transform = retained ? uniformsOrMatrix as Mat4 | undefined : matrix;
+    if (transform) object.setMatrix(transform);
     return this.add(object);
   }
 }
@@ -134,21 +233,31 @@ interface RenderItem {
 
 /** Traverses a scene into a stable render list, then uses the existing rasterizer. */
 export class SceneRenderer {
+  private readonly items: RenderItem[] = [];
+
   render(target: RenderTarget, scene: Scene, camera: Camera): void {
     scene.updateWorldMatrix();
     const matrices = cameraMatrices(camera, target.width / target.height);
-    const items: RenderItem[] = [];
+    const items = this.items;
     let sequence = 0;
     const visit = (object: Object3D, parentVisible: boolean): void => {
       const visible = parentVisible && object.visible;
       if (!visible) return;
-      if (object instanceof RenderableObject) items.push({ object, sequence: sequence++ });
+      if (object instanceof RenderableObject) {
+        const item = items[sequence] ?? { object, sequence };
+        item.object = object;
+        item.sequence = sequence;
+        items[sequence++] = item;
+      }
       for (const child of object.children) visit(child, visible);
     };
     visit(scene, true);
+    items.length = sequence;
     items.sort((a, b) => a.object.renderOrder - b.object.renderOrder || a.sequence - b.sequence);
+    const context: RenderContext = { target, camera, cameraMatrices: matrices, worldMatrix: scene.worldMatrix };
     for (const { object } of items) {
-      object.draw({ target, camera, cameraMatrices: matrices, worldMatrix: object.worldMatrix });
+      context.worldMatrix = object.worldMatrix;
+      object.draw(context);
     }
   }
 }

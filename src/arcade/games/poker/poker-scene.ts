@@ -20,8 +20,9 @@ import {
   mat4RotX,
   mat4RotY,
   mat4Translate,
-  type Mesh,
+  MeshObject,
   normalize3,
+  ObjectPool,
   OrbitCamera,
   projectedDiscHit,
   type RenderTarget,
@@ -30,7 +31,7 @@ import {
   smoothstep,
   type Texture,
   type Vec3,
-  worldUniforms,
+  WorldMaterialInstance,
 } from '../../../engine/index.ts';
 import { loadCreatorWisp, mulberry32, type Wisp, WISP_SIZE } from '../../scenes/wisp.ts';
 import type { RGB } from '../../../engine/index.ts';
@@ -314,6 +315,29 @@ export class PokerGameScene {
   private lastAspect = 1.6; // width/height of the last render target — for the bird's-eye fit math
   private readonly authoredScene = new Scene();
   private readonly sceneRenderer = new SceneRenderer();
+  private readonly chairGeometry = chairMesh();
+  private readonly frameObject = new MeshObject(
+    frameMesh(),
+    new WorldMaterialInstance(lambertMaterial, {
+      lightDir: TABLE_LIGHT,
+      ambient: TABLE_AMBIENT,
+    }),
+  );
+  private readonly feltObject = new MeshObject(
+    feltMesh(),
+    new WorldMaterialInstance(feltMaterial, {
+      lightDir: TABLE_LIGHT,
+      ambient: TABLE_AMBIENT,
+      ...FELT_STIPPLE,
+    }),
+  );
+  private readonly chairPool = new ObjectPool(() => new MeshObject(
+    this.chairGeometry,
+    new WorldMaterialInstance(lambertMaterial, {
+      lightDir: TABLE_LIGHT,
+      ambient: TABLE_AMBIENT,
+    }),
+  ));
 
   private hand: HoldemState | null = null;
   private seats: PokerSeatView[] = [];
@@ -416,6 +440,11 @@ export class PokerGameScene {
     this.idleDeck = new DeckShuffle(this.back, { x: 0, z: 0 }); // dead centre of the felt
     this.handDeck = new DeckShuffle(this.back, DECK_POS); // the between-hands shuffle, at the game deck
     this.cam = this.makeIdleCamera(); // the scene opens idle → frame the shuffling deck
+    this.frameObject.setMatrix(TABLE_MODEL);
+    this.feltObject.setMatrix(TABLE_MODEL);
+    this.authoredScene.add(this.frameObject);
+    this.authoredScene.add(this.feltObject);
+    this.authoredScene.add(this.chairPool);
   }
 
   private makeCamera(): OrbitCamera {
@@ -1044,11 +1073,10 @@ export class PokerGameScene {
 
     // Table + chairs: one per seat during a session, else a default idle ring.
     // Frame (rail/apron/legs) is plain matte; the felt gets the stipple material.
-    const chair = chairMesh();
     const idle = this.isIdle();
     const chairCount = idle ? this.seats.length || IDLE_SEATS : this.seats.length;
     this.queueTable();
-    this.queueChairRing(chair, chairCount);
+    this.queueChairRing(chairCount);
     this.sceneRenderer.render(target, this.authoredScene, camera);
     if (idle) {
       // Idle state: a ring of chairs around a centre deck shuffling on a loop. With
@@ -1286,27 +1314,15 @@ export class PokerGameScene {
   }
 
   private queueTable(): void {
-    this.authoredScene.clear();
-    this.authoredScene.mesh(frameMesh(), lambertMaterial, worldUniforms({
-      lightDir: TABLE_LIGHT,
-      ambient: TABLE_AMBIENT,
-    }), TABLE_MODEL);
-    this.authoredScene.mesh(feltMesh(), feltMaterial, worldUniforms({
-      lightDir: TABLE_LIGHT,
-      ambient: TABLE_AMBIENT,
-      ...FELT_STIPPLE,
-    }), TABLE_MODEL);
+    this.chairPool.begin();
   }
 
   // Queue `n` chairs around the rail (chair k at angle (k/n)·2π; seat 0 at +z),
   // reusing one chair mesh. Shared by the live seat ring and the idle ring.
-  private queueChairRing(chair: Mesh, n: number): void {
+  private queueChairRing(n: number): void {
     for (let k = 0; k < n; k++) {
       const model = chairModel((k / n) * Math.PI * 2);
-      this.authoredScene.mesh(chair, lambertMaterial, worldUniforms({
-        lightDir: TABLE_LIGHT,
-        ambient: TABLE_AMBIENT,
-      }), model);
+      this.chairPool.acquire().setMatrix(model);
     }
   }
 

@@ -11,6 +11,7 @@ import {
   cameraMatrices,
   FrameClock,
   lambertMaterial,
+  type LambertUniforms,
   type Mat4,
   mat4Identity,
   mat4Multiply,
@@ -19,7 +20,9 @@ import {
   mat4RotZ,
   mat4Translate,
   type Mesh,
+  MeshObject,
   normalize3,
+  ObjectPool,
   OrbitCamera,
   projectPoint,
   rasterize,
@@ -29,7 +32,8 @@ import {
   smoothstep,
   type Vec3,
   waterMaterial,
-  worldUniforms,
+  type WaterUniforms,
+  WorldMaterialInstance,
 } from '../../../engine/index.ts';
 import { HEX_COORDS, NUM_EDGES, NUM_HEXES, NUM_NODES } from '../../../rules/catan/board-topology.ts';
 import { type BoardOccupancy, canPlaceRoad, canPlaceSettlement } from '../../../rules/catan/placement.ts';
@@ -67,6 +71,7 @@ const WATER_SKY: Vec3 = { x: 94, y: 152, z: 174 };
 const WATER_HORIZON: Vec3 = { x: 205, y: 185, z: 146 };
 const WATER_CURRENT: Vec3 = { x: 183, y: 229, z: 225 };
 const WATER_FLOW_SPEED = 0.22;
+const EMPTY_MESH: Mesh = { vertices: [], indices: [] };
 
 // Board placement animation: hexes start stacked face-down off the board, then fly in one by
 // one — arcing over, flipping face-up, and dropping onto their spot (center-out).
@@ -165,12 +170,38 @@ export class TileScene {
   private dirty = true;
   private readonly authoredScene = new Scene();
   private readonly sceneRenderer = new SceneRenderer();
+  private readonly waterObject = new MeshObject(
+    WATER_MESH,
+    new WorldMaterialInstance(waterMaterial, {
+      time: 0,
+      cameraPos: { x: 0, y: 0, z: 0 },
+      sunDirection: LIGHT,
+      deepColor: WATER_DEEP,
+      surfaceColor: WATER_SURFACE,
+      skyColor: WATER_SKY,
+      horizonColor: WATER_HORIZON,
+      currentColor: WATER_CURRENT,
+      flowSpeed: WATER_FLOW_SPEED,
+    }),
+  );
+  private readonly authoredPool = new ObjectPool(() => new MeshObject(
+    EMPTY_MESH,
+    new WorldMaterialInstance(lambertMaterial, {
+      lightDir: LIGHT,
+      ambient: AMBIENT,
+      wrap: WRAP,
+    }),
+  ));
 
   constructor() {
     this.camTile = new OrbitCamera({ azimuth: 0.62, elevation: 0.62, distance: 2.7, target: { x: 0, y: 0.02, z: 0 } }, 1.6, 6);
     this.camBoard = new OrbitCamera({ azimuth: 0.62, elevation: 0.82, distance: 11.5, target: { x: 0.42, y: -0.58, z: -0.2 } }, 2, 24);
     this.camPieces = new OrbitCamera({ azimuth: 0.5, elevation: 0.4, distance: 3.7, target: { x: 0.1, y: 0.24, z: 0 } }, 1.5, 10);
     this.camPort = new OrbitCamera({ azimuth: 0.72, elevation: 0.36, distance: 3.5, target: { x: 0, y: 0.5, z: 0 } }, 1.5, 12);
+    this.waterObject.visible = false;
+    this.waterObject.setMatrix(MODEL);
+    this.authoredScene.add(this.waterObject);
+    this.authoredScene.add(this.authoredPool);
   }
   private cam(): OrbitCamera {
     if (this.modeName === 'board') return this.camBoard;
@@ -550,34 +581,29 @@ export class TileScene {
   }
 
   private queueLambert(mesh: Mesh, model: Mat4, lightDir = LIGHT, wrap = WRAP): void {
-    this.authoredScene.mesh(mesh, lambertMaterial, worldUniforms({
-      lightDir,
-      ambient: AMBIENT,
-      wrap,
-    }), model);
+    const object = this.authoredPool.acquire();
+    object.geometry = mesh;
+    const material = object.material as WorldMaterialInstance<LambertUniforms>;
+    material.values.lightDir = lightDir;
+    material.values.wrap = wrap;
+    object.setMatrix(model);
   }
 
-  private queueWater(t: number): void {
-    this.authoredScene.mesh(WATER_MESH, waterMaterial, worldUniforms(({ camera }) => ({
-      time: t,
-      cameraPos: camera.eye,
-      sunDirection: LIGHT,
-      deepColor: WATER_DEEP,
-      surfaceColor: WATER_SURFACE,
-      skyColor: WATER_SKY,
-      horizonColor: WATER_HORIZON,
-      currentColor: WATER_CURRENT,
-      flowSpeed: WATER_FLOW_SPEED,
-    })), MODEL);
+  private queueWater(): void {
+    this.waterObject.visible = true;
   }
 
   renderScene(target: RenderTarget, t = 0): void {
     this.tokensDirty = false; // consume the previous frame's one-shot
     this.lastAspect = target.width / target.height; // remember for hit-test projection
     target.clear(14, 16, 22);
-    this.authoredScene.clear();
+    this.waterObject.visible = false;
+    this.authoredPool.begin();
     const cam = this.cam();
     const eye = cam.eye();
+    const water = this.waterObject.material as WorldMaterialInstance<WaterUniforms>;
+    water.values.time = t;
+    water.values.cameraPos = eye;
     const camera: Camera = { eye, target: cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 100 };
     if (this.modeName === 'board') this.renderBoard(t);
     else if (this.modeName === 'pieces') this.queueLambert(piecesMesh(this.pieceColor), MODEL);
@@ -598,7 +624,7 @@ export class TileScene {
   private renderBoard(t: number): void {
     if (!this.board) this.regenerate(false);
     const board = this.board!;
-    this.queueWater(t);
+    this.queueWater();
     if (this.placing) {
       this.placementClock.tick(t);
       if (this.placementClock.elapsed > (NUM_HEXES - 1) * PLACE_STEP + PLACE_FLY) {
