@@ -6,24 +6,31 @@
 // on demand; board mode also receives a low-rate dirty pulse for its subtle water current.
 
 import {
+  bounceOut,
   type Camera,
   cameraMatrices,
+  FrameClock,
   lambertMaterial,
   type Mat4,
   mat4Identity,
   mat4Multiply,
-  mat4MulVec4,
   mat4RotX,
   mat4RotY,
   mat4RotZ,
   mat4Translate,
+  type Mesh,
+  MeshObject,
   normalize3,
+  OrbitCamera,
+  projectPoint,
   rasterize,
   type RenderTarget,
+  Scene,
+  SceneRenderer,
+  smoothstep,
   type Vec3,
   waterMaterial,
 } from '../../../engine/index.ts';
-import { OrbitCamera } from '../../orbit.ts';
 import { HEX_COORDS, NUM_EDGES, NUM_HEXES, NUM_NODES } from '../../../rules/catan/board-topology.ts';
 import { type BoardOccupancy, canPlaceRoad, canPlaceSettlement } from '../../../rules/catan/placement.ts';
 import { type BoardSetup, generateBoard } from '../../../rules/catan/setup.ts';
@@ -82,16 +89,6 @@ const REVEAL_END = REVEAL_BASE + 2 * REVEAL_STEP + 0.05; // all settled (outer r
 const BUILD_DROP_DUR = 0.45; // seconds for the drop
 const BUILD_DROP_H = 1.2; // elevation above the rim the piece starts from (world units)
 
-// Standard bounce-out (0→1 with settling bounces) — drives the build-drop's landing bounce.
-function bounceOut(x: number): number {
-  const n = 7.5625;
-  const d = 2.75;
-  if (x < 1 / d) return n * x * x;
-  if (x < 2 / d) return n * (x -= 1.5 / d) * x + 0.75;
-  if (x < 2.5 / d) return n * (x -= 2.25 / d) * x + 0.9375;
-  return n * (x -= 2.625 / d) * x + 0.984375;
-}
-
 export type CatanMode = 'tile' | 'board' | 'pieces' | 'port';
 
 // A number token to draw over a hex: its screen cell, the rolled number, whether it's a red
@@ -126,11 +123,6 @@ const PORT_SAIL_INFO: Record<PortKind, { ratio: string; icon: string }> = {
   wool: { ratio: '2:1', icon: '🐑' },
 };
 
-const smooth = (x: number): number => {
-  const t = x < 0 ? 0 : x > 1 ? 1 : x;
-  return t * t * (3 - 2 * t);
-};
-
 // model = Translate · RotX (the flip). Normals rotate with it (lambert uses the model's
 // rotation), so the tile lights correctly as it tumbles face-up.
 function poseMatrix(x: number, y: number, z: number, rotX: number): Mat4 {
@@ -152,16 +144,13 @@ export class TileScene {
   private board: BoardSetup | null = null;
   private order: number[] = []; // hex ids in placement order (center-out)
   private placing = false; // a placement animation is in flight
-  private placeClock = 0; // seconds since the animation began
-  private lastT = -1; // previous frame time, for dt
+  private readonly placementClock = new FrameClock();
   private revealing = false; // the number-token slot-settle is playing
-  private revealClock = 0;
-  private revealLastT = -1;
+  private readonly revealClock = new FrameClock();
   private tokensDirty = false; // force one composite when the tokens (re)appear after placing
   private dice: [Die, Die] = [freshDie(), freshDie()];
   private dicePhase: DicePhase = 'idle';
-  private rollClock = 0;
-  private rollLastT = -1;
+  private readonly rollClock = new FrameClock();
   private rolledSum: number | null = null; // the last landed roll (lights matching chips); null until first roll
   // Board editor: placed pieces, the hovered vertex/edge, and the color new pieces get.
   private buildings = new Map<number, { city: boolean; color: PlayerColor }>();
@@ -171,10 +160,11 @@ export class TileScene {
   private placeColor: PlayerColor = 'red';
   // The piece currently playing its build-drop (elevated → seated), or null.
   private dropping: { kind: 'building' | 'road'; id: number } | null = null;
-  private dropClock = 0;
-  private dropLastT = -1;
+  private readonly dropClock = new FrameClock();
   private lastAspect = 1.6; // target aspect from the last render, for hit-test projection
   private dirty = true;
+  private readonly authoredScene = new Scene();
+  private readonly sceneRenderer = new SceneRenderer();
 
   constructor() {
     this.camTile = new OrbitCamera({ azimuth: 0.62, elevation: 0.62, distance: 2.7, target: { x: 0, y: 0.02, z: 0 } }, 1.6, 6);
@@ -322,8 +312,7 @@ export class TileScene {
   // Begin the build-drop for a just-placed/upgraded piece: it renders elevated, then eases down.
   private startDrop(kind: 'building' | 'road', id: number): void {
     this.dropping = { kind, id };
-    this.dropClock = 0;
-    this.dropLastT = -1;
+    this.dropClock.reset();
     this.dirty = true;
   }
   // A road is placeable for the active color per the Catan connectivity rules: it must extend a
@@ -414,8 +403,7 @@ export class TileScene {
     });
     this.order = ids;
     this.placing = animate;
-    this.placeClock = 0;
-    this.lastT = -1;
+    this.placementClock.reset();
     this.revealing = false; // reset any in-progress token reveal for the new board
     this.rolledSum = null; // clear a stale dice highlight from the previous board
     this.buildings.clear(); // a fresh board has no pieces
@@ -449,8 +437,7 @@ export class TileScene {
       d.dur = 0.92 + Math.random() * 0.22; // 0.92–1.14× duration
     }
     this.dicePhase = 'rolling';
-    this.rollClock = 0;
-    this.rollLastT = -1;
+    this.rollClock.reset();
     this.rolledSum = null; // clear the previous highlight while the new roll tumbles
     this.dirty = true;
   }
@@ -517,22 +504,22 @@ export class TileScene {
     const cam = this.camBoard;
     const camera: Camera = { eye: cam.eye(), target: cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 100 };
     const vp = cameraMatrices(camera, cols / (rows * 2)).viewProjection; // aspect matches the render target
-    const spinStep = Math.floor(this.revealClock / REVEAL_FLICKER);
+    const spinStep = Math.floor(this.revealClock.elapsed / REVEAL_FLICKER);
     const out: BoardToken[] = [];
     for (let h = 0; h < NUM_HEXES; h++) {
       const cell = this.board.hexes[h];
       if (cell.token === null) continue; // desert: no token
       const { q, r } = HEX_COORDS[h];
       const { x, z } = hexWorld(q, r);
-      const c = mat4MulVec4(vp, { x, y: 0.14, z, w: 1 });
-      if (c.w <= 0) continue;
+      const point = projectPoint(vp, { x, y: 0.14, z });
+      if (point.behind) continue;
       // During the reveal each chip spins until its ring's settle time, then shows the real
       // value (centre ring settles first).
-      const settled = !this.revealing || this.revealClock >= REVEAL_BASE + hexRing(q, r) * REVEAL_STEP;
+      const settled = !this.revealing || this.revealClock.elapsed >= REVEAL_BASE + hexRing(q, r) * REVEAL_STEP;
       const num = settled ? cell.token : 2 + ((spinStep * 7 + h * 5) % 11);
       out.push({
-        col: Math.round(((c.x / c.w) * 0.5 + 0.5) * cols),
-        row: Math.round((1 - ((c.y / c.w) * 0.5 + 0.5)) * rows),
+        col: Math.round((point.x * 0.5 + 0.5) * cols),
+        row: Math.round((1 - (point.y * 0.5 + 0.5)) * rows),
         num,
         red: settled && RED_NUMBERS.includes(num),
         hot: settled && this.rolledSum !== null && num === this.rolledSum,
@@ -549,49 +536,37 @@ export class TileScene {
     const cam = this.camPort;
     const camera: Camera = { eye: cam.eye(), target: cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 100 };
     const vp = cameraMatrices(camera, cols / (rows * 2)).viewProjection;
-    const c = mat4MulVec4(vp, { x: PORT_SAIL_CENTER.x, y: PORT_SAIL_CENTER.y, z: PORT_SAIL_CENTER.z, w: 1 });
-    if (c.w <= 0) return null;
+    const point = projectPoint(vp, PORT_SAIL_CENTER);
+    if (point.behind) return null;
     const info = PORT_SAIL_INFO[this.portKind];
     // Return the sail's midpoint cell (col, row). Centering the chip on it is the HUD's job, since
     // only the HUD knows the chip's width.
     return {
-      col: Math.round(((c.x / c.w) * 0.5 + 0.5) * cols),
-      row: Math.round((1 - ((c.y / c.w) * 0.5 + 0.5)) * rows),
+      col: Math.round((point.x * 0.5 + 0.5) * cols),
+      row: Math.round((1 - (point.y * 0.5 + 0.5)) * rows),
       ratio: info.ratio,
       icon: info.icon,
     };
   }
 
-  renderScene(target: RenderTarget, t = 0): void {
-    this.tokensDirty = false; // consume the previous frame's one-shot
-    this.lastAspect = target.width / target.height; // remember for hit-test projection
-    target.clear(14, 16, 22);
-    const cam = this.cam();
-    const eye = cam.eye();
-    const camera: Camera = { eye, target: cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 100 };
-    const vp = cameraMatrices(camera, target.width / target.height).viewProjection;
-    if (this.modeName === 'board') this.renderBoard(target, vp, eye, t);
-    else if (this.modeName === 'pieces') rasterize(target, piecesMesh(this.pieceColor), lambertMaterial, { mvp: mat4Multiply(vp, MODEL), model: MODEL, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
-    else if (this.modeName === 'port') rasterize(target, portMesh(this.portKind), lambertMaterial, { mvp: mat4Multiply(vp, MODEL), model: MODEL, lightDir: PORT_LIGHT, ambient: AMBIENT, wrap: PORT_WRAP });
-    else {
-      rasterize(target, tileMesh(this.terrain, this.variant, this.robber), lambertMaterial, { mvp: mat4Multiply(vp, MODEL), model: MODEL, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
-      const animated = animatedTileMesh(this.terrain, this.variant, t);
-      if (animated) rasterize(target, animated, lambertMaterial, { mvp: mat4Multiply(vp, MODEL), model: MODEL, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
-    }
-    this.dirty = false;
+  private queueLambert(mesh: Mesh, model: Mat4, lightDir = LIGHT, wrap = WRAP): void {
+    const object = new MeshObject(mesh, lambertMaterial, ({ cameraMatrices: matrices, worldMatrix }) => ({
+      mvp: mat4Multiply(matrices.viewProjection, worldMatrix),
+      model: worldMatrix,
+      lightDir,
+      ambient: AMBIENT,
+      wrap,
+    }));
+    object.setMatrix(model);
+    this.authoredScene.add(object);
   }
 
-  // The full 19-hex board. Each hex has a distinct per-tile seed for procedural variation and
-  // the robber is baked onto the desert. While `placing`, each tile is posed along its fly-in
-  // (stack → arc → drop) and shows its blank back until it flips past edge-on.
-  private renderBoard(target: RenderTarget, vp: Mat4, eye: Vec3, t: number): void {
-    if (!this.board) this.regenerate(false);
-    const board = this.board!;
-    rasterize(target, WATER_MESH, waterMaterial, {
-      mvp: mat4Multiply(vp, MODEL),
-      model: MODEL,
+  private queueWater(t: number): void {
+    const object = new MeshObject(WATER_MESH, waterMaterial, ({ camera, cameraMatrices: matrices, worldMatrix }) => ({
+      mvp: mat4Multiply(matrices.viewProjection, worldMatrix),
+      model: worldMatrix,
       time: t,
-      cameraPos: eye,
+      cameraPos: camera.eye,
       sunDirection: LIGHT,
       deepColor: WATER_DEEP,
       surfaceColor: WATER_SURFACE,
@@ -599,29 +574,56 @@ export class TileScene {
       horizonColor: WATER_HORIZON,
       currentColor: WATER_CURRENT,
       flowSpeed: WATER_FLOW_SPEED,
-    });
+    }));
+    object.setMatrix(MODEL);
+    this.authoredScene.add(object);
+  }
+
+  renderScene(target: RenderTarget, t = 0): void {
+    this.tokensDirty = false; // consume the previous frame's one-shot
+    this.lastAspect = target.width / target.height; // remember for hit-test projection
+    target.clear(14, 16, 22);
+    this.authoredScene.clear();
+    const cam = this.cam();
+    const eye = cam.eye();
+    const camera: Camera = { eye, target: cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 100 };
+    if (this.modeName === 'board') this.renderBoard(t);
+    else if (this.modeName === 'pieces') this.queueLambert(piecesMesh(this.pieceColor), MODEL);
+    else if (this.modeName === 'port') this.queueLambert(portMesh(this.portKind), MODEL, PORT_LIGHT, PORT_WRAP);
+    else {
+      this.queueLambert(tileMesh(this.terrain, this.variant, this.robber), MODEL);
+      const animated = animatedTileMesh(this.terrain, this.variant, t);
+      if (animated) this.queueLambert(animated, MODEL);
+    }
+    this.sceneRenderer.render(target, this.authoredScene, camera);
+    if (this.modeName === 'board') this.renderDice(target, t);
+    this.dirty = false;
+  }
+
+  // The full 19-hex board. Each hex has a distinct per-tile seed for procedural variation and
+  // the robber is baked onto the desert. While `placing`, each tile is posed along its fly-in
+  // (stack → arc → drop) and shows its blank back until it flips past edge-on.
+  private renderBoard(t: number): void {
+    if (!this.board) this.regenerate(false);
+    const board = this.board!;
+    this.queueWater(t);
     if (this.placing) {
-      if (this.lastT < 0) this.lastT = t;
-      this.placeClock += Math.max(0, t - this.lastT);
-      this.lastT = t;
-      if (this.placeClock > (NUM_HEXES - 1) * PLACE_STEP + PLACE_FLY) {
+      this.placementClock.tick(t);
+      if (this.placementClock.elapsed > (NUM_HEXES - 1) * PLACE_STEP + PLACE_FLY) {
         this.placing = false;
         this.revealing = true; // hand off to the number-token slot-settle
-        this.revealClock = 0;
-        this.revealLastT = -1;
+        this.revealClock.reset();
       }
     }
     if (this.revealing) {
-      if (this.revealLastT < 0) this.revealLastT = t;
-      this.revealClock += Math.max(0, t - this.revealLastT);
-      this.revealLastT = t;
-      if (this.revealClock >= REVEAL_END) this.revealing = false;
+      this.revealClock.tick(t);
+      if (this.revealClock.elapsed >= REVEAL_END) this.revealing = false;
     }
     for (let oi = 0; oi < NUM_HEXES; oi++) {
       const hex = this.order[oi];
       const { q, r } = HEX_COORDS[hex];
       const dest = hexWorld(q, r);
-      const p = this.placing ? Math.max(0, Math.min(1, (this.placeClock - oi * PLACE_STEP) / PLACE_FLY)) : 1;
+      const p = this.placing ? Math.max(0, Math.min(1, (this.placementClock.elapsed - oi * PLACE_STEP) / PLACE_FLY)) : 1;
       const slotY = STACK_BASE_Y + (NUM_HEXES - 1 - oi) * STACK_THICK;
       let model: Mat4;
       let faceUp: boolean;
@@ -632,36 +634,33 @@ export class TileScene {
         model = mat4Translate(dest.x, 0, dest.z); // landed
         faceUp = true;
       } else {
-        const e = smooth(p);
+        const e = smoothstep(p);
         const x = STACK_POS.x + (dest.x - STACK_POS.x) * e;
         const z = STACK_POS.z + (dest.z - STACK_POS.z) * e;
         const y = slotY * (1 - e) + Math.sin(Math.PI * p) * PLACE_HOP;
-        const flip = Math.PI * (1 - smooth(Math.min(1, p / 0.8))); // face-up by 80% of the flight
+        const flip = Math.PI * (1 - smoothstep(Math.min(1, p / 0.8))); // face-up by 80% of the flight
         model = poseMatrix(x, y, z, flip);
         faceUp = flip <= Math.PI / 2;
       }
       const terrain = board.hexes[hex].terrain;
       const seed = this.boardSeed * NUM_HEXES + hex;
       const mesh = faceUp ? tileMesh(terrain, seed, hex === board.robberHex) : tileBackMesh();
-      rasterize(target, mesh, lambertMaterial, { mvp: mat4Multiply(vp, model), model, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
+      this.queueLambert(mesh, model);
       if (faceUp) {
         const animated = animatedTileMesh(terrain, seed, t, dest);
-        if (animated) rasterize(target, animated, lambertMaterial, { mvp: mat4Multiply(vp, model), model, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
+        if (animated) this.queueLambert(animated, model);
       }
     }
-    if (!this.placing) this.renderOverlay(target, vp, t); // placed pieces + hover marker (once tiles are down)
-    this.renderDice(target, t);
+    if (!this.placing) this.renderOverlay(t); // placed pieces + hover marker (once tiles are down)
   }
 
   // The board editor overlay: all placed pieces plus the hovered vertex/edge highlight.
-  private renderOverlay(target: RenderTarget, vp: Mat4, t: number): void {
+  private renderOverlay(t: number): void {
     // Advance the build-drop: the just-built piece starts elevated and eases onto the rim.
     let dropLift = 0;
     if (this.dropping) {
-      if (this.dropLastT < 0) this.dropLastT = t;
-      this.dropClock += Math.max(0, t - this.dropLastT);
-      this.dropLastT = t;
-      const p = Math.min(1, this.dropClock / BUILD_DROP_DUR);
+      this.dropClock.tick(t);
+      const p = Math.min(1, this.dropClock.elapsed / BUILD_DROP_DUR);
       dropLift = BUILD_DROP_H * (1 - bounceOut(p));
       if (p >= 1) this.dropping = null;
     }
@@ -679,24 +678,22 @@ export class TileScene {
       hoverColor: hoverColorFor(this.placeColor),
     };
     if (!spec.buildings.length && !spec.roads.length && !spec.ghostSettlement && !spec.ghostRoad) return;
-    rasterize(target, boardOverlayMesh(spec), lambertMaterial, { mvp: mat4Multiply(vp, MODEL), model: MODEL, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
+    this.queueLambert(boardOverlayMesh(spec), MODEL);
   }
 
   // Advance the roll sequence, then (unless idle) draw the BIG dice on top of the board. The
   // depth buffer is cleared first so the dice always sit over the scene, never occluded.
   private renderDice(target: RenderTarget, t: number): void {
     if (this.dicePhase !== 'idle') {
-      if (this.rollLastT < 0) this.rollLastT = t;
-      this.rollClock += Math.max(0, t - this.rollLastT);
-      this.rollLastT = t;
+      this.rollClock.tick(t);
       // Both dice have come to rest once the later of the two (its own duration + stagger) lands.
       const allLanded = Math.max(DICE_ROLL_DUR * this.dice[0].dur, DICE_STAGGER + DICE_ROLL_DUR * this.dice[1].dur);
-      if (this.dicePhase === 'rolling' && this.rollClock >= allLanded) {
+      if (this.dicePhase === 'rolling' && this.rollClock.elapsed >= allLanded) {
         this.dicePhase = 'hold';
         this.rolledSum = this.dice[0].val + this.dice[1].val;
         this.tokensDirty = true; // light the matching chips on the next composite
       }
-      if (this.dicePhase === 'hold' && this.rollClock >= allLanded + DICE_HOLD) {
+      if (this.dicePhase === 'hold' && this.rollClock.elapsed >= allLanded + DICE_HOLD) {
         this.dicePhase = 'idle'; // dice vanish; the lit chips remain
       }
     }
@@ -725,7 +722,7 @@ export class TileScene {
       // Per-die (staggered, duration-scaled) progress. It tumbles fast then slows — keeping the
       // spin alive through the bounces and rocking onto its face at the end — so it never snaps
       // flat onto the result early.
-      const pd = rolling ? Math.min(1, Math.max(0, (this.rollClock - i * DICE_STAGGER) / (DICE_ROLL_DUR * d.dur))) : 1;
+      const pd = rolling ? Math.min(1, Math.max(0, (this.rollClock.elapsed - i * DICE_STAGGER) / (DICE_ROLL_DUR * d.dur))) : 1;
       const drop = rolling ? diceHeight(pd) : 0;
       const decay = (1 - pd) * (1 - pd); // gross-tumble energy bleeding off (fast → slow)
       const settle = 1 - decay; // 0→1 lock-in; drives the camera-lean tilt

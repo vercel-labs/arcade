@@ -27,7 +27,9 @@ export {
 } from './picking.ts';
 export {
   AnimationScheduler,
+  FrameClock,
   Tween,
+  bounceOut,
   lerpVec3,
   linear,
   smoothstep,

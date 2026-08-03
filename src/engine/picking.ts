@@ -43,6 +43,7 @@ export interface ProjectedPoint {
   x: number;
   y: number;
   z: number;
+  clipW: number;
   behind: boolean;
 }
 
@@ -50,7 +51,7 @@ export interface ProjectedPoint {
 export function projectPoint(viewProjection: Mat4, point: Vec3): ProjectedPoint {
   const clip = mat4MulVec4(viewProjection, { ...point, w: 1 });
   const w = clip.w || 1e-4;
-  return { x: clip.x / w, y: clip.y / w, z: clip.z / w, behind: clip.w <= 0 };
+  return { x: clip.x / w, y: clip.y / w, z: clip.z / w, clipW: clip.w, behind: clip.w <= 0 };
 }
 
 /** Cursor hit against a projected world-space disc/billboard radius. */

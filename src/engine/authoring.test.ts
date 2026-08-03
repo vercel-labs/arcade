@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   AnimationScheduler,
+  FrameClock,
   GeometryBuilder,
   Group,
   MeshObject,
@@ -98,4 +99,11 @@ test('animation scheduler composes tweens while custom geometry stays custom', (
   assert.equal(completed, 1);
   assert.equal(scheduler.needsFrame, false);
   assert.deepEqual(travelPoint({ x: 0, y: 0, z: 0 }, { x: 2, y: 0, z: 4 }, 0.5, 1), { x: 1, y: 1, z: 2 });
+
+  const clock = new FrameClock();
+  assert.equal(clock.tick(10), 0);
+  assert.equal(clock.tick(10.25), 0.25);
+  assert.equal(clock.elapsed, 0.25);
+  clock.reset();
+  assert.equal(clock.elapsed, 0);
 });
