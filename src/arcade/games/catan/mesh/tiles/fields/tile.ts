@@ -6,6 +6,9 @@ import { build, type Build, type RGB, shade } from '../../build.ts';
 import { harvestedRows, standingCanopy, standingWheat } from './crop.ts';
 import { farmParcelPatch, fieldLayout, fieldToWorld, scaleFarmPolygon } from './layout.ts';
 import { farmBush, farmShack, farmWindmillBody, farmWindmillRotor } from './props.ts';
+import { sampleWind, type WindOrigin } from '../wind.ts';
+
+const WHEAT_CANOPY: RGB = [255, 221, 63];
 
 export function fieldsTile(seed: number): Build {
   const m = build();
@@ -13,7 +16,6 @@ export function fieldsTile(seed: number): Build {
   const GRASS_BLEND: RGB = [194, 163, 69];
   const GRASS: RGB = [124, 143, 78];
   const STUBBLE_ROW: RGB = [235, 183, 66];
-  const WHEAT_CANOPY: RGB = [255, 221, 63];
   const amp = 0.025;
   const groundSeed = seed + 4.2;
   const rng = mulberry32((Math.abs(seed) * 2246822519 + 0x85ebca6b) >>> 0 || 1);
@@ -24,7 +26,6 @@ export function fieldsTile(seed: number): Build {
   farmParcelPatch(m, layout, scaleFarmPolygon(layout.grassParcel, 1.16), soilY, GRASS_BLEND, 0.007);
   farmParcelPatch(m, layout, layout.grassParcel, soilY, GRASS, 0.011);
   harvestedRows(m, layout, soilY, STUBBLE_ROW, seed);
-  standingCanopy(m, layout, soilY, WHEAT_CANOPY);
   standingWheat(m, layout, soilY, seed);
 
   const windmill = fieldToWorld(layout.angle, layout.windmillPosition[0], layout.windmillPosition[1]);
@@ -38,15 +39,35 @@ export function fieldsTile(seed: number): Build {
   return m;
 }
 
-export function animatedFieldsTile(seed: number, time: number): Build {
+export function animatedFieldsTile(seed: number, time: number, origin: WindOrigin): Build {
   const m = build();
   const amp = 0.025;
   const groundSeed = seed + 4.2;
   const rng = mulberry32((Math.abs(seed) * 2246822519 + 0x85ebca6b) >>> 0 || 1);
   const layout = fieldLayout(rng, seed);
+  const soilY = (x: number, z: number): number => surfaceY(x, z, amp, groundSeed);
+  standingCanopy(
+    m,
+    layout,
+    soilY,
+    WHEAT_CANOPY,
+    (x, z) => {
+      const wind = sampleWind(time, origin.x + x, origin.z + z);
+      // A travelling ripple makes the grain heads nod within the broader geographic gust.
+      // Direction and overall energy still come from the shared board-space weather.
+      const ripple = Math.sin(time * 1.42 - (origin.x + x) * wind.x * 2.1 - (origin.z + z) * wind.z * 2.1 + seed * 0.37);
+      const turn = ripple * 0.16 * wind.strength;
+      const c = Math.cos(turn);
+      const s = Math.sin(turn);
+      return {
+        x: wind.x * c - wind.z * s,
+        z: wind.x * s + wind.z * c,
+        strength: Math.min(1, wind.strength * (0.88 + ripple * 0.2)),
+      };
+    },
+  );
   const windmill = fieldToWorld(layout.angle, layout.windmillPosition[0], layout.windmillPosition[1]);
   const y0 = surfaceY(windmill.x, windmill.z, amp, groundSeed) + 0.014;
   farmWindmillRotor(m, windmill.x, windmill.z, y0, layout.angle, seed * 101 + 7, time);
   return m;
 }
-

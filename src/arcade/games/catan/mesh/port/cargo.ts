@@ -141,10 +141,50 @@ export function boatCargo(m: Build, kind: PortKind, seed: number): void {
     sheep(m, 0.05, -0.05, y, -0.4, seed + 4, 1.55);
     sheep(m, 0.34, -0.14, y, 0.05, seed + 8, 1.4);
   } else if (kind === 'brick') {
-    const BRICK: RGB = [196, 112, 84];
-    box(m, 0.16, 0.11, 0.3, 0.13, 0.2, BRICK, 0, y);
-    box(m, 0.16, -0.11, 0.3, 0.13, 0.2, BRICK, 0, y);
-    box(m, 0.2, 0.0, 0.28, 0.13, 0.34, shade(BRICK, 0.94), 0, y + 0.13);
+    const BRICK: RGB = [207, 91, 61];
+    const rng = mulberry32((Math.abs(seed) * 2246822519 + 0x165667b1) >>> 0 || 1);
+    const baseYaw = (rng() - 0.5) * 0.18;
+    const c = Math.cos(baseYaw);
+    const s = Math.sin(baseYaw);
+    const put = (x: number, z: number, lift: number, yaw = baseYaw, scale = 1): void => {
+      const jx = (rng() - 0.5) * 0.012;
+      const jz = (rng() - 0.5) * 0.012;
+      const px = 0.1 + (x + jx) * c - (z + jz) * s;
+      const pz = -0.015 + (x + jx) * s + (z + jz) * c;
+      box(m, px, pz, 0.16 * scale, 0.057 * scale, 0.09 * scale, shade(BRICK, 0.89 + rng() * 0.2), yaw, y + lift);
+    };
+
+    const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+    const scatterLayer = (count: number, rx: number, rz: number, lift: number, phase: number, yawSpread: number, shiftX = 0): void => {
+      for (let i = 0; i < count; i++) {
+        // A sunflower-style distribution fills an ellipse without rows or a rectangular edge.
+        // Seeded angular/radial noise stops the mathematically even placement from showing.
+        const radius = Math.sqrt((i + 0.35 + rng() * 0.3) / count) * (0.9 + rng() * 0.1);
+        const angle = phase + i * GOLDEN_ANGLE + (rng() - 0.5) * 0.38;
+        const x = shiftX + Math.cos(angle) * rx * radius;
+        // The real hold narrows toward +x. Preserve the broad oval through its middle, then
+        // gently taper only the forward end so the larger pile follows the boat rather than
+        // clipping through it.
+        const forward = Math.max(0, x / rx);
+        const z = Math.sin(angle) * rz * radius * (1 - forward * 0.28);
+        const turn = forward > 0.68 ? yawSpread * 0.42 : yawSpread;
+        put(x, z, lift, baseYaw + (rng() - 0.5) * turn, 0.94 + rng() * 0.12);
+      }
+    };
+
+    // Three nested oval layers behave like a dumped load: a wide footprint, a smaller shoulder,
+    // then a broken crown. Larger bricks and the broad base now approach the wheat cargo's deck
+    // coverage while every piece retains its own silhouette.
+    scatterLayer(24, 0.29, 0.15, 0, 0.3 + rng() * 0.5, 1.2, 0);
+    scatterLayer(16, 0.23, 0.118, 0.057, 1.1 + rng() * 0.5, 1.35, -0.012);
+    scatterLayer(9, 0.16, 0.082, 0.114, 2.0 + rng() * 0.5, 1.5, 0.01);
+
+    // A few pieces roll beyond the main ellipse, further breaking the outline without reaching
+    // the tapered hull lip.
+    put(0.29, -0.065, 0, baseYaw - 0.28 + (rng() - 0.5) * 0.18, 0.97);
+    put(0.28, 0.07, 0, baseYaw + 0.3 + (rng() - 0.5) * 0.18, 0.95);
+    put(-0.275, 0.112, 0, baseYaw + 0.42 + (rng() - 0.5) * 0.24, 0.96);
+    put(-0.265, -0.115, 0, baseYaw - 0.46 + (rng() - 0.5) * 0.24, 0.94);
+    put(-0.015, 0.155, 0, baseYaw + 0.16 + (rng() - 0.5) * 0.22, 0.95);
   }
 }
-

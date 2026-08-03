@@ -18,15 +18,42 @@ export const PINE_GREENS: readonly RGB[] = [
   [62, 118, 74],
 ];
 
+export interface PinePose {
+  windX?: number;
+  windZ?: number;
+  strength?: number;
+}
+
 // A low-poly conifer: a thin trunk under THREE prominent skirts. Each skirt is a cone whose
 // flared base clearly overhangs the narrowing tip of the one below, so the tree reads as three
 // distinct stacked pyramids of leaves. `green` tints the whole tree.
-export function pine(m: Build, cx: number, cz: number, y0: number, scale: number, green: RGB, seed: number): void {
+export function pine(m: Build, cx: number, cz: number, y0: number, scale: number, green: RGB, seed: number, pose: PinePose = {}): void {
+  const strength = Math.max(0, Math.min(1, pose.strength ?? 0));
+  // Keep the trunk planted while the flexible crown visibly bows. The old 0.024 displacement
+  // vanished at board distance; this still preserves the stepped pine silhouette but lets a
+  // passing gust travel across the forest as a readable wave.
+  const bendX = (pose.windX ?? 0) * strength * 0.062 * scale;
+  const bendZ = (pose.windZ ?? 0) * strength * 0.062 * scale;
   box(m, cx, cz, 0.032 * scale, 0.08 * scale, 0.032 * scale, TRUNK, 0, y0 - 0.02);
   // Wide-based, short skirts that only just overlap: each tier's flared base juts well past the
   // narrowing tip below it, giving a strongly stepped silhouette (not a smooth cone) from afar.
   for (let t = 0; t < 3; t++) {
-    cone(m, cx, cz, PINE_RADII[t] * scale, PINE_TIER_HEIGHTS[t] * scale, 6, shade(green, 1 - t * 0.03), y0 + PINE_TIER_BASES[t] * scale, seed + t * 0.9);
+    const baseFraction = 0.12 + t * 0.32;
+    const baseX = cx + bendX * baseFraction;
+    const baseZ = cz + bendZ * baseFraction;
+    cone(
+      m,
+      baseX,
+      baseZ,
+      PINE_RADII[t] * scale,
+      PINE_TIER_HEIGHTS[t] * scale,
+      6,
+      shade(green, 1 - t * 0.03),
+      y0 + PINE_TIER_BASES[t] * scale,
+      seed + t * 0.9,
+      bendX * (0.42 + t * 0.13),
+      bendZ * (0.42 + t * 0.13),
+    );
   }
 }
 // A broadleaf tree: a short brown trunk under a big rounded faceted canopy (flat shading
@@ -170,4 +197,3 @@ export function felledPine(m: Build, cx: number, cz: number, y0: number, ry: num
     );
   }
 }
-

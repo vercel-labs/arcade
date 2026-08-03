@@ -3,6 +3,7 @@
 import { type Build, faceQuadFlat, faceQuadWithNormal, hash2, type RGB, shade, smooth, UP, v } from '../../build.ts';
 import { fieldCoverage, type FieldLayout, fieldRowPoint, harvestedFieldCoverage, insideFieldHex } from './layout.ts';
 import { stubbleTuft, wheatStalk, wheatTuft } from './props.ts';
+import { type WindSample } from '../wind.ts';
 
 export function harvestedRows(m: Build, layout: FieldLayout, soilY: (x: number, z: number) => number, color: RGB, seed: number): void {
   const count = 33;
@@ -44,7 +45,13 @@ export function harvestedRows(m: Build, layout: FieldLayout, soilY: (x: number, 
 // survive board-distance rasterization. It follows the same curved rows and harvested mask as
 // the stalks, so it never becomes a rectangular pad; individual tufts still provide the close
 // silhouette and grain detail above it.
-export function standingCanopy(m: Build, layout: FieldLayout, soilY: (x: number, z: number) => number, color: RGB): void {
+export function standingCanopy(
+  m: Build,
+  layout: FieldLayout,
+  soilY: (x: number, z: number) => number,
+  color: RGB,
+  windAt: (x: number, z: number) => WindSample = () => ({ x: 0, z: 0, strength: 0 }),
+): void {
   const rows = 33;
   const segments = 30;
   for (let k = 0; k < rows; k++) {
@@ -69,17 +76,29 @@ export function standingCanopy(m: Build, layout: FieldLayout, soilY: (x: number,
       const crestA = soilY(a.x, a.z) + 0.009 + wa * 0.046;
       const edgeB = soilY(b.x, b.z) + 0.009 + wb * 0.021;
       const crestB = soilY(b.x, b.z) + 0.009 + wb * 0.046;
-      const leftA = v(a.x - wx, edgeA, a.z - wz);
-      const midA = v(a.x, crestA, a.z);
-      const rightA = v(a.x + wx, edgeA, a.z + wz);
-      const leftB = v(b.x - wx, edgeB, b.z - wz);
-      const midB = v(b.x, crestB, b.z);
-      const rightB = v(b.x + wx, edgeB, b.z + wz);
-      const band = shade(color, 0.97 + ((k + i) % 3) * 0.025);
+      const windA = windAt(a.x, a.z);
+      const windB = windAt(b.x, b.z);
+      // The row edges stay almost rooted while the high crest follows the gust. Because windAt
+      // is sampled in board space, neighbouring tiles receive the same passing wave instead of
+      // independently twitching their crop.
+      const edgeShiftA = windA.strength * 0.007;
+      const crestShiftA = windA.strength * 0.052;
+      const edgeShiftB = windB.strength * 0.007;
+      const crestShiftB = windB.strength * 0.052;
+      const leftA = v(a.x - wx + windA.x * edgeShiftA, edgeA, a.z - wz + windA.z * edgeShiftA);
+      const midA = v(a.x + windA.x * crestShiftA, crestA - windA.strength * 0.009, a.z + windA.z * crestShiftA);
+      const rightA = v(a.x + wx + windA.x * edgeShiftA, edgeA, a.z + wz + windA.z * edgeShiftA);
+      const leftB = v(b.x - wx + windB.x * edgeShiftB, edgeB, b.z - wz + windB.z * edgeShiftB);
+      const midB = v(b.x + windB.x * crestShiftB, crestB - windB.strength * 0.009, b.z + windB.z * crestShiftB);
+      const rightB = v(b.x + wx + windB.x * edgeShiftB, edgeB, b.z + wz + windB.z * edgeShiftB);
+      const lightSweep = (windA.strength + windB.strength) * 0.5;
+      const band = shade(color, 0.97 + ((k + i) % 3) * 0.025 + lightSweep * 0.035);
       const px = wx / half;
       const pz = wz / half;
-      faceQuadWithNormal(m, leftA, leftB, midB, midA, shade(band, 0.98), v(-px * 0.24, 1, -pz * 0.24));
-      faceQuadWithNormal(m, midA, midB, rightB, rightA, shade(band, 1.035), v(px * 0.24, 1, pz * 0.24));
+      const windNx = (windA.x * windA.strength + windB.x * windB.strength) * 0.17;
+      const windNz = (windA.z * windA.strength + windB.z * windB.strength) * 0.17;
+      faceQuadWithNormal(m, leftA, leftB, midB, midA, shade(band, 0.98), v(-px * 0.24 - windNx, 1, -pz * 0.24 - windNz));
+      faceQuadWithNormal(m, midA, midB, rightB, rightA, shade(band, 1.035), v(px * 0.24 - windNx, 1, pz * 0.24 - windNz));
     }
   }
 }
@@ -111,5 +130,3 @@ export function standingWheat(m: Build, layout: FieldLayout, soilY: (x: number, 
     }
   }
 }
-
-

@@ -506,7 +506,7 @@ export class TileScene {
   }
 
   requestAnimationFrame(): void {
-    if (this.modeName === 'board' || (this.modeName === 'tile' && (this.terrain === 'fields' || this.terrain === 'pasture'))) this.dirty = true;
+    if (this.modeName === 'board' || (this.modeName === 'tile' && this.terrain !== 'mountains')) this.dirty = true;
   }
 
   // The number tokens to overlay right now: one per non-desert hex, projected to the screen
@@ -645,7 +645,7 @@ export class TileScene {
       const mesh = faceUp ? tileMesh(terrain, seed, hex === board.robberHex) : tileBackMesh();
       rasterize(target, mesh, lambertMaterial, { mvp: mat4Multiply(vp, model), model, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
       if (faceUp) {
-        const animated = animatedTileMesh(terrain, seed, t);
+        const animated = animatedTileMesh(terrain, seed, t, dest);
         if (animated) rasterize(target, animated, lambertMaterial, { mvp: mat4Multiply(vp, model), model, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
       }
     }

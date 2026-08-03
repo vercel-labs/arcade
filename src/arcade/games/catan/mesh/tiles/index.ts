@@ -7,12 +7,13 @@
 import { type Mesh } from '../../../../../engine/index.ts';
 import { type Terrain } from '../../../../../rules/catan/types.ts';
 import { type Build } from '../build.ts';
-import { desertTile, placeRobber } from './desert.ts';
+import { animatedDesertTile, desertTile, placeRobber } from './desert.ts';
 import { animatedFieldsTile, fieldsTile } from './fields/tile.ts';
-import { forestTile } from './forest.ts';
-import { hillsTile } from './hills.ts';
+import { animatedForestTile, forestTile } from './forest.ts';
+import { animatedHillsTile, hillsTile } from './hills.ts';
 import { mountainsTile } from './mountains.ts';
 import { animatedPastureTile, pastureTile } from './pasture.ts';
+import { type WindOrigin } from './wind.ts';
 
 const BUILDERS: Record<Terrain, (seed: number) => Build> = {
   forest: forestTile,
@@ -39,11 +40,14 @@ export function tileMesh(terrain: Terrain, seed = 0, robberOn = false): Mesh {
   return m;
 }
 
-// Small time-varying overlays for the two animated terrain types. The terrain, wheat canopy,
-// vegetation, and tile slab stay in tileMesh's cache; only blades and sheep are rebuilt.
-export function animatedTileMesh(terrain: Terrain, seed = 0, time = 0): Mesh | null {
+// Small time-varying overlays. `origin` is the tile's board-space centre, allowing weather to
+// move coherently across neighbouring hexes instead of restarting independently on each tile.
+export function animatedTileMesh(terrain: Terrain, seed = 0, time = 0, origin: WindOrigin = { x: 0, z: 0 }): Mesh | null {
   const t = Number.isFinite(time) ? time : 0;
-  if (terrain === 'fields') return animatedFieldsTile(seed, t);
+  if (terrain === 'fields') return animatedFieldsTile(seed, t, origin);
+  if (terrain === 'forest') return animatedForestTile(seed, t, origin);
+  if (terrain === 'desert') return animatedDesertTile(seed, t, origin);
   if (terrain === 'pasture') return animatedPastureTile(seed, t, tileMesh('pasture', seed));
+  if (terrain === 'hills') return animatedHillsTile(seed, t);
   return null;
 }

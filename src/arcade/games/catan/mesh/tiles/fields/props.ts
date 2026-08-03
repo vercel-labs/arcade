@@ -13,39 +13,55 @@ import { fieldToWorld } from './layout.ts';
 const WHEAT_STEM: RGB = [248, 202, 48];
 const WHEAT_HEAD: RGB = [255, 229, 86];
 
-// Wheat heads are tiny enough that true cone normals make the unlit faces turn muddy.
-// Keep a little radial component for shape, but bias every face upward so the crop stays
-// warm and golden across camera angles.
+// A wheat ear built from a few overlapping diamond-shaped kernel tiers. Rotating successive
+// tiers around the stem gives it the braided, barley-like silhouette of a real ear without
+// modelling every grain. Dense interior tufts use two tiers; exposed stalks use three and get
+// two tiny awns. Soft upward normals keep these sub-cell faces golden from every camera angle.
 function wheatGrainHead(
   m: Build,
   cx: number,
   cz: number,
   r: number,
   h: number,
-  sides: number,
   color: RGB,
   yBase: number,
   spin: number,
   leanX: number,
   leanZ: number,
+  tiers: 2 | 3,
+  awns = false,
 ): void {
-  const apex = v(cx + leanX, yBase + h, cz + leanZ);
-  const ring: Vec3[] = [];
-  for (let i = 0; i < sides; i++) {
-    const a = (Math.PI * 2 * i) / sides + spin;
-    ring.push(v(cx + r * Math.cos(a), yBase, cz + r * Math.sin(a)));
+  const axis = (t: number): Vec3 => v(cx + leanX * t, yBase + h * t, cz + leanZ * t);
+  for (let i = 0; i < tiers; i++) {
+    const lowerT = Math.max(0, i / tiers - 0.025);
+    const middleT = (i + 0.5) / tiers;
+    const upperT = Math.min(1, (i + 1.08) / tiers);
+    const lower = axis(lowerT);
+    const middle = axis(middleT);
+    const upper = axis(upperT);
+    const angle = spin + i * 1.07;
+    const sx = Math.cos(angle);
+    const sz = Math.sin(angle);
+    const taper = 0.72 + Math.sin(middleT * Math.PI) * 0.32 - middleT * 0.16;
+    const width = r * taper;
+    const left = v(middle.x - sx * width, middle.y, middle.z - sz * width);
+    const right = v(middle.x + sx * width, middle.y, middle.z + sz * width);
+    const normal = v(-sz * 0.27, 1, sx * 0.27);
+    faceTriWithNormal(m, lower, right, upper, shade(color, 1.015 - i * 0.018), normal);
+    faceTriWithNormal(m, lower, upper, left, shade(color, 0.965 + i * 0.018), normal);
   }
-  for (let i = 0; i < sides; i++) {
-    const j = (i + 1) % sides;
-    const a = (Math.PI * 2 * (i + 0.5)) / sides + spin;
-    faceTriWithNormal(
-      m,
-      ring[i],
-      ring[j],
-      apex,
-      shade(color, 0.985 + (i % 2) * 0.025),
-      v(Math.cos(a) * 0.3, 1, Math.sin(a) * 0.3),
-    );
+
+  if (awns) {
+    const top = axis(0.94);
+    const tipBase = axis(1);
+    const sideX = Math.cos(spin + 0.6);
+    const sideZ = Math.sin(spin + 0.6);
+    for (const side of [-1, 1] as const) {
+      const root = v(top.x + sideX * side * r * 0.24, top.y, top.z + sideZ * side * r * 0.24);
+      const shoulder = v(tipBase.x + sideX * side * r * 0.12, tipBase.y, tipBase.z + sideZ * side * r * 0.12);
+      const tip = v(tipBase.x + leanX * 0.22 + sideX * side * r * 0.42, tipBase.y + h * 0.28, tipBase.z + leanZ * 0.22 + sideZ * side * r * 0.42);
+      faceTriWithNormal(m, root, shoulder, tip, shade(color, 1.035), v(-sideZ * side * 0.22, 1, sideX * side * 0.22));
+    }
   }
 }
 
@@ -60,14 +76,15 @@ export function wheatStalk(m: Build, cx: number, cz: number, y0: number, h: numb
     m,
     shoulder.x,
     shoulder.z,
-    0.014 + rng() * 0.003,
-    0.03 + rng() * 0.008,
-    4,
+    0.015 + rng() * 0.003,
+    0.036 + rng() * 0.008,
     shade(WHEAT_HEAD, 0.95 + rng() * 0.1),
     shoulder.y - 0.003,
     leanAngle + Math.PI / 4,
-    lx * 0.006,
-    lz * 0.006,
+    lx * 0.008,
+    lz * 0.008,
+    3,
+    true,
   );
 }
 
@@ -114,14 +131,14 @@ export function wheatTuft(m: Build, cx: number, cz: number, y0: number, h: numbe
       m,
       tx,
       tz,
-      0.013 + rng() * 0.0025,
-      0.029 + rng() * 0.007,
-      3,
+      0.014 + rng() * 0.0025,
+      0.034 + rng() * 0.007,
       shade(WHEAT_HEAD, 0.95 + rng() * 0.1),
       y0 + stalkH - 0.003,
       stalkAngle,
-      lx * 0.006,
-      lz * 0.006,
+      lx * 0.007,
+      lz * 0.007,
+      i === 1 ? 3 : 2,
     );
   }
 }
@@ -281,4 +298,3 @@ export function farmBush(m: Build, cx: number, cz: number, y0: number, scale: nu
     );
   }
 }
-

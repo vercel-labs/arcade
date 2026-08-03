@@ -3,8 +3,9 @@
 import { type Vec3 } from '../../../../../engine/index.ts';
 import { mulberry32 } from '../../../../scenes/wisp.ts';
 import { EDGE_Y, hexCorners, R_RIM, rimAndWall } from '../base.ts';
-import { build, type Build, DOWN, faceQuad, faceTri, hash2, norm, type RGB, shade, smooth, sub, UP, v } from '../build.ts';
+import { build, type Build, DOWN, faceQuad, faceTri, faceTriWithNormal, hash2, norm, type RGB, shade, smooth, sub, UP, v } from '../build.ts';
 import { blob, scatter } from '../props.ts';
+import { sampleWind, type WindOrigin } from './wind.ts';
 
 // ── Desert props: bones (inherent) + the robber (toggle-only) ──────────────────
 
@@ -240,6 +241,90 @@ export function desertTile(seed: number): Build {
   if (rp) ribRow(m, rp.x, rp.z, hAt(rp.x, rp.z), rng() * Math.PI * 2, rng);
   const rp2 = spots[bi++];
   if (rp2 && rng() < 0.6) ribRow(m, rp2.x, rp2.z, hAt(rp2.x, rp2.z), rng() * Math.PI * 2, rng);
+  return m;
+}
+
+export function animatedDesertTile(seed: number, time: number, origin: WindOrigin): Build {
+  const m = build();
+  const wind = sampleWind(time, origin.x, origin.z);
+  if (wind.strength < 0.05) return m;
+  const SAND: RGB = [255, 240, 174];
+  const CREST: RGB = [255, 248, 205];
+  const dseed = seed + 2.7;
+  const rng = mulberry32((Math.abs(seed) * 2246822519 + 0x68e31da4) >>> 0 || 1);
+  const duneDir = rng() * Math.PI;
+  const hAt = (x: number, z: number): number => duneHeight(x, z, dseed, duneDir);
+  const sideX = -wind.z;
+  const sideZ = wind.x;
+
+  // Fine saltating grains travel in loose fronts, hugging the dune surface and making short
+  // hops. Dozens of tiny tapered flecks read as airborne sand rather than the broad triangular
+  // bars used by the first pass. Long calm weather states still produce no overlay at all.
+  for (let i = 0; i < 48; i++) {
+    const phaseOffset = rng();
+    const cross = (rng() - 0.5) * 1.34;
+    const speed = 0.11 + rng() * 0.08;
+    const turbulence = (rng() - 0.5) * 0.22;
+    const phase = (time * speed * (0.72 + wind.strength * 0.62) + phaseOffset) % 1;
+    const hop = Math.sin(phase * Math.PI);
+    const along = -0.82 + phase * 1.64;
+    const curl = Math.sin(phase * Math.PI * 2 + i * 1.7) * 0.025 * wind.strength;
+    const x = wind.x * along + sideX * (cross + curl);
+    const z = wind.z * along + sideZ * (cross + curl);
+    if (Math.hypot(x, z) > R_RIM - 0.055 || hop < 0.045) continue;
+    const localWind = sampleWind(time, origin.x + x, origin.z + z);
+    const tc = Math.cos(turbulence);
+    const ts = Math.sin(turbulence);
+    const grainX = wind.x * tc - wind.z * ts;
+    const grainZ = wind.x * ts + wind.z * tc;
+    const grainSideX = -grainZ;
+    const grainSideZ = grainX;
+    const length = (0.019 + localWind.strength * 0.034) * (0.72 + rng() * 0.7);
+    const width = (0.004 + localWind.strength * 0.0032) * (0.7 + rng() * 0.65);
+    const y = hAt(x, z) + 0.008 + hop * hop * (0.009 + localWind.strength * 0.026);
+    const ax = grainX * length * 0.5;
+    const az = grainZ * length * 0.5;
+    const wx = grainSideX * width;
+    const wz = grainSideZ * width;
+    faceTriWithNormal(
+      m,
+      v(x - ax - wx, y, z - az - wz),
+      v(x - ax + wx, y, z - az + wz),
+      v(x + ax, y + 0.0015 + hop * 0.002, z + az),
+      shade(i % 5 === 0 ? CREST : SAND, 0.94 + (i % 4) * 0.025),
+      UP,
+    );
+  }
+
+  // A few broken, shallow ripple crests advect over the terrain like wavelets on water. They
+  // stay narrow and segmented so they enhance the dune flow without becoming painted stripes.
+  for (let band = 0; band < 3; band++) {
+    const phase = (time * (0.055 + band * 0.009) * (0.7 + wind.strength * 0.65) + rng()) % 1;
+    const along = -0.72 + phase * 1.44;
+    const bandCenter = (rng() - 0.5) * 0.7;
+    for (let segment = -3; segment <= 3; segment++) {
+      if ((segment + band) % 4 === 0) continue;
+      const s0 = bandCenter + segment * 0.055;
+      const s1 = s0 + 0.037;
+      const arc0 = 0.024 * Math.cos(s0 * 5.4 + band);
+      const arc1 = 0.024 * Math.cos(s1 * 5.4 + band);
+      const x0 = wind.x * (along + arc0) + sideX * s0;
+      const z0 = wind.z * (along + arc0) + sideZ * s0;
+      const x1 = wind.x * (along + arc1) + sideX * s1;
+      const z1 = wind.z * (along + arc1) + sideZ * s1;
+      if (Math.hypot(x0, z0) > R_RIM - 0.05 || Math.hypot(x1, z1) > R_RIM - 0.05) continue;
+      const half = 0.0024 + wind.strength * 0.0015;
+      faceQuad(
+        m,
+        v(x0 - wind.x * half, hAt(x0, z0) + 0.009, z0 - wind.z * half),
+        v(x1 - wind.x * half, hAt(x1, z1) + 0.009, z1 - wind.z * half),
+        v(x1 + wind.x * half, hAt(x1, z1) + 0.01, z1 + wind.z * half),
+        v(x0 + wind.x * half, hAt(x0, z0) + 0.01, z0 + wind.z * half),
+        shade(CREST, 0.95 + band * 0.025),
+        UP,
+      );
+    }
+  }
   return m;
 }
 
