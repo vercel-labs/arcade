@@ -18,6 +18,7 @@ import {
   type Camera,
   cameraMatrices,
   feltMaterial,
+  InstancedMesh,
   lambertMaterial,
   type Mat4,
   mat4Multiply,
@@ -25,7 +26,6 @@ import {
   mat4Translate,
   MeshObject,
   normalize3,
-  ObjectPool,
   OrbitCamera,
   type RenderTarget,
   Scene,
@@ -101,13 +101,13 @@ export class CardsScene {
       ...FELT_STIPPLE,
     }),
   );
-  private readonly chairPool = new ObjectPool(() => new MeshObject(
+  private readonly chairInstances = new InstancedMesh(
     this.chairGeometry,
     new WorldMaterialInstance(lambertMaterial, {
       lightDir: TABLE_LIGHT,
       ambient: TABLE_AMBIENT,
     }),
-  ));
+  );
 
   // single
   private single: Card = { rank: 0, suit: 0 };
@@ -136,7 +136,7 @@ export class CardsScene {
     this.feltObject.setMatrix(TABLE_MODEL);
     this.authoredScene.add(this.frameObject);
     this.authoredScene.add(this.feltObject);
-    this.authoredScene.add(this.chairPool);
+    this.authoredScene.add(this.chairInstances);
   }
 
   private resetHand(): void {
@@ -289,10 +289,11 @@ export class CardsScene {
   // The poker table (felt green, wood brown), felt at y=0. `seats` chairs are
   // placed around the rail facing center — 1 (hero) for hand mode, N for deck.
   private drawTable(target: RenderTarget, camera: Camera, seats: number[]): void {
-    this.chairPool.begin();
-    for (const a of seats) {
+    this.chairInstances.clearInstances();
+    for (let k = 0; k < seats.length; k++) {
+      const a = seats[k];
       const model = chairModel(a);
-      this.chairPool.acquire().setMatrix(model);
+      this.chairInstances.setMatrixAt(k, model);
     }
     this.sceneRenderer.render(target, this.authoredScene, camera);
   }

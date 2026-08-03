@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   AnimationScheduler,
+  BufferGeometry,
   FrameClock,
   GeometryBuilder,
   Group,
+  InstancedMesh,
   MeshObject,
   Object3D,
   ObjectPool,
@@ -109,6 +111,76 @@ test('retained materials and object pools reuse identities across frames', () =>
   const material = reused.material as WorldMaterialInstance<LambertUniforms>;
   material.values.ambient = 0.8;
   assert.equal(material.values.ambient, 0.8);
+});
+
+test('BufferGeometry exposes mutable attributes, versions, dirty ranges, and bounds', () => {
+  const source = new GeometryBuilder().triangle(
+    { x: -1, y: 0, z: 0 },
+    { x: 1, y: 0, z: 0 },
+    { x: 0, y: 2, z: 0 },
+  ).mesh();
+  const geometry = BufferGeometry.fromMesh(source, true);
+  const position = geometry.getAttribute('position');
+  const color = geometry.getAttribute('color');
+  assert.equal(position.count, 3);
+  assert.notEqual(geometry.vertices, source.vertices);
+  assert.deepEqual(geometry.computeBoundingBox(), {
+    min: { x: -1, y: 0, z: 0 },
+    max: { x: 1, y: 2, z: 0 },
+  });
+  assert.deepEqual(geometry.computeBoundingSphere(), {
+    center: { x: 0, y: 1, z: 0 },
+    radius: Math.sqrt(2),
+  });
+  position.setXYZ(1, 3, 4, 5);
+  assert.deepEqual(geometry.vertices[1].position, { x: 3, y: 4, z: 5 });
+  assert.equal(position.version, 1);
+  assert.equal(geometry.version, 1);
+  assert.deepEqual(geometry.updateRange, { offset: 1, count: 1 });
+  assert.equal(geometry.boundingBox, null);
+  assert.equal(geometry.boundingSphere, null);
+  color.setXYZ(0, 10, 20, 30);
+  assert.deepEqual(geometry.vertices[0].color, { x: 10, y: 20, z: 30 });
+  assert.equal(geometry.version, 2);
+});
+
+test('InstancedMesh matches separately authored objects and retains instance state', () => {
+  const geometry = new GeometryBuilder().triangle(
+    { x: -0.5, y: 0, z: 0 },
+    { x: 0.5, y: 0, z: 0 },
+    { x: 0, y: 1, z: 0 },
+    { color: { x: 190, y: 120, z: 80 }, normal: { x: 0, y: 0, z: 1 } },
+  ).mesh();
+  const left = mat4Translate(-1, 0, 0);
+  const right = mat4Translate(1, 0, 0);
+  const values = { lightDir: { x: 0, y: 0, z: 1 }, ambient: 0.4 };
+  const separate = new Scene();
+  separate.mesh(geometry, new WorldMaterialInstance(lambertMaterial, values), left);
+  separate.mesh(geometry, new WorldMaterialInstance(lambertMaterial, values), right);
+  const authored = new Scene();
+  const instances = authored.add(new InstancedMesh(
+    geometry,
+    new WorldMaterialInstance(lambertMaterial, values),
+  ));
+  instances.setMatrixAt(0, left).setMatrixAt(1, right).setColorAt(1, { x: 1, y: 2, z: 3 });
+  const separateTarget = new RenderTarget(80, 48);
+  const instancedTarget = new RenderTarget(80, 48);
+  separateTarget.clear(3, 4, 5);
+  instancedTarget.clear(3, 4, 5);
+  const renderer = new SceneRenderer();
+  renderer.render(separateTarget, separate, camera);
+  renderer.render(instancedTarget, authored, camera);
+  assert.deepEqual(instancedTarget.color, separateTarget.color);
+  assert.deepEqual(instancedTarget.depth, separateTarget.depth);
+  assert.equal(instances.count, 2);
+  assert.equal(instances.capacity, 2);
+  assert.equal(instances.instanceMatrixVersion, 2);
+  assert.equal(instances.instanceColorVersion, 1);
+  assert.deepEqual(instances.getMatrixAt(1), right);
+  assert.deepEqual(instances.getColorAt(1), { x: 1, y: 2, z: 3 });
+  instances.clearInstances();
+  assert.equal(instances.count, 0);
+  assert.equal(instances.capacity, 2);
 });
 
 test('shared camera picking intersects the board plane', () => {

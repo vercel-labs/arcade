@@ -41,7 +41,15 @@ export {
 } from './animation.ts';
 export { GeometryBuilder, type VertexOptions } from './geometry.ts';
 export {
+  BufferAttribute,
+  BufferGeometry,
+  type BoundingSphere,
+  type BufferAttributeName,
+  type UpdateRange,
+} from './buffer-geometry.ts';
+export {
   Group,
+  InstancedMesh,
   MaterialInstance,
   MeshObject,
   Object3D,

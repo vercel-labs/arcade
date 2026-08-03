@@ -14,6 +14,7 @@ import {
   type Camera,
   cameraMatrices,
   feltMaterial,
+  InstancedMesh,
   lambertMaterial,
   type Mat4,
   mat4Multiply,
@@ -22,7 +23,6 @@ import {
   mat4Translate,
   MeshObject,
   normalize3,
-  ObjectPool,
   OrbitCamera,
   projectedDiscHit,
   type RenderTarget,
@@ -331,13 +331,13 @@ export class PokerGameScene {
       ...FELT_STIPPLE,
     }),
   );
-  private readonly chairPool = new ObjectPool(() => new MeshObject(
+  private readonly chairInstances = new InstancedMesh(
     this.chairGeometry,
     new WorldMaterialInstance(lambertMaterial, {
       lightDir: TABLE_LIGHT,
       ambient: TABLE_AMBIENT,
     }),
-  ));
+  );
 
   private hand: HoldemState | null = null;
   private seats: PokerSeatView[] = [];
@@ -444,7 +444,7 @@ export class PokerGameScene {
     this.feltObject.setMatrix(TABLE_MODEL);
     this.authoredScene.add(this.frameObject);
     this.authoredScene.add(this.feltObject);
-    this.authoredScene.add(this.chairPool);
+    this.authoredScene.add(this.chairInstances);
   }
 
   private makeCamera(): OrbitCamera {
@@ -1314,7 +1314,7 @@ export class PokerGameScene {
   }
 
   private queueTable(): void {
-    this.chairPool.begin();
+    this.chairInstances.clearInstances();
   }
 
   // Queue `n` chairs around the rail (chair k at angle (k/n)·2π; seat 0 at +z),
@@ -1322,7 +1322,7 @@ export class PokerGameScene {
   private queueChairRing(n: number): void {
     for (let k = 0; k < n; k++) {
       const model = chairModel((k / n) * Math.PI * 2);
-      this.chairPool.acquire().setMatrix(model);
+      this.chairInstances.setMatrixAt(k, model);
     }
   }
 

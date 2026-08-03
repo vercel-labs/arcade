@@ -4,6 +4,7 @@
 // faces don't z-fight, so a card reads as double-sided as it turns.
 
 import {
+  BufferGeometry,
   coverMaterial,
   type Mat4,
   mat4Identity,
@@ -142,7 +143,7 @@ function peekParams(pose: PeekPose): { phi: number; kappa: number; yaw: number; 
 // synchronously and never retains it, so a single scratch per topology is safe to reuse
 // across every card in a frame. `zC`/`yC` are the reused centerline-march scratch.
 interface StripScratch {
-  mesh: Mesh;
+  mesh: BufferGeometry;
   zC: number[];
   yC: number[];
 }
@@ -158,7 +159,7 @@ function makeStrip(segs: number): StripScratch {
     const a = i * 2;
     indices.push(a, a + 1, a + 3, a, a + 3, a + 2);
   }
-  return { mesh: { vertices, indices }, zC: new Array(segs + 1), yC: new Array(segs + 1) };
+  return { mesh: new BufferGeometry(vertices, indices), zC: new Array(segs + 1), yC: new Array(segs + 1) };
 }
 
 // Build the bent card as a strip of `BEND_SEGS` quads in world space (positions and
@@ -220,7 +221,7 @@ function bentSheet(pose: PeekPose, side: 1 | -1): Mesh {
       vtx.uv[1] = v;
     }
   }
-  return bendScratch.mesh;
+  return bendScratch.mesh.markNeedsUpdate();
 }
 
 // Draw a hand card as a bent, double-sided strip for the whole peek→lift range. At
@@ -399,7 +400,7 @@ function archSheet(place: ArchPlace, side: 1 | -1): Mesh {
       vtx.uv[1] = v;
     }
   }
-  return archScratch.mesh;
+  return archScratch.mesh.markNeedsUpdate();
 }
 
 // Draw a double-sided card bent per `place` (curl/dome/depth), centered at (x,y,z) and

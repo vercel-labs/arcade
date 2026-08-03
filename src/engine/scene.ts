@@ -85,6 +85,10 @@ export interface RenderContext {
   camera: Camera;
   cameraMatrices: CameraMatrices;
   worldMatrix: Mat4;
+  /** Present while an InstancedMesh is drawing one of its instances. */
+  instanceIndex?: number;
+  /** Optional per-instance color available to material uniform callbacks. */
+  instanceColor?: Vec3;
 }
 
 export type UniformSource<U> = U | ((context: RenderContext) => U);
@@ -177,6 +181,101 @@ export class MeshObject<U> extends RenderableObject {
   }
 }
 
+/** One geometry/material rendered repeatedly with retained per-instance transforms. */
+export class InstancedMesh<U> extends RenderableObject {
+  geometry: Mesh;
+  material: MaterialInstance<U>;
+  private readonly instanceMatrices: Mat4[] = [];
+  private readonly instanceWorldMatrices: Mat4[] = [];
+  private readonly instanceColors: (Vec3 | undefined)[] = [];
+  private _count = 0;
+  instanceMatrixVersion = 0;
+  instanceColorVersion = 0;
+
+  constructor(geometry: Mesh, material: MaterialInstance<U>);
+  constructor(geometry: Mesh, material: Material<U>, uniforms: UniformSource<U>);
+  constructor(
+    geometry: Mesh,
+    material: Material<U> | MaterialInstance<U>,
+    uniforms?: UniformSource<U>,
+  ) {
+    super();
+    this.geometry = geometry;
+    this.material = material instanceof MaterialInstance
+      ? material
+      : new MaterialInstance(material, uniforms as UniformSource<U>);
+  }
+
+  get count(): number {
+    return this._count;
+  }
+
+  set count(count: number) {
+    if (!Number.isInteger(count) || count < 0 || count > this.instanceMatrices.length) {
+      throw new RangeError(`instance count ${count} is outside capacity ${this.instanceMatrices.length}`);
+    }
+    this._count = count;
+  }
+
+  get capacity(): number {
+    return this.instanceMatrices.length;
+  }
+
+  clearInstances(): this {
+    this._count = 0;
+    return this;
+  }
+
+  setMatrixAt(index: number, matrix: Mat4): this {
+    if (!Number.isInteger(index) || index < 0) throw new RangeError(`invalid instance index ${index}`);
+    const retained = this.instanceMatrices[index] ?? mat4Identity();
+    copyMatrix(retained, matrix);
+    this.instanceMatrices[index] = retained;
+    this.instanceWorldMatrices[index] ??= mat4Identity();
+    if (index >= this._count) this._count = index + 1;
+    this.instanceMatrixVersion++;
+    return this;
+  }
+
+  getMatrixAt(index: number, target: Mat4 = mat4Identity()): Mat4 {
+    const matrix = this.instanceMatrices[index];
+    if (!matrix) throw new RangeError(`instance ${index} is outside capacity ${this.capacity}`);
+    return copyMatrix(target, matrix);
+  }
+
+  setColorAt(index: number, color: Vec3): this {
+    if (!this.instanceMatrices[index]) throw new RangeError(`instance ${index} is outside capacity ${this.capacity}`);
+    const retained = this.instanceColors[index] ?? { x: 0, y: 0, z: 0 };
+    retained.x = color.x;
+    retained.y = color.y;
+    retained.z = color.z;
+    this.instanceColors[index] = retained;
+    this.instanceColorVersion++;
+    return this;
+  }
+
+  getColorAt(index: number): Vec3 | undefined {
+    const color = this.instanceColors[index];
+    return color ? { ...color } : undefined;
+  }
+
+  draw(context: RenderContext): void {
+    const objectWorld = context.worldMatrix;
+    for (let index = 0; index < this._count; index++) {
+      const instanceMatrix = this.instanceMatrices[index];
+      const instanceWorld = this.instanceWorldMatrices[index];
+      mat4MultiplyInto(instanceWorld, objectWorld, instanceMatrix);
+      context.worldMatrix = instanceWorld;
+      context.instanceIndex = index;
+      context.instanceColor = this.instanceColors[index];
+      rasterize(context.target, this.geometry, this.material.definition, this.material.resolve(context));
+    }
+    context.worldMatrix = objectWorld;
+    context.instanceIndex = undefined;
+    context.instanceColor = undefined;
+  }
+}
+
 /** Retains objects between frames while exposing a sequential authoring API. */
 export class ObjectPool<T extends Object3D> extends Group {
   private cursor = 0;
@@ -222,6 +321,19 @@ export class Scene extends Group {
       : new MeshObject(geometry, material, uniformsOrMatrix as UniformSource<U>);
     const transform = retained ? uniformsOrMatrix as Mat4 | undefined : matrix;
     if (transform) object.setMatrix(transform);
+    return this.add(object);
+  }
+
+  instancedMesh<U>(geometry: Mesh, material: MaterialInstance<U>): InstancedMesh<U>;
+  instancedMesh<U>(geometry: Mesh, material: Material<U>, uniforms: UniformSource<U>): InstancedMesh<U>;
+  instancedMesh<U>(
+    geometry: Mesh,
+    material: Material<U> | MaterialInstance<U>,
+    uniforms?: UniformSource<U>,
+  ): InstancedMesh<U> {
+    const object = material instanceof MaterialInstance
+      ? new InstancedMesh(geometry, material)
+      : new InstancedMesh(geometry, material, uniforms as UniformSource<U>);
     return this.add(object);
   }
 }

@@ -1,8 +1,7 @@
 // Mesh assembly primitives shared by every Catan mesh module: the Build buffer, the face
 // emitters (which orient winding to an "outward" hint), and small vector/colour helpers.
 
-import { type Vec3 } from '../../../../engine/index.ts';
-import { type VertexIn } from '../../../../engine/shader.ts';
+import { BufferGeometry, type Vec3 } from '../../../../engine/index.ts';
 export { smoothstep as smooth } from '../../../../engine/index.ts';
 
 export type RGB = [number, number, number];
@@ -18,11 +17,8 @@ export const hash2 = (x: number, z: number): number => {
   return h - Math.floor(h);
 };
 
-export interface Build {
-  vertices: VertexIn[];
-  indices: number[];
-}
-export const build = (): Build => ({ vertices: [], indices: [] });
+export type Build = BufferGeometry;
+export const build = (): Build => new BufferGeometry();
 
 export function faceTri(m: Build, a: Vec3, b: Vec3, c: Vec3, color: RGB, outward: Vec3): void {
   let n = norm(cross(sub(b, a), sub(c, a)));
