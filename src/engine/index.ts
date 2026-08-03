@@ -29,6 +29,7 @@ export {
 export {
   AnimationScheduler,
   FrameClock,
+  SpringValue,
   Tween,
   bounceOut,
   clamp01,
@@ -38,6 +39,7 @@ export {
   travelPoint,
   type Animation,
   type Easing,
+  type SpringOptions,
   type TweenOptions,
 } from './animation.ts';
 export { GeometryBuilder, type VertexOptions } from './geometry.ts';

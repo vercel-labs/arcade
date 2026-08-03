@@ -73,6 +73,79 @@ export interface TweenOptions {
   complete?: () => void;
 }
 
+export interface SpringOptions {
+  value?: number;
+  target?: number;
+  stiffness?: number;
+  damping?: number;
+  mass?: number;
+  min?: number;
+  max?: number;
+  maxStep?: number;
+  epsilon?: number;
+}
+
+/** Stable fixed-substep scalar spring for interactive, interruptible motion. */
+export class SpringValue implements Animation {
+  value: number;
+  velocity = 0;
+  target: number;
+  readonly stiffness: number;
+  readonly damping: number;
+  readonly mass: number;
+  readonly min: number;
+  readonly max: number;
+  readonly maxStep: number;
+  readonly epsilon: number;
+
+  constructor(options: SpringOptions = {}) {
+    this.value = options.value ?? 0;
+    this.target = options.target ?? this.value;
+    this.stiffness = options.stiffness ?? 170;
+    this.damping = options.damping ?? 26;
+    this.mass = Math.max(1e-9, options.mass ?? 1);
+    this.min = options.min ?? -Infinity;
+    this.max = options.max ?? Infinity;
+    this.maxStep = Math.max(1e-6, options.maxStep ?? 0.02);
+    this.epsilon = Math.max(0, options.epsilon ?? 0.001);
+  }
+
+  setTarget(target: number): this {
+    this.target = target;
+    return this;
+  }
+
+  snap(value: number): this {
+    this.value = value;
+    this.target = value;
+    this.velocity = 0;
+    return this;
+  }
+
+  update(dt: number): boolean {
+    const elapsed = Math.max(0, dt);
+    const steps = Math.max(1, Math.ceil(elapsed / this.maxStep));
+    const h = elapsed / steps;
+    for (let step = 0; step < steps; step++) {
+      const acceleration = (this.stiffness * (this.target - this.value) - this.damping * this.velocity) / this.mass;
+      this.velocity += acceleration * h;
+      this.value += this.velocity * h;
+      if (this.value < this.min) {
+        this.value = this.min;
+        if (this.velocity < 0) this.velocity = 0;
+      } else if (this.value > this.max) {
+        this.value = this.max;
+        if (this.velocity > 0) this.velocity = 0;
+      }
+    }
+    return !this.settled;
+  }
+
+  get settled(): boolean {
+    return Math.abs(this.value - this.target) <= this.epsilon && Math.abs(this.velocity) <= this.epsilon;
+  }
+}
+
 export class Tween implements Animation {
   private elapsed = 0;
   private done = false;

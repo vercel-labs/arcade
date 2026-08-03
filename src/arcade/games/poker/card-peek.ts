@@ -15,6 +15,7 @@ import {
   type OrbitCamera,
   Raycaster,
   type RenderTarget,
+  SpringValue,
   type Texture,
 } from '../../../engine/index.ts';
 import type { Card } from '../../../rules/poker/cards.ts';
@@ -26,8 +27,7 @@ export const PEEK = 0.6; // reveal a hovered card bends to
 interface PeekCard {
   card: Card;
   seatX: number; // resting x offset along the seat
-  reveal: number; // animated 0..1 (spring-driven, can briefly overshoot)
-  vel: number; // reveal velocity, for the spring settle
+  reveal: SpringValue; // animated 0..1 (spring-driven, can briefly overshoot)
   up: boolean; // clicked fully up
 }
 
@@ -48,7 +48,12 @@ export class HandPeek {
 
   // (Re)seat the cards face-down for a fresh hand.
   reset(cards: readonly { card: Card; seatX: number }[]): void {
-    this.cards = cards.map((c) => ({ card: c.card, seatX: c.seatX, reveal: 0, vel: 0, up: false }));
+    this.cards = cards.map((c) => ({
+      card: c.card,
+      seatX: c.seatX,
+      reveal: new SpringValue({ stiffness: 190, damping: 19, min: 0, maxStep: 0.02 }),
+      up: false,
+    }));
     this.hovered = -1;
     this.seenFlags = cards.map(() => false);
   }
@@ -71,7 +76,8 @@ export class HandPeek {
   animating(): boolean {
     for (let i = 0; i < this.cards.length; i++) {
       const c = this.cards[i];
-      if (Math.abs(c.reveal - this.revealTarget(i)) > 0.001 || Math.abs(c.vel) > 0.001) return true;
+      c.reveal.setTarget(this.revealTarget(i));
+      if (!c.reveal.settled) return true;
     }
     return false;
   }
@@ -82,24 +88,15 @@ export class HandPeek {
   // thinks) would otherwise make this explicit spring overshoot and diverge, flip-
   // flopping the card between face-down and standing up.
   step(dt: number): void {
-    const steps = Math.max(1, Math.ceil(dt / 0.02));
-    const h = dt / steps;
-    for (let s = 0; s < steps; s++) {
-      for (let i = 0; i < this.cards.length; i++) {
-        const c = this.cards[i];
-        c.vel += (190 * (this.revealTarget(i) - c.reveal) - 19 * c.vel) * h;
-        c.reveal += c.vel * h;
-        if (c.reveal < 0) {
-          c.reveal = 0;
-          if (c.vel < 0) c.vel = 0;
-        }
-        if (c.reveal > SEEN_AT) this.seenFlags[i] = true; // latch: the hero has glimpsed it
-      }
+    for (let i = 0; i < this.cards.length; i++) {
+      const c = this.cards[i];
+      c.reveal.setTarget(this.revealTarget(i)).update(dt);
+      if (c.reveal.value > SEEN_AT) this.seenFlags[i] = true; // latch: the hero has glimpsed it
     }
   }
 
   private peekPose(i: number, az: number): PeekPose {
-    return { seatX: this.cards[i].seatX, seatZ: this.seatZ, reveal: this.cards[i].reveal, peek: PEEK, az };
+    return { seatX: this.cards[i].seatX, seatZ: this.seatZ, reveal: this.cards[i].reveal.value, peek: PEEK, az };
   }
 
   // Draw every card bent to its current reveal.
@@ -158,7 +155,7 @@ export class HandPeek {
     for (let i = 0; i < this.cards.length; i++) {
       const c = this.cards[i];
       let score = Infinity;
-      if (c.reveal < 0.5) {
+      if (c.reveal.value < 0.5) {
         // Flat: normalized distance inside the resting footprint (score in [0,1]).
         const hw = CARD_W / 2 + 0.12;
         const hh = CARD_H / 2 + 0.12;

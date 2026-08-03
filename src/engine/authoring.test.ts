@@ -14,6 +14,7 @@ import {
   ResourceCache,
   Scene,
   SceneRenderer,
+  SpringValue,
   Tween,
   cameraMatrices,
   intersectRayPlane,
@@ -238,4 +239,15 @@ test('animation scheduler composes tweens while custom geometry stays custom', (
   assert.equal(clock.elapsed, 0.25);
   clock.reset();
   assert.equal(clock.elapsed, 0);
+
+  const oneFrame = new SpringValue({ stiffness: 190, damping: 19, min: 0, maxStep: 0.02 }).setTarget(0.6);
+  const substeps = new SpringValue({ stiffness: 190, damping: 19, min: 0, maxStep: 0.02 }).setTarget(0.6);
+  oneFrame.update(0.1);
+  for (let i = 0; i < 5; i++) substeps.update(0.02);
+  assert.ok(Math.abs(oneFrame.value - substeps.value) < 1e-12);
+  assert.ok(Math.abs(oneFrame.velocity - substeps.velocity) < 1e-12);
+  const bounded = new SpringValue({ min: 0 }).setTarget(-1);
+  bounded.update(0.02);
+  assert.equal(bounded.value, 0);
+  assert.equal(bounded.velocity, 0);
 });
