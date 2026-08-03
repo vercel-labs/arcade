@@ -1,4 +1,4 @@
-import type { Camera } from './camera.ts';
+import { cameraMatrices, type Camera } from './camera.ts';
 import {
   add3,
   cross3,
@@ -69,4 +69,51 @@ export function projectedDiscHit(
   const radius = Math.hypot(edge.x - c.x, edge.y - c.y);
   const distance = Math.hypot(ndcX - c.x, ndcY - c.y);
   return distance < radius * padding ? { distance, radius } : null;
+}
+
+/**
+ * Retained camera/pointer query state, mirroring Three.js's Raycaster authoring
+ * model while supporting the projected hit shapes terminal games commonly use.
+ */
+export class Raycaster {
+  ray: Ray = { origin: { x: 0, y: 0, z: 0 }, direction: { x: 0, y: 0, z: -1 } };
+  viewProjection: Mat4 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+  readonly pointer = { x: 0, y: 0 };
+  aspect = 1;
+
+  setFromCamera(camera: Camera, ndcX: number, ndcY: number, aspect: number): this {
+    this.ray = rayFromCamera(camera, ndcX, ndcY, aspect);
+    this.viewProjection = cameraMatrices(camera, aspect).viewProjection;
+    this.pointer.x = ndcX;
+    this.pointer.y = ndcY;
+    this.aspect = aspect;
+    return this;
+  }
+
+  intersectPlane(normal: Vec3, constant = 0): Vec3 | null {
+    return intersectRayPlane(this.ray, normal, constant);
+  }
+
+  project(point: Vec3): ProjectedPoint {
+    return projectPoint(this.viewProjection, point);
+  }
+
+  projectedDisc(center: Vec3, radiusAxis: Vec3, padding = 1): { distance: number; radius: number } | null {
+    return projectedDiscHit(
+      this.viewProjection,
+      center,
+      radiusAxis,
+      this.pointer.x,
+      this.pointer.y,
+      padding,
+    );
+  }
+
+  projectedDistance(point: Vec3, aspectCorrect = false): number {
+    const projected = this.project(point);
+    if (projected.clipW <= 1e-4) return Infinity;
+    const dx = projected.x - this.pointer.x;
+    const dy = projected.y - this.pointer.y;
+    return Math.hypot(aspectCorrect ? dx * this.aspect : dx, dy);
+  }
 }

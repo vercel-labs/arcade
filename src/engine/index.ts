@@ -21,6 +21,7 @@ export {
   intersectRayPlane,
   projectPoint,
   projectedDiscHit,
+  Raycaster,
   rayFromCamera,
   type ProjectedPoint,
   type Ray,

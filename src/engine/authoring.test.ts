@@ -22,6 +22,7 @@ import {
   mat4Multiply,
   mat4Translate,
   rayFromCamera,
+  Raycaster,
   rasterize,
   smoothstep,
   travelPoint,
@@ -190,6 +191,14 @@ test('shared camera picking intersects the board plane', () => {
   assert.ok(Math.abs(hit.x) < 1e-9);
   assert.ok(Math.abs(hit.y) < 1e-9);
   assert.ok(Math.abs(hit.z) < 1e-9);
+  const raycaster = new Raycaster().setFromCamera(camera, 0, 0, 16 / 9);
+  assert.deepEqual(raycaster.ray, ray);
+  assert.deepEqual(raycaster.intersectPlane({ x: 0, y: 1, z: 0 }), hit);
+  assert.equal(raycaster.projectedDistance({ x: 0, y: 0, z: 0 }), 0);
+  assert.ok(raycaster.projectedDisc(
+    { x: 0, y: 0, z: 0 },
+    { x: 0.5, y: 0, z: 0 },
+  ));
 });
 
 test('animation scheduler composes tweens while custom geometry stays custom', () => {

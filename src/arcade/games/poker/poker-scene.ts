@@ -24,7 +24,7 @@ import {
   MeshObject,
   normalize3,
   OrbitCamera,
-  projectedDiscHit,
+  Raycaster,
   type RenderTarget,
   Scene,
   SceneRenderer,
@@ -300,6 +300,7 @@ export function actionNarration(name: string, a: PokerAction, second: boolean): 
 
 export class PokerGameScene {
   private cam: OrbitCamera;
+  private readonly raycaster = new Raycaster();
   private back: Texture;
   // The idle deck at the felt centre, shuffling on a loop while idle (no session).
   private idleDeck: DeckShuffle;
@@ -1699,7 +1700,7 @@ export class PokerGameScene {
     if (!this.active) return null;
     const eye = this.cam.eye();
     const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 200 };
-    const { viewProjection: vp } = cameraMatrices(camera, aspect);
+    const raycaster = this.raycaster.setFromCamera(camera, ndcX, ndcY, aspect);
     const { up } = this.cam.basis();
     const size = WISP_SIZE * WISP_SCALE;
     let best: number | null = null;
@@ -1708,12 +1709,9 @@ export class PokerGameScene {
       if (!this.wisps[s]) continue;
       const c = this.seatPos(s, TABLE_RADIUS + 0.4);
       const P = { x: c.x, y: WISP_FLOAT, z: c.z };
-      const hit = projectedDiscHit(
-        vp,
+      const hit = raycaster.projectedDisc(
         P,
         { x: up.x * size, y: up.y * size, z: up.z * size },
-        ndcX,
-        ndcY,
         1.6,
       );
       if (hit && hit.distance < bestD) {

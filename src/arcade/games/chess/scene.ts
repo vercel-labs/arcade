@@ -3,7 +3,6 @@ import {
   type Camera,
   cameraMatrices,
   flatShade,
-  intersectRayPlane,
   mat4Identity,
   mat4Multiply,
   mat4RotY,
@@ -17,8 +16,7 @@ import {
   OrbitCamera,
   parseObj,
   pieceMaterial,
-  projectedDiscHit,
-  rayFromCamera,
+  Raycaster,
   type RenderTarget,
   Scene,
   SceneRenderer,
@@ -133,6 +131,7 @@ export class ChessGameScene {
   private scale: number;
   private square: number;
   private cam: OrbitCamera;
+  private readonly raycaster = new Raycaster();
   private readonly authoredScene = new Scene();
   private readonly sceneRenderer = new SceneRenderer();
   private readonly authoredPool = new ObjectPool(() => new MeshObject(
@@ -439,7 +438,7 @@ export class ChessGameScene {
     if (!this.matchActive) return null;
     const eye = this.cam.eye();
     const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 400 };
-    const { viewProjection: vp } = cameraMatrices(camera, aspect);
+    const raycaster = this.raycaster.setFromCamera(camera, ndcX, ndcY, aspect);
     const { up } = this.cam.basis();
     const size = WISP_SIZE * WISP_SCALE;
     let best: Color | null = null;
@@ -449,12 +448,9 @@ export class ChessGameScene {
       const k = this.kingWorldPos(color);
       if (!k) return;
       const P = { x: k.x, y: WISP_FLOAT, z: k.z };
-      const hit = projectedDiscHit(
-        vp,
+      const hit = raycaster.projectedDisc(
         P,
         { x: up.x * size, y: up.y * size, z: up.z * size },
-        ndcX,
-        ndcY,
         1.6,
       );
       if (hit && hit.distance < bestD) {
@@ -548,7 +544,7 @@ export class ChessGameScene {
   private squareAt(ndcX: number, ndcY: number, aspect: number): number {
     const eye = this.cam.eye();
     const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 400 };
-    const hit = intersectRayPlane(rayFromCamera(camera, ndcX, ndcY, aspect), { x: 0, y: 1, z: 0 });
+    const hit = this.raycaster.setFromCamera(camera, ndcX, ndcY, aspect).intersectPlane({ x: 0, y: 1, z: 0 });
     if (!hit) return -1;
     // World hit point → square. When flipped the render negates x/z, so negate the
     // hit point back before mapping, keeping clicks aligned with what's drawn.

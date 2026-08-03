@@ -25,6 +25,7 @@ import {
   ObjectPool,
   OrbitCamera,
   projectPoint,
+  Raycaster,
   rasterize,
   type RenderTarget,
   Scene,
@@ -41,7 +42,7 @@ import { type BoardSetup, generateBoard } from '../../../rules/catan/setup.ts';
 import { type PlayerColor, RED_NUMBERS, type Terrain } from '../../../rules/catan/types.ts';
 import { mulberry32 } from '../../scenes/wisp.ts';
 import { animatedTileMesh, boardOverlayMesh, dieMesh, hoverColorFor, type OverlaySpec, piecesMesh, PORT_SAIL_CENTER, type PortKind, portMesh, tileBackMesh, tileMesh } from './mesh/index.ts';
-import { EDGE_ENDS, EDGE_MID, hexRing, hexWorld, NODE_XZ, projXZ } from './scene/board-layout.ts';
+import { EDGE_ENDS, EDGE_MID, hexRing, hexWorld, NODE_XZ, PROBE_Y } from './scene/board-layout.ts';
 import { DICE_BOX, DICE_EYE, DICE_FOVY, DICE_HOLD, DICE_LAND_TILT, DICE_POS, DICE_ROLL_DUR, DICE_STAGGER, DICE_TARGET, type Die, DIE_RIGHT, diceHeight, type DicePhase, diceViewport, faceAngles, freshDie, TAU } from './scene/dice.ts';
 import { catanWaterMesh } from './water.ts';
 
@@ -139,6 +140,7 @@ export class TileScene {
   private camBoard: OrbitCamera;
   private camPieces: OrbitCamera;
   private camPort: OrbitCamera;
+  private readonly raycaster = new Raycaster();
   private pieceColor: PlayerColor = 'red';
   private portKind: PortKind = 'generic';
   private terrain: Terrain = 'forest';
@@ -232,33 +234,30 @@ export class TileScene {
       road: (e) => this.roads.get(e),
     };
   }
-  private boardVp(): Mat4 {
+  private boardRaycaster(ndcX: number, ndcY: number): Raycaster {
     const cam = this.camBoard;
     const camera: Camera = { eye: cam.eye(), target: cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 100 };
-    return cameraMatrices(camera, this.lastAspect).viewProjection;
+    return this.raycaster.setFromCamera(camera, ndcX, ndcY, this.lastAspect);
   }
   // Nearest node and nearest edge to the cursor (NDC), with their screen distances (x weighted
   // by aspect so it's a true on-screen distance).
   private nearest(ndcX: number, ndcY: number): { node: number; nodeD: number; edge: number; edgeD: number } {
-    const vp = this.boardVp();
-    const asp = this.lastAspect;
+    const raycaster = this.boardRaycaster(ndcX, ndcY);
     let node = -1;
     let nodeD = Infinity;
     let edge = -1;
     let edgeD = Infinity;
     for (let n = 0; n < NUM_NODES; n++) {
-      const p = projXZ(vp, NODE_XZ[n].x, NODE_XZ[n].z);
-      if (!p) continue;
-      const d = Math.hypot((p.x - ndcX) * asp, p.y - ndcY);
+      const p = NODE_XZ[n];
+      const d = raycaster.projectedDistance({ x: p.x, y: PROBE_Y, z: p.z }, true);
       if (d < nodeD) {
         nodeD = d;
         node = n;
       }
     }
     for (let e = 0; e < NUM_EDGES; e++) {
-      const p = projXZ(vp, EDGE_MID[e].x, EDGE_MID[e].z);
-      if (!p) continue;
-      const d = Math.hypot((p.x - ndcX) * asp, p.y - ndcY);
+      const p = EDGE_MID[e];
+      const d = raycaster.projectedDistance({ x: p.x, y: PROBE_Y, z: p.z }, true);
       if (d < edgeD) {
         edgeD = d;
         edge = e;
@@ -271,11 +270,9 @@ export class TileScene {
   // doesn't flicker between neighbours as the mouse moves.
   hoverBoard(ndcX: number, ndcY: number): void {
     if (this.modeName !== 'board' || this.placing || this.revealing) return;
-    const vp = this.boardVp();
-    const asp = this.lastAspect;
+    const raycaster = this.boardRaycaster(ndcX, ndcY);
     const dist = (p: { x: number; z: number }): number => {
-      const s = projXZ(vp, p.x, p.z);
-      return s ? Math.hypot((s.x - ndcX) * asp, s.y - ndcY) : Infinity;
+      return raycaster.projectedDistance({ x: p.x, y: PROBE_Y, z: p.z }, true);
     };
     let node = -1;
     let nodeD = Infinity;

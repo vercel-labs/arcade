@@ -11,12 +11,9 @@
 
 import {
   type Camera,
-  cameraMatrices,
-  intersectRayPlane,
   type Mat4,
   type OrbitCamera,
-  projectPoint,
-  rayFromCamera,
+  Raycaster,
   type RenderTarget,
   type Texture,
 } from '../../../engine/index.ts';
@@ -40,6 +37,7 @@ interface PeekCard {
 const SEEN_AT = 0.35;
 
 export class HandPeek {
+  private readonly raycaster = new Raycaster();
   private cards: PeekCard[] = [];
   private hovered = -1;
   private seenFlags: boolean[] = []; // per card: has it been peeked/lifted at least once
@@ -150,11 +148,11 @@ export class HandPeek {
   private pick(cam: OrbitCamera, ndcX: number, ndcY: number, aspect: number): number {
     const eye = cam.eye();
     const camera: Camera = { eye, target: cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 200 };
-    const planeHit = intersectRayPlane(rayFromCamera(camera, ndcX, ndcY, aspect), { x: 0, y: 1, z: 0 });
+    const raycaster = this.raycaster.setFromCamera(camera, ndcX, ndcY, aspect);
+    const planeHit = raycaster.intersectPlane({ x: 0, y: 1, z: 0 });
     // Felt-plane (y=0) hit for flat / peeking cards.
     const hitX = planeHit?.x ?? Infinity;
     const hitZ = planeHit?.z ?? Infinity;
-    const vp = cameraMatrices(camera, aspect).viewProjection;
     let best = -1;
     let bestScore = Infinity;
     for (let i = 0; i < this.cards.length; i++) {
@@ -171,7 +169,7 @@ export class HandPeek {
         // Raised: normalized distance to the projected bent center, ranked below any
         // flat hit (+1) so the fat box can't outrank a footprint the cursor is inside.
         const center = peekCardCenter(this.peekPose(i, cam.azimuth));
-        const point = projectPoint(vp, center);
+        const point = raycaster.project(center);
         if (point.clipW > 1e-4) {
           const nx = Math.abs(point.x - ndcX) / 0.35;
           const ny = Math.abs(point.y - ndcY) / 0.45;
