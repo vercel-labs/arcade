@@ -24,12 +24,14 @@ import {
   waterMaterial,
 } from '../../../engine/index.ts';
 import { OrbitCamera } from '../../orbit.ts';
-import { edgeNodes, HEX_COORDS, hexNodes, NUM_EDGES, NUM_HEXES, NUM_NODES } from '../../../rules/catan/board-topology.ts';
+import { HEX_COORDS, NUM_EDGES, NUM_HEXES, NUM_NODES } from '../../../rules/catan/board-topology.ts';
 import { type BoardOccupancy, canPlaceRoad, canPlaceSettlement } from '../../../rules/catan/placement.ts';
 import { type BoardSetup, generateBoard } from '../../../rules/catan/setup.ts';
 import { type PlayerColor, RED_NUMBERS, type Terrain } from '../../../rules/catan/types.ts';
 import { mulberry32 } from '../../scenes/wisp.ts';
 import { animatedTileMesh, boardOverlayMesh, dieMesh, hoverColorFor, type OverlaySpec, piecesMesh, PORT_SAIL_CENTER, type PortKind, portMesh, tileBackMesh, tileMesh } from './mesh/index.ts';
+import { EDGE_ENDS, EDGE_MID, hexRing, hexWorld, NODE_XZ, projXZ } from './scene/board-layout.ts';
+import { DICE_BOX, DICE_EYE, DICE_FOVY, DICE_HOLD, DICE_LAND_TILT, DICE_POS, DICE_ROLL_DUR, DICE_STAGGER, DICE_TARGET, type Die, DIE_RIGHT, diceHeight, type DicePhase, diceViewport, faceAngles, freshDie, TAU } from './scene/dice.ts';
 import { catanWaterMesh } from './water.ts';
 
 const FOVY = (44 * Math.PI) / 180;
@@ -48,7 +50,6 @@ const WRAP = 0.85;
 const PORT_LIGHT: Vec3 = normalize3({ x: 0.62, y: 0.4, z: 0.52 });
 const PORT_WRAP = 0.95;
 const MODEL: Mat4 = mat4Identity();
-const SQRT3 = Math.sqrt(3);
 const WATER_MESH = catanWaterMesh();
 // Catan's sea frame is a clear cyan-blue rather than near-black ocean. Keep enough depth for
 // the island to pop, but lift the palette into multiple ASCII luminance buckets so the ripple
@@ -81,36 +82,6 @@ const REVEAL_END = REVEAL_BASE + 2 * REVEAL_STEP + 0.05; // all settled (outer r
 const BUILD_DROP_DUR = 0.45; // seconds for the drop
 const BUILD_DROP_H = 1.2; // elevation above the rim the piece starts from (world units)
 
-// Triggered by the HUD "roll" button: BIG dice appear over the board, tumble, land, the
-// matching chips light, then the dice vanish. Drawn on top of everything (depth cleared first)
-// and large, so the pips are unmistakable even in ASCII.
-type DicePhase = 'idle' | 'rolling' | 'hold';
-const DICE_ROLL_DUR = 1.8; // fall + tumble, spread out for a natural roll
-const DICE_HOLD = 1.7; // linger on the landed result (while the chips light) before vanishing
-const DICE_STAGGER = 0.12; // the second die drops a beat after the first
-// Vertical profile: an accelerating free-fall from well above the window, then a few decaying
-// on-screen bounces before rest. The entry height and the bounce height are decoupled so the
-// dice can enter from above the terminal without the bounces flinging back off-screen.
-const DICE_FALL_H = 6.5; // entry height along the camera-up axis (starts above the window)
-const DICE_BOUNCE_H = 1.3; // peak of the first post-contact bounce (world units)
-const DICE_FALL_FRAC = 0.42; // fraction of the roll spent in the entry fall before bouncing
-// A raised, ~45°-elevation eye: the result (top) face tilts toward the viewer (readable, not a
-// flat top-down plane) while the front faces keep the 3D form. The x is computed per-frame in
-// renderDice so the right die's edge lands near the box's right edge at any aspect (DIE_RIGHT).
-const DICE_EYE: Vec3 = { x: 0, y: 3.0, z: 2.5 };
-const DICE_TARGET: Vec3 = { x: 0, y: 1.0, z: 0 }; // aimed above the landing so the drop is visible, landing near the frame bottom
-const DIE_RIGHT = 0.65 + 0.5; // the right die's outer x (DICE_POS[1].x + half-size)
-const DICE_FOVY = (34 * Math.PI) / 180;
-const DICE_POS: Vec3[] = [
-  { x: -0.65, y: 0.5, z: 0 },
-  { x: 0.65, y: 0.5, z: 0 },
-];
-// As a die settles, tip its top (the result) toward the camera so that face reads bigger and
-// more legibly than the one pointing into the screen. Eases in with the spin settle.
-const DICE_LAND_TILT = 0.34; // radians (~19°)
-// NDC box the dice render into — right-aligned with (and directly above) the roll button in
-// the bottom-right. Tall enough for the more front-on framing without squashing the pair.
-const DICE_BOX = { sx: 0.26, sy: 0.34, tx: 0.72, ty: -0.52 };
 // Standard bounce-out (0→1 with settling bounces) — drives the build-drop's landing bounce.
 function bounceOut(x: number): number {
   const n = 7.5625;
@@ -120,64 +91,6 @@ function bounceOut(x: number): number {
   if (x < 2.5 / d) return n * (x -= 2.25 / d) * x + 0.9375;
   return n * (x -= 2.625 / d) * x + 0.984375;
 }
-const TAU = Math.PI * 2;
-// Post-contact bounce profile: three decaying parabolic arcs (each 0→peak→0), so a die that
-// has hit the surface hops a few times with shrinking height before coming to rest.
-function bounceArcs(b: number): number {
-  const arc = (x: number): number => 4 * x * (1 - x); // a 0→1→0 hump
-  if (b < 0.5) return arc(b / 0.5);
-  if (b < 0.8) return 0.32 * arc((b - 0.5) / 0.3);
-  return 0.1 * arc((b - 0.8) / 0.2);
-}
-// A die's height above its resting spot at roll progress `pd`: an accelerating free-fall from
-// DICE_FALL_H for the first DICE_FALL_FRAC of the roll (so it visibly drops in from above the
-// window), then the decaying bounces.
-function diceHeight(pd: number): number {
-  if (pd >= 1) return 0;
-  if (pd < DICE_FALL_FRAC) {
-    const f = pd / DICE_FALL_FRAC;
-    return DICE_FALL_H * (1 - f * f);
-  }
-  return DICE_BOUNCE_H * bounceArcs((pd - DICE_FALL_FRAC) / (1 - DICE_FALL_FRAC));
-}
-// (ax, az) that, applied as rotZ(az)·rotX(ax), bring each face value to the top.
-function faceAngles(val: number): { ax: number; az: number } {
-  switch (val) {
-    case 2:
-      return { ax: -Math.PI / 2, az: 0 };
-    case 3:
-      return { ax: 0, az: Math.PI / 2 };
-    case 4:
-      return { ax: 0, az: -Math.PI / 2 };
-    case 5:
-      return { ax: Math.PI / 2, az: 0 };
-    case 6:
-      return { ax: Math.PI, az: 0 };
-    default:
-      return { ax: 0, az: 0 }; // 1
-  }
-}
-// Clip-space remap that squeezes the dice's full-frame render into the right-side NDC box.
-function diceViewport(): Mat4 {
-  const s = mat4Identity();
-  s[0] = DICE_BOX.sx;
-  s[5] = DICE_BOX.sy;
-  s[12] = DICE_BOX.tx;
-  s[13] = DICE_BOX.ty;
-  return s;
-}
-interface Die {
-  val: number;
-  spinX: number; // gross tumble turns about its X axis
-  spinZ: number; // gross tumble turns about its Z axis
-  yaw: number; // resting yaw about vertical (variety; the result stays on top regardless)
-  yawSpin: number; // gross yaw turns during the tumble
-  jx: number; // lateral landing offset (entropy in the spacing)
-  jz: number; // depth landing offset
-  wob: number; // amplitude of the settle-rock as it comes to rest
-  dur: number; // per-die duration scale (desyncs the two dice)
-}
-const freshDie = (): Die => ({ val: 1, spinX: 0, spinZ: 0, yaw: 0, yawSpin: 0, jx: 0, jz: 0, wob: 0, dur: 1 });
 
 export type CatanMode = 'tile' | 'board' | 'pieces' | 'port';
 
@@ -218,40 +131,6 @@ const smooth = (x: number): number => {
   return t * t * (3 - 2 * t);
 };
 
-// Flat-top axial (q,r) → world (x,z). Size = the tile's outer radius (R_OUT = 1), so
-// neighbours meet edge-to-edge. See board-topology.ts for the hex coordinate system.
-function hexWorld(q: number, r: number): { x: number; z: number } {
-  return { x: 1.5 * q, z: SQRT3 * (q / 2 + r) };
-}
-// Hex ring index (distance from the center hex) — the primary key for center-out ordering.
-function hexRing(q: number, r: number): number {
-  return (Math.abs(q) + Math.abs(r) + Math.abs(q + r)) / 2;
-}
-
-// World (x,z) of every settlement/road node (a shared hex corner) and edge, derived once from
-// the topology + flat-top layout. Corner k of a hex sits at angle −60°·k, radius R_OUT (=1).
-const NODE_XZ: { x: number; z: number }[] = (() => {
-  const out: { x: number; z: number }[] = new Array(NUM_NODES);
-  HEX_COORDS.forEach((coord, h) => {
-    const w = hexWorld(coord.q, coord.r);
-    for (let k = 0; k < 6; k++) {
-      const nid = hexNodes[h][k];
-      if (out[nid]) continue;
-      const a = (-Math.PI / 3) * k;
-      out[nid] = { x: w.x + Math.cos(a), z: w.z + Math.sin(a) };
-    }
-  });
-  return out;
-})();
-const EDGE_ENDS = edgeNodes.map(([a, b]) => ({ x0: NODE_XZ[a].x, z0: NODE_XZ[a].z, x1: NODE_XZ[b].x, z1: NODE_XZ[b].z }));
-const EDGE_MID = EDGE_ENDS.map((e) => ({ x: (e.x0 + e.x1) / 2, z: (e.z0 + e.z1) / 2 }));
-const PROBE_Y = 0.05; // height at which nodes/edges are projected for hit-testing
-// Project a board (x,z) point to NDC with the given view-projection; null if behind the camera.
-function projXZ(vp: Mat4, x: number, z: number): { x: number; y: number } | null {
-  const c = mat4MulVec4(vp, { x, y: PROBE_Y, z, w: 1 });
-  if (c.w <= 0.0001) return null;
-  return { x: c.x / c.w, y: c.y / c.w };
-}
 // model = Translate · RotX (the flip). Normals rotate with it (lambert uses the model's
 // rotation), so the tile lights correctly as it tumbles face-up.
 function poseMatrix(x: number, y: number, z: number, rotX: number): Mat4 {
