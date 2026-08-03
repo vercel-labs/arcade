@@ -17,18 +17,21 @@ import {
   lambertMaterial,
   type Mat4,
   mat4Multiply,
-  mat4MulVec4,
   mat4RotX,
   mat4RotY,
   mat4Translate,
   type Mesh,
   normalize3,
-  rasterize,
+  OrbitCamera,
+  projectedDiscHit,
   type RenderTarget,
+  Scene,
+  SceneRenderer,
+  smoothstep,
   type Texture,
   type Vec3,
+  worldUniforms,
 } from '../../../engine/index.ts';
-import { OrbitCamera } from '../../orbit.ts';
 import { loadCreatorWisp, mulberry32, type Wisp, WISP_SIZE } from '../../scenes/wisp.ts';
 import type { RGB } from '../../../engine/index.ts';
 import { type Card, RANK_LABELS } from '../../../rules/poker/cards.ts';
@@ -157,11 +160,6 @@ const IDLE_SEATS = 4; // chairs shown around the empty table (when no setup prev
 // Varied carried-stack sizes for the idle "furniture" (a static pre-flop table). Deliberately
 // uneven so the piles differ per seat; indexed by seat, cycled if more chairs than entries.
 const IDLE_STACK_AMOUNTS = [1200, 2000, 750, 1650, 950, 2400] as const;
-
-const smooth = (x: number): number => {
-  const t = x < 0 ? 0 : x > 1 ? 1 : x;
-  return t * t * (3 - 2 * t);
-};
 
 // One card in flight during the opening deal: its destination slot + seat facing.
 interface DealCard {
@@ -314,6 +312,8 @@ export class PokerGameScene {
   private dirty = true;
   private lastT = -1;
   private lastAspect = 1.6; // width/height of the last render target — for the bird's-eye fit math
+  private readonly authoredScene = new Scene();
+  private readonly sceneRenderer = new SceneRenderer();
 
   private hand: HoldemState | null = null;
   private seats: PokerSeatView[] = [];
@@ -1044,20 +1044,18 @@ export class PokerGameScene {
 
     // Table + chairs: one per seat during a session, else a default idle ring.
     // Frame (rail/apron/legs) is plain matte; the felt gets the stipple material.
-    const tableMvp = mat4Multiply(vp, TABLE_MODEL);
-    rasterize(target, frameMesh(), lambertMaterial, { mvp: tableMvp, model: TABLE_MODEL, lightDir: TABLE_LIGHT, ambient: TABLE_AMBIENT });
-    rasterize(target, feltMesh(), feltMaterial, { mvp: tableMvp, model: TABLE_MODEL, lightDir: TABLE_LIGHT, ambient: TABLE_AMBIENT, ...FELT_STIPPLE });
     const chair = chairMesh();
-    if (this.isIdle()) {
+    const idle = this.isIdle();
+    const chairCount = idle ? this.seats.length || IDLE_SEATS : this.seats.length;
+    this.queueTable();
+    this.queueChairRing(chair, chairCount);
+    this.sceneRenderer.render(target, this.authoredScene, camera);
+    if (idle) {
       // Idle state: a ring of chairs around a centre deck shuffling on a loop. With
       // the setup preview up, the ring follows the chosen player count instead.
       this.idleDeck.step(dt);
-      const n = this.seats.length || IDLE_SEATS;
-      this.drawChairRing(target, vp, chair, n);
-      this.drawIdleFurniture(target, vp, n); // static pre-flop hands + carried stacks per chair
+      this.drawIdleFurniture(target, vp, chairCount); // static pre-flop hands + carried stacks per chair
       this.idleDeck.draw(target, vp);
-    } else {
-      this.drawChairRing(target, vp, chair, this.seats.length);
     }
 
     const hand = this.hand;
@@ -1232,7 +1230,7 @@ export class PokerGameScene {
     const collect = this.chipCollect;
     const place = this.betPlace;
     if (collect) {
-      const p = smooth(collect.t);
+      const p = smoothstep(collect.t);
       for (let s = 0; s < this.seats.length; s++) {
         const cols = collect.bets[s] ?? [];
         if (cols.length === 0) continue;
@@ -1248,7 +1246,7 @@ export class PokerGameScene {
         }
       }
       if (place && place.cols.length > 0) {
-        const q = smooth(place.t);
+        const q = smoothstep(place.t);
         const fromCols = mergeChipColumns(this.chipStacks[place.seat] ?? [], place.cols);
         const from = this.stackCenter(place.seat, fromCols);
         const to = this.betCenter(place.seat, place.cols, place.seat + 200);
@@ -1259,7 +1257,7 @@ export class PokerGameScene {
 
     const award = this.chipAward;
     if (award) {
-      const p = smooth(award.t);
+      const p = smoothstep(award.t);
       const lift = Math.sin(p * Math.PI) * CHIP_AWARD_HOP;
       for (const share of award.awards) {
         const destination = mergeChipColumns(this.chipStacks[share.seat] ?? [], share.cols);
@@ -1287,12 +1285,28 @@ export class PokerGameScene {
     return this.deckRemaining() * DECK_THICK + CARD_LIFT;
   }
 
-  // Draw `n` chairs evenly around the rail (chair k at angle (k/n)·2π; seat 0 at +z),
+  private queueTable(): void {
+    this.authoredScene.clear();
+    this.authoredScene.mesh(frameMesh(), lambertMaterial, worldUniforms({
+      lightDir: TABLE_LIGHT,
+      ambient: TABLE_AMBIENT,
+    }), TABLE_MODEL);
+    this.authoredScene.mesh(feltMesh(), feltMaterial, worldUniforms({
+      lightDir: TABLE_LIGHT,
+      ambient: TABLE_AMBIENT,
+      ...FELT_STIPPLE,
+    }), TABLE_MODEL);
+  }
+
+  // Queue `n` chairs around the rail (chair k at angle (k/n)·2π; seat 0 at +z),
   // reusing one chair mesh. Shared by the live seat ring and the idle ring.
-  private drawChairRing(target: RenderTarget, vp: Mat4, chair: Mesh, n: number): void {
+  private queueChairRing(chair: Mesh, n: number): void {
     for (let k = 0; k < n; k++) {
       const model = chairModel((k / n) * Math.PI * 2);
-      rasterize(target, chair, lambertMaterial, { mvp: mat4Multiply(vp, model), model, lightDir: TABLE_LIGHT, ambient: TABLE_AMBIENT });
+      this.authoredScene.mesh(chair, lambertMaterial, worldUniforms({
+        lightDir: TABLE_LIGHT,
+        ambient: TABLE_AMBIENT,
+      }), model);
     }
   }
 
@@ -1358,7 +1372,7 @@ export class PokerGameScene {
     }
     if (this.boardT >= 0 && this.boardShown < board.length) {
       const i = this.boardShown;
-      const p = smooth(this.boardT);
+      const p = smoothstep(this.boardT);
       const sx = this.boardSlotX(i);
       const x = DECK_POS.x + (sx - DECK_POS.x) * p;
       const z = DECK_POS.z + (BOARD_Z - DECK_POS.z) * p;
@@ -1379,7 +1393,7 @@ export class PokerGameScene {
     }
     if (this.dealing && this.dealDone < this.deals.length) {
       const d = this.deals[this.dealDone];
-      const p = smooth(this.dealT);
+      const p = smoothstep(this.dealT);
       const x = DECK_POS.x + (d.toX - DECK_POS.x) * p;
       const z = DECK_POS.z + (d.toZ - DECK_POS.z) * p;
       const y = this.deckTopY() + Math.sin(p * Math.PI) * DEAL_HOP + CARD_LIFT;
@@ -1450,7 +1464,7 @@ export class PokerGameScene {
   // jittered resting spot, face-down the whole way.
   private drawMuck(target: RenderTarget, vp: Mat4): void {
     for (const m of this.muck) {
-      const p = smooth(m.t);
+      const p = smoothstep(m.t);
       const x = m.fromX + (m.toX - m.fromX) * p;
       const z = m.fromZ + (m.toZ - m.fromZ) * p;
       const y = m.lift + Math.sin(p * Math.PI) * MUCK_HOP;
@@ -1626,7 +1640,7 @@ export class PokerGameScene {
       const baseTopY = this.deckTopY();
       for (let i = 0; i < this.gather.length; i++) {
         const gc = this.gather[i];
-        const p = smooth((this.gatherT - gc.delay) / GATHER_STEP);
+        const p = smoothstep((this.gatherT - gc.delay) / GATHER_STEP);
         const landY = baseTopY + i * DECK_THICK;
         const x = gc.fromX + (DECK_POS.x - gc.fromX) * p;
         const z = gc.fromZ + (DECK_POS.z - gc.fromZ) * p;
@@ -1641,7 +1655,7 @@ export class PokerGameScene {
     }
     if (this.deckTurnClock >= 0) {
       this.handDeck.setClock(this.handDeck.loop - 1e-6); // settled rest pose; never alter the bridge
-      const yaw = (1 - smooth(this.deckTurnClock / DECK_TURN_T)) * (Math.PI / 2);
+      const yaw = (1 - smoothstep(this.deckTurnClock / DECK_TURN_T)) * (Math.PI / 2);
       this.handDeck.draw(target, vp, yaw);
       return;
     }
@@ -1678,16 +1692,16 @@ export class PokerGameScene {
       if (!this.wisps[s]) continue;
       const c = this.seatPos(s, TABLE_RADIUS + 0.4);
       const P = { x: c.x, y: WISP_FLOAT, z: c.z };
-      const center = mat4MulVec4(vp, { x: P.x, y: P.y, z: P.z, w: 1 });
-      const cw = center.w || 1e-4;
-      const cx = center.x / cw;
-      const cy = center.y / cw;
-      const e = mat4MulVec4(vp, { x: P.x + up.x * size, y: P.y + up.y * size, z: P.z + up.z * size, w: 1 });
-      const ew = e.w || 1e-4;
-      const radius = Math.hypot(e.x / ew - cx, e.y / ew - cy);
-      const d = Math.hypot(ndcX - cx, ndcY - cy);
-      if (d < radius * 1.6 && d < bestD) {
-        bestD = d;
+      const hit = projectedDiscHit(
+        vp,
+        P,
+        { x: up.x * size, y: up.y * size, z: up.z * size },
+        ndcX,
+        ndcY,
+        1.6,
+      );
+      if (hit && hit.distance < bestD) {
+        bestD = hit.distance;
         best = s;
       }
     }

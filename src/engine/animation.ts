@@ -3,7 +3,11 @@ import type { Vec3 } from './math.ts';
 export type Easing = (t: number) => number;
 
 export const linear: Easing = (t) => t;
-export const smoothstep: Easing = (t) => t * t * (3 - 2 * t);
+export const clamp01 = (value: number): number => (value < 0 ? 0 : value > 1 ? 1 : value);
+export const smoothstep: Easing = (value) => {
+  const t = clamp01(value);
+  return t * t * (3 - 2 * t);
+};
 
 /** Standard bounce-out easing, shared by drop/settle animations. */
 export const bounceOut: Easing = (value) => {

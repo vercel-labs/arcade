@@ -72,7 +72,6 @@ export class Object3D {
 }
 
 export class Group extends Object3D {}
-export class Scene extends Group {}
 
 export interface RenderContext {
   target: RenderTarget;
@@ -82,6 +81,22 @@ export interface RenderContext {
 }
 
 export type UniformSource<U> = U | ((context: RenderContext) => U);
+
+export interface WorldUniforms {
+  mvp: Mat4;
+  model: Mat4;
+}
+
+/** Bind material-specific values while the scene supplies model and camera matrices. */
+export function worldUniforms<E extends object>(
+  extras: E | ((context: RenderContext) => E),
+): UniformSource<E & WorldUniforms> {
+  return (context) => ({
+    ...(typeof extras === 'function' ? (extras as (context: RenderContext) => E)(context) : extras),
+    mvp: mat4Multiply(context.cameraMatrices.viewProjection, context.worldMatrix),
+    model: context.worldMatrix,
+  });
+}
 
 abstract class RenderableObject extends Object3D {
   abstract draw(context: RenderContext): void;
@@ -101,6 +116,14 @@ export class MeshObject<U> extends RenderableObject {
       ? (this.uniforms as (context: RenderContext) => U)(context)
       : this.uniforms;
     rasterize(context.target, this.geometry, this.material, uniforms);
+  }
+}
+
+export class Scene extends Group {
+  mesh<U>(geometry: Mesh, material: Material<U>, uniforms: UniformSource<U>, matrix?: Mat4): MeshObject<U> {
+    const object = new MeshObject(geometry, material, uniforms);
+    if (matrix) object.setMatrix(matrix);
+    return this.add(object);
   }
 }
 

@@ -16,6 +16,7 @@ import {
   normalize3,
   quad,
   rasterize,
+  smoothstep,
   type RenderTarget,
   type Texture,
   type Vec3,
@@ -119,16 +120,11 @@ export interface PeekPose {
   az: number; // camera azimuth, so a lifted card yaws to keep its face to the hero
 }
 
-const ease = (x: number): number => {
-  const t = x < 0 ? 0 : x > 1 ? 1 : x;
-  return t * t * (3 - 2 * t);
-};
-
 // The reveal → (curl, stand-up, lift) breakdown, shared by the renderer and the
 // pick helper so the picked center always matches where the card is drawn.
 function peekParams(pose: PeekPose): { phi: number; kappa: number; yaw: number; liftY: number; liftZ: number } {
-  const liftF = ease((pose.reveal - pose.peek) / (1 - pose.peek)); // 0 through the peek, ramps 0→1 as it lifts
-  const peekF = ease(pose.reveal / pose.peek); // 0→1 across the peek
+  const liftF = smoothstep((pose.reveal - pose.peek) / (1 - pose.peek)); // 0 through the peek, ramps 0→1 as it lifts
+  const peekF = smoothstep(pose.reveal / pose.peek); // 0→1 across the peek
   return {
     phi: (Math.PI / 2) * liftF, // uniform stand-up: 0 flat → 90° upright
     kappa: BEND_MAX * peekF * (1 - liftF), // curl peaks at the peek, relaxes as the card stands up

@@ -11,7 +11,6 @@ import {
   mat4Translate,
   meshBounds,
   type Mesh,
-  MeshObject,
   normalize3,
   OrbitCamera,
   parseObj,
@@ -25,6 +24,7 @@ import {
   travelPoint,
   type Vec3,
   type VertexIn,
+  worldUniforms,
 } from '../../../engine/index.ts';
 import { ChessState } from '../../../rules/chess/chess.ts';
 import {
@@ -688,9 +688,7 @@ export class ChessGameScene {
     const blackOrient = mat4Multiply(mat4RotY(Math.PI), scaleM);
 
     const draw = (mesh: Mesh, model: number[], tint: Vec3): void => {
-      const object = new MeshObject(mesh, pieceMaterial, ({ cameraMatrices: matrices, worldMatrix }) => ({
-        mvp: mat4Multiply(matrices.viewProjection, worldMatrix),
-        model: worldMatrix,
+      this.authoredScene.mesh(mesh, pieceMaterial, worldUniforms(() => ({
         cameraPos: eye,
         keyDir: KEY_DIR,
         fillDir: FILL_DIR,
@@ -698,9 +696,7 @@ export class ChessGameScene {
         fillStrength: FILL_STRENGTH,
         ambient: AMBIENT,
         tint,
-      }));
-      object.setMatrix(model);
-      this.authoredScene.add(object);
+      })), model);
     };
     const orient = (color: Color): number[] => (color === WHITE ? scaleM : blackOrient);
 

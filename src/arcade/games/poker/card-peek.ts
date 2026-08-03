@@ -12,13 +12,14 @@
 import {
   type Camera,
   cameraMatrices,
+  intersectRayPlane,
   type Mat4,
-  mat4MulVec4,
-  normalize3,
+  type OrbitCamera,
+  projectPoint,
+  rayFromCamera,
   type RenderTarget,
   type Texture,
 } from '../../../engine/index.ts';
-import type { OrbitCamera } from '../../orbit.ts';
 import type { Card } from '../../../rules/poker/cards.ts';
 import { CARD_H, CARD_W, drawPeekCard, type PeekPose, peekCardCenter } from './card-render.ts';
 
@@ -148,24 +149,11 @@ export class HandPeek {
   // still-raised right card previewed until the cursor fully cleared its inflated box.
   private pick(cam: OrbitCamera, ndcX: number, ndcY: number, aspect: number): number {
     const eye = cam.eye();
-    const { forward, right, up } = cam.basis();
-    const tan = Math.tan(FOVY / 2);
-    const dir = normalize3({
-      x: forward.x + right.x * ndcX * tan * aspect + up.x * ndcY * tan,
-      y: forward.y + right.y * ndcX * tan * aspect + up.y * ndcY * tan,
-      z: forward.z + right.z * ndcX * tan * aspect + up.z * ndcY * tan,
-    });
-    // Felt-plane (y=0) hit for flat / peeking cards.
-    let hitX = Infinity;
-    let hitZ = Infinity;
-    if (Math.abs(dir.y) > 1e-4) {
-      const tHit = -eye.y / dir.y;
-      if (tHit > 0) {
-        hitX = eye.x + dir.x * tHit;
-        hitZ = eye.z + dir.z * tHit;
-      }
-    }
     const camera: Camera = { eye, target: cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 200 };
+    const planeHit = intersectRayPlane(rayFromCamera(camera, ndcX, ndcY, aspect), { x: 0, y: 1, z: 0 });
+    // Felt-plane (y=0) hit for flat / peeking cards.
+    const hitX = planeHit?.x ?? Infinity;
+    const hitZ = planeHit?.z ?? Infinity;
     const vp = cameraMatrices(camera, aspect).viewProjection;
     let best = -1;
     let bestScore = Infinity;
@@ -183,10 +171,10 @@ export class HandPeek {
         // Raised: normalized distance to the projected bent center, ranked below any
         // flat hit (+1) so the fat box can't outrank a footprint the cursor is inside.
         const center = peekCardCenter(this.peekPose(i, cam.azimuth));
-        const p = mat4MulVec4(vp, { x: center.x, y: center.y, z: center.z, w: 1 });
-        if (p.w > 1e-4) {
-          const nx = Math.abs(p.x / p.w - ndcX) / 0.35;
-          const ny = Math.abs(p.y / p.w - ndcY) / 0.45;
+        const point = projectPoint(vp, center);
+        if (point.clipW > 1e-4) {
+          const nx = Math.abs(point.x - ndcX) / 0.35;
+          const ny = Math.abs(point.y - ndcY) / 0.45;
           if (nx < 1 && ny < 1) score = 1 + Math.max(nx, ny);
         }
       }

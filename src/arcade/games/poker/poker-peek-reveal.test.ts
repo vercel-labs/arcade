@@ -7,8 +7,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cameraMatrices, mat4MulVec4, RenderTarget } from '../../../engine/index.ts';
-import { OrbitCamera } from '../../orbit.ts';
+import { cameraMatrices, OrbitCamera, projectPoint, RenderTarget } from '../../../engine/index.ts';
 import { HoldemState } from '../../../rules/poker/holdem.ts';
 import { PokerGameScene } from './poker-scene.ts';
 import { CARD_W } from './card-render.ts';
@@ -32,9 +31,8 @@ function ndcOf(world: { x: number; y: number; z: number }, aspect: number): { x:
   const cam = new OrbitCamera({ azimuth: 0, elevation: 0.7, distance: 13, target: { x: 0, y: 0, z: 0 } }, 3, 24);
   const eye = cam.eye();
   const vp = cameraMatrices({ eye, target: cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 200 }, aspect).viewProjection;
-  const p = mat4MulVec4(vp, { x: world.x, y: world.y, z: world.z, w: 1 });
-  const w = p.w || 1e-4;
-  return { x: p.x / w, y: p.y / w };
+  const point = projectPoint(vp, world);
+  return { x: point.x, y: point.y };
 }
 
 test('hero hole cards stay placeholders until peeked, then reveal the peeked card', () => {

@@ -19,7 +19,6 @@ import {
   mat4RotZ,
   mat4Translate,
   type Mesh,
-  MeshObject,
   normalize3,
   OrbitCamera,
   projectPoint,
@@ -30,6 +29,7 @@ import {
   smoothstep,
   type Vec3,
   waterMaterial,
+  worldUniforms,
 } from '../../../engine/index.ts';
 import { HEX_COORDS, NUM_EDGES, NUM_HEXES, NUM_NODES } from '../../../rules/catan/board-topology.ts';
 import { type BoardOccupancy, canPlaceRoad, canPlaceSettlement } from '../../../rules/catan/placement.ts';
@@ -550,21 +550,15 @@ export class TileScene {
   }
 
   private queueLambert(mesh: Mesh, model: Mat4, lightDir = LIGHT, wrap = WRAP): void {
-    const object = new MeshObject(mesh, lambertMaterial, ({ cameraMatrices: matrices, worldMatrix }) => ({
-      mvp: mat4Multiply(matrices.viewProjection, worldMatrix),
-      model: worldMatrix,
+    this.authoredScene.mesh(mesh, lambertMaterial, worldUniforms({
       lightDir,
       ambient: AMBIENT,
       wrap,
-    }));
-    object.setMatrix(model);
-    this.authoredScene.add(object);
+    }), model);
   }
 
   private queueWater(t: number): void {
-    const object = new MeshObject(WATER_MESH, waterMaterial, ({ camera, cameraMatrices: matrices, worldMatrix }) => ({
-      mvp: mat4Multiply(matrices.viewProjection, worldMatrix),
-      model: worldMatrix,
+    this.authoredScene.mesh(WATER_MESH, waterMaterial, worldUniforms(({ camera }) => ({
       time: t,
       cameraPos: camera.eye,
       sunDirection: LIGHT,
@@ -574,9 +568,7 @@ export class TileScene {
       horizonColor: WATER_HORIZON,
       currentColor: WATER_CURRENT,
       flowSpeed: WATER_FLOW_SPEED,
-    }));
-    object.setMatrix(MODEL);
-    this.authoredScene.add(object);
+    })), MODEL);
   }
 
   renderScene(target: RenderTarget, t = 0): void {

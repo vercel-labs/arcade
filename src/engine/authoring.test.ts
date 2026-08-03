@@ -5,7 +5,6 @@ import {
   FrameClock,
   GeometryBuilder,
   Group,
-  MeshObject,
   Object3D,
   RenderTarget,
   Scene,
@@ -23,6 +22,7 @@ import {
   travelPoint,
   type Camera,
   type Vec3,
+  worldUniforms,
 } from './index.ts';
 
 const camera: Camera = {
@@ -66,12 +66,12 @@ test('SceneRenderer preserves the existing rasterizer output', () => {
   // Importing through the public path is intentional: the authored path must be
   // a compatibility layer over the exact same material and rasterizer semantics.
   const scene = new Scene();
-  scene.add(
-    new MeshObject(geometry, lambertMaterial, ({ cameraMatrices: cm, worldMatrix }) => ({
+  scene.mesh(
+    geometry,
+    lambertMaterial,
+    worldUniforms({
       ...uniforms,
-      mvp: mat4Multiply(cm.viewProjection, worldMatrix),
-      model: worldMatrix,
-    })),
+    }),
   );
   rasterize(direct, geometry, lambertMaterial, uniforms);
   new SceneRenderer().render(authored, scene, camera);

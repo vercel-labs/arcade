@@ -30,6 +30,7 @@ export {
   FrameClock,
   Tween,
   bounceOut,
+  clamp01,
   lerpVec3,
   linear,
   smoothstep,
@@ -47,6 +48,8 @@ export {
   SceneRenderer,
   type RenderContext,
   type UniformSource,
+  type WorldUniforms,
+  worldUniforms,
 } from './scene.ts';
 export {
   lambertMaterial,

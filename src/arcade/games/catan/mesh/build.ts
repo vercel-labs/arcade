@@ -3,6 +3,7 @@
 
 import { type Vec3 } from '../../../../engine/index.ts';
 import { type VertexIn } from '../../../../engine/shader.ts';
+export { smoothstep as smooth } from '../../../../engine/index.ts';
 
 export type RGB = [number, number, number];
 export const v = (x: number, y: number, z: number): Vec3 => ({ x, y, z });
@@ -12,7 +13,6 @@ export const norm = (a: Vec3): Vec3 => {
   const l = Math.hypot(a.x, a.y, a.z) || 1;
   return { x: a.x / l, y: a.y / l, z: a.z / l };
 };
-export const smooth = (t: number): number => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 export const hash2 = (x: number, z: number): number => {
   const h = Math.sin(x * 127.1 + z * 311.7) * 43758.5453;
   return h - Math.floor(h);
