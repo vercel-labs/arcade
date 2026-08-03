@@ -16,6 +16,36 @@ export { bloom, type BloomOptions } from './bloom.ts';
 export { cube, flatShade, meshBounds, quad, tetrahedron, TETRA_VERTS, TETRA_FACES, type AABB, type Mesh } from './mesh.ts';
 export { parseObj, type ParseObjOptions } from './obj.ts';
 export { cameraMatrices, type Camera, type CameraMatrices } from './camera.ts';
+export { OrbitCamera, type OrbitState } from './orbit.ts';
+export {
+  intersectRayPlane,
+  projectPoint,
+  projectedDiscHit,
+  rayFromCamera,
+  type ProjectedPoint,
+  type Ray,
+} from './picking.ts';
+export {
+  AnimationScheduler,
+  Tween,
+  lerpVec3,
+  linear,
+  smoothstep,
+  travelPoint,
+  type Animation,
+  type Easing,
+  type TweenOptions,
+} from './animation.ts';
+export { GeometryBuilder, type VertexOptions } from './geometry.ts';
+export {
+  Group,
+  MeshObject,
+  Object3D,
+  Scene,
+  SceneRenderer,
+  type RenderContext,
+  type UniformSource,
+} from './scene.ts';
 export {
   lambertMaterial,
   type LambertUniforms,
