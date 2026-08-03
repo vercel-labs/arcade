@@ -1,7 +1,7 @@
 // Player colours and the buildable pieces — roads, settlements, cities — plus the board
 // editor overlay that draws placed pieces and the hover ghost.
 
-import { type Mesh, type Vec3 } from '../../../../engine/index.ts';
+import { type Mesh, ResourceCache, type Vec3 } from '../../../../engine/index.ts';
 import { type PlayerColor } from '../../../../rules/catan/types.ts';
 import { EDGE_Y } from './base.ts';
 import { build, type Build, faceQuad, faceTri, norm, type RGB, sub, v } from './build.ts';
@@ -72,19 +72,18 @@ function addCity(m: Build, cx: number, cz: number, y0: number, s: number, color:
   gableRoof(m, cx + 0.13 * s, cz, y0 + 0.42 * s, 0.24 * s, 0.3 * s, 0.12 * s, color, 0);
 }
 
-const pieceCache = new Map<PlayerColor, Mesh>();
+const pieceCache = new ResourceCache<PlayerColor, Mesh>();
 // A row of the three buildable pieces in the chosen player color: a flat road stick (left), a
 // house-shaped settlement (centre), and a bigger two-section city with a taller wing (right).
 export function piecesMesh(color: PlayerColor): Mesh {
-  const cached = pieceCache.get(color);
-  if (cached) return cached;
-  const m = build();
-  const c = PLAYER_RGB[color];
-  addRoad(m, -0.72, 0, 0, 0.5, 0, c, 1);
-  addSettlement(m, 0, 0, 0, 1, c);
-  addCity(m, 0.7, 0, 0, 1, c);
-  pieceCache.set(color, m);
-  return m;
+  return pieceCache.getOrCreate(color, () => {
+    const m = build();
+    const c = PLAYER_RGB[color];
+    addRoad(m, -0.72, 0, 0, 0.5, 0, c, 1);
+    addSettlement(m, 0, 0, 0, 1, c);
+    addCity(m, 0.7, 0, 0, 1, c);
+    return m;
+  });
 }
 
 // ── Board editor overlay: placed pieces + the hover highlight ──────────────────
@@ -135,4 +134,3 @@ export function boardOverlayMesh(o: OverlaySpec): Mesh {
   if (o.ghostRoad) drawRoad(m, o.ghostRoad, o.hoverColor);
   return m;
 }
-

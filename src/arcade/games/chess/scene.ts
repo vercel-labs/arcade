@@ -18,6 +18,7 @@ import {
   pieceMaterial,
   Raycaster,
   type RenderTarget,
+  ResourceCache,
   Scene,
   SceneRenderer,
   smoothstep,
@@ -53,6 +54,7 @@ import { loadCreatorWisp, mulberry32, type Wisp, WISP_SIZE } from '../../scenes/
 import { asset } from '../../assets.ts';
 
 const PIECE_NAMES = ['pawn', 'queen', 'bishop', 'rook', 'king', 'knight'];
+const pieceMeshCache = new ResourceCache<string, Mesh>();
 
 const FOVY = (50 * Math.PI) / 180;
 const TALLEST = 1.7; // world height of the tallest piece (king)
@@ -223,7 +225,8 @@ export class ChessGameScene {
     let maxH = 0;
     let maxFootprint = 0;
     for (const name of PIECE_NAMES) {
-      const mesh = flatShade(parseObj(readFileSync(`${dir}/${name}.obj`, 'utf8')));
+      const path = `${dir}/${name}.obj`;
+      const mesh = pieceMeshCache.getOrCreate(path, () => flatShade(parseObj(readFileSync(path, 'utf8'))));
       meshes[name] = mesh;
       const b = meshBounds(mesh);
       maxH = Math.max(maxH, b.max.y - b.min.y);

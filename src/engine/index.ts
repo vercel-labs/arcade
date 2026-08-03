@@ -41,6 +41,7 @@ export {
   type TweenOptions,
 } from './animation.ts';
 export { GeometryBuilder, type VertexOptions } from './geometry.ts';
+export { ResourceCache, type ResourceDisposer, type ResourceFactory } from './resources.ts';
 export {
   BufferAttribute,
   BufferGeometry,

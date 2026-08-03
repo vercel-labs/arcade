@@ -6,7 +6,7 @@
 // blinds and $1000 starts, and player stacks are spread across denominations (not one fat
 // tower) so a table of stacks reads as a lively mix of colors.
 
-import { type Mat4, mat4Multiply, mat4RotY, mat4Translate, type Mesh, rasterize, type RenderTarget, lambertMaterial, type VertexIn, type Vec3 } from '../../../engine/index.ts';
+import { type Mat4, mat4Multiply, mat4RotY, mat4Translate, type Mesh, rasterize, type RenderTarget, lambertMaterial, ResourceCache, type VertexIn, type Vec3 } from '../../../engine/index.ts';
 
 // Classic casino colors, dialed a touch darker than neon so they sit into the felt. `base`
 // is the chip body; `spot` is the edge/face marking (the ring line + the six rim spots).
@@ -55,73 +55,71 @@ export const CHIP_COLLISION_DISTANCE = 2 * CHIP_R + 2 * CHIP_JIT + COLLISION_GAP
 // faces each carry a larger base field, a thin segmented ring, a clean body-color gap, and six
 // broad rim accents; the side wall repeats those six accents around the edge. All
 // per-vertex color under lambert (cull: 'none', so winding is free).
-const meshCache = new Map<number, Mesh>();
+const meshCache = new ResourceCache<number, Mesh>();
 function chipMesh(value: number): Mesh {
-  const cached = meshCache.get(value);
-  if (cached) return cached;
-  const d = DENOMS.find((x) => x.value === value) ?? DENOMS[DENOMS.length - 1];
-  const V: VertexIn[] = [];
-  const I: number[] = [];
-  const top = CHIP_H / 2;
-  const bot = -CHIP_H / 2;
-  const ang = (s: number): number => (s / SEGMENTS) * Math.PI * 2;
-  const rim = (s: number, rf: number): { x: number; z: number } => ({ x: Math.cos(ang(s)) * CHIP_R * rf, z: Math.sin(ang(s)) * CHIP_R * rf });
-  const isRimAccent = (s: number): boolean => s % (SEGMENTS / TICKS) < TICK_SEGMENTS;
-  const isRingAccent = (s: number): boolean => s % (SEGMENTS / RING_ACCENTS) === 0;
-  const vert = (x: number, y: number, z: number, n: Vec3, col: Vec3): number => {
-    V.push({ position: { x, y, z }, normal: n, uv: [0.5, 0.5], color: { ...col } });
-    return V.length - 1;
-  };
-  const tri = (a: number, b: number, c: number): void => {
-    I.push(a, b, c);
-  };
-  const quad = (p: { x: number; z: number }[], y: number[], n: Vec3, col: Vec3): void => {
-    const a = vert(p[0].x, y[0], p[0].z, n, col);
-    const b = vert(p[1].x, y[1], p[1].z, n, col);
-    const c = vert(p[2].x, y[2], p[2].z, n, col);
-    const e = vert(p[3].x, y[3], p[3].z, n, col);
-    tri(a, b, c);
-    tri(a, c, e);
-  };
-  // Top and bottom faces.
-  for (const [y, ny] of [
-    [top, { x: 0, y: 1, z: 0 }],
-    [bot, { x: 0, y: -1, z: 0 }],
-  ] as [number, Vec3][]) {
-    const center = vert(0, y, 0, ny, d.base);
+  return meshCache.getOrCreate(value, () => {
+    const d = DENOMS.find((x) => x.value === value) ?? DENOMS[DENOMS.length - 1];
+    const V: VertexIn[] = [];
+    const I: number[] = [];
+    const top = CHIP_H / 2;
+    const bot = -CHIP_H / 2;
+    const ang = (s: number): number => (s / SEGMENTS) * Math.PI * 2;
+    const rim = (s: number, rf: number): { x: number; z: number } => ({ x: Math.cos(ang(s)) * CHIP_R * rf, z: Math.sin(ang(s)) * CHIP_R * rf });
+    const isRimAccent = (s: number): boolean => s % (SEGMENTS / TICKS) < TICK_SEGMENTS;
+    const isRingAccent = (s: number): boolean => s % (SEGMENTS / RING_ACCENTS) === 0;
+    const vert = (x: number, y: number, z: number, n: Vec3, col: Vec3): number => {
+      V.push({ position: { x, y, z }, normal: n, uv: [0.5, 0.5], color: { ...col } });
+      return V.length - 1;
+    };
+    const tri = (a: number, b: number, c: number): void => {
+      I.push(a, b, c);
+    };
+    const quad = (p: { x: number; z: number }[], y: number[], n: Vec3, col: Vec3): void => {
+      const a = vert(p[0].x, y[0], p[0].z, n, col);
+      const b = vert(p[1].x, y[1], p[1].z, n, col);
+      const c = vert(p[2].x, y[2], p[2].z, n, col);
+      const e = vert(p[3].x, y[3], p[3].z, n, col);
+      tri(a, b, c);
+      tri(a, c, e);
+    };
+    // Top and bottom faces.
+    for (const [y, ny] of [
+      [top, { x: 0, y: 1, z: 0 }],
+      [bot, { x: 0, y: -1, z: 0 }],
+    ] as [number, Vec3][]) {
+      const center = vert(0, y, 0, ny, d.base);
+      for (let s = 0; s < SEGMENTS; s++) {
+        const s1 = (s + 1) % SEGMENTS;
+        const i0 = rim(s, RING_INNER);
+        const i1 = rim(s1, RING_INNER);
+        // Inner disc (base): a fan wedge to the centre.
+        const a0 = vert(i0.x, y, i0.z, ny, d.base);
+        const a1 = vert(i1.x, y, i1.z, ny, d.base);
+        tri(center, a0, a1);
+        // Thin inset ring: 24 equal sections alternating 12 contrast dashes and 12 gaps.
+        const l0 = rim(s, RING_OUTER);
+        const l1 = rim(s1, RING_OUTER);
+        quad([i0, i1, l1, l0], [y, y, y, y], ny, isRingAccent(s) ? d.spot : d.base);
+        // A narrow body-colored gap separates the inset ring from the rim accents.
+        const g0 = rim(s, TICK_INNER);
+        const g1 = rim(s1, TICK_INNER);
+        quad([l0, l1, g1, g0], [y, y, y, y], ny, d.base);
+        const o0 = rim(s, 1);
+        const o1 = rim(s1, 1);
+        quad([g0, g1, o1, o0], [y, y, y, y], ny, isRimAccent(s) ? d.spot : d.base);
+      }
+    }
+    // Side wall: one quad per segment, radial normal, ticks matching the face spots.
     for (let s = 0; s < SEGMENTS; s++) {
       const s1 = (s + 1) % SEGMENTS;
-      const i0 = rim(s, RING_INNER);
-      const i1 = rim(s1, RING_INNER);
-      // Inner disc (base): a fan wedge to the centre.
-      const a0 = vert(i0.x, y, i0.z, ny, d.base);
-      const a1 = vert(i1.x, y, i1.z, ny, d.base);
-      tri(center, a0, a1);
-      // Thin inset ring: 24 equal sections alternating 12 contrast dashes and 12 gaps.
-      const l0 = rim(s, RING_OUTER);
-      const l1 = rim(s1, RING_OUTER);
-      quad([i0, i1, l1, l0], [y, y, y, y], ny, isRingAccent(s) ? d.spot : d.base);
-      // A narrow body-colored gap separates the inset ring from the rim accents.
-      const g0 = rim(s, TICK_INNER);
-      const g1 = rim(s1, TICK_INNER);
-      quad([l0, l1, g1, g0], [y, y, y, y], ny, d.base);
-      const o0 = rim(s, 1);
-      const o1 = rim(s1, 1);
-      quad([g0, g1, o1, o0], [y, y, y, y], ny, isRimAccent(s) ? d.spot : d.base);
+      const p0 = rim(s, 1);
+      const p1 = rim(s1, 1);
+      const mid = ang(s + 0.5);
+      const n: Vec3 = { x: Math.cos(mid), y: 0, z: Math.sin(mid) };
+      quad([p0, p1, p1, p0], [bot, bot, top, top], n, isRimAccent(s) ? d.spot : d.base);
     }
-  }
-  // Side wall: one quad per segment, radial normal, ticks matching the face spots.
-  for (let s = 0; s < SEGMENTS; s++) {
-    const s1 = (s + 1) % SEGMENTS;
-    const p0 = rim(s, 1);
-    const p1 = rim(s1, 1);
-    const mid = ang(s + 0.5);
-    const n: Vec3 = { x: Math.cos(mid), y: 0, z: Math.sin(mid) };
-    quad([p0, p1, p1, p0], [bot, bot, top, top], n, isRimAccent(s) ? d.spot : d.base);
-  }
-  const mesh: Mesh = { vertices: V, indices: I };
-  meshCache.set(value, mesh);
-  return mesh;
+    return { vertices: V, indices: I };
+  });
 }
 
 // One column of `count` identical chips (a single denomination).

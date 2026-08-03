@@ -4,7 +4,7 @@
 // Tiles are being rebuilt from reference art one at a time: fields/ is done, and the other five
 // still dress the shared thin base with their older props.
 
-import { type Mesh } from '../../../../../engine/index.ts';
+import { type Mesh, ResourceCache } from '../../../../../engine/index.ts';
 import { type Terrain } from '../../../../../rules/catan/types.ts';
 import { type Build } from '../build.ts';
 import { animatedDesertTile, desertTile, placeRobber } from './desert.ts';
@@ -25,19 +25,16 @@ const BUILDERS: Record<Terrain, (seed: number) => Build> = {
 };
 
 // Cache one baked static mesh per (terrain, seed); animated props live in a separate overlay.
-const cache = new Map<string, Mesh>();
+const cache = new ResourceCache<string, Mesh>();
 // `robberOn` bakes the robber (seated on the tile's centre surface) into the returned mesh —
 // the robber is available on every terrain and toggled from the HUD, never part of the tile.
 export function tileMesh(terrain: Terrain, seed = 0, robberOn = false): Mesh {
   const key = `${terrain}:${seed}:${robberOn ? 1 : 0}`;
-  let m = cache.get(key);
-  if (!m) {
+  return cache.getOrCreate(key, () => {
     const built = BUILDERS[terrain](seed);
     if (robberOn) placeRobber(built);
-    m = built;
-    cache.set(key, m);
-  }
-  return m;
+    return built;
+  });
 }
 
 // Small time-varying overlays. `origin` is the tile's board-space centre, allowing weather to

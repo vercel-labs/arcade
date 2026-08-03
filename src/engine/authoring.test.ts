@@ -11,6 +11,7 @@ import {
   Object3D,
   ObjectPool,
   RenderTarget,
+  ResourceCache,
   Scene,
   SceneRenderer,
   Tween,
@@ -182,6 +183,24 @@ test('InstancedMesh matches separately authored objects and retains instance sta
   instances.clearInstances();
   assert.equal(instances.count, 0);
   assert.equal(instances.capacity, 2);
+});
+
+test('ResourceCache creates once and disposes replaced, deleted, and cleared resources', () => {
+  const disposed: string[] = [];
+  const cache = new ResourceCache<string, { id: string }>((value, key) => disposed.push(`${key}:${value.id}`));
+  let creates = 0;
+  const first = cache.getOrCreate('mesh', () => ({ id: `mesh-${++creates}` }));
+  const reused = cache.getOrCreate('mesh', () => ({ id: `mesh-${++creates}` }));
+  assert.equal(reused, first);
+  assert.equal(creates, 1);
+  cache.set('mesh', { id: 'replacement' });
+  assert.deepEqual(disposed, ['mesh:mesh-1']);
+  assert.equal(cache.delete('missing'), false);
+  assert.equal(cache.delete('mesh'), true);
+  cache.getOrCreate('texture', () => ({ id: 'face' }));
+  cache.clear();
+  assert.deepEqual(disposed, ['mesh:mesh-1', 'mesh:replacement', 'texture:face']);
+  assert.equal(cache.size, 0);
 });
 
 test('shared camera picking intersects the board plane', () => {
