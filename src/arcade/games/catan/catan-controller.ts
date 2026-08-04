@@ -140,7 +140,9 @@ export class CatanController {
   // The normal Catan control panel + ☰ menu button over the scene.
   buildRoot(cols: number, rows: number): Node {
     mountCatanTileHud(this.ui); // a prior modal root may have dropped the Slots
-    return buildCatanTileRoot(this.region(cols, rows), () => this.openMenu(), this.scene.boardTokens(cols, rows), this.scene.currentMode(), this.scene.portSailLabel(cols, rows));
+    const singlePort = this.scene.portSailLabel(cols, rows);
+    const sailLabels = singlePort ? [singlePort] : this.scene.boardPortLabels(cols, rows);
+    return buildCatanTileRoot(this.region(cols, rows), () => this.openMenu(), this.scene.boardTokens(cols, rows), this.scene.currentMode(), sailLabels);
   }
 
   // The in-game menu popup (home / reset camera / display / color / controls / quit).

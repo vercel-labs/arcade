@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { coastalEdges, edgeNodes, HEX_COORDS, hexNodes, NUM_NODES } from './board-topology.ts';
+import { coastalEdgeRing, coastalEdges, edgeNodes, HEX_COORDS, hexNodes, NUM_NODES } from './board-topology.ts';
 import { generateBoard, nodeProduction } from './setup.ts';
 import { NUMBER_TOKENS, RED_NUMBERS, TERRAIN_COUNTS, TERRAIN_RESOURCE, type Terrain, TOKEN_DOTS } from './types.ts';
 
@@ -93,6 +93,17 @@ test('9 harbors on distinct coastal edges, each mapped to its two coastal nodes'
   }
   assert.equal(generic, 4);
   assert.equal(specific, 5);
+});
+
+test('harbor locations follow the physical frame\'s repeating 3/3/4 coastal-edge spacing', () => {
+  const board = generateBoard(rng());
+  const ringIndex = new Map(coastalEdgeRing.map((edge, i) => [edge, i]));
+  const positions = board.harbors.map((harbor) => ringIndex.get(harbor.edge) as number).sort((a, b) => a - b);
+  const gaps = positions.map((position, i) => {
+    const next = positions[(i + 1) % positions.length];
+    return (next - position + coastalEdgeRing.length) % coastalEdgeRing.length;
+  });
+  assert.deepEqual(gaps, [3, 3, 4, 3, 3, 4, 3, 3, 4]);
 });
 
 test('same seed → identical board (deterministic)', () => {

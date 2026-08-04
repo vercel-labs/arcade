@@ -109,17 +109,19 @@ function placeTokens(hexes: HexSetup[], rng: () => number): void {
   // from the aesthetic red-adjacency preference) rather than loop forever.
 }
 
-// Place the 9 harbors on coastal edges, spread evenly around the perimeter ring. Which port
-// lands where is randomized. NOTE: this is a structurally-valid placement (9 distinct
-// coastal edges, each mapped to its two usable intersections) — not the exact fixed-frame
-// arrangement of the physical board, which is a later (beginner-layout) refinement.
+// The physical sea frame has 9 marked harbor slots. Around its 30 coastal edges those slots
+// repeat a 3/3/4 spacing: each port touches one full coastal edge and therefore has exactly
+// two usable land intersections. Variable setup shuffles the 9 harbor pieces among these
+// frame slots; it does not choose arbitrary adjacent coastline edges.
+const HARBOR_EDGE_GAPS = [3, 3, 4, 3, 3, 4, 3, 3, 4] as const;
 function placeHarbors(rng: () => number): HarborSetup[] {
   const ring = coastalEdgeRing;
   const ports = shuffle([...PORTS], rng);
-  const step = ring.length / ports.length;
+  let ringIndex = 0;
   return ports.map((port, i) => {
-    const edge = ring[Math.floor(i * step) % ring.length];
+    const edge = ring[ringIndex];
     const [a, b] = edgeNodes[edge];
+    ringIndex = (ringIndex + HARBOR_EDGE_GAPS[i]) % ring.length;
     return { port, edge, nodes: [a, b] as [number, number] };
   });
 }

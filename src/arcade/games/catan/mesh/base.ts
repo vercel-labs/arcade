@@ -22,8 +22,11 @@ export function hexCorners(r: number, y: number): Vec3[] {
   return out;
 }
 
-const FRAME_TOP: RGB = [182, 156, 118]; // warm tan ledge — lighter than before but short of the
-const FRAME_SIDE: RGB = [150, 126, 94]; // box's cream so white settlements still read against it
+// A warm buff ledge, close to the dry beach but a little browner so the island still has a
+// readable tile lattice. The side wall stays one value step darker to preserve the slab depth
+// without turning the space between neighboring hexes into dark gray seams.
+const FRAME_TOP: RGB = [218, 190, 137];
+const FRAME_SIDE: RGB = [174, 143, 99];
 
 // Clamp a point to inside the flat-top hexagon of circumradius R (vertices at 0°,60°,…, edge
 // normals at 30°,90°,…). Points outside are pulled radially onto the nearest edge — so an
@@ -141,4 +144,3 @@ export function tileBackMesh(): Mesh {
   backMesh = m;
   return m;
 }
-

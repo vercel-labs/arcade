@@ -11,9 +11,12 @@
 //   port/            the harbour ship: form data, hull + rig, deck cargo
 export type { RGB } from './build.ts';
 export { tileBackMesh } from './base.ts';
+export { BEACH_DRY_WIDTH, BEACH_OUTER_WIDTH, coastMesh, shoreWaveField, surfMesh, swashMesh } from './coast.ts';
+export type { ShoreWaveField } from './coast.ts';
 export { dieMesh } from './dice.ts';
 export { boardOverlayMesh, type BuildingSpec, type EdgeRoadSpec, hoverColorFor, type OverlaySpec, piecesMesh } from './pieces.ts';
 export { PORT_SAIL_CENTER } from './port/hull.ts';
 export { portMesh } from './port/index.ts';
+export { harborPiersMesh } from './port/piers.ts';
 export type { PortKind } from './port/spec.ts';
 export { animatedTileMesh, tileMesh } from './tiles/index.ts';

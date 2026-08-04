@@ -1,19 +1,26 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mat4Identity, waterMaterial, type Vec3, type VertexIn, type WaterUniforms } from '../../../engine/index.ts';
-import { CATAN_WATER_RADIUS_X, CATAN_WATER_RADIUS_Z, CATAN_WATER_SUBDIVISIONS, CATAN_WATER_Y, catanWaterMesh } from './water.ts';
+import {
+  CATAN_WATER_RADIUS,
+  CATAN_WATER_RADIUS_X,
+  CATAN_WATER_RADIUS_Z,
+  CATAN_WATER_SUBDIVISIONS,
+  CATAN_WATER_Y,
+  catanWaterMesh,
+} from './water.ts';
 
-test('Catan water is a subdivided finite flat-top hex below the tile walls', () => {
+test('Catan water is a subdivided finite pointy-top hex aligned with the complete island', () => {
   const mesh = catanWaterMesh();
   assert.equal(mesh.vertices.length, 1 + 3 * CATAN_WATER_SUBDIVISIONS * (CATAN_WATER_SUBDIVISIONS + 1));
   assert.equal(mesh.indices.length, 18 * CATAN_WATER_SUBDIVISIONS * CATAN_WATER_SUBDIVISIONS);
   assert.ok(mesh.vertices.every((vertex) => vertex.position.y === CATAN_WATER_Y));
   const outerX = Math.max(...mesh.vertices.map((vertex) => Math.abs(vertex.position.x)));
   const outerZ = Math.max(...mesh.vertices.map((vertex) => Math.abs(vertex.position.z)));
-  assert.ok(Math.abs(outerX - CATAN_WATER_RADIUS_X) < 1e-9);
-  assert.ok(Math.abs(outerZ - CATAN_WATER_RADIUS_Z * Math.sqrt(3) / 2) < 1e-9);
-  assert.ok(Math.abs(outerX * 91.5 - 480) < 1e-9);
-  assert.ok(Math.abs(outerZ * 2 * (79.25 / Math.sqrt(3)) - 440) < 1e-9);
+  assert.ok(Math.abs(outerX - CATAN_WATER_RADIUS_X * Math.sqrt(3) / 2) < 1e-9);
+  assert.ok(Math.abs(outerZ - CATAN_WATER_RADIUS_Z) < 1e-9);
+  assert.equal(CATAN_WATER_RADIUS_X, CATAN_WATER_RADIUS);
+  assert.equal(CATAN_WATER_RADIUS_Z, CATAN_WATER_RADIUS);
 });
 
 test('water material keeps bright irregular ripples visible across camera angles and time', () => {
