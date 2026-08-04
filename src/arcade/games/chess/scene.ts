@@ -1,6 +1,5 @@
 import { readFileSync } from 'node:fs';
 import {
-  type Camera,
   cameraMatrices,
   flatShade,
   mat4Identity,
@@ -439,8 +438,7 @@ export class ChessGameScene {
   // orchestrator to raise the in-match model-swap popup for the clicked side.
   wispAt(ndcX: number, ndcY: number, aspect: number): Color | null {
     if (!this.matchActive) return null;
-    const eye = this.cam.eye();
-    const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 400 };
+    const camera = this.cam.toCamera({ fovy: FOVY, near: 0.05, far: 400 });
     const raycaster = this.raycaster.setFromCamera(camera, ndcX, ndcY, aspect);
     const { up } = this.cam.basis();
     const size = WISP_SIZE * WISP_SCALE;
@@ -545,8 +543,7 @@ export class ChessGameScene {
   // Map a normalized device coordinate (−1..1, +y up) to the 0x88 board square
   // under it, by casting a ray from the eye through the cursor onto the y=0 plane.
   private squareAt(ndcX: number, ndcY: number, aspect: number): number {
-    const eye = this.cam.eye();
-    const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 400 };
+    const camera = this.cam.toCamera({ fovy: FOVY, near: 0.05, far: 400 });
     const hit = this.raycaster.setFromCamera(camera, ndcX, ndcY, aspect).intersectPlane({ x: 0, y: 1, z: 0 });
     if (!hit) return -1;
     // World hit point → square. When flipped the render negates x/z, so negate the
@@ -697,8 +694,8 @@ export class ChessGameScene {
   renderScene(target: RenderTarget, t = 0): void {
     target.clear(10, 11, 14);
     this.authoredPool.begin();
-    const eye = this.cam.eye();
-    const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 400 };
+    const camera = this.cam.toCamera({ fovy: FOVY, near: 0.05, far: 400 });
+    const eye = camera.eye;
     const { viewProjection } = cameraMatrices(camera, target.width / target.height);
     const scaleM = mat4Scale(this.scale, this.scale, this.scale);
     const blackOrient = mat4Multiply(mat4RotY(Math.PI), scaleM);

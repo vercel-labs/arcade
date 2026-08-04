@@ -2,7 +2,7 @@
 // which terrain tile the scene shows, plus the standard bottom bar. Mirrors the poker cards
 // HUD's shape — persistent component instances mounted via Slot, rebuilt each frame.
 
-import { Box, Button, Dialog, Dropdown, type LayoutBox, Modal, type Node, RoundedButton, type Screen, Slot, type Style, Text } from '../../../tui/index.ts';
+import { Box, Button, Dialog, Dropdown, Field, FilledButton, type LayoutBox, Modal, type Node, RoundedButton, type Screen, Slot, Text } from '../../../tui/index.ts';
 import { stringWidth } from '../../../engine/index.ts';
 import { type PlayerColor, type Terrain } from '../../../rules/catan/types.ts';
 import { type BoardToken, type CatanMode, type SailLabel } from './tile-scene.ts';
@@ -96,20 +96,6 @@ export function setCatanTileMode(mode: CatanMode): void {
   modeDropdown.pick(MODES.indexOf(mode));
 }
 
-function labeled(label: string, node: Node): Node {
-  return Box({ flexDirection: 'column', gap: 0 }, [Text({ text: label, style: { color: 'muted' } }), node]);
-}
-
-const REROLL_BTN: Style = {
-  padding: [0, 2],
-  background: [44, 46, 56],
-  color: [212, 214, 224],
-  bold: true,
-  hover: { background: [238, 240, 248], color: [16, 16, 24] },
-  focus: { background: [86, 90, 108], color: [248, 248, 252] },
-  pressed: { background: [255, 255, 255], color: [12, 12, 18] },
-};
-
 // The piece-edit modal: shown when a placed piece is clicked. A settlement can upgrade to a
 // city; every piece can be removed or recolored. A dim scrim behind closes on click.
 export interface PieceModalOpts {
@@ -138,7 +124,7 @@ export function buildCatanPieceModal(o: PieceModalOpts): Node {
     }),
   );
   const card = Dialog({ title: o.road ? 'Road' : o.city ? 'City' : 'Settlement', onClose: o.onClose, closeId: 'pm-close', padding: [1, 2], background: UI_CHROME_BG }, [
-    Box({ flexDirection: 'column', gap: 1 }, [Box({ flexDirection: 'column', alignItems: 'stretch', gap: 0 }, actions), labeled('Color', swatches)]),
+    Box({ flexDirection: 'column', gap: 1 }, [Box({ flexDirection: 'column', alignItems: 'stretch', gap: 0 }, actions), Field({ label: 'Color', child: swatches })]),
   ]);
   // Menu-style overlay: a dim scrim behind the card that dismisses on an outside click.
   return Modal(card, { onDismiss: o.onClose });
@@ -152,25 +138,24 @@ export function buildCatanTileRoot(region: LayoutBox, onOpenMenu: () => void, to
   // Per-mode controls: board → regenerate; pieces → color picker; tile → terrain + vary + robber.
   const controls: Node[] =
     mode === 'board'
-      ? [Button({ id: 'catan-reroll', label: '⟳ regenerate', onClick: () => H?.onReroll(), style: REROLL_BTN }), labeled('Color', Slot('catan-color'))]
+      ? [FilledButton({ id: 'catan-reroll', label: '⟳ regenerate', onClick: () => H?.onReroll() }), Field({ label: 'Color', child: Slot('catan-color') })]
       : mode === 'pieces'
-        ? [labeled('Color', Slot('catan-color'))]
+        ? [Field({ label: 'Color', child: Slot('catan-color') })]
         : mode === 'port'
-          ? [labeled('Port', Slot('catan-port'))]
+          ? [Field({ label: 'Port', child: Slot('catan-port') })]
           : [
-            labeled('Tile', Slot('catan-terrain')),
-            Button({ id: 'catan-reroll', label: '⟳ vary', onClick: () => H?.onReroll(), style: REROLL_BTN }),
-            Button({
+            Field({ label: 'Tile', child: Slot('catan-terrain') }),
+            FilledButton({ id: 'catan-reroll', label: '⟳ vary', onClick: () => H?.onReroll() }),
+            FilledButton({
               id: 'catan-robber',
               label: robberOn ? '● robber: on' : '○ robber: off',
               onClick: () => {
                 robberOn = !robberOn;
                 H?.onToggleRobber(robberOn);
               },
-              style: REROLL_BTN,
             }),
           ];
-  const panel = Box({ flexDirection: 'column', gap: 1, padding: [1, 2], background: [16, 18, 26, 0.9] }, [labeled('Mode', Slot('catan-mode')), ...controls]);
+  const panel = Box({ flexDirection: 'column', gap: 1, padding: [1, 2], background: [16, 18, 26, 0.9] }, [Field({ label: 'Mode', child: Slot('catan-mode') }), ...controls]);
   return Box({ width: region.w, height: region.h }, [
     ...tokens.map(tokenChip), // number tokens over the board (bottom layer, under the chrome)
     ...sails.map(sailChip), // board/port mode: trade-info chips projected onto the sails
@@ -178,6 +163,6 @@ export function buildCatanTileRoot(region: LayoutBox, onOpenMenu: () => void, to
     Box({ position: 'absolute', top: 1, right: 2 }, [Button({ id: 'catan-menu-button', label: '☰ menu', onClick: onOpenMenu, style: UI_CHROME_PILL })]),
     // Board mode: a roll button in the bottom-right; triggers the big dice overlay. Same
     // margin from the right as the ☰ menu button, same from the bottom as the bottom bar.
-    ...(mode === 'board' ? [Box({ position: 'absolute', bottom: 1, right: 2 }, [Button({ id: 'catan-roll', label: 'roll dice', onClick: () => H?.onRollDice(), style: REROLL_BTN })])] : []),
+    ...(mode === 'board' ? [Box({ position: 'absolute', bottom: 1, right: 2 }, [FilledButton({ id: 'catan-roll', label: 'roll dice', onClick: () => H?.onRollDice() })])] : []),
   ]);
 }

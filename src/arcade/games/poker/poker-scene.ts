@@ -11,7 +11,6 @@
 // felt itself stays clean, with no projected labels baked over the 3D.
 
 import {
-  type Camera,
   cameraMatrices,
   feltMaterial,
   InstancedMesh,
@@ -1068,8 +1067,8 @@ export class PokerGameScene {
     this.advanceCine(dt); // may hard-cut this.cam before we read the eye below
     this.tickAutoContinue(dt); // may fire continueGesture (restoring the camera) before the eye read
     target.clear(6, 10, 8);
-    const eye = this.cam.eye();
-    const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 200 };
+    const camera = this.cam.toCamera({ fovy: FOVY, near: 0.05, far: 200 });
+    const eye = camera.eye;
     const { viewProjection: vp } = cameraMatrices(camera, target.width / target.height);
 
     // Table + chairs: one per seat during a session, else a default idle ring.
@@ -1698,8 +1697,7 @@ export class PokerGameScene {
   // ── Wisp picking (click an AI seat's wisp to swap its model) ───────────────────
   wispAt(ndcX: number, ndcY: number, aspect: number): number | null {
     if (!this.active) return null;
-    const eye = this.cam.eye();
-    const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 200 };
+    const camera = this.cam.toCamera({ fovy: FOVY, near: 0.05, far: 200 });
     const raycaster = this.raycaster.setFromCamera(camera, ndcX, ndcY, aspect);
     const { up } = this.cam.basis();
     const size = WISP_SIZE * WISP_SCALE;

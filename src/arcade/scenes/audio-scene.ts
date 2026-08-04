@@ -1,5 +1,4 @@
 import {
-  type Camera,
   cameraMatrices,
   type RenderTarget,
   type RGB,
@@ -334,8 +333,7 @@ export class AudioScene {
     const H = target.height;
     const dt = this.lastT < 0 ? 1 / 30 : Math.min(0.1, Math.max(0, t - this.lastT));
     this.lastT = t;
-    const eye = this.cam.eye();
-    const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 200 };
+    const camera = this.cam.toCamera({ fovy: FOVY, near: 0.05, far: 200 });
     const { viewProjection: vp } = cameraMatrices(camera, W / H);
     const { right, up } = this.cam.basis();
     this.wisp.renderWorld(target, vp, right, up, { x: 0, y: 0, z: 0 }, W, H, t, dt);

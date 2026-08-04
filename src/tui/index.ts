@@ -14,6 +14,7 @@ export { Modal } from './components/modal.ts';
 export { Dialog, CloseButton, type DialogOpts } from './components/dialog.ts';
 export { ASCIIFont, asciiFontLines } from './components/asciifont.ts';
 export { FrameBuffer, type FrameDraw } from './components/framebuffer.ts';
+export { Field, type FieldOpts } from './components/field.ts';
 export { Dropdown, type DropdownOpts } from './components/dropdown.ts';
 export { Input, type InputOpts } from './components/input.ts';
 export { Select, type SelectOpts } from './components/select.ts';

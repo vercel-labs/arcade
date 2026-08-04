@@ -1,3 +1,4 @@
+import type { Camera } from './camera.ts';
 import { add3, clamp, cross3, normalize3, scale3, sub3, type Vec3 } from './math.ts';
 
 export interface OrbitState {
@@ -5,6 +6,13 @@ export interface OrbitState {
   elevation: number;
   distance: number;
   target: Vec3;
+}
+
+export interface OrbitCameraSnapshotOptions {
+  fovy: number;
+  near: number;
+  far: number;
+  up?: Vec3;
 }
 
 /**
@@ -61,6 +69,18 @@ export class OrbitCamera {
       z: ce * Math.cos(this.azimuth),
     };
     return add3(this.target, scale3(dir, this.distance));
+  }
+
+  /** Capture the current orbit pose with the projection settings used for one frame. */
+  toCamera(options: OrbitCameraSnapshotOptions): Camera {
+    return {
+      eye: this.eye(),
+      target: { ...this.target },
+      up: { ...(options.up ?? { x: 0, y: 1, z: 0 }) },
+      fovy: options.fovy,
+      near: options.near,
+      far: options.far,
+    };
   }
 
   basis(): { forward: Vec3; right: Vec3; up: Vec3 } {

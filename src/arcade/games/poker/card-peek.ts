@@ -10,7 +10,6 @@
 // oscillates as it arches.
 
 import {
-  type Camera,
   type Mat4,
   type OrbitCamera,
   Raycaster,
@@ -143,8 +142,7 @@ export class HandPeek {
   // index won every overlap tie: gliding onto the lower-index (left) card left the
   // still-raised right card previewed until the cursor fully cleared its inflated box.
   private pick(cam: OrbitCamera, ndcX: number, ndcY: number, aspect: number): number {
-    const eye = cam.eye();
-    const camera: Camera = { eye, target: cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 200 };
+    const camera = cam.toCamera({ fovy: FOVY, near: 0.05, far: 200 });
     const raycaster = this.raycaster.setFromCamera(camera, ndcX, ndcY, aspect);
     const planeHit = raycaster.intersectPlane({ x: 0, y: 1, z: 0 });
     // Felt-plane (y=0) hit for flat / peeking cards.

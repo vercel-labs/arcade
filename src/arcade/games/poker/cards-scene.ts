@@ -275,8 +275,7 @@ export class CardsScene {
 
   // Camera + projection for the current frame.
   private viewProj(target: RenderTarget): { camera: Camera; vp: Mat4 } {
-    const eye = this.cam.eye();
-    const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 200 };
+    const camera = this.cam.toCamera({ fovy: FOVY, near: 0.05, far: 200 });
     return { camera, vp: cameraMatrices(camera, target.width / target.height).viewProjection };
   }
 

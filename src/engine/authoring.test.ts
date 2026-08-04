@@ -10,6 +10,7 @@ import {
   MeshObject,
   Object3D,
   ObjectPool,
+  OrbitCamera,
   RenderTarget,
   ResourceCache,
   Scene,
@@ -219,6 +220,30 @@ test('shared camera picking intersects the board plane', () => {
     { x: 0, y: 0, z: 0 },
     { x: 0.5, y: 0, z: 0 },
   ));
+});
+
+test('OrbitCamera snapshots one pose with explicit projection settings', () => {
+  const orbit = new OrbitCamera({
+    azimuth: 0.4,
+    elevation: 0.6,
+    distance: 8,
+    target: { x: 1, y: 2, z: 3 },
+  });
+  const snapshot = orbit.toCamera({ fovy: Math.PI / 4, near: 0.1, far: 250 });
+  assert.deepEqual(snapshot, {
+    eye: orbit.eye(),
+    target: { x: 1, y: 2, z: 3 },
+    up: { x: 0, y: 1, z: 0 },
+    fovy: Math.PI / 4,
+    near: 0.1,
+    far: 250,
+  });
+  orbit.pan(10, -5);
+  assert.deepEqual(snapshot.target, { x: 1, y: 2, z: 3 });
+  orbit.target.x = 99;
+  assert.deepEqual(snapshot.target, { x: 1, y: 2, z: 3 });
+  const tilted = orbit.toCamera({ fovy: 1, near: 2, far: 3, up: { x: 0, y: 0, z: 1 } });
+  assert.deepEqual(tilted.up, { x: 0, y: 0, z: 1 });
 });
 
 test('animation scheduler composes tweens while custom geometry stays custom', () => {

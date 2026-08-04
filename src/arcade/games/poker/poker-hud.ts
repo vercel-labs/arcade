@@ -7,7 +7,7 @@
 // mounted via Slot, rebuilt into a full-screen tree each frame. main owns the scene +
 // driver and wires the handlers; this module owns the controls + the table furniture.
 
-import { Box, Button, CloseButton, Dialog, Dropdown, Input, Modal, type Row, RoundedButton, ScrollBox, Slider, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
+import { Box, Button, CloseButton, Dialog, Dropdown, filledButtonStyle, Input, Modal, type Row, RoundedButton, ScrollBox, Slider, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
 import type { RGB } from '../../../engine/index.ts';
 import { type Card, isRed, RANK_LABELS } from '../../../rules/poker/cards.ts';
 import type { SeatCardView, TableView } from './poker-scene.ts';
@@ -173,15 +173,7 @@ export function nudgePokerBet(dirBigBlinds: number): void {
   H?.onAmountChange();
 }
 
-const BTN: Style = {
-  padding: [0, 2],
-  background: [44, 46, 56],
-  color: [212, 214, 224],
-  bold: true,
-  hover: { background: [238, 240, 248], color: [16, 16, 24] },
-  focus: { background: [86, 90, 108], color: [248, 248, 252] },
-  pressed: { background: [255, 255, 255], color: [12, 12, 18] },
-};
+const BTN: Style = filledButtonStyle();
 // The three big action buttons are 3 rows tall (padding [1,·] → a blank row above and
 // below a single centred text row) with no wrapping panel behind them — they float over
 // the felt like a WSOP client. Labels are space-centred to a common width so all three are

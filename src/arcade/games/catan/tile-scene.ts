@@ -324,7 +324,7 @@ export class TileScene {
   }
   private boardRaycaster(ndcX: number, ndcY: number): Raycaster {
     const cam = this.camBoard;
-    const camera: Camera = { eye: cam.eye(), target: cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 100 };
+    const camera = cam.toCamera({ fovy: FOVY, near: 0.05, far: 100 });
     return this.raycaster.setFromCamera(camera, ndcX, ndcY, this.lastAspect);
   }
   // Nearest node and nearest edge to the cursor (NDC), with their screen distances (x weighted
@@ -622,7 +622,7 @@ export class TileScene {
   boardTokens(cols: number, rows: number): BoardToken[] {
     if (this.modeName !== 'board' || this.placing || !this.board) return [];
     const cam = this.camBoard;
-    const camera: Camera = { eye: cam.eye(), target: cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 100 };
+    const camera = cam.toCamera({ fovy: FOVY, near: 0.05, far: 100 });
     const vp = cameraMatrices(camera, cols / (rows * 2)).viewProjection; // aspect matches the render target
     const spinStep = Math.floor(this.revealClock.elapsed / REVEAL_FLICKER);
     const out: BoardToken[] = [];
@@ -654,7 +654,7 @@ export class TileScene {
   portSailLabel(cols: number, rows: number): SailLabel | null {
     if (this.modeName !== 'port') return null;
     const cam = this.camPort;
-    const camera: Camera = { eye: cam.eye(), target: cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 100 };
+    const camera = cam.toCamera({ fovy: FOVY, near: 0.05, far: 100 });
     const vp = cameraMatrices(camera, cols / (rows * 2)).viewProjection;
     const point = projectPoint(vp, PORT_SAIL_CENTER);
     if (point.behind) return null;
@@ -703,7 +703,7 @@ export class TileScene {
   boardPortLabels(cols: number, rows: number): SailLabel[] {
     if (this.modeName !== 'board' || this.placing || !this.board) return [];
     const cam = this.camBoard;
-    const camera: Camera = { eye: cam.eye(), target: cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 100 };
+    const camera = cam.toCamera({ fovy: FOVY, near: 0.05, far: 100 });
     const vp = cameraMatrices(camera, cols / (rows * 2)).viewProjection;
     const out: SailLabel[] = [];
     for (const harbor of this.harbors) {
@@ -732,8 +732,8 @@ export class TileScene {
     // Board generation uses the settled board camera from its first frame to its last. Tiles
     // therefore land at their real on-screen size, and the fixed water hex never appears to
     // stretch while the coast emerges after them.
-    const eye = cam.eye();
-    const camera: Camera = { eye, target: cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 100 };
+    const camera = cam.toCamera({ fovy: FOVY, near: 0.05, far: 100 });
+    const eye = camera.eye;
     if (this.modeName === 'board') this.renderBoard(t, eye);
     else if (this.modeName === 'pieces') this.queuePiece(piecesMesh(this.pieceColor), MODEL);
     else if (this.modeName === 'port') this.queueLambert(portMesh(this.portKind), MODEL, PORT_LIGHT, PORT_WRAP);
