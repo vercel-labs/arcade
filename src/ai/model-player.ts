@@ -172,14 +172,22 @@ export interface ModelPlayerOpts {
   normalizer?: LanguageModel;
   /** Label for the normalizer in diagnostics/logs; defaults to its slug. */
   normalizerName?: string;
+  /**
+   * Samples the last-resort legal-action fallback. Defaults to `Math.random` for
+   * existing games; seeded/deterministic harnesses can inject their own generator.
+   */
+  fallbackRng?: () => number;
 }
 
 // A `Player` backed by an LLM through the Vercel AI Gateway. Observation =
 // FEN + `state.toString()` (ASCII board) + the PGN move history, each included
-// only when the state exposes it. No legal-move list — the model must find legal
-// moves itself, as in the Kaggle Game Arena tournament setup; illegal answers are
-// re-prompted, then fall back to a legal move so a match never deadlocks. Generic
-// over the action type; chess specifics come only from what `GameState` renders.
+// only when the state exposes it. Games may additionally implement
+// `decisionContextString(player)` to provide an exact legal-action menu and neutral
+// diagnostics on the FIRST attempt (Catan does); otherwise the chess-style flow is
+// unchanged and legal moves appear only after an illegal response. Every answer is
+// parsed and validated, then ultimately falls back to a legal move so a match never
+// deadlocks. Generic over the action type; chess specifics come only from what
+// `GameState` renders.
 export class ModelPlayer<A> implements Player<A> {
   readonly name: string;
   private model: LanguageModel;
@@ -194,6 +202,7 @@ export class ModelPlayer<A> implements Player<A> {
   private allowIllegal?: () => boolean;
   private normalizer?: LanguageModel;
   private normalizerName?: string;
+  private fallbackRng: () => number;
   private notation: MoveNotation;
   private schema: z.ZodTypeAny;
 
@@ -211,6 +220,7 @@ export class ModelPlayer<A> implements Player<A> {
     this.allowIllegal = opts.allowIllegal;
     this.normalizer = opts.normalizer;
     this.normalizerName = opts.normalizerName ?? (typeof opts.normalizer === 'string' ? opts.normalizer : undefined);
+    this.fallbackRng = opts.fallbackRng ?? Math.random;
     this.notation = opts.moveNotation ?? CHESS_NOTATION;
     this.schema = buildSchema(this.notation, { rationale: opts.rationaleGuide, speech: opts.speech });
   }
@@ -219,7 +229,11 @@ export class ModelPlayer<A> implements Player<A> {
     const decisionStarted = performance.now();
     const attempts: DecisionAttempt[] = [];
     const signal = ctx?.signal;
-    const legal = state.legalActions();
+    const familyExamples = state.parameterizedActionExamples?.() ?? [];
+    const legal = [...state.legalActions()];
+    for (const example of familyExamples) {
+      if (!legal.some((candidate) => state.actionToString(candidate) === state.actionToString(example))) legal.push(example);
+    }
     // Banter (when enabled) reacts to the opponent; the move-decision prompt is
     // otherwise kept clean so chatter can't distort the chess reasoning.
     const opponentSaid = this.banter ? ctx?.opponentSaid : undefined;
@@ -380,7 +394,11 @@ export class ModelPlayer<A> implements Player<A> {
 
     // Exhausted everything — play a legal move so a match never deadlocks, tagged
     // with WHY so the fallback is visibly diagnosed rather than a silent random move.
-    const fallback = legal[Math.floor(Math.random() * legal.length)];
+    const sample = this.fallbackRng();
+    const fallbackIndex = Number.isFinite(sample)
+      ? Math.min(legal.length - 1, Math.max(0, Math.floor(sample * legal.length)))
+      : 0;
+    const fallback = legal[fallbackIndex];
     const fallbackReason = unavailable ? 'unavailable' : 'exhausted';
     return finish(fallback, FALLBACK_RATIONALE[fallbackReason], 'random-fallback', { fallbackReason });
   }
@@ -488,6 +506,7 @@ export class ModelPlayer<A> implements Player<A> {
       fen?: () => string;
       moveHistory?: () => string;
       informationStateString?: (player: number) => string;
+      decisionContextString?: (player: number) => string;
     };
     // Imperfect-information games (poker) expose a PER-PLAYER view; use it so the
     // model only ever sees its own hidden information (its hole cards + the public
@@ -497,6 +516,12 @@ export class ModelPlayer<A> implements Player<A> {
     const view = typeof withExtras.informationStateString === 'function' && player >= 0 ? withExtras.informationStateString(player) : null;
     const fen = view ? null : typeof withExtras.fen === 'function' ? withExtras.fen() : null;
     const history = typeof withExtras.moveHistory === 'function' ? withExtras.moveHistory() : '';
+    // Catan-like games can expose exact executable choices with derived facts up front.
+    // This remains opt-in at the state level, preserving chess's no-list benchmark.
+    const decisionContext =
+      player >= 0 && typeof withExtras.decisionContextString === 'function'
+        ? withExtras.decisionContextString(player)
+        : '';
     // Optional per-turn extra context for the seat to act (poker: chip standings + notes).
     const extra = player >= 0 ? (this.contextProvider?.(player) ?? '') : '';
     // The format instruction differs by path: JSON keeps providers that need the
@@ -522,6 +547,7 @@ export class ModelPlayer<A> implements Player<A> {
       fen ? `\n\nPosition (FEN): ${fen}` : '',
       view ? `\n\nYour view of the game:\n${view}` : `\n\nBoard (uppercase = White, lowercase = Black):\n${state.toString()}`,
       history ? `\n\nThe moves played so far are: ${history}` : '',
+      decisionContext ? `\n\n${decisionContext}` : '',
       extra ? `\n\n${extra}` : '',
       opponentSaid
         ? `\n\nYour opponent just said: "${opponentSaid}". You may react to it in what you say, but choose your move on the merits of the position.`

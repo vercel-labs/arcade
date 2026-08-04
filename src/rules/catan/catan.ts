@@ -4,10 +4,8 @@
 // dev-deck order, and opponents' exact hand breakdowns are hidden; `informationStateString`
 // is the per-seat observation an AI is prompted on.
 //
-// STATUS — initial placement is playable through the generic model harness: legal settlement
-// and road actions, snake-order progression, and starting-resource grants are implemented.
-// Regular turns are still staged and throw when their prompt reaches `legalActions()` or
-// `applyAction()`. See docs/catan.md (Part III design, Part IV phasing).
+// The complete base-game rules run headlessly through the generic model harness. Rendering
+// is a consumer of this state, never a prerequisite for legality or progression.
 //
 // Chance is resolved INTERNALLY (dice rolls, dev-card draws, robber steals) via an injected
 // seeded RNG, so `isChanceNode()` is always false — this keeps Catan compatible with the
@@ -18,12 +16,14 @@
 
 import { type Game, type GameState, type ImperfectInfoState, TERMINAL } from '../game.ts';
 import { registerGame } from '../registry.ts';
-import { edgeNodes, nodeEdges, nodeHexes, NUM_NODES } from './board-topology.ts';
-import { canPlaceSettlement, type BoardOccupancy } from './placement.ts';
+import { edgeNodes, nodeEdges, nodeHexes, NUM_EDGES, NUM_HEXES, NUM_NODES } from './board-topology.ts';
+import { canPlaceRoad, canPlaceSettlement, canUpgradeCity, type BoardOccupancy } from './placement.ts';
 import { type BoardSetup, generateBoard, nodeProduction } from './setup.ts';
 import {
   type BuildingType,
   type CatanAction,
+  COSTS,
+  DISCARD_LIMIT,
   DEV_CARD_COUNTS,
   DEV_CARD_TYPES,
   type DevCardType,
@@ -31,11 +31,15 @@ import {
   type FreqDeck,
   freqTotal,
   fullBank,
+  LARGEST_ARMY_MIN,
+  LONGEST_ROAD_MIN,
+  PIECE_LIMITS,
   type Port,
   type Prompt,
   RESOURCES,
   type Resource,
   resourceIndex,
+  ROBBER_ROLL,
   TERRAIN_RESOURCE,
   type Terrain,
   TOKEN_DOTS,
@@ -48,7 +52,58 @@ export interface CatanOpts {
   // Optional per-seat display names for the observation (e.g. a model slug); defaults to
   // "P0"/"P1"… so the engine stays generic, as poker does.
   seatNames?: readonly string[];
+  /** Player-to-player offers are complete but opt-in for model experiments. */
+  domesticTrade?: boolean;
 }
+
+export interface CatanActionOutcome {
+  dice?: [number, number];
+  developmentCard?: DevCardType;
+  stolenResource?: Resource | null;
+}
+
+export interface CatanActionRecord {
+  player: number;
+  action: CatanAction;
+  outcome?: CatanActionOutcome;
+}
+
+export interface CatanTranscript {
+  numPlayers: number;
+  seatNames?: string[];
+  domesticTrade: boolean;
+  board: BoardSetup;
+  initialDevelopmentDeck: DevCardType[];
+  /** Random values already sampled by setup and recorded chance actions. */
+  randomTape: number[];
+  initialRandomCursor: number;
+  actions: CatanActionRecord[];
+}
+
+interface TradeState {
+  from: number;
+  give: FreqDeck;
+  receive: FreqDeck;
+  responders: number[];
+  accepted: number[];
+  responseIndex: number;
+}
+
+export interface CatanPortfolio {
+  production: Partial<Record<Resource, number>>;
+  totalPips: number;
+  resourceDiversity: number;
+  numberCoverage: number[];
+  ports: Port[];
+  roadsLeft: number;
+  settlementsLeft: number;
+  citiesLeft: number;
+  longestRoadLength: number;
+}
+
+export type CatanActionFamily =
+  | { type: 'discard'; player: number; count: number; available: FreqDeck }
+  | { type: 'offerTrade'; player: number; resourceOrder: readonly Resource[] };
 
 interface Building {
   player: number;
@@ -72,6 +127,27 @@ export interface SettlementSite {
 
 export interface InitialSettlementOption extends SettlementSite {
   action: Extract<CatanAction, { type: 'initialSettlement' }>;
+  /** Neutral facts for the player's complete setup portfolio after this choice. */
+  portfolio: InitialSettlementPortfolio;
+}
+
+export interface InitialSettlementPortfolio {
+  settlementNodes: number[];
+  production: Partial<Record<Resource, number>>;
+  totalPips: number;
+  resourceDiversity: number;
+  numberCoverage: number[];
+  repeatedNumbers: number[];
+  /** Resources this candidate adds that the player's existing settlement lacks. */
+  newResources: Resource[];
+  /** Cards granted immediately when this is the player's second settlement. */
+  startingResources: Resource[];
+  ports: {
+    ratio: 2 | 3;
+    resource: Resource | null;
+    /** Production in the matching resource; null for a generic 3:1 port. */
+    matchingProductionPips: number | null;
+  }[];
 }
 
 export interface InitialRoadOption {
@@ -84,12 +160,12 @@ export interface InitialRoadOption {
   expansionSites: SettlementSite[];
 }
 
-const NOT_IMPLEMENTED =
-  'CatanState: regular turns are not implemented yet — initial placement is playable; see docs/catan.md Part IV (Phase 1).';
-
 export class CatanState implements ImperfectInfoState<CatanAction> {
   readonly n: number;
   private rng: () => number;
+  private randomTape: number[] = [];
+  private randomCursor = 0;
+  private initialRandomCursor = 0;
   private seatNames?: readonly string[];
 
   // Static-ish board (terrain/tokens/harbors never change after setup; the robber moves).
@@ -104,7 +180,9 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
   // Development cards: an ordered draw deck (order is hidden information) and per-seat counts
   // by type; `playedKnights` are face-up (public, feed Largest Army).
   private devDeck: DevCardType[];
+  private initialDevDeck: DevCardType[];
   private devHand: number[][]; // [seat][DEV_CARD_TYPES index]
+  private boughtDevThisTurn: number[][];
   private playedKnights: number[];
 
   // Placed pieces, keyed by topology id.
@@ -119,6 +197,7 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
   // Special cards (holder seat, or -1 for none).
   private longestRoadHolder = -1;
   private largestArmyHolder = -1;
+  private longestRoadLengths: number[];
 
   // Turn / phase machine. `prompt.player` (who must act now) is decoupled from `turnOwner`
   // (whose turn it is): a rolled 7 enqueues one `discard` prompt per over-limit player
@@ -126,9 +205,13 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
   private turnOwner = 0;
   private prompt: Prompt;
   private pending: Prompt[] = [];
-  private hasRolled = false;
   private playedDevCardThisTurn = false;
-  private freeRoadsLeft = 0;
+  private discardRemaining: number[];
+  private trade: TradeState | null = null;
+  private domesticTradeEnabled: boolean;
+  private lastDice: [number, number] | null = null;
+  private records: CatanActionRecord[] = [];
+  private winnerSeat = -1;
 
   private finished = false;
 
@@ -139,17 +222,23 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
     this.n = opts.numPlayers;
     this.rng = opts.rng ?? Math.random;
     this.seatNames = opts.seatNames;
+    this.domesticTradeEnabled = opts.domesticTrade ?? false;
 
-    this.board = generateBoard(this.rng);
+    this.board = generateBoard(() => this.random());
     this.productionByNode = nodeProduction(this.board);
     this.robberHex = this.board.robberHex;
 
     this.bank = fullBank();
     this.hands = Array.from({ length: this.n }, () => emptyFreqDeck());
-    this.devDeck = buildDevDeck(this.rng);
+    this.devDeck = buildDevDeck(() => this.random());
+    this.initialDevDeck = this.devDeck.slice();
+    this.initialRandomCursor = this.randomCursor;
     this.devHand = Array.from({ length: this.n }, () => new Array(DEV_CARD_TYPES.length).fill(0));
+    this.boughtDevThisTurn = Array.from({ length: this.n }, () => new Array(DEV_CARD_TYPES.length).fill(0));
     this.playedKnights = new Array(this.n).fill(0);
+    this.longestRoadLengths = new Array(this.n).fill(0);
     this.initialSettlements = new Array(this.n).fill(0);
+    this.discardRemaining = new Array(this.n).fill(0);
 
     // First-player determination is fixed at seat 0 for now; callers randomize seat/model
     // assignments if desired. The progression itself is the standard two-round snake.
@@ -183,7 +272,13 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
   clone(): CatanState {
     const s = Object.create(CatanState.prototype) as CatanState;
     (s as { n: number }).n = this.n;
-    s.rng = this.rng; // same-class access reaches private fields
+    s.rng = this.rng;
+    // Clones have independent cursors over a shared append-only random tape. Whichever
+    // branch samples first fills the next slot; sibling/original states then read that same
+    // value, so search rollouts cannot advance one another's future chance stream.
+    s.randomTape = this.randomTape;
+    s.randomCursor = this.randomCursor;
+    s.initialRandomCursor = this.initialRandomCursor;
     s.seatNames = this.seatNames;
     s.board = this.board; // immutable after setup — share by ref
     s.productionByNode = this.productionByNode; // derived from immutable board setup
@@ -191,7 +286,9 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
     s.bank = this.bank.slice();
     s.hands = this.hands.map((h) => h.slice());
     s.devDeck = this.devDeck.slice();
+    s.initialDevDeck = this.initialDevDeck.slice();
     s.devHand = this.devHand.map((d) => d.slice());
+    s.boughtDevThisTurn = this.boughtDevThisTurn.map((d) => d.slice());
     s.playedKnights = this.playedKnights.slice();
     s.buildings = new Map(this.buildings);
     s.roads = new Map(this.roads);
@@ -199,58 +296,343 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
     s.pendingInitialRoadNode = this.pendingInitialRoadNode;
     s.longestRoadHolder = this.longestRoadHolder;
     s.largestArmyHolder = this.largestArmyHolder;
+    s.longestRoadLengths = this.longestRoadLengths.slice();
     s.turnOwner = this.turnOwner;
     s.prompt = { ...this.prompt };
     s.pending = this.pending.map((p) => ({ ...p }));
-    s.hasRolled = this.hasRolled;
     s.playedDevCardThisTurn = this.playedDevCardThisTurn;
-    s.freeRoadsLeft = this.freeRoadsLeft;
+    s.discardRemaining = this.discardRemaining.slice();
+    s.trade = this.trade
+      ? {
+          ...this.trade,
+          give: this.trade.give.slice(),
+          receive: this.trade.receive.slice(),
+          responders: this.trade.responders.slice(),
+          accepted: this.trade.accepted.slice(),
+        }
+      : null;
+    s.domesticTradeEnabled = this.domesticTradeEnabled;
+    s.lastDice = this.lastDice ? [...this.lastDice] : null;
+    s.records = this.records.map((record) => ({
+      player: record.player,
+      action: cloneAction(record.action),
+      outcome: record.outcome ? { ...record.outcome, dice: record.outcome.dice ? [...record.outcome.dice] : undefined } : undefined,
+    }));
+    s.winnerSeat = this.winnerSeat;
     s.finished = this.finished;
     return s;
   }
 
-  // ── Playable seams (initial-placement slice of Phase 1) ─────────────────────────
-  // The single source of truth for what the awaited player may do, and the validated
-  // transition. Regular-turn prompts remain staged — see docs/catan.md Part IV.
+  // ── Legal actions and authoritative transitions ────────────────────────────────
   legalActions(): CatanAction[] {
     if (this.finished) return [];
+    const player = this.prompt.player;
     switch (this.prompt.kind) {
       case 'initialSettlement':
         return this.initialSettlementOptions().map((option) => option.action);
       case 'initialRoad':
         return this.initialRoadOptions().map((option) => option.action);
-      default:
-        throw new Error(NOT_IMPLEMENTED);
+      case 'roll':
+        return [{ type: 'roll' }, ...this.devCardActions(player)];
+      case 'playTurn':
+        return [
+          { type: 'endTurn' },
+          ...this.buildActions(player),
+          ...this.maritimeTradeActions(player),
+          ...this.devCardActions(player),
+        ];
+      case 'discard':
+        return enumerateDiscards(this.hands[player], this.discardRemaining[player], 256);
+      case 'moveRobber':
+        return this.robberActions(player, 'moveRobber');
+      case 'respondTrade': {
+        const actions: CatanAction[] = [{ type: 'rejectTrade' }];
+        if (this.trade && hasCards(this.hands[player], this.trade.receive)) actions.unshift({ type: 'acceptTrade' });
+        return actions;
+      }
+      case 'decideAcceptees': {
+        const actions: CatanAction[] = [{ type: 'cancelTrade' }];
+        if (!this.trade) return actions;
+        for (const seat of this.trade.accepted) {
+          if (hasCards(this.hands[seat], this.trade.receive)) actions.unshift({ type: 'confirmTrade', with: seat });
+        }
+        return actions;
+      }
     }
   }
 
-  applyAction(action: CatanAction): void {
-    const legal = this.legalActions();
-    if (!legal.some((candidate) => sameAction(candidate, action))) {
+  applyAction(action: CatanAction, forcedOutcome?: CatanActionOutcome): void {
+    if (this.finished) throw new Error('Cannot act in a finished Catan game');
+    const actor = this.prompt.player;
+    if (!this.isLegalAction(action)) {
       throw new Error(`Illegal Catan action for ${this.prompt.kind}: ${this.actionToString(action)}`);
     }
 
     if (action.type === 'initialSettlement' && this.prompt.kind === 'initialSettlement') {
-      const player = this.prompt.player;
-      this.buildings.set(action.node, { player, type: 'settlement' });
-      this.initialSettlements[player]++;
+      this.buildings.set(action.node, { player: actor, type: 'settlement' });
+      this.initialSettlements[actor]++;
       this.pendingInitialRoadNode = action.node;
-      if (this.initialSettlements[player] === 2) this.grantStartingResources(player, action.node);
-      this.prompt = { kind: 'initialRoad', player };
+      if (this.initialSettlements[actor] === 2) this.grantStartingResources(actor, action.node);
+      this.prompt = { kind: 'initialRoad', player: actor };
+      this.record(actor, action);
       return;
     }
 
     if (action.type === 'initialRoad' && this.prompt.kind === 'initialRoad') {
-      const player = this.prompt.player;
-      this.roads.set(action.edge, player);
+      this.roads.set(action.edge, actor);
       this.pendingInitialRoadNode = null;
-      this.advanceInitialPlacement(player);
+      this.recomputeLongestRoad();
+      this.advanceInitialPlacement(actor);
+      this.record(actor, action);
       return;
     }
 
-    // The legal-action check above currently prevents reaching this branch; keeping an
-    // explicit guard makes a future action-union expansion fail loudly rather than no-op.
-    throw new Error(NOT_IMPLEMENTED);
+    if (action.type === 'roll' && this.prompt.kind === 'roll') {
+      const dice = forcedOutcome?.dice ?? [this.rollDie(), this.rollDie()];
+      if (!validDice(dice)) throw new Error(`Invalid recorded dice outcome: ${dice.join(',')}`);
+      if (forcedOutcome?.dice) {
+        this.random();
+        this.random();
+      }
+      this.lastDice = [dice[0], dice[1]];
+      const total = dice[0] + dice[1];
+      if (total === ROBBER_ROLL) this.beginRobberSequence(actor);
+      else {
+        this.distributeProduction(total);
+        this.prompt = { kind: 'playTurn', player: actor };
+      }
+      this.record(actor, action, { dice: [dice[0], dice[1]] });
+      return;
+    }
+
+    if (action.type === 'discard' && this.prompt.kind === 'discard') {
+      for (const resource of action.resources) this.transferResource(actor, -1, resource, 1);
+      this.discardRemaining[actor] = 0;
+      this.advancePendingPrompt();
+      this.record(actor, action);
+      return;
+    }
+
+    if (action.type === 'moveRobber' && this.prompt.kind === 'moveRobber') {
+      const outcome = this.moveRobberAndSteal(actor, action.hex, action.victim, forcedOutcome?.stolenResource);
+      this.prompt = { kind: 'playTurn', player: this.turnOwner };
+      this.record(actor, action, { stolenResource: outcome });
+      return;
+    }
+
+    if (action.type === 'buildRoad' && this.prompt.kind === 'playTurn') {
+      this.pay(actor, COSTS.road);
+      this.roads.set(action.edge, actor);
+      this.recomputeLongestRoad();
+      this.record(actor, action);
+      this.maybeFinish(actor);
+      return;
+    }
+    if (action.type === 'buildSettlement' && this.prompt.kind === 'playTurn') {
+      this.pay(actor, COSTS.settlement);
+      this.buildings.set(action.node, { player: actor, type: 'settlement' });
+      this.recomputeLongestRoad();
+      this.record(actor, action);
+      this.maybeFinish(actor);
+      return;
+    }
+    if (action.type === 'buildCity' && this.prompt.kind === 'playTurn') {
+      this.pay(actor, COSTS.city);
+      this.buildings.set(action.node, { player: actor, type: 'city' });
+      this.record(actor, action);
+      this.maybeFinish(actor);
+      return;
+    }
+    if (action.type === 'buyDevCard' && this.prompt.kind === 'playTurn') {
+      const card = forcedOutcome?.developmentCard ?? this.devDeck[this.devDeck.length - 1];
+      const deckIndex = this.devDeck.lastIndexOf(card);
+      if (deckIndex < 0) throw new Error(`Recorded development card ${card} is not in the deck`);
+      this.pay(actor, COSTS.devCard);
+      this.devDeck.splice(deckIndex, 1);
+      const cardIndex = DEV_CARD_TYPES.indexOf(card);
+      this.devHand[actor][cardIndex]++;
+      this.boughtDevThisTurn[actor][cardIndex]++;
+      this.record(actor, action, { developmentCard: card });
+      this.maybeFinish(actor);
+      return;
+    }
+
+    if (action.type === 'playKnight') {
+      this.consumeDevCard(actor, 'knight');
+      this.playedKnights[actor]++;
+      this.updateLargestArmy();
+      const stolenResource = this.moveRobberAndSteal(actor, action.hex, action.victim, forcedOutcome?.stolenResource);
+      this.record(actor, action, { stolenResource });
+      this.maybeFinish(actor);
+      return;
+    }
+    if (action.type === 'playRoadBuilding') {
+      this.consumeDevCard(actor, 'roadBuilding');
+      for (const edge of action.edges) this.roads.set(edge, actor);
+      this.recomputeLongestRoad();
+      this.record(actor, action);
+      this.maybeFinish(actor);
+      return;
+    }
+    if (action.type === 'playYearOfPlenty') {
+      this.consumeDevCard(actor, 'yearOfPlenty');
+      for (const resource of action.resources) this.transferResource(-1, actor, resource, 1);
+      this.record(actor, action);
+      return;
+    }
+    if (action.type === 'playMonopoly') {
+      this.consumeDevCard(actor, 'monopoly');
+      const index = resourceIndex(action.resource);
+      for (let seat = 0; seat < this.n; seat++) {
+        if (seat === actor) continue;
+        const count = this.hands[seat][index];
+        this.hands[seat][index] = 0;
+        this.hands[actor][index] += count;
+      }
+      this.record(actor, action);
+      return;
+    }
+
+    if (action.type === 'maritimeTrade' && this.prompt.kind === 'playTurn') {
+      const rate = this.maritimeRate(actor, action.give);
+      this.transferResource(actor, -1, action.give, rate);
+      this.transferResource(-1, actor, action.get, 1);
+      this.record(actor, action);
+      return;
+    }
+
+    if (action.type === 'offerTrade' && this.prompt.kind === 'playTurn') {
+      const responders = Array.from({ length: this.n - 1 }, (_, i) => (actor + i + 1) % this.n);
+      this.trade = { from: actor, give: action.give.slice(), receive: action.receive.slice(), responders, accepted: [], responseIndex: 0 };
+      this.prompt = { kind: 'respondTrade', player: responders[0] };
+      this.record(actor, action);
+      return;
+    }
+    if ((action.type === 'acceptTrade' || action.type === 'rejectTrade') && this.prompt.kind === 'respondTrade') {
+      if (!this.trade) throw new Error('Missing active trade');
+      if (action.type === 'acceptTrade') this.trade.accepted.push(actor);
+      this.trade.responseIndex++;
+      if (this.trade.responseIndex < this.trade.responders.length) {
+        this.prompt = { kind: 'respondTrade', player: this.trade.responders[this.trade.responseIndex] };
+      } else {
+        this.prompt = { kind: 'decideAcceptees', player: this.trade.from };
+      }
+      this.record(actor, action);
+      return;
+    }
+    if (action.type === 'confirmTrade' && this.prompt.kind === 'decideAcceptees') {
+      if (!this.trade) throw new Error('Missing active trade');
+      transferDeck(this.hands[this.trade.from], this.hands[action.with], this.trade.give);
+      transferDeck(this.hands[action.with], this.hands[this.trade.from], this.trade.receive);
+      this.trade = null;
+      this.prompt = { kind: 'playTurn', player: this.turnOwner };
+      this.record(actor, action);
+      return;
+    }
+    if (action.type === 'cancelTrade' && this.prompt.kind === 'decideAcceptees') {
+      this.trade = null;
+      this.prompt = { kind: 'playTurn', player: this.turnOwner };
+      this.record(actor, action);
+      return;
+    }
+
+    if (action.type === 'endTurn' && this.prompt.kind === 'playTurn') {
+      this.record(actor, action);
+      this.turnOwner = (this.turnOwner + 1) % this.n;
+      this.playedDevCardThisTurn = false;
+      this.boughtDevThisTurn[actor].fill(0);
+      this.prompt = { kind: 'roll', player: this.turnOwner };
+      this.maybeFinish(this.turnOwner);
+      return;
+    }
+
+    throw new Error(`Unhandled Catan action ${this.actionToString(action)} for ${this.prompt.kind}`);
+  }
+
+  applyRecordedAction(record: CatanActionRecord): void {
+    if (record.player !== this.currentPlayer()) throw new Error(`Replay actor mismatch: expected P${this.currentPlayer()}, got P${record.player}`);
+    this.applyAction(cloneAction(record.action), record.outcome);
+  }
+
+  transcript(): CatanTranscript {
+    return {
+      numPlayers: this.n,
+      seatNames: this.seatNames ? [...this.seatNames] : undefined,
+      domesticTrade: this.domesticTradeEnabled,
+      board: cloneBoard(this.board),
+      initialDevelopmentDeck: this.initialDevDeck.slice(),
+      randomTape: this.randomTape.slice(),
+      initialRandomCursor: this.initialRandomCursor,
+      actions: this.actionRecords().map((record) => ({ ...record })),
+    };
+  }
+
+  static replay(transcript: CatanTranscript, rng: () => number = Math.random): CatanState {
+    const state = new CatanState({
+      numPlayers: transcript.numPlayers,
+      seatNames: transcript.seatNames,
+      domesticTrade: transcript.domesticTrade,
+      rng,
+    });
+    state.board = cloneBoard(transcript.board);
+    state.productionByNode = nodeProduction(state.board);
+    state.robberHex = state.board.robberHex;
+    state.initialDevDeck = transcript.initialDevelopmentDeck.slice();
+    state.devDeck = transcript.initialDevelopmentDeck.slice();
+    state.randomTape = transcript.randomTape.slice();
+    state.initialRandomCursor = transcript.initialRandomCursor;
+    state.randomCursor = transcript.initialRandomCursor;
+    state.records = [];
+    for (const record of transcript.actions) state.applyRecordedAction(record);
+    return state;
+  }
+
+  /**
+   * Authoritative validator. Most actions are enumerable through `legalActions`; domestic
+   * offers and pathological discard spaces are parameterized families validated here.
+   */
+  isLegalAction(action: CatanAction): boolean {
+    if (this.finished) return false;
+    if (
+      this.prompt.kind === 'playTurn' &&
+      action.type === 'offerTrade' &&
+      this.domesticTradeEnabled
+    ) return this.validTradeOffer(this.prompt.player, action.give, action.receive);
+    if (this.prompt.kind === 'discard' && action.type === 'discard') {
+      return action.resources.length === this.discardRemaining[this.prompt.player] &&
+        action.resources.every((resource) => RESOURCES.includes(resource)) &&
+        hasCards(this.hands[this.prompt.player], resourcesToDeck(action.resources));
+    }
+    return this.legalActions().some((candidate) => sameAction(candidate, action));
+  }
+
+  /** Discoverable schemas for legal families too large or open-ended to flatten safely. */
+  legalActionFamilies(): CatanActionFamily[] {
+    if (this.finished) return [];
+    if (this.prompt.kind === 'discard') {
+      return [{
+        type: 'discard',
+        player: this.prompt.player,
+        count: this.discardRemaining[this.prompt.player],
+        available: this.hands[this.prompt.player].slice(),
+      }];
+    }
+    if (this.prompt.kind === 'playTurn' && this.domesticTradeEnabled) {
+      return [{ type: 'offerTrade', player: this.prompt.player, resourceOrder: RESOURCES }];
+    }
+    return [];
+  }
+
+  parameterizedActionExamples(): CatanAction[] {
+    if (this.prompt.kind !== 'playTurn' || !this.domesticTradeEnabled) return [];
+    const giveIndex = this.hands[this.prompt.player].findIndex((count) => count > 0);
+    if (giveIndex < 0) return [];
+    const receiveIndex = RESOURCES.findIndex((_, index) => index !== giveIndex);
+    return [{
+      type: 'offerTrade',
+      give: RESOURCES.map((_, index) => (index === giveIndex ? 1 : 0)),
+      receive: RESOURCES.map((_, index) => (index === receiveIndex ? 1 : 0)),
+    }];
   }
 
   // ── Notation ───────────────────────────────────────────────────────────────────
@@ -303,38 +685,65 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
   // returns null on anything unrecognized OR currently illegal (the caller re-prompts).
   actionFromString(s: string): CatanAction | null {
     const t = s.trim().toLowerCase();
-    const nums = (t.match(/-?\d+/g) ?? []).map(Number);
-    const res = RESOURCES.filter((r) => t.includes(r));
+    let legal: CatanAction[];
+    try {
+      legal = this.legalActions();
+    } catch {
+      return null;
+    }
+
+    // Prefer an exact canonical action. Besides being unambiguous, this keeps the parser
+    // aligned with the legal menu the model sees in decisionContextString.
+    const exact = legal.find((action) => this.actionToString(action).toLowerCase() === t);
+    if (exact) return exact;
+
     let parsed: CatanAction | null = null;
 
     // During setup, accept the canonical form, a friendly "settlement/node" or
-    // "road/edge" form, and a bare id. The phase disambiguates node ids from edge ids.
-    if (this.prompt.kind === 'initialSettlement' && nums.length && (/sett|node/.test(t) || /^-?\d+$/.test(t))) {
-      parsed = { type: 'initialSettlement', node: nums[0] };
-    } else if (this.prompt.kind === 'initialRoad' && nums.length && (/road|edge/.test(t) || /^-?\d+$/.test(t))) {
-      parsed = { type: 'initialRoad', edge: nums[0] };
+    // "road/edge" form, and a bare id. Bind the id to that keyword instead of taking
+    // the first number in the whole reply (which may be a 3:1 port or production token).
+    const settlementId = lastCapture(t, /\b(?:init(?:ial)?[-\s]*)?settlement(?:\s+node)?\s+(-?\d+)\b/g) ??
+      lastCapture(t, /\bnode\s+(-?\d+)\b/g);
+    const roadId = lastCapture(t, /\b(?:init(?:ial)?[-\s]*)?road(?:\s+edge)?\s+(-?\d+)\b/g) ??
+      lastCapture(t, /\bedge\s+(-?\d+)\b/g);
+    const regularRoadId = lastCapture(t, /\broad\s+(-?\d+)\b/g);
+    const regularSettlementId = lastCapture(t, /\bsettlement\s+(-?\d+)\b/g);
+    const cityId = lastCapture(t, /\bcity\s+(-?\d+)\b/g);
+    const knight = lastMatch(t, /\bknight\s+(-?\d+)(?:\s+steal\s+p?(-?\d+))?/g);
+    const robber = lastMatch(t, /\brobber\s+(-?\d+)(?:\s+steal\s+p?(-?\d+))?/g);
+    const trade = lastMatch(t, /\btrade\s+(brick|grain|lumber|ore|wool)\s*->\s*(brick|grain|lumber|ore|wool)\b/g);
+    const confirm = lastCapture(t, /\bconfirm\s+p?(-?\d+)\b/g);
+    const roadBuildingTail = actionTail(t, /\b(?:road-building|road building)\b/g);
+    const plentyTail = actionTail(t, /\b(?:year-of-plenty|year of plenty|plenty)\b/g);
+    const monopolyTail = actionTail(t, /\bmonopoly\b/g);
+    const discardTail = actionTail(t, /\bdiscard\b/g);
+    if (this.prompt.kind === 'initialSettlement' && (settlementId !== undefined || /^-?\d+$/.test(t))) {
+      parsed = { type: 'initialSettlement', node: Number(settlementId ?? t) };
+    } else if (this.prompt.kind === 'initialRoad' && (roadId !== undefined || /^-?\d+$/.test(t))) {
+      parsed = { type: 'initialRoad', edge: Number(roadId ?? t) };
     } else if (/^roll/.test(t)) parsed = { type: 'roll' };
     else if (/^end/.test(t)) parsed = { type: 'endTurn' };
-    else if (/init.*sett/.test(t) && nums.length) parsed = { type: 'initialSettlement', node: nums[0] };
-    else if (/init.*road/.test(t) && nums.length) parsed = { type: 'initialRoad', edge: nums[0] };
-    else if (/^road-b|road building/.test(t)) parsed = { type: 'playRoadBuilding', edges: nums };
-    else if (/^road/.test(t) && nums.length) parsed = { type: 'buildRoad', edge: nums[0] };
-    else if (/^sett/.test(t) && nums.length) parsed = { type: 'buildSettlement', node: nums[0] };
-    else if (/^city/.test(t) && nums.length) parsed = { type: 'buildCity', node: nums[0] };
+    else if (roadBuildingTail !== null) parsed = { type: 'playRoadBuilding', edges: (roadBuildingTail.match(/-?\d+/g) ?? []).map(Number) };
+    else if (regularRoadId !== undefined) parsed = { type: 'buildRoad', edge: Number(regularRoadId) };
+    else if (regularSettlementId !== undefined) parsed = { type: 'buildSettlement', node: Number(regularSettlementId) };
+    else if (cityId !== undefined) parsed = { type: 'buildCity', node: Number(cityId) };
     else if (/buy.*dev|dev.*card/.test(t)) parsed = { type: 'buyDevCard' };
-    else if (/knight/.test(t) && nums.length) parsed = { type: 'playKnight', hex: nums[0], victim: nums[1] ?? null };
-    else if (/year.*plenty|plenty/.test(t)) parsed = { type: 'playYearOfPlenty', resources: res };
-    else if (/monopoly/.test(t) && res.length) parsed = { type: 'playMonopoly', resource: res[0] };
-    else if (/discard/.test(t)) parsed = { type: 'discard', resources: res };
-    else if (/robber/.test(t) && nums.length) parsed = { type: 'moveRobber', hex: nums[0], victim: nums[1] ?? null };
-    else if (/trade/.test(t) && res.length >= 2) parsed = { type: 'maritimeTrade', give: res[0], get: res[1] };
+    else if (knight) parsed = { type: 'playKnight', hex: Number(knight[1]), victim: knight[2] === undefined ? null : Number(knight[2]) };
+    else if (plentyTail !== null) parsed = { type: 'playYearOfPlenty', resources: resourceOccurrences(plentyTail) };
+    else if (monopolyTail !== null && resourceOccurrences(monopolyTail).length) parsed = { type: 'playMonopoly', resource: resourceOccurrences(monopolyTail)[0] };
+    else if (discardTail !== null) parsed = { type: 'discard', resources: resourceOccurrences(discardTail) };
+    else if (robber) parsed = { type: 'moveRobber', hex: Number(robber[1]), victim: robber[2] === undefined ? null : Number(robber[2]) };
+    else if (/^offer/.test(t)) {
+      const match = t.match(/^offer\s+([\d/]+)\s+for\s+([\d/]+)$/);
+      if (match) parsed = { type: 'offerTrade', give: match[1].split('/').map(Number), receive: match[2].split('/').map(Number) };
+    } else if (trade) parsed = { type: 'maritimeTrade', give: trade[1] as Resource, get: trade[2] as Resource };
+    else if (/^accept/.test(t)) parsed = { type: 'acceptTrade' };
+    else if (/^reject/.test(t)) parsed = { type: 'rejectTrade' };
+    else if (confirm !== undefined) parsed = { type: 'confirmTrade', with: Number(confirm) };
+    else if (/^cancel/.test(t)) parsed = { type: 'cancelTrade' };
 
     if (parsed === null) return null;
-    try {
-      return this.legalActions().some((candidate) => sameAction(candidate, parsed)) ? parsed : null;
-    } catch {
-      return null; // the parsed action belongs to a regular-turn slice not implemented yet
-    }
+    return this.isLegalAction(parsed) ? parsed : null;
   }
 
   // ── Observation ───────────────────────────────────────────────────────────────
@@ -354,17 +763,19 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
   }
 
   // Seat `player`'s private view: its own hand + all public info, never another seat's hand
-  // breakdown or the dev-deck order. The observation `ModelPlayer` is prompted on (Phase 4).
+  // breakdown or the dev-deck order. This is the observation `ModelPlayer` receives.
   informationStateString(player: number): string {
     const lines: string[] = [];
     lines.push(`Catan, ${this.n} players. You are ${this.seatName(player)}.`);
     lines.push(`Phase: ${this.prompt.kind}${this.prompt.player === player ? ' (you to act)' : ` (${this.seatName(this.prompt.player)} to act)`}.`);
-    lines.push(`Your hand: ${this.deckStr(this.hands[player])}. Your VP: ${this.victoryPoints(player, true)}.`);
-    lines.push(`Robber on hex ${this.robberHex}. Bank: ${this.deckStr(this.bank)}.`);
+    const ownDev = DEV_CARD_TYPES.map((type, i) => (this.devHand[player][i] ? `${this.devHand[player][i]} ${type}` : '')).filter(Boolean).join(', ') || '(none)';
+    const portfolio = this.portfolio(player);
+    lines.push(`Your hand: ${this.deckStr(this.hands[player])}. Your development cards: ${ownDev}. Your actual VP: ${this.victoryPoints(player, true)} (public ${this.victoryPoints(player, false)}).`);
+    lines.push(`Turn owner: ${this.seatName(this.turnOwner)}. Last dice: ${this.lastDice ? `${this.lastDice.join('+')}=${this.lastDice[0] + this.lastDice[1]}` : 'none'}. Robber on hex ${this.robberHex}. Bank: ${this.deckStr(this.bank)}.`);
     const others = [];
     for (let s = 0; s < this.n; s++) {
       if (s === player) continue;
-      others.push(`${this.seatName(s)}: ${this.victoryPoints(s, false)} VP, ${freqTotal(this.hands[s])} cards, ${freqTotal(this.devHand[s])} dev, ${this.playedKnights[s]} knights`);
+      others.push(`${this.seatName(s)}: ${this.victoryPoints(s, false)} public VP, ${freqTotal(this.hands[s])} resource cards, ${freqTotal(this.devHand[s])} hidden dev cards, ${this.playedKnights[s]} played knights, road length ${this.longestRoadLengths[s]}`);
     }
     lines.push(`Opponents: ${others.join('; ')}.`);
     lines.push(`Setup settlements placed: ${this.initialSettlements.map((count, seat) => `${this.seatName(seat)}=${count}/2`).join(', ')}.`);
@@ -374,18 +785,9 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
         .join(', ')}.`,
     );
     lines.push(`Buildings: ${this.publicBuildings()}. Roads: ${this.publicRoads()}.`);
-    if (this.prompt.kind === 'initialSettlement' && this.prompt.player === player) {
-      lines.push('Choose one legal setup settlement using "init-settlement NODE":');
-      for (const option of this.initialSettlementOptions()) lines.push(`- ${this.settlementOptionString(option)}`);
-    } else if (this.prompt.kind === 'initialRoad' && this.prompt.player === player) {
-      lines.push('Choose one road adjacent to the settlement you just placed using "init-road EDGE":');
-      for (const option of this.initialRoadOptions()) {
-        const expansion = option.expansionSites.length
-          ? option.expansionSites.map((site) => `N${site.node} (${this.siteYieldString(site)})`).join(' | ')
-          : '(no currently legal frontier settlement)';
-        lines.push(`- init-road ${option.edge}: N${option.fromNode} → N${option.towardNode}; future settlement frontiers: ${expansion}`);
-      }
-    }
+    lines.push(`Awards: Longest Road=${this.longestRoadHolder < 0 ? 'none' : this.seatName(this.longestRoadHolder)}; Largest Army=${this.largestArmyHolder < 0 ? 'none' : this.seatName(this.largestArmyHolder)}.`);
+    lines.push(`Your portfolio: production pips ${this.productionStr(portfolio.production)}; numbers [${portfolio.numberCoverage.join(',')}]; ports ${this.portsStr(portfolio.ports)}; pieces left roads=${portfolio.roadsLeft}, settlements=${portfolio.settlementsLeft}, cities=${portfolio.citiesLeft}.`);
+    if (this.trade) lines.push(`Active offer from ${this.seatName(this.trade.from)}: gives ${this.deckStr(this.trade.give)}, requests ${this.deckStr(this.trade.receive)}.`);
     return lines.join('\n');
   }
 
@@ -393,7 +795,46 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
     return this.informationStateString(player);
   }
 
-  // ── Read accessors for the presentation layer (Phase 3) ─────────────────────────
+  // Exact executable choices plus neutral decision support. Keeping this separate from
+  // the information-state observation lets ModelPlayer provide Catan's legal menu on the
+  // first attempt without changing chess's deliberate no-list evaluation mode.
+  decisionContextString(player: number): string {
+    if (this.prompt.player !== player) return `No action requested from ${this.seatName(player)}.`;
+    const lines = [
+      'Legal actions (choose exactly one canonical action shown below).',
+      'Facts are descriptive, not recommendations; decide how to value production, diversity, ports, and expansion.',
+    ];
+    if (this.prompt.kind === 'initialSettlement') {
+      for (const option of this.initialSettlementOptions()) lines.push(`- ${this.settlementOptionString(option)}`);
+      return lines.join('\n');
+    }
+    if (this.prompt.kind === 'initialRoad') {
+      for (const option of this.initialRoadOptions()) {
+        const expansion = option.expansionSites.length
+          ? option.expansionSites.map((site) => `N${site.node} (${this.siteYieldString(site)})`).join(' | ')
+          : '(no currently legal frontier settlement)';
+        lines.push(`- init-road ${option.edge}: N${option.fromNode} → N${option.towardNode}; future settlement frontiers: ${expansion}`);
+      }
+      return lines.join('\n');
+    }
+    const legal = this.legalActions();
+    if (this.prompt.kind === 'discard') {
+      const combinations = countDiscardCombinations(this.hands[player], this.discardRemaining[player]);
+      lines.push(`Discard exactly ${this.discardRemaining[player]} cards. Use: discard resource,resource,... (duplicates mean multiple cards).`);
+      lines.push(`There are ${combinations} legal discard combinations; your available cards are ${this.deckStr(this.hands[player])}.`);
+      if (combinations <= 80) for (const action of legal) lines.push(`- ${this.actionToString(action)}`);
+      else lines.push(`The enumerable API exposes ${legal.length} representative combinations; any valid combination in the format above is accepted.`);
+    } else {
+      for (const action of legal) lines.push(`- ${this.actionToString(action)}`);
+    }
+    if (this.prompt.kind === 'playTurn' && this.domesticTradeEnabled) {
+      lines.push('- Domestic offer (parameterized): offer b/g/l/o/w for b/g/l/o/w, using five nonnegative counts in brick/grain/lumber/ore/wool order.');
+      lines.push('  Example: offer 1/0/0/0/0 for 0/1/0/0/0. Offers are validated against your hand and cannot request the same resource they give.');
+    }
+    return lines.join('\n');
+  }
+
+  // ── Read accessors for presentation, heuristic players, and recording ───────────
   boardSetup(): BoardSetup {
     return this.board;
   }
@@ -421,6 +862,55 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
   largestArmy(): number {
     return this.largestArmyHolder;
   }
+  actionRecords(): readonly CatanActionRecord[] {
+    return this.records.map((record) => ({
+      player: record.player,
+      action: cloneAction(record.action),
+      outcome: record.outcome ? { ...record.outcome, dice: record.outcome.dice ? [...record.outcome.dice] : undefined } : undefined,
+    }));
+  }
+  dice(): readonly [number, number] | null {
+    return this.lastDice;
+  }
+  developmentCardCount(seat: number, type: DevCardType): number {
+    return this.devHand[seat][DEV_CARD_TYPES.indexOf(type)] ?? 0;
+  }
+  playedKnightCount(seat: number): number {
+    return this.playedKnights[seat] ?? 0;
+  }
+  roadLength(seat: number): number {
+    return this.longestRoadLengths[seat] ?? 0;
+  }
+  portfolio(seat: number): CatanPortfolio {
+    const production: Partial<Record<Resource, number>> = {};
+    const numbers = new Set<number>();
+    const ports: Port[] = [];
+    for (const [node, building] of this.buildings) {
+      if (building.player !== seat) continue;
+      const multiplier = building.type === 'city' ? 2 : 1;
+      for (const resource of RESOURCES) {
+        const pips = (this.productionByNode[node][resource] ?? 0) * multiplier;
+        if (pips) production[resource] = (production[resource] ?? 0) + pips;
+      }
+      for (const hex of nodeHexes[node]) {
+        const token = this.board.hexes[hex].token;
+        if (token !== null) numbers.add(token);
+      }
+      const port = this.board.harbors.find((harbor) => harbor.nodes.includes(node))?.port;
+      if (port && !ports.some((p) => p.ratio === port.ratio && p.resource === port.resource)) ports.push(port);
+    }
+    return {
+      production,
+      totalPips: Object.values(production).reduce((sum, pips) => sum + (pips ?? 0), 0),
+      resourceDiversity: Object.keys(production).length,
+      numberCoverage: [...numbers].sort((a, b) => a - b),
+      ports,
+      roadsLeft: PIECE_LIMITS.road - this.pieceCount(seat, 'road'),
+      settlementsLeft: PIECE_LIMITS.settlement - this.pieceCount(seat, 'settlement'),
+      citiesLeft: PIECE_LIMITS.city - this.pieceCount(seat, 'city'),
+      longestRoadLength: this.longestRoadLengths[seat],
+    };
+  }
 
   initialPlacementComplete(): boolean {
     return this.initialSettlements.every((count) => count === 2) && this.prompt.kind === 'roll';
@@ -431,14 +921,15 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
   }
 
   // Typed decision metadata for heuristic/search players. Models receive the same facts in
-  // informationStateString, while code-native players can rank sites without parsing text.
+  // decisionContextString, while code-native players can rank sites without parsing text.
   initialSettlementOptions(): InitialSettlementOption[] {
     if (this.prompt.kind !== 'initialSettlement') return [];
     const occ = this.occupancy();
     const options: InitialSettlementOption[] = [];
     for (let node = 0; node < NUM_NODES; node++) {
       if (!canPlaceSettlement(node, occ)) continue;
-      options.push({ ...this.settlementSite(node), action: { type: 'initialSettlement', node } });
+      const site = this.settlementSite(node);
+      options.push({ ...site, action: { type: 'initialSettlement', node }, portfolio: this.initialPortfolio(this.prompt.player, site) });
     }
     return options;
   }
@@ -481,16 +972,307 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
     return vp;
   }
 
-  // The winning seat (10+ VP including hidden cards), or -1. Victory is only claimed on the
-  // holder's own turn — that gating lives in applyAction (Phase 1); this is the raw check.
+  // The seat that claimed victory on its own turn, or -1.
   winner(): number {
-    for (let s = 0; s < this.n; s++) if (this.victoryPoints(s, true) >= VP_TO_WIN) return s;
-    return -1;
+    return this.winnerSeat;
+  }
+
+  private buildActions(player: number): CatanAction[] {
+    const actions: CatanAction[] = [];
+    const occ = this.occupancy();
+    if (hasCards(this.hands[player], COSTS.road) && this.pieceCount(player, 'road') < PIECE_LIMITS.road) {
+      for (let edge = 0; edge < NUM_EDGES; edge++) if (canPlaceRoad(edge, player, occ)) actions.push({ type: 'buildRoad', edge });
+    }
+    if (hasCards(this.hands[player], COSTS.settlement) && this.pieceCount(player, 'settlement') < PIECE_LIMITS.settlement) {
+      for (let node = 0; node < NUM_NODES; node++) {
+        if (canPlaceSettlement(node, occ) && nodeEdges[node].some((edge) => this.roads.get(edge) === player)) {
+          actions.push({ type: 'buildSettlement', node });
+        }
+      }
+    }
+    if (hasCards(this.hands[player], COSTS.city) && this.pieceCount(player, 'city') < PIECE_LIMITS.city) {
+      for (let node = 0; node < NUM_NODES; node++) if (canUpgradeCity(node, player, occ)) actions.push({ type: 'buildCity', node });
+    }
+    if (this.devDeck.length && hasCards(this.hands[player], COSTS.devCard)) actions.push({ type: 'buyDevCard' });
+    return actions;
+  }
+
+  private devCardActions(player: number): CatanAction[] {
+    if (this.playedDevCardThisTurn) return [];
+    const actions: CatanAction[] = [];
+    if (this.playableDevCount(player, 'knight') > 0) actions.push(...this.robberActions(player, 'playKnight'));
+    if (this.playableDevCount(player, 'roadBuilding') > 0) actions.push(...this.roadBuildingActions(player));
+    if (this.playableDevCount(player, 'yearOfPlenty') > 0) {
+      const totalAvailable = freqTotal(this.bank);
+      for (let i = 0; i < RESOURCES.length; i++) {
+        if (this.bank[i] <= 0) continue;
+        if (totalAvailable === 1) actions.push({ type: 'playYearOfPlenty', resources: [RESOURCES[i]] });
+        for (let j = i; totalAvailable >= 2 && j < RESOURCES.length; j++) {
+          if (this.bank[j] <= 0 || (i === j && this.bank[i] < 2)) continue;
+          actions.push({ type: 'playYearOfPlenty', resources: [RESOURCES[i], RESOURCES[j]] });
+        }
+      }
+    }
+    if (this.playableDevCount(player, 'monopoly') > 0) {
+      for (const resource of RESOURCES) actions.push({ type: 'playMonopoly', resource });
+    }
+    return actions;
+  }
+
+  private roadBuildingActions(player: number): CatanAction[] {
+    const available = PIECE_LIMITS.road - this.pieceCount(player, 'road');
+    if (available <= 0) return [];
+    const first = this.legalRoadEdges(player, this.roads);
+    const actions: CatanAction[] = [];
+    for (const edge of first) {
+      if (available === 1) {
+        actions.push({ type: 'playRoadBuilding', edges: [edge] });
+        continue;
+      }
+      const roads = new Map(this.roads);
+      roads.set(edge, player);
+      const second = this.legalRoadEdges(player, roads);
+      if (!second.length) actions.push({ type: 'playRoadBuilding', edges: [edge] });
+      else for (const next of second) actions.push({ type: 'playRoadBuilding', edges: [edge, next] });
+    }
+    return actions;
+  }
+
+  private legalRoadEdges(player: number, roads: ReadonlyMap<number, number>): number[] {
+    const occ: BoardOccupancy<number> = {
+      building: (node) => {
+        const building = this.buildings.get(node);
+        return building ? { owner: building.player, city: building.type === 'city' } : undefined;
+      },
+      road: (edge) => roads.get(edge),
+    };
+    const edges: number[] = [];
+    for (let edge = 0; edge < NUM_EDGES; edge++) if (canPlaceRoad(edge, player, occ)) edges.push(edge);
+    return edges;
+  }
+
+  private robberActions(player: number, type: 'moveRobber' | 'playKnight'): CatanAction[] {
+    const actions: CatanAction[] = [];
+    for (let hex = 0; hex < NUM_HEXES; hex++) {
+      if (hex === this.robberHex) continue;
+      const victims = this.robberVictims(player, hex);
+      if (!victims.length) actions.push({ type, hex, victim: null } as CatanAction);
+      else for (const victim of victims) actions.push({ type, hex, victim } as CatanAction);
+    }
+    return actions;
+  }
+
+  private robberVictims(player: number, hex: number): number[] {
+    const victims = new Set<number>();
+    for (let node = 0; node < NUM_NODES; node++) {
+      if (!nodeHexes[node].includes(hex)) continue;
+      const building = this.buildings.get(node);
+      if (building && building.player !== player && freqTotal(this.hands[building.player]) > 0) victims.add(building.player);
+    }
+    return [...victims].sort((a, b) => a - b);
+  }
+
+  private maritimeTradeActions(player: number): CatanAction[] {
+    const actions: CatanAction[] = [];
+    for (const give of RESOURCES) {
+      if (this.hands[player][resourceIndex(give)] < this.maritimeRate(player, give)) continue;
+      for (const get of RESOURCES) {
+        if (give !== get && this.bank[resourceIndex(get)] > 0) actions.push({ type: 'maritimeTrade', give, get });
+      }
+    }
+    return actions;
+  }
+
+  private maritimeRate(player: number, resource: Resource): 2 | 3 | 4 {
+    const ports = this.portfolio(player).ports;
+    if (ports.some((port) => port.ratio === 2 && port.resource === resource)) return 2;
+    if (ports.some((port) => port.ratio === 3)) return 3;
+    return 4;
+  }
+
+  private validTradeOffer(player: number, give: FreqDeck, receive: FreqDeck): boolean {
+    if (!validDeck(give) || !validDeck(receive) || !hasCards(this.hands[player], give)) return false;
+    if (freqTotal(give) === 0 || freqTotal(receive) === 0) return false;
+    return RESOURCES.every((_, i) => !(give[i] > 0 && receive[i] > 0));
+  }
+
+  private playableDevCount(player: number, type: DevCardType): number {
+    const index = DEV_CARD_TYPES.indexOf(type);
+    return this.devHand[player][index] - this.boughtDevThisTurn[player][index];
+  }
+
+  private consumeDevCard(player: number, type: Exclude<DevCardType, 'victoryPoint'>): void {
+    const index = DEV_CARD_TYPES.indexOf(type);
+    if (this.playableDevCount(player, type) <= 0 || this.playedDevCardThisTurn) throw new Error(`Cannot play ${type}`);
+    this.devHand[player][index]--;
+    this.playedDevCardThisTurn = true;
+  }
+
+  private pieceCount(player: number, type: BuildingType | 'road'): number {
+    if (type === 'road') return [...this.roads.values()].filter((owner) => owner === player).length;
+    return [...this.buildings.values()].filter((building) => building.player === player && building.type === type).length;
+  }
+
+  private pay(player: number, cost: readonly number[]): void {
+    if (!hasCards(this.hands[player], cost)) throw new Error(`P${player} cannot afford cost`);
+    transferDeck(this.hands[player], this.bank, cost);
+  }
+
+  private transferResource(from: number, to: number, resource: Resource, count: number): void {
+    const index = resourceIndex(resource);
+    const source = from < 0 ? this.bank : this.hands[from];
+    const target = to < 0 ? this.bank : this.hands[to];
+    if (source[index] < count) throw new Error(`Not enough ${resource} to transfer`);
+    source[index] -= count;
+    target[index] += count;
+  }
+
+  private rollDie(): number {
+    return Math.floor(this.random() * 6) + 1;
+  }
+
+  private random(): number {
+    if (this.randomCursor === this.randomTape.length) this.randomTape.push(this.rng());
+    return this.randomTape[this.randomCursor++];
+  }
+
+  private beginRobberSequence(player: number): void {
+    this.pending = [];
+    for (let offset = 0; offset < this.n; offset++) {
+      const seat = (player + offset) % this.n;
+      const count = freqTotal(this.hands[seat]);
+      this.discardRemaining[seat] = count > DISCARD_LIMIT ? Math.floor(count / 2) : 0;
+      if (this.discardRemaining[seat]) this.pending.push({ kind: 'discard', player: seat });
+    }
+    this.pending.push({ kind: 'moveRobber', player });
+    this.advancePendingPrompt();
+  }
+
+  private advancePendingPrompt(): void {
+    const next = this.pending.shift();
+    if (!next) throw new Error('Catan prompt queue unexpectedly empty');
+    this.prompt = next;
+  }
+
+  private distributeProduction(roll: number): void {
+    const owed = Array.from({ length: RESOURCES.length }, () => new Array(this.n).fill(0));
+    for (let hex = 0; hex < NUM_HEXES; hex++) {
+      if (hex === this.robberHex || this.board.hexes[hex].token !== roll) continue;
+      const resource = TERRAIN_RESOURCE[this.board.hexes[hex].terrain];
+      if (resource === null) continue;
+      const resourceId = resourceIndex(resource);
+      for (let node = 0; node < NUM_NODES; node++) {
+        if (!nodeHexes[node].includes(hex)) continue;
+        const building = this.buildings.get(node);
+        if (building) owed[resourceId][building.player] += building.type === 'city' ? 2 : 1;
+      }
+    }
+    for (let resourceId = 0; resourceId < RESOURCES.length; resourceId++) {
+      const claims = owed[resourceId];
+      const claimants = claims.filter((count) => count > 0).length;
+      const total = claims.reduce((sum, count) => sum + count, 0);
+      if (total === 0) continue;
+      if (this.bank[resourceId] < total && claimants > 1) continue;
+      for (let player = 0; player < this.n; player++) {
+        const amount = Math.min(claims[player], this.bank[resourceId]);
+        this.bank[resourceId] -= amount;
+        this.hands[player][resourceId] += amount;
+      }
+    }
+  }
+
+  private moveRobberAndSteal(player: number, hex: number, victim: number | null, forced?: Resource | null): Resource | null {
+    if (victim === null && forced) throw new Error('Recorded a stolen resource without a victim');
+    if (victim !== null && forced !== undefined && forced !== null && this.hands[victim][resourceIndex(forced)] <= 0) {
+      throw new Error(`Victim P${victim} does not hold recorded ${forced}`);
+    }
+    this.robberHex = hex;
+    if (victim === null) {
+      return null;
+    }
+    const total = freqTotal(this.hands[victim]);
+    if (total === 0) return null;
+    let resource: Resource;
+    if (forced !== undefined && forced !== null) {
+      this.random();
+      resource = forced;
+    } else {
+      let pick = Math.floor(this.random() * total);
+      resource = RESOURCES[0];
+      for (const candidate of RESOURCES) {
+        pick -= this.hands[victim][resourceIndex(candidate)];
+        if (pick < 0) {
+          resource = candidate;
+          break;
+        }
+      }
+    }
+    this.transferResource(victim, player, resource, 1);
+    return resource;
+  }
+
+  private recomputeLongestRoad(): void {
+    for (let player = 0; player < this.n; player++) this.longestRoadLengths[player] = this.computeLongestRoad(player);
+    const max = Math.max(...this.longestRoadLengths);
+    if (max < LONGEST_ROAD_MIN) {
+      this.longestRoadHolder = -1;
+      return;
+    }
+    if (this.longestRoadHolder >= 0 && this.longestRoadLengths[this.longestRoadHolder] === max) return;
+    const leaders = this.longestRoadLengths.flatMap((length, player) => (length === max ? [player] : []));
+    this.longestRoadHolder = leaders.length === 1 ? leaders[0] : -1;
+  }
+
+  private computeLongestRoad(player: number): number {
+    const walk = (node: number, used: Set<number>): number => {
+      const blocker = this.buildings.get(node);
+      if (used.size > 0 && blocker && blocker.player !== player) return 0;
+      let best = 0;
+      for (const edge of nodeEdges[node]) {
+        if (used.has(edge) || this.roads.get(edge) !== player) continue;
+        used.add(edge);
+        const [a, b] = edgeNodes[edge];
+        best = Math.max(best, 1 + walk(a === node ? b : a, used));
+        used.delete(edge);
+      }
+      return best;
+    };
+    let best = 0;
+    for (let node = 0; node < NUM_NODES; node++) best = Math.max(best, walk(node, new Set()));
+    return best;
+  }
+
+  private updateLargestArmy(): void {
+    const max = Math.max(...this.playedKnights);
+    if (max < LARGEST_ARMY_MIN) return;
+    if (this.largestArmyHolder >= 0 && this.playedKnights[this.largestArmyHolder] === max) return;
+    const leaders = this.playedKnights.flatMap((count, player) => (count === max ? [player] : []));
+    if (leaders.length === 1) this.largestArmyHolder = leaders[0];
+  }
+
+  private maybeFinish(player: number): void {
+    if (player !== this.turnOwner || this.victoryPoints(player, true) < VP_TO_WIN) return;
+    this.winnerSeat = player;
+    this.finished = true;
+  }
+
+  private record(player: number, action: CatanAction, outcome?: CatanActionOutcome): void {
+    this.records.push({ player, action: cloneAction(action), outcome: outcome ? { ...outcome } : undefined });
   }
 
   private deckStr(d: FreqDeck): string {
     const parts = RESOURCES.map((r, i) => (d[i] ? `${d[i]}${r[0]}` : '')).filter(Boolean);
     return parts.join(' ') || '(none)';
+  }
+
+  private productionStr(production: Partial<Record<Resource, number>>): string {
+    return RESOURCES.filter((resource) => (production[resource] ?? 0) > 0)
+      .map((resource) => `${resource}=${production[resource]}`)
+      .join(', ') || '(none)';
+  }
+
+  private portsStr(ports: readonly Port[]): string {
+    return ports.map((port) => `${port.resource ?? 'any'} ${port.ratio}:1`).join(', ') || '(none)';
   }
 
   private occupancy(): BoardOccupancy<number> {
@@ -522,6 +1304,53 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
       totalPips: Object.values(production).reduce((sum, pips) => sum + (pips ?? 0), 0),
       resourceDiversity: Object.keys(production).length,
       port: this.board.harbors.find((harbor) => harbor.nodes.includes(node))?.port ?? null,
+    };
+  }
+
+  private initialPortfolio(player: number, candidate: SettlementSite): InitialSettlementPortfolio {
+    const existingSites = [...this.buildings.entries()]
+      .filter(([, building]) => building.player === player && building.type === 'settlement')
+      .map(([node]) => this.settlementSite(node));
+    const sites = [...existingSites, candidate];
+    const production: Partial<Record<Resource, number>> = {};
+    for (const site of sites) {
+      for (const resource of RESOURCES) {
+        const pips = site.production[resource] ?? 0;
+        if (pips > 0) production[resource] = (production[resource] ?? 0) + pips;
+      }
+    }
+
+    const numberCounts = new Map<number, number>();
+    for (const site of sites) {
+      for (const hex of site.adjacentHexes) {
+        if (hex.token !== null) numberCounts.set(hex.token, (numberCounts.get(hex.token) ?? 0) + 1);
+      }
+    }
+    const existingResources = new Set(existingSites.flatMap((site) => Object.keys(site.production) as Resource[]));
+    const newResources = RESOURCES.filter((resource) => (candidate.production[resource] ?? 0) > 0 && !existingResources.has(resource));
+    const startingResources =
+      existingSites.length === 1
+        ? candidate.adjacentHexes.flatMap((hex) => (hex.resource === null ? [] : [hex.resource]))
+        : [];
+    const ports = sites.flatMap((site) => {
+      if (!site.port) return [];
+      return [{
+        ratio: site.port.ratio,
+        resource: site.port.resource,
+        matchingProductionPips: site.port.resource === null ? null : (production[site.port.resource] ?? 0),
+      }];
+    });
+
+    return {
+      settlementNodes: sites.map((site) => site.node),
+      production,
+      totalPips: Object.values(production).reduce((sum, pips) => sum + (pips ?? 0), 0),
+      resourceDiversity: Object.keys(production).length,
+      numberCoverage: [...numberCounts.keys()].sort((a, b) => a - b),
+      repeatedNumbers: [...numberCounts.entries()].filter(([, count]) => count > 1).map(([number]) => number).sort((a, b) => a - b),
+      newResources,
+      startingResources,
+      ports,
     };
   }
 
@@ -567,7 +1396,30 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
   }
 
   private settlementOptionString(option: InitialSettlementOption): string {
-    return `init-settlement ${option.node}: ${this.siteYieldString(option)}`;
+    const local = this.siteYieldString(option);
+    if (option.portfolio.settlementNodes.length === 1) return `init-settlement ${option.node}: ${local}`;
+    const portfolio = option.portfolio;
+    const production = RESOURCES
+      .filter((resource) => (portfolio.production[resource] ?? 0) > 0)
+      .map((resource) => `${resource}=${portfolio.production[resource]}`)
+      .join(', ');
+    const ports = portfolio.ports.length
+      ? portfolio.ports
+          .map((port) =>
+            port.resource === null
+              ? 'any 3:1'
+              : `${port.resource} 2:1 (matching production ${port.matchingProductionPips} pips)`,
+          )
+          .join(', ')
+      : 'none';
+    return (
+      `init-settlement ${option.node}: ${local}; ` +
+      `two-settlement portfolio: production={${production}}, total=${portfolio.totalPips} pips, ` +
+      `resources=${portfolio.resourceDiversity}, numbers=[${portfolio.numberCoverage.join(',')}], ` +
+      `repeated-numbers=[${portfolio.repeatedNumbers.join(',') || 'none'}], ` +
+      `new-resources=[${portfolio.newResources.join(',') || 'none'}], ` +
+      `starting-cards=[${portfolio.startingResources.join(',') || 'none'}], ports=[${ports}]`
+    );
   }
 
   private siteYieldString(site: SettlementSite): string {
@@ -581,6 +1433,103 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
 
 function sameAction(a: CatanAction, b: CatanAction): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function cloneAction(action: CatanAction): CatanAction {
+  return JSON.parse(JSON.stringify(action)) as CatanAction;
+}
+
+function cloneBoard(board: BoardSetup): BoardSetup {
+  return {
+    hexes: board.hexes.map((hex) => ({ ...hex })),
+    robberHex: board.robberHex,
+    harbors: board.harbors.map((harbor) => ({
+      port: { ...harbor.port },
+      edge: harbor.edge,
+      nodes: [...harbor.nodes],
+    })),
+  };
+}
+
+function validDeck(deck: readonly number[]): deck is FreqDeck {
+  return deck.length === RESOURCES.length && deck.every((count) => Number.isInteger(count) && count >= 0);
+}
+
+function hasCards(hand: readonly number[], cost: readonly number[]): boolean {
+  return cost.length === RESOURCES.length && cost.every((count, index) => hand[index] >= count);
+}
+
+function transferDeck(from: FreqDeck, to: FreqDeck, deck: readonly number[]): void {
+  if (!hasCards(from, deck)) throw new Error('Insufficient cards for transfer');
+  for (let i = 0; i < RESOURCES.length; i++) {
+    from[i] -= deck[i];
+    to[i] += deck[i];
+  }
+}
+
+function enumerateDiscards(hand: readonly number[], count: number, limit = Number.POSITIVE_INFINITY): CatanAction[] {
+  if (count <= 0) return [];
+  const actions: CatanAction[] = [];
+  const chosen = new Array(RESOURCES.length).fill(0);
+  const visit = (index: number, remaining: number): void => {
+    if (actions.length >= limit) return;
+    if (index === RESOURCES.length - 1) {
+      if (remaining > hand[index]) return;
+      chosen[index] = remaining;
+      const resources = RESOURCES.flatMap((resource, resourceIndex) => new Array(chosen[resourceIndex]).fill(resource)) as Resource[];
+      actions.push({ type: 'discard', resources });
+      return;
+    }
+    for (let amount = 0; amount <= Math.min(hand[index], remaining); amount++) {
+      if (actions.length >= limit) break;
+      chosen[index] = amount;
+      visit(index + 1, remaining - amount);
+    }
+  };
+  visit(0, count);
+  return actions;
+}
+
+function countDiscardCombinations(hand: readonly number[], count: number): number {
+  let ways = new Array(count + 1).fill(0);
+  ways[0] = 1;
+  for (const available of hand) {
+    const next = new Array(count + 1).fill(0);
+    for (let used = 0; used <= count; used++) {
+      for (let amount = 0; amount <= Math.min(available, count - used); amount++) next[used + amount] += ways[used];
+    }
+    ways = next;
+  }
+  return ways[count];
+}
+
+function resourcesToDeck(resources: readonly Resource[]): FreqDeck {
+  const deck = emptyFreqDeck();
+  for (const resource of resources) deck[resourceIndex(resource)]++;
+  return deck;
+}
+
+function resourceOccurrences(text: string): Resource[] {
+  const matches = text.match(/\b(?:brick|grain|lumber|ore|wool)\b/g) ?? [];
+  return matches as Resource[];
+}
+
+function lastMatch(text: string, pattern: RegExp): RegExpMatchArray | null {
+  const matches = [...text.matchAll(pattern)];
+  return matches.at(-1) ?? null;
+}
+
+function lastCapture(text: string, pattern: RegExp): string | undefined {
+  return lastMatch(text, pattern)?.[1];
+}
+
+function actionTail(text: string, pattern: RegExp): string | null {
+  const match = lastMatch(text, pattern);
+  return match ? text.slice((match.index ?? 0) + match[0].length) : null;
+}
+
+function validDice(dice: readonly number[]): boolean {
+  return dice.length === 2 && dice.every((die) => Number.isInteger(die) && die >= 1 && die <= 6);
 }
 
 // The shuffled 25-card development deck (order is hidden information).

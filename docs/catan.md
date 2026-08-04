@@ -4,11 +4,13 @@ The research + design reference for adding **Catan** (base game, 3–4 players) 
 arcade as the third harness game (after chess and poker). Written before the code so the
 rules engine is coded against a spec, not guesswork.
 
-**Status:** foundation phase. This document is complete; the code under
-[`src/rules/catan/`](../src/rules/catan) currently implements the board topology, core
-types, and board setup, with a `CatanState` skeleton whose `legalActions` / `applyAction`
-are staged seams (see [Part IV — Phasing plan](#part-iv--phasing-plan)). No presentation
-or AI wiring yet.
+**Status:** headless base-game harness implemented. The code under
+[`src/rules/catan/`](../src/rules/catan) implements board topology and setup plus the full
+authoritative phase machine: initial placement, production, robber/discards, building,
+maritime and optional domestic trade, development cards, special awards, and victory.
+[`src/arcade/match/catan-setup.ts`](../src/arcade/match/catan-setup.ts) exposes both a
+full-match runner and the setup-only benchmark runner. The board UI can integrate through
+the generic `state()` / `playMove(action)` scene seam; it is not a dependency of the rules.
 
 Scope is the **base 3–4 player game**. The 5–6 player extension, Seafarers, and Cities &
 Knights are out of scope (noted only where they clarify what "base game" excludes). The
@@ -245,7 +247,8 @@ thinking of a single global turn cursor and instead model **the set of legal act
 player at this instant**. Even for a strictly turn-based terminal game, deriving the prompt
 from *the current legal-action set for the awaited player* keeps the display honest and
 makes AI/observer output trivial. This maps directly onto the engine design in Part III
-(`toPlay` decoupled from `turnOwner`; `legalActions()` as the single source of truth).
+(`toPlay` decoupled from `turnOwner`; `isLegalAction()` as the authoritative validator,
+with finite actions enumerated for the harness).
 
 ## Discard-on-7 is a hard blocking barrier
 
@@ -362,7 +365,7 @@ Split public from hidden:
 - **Public:** board (buildings `Map<node,{color,type}>`, roads `Map<edge,color>`, robber
   hex), bank as a 5-int **freqdeck** `[brick, grain, lumber, ore, wool]`, each player's
   **counts** of resources / dev cards / pieces / VP, Longest Road & Largest Army holders,
-  and per-turn flags (`hasRolled`, `playedDevCardThisTurn`, `freeRoadsLeft`, etc.).
+  and per-turn flags (such as `playedDevCardThisTurn` and cards bought this turn).
 - **Hidden:** each player's exact resource identities, each player's dev cards, the ordered
   dev-card deck. `informationStateString(p)` reveals p's own hidden holdings + all public
   info; opponents' hidden hands surface only as counts (optionally min/max belief bounds
@@ -377,8 +380,8 @@ Split public from hidden:
 Model the turn as an explicit **prompt** discriminated union plus a **pending-actor queue**;
 `toPlay` (who must act now) is **decoupled** from `turnOwner` (whose turn it is). This is
 how the discard-on-7 (and any interrupt) works: a 7 enqueues one `Discard` prompt per
-over-limit player, then `MoveRobber`, then optionally `Steal`, before returning to
-`PlayTurn`. `currentPlayer()` returns `toPlay`, which may not be the turn owner — the match
+over-limit player, then `MoveRobber` (whose action also names any victim), before returning
+to `PlayTurn`. `currentPlayer()` returns `toPlay`, which may not be the turn owner — the match
 loop already supports this (it just asks `players[currentPlayer()]`).
 
 ```ts
@@ -386,20 +389,25 @@ type Prompt =
   | { kind: 'InitialSettlement'; player: number } | { kind: 'InitialRoad'; player: number }
   | { kind: 'Roll'; player: number }
   | { kind: 'Discard'; player: number }        // one per over-limit player, in seating order
-  | { kind: 'MoveRobber'; player: number } | { kind: 'Steal'; player: number; candidates: number[] }
+  | { kind: 'MoveRobber'; player: number }
   | { kind: 'PlayTurn'; player: number }        // trade/build/play-dev/end
   | { kind: 'RespondTrade'; player: number; offer: TradeOffer }   // domestic (gated, off by default for AI)
   | { kind: 'DecideAcceptees'; player: number };
 ```
 
-Turn flags mirror catanatron: `hasRolled` gates roll-vs-build; one dev card per turn
-(`playedDevCardThisTurn`); cards bought this turn aren't playable this turn (track
-"owned-at-start"); Road Building uses a `freeRoadsLeft` counter.
+The prompt gates roll-vs-build; turn flags mirror catanatron for one dev card per turn
+(`playedDevCardThisTurn`), and cards bought this turn aren't playable this turn (tracked by
+type). Road Building is represented atomically as its one- or two-edge action.
 
 ## 3.6 Action space
 
-`legalActions(state)` is the **single source of truth** — a rich discriminated union,
-validated on `applyAction` (which clamps/normalizes loose input, as poker does):
+`isLegalAction(action)` is the authoritative validator over a rich discriminated union.
+`legalActions()` enumerates the ordinary finite choices. Two combinatorial families are
+also exposed structurally through `legalActionFamilies()`: domestic offers (open-ended
+negotiated quantities) and unusually large discard multisets. This follows catanatron's
+choice to special-case/exclude negotiated trades from its flattened RL action space rather
+than exploding the mask. `parameterizedActionExamples()` gives the generic model fallback
+and normalizer an executable representative; the LLM receives the full accepted format.
 
 ```ts
 type CatanAction =
@@ -424,13 +432,23 @@ type CatanAction =
   with an action mask) is optional and lives outside the rules core — only if/when we do RL.
   The LLM player uses the text observation + `actionToString`/`actionFromString`, validated
   against `legalActions`, like `ModelPlayer` does for poker.
+- Exact discard combinations are enumerated up to 256 representatives. Normal hands fit
+  well below the cap; pathological 95-card hands remain fully legal through the typed
+  family validator without materializing nearly 100,000 strings.
 
 ## 3.7 AI & observation
 
-- `informationStateString(p)` — compact text: p's hand, VP, pieces left, ports; the board
-  (hexes with resource/number/robber, occupied nodes/edges by color); bank counts;
-  opponents' public counts; whose turn / current prompt; and the legal-action menu. Never
-  leaks hidden hands or the deck.
+- `informationStateString(p)` — compact authoritative observation: p's hand, VP, pieces
+  left, ports; the board (hexes with resource/number/robber, occupied nodes/edges by
+  color); bank counts; opponents' public counts; and the current prompt. It never leaks
+  hidden hands or the deck.
+- `decisionContextString(p)` — a separate model-facing envelope included by `ModelPlayer`
+  on the first attempt. It supplies the exact canonical legal actions plus neutral facts
+  for evaluating them. Setup settlements include local yield and, on the reverse pick,
+  the resulting two-settlement portfolio: combined production, resource and number
+  coverage, repeated numbers, newly added resources, starting cards, and port-production
+  relationships. Setup roads include their reachable expansion frontiers. Keeping this
+  separate lets chess retain its no-legal-list evaluation flow.
 - `actionToString` / `actionFromString` — canonical notation + a lenient parser for model
   answers (re-prompt on `null`), mirroring poker.
 - **Bot ladder** (recommended order, per catanatron's benchmarks): (1) random (respecting
@@ -441,7 +459,12 @@ type CatanAction =
 
 ## 3.8 Testing strategy
 
-- **Deterministic:** fixed seed → fixed transcript (injected RNG, never a global).
+- **Deterministic:** fixed seed → fixed transcript. Rules use the injected state RNG;
+  `createCatanSetupModelPlayer` also uses a deterministic legal fallback by default and
+  accepts `fallbackRng` when a seeded randomized fallback is desired.
+- **Replay:** `transcript()` includes the initial board/harbors, initial development deck,
+  sampled random tape, configuration, actions, and dice/draw/steal outcomes;
+  `CatanState.replay()` reconstructs the exact state without a UI snapshot.
 - **Topology invariants:** 19 hexes / 54 nodes / 72 edges; every edge has exactly 2
   endpoints; node incidence 1–3 hexes; Σ hex→node incidences = 6·19; adjacency symmetry.
 - **Setup invariants:** correct terrain multiset (4/4/4/3/3/1), token multiset (no 7, one
@@ -458,29 +481,34 @@ Mirrors how poker shipped (`git log`: imperfect-info harness + card primitives �
 table/graphics test bed → playable rules → chips/voice/HUD polish). Each phase is
 independently reviewable and additive.
 
-**Current checkpoint:** the initial-placement slice of Phase 1 is playable. `CatanState`
-now exposes legal settlement/road actions, applies the two-round snake, grants resources
-from each second settlement, and emits typed/text decision metadata for pips, diversity,
-ports, and road expansion. `runCatanInitialPlacement` drives generic `Player`/
-`ModelPlayer` seats through those 16 setup actions and stops at the first roll prompt;
-regular turns remain staged.
+**Current checkpoint:** Phase 1's headless rules core and the model-facing action contract
+are playable end to end. `CatanState` owns all legality and transitions, resolves seeded
+chance internally, records dice/dev-draw/steal outcomes for replay, and exposes a
+private-safe observation plus exact canonical legal actions and neutral portfolio facts.
+`runCatanMatch` drives generic `Player`/`ModelPlayer` seats to victory; `runHeadlessCatanMatch`
+requires no renderer; `runCatanInitialPlacement` remains available for setup-only studies.
+Domestic trade is complete but opt-in because its negotiation branching is undesirable in
+many model/RL evaluations. Full-match runners default to a 10,000-action safety cap and
+raise a typed error when a legal but inert policy never reaches victory. Presentation work
+now consumes this API rather than completing it.
 
-- **Phase 0 — foundation (this pass).** Research + this doc; `src/rules/catan/`
-  board topology, core types, and board setup; a `CatanState` skeleton (state model + phase
-  machine + harness-contract scaffolding) with `legalActions`/`applyAction` as documented
-  seams; topology + setup tests. No presentation, no AI.
-- **Phase 1 — playable rules core.** Fill in `legalActions`/`applyAction` for every phase
+- **Phase 0 — foundation (complete).** Research + this doc; `src/rules/catan/`
+  board topology, core types, board setup, and harness-contract scaffolding.
+- **Phase 1 — playable rules core (complete).** `legalActions`/`applyAction` for every phase
   (initial placement → roll/production → robber/discard/steal → build/buy → dev cards →
-  maritime trade → victory), **domestic trade off by default**. Property tests
-  (conservation, longest road, legality) and seeded game transcripts.
+  maritime/domestic trade → awards → victory), **domestic trade off by default**, with
+  focused seeded tests and replayable stochastic outcomes. Broader randomized invariant
+  fuzzing remains worthwhile hardening rather than an integration blocker.
 - **Phase 2 — graphics / cover test bed.** An iterative visual pass on the board render
   (the hex/number/harbor/robber/piece look), like poker's "3D table" bed — for the graphics
   iteration loop, before wiring gameplay to it.
 - **Phase 3 — presentation scene + human input.** `arcade/games/catan/` scene + HUD, the
   legibility lessons from Part II (loud "your move / this action" status, forced-vs-optional
   prompts), and human interaction (highlighted legal placements, build/trade UI).
-- **Phase 4 — AI wiring.** `ModelPlayer` observation/notation tuning for Catan; the AI-vs-AI
-  match driver; the bot ladder from §3.7.
+- **Phase 4 — AI wiring (core complete).** Full-game observation/notation, legal decision
+  context, generic AI-vs-AI/full-headless runners, and structured portfolio accessors are
+  wired. Remaining optional work is richer per-action diagnostics and the bot ladder from
+  §3.7.
 - **Phase 5 — integration & polish.** Activate the game registry (**AIG-205** — Catan is
   the third game that motivates it), canonical game records → telemetry, and polish.
 
