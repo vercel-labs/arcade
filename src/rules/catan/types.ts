@@ -168,7 +168,6 @@ export type Prompt =
   | { kind: 'roll'; player: number }
   | { kind: 'discard'; player: number }
   | { kind: 'moveRobber'; player: number }
-  | { kind: 'steal'; player: number; candidates: number[] }
   | { kind: 'playTurn'; player: number } // trade / build / play dev card / end turn
   | { kind: 'respondTrade'; player: number }
   | { kind: 'decideAcceptees'; player: number };

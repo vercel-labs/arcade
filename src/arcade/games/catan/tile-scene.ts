@@ -1,7 +1,7 @@
 // The Catan tile test bed: two modes, switched from the HUD.
 //   • tile  — one 3D hex at the origin, switchable between terrains (dial in the tile look).
 //   • board — the full 19-hex board laid out per the rules (correct terrain counts, robber on
-//     the desert). "vary" regenerates the arrangement instantly.
+//     the desert). "vary" regenerates it through the staged island-build animation.
 // Orbit-controlled (no auto-rotate), like the chess turntable. Tile/piece/port modes render
 // on demand; board mode also receives a low-rate dirty pulse for its subtle water current.
 
@@ -13,13 +13,14 @@ import {
   lambertMaterial,
   type LambertUniforms,
   type Mat4,
+  type Mesh,
   mat4Identity,
   mat4Multiply,
+  mat4MulVec4,
   mat4RotX,
   mat4RotY,
   mat4RotZ,
   mat4Translate,
-  type Mesh,
   MeshObject,
   normalize3,
   ObjectPool,
@@ -41,10 +42,12 @@ import { type BoardOccupancy, canPlaceRoad, canPlaceSettlement } from '../../../
 import { type BoardSetup, generateBoard } from '../../../rules/catan/setup.ts';
 import { type PlayerColor, RED_NUMBERS, type Terrain } from '../../../rules/catan/types.ts';
 import { mulberry32 } from '../../scenes/wisp.ts';
-import { animatedTileMesh, boardOverlayMesh, dieMesh, hoverColorFor, type OverlaySpec, piecesMesh, PORT_SAIL_CENTER, type PortKind, portMesh, tileBackMesh, tileMesh } from './mesh/index.ts';
+import { animatedTileMesh, boardOverlayMesh, coastMesh, dieMesh, harborPiersMesh, hoverColorFor, type OverlaySpec, piecesMesh, PORT_SAIL_CENTER, type PortKind, portMesh, surfMesh, swashMesh, tileBackMesh, tileMesh } from './mesh/index.ts';
+import { catanPieceMaterial, type CatanPieceUniforms } from './mesh/piece-material.ts';
 import { EDGE_ENDS, EDGE_MID, hexRing, hexWorld, NODE_XZ, PROBE_Y } from './scene/board-layout.ts';
 import { DICE_BOX, DICE_EYE, DICE_FOVY, DICE_HOLD, DICE_LAND_TILT, DICE_POS, DICE_ROLL_DUR, DICE_STAGGER, DICE_TARGET, type Die, DIE_RIGHT, diceHeight, type DicePhase, diceViewport, faceAngles, freshDie, TAU } from './scene/dice.ts';
-import { catanWaterMesh } from './water.ts';
+import { type BoardHarborPose, boardHarborPoses } from './scene/harbors.ts';
+import { CATAN_WATER_RADIUS_X, CATAN_WATER_RADIUS_Z, catanWaterMesh } from './water.ts';
 
 const FOVY = (44 * Math.PI) / 180;
 // A warm key from the upper front-right so tops read bright and the raised content casts its
@@ -54,6 +57,13 @@ const AMBIENT = 0.52;
 // Wrap the diffuse falloff toward half-Lambert so much more of each tile sits in the lit
 // gradient instead of pinned at the flat ambient floor (≈24% lit at wrap 0 → ≈45% at 0.85).
 const WRAP = 0.85;
+// Player pieces need to remain color-readable even when they occupy only a few terminal
+// cells. Use a broader, slightly lower key than the terrain so both the roof and an adjoining
+// wall catch useful light, then lift the ambient floor enough that the opposite wall keeps its
+// player hue instead of collapsing into a near-black face.
+const PIECE_LIGHT: Vec3 = normalize3({ x: 0.5, y: 0.72, z: 0.48 });
+const PIECE_AMBIENT = 0.62;
+const PIECE_WRAP = 1;
 // The boat's hull sides flare outward (their normals point out-and-down), so the tiles' near
 // top-down key barely grazes them and they read too dark — especially in ASCII — while the
 // up-facing deck stays bright. Port mode uses a lower, more raking key from the camera-front
@@ -63,6 +73,7 @@ const PORT_LIGHT: Vec3 = normalize3({ x: 0.62, y: 0.4, z: 0.52 });
 const PORT_WRAP = 0.95;
 const MODEL: Mat4 = mat4Identity();
 const WATER_MESH = catanWaterMesh();
+const COAST_MESH = coastMesh();
 // Catan's sea frame is a clear cyan-blue rather than near-black ocean. Keep enough depth for
 // the island to pop, but lift the palette into multiple ASCII luminance buckets so the ripple
 // shape remains visible when a camera rotation moves the narrow sun reflection off-screen.
@@ -79,9 +90,22 @@ const EMPTY_MESH: Mesh = { vertices: [], indices: [] };
 const PLACE_STEP = 0.12; // stagger between successive tiles launching (s)
 const PLACE_FLY = 0.55; // time one tile spends in flight (s)
 const PLACE_HOP = 1.1; // peak arc height
-const STACK_POS = { x: -0.5, z: -5.0 }; // the face-down deck, behind the board (off the board area)
+// The deck sits beyond the water hex's left point; even its nearest tile edge remains off the
+// sea, so it reads as a separate source stack rather than a tower floating on the water.
+// Keep the full-radius tile deck beyond the water's northwest edge, but close enough to the
+// settled framing that its source is still visible without moving or zooming the camera.
+const STACK_POS = { x: -5, z: 4.15 };
 const STACK_THICK = 0.11; // vertical spacing of tiles in the deck
 const STACK_BASE_Y = 0.1;
+const TILE_PLACE_END = (NUM_HEXES - 1) * PLACE_STEP + PLACE_FLY;
+const COAST_GROW_START = TILE_PLACE_END + 0.12;
+const COAST_GROW_DUR = 0.72;
+const COAST_GROW_END = COAST_GROW_START + COAST_GROW_DUR;
+const HARBOR_ENTRY_START = COAST_GROW_END + 0.14;
+const HARBOR_ENTRY_STEP = 0.09;
+const HARBOR_ENTRY_DUR = 0.82;
+const HARBOR_ENTRY_MAX_DISTANCE = 2.4;
+const BOARD_BUILD_END = HARBOR_ENTRY_START + 8 * HARBOR_ENTRY_STEP + HARBOR_ENTRY_DUR;
 
 // Number-token reveal after the tiles land: every chip spins through random numbers, then
 // locks onto its real value ring-by-ring from the centre out (a slot-machine settle).
@@ -135,6 +159,57 @@ function poseMatrix(x: number, y: number, z: number, rotX: number): Mat4 {
   return mat4Multiply(mat4Translate(x, y, z), mat4RotX(rotX));
 }
 
+function harborEntryProgress(clock: number, index: number): number {
+  return Math.max(0, Math.min(1, (clock - HARBOR_ENTRY_START - index * HARBOR_ENTRY_STEP) / HARBOR_ENTRY_DUR));
+}
+
+// Start each boat near the water edge behind its final pose, then sail it along the direction
+// its bow actually points. A small vertical bob supplies water motion without introducing the
+// sideways drift that made the old coast-normal entrance read like a sliding model.
+function isInsideBoardWater(x: number, z: number): boolean {
+  const ax = Math.abs(x);
+  const az = Math.abs(z);
+  const xLimit = CATAN_WATER_RADIUS_X * Math.sqrt(3) / 2;
+  const zLimit = CATAN_WATER_RADIUS_Z - (ax * CATAN_WATER_RADIUS_Z) / (Math.sqrt(3) * CATAN_WATER_RADIUS_X);
+  return ax <= xLimit && az <= zLimit;
+}
+
+function safeHarborEntryDistance(harbor: BoardHarborPose, mesh: Mesh): number {
+  let lo = 0;
+  let hi = HARBOR_ENTRY_MAX_DISTANCE;
+  // Find the furthest bow-first run-up for which the complete model (including its mast and
+  // sail footprint) remains over the finite water hex. The water is convex, so every point
+  // between this starting pose and the final harbor pose is safe as well.
+  for (let pass = 0; pass < 14; pass++) {
+    const distance = (lo + hi) * 0.5;
+    const fits = mesh.vertices.every((vertex) => {
+      const world = mat4MulVec4(harbor.model, { ...vertex.position, w: 1 });
+      return isInsideBoardWater(
+        world.x - harbor.forward.x * distance,
+        world.z - harbor.forward.z * distance,
+      );
+    });
+    if (fits) lo = distance;
+    else hi = distance;
+  }
+  // Leave a little water between the stern and the exact sea boundary.
+  return Math.max(0, lo - 0.09);
+}
+
+function harborEntryModel(harbor: BoardHarborPose, progress: number, index: number, entryDistance: number): Mat4 {
+  const e = smoothstep(progress);
+  const remaining = 1 - e;
+  const bob = Math.sin(progress * Math.PI * 4 + index * 0.8) * 0.035 * remaining;
+  return mat4Multiply(
+    mat4Translate(
+      -harbor.forward.x * entryDistance * remaining,
+      bob,
+      -harbor.forward.z * entryDistance * remaining,
+    ),
+    harbor.model,
+  );
+}
+
 export class TileScene {
   private camTile: OrbitCamera;
   private camBoard: OrbitCamera;
@@ -149,6 +224,9 @@ export class TileScene {
   private modeName: CatanMode = 'tile';
   private boardSeed = 1; // regenerated board arrangement
   private board: BoardSetup | null = null;
+  private harbors: BoardHarborPose[] = [];
+  private harborEntryDistances: number[] = [];
+  private harborPiers: Mesh | null = null;
   private order: number[] = []; // hex ids in placement order (center-out)
   private placing = false; // a placement animation is in flight
   private readonly placementClock = new FrameClock();
@@ -172,9 +250,10 @@ export class TileScene {
   private dirty = true;
   private readonly authoredScene = new Scene();
   private readonly sceneRenderer = new SceneRenderer();
-  private readonly waterObject = new MeshObject(
-    WATER_MESH,
-    new WorldMaterialInstance(waterMaterial, {
+  private renderSequence = 0;
+  private readonly waterPool = new ObjectPool(() => new MeshObject(
+    EMPTY_MESH,
+    new WorldMaterialInstance<WaterUniforms>(waterMaterial, {
       time: 0,
       cameraPos: { x: 0, y: 0, z: 0 },
       sunDirection: LIGHT,
@@ -185,25 +264,34 @@ export class TileScene {
       currentColor: WATER_CURRENT,
       flowSpeed: WATER_FLOW_SPEED,
     }),
-  );
+  ));
   private readonly authoredPool = new ObjectPool(() => new MeshObject(
     EMPTY_MESH,
-    new WorldMaterialInstance(lambertMaterial, {
+    new WorldMaterialInstance<LambertUniforms>(lambertMaterial, {
       lightDir: LIGHT,
       ambient: AMBIENT,
       wrap: WRAP,
     }),
   ));
+  private readonly piecePool = new ObjectPool(() => new MeshObject(
+    EMPTY_MESH,
+    new WorldMaterialInstance<CatanPieceUniforms>(catanPieceMaterial, {
+      lightDir: PIECE_LIGHT,
+      ambient: PIECE_AMBIENT,
+      wrap: PIECE_WRAP,
+    }),
+  ));
 
   constructor() {
     this.camTile = new OrbitCamera({ azimuth: 0.62, elevation: 0.62, distance: 2.7, target: { x: 0, y: 0.02, z: 0 } }, 1.6, 6);
-    this.camBoard = new OrbitCamera({ azimuth: 0.62, elevation: 0.82, distance: 11.5, target: { x: 0.42, y: -0.58, z: -0.2 } }, 2, 24);
+    // The nine harbor boats extend beyond the old land-only framing. Pull back enough to keep
+    // their sails and paired jetties inside the default viewport without making the island tiny.
+    this.camBoard = new OrbitCamera({ azimuth: 0.62, elevation: 0.82, distance: 13.2, target: { x: 0.25, y: -0.48, z: 0 } }, 2, 26);
     this.camPieces = new OrbitCamera({ azimuth: 0.5, elevation: 0.4, distance: 3.7, target: { x: 0.1, y: 0.24, z: 0 } }, 1.5, 10);
     this.camPort = new OrbitCamera({ azimuth: 0.72, elevation: 0.36, distance: 3.5, target: { x: 0, y: 0.5, z: 0 } }, 1.5, 12);
-    this.waterObject.visible = false;
-    this.waterObject.setMatrix(MODEL);
-    this.authoredScene.add(this.waterObject);
+    this.authoredScene.add(this.waterPool);
     this.authoredScene.add(this.authoredPool);
+    this.authoredScene.add(this.piecePool);
   }
   private cam(): OrbitCamera {
     if (this.modeName === 'board') return this.camBoard;
@@ -407,7 +495,7 @@ export class TileScene {
     this.modeName = m;
     this.hoverNode = null; // hover is board-only
     this.hoverEdge = null;
-    if (m === 'board' && !this.board) this.regenerate(false); // first entry: no animation
+    if (m === 'board' && !this.board) this.regenerate(true); // startup uses the full board-build sequence
     this.dirty = true;
   }
   currentMode(): CatanMode {
@@ -418,6 +506,10 @@ export class TileScene {
   // fly-in; false snaps straight to the finished board.
   private regenerate(animate: boolean): void {
     this.board = generateBoard(mulberry32(this.boardSeed || 1));
+    this.harbors = boardHarborPoses(this.board.harbors);
+    this.harborEntryDistances = this.harbors.map((harbor, index) =>
+      safeHarborEntryDistance(harbor, portMesh(harbor.kind, this.boardSeed * 31 + index)));
+    this.harborPiers = harborPiersMesh(this.harbors.map((harbor) => harbor.connector));
     const ids = Array.from({ length: NUM_HEXES }, (_, i) => i);
     ids.sort((a, b) => {
       const A = HEX_COORDS[a];
@@ -577,33 +669,73 @@ export class TileScene {
     };
   }
 
-  private queueLambert(mesh: Mesh, model: Mat4, lightDir = LIGHT, wrap = WRAP): void {
+  private queueLambert(mesh: Mesh, model: Mat4, lightDir = LIGHT, wrap = WRAP, ambient = AMBIENT): void {
     const object = this.authoredPool.acquire();
     object.geometry = mesh;
+    object.renderOrder = this.renderSequence++;
     const material = object.material as WorldMaterialInstance<LambertUniforms>;
     material.values.lightDir = lightDir;
+    material.values.ambient = ambient;
     material.values.wrap = wrap;
     object.setMatrix(model);
   }
 
-  private queueWater(): void {
-    this.waterObject.visible = true;
+  private queuePiece(mesh: Mesh, model: Mat4): void {
+    const object = this.piecePool.acquire();
+    object.geometry = mesh;
+    object.renderOrder = this.renderSequence++;
+    object.setMatrix(model);
+  }
+
+  private queueWater(mesh: Mesh, time: number, cameraPos: Vec3): void {
+    const object = this.waterPool.acquire();
+    object.geometry = mesh;
+    object.renderOrder = this.renderSequence++;
+    const material = object.material as WorldMaterialInstance<WaterUniforms>;
+    material.values.time = time;
+    material.values.cameraPos = cameraPos;
+    object.setMatrix(MODEL);
+  }
+
+  // Board mode has nine independently transformed sails. Project each through the board camera
+  // so its compact trade badge stays legible at terminal resolution. They appear only after the
+  // island has landed; during the fly-in the ships themselves provide the frame context.
+  boardPortLabels(cols: number, rows: number): SailLabel[] {
+    if (this.modeName !== 'board' || this.placing || !this.board) return [];
+    const cam = this.camBoard;
+    const camera: Camera = { eye: cam.eye(), target: cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 100 };
+    const vp = cameraMatrices(camera, cols / (rows * 2)).viewProjection;
+    const out: SailLabel[] = [];
+    for (const harbor of this.harbors) {
+      const point = projectPoint(vp, harbor.sailCenter);
+      if (point.behind) continue;
+      const info = PORT_SAIL_INFO[harbor.kind];
+      out.push({
+        col: Math.round((point.x * 0.5 + 0.5) * cols),
+        row: Math.round((1 - (point.y * 0.5 + 0.5)) * rows),
+        ratio: info.ratio,
+        icon: info.icon,
+      });
+    }
+    return out;
   }
 
   renderScene(target: RenderTarget, t = 0): void {
     this.tokensDirty = false; // consume the previous frame's one-shot
     this.lastAspect = target.width / target.height; // remember for hit-test projection
     target.clear(14, 16, 22);
-    this.waterObject.visible = false;
+    this.renderSequence = 0;
+    this.waterPool.begin();
     this.authoredPool.begin();
+    this.piecePool.begin();
     const cam = this.cam();
+    // Board generation uses the settled board camera from its first frame to its last. Tiles
+    // therefore land at their real on-screen size, and the fixed water hex never appears to
+    // stretch while the coast emerges after them.
     const eye = cam.eye();
-    const water = this.waterObject.material as WorldMaterialInstance<WaterUniforms>;
-    water.values.time = t;
-    water.values.cameraPos = eye;
     const camera: Camera = { eye, target: cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 100 };
-    if (this.modeName === 'board') this.renderBoard(t);
-    else if (this.modeName === 'pieces') this.queueLambert(piecesMesh(this.pieceColor), MODEL);
+    if (this.modeName === 'board') this.renderBoard(t, eye);
+    else if (this.modeName === 'pieces') this.queuePiece(piecesMesh(this.pieceColor), MODEL);
     else if (this.modeName === 'port') this.queueLambert(portMesh(this.portKind), MODEL, PORT_LIGHT, PORT_WRAP);
     else {
       this.queueLambert(tileMesh(this.terrain, this.variant, this.robber), MODEL);
@@ -618,17 +750,30 @@ export class TileScene {
   // The full 19-hex board. Each hex has a distinct per-tile seed for procedural variation and
   // the robber is baked onto the desert. While `placing`, each tile is posed along its fly-in
   // (stack → arc → drop) and shows its blank back until it flips past edge-on.
-  private renderBoard(t: number): void {
+  private renderBoard(t: number, eye: Vec3): void {
     if (!this.board) this.regenerate(false);
     const board = this.board!;
-    this.queueWater();
+    this.queueWater(WATER_MESH, t, eye);
     if (this.placing) {
       this.placementClock.tick(t);
-      if (this.placementClock.elapsed > (NUM_HEXES - 1) * PLACE_STEP + PLACE_FLY) {
+      if (this.placementClock.elapsed > BOARD_BUILD_END) {
         this.placing = false;
         this.revealing = true; // hand off to the number-token slot-settle
         this.revealClock.reset();
       }
+    }
+    const coastProgress = this.placing
+      ? Math.max(0, Math.min(1, (this.placementClock.elapsed - COAST_GROW_START) / COAST_GROW_DUR))
+      : 1;
+    if (coastProgress > 0) {
+      const coast = coastProgress >= 1 ? COAST_MESH : coastMesh(coastProgress);
+      this.queueLambert(coast, MODEL, LIGHT, 1, 0.72);
+    }
+    // Surf arrives only after the sand has fully grown. During the preceding tile deal the
+    // island is deliberately bare water, without a premature foam outline revealing its shape.
+    if (coastProgress >= 1) {
+      this.queueWater(swashMesh(t), t, eye);
+      this.queueLambert(surfMesh(t), MODEL, LIGHT, 1, 0.82);
     }
     if (this.revealing) {
       this.revealClock.tick(t);
@@ -666,6 +811,26 @@ export class TileScene {
         if (animated) this.queueLambert(animated, model);
       }
     }
+    // Once the coast has emerged, the nine boats enter from the water perimeter in coastal
+    // order. Their paired bridges extend only for the final part of the approach, meeting the
+    // vessel exactly as it settles into its rules-derived harbor pose.
+    if (!this.placing && this.harborPiers) {
+      this.queueLambert(this.harborPiers, MODEL);
+    }
+    for (let i = 0; i < this.harbors.length; i++) {
+      const harbor = this.harbors[i];
+      const entry = this.placing ? harborEntryProgress(this.placementClock.elapsed, i) : 1;
+      if (entry <= 0) continue;
+      const bridgeProgress = smoothstep(Math.max(0, Math.min(1, (entry - 0.62) / 0.38)));
+      if (this.placing && bridgeProgress > 0) {
+        const piers = harborPiersMesh([harbor.connector], bridgeProgress);
+        this.queueLambert(piers, MODEL);
+      }
+      const harborModel = this.placing
+        ? harborEntryModel(harbor, entry, i, this.harborEntryDistances[i] ?? 0)
+        : harbor.model;
+      this.queueLambert(portMesh(harbor.kind, this.boardSeed * 31 + i), harborModel, LIGHT, 1, 0.62);
+    }
     if (!this.placing) this.renderOverlay(t); // placed pieces + hover marker (once tiles are down)
   }
 
@@ -693,7 +858,7 @@ export class TileScene {
       hoverColor: hoverColorFor(this.placeColor),
     };
     if (!spec.buildings.length && !spec.roads.length && !spec.ghostSettlement && !spec.ghostRoad) return;
-    this.queueLambert(boardOverlayMesh(spec), MODEL);
+    this.queuePiece(boardOverlayMesh(spec), MODEL);
   }
 
   // Advance the roll sequence, then (unless idle) draw the BIG dice on top of the board. The

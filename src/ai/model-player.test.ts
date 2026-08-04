@@ -128,6 +128,21 @@ test('exhausted (legal JSON but always illegal move): diagnosed generic fallback
   ]);
 });
 
+test('last-resort fallback uses the injected RNG', async () => {
+  const state = new ChessState();
+  const legal = state.legalActions();
+  const { model } = jsonModel(['{"move":"zz99","rationale":"no valid move"}']);
+  const player = new ModelPlayer<Move>({
+    model,
+    name: 'seeded-fallback',
+    maxRetries: 0,
+    fallbackRng: () => 0.999999,
+  });
+  const choice = await player.chooseAction(state);
+  assert.deepEqual(choice.action, legal.at(-1));
+  assert.equal(choice.diagnostics?.resolution, 'random-fallback');
+});
+
 test('cancellation: an aborted signal propagates instead of silently falling back', async () => {
   const state = new ChessState();
   const { model } = throwingModel(accessError()); // any throw; abort should win first

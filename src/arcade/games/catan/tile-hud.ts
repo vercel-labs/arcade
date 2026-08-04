@@ -146,9 +146,9 @@ export function buildCatanPieceModal(o: PieceModalOpts): Node {
 
 // The full-screen HUD: a translucent control panel (top-left) with the per-mode controls and a
 // ☰ menu button (top-right). No bottom bar — home/reset/display/etc. all live in the menu.
-// `onOpenMenu` opens the game menu; `tokens` are the board number chips; `sail` is the port
-// trade chip (both are 2D overlays projected onto the scene).
-export function buildCatanTileRoot(region: LayoutBox, onOpenMenu: () => void, tokens: BoardToken[] = [], mode: CatanMode = 'tile', sail: SailLabel | null = null): Node {
+// `onOpenMenu` opens the game menu; `tokens` are the board number chips; `sails` are the port
+// trade chips (both are 2D overlays projected onto the scene).
+export function buildCatanTileRoot(region: LayoutBox, onOpenMenu: () => void, tokens: BoardToken[] = [], mode: CatanMode = 'tile', sails: SailLabel[] = []): Node {
   // Per-mode controls: board → regenerate; pieces → color picker; tile → terrain + vary + robber.
   const controls: Node[] =
     mode === 'board'
@@ -173,7 +173,7 @@ export function buildCatanTileRoot(region: LayoutBox, onOpenMenu: () => void, to
   const panel = Box({ flexDirection: 'column', gap: 1, padding: [1, 2], background: [16, 18, 26, 0.9] }, [labeled('Mode', Slot('catan-mode')), ...controls]);
   return Box({ width: region.w, height: region.h }, [
     ...tokens.map(tokenChip), // number tokens over the board (bottom layer, under the chrome)
-    ...(sail ? [sailChip(sail)] : []), // port mode: the trade-info chip on the sail
+    ...sails.map(sailChip), // board/port mode: trade-info chips projected onto the sails
     Box({ width: region.w, height: region.h, flexDirection: 'column' }, [Box({ flexDirection: 'row', padding: [1, 0, 0, 2] }, [panel])]),
     Box({ position: 'absolute', top: 1, right: 2 }, [Button({ id: 'catan-menu-button', label: '☰ menu', onClick: onOpenMenu, style: UI_CHROME_PILL })]),
     // Board mode: a roll button in the bottom-right; triggers the big dice overlay. Same

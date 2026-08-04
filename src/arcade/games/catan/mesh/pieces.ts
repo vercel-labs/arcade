@@ -10,7 +10,8 @@ import { box } from './props.ts';
 const PLAYER_RGB: Record<PlayerColor, RGB> = {
   red: [201, 58, 47],
   blue: [56, 106, 200],
-  white: [232, 230, 222],
+  // Keep the white player distinctly brighter than the new sand-colored tile frame.
+  white: [252, 249, 238],
   orange: [227, 129, 42],
 };
 

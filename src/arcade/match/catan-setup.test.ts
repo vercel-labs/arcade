@@ -7,6 +7,9 @@ import type { CatanAction } from '../../rules/catan/types.ts';
 import type { Player } from '../../ai/player.ts';
 import {
   type CatanSetupScene,
+  CatanMatchActionLimitError,
+  createCatanModelPlayer,
+  runCatanMatch,
   createCatanSetupModelPlayer,
   runCatanInitialPlacement,
 } from './catan-setup.ts';
@@ -89,12 +92,45 @@ test('setup runner requires exactly one player per Catan seat', async () => {
   await assert.rejects(() => runCatanInitialPlacement(scene, [new GreedySetupPlayer('only one')]), /one player per seat/);
 });
 
+test('full match runner uses the same scene seam beyond setup with no UI dependency', async () => {
+  const state = new CatanState({ numPlayers: 4, rng: rng() });
+  const scene = new SetupScene(state);
+  const players: Player<CatanAction>[] = Array.from({ length: 4 }, (_, seat) => ({
+    name: `P${seat}`,
+    chooseAction: async (game) => ({ action: game.legalActions()[0], rationale: 'first legal action' }),
+  }));
+  const result = await runCatanMatch(scene, players, {
+    shouldStop: () => state.initialPlacementComplete() && state.currentPlayer() === 1,
+  });
+  assert.equal(result, state);
+  assert.equal(scene.actions.length, 18, '16 setup actions, then roll and end turn');
+  assert.deepEqual(scene.actions.slice(-2).map((action) => action.type), ['roll', 'endTurn']);
+  assert.deepEqual(state.currentPrompt(), { kind: 'roll', player: 1 });
+});
+
+test('full match runner stops a legal but non-progressing evaluation at its action limit', async () => {
+  const state = new CatanState({ numPlayers: 4, rng: rng() });
+  const scene = new SetupScene(state);
+  const players: Player<CatanAction>[] = Array.from({ length: 4 }, (_, seat) => ({
+    name: `P${seat}`,
+    chooseAction: async (game) => ({ action: game.legalActions()[0], rationale: 'first legal action' }),
+  }));
+  await assert.rejects(
+    () => runCatanMatch(scene, players, { maxActions: 20 }),
+    (error) => error instanceof CatanMatchActionLimitError && error.maxActions === 20,
+  );
+  assert.equal(scene.actions.length, 20);
+  assert.equal(state.isTerminal(), false);
+});
+
 test('the generic ModelPlayer can select a typed legal Catan setup action', async () => {
   const state = new CatanState({ numPlayers: 4, rng: rng() });
   const choice = state.initialSettlementOptions().reduce((best, option) => (option.totalPips > best.totalPips ? option : best));
+  let request = '';
   const model = new MockLanguageModelV3({
-    doGenerate: async () =>
-      ({
+    doGenerate: async (options) => {
+      request = JSON.stringify(options.prompt);
+      return ({
         content: [
           {
             type: 'text',
@@ -104,7 +140,8 @@ test('the generic ModelPlayer can select a typed legal Catan setup action', asyn
         finishReason: { unified: 'stop', raw: undefined },
         usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
         warnings: [],
-      }) as unknown as Awaited<ReturnType<MockLanguageModelV3['doGenerate']>>,
+      }) as unknown as Awaited<ReturnType<MockLanguageModelV3['doGenerate']>>;
+    },
   });
   const player = createCatanSetupModelPlayer({
     model,
@@ -112,7 +149,49 @@ test('the generic ModelPlayer can select a typed legal Catan setup action', asyn
   });
 
   const picked = await player.chooseAction(state);
+  assert.match(request, /Legal actions/);
+  assert.match(request, new RegExp(`init-settlement ${choice.node}:`));
+  assert.match(request, /Facts are descriptive, not recommendations/);
   assert.deepEqual(picked.action, choice.action);
   state.applyAction(picked.action);
   assert.equal(state.currentPrompt().kind, 'initialRoad');
+});
+
+test('Catan setup model fallback is deterministic unless a seeded RNG is supplied', async () => {
+  const stateA = new CatanState({ numPlayers: 4, rng: rng(123) });
+  const stateB = new CatanState({ numPlayers: 4, rng: rng(123) });
+  const invalidModel = () =>
+    new MockLanguageModelV3({
+      doGenerate: async () =>
+        ({
+          content: [{ type: 'text', text: JSON.stringify({ move: 'not-a-node', rationale: 'No valid choice.' }) }],
+          finishReason: { unified: 'stop', raw: undefined },
+          usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+          warnings: [],
+        }) as unknown as Awaited<ReturnType<MockLanguageModelV3['doGenerate']>>,
+    });
+  const choiceA = await createCatanSetupModelPlayer({ model: invalidModel(), maxRetries: 0 }).chooseAction(stateA);
+  const choiceB = await createCatanSetupModelPlayer({ model: invalidModel(), maxRetries: 0 }).chooseAction(stateB);
+  assert.deepEqual(choiceA.action, stateA.legalActions()[0]);
+  assert.deepEqual(choiceB.action, choiceA.action);
+  assert.equal(choiceA.diagnostics?.resolution, 'random-fallback');
+});
+
+test('full-game ModelPlayer fallback can discover a parameterized domestic-trade example', async () => {
+  const state = new CatanState({ numPlayers: 4, rng: rng(), domesticTrade: true });
+  while (!state.initialPlacementComplete()) state.applyAction(state.legalActions()[0]);
+  state.applyAction({ type: 'roll' }, { dice: [1, 1] });
+  const model = new MockLanguageModelV3({
+    doGenerate: async () =>
+      ({
+        content: [{ type: 'text', text: JSON.stringify({ move: 'invalid', rationale: 'No valid choice.' }) }],
+        finishReason: { unified: 'stop', raw: undefined },
+        usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+        warnings: [],
+      }) as unknown as Awaited<ReturnType<MockLanguageModelV3['doGenerate']>>,
+  });
+  const player = createCatanModelPlayer({ model, maxRetries: 0, fallbackRng: () => 0.999 });
+  const choice = await player.chooseAction(state);
+  assert.equal(choice.action.type, 'offerTrade');
+  assert.equal(state.isLegalAction(choice.action), true);
 });

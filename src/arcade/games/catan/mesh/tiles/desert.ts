@@ -194,7 +194,10 @@ function duneHeight(x: number, z: number, seed: number, dir: number): number {
 // robber is NOT part of the tile — it's added by tileMesh only when toggled on.
 export function desertTile(seed: number): Build {
   const m = build();
-  const SAND: RGB = [234, 216, 140];
+  // Warm golden tan against the frame's paler, creamier buff. It is light enough to read as
+  // sunlit dune sand without becoming muddy, while the stronger amber saturation and modest
+  // value gap keep the terrain distinct from the tile ledge in both color and ASCII modes.
+  const SAND: RGB = [214, 179, 96];
   const dseed = seed + 2.7;
   const rng = mulberry32((Math.abs(seed) * 2246822519 + 0x68e31da4) >>> 0 || 1);
   const dir = rng() * Math.PI; // wind direction → ridge orientation
@@ -215,7 +218,9 @@ export function desertTile(seed: number): Build {
   };
   const face = (p0: Vec3, p1: Vec3, p2: Vec3): void => {
     const cy = (p0.y + p1.y + p2.y) / 3;
-    const k = 1 + smooth((cy - EDGE_Y) / 0.16) * 0.05 + (hash2(p0.x + p1.z, p0.z - p1.x) - 0.5) * 0.04; // crest tops a touch lighter + faint grain
+    // Wider value travel makes the dune ridges legible from afar: sheltered troughs stay
+    // ochre while wind-facing crests approach the lighter shoreline color.
+    const k = 0.91 + smooth((cy - EDGE_Y) / 0.16) * 0.13 + (hash2(p0.x + p1.z, p0.z - p1.x) - 0.5) * 0.08;
     faceTri(m, p0, p1, p2, shade(SAND, k), UP);
   };
   for (let s = 0; s < 6; s++) {

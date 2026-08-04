@@ -4,12 +4,13 @@
 
 import type { Mesh, Vec3, VertexIn } from '../../../engine/index.ts';
 
-// Standard-compatible cardboard measurements put a terrain tile at about 91.5 mm from
-// point to point and 79.25 mm from flat to flat, with the assembled base board around
-// 480 x 440 mm. Expressing those outer dimensions in tile units makes the commercial sea
-// frame slightly taller than a mathematically regular hexagon.
-export const CATAN_WATER_RADIUS_X = 480 / 91.5; // 5.246 tile circumdiameters across
-export const CATAN_WATER_RADIUS_Z = 440 / 79.25; // 5.552 tile flat-heights tall
+// The 19-tile island's macro silhouette points north/south even though each terrain hex is
+// flat-top. Use one radius on both world axes so the sea frame is a true pointy-top hex aligned
+// with that silhouette. This leaves enough room for the closer harbor boats without the broad
+// empty-water border of the previous oversized frame.
+export const CATAN_WATER_RADIUS = 5.8;
+export const CATAN_WATER_RADIUS_X = CATAN_WATER_RADIUS;
+export const CATAN_WATER_RADIUS_Z = CATAN_WATER_RADIUS;
 export const CATAN_WATER_Y = -0.19; // just below the tile walls (which bottom out at -0.16)
 export const CATAN_WATER_SUBDIVISIONS = 20;
 
@@ -23,13 +24,14 @@ export function catanWaterMesh(): Mesh {
   const stepZ = CATAN_WATER_RADIUS_Z / CATAN_WATER_SUBDIVISIONS;
   const key = (q: number, r: number): string => `${q},${r}`;
 
-  // Axial coordinates describe a regular triangular lattice clipped to a flat-top hex.
+  // Axial coordinates describe a regular triangular lattice clipped to a pointy-top hex,
+  // matching the orientation of the complete radius-2 island rather than each individual tile.
   for (let q = -CATAN_WATER_SUBDIVISIONS; q <= CATAN_WATER_SUBDIVISIONS; q++) {
     const rMin = Math.max(-CATAN_WATER_SUBDIVISIONS, -q - CATAN_WATER_SUBDIVISIONS);
     const rMax = Math.min(CATAN_WATER_SUBDIVISIONS, -q + CATAN_WATER_SUBDIVISIONS);
     for (let r = rMin; r <= rMax; r++) {
-      const x = stepX * (q + r / 2);
-      const z = stepZ * (Math.sqrt(3) / 2) * r;
+      const x = stepX * (Math.sqrt(3) / 2) * q;
+      const z = stepZ * (r + q / 2);
       byCoord.set(key(q, r), vertices.length);
       vertices.push({
         position: { x, y: CATAN_WATER_Y, z },
