@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { coastalEdgeRing, coastalEdges, edgeNodes, HEX_COORDS, hexNodes, NUM_NODES } from './board-topology.ts';
 import { generateBoard, nodeProduction } from './setup.ts';
-import { NUMBER_TOKENS, RED_NUMBERS, TERRAIN_COUNTS, TERRAIN_RESOURCE, type Terrain, TOKEN_DOTS } from './types.ts';
+import { NUMBER_TOKENS, OFFICIAL_NUMBER_SEQUENCE, RED_NUMBERS, TERRAIN_COUNTS, TERRAIN_RESOURCE, type Terrain, TOKEN_DOTS } from './types.ts';
 
 // Deterministic RNG (mulberry32) so boards are reproducible.
 function rng(seed = 0xc0ffee): () => number {
@@ -55,12 +55,29 @@ test('number tokens: 18 on non-desert hexes, none on the desert, multiset matche
   assert.deepEqual(tokens.slice().sort((a, b) => a - b), [...NUMBER_TOKENS].sort((a, b) => a - b));
 });
 
+test('number tokens follow the official A–R counterclockwise outside-in spiral', () => {
+  const spiralCoords = [
+    [-2, 0], [-1, -1], [0, -2], [1, -2], [2, -2], [2, -1],
+    [2, 0], [1, 1], [0, 2], [-1, 2], [-2, 2], [-2, 1],
+    [-1, 0], [0, -1], [1, -1], [1, 0], [0, 1], [-1, 1],
+    [0, 0],
+  ] as const;
+  const ids = spiralCoords.map(([q, r]) => HEX_COORDS.findIndex((coord) => coord.q === q && coord.r === r));
+  assert.ok(ids.every((id) => id >= 0));
+
+  for (const seed of [1, 2, 3, 42, 1000, 0xbeef]) {
+    const board = generateBoard(rng(seed));
+    const placed = ids.flatMap((id) => board.hexes[id].terrain === 'desert' ? [] : [board.hexes[id].token]);
+    assert.deepEqual(placed, [...OFFICIAL_NUMBER_SEQUENCE], `seed ${seed}`);
+  }
+});
+
 test('robber starts on the desert', () => {
   const board = generateBoard(rng());
   assert.equal(board.hexes[board.robberHex].terrain, 'desert');
 });
 
-test('no two red numbers (6/8) are on adjacent hexes', () => {
+test('the official spiral keeps red numbers (6/8) non-adjacent', () => {
   const nbrs = hexNeighbors();
   // Check several seeds.
   for (const seed of [1, 2, 3, 42, 1000, 0xbeef]) {

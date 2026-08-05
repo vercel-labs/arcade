@@ -91,10 +91,12 @@ A harbor requires a settlement/city **on one of the harbor's two coastal interse
 - **Beginner (fixed):** the published balanced layout of hexes, tokens, harbors, and
   starting pieces. Recommended for a first game.
 - **Experienced (variable):** shuffle the 19 terrain hexes and place them randomly.
-- **Number tokens (variable):** either the alphabetical method (place tokens letter-side
-  up in alphabetical order, starting at a corner and spiraling toward the center, **skipping
-  the desert**) or fully random — but in the random method **the red numbers 6 and 8 may
-  never be on adjacent hexes** (swap to fix). The desert never gets a token.
+- **Number tokens (variable):** use the current rulebook's alphabetical method: arrange the
+  tokens in A–R order, start at any corner, and place them counterclockwise in an outside-in
+  spiral, **skipping the desert**. This corresponds to
+  `5,2,6,3,8,10,9,12,11,4,8,10,9,4,5,6,3,11`. Earlier rules also documented a fully
+  random alternative with no adjacent red 6/8 tokens; the engine intentionally uses the
+  current official spiral instead.
 - **Harbors:** one on each of the 9 marked coastal positions on the sea frame.
 - **Robber:** starts on the desert.
 
@@ -468,7 +470,8 @@ type CatanAction =
 - **Topology invariants:** 19 hexes / 54 nodes / 72 edges; every edge has exactly 2
   endpoints; node incidence 1–3 hexes; Σ hex→node incidences = 6·19; adjacency symmetry.
 - **Setup invariants:** correct terrain multiset (4/4/4/3/3/1), token multiset (no 7, one
-  2/one 12), the **6/8-not-adjacent** rule, 9 harbors on distinct coastal edges.
+  2/one 12), the official A–R counterclockwise outside-in spiral (which keeps 6/8 apart),
+  and 9 harbors on distinct coastal edges.
 - **Rules invariants (as they land):** resource conservation (bank + all hands = 19 per
   resource, always); longest-road recompute matches a brute-force check on random boards;
   `legalActions` never returns an action `applyAction` rejects; piece caps; VP totals.

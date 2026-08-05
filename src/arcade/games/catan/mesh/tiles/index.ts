@@ -26,15 +26,29 @@ const BUILDERS: Record<Terrain, (seed: number) => Build> = {
 
 // Cache one baked static mesh per (terrain, seed); animated props live in a separate overlay.
 const cache = new ResourceCache<string, Mesh>();
+const cacheRecency = new Map<string, true>();
+const MAX_CACHED_TILES = 24;
+
+function touchCachedTile(key: string): void {
+  cacheRecency.delete(key);
+  cacheRecency.set(key, true);
+  if (cacheRecency.size <= MAX_CACHED_TILES) return;
+  const oldest = cacheRecency.keys().next().value;
+  if (oldest === undefined) return;
+  cacheRecency.delete(oldest);
+  cache.delete(oldest);
+}
 // `robberOn` bakes the robber (seated on the tile's centre surface) into the returned mesh —
 // the robber is available on every terrain and toggled from the HUD, never part of the tile.
 export function tileMesh(terrain: Terrain, seed = 0, robberOn = false): Mesh {
   const key = `${terrain}:${seed}:${robberOn ? 1 : 0}`;
-  return cache.getOrCreate(key, () => {
+  const mesh = cache.getOrCreate(key, () => {
     const built = BUILDERS[terrain](seed);
     if (robberOn) placeRobber(built);
     return built;
   });
+  touchCachedTile(key);
+  return mesh;
 }
 
 // Small time-varying overlays. `origin` is the tile's board-space centre, allowing weather to

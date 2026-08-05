@@ -3,12 +3,41 @@
 import { mulberry32 } from '../../../../../scenes/wisp.ts';
 import { irregularGround, rimAndWall, surfaceY } from '../../base.ts';
 import { build, type Build, type RGB, shade } from '../../build.ts';
-import { harvestedRows, standingCanopy, standingWheat } from './crop.ts';
-import { farmParcelPatch, fieldLayout, fieldToWorld, scaleFarmPolygon } from './layout.ts';
+import { harvestedRows, prepareStandingCanopy, standingCanopy, standingWheat, type StandingCanopyCell } from './crop.ts';
+import { farmParcelPatch, type FieldLayout, fieldLayout, fieldToWorld, scaleFarmPolygon } from './layout.ts';
 import { farmBush, farmShack, farmWindmillBody, farmWindmillRotor } from './props.ts';
 import { sampleWind, type WindOrigin } from '../wind.ts';
 
 const WHEAT_CANOPY: RGB = [255, 221, 63];
+const MAX_ANIMATION_RECIPES = 24;
+
+interface FieldsAnimationRecipe {
+  layout: FieldLayout;
+  canopy: readonly StandingCanopyCell[];
+  windmill: { x: number; z: number; y: number };
+}
+
+const animationRecipes = new Map<number, FieldsAnimationRecipe>();
+
+function rememberAnimationRecipe(
+  seed: number,
+  layout: FieldLayout,
+  soilY: (x: number, z: number) => number,
+): FieldsAnimationRecipe {
+  const windmill = fieldToWorld(layout.angle, layout.windmillPosition[0], layout.windmillPosition[1]);
+  const recipe = {
+    layout,
+    canopy: prepareStandingCanopy(layout, soilY),
+    windmill: { ...windmill, y: soilY(windmill.x, windmill.z) + 0.014 },
+  };
+  if (!animationRecipes.has(seed) && animationRecipes.size >= MAX_ANIMATION_RECIPES) {
+    const oldest = animationRecipes.keys().next().value;
+    if (oldest !== undefined) animationRecipes.delete(oldest);
+  }
+  animationRecipes.delete(seed);
+  animationRecipes.set(seed, recipe);
+  return recipe;
+}
 
 export function fieldsTile(seed: number): Build {
   const m = build();
@@ -21,6 +50,7 @@ export function fieldsTile(seed: number): Build {
   const rng = mulberry32((Math.abs(seed) * 2246822519 + 0x85ebca6b) >>> 0 || 1);
   const layout = fieldLayout(rng, seed);
   const soilY = (x: number, z: number): number => surfaceY(x, z, amp, groundSeed);
+  rememberAnimationRecipe(seed, layout, soilY);
 
   irregularGround(m, { color: FIELD_GROUND, amp, seed: groundSeed, facet: 0.065 });
   farmParcelPatch(m, layout, scaleFarmPolygon(layout.grassParcel, 1.16), soilY, GRASS_BLEND, 0.007);
@@ -43,9 +73,12 @@ export function animatedFieldsTile(seed: number, time: number, origin: WindOrigi
   const m = build();
   const amp = 0.025;
   const groundSeed = seed + 4.2;
-  const rng = mulberry32((Math.abs(seed) * 2246822519 + 0x85ebca6b) >>> 0 || 1);
-  const layout = fieldLayout(rng, seed);
   const soilY = (x: number, z: number): number => surfaceY(x, z, amp, groundSeed);
+  const recipe = animationRecipes.get(seed) ?? (() => {
+    const rng = mulberry32((Math.abs(seed) * 2246822519 + 0x85ebca6b) >>> 0 || 1);
+    return rememberAnimationRecipe(seed, fieldLayout(rng, seed), soilY);
+  })();
+  const { layout } = recipe;
   standingCanopy(
     m,
     layout,
@@ -65,9 +98,8 @@ export function animatedFieldsTile(seed: number, time: number, origin: WindOrigi
         strength: Math.min(1, wind.strength * (0.88 + ripple * 0.2)),
       };
     },
+    recipe.canopy,
   );
-  const windmill = fieldToWorld(layout.angle, layout.windmillPosition[0], layout.windmillPosition[1]);
-  const y0 = surfaceY(windmill.x, windmill.z, amp, groundSeed) + 0.014;
-  farmWindmillRotor(m, windmill.x, windmill.z, y0, layout.angle, seed * 101 + 7, time);
+  farmWindmillRotor(m, recipe.windmill.x, recipe.windmill.z, recipe.windmill.y, layout.angle, seed * 101 + 7, time);
   return m;
 }

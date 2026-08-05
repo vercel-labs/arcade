@@ -40,7 +40,7 @@ import {
 import { HEX_COORDS, NUM_EDGES, NUM_HEXES, NUM_NODES } from '../../../rules/catan/board-topology.ts';
 import { type BoardOccupancy, canPlaceRoad, canPlaceSettlement } from '../../../rules/catan/placement.ts';
 import { type BoardSetup, generateBoard } from '../../../rules/catan/setup.ts';
-import { type PlayerColor, RED_NUMBERS, type Terrain } from '../../../rules/catan/types.ts';
+import { type PlayerColor, RED_NUMBERS, type Terrain, TOKEN_DOTS } from '../../../rules/catan/types.ts';
 import { mulberry32 } from '../../scenes/wisp.ts';
 import { animatedTileMesh, boardOverlayMesh, coastMesh, dieMesh, harborPiersMesh, hoverColorFor, type OverlaySpec, piecesMesh, PORT_SAIL_CENTER, type PortKind, portMesh, surfMesh, swashMesh, tileBackMesh, tileMesh } from './mesh/index.ts';
 import { catanPieceMaterial, type CatanPieceUniforms } from './mesh/piece-material.ts';
@@ -108,11 +108,28 @@ const HARBOR_ENTRY_MAX_DISTANCE = 2.4;
 const BOARD_BUILD_END = HARBOR_ENTRY_START + 8 * HARBOR_ENTRY_STEP + HARBOR_ENTRY_DUR;
 
 // Number-token reveal after the tiles land: every chip spins through random numbers, then
-// locks onto its real value ring-by-ring from the centre out (a slot-machine settle).
+// locks onto its real value ring-by-ring. Its final pips grow in only after the number settles,
+// so changing pip counts never participate in the slot-machine flicker.
 const REVEAL_FLICKER = 0.07; // seconds each spinning value shows
 const REVEAL_BASE = 0.35; // when the centre hex locks
 const REVEAL_STEP = 0.2; // extra delay per ring outward
-const REVEAL_END = REVEAL_BASE + 2 * REVEAL_STEP + 0.05; // all settled (outer ring is 2)
+const REVEAL_PIP_DELAY = 0.1; // brief hold on the final number before its first pip
+const REVEAL_PIP_STEP = 0.08; // cadence for each centre-out pip layer
+const REVEAL_END = REVEAL_BASE + 2 * REVEAL_STEP + REVEAL_PIP_DELAY + 3 * REVEAL_PIP_STEP; // outer ring plus a final hold
+
+// Grow an odd pip row 1 → 3 → 5, and an even row 1 → 2 → 4. The HUD re-centres each
+// intermediate row with its normal left-biased tie rule, so growth radiates from the middle.
+function revealedPipCount(total: number, elapsed: number): number {
+  if (elapsed <= 0 || total <= 0) return 0;
+  const layer = Math.ceil(elapsed / REVEAL_PIP_STEP);
+  if (total % 2 === 1) return Math.min(total, layer * 2 - 1);
+  return Math.min(total, layer === 1 ? 1 : layer * 2 - 2);
+}
+
+// The number remains useful from the widest board view, but its probability pips turn into
+// noise once the camera is roughly two wheel notches beyond the home framing. Keep the cutoff
+// in camera-distance space so it follows zoom directly and is independent of board rotation.
+const TOKEN_PIP_MAX_CAMERA_DISTANCE = 15.5;
 
 // Build-drop: a newly built/upgraded piece appears elevated over its spot and drops onto the
 // rim with a small settle (rather than popping in instantly).
@@ -121,12 +138,14 @@ const BUILD_DROP_H = 1.2; // elevation above the rim the piece starts from (worl
 
 export type CatanMode = 'tile' | 'board' | 'pieces' | 'port';
 
-// A number token to draw over a hex: its screen cell, the rolled number, whether it's a red
-// high-frequency number (6/8), and whether it's currently lit (matches the last dice roll).
+// A number token to draw over a hex: its screen cell, rolled number, currently revealed
+// production pips, red/high-frequency state, zoom-detail state, and dice-roll highlight.
 export interface BoardToken {
   col: number;
   row: number;
   num: number;
+  pips: number;
+  showPips: boolean;
   red: boolean;
   hot: boolean;
 }
@@ -625,6 +644,7 @@ export class TileScene {
     const camera = cam.toCamera({ fovy: FOVY, near: 0.05, far: 100 });
     const vp = cameraMatrices(camera, cols / (rows * 2)).viewProjection; // aspect matches the render target
     const spinStep = Math.floor(this.revealClock.elapsed / REVEAL_FLICKER);
+    const pipDetailVisible = cam.distance <= TOKEN_PIP_MAX_CAMERA_DISTANCE;
     const out: BoardToken[] = [];
     for (let h = 0; h < NUM_HEXES; h++) {
       const cell = this.board.hexes[h];
@@ -633,14 +653,22 @@ export class TileScene {
       const { x, z } = hexWorld(q, r);
       const point = projectPoint(vp, { x, y: 0.14, z });
       if (point.behind) continue;
-      // During the reveal each chip spins until its ring's settle time, then shows the real
-      // value (centre ring settles first).
-      const settled = !this.revealing || this.revealClock.elapsed >= REVEAL_BASE + hexRing(q, r) * REVEAL_STEP;
+      // During the reveal each chip spins without pips until its ring's settle time. Once the
+      // real value locks, its actual pips grow outward from one central dot in short layers.
+      const settleAt = REVEAL_BASE + hexRing(q, r) * REVEAL_STEP;
+      const settled = !this.revealing || this.revealClock.elapsed >= settleAt;
       const num = settled ? cell.token : 2 + ((spinStep * 7 + h * 5) % 11);
+      const finalPips = TOKEN_DOTS[cell.token] ?? 0;
+      const pipElapsed = this.revealClock.elapsed - settleAt - REVEAL_PIP_DELAY;
+      const visiblePips = !this.revealing
+        ? finalPips
+        : revealedPipCount(finalPips, pipElapsed);
       out.push({
         col: Math.round((point.x * 0.5 + 0.5) * cols),
         row: Math.round((1 - (point.y * 0.5 + 0.5)) * rows),
         num,
+        pips: visiblePips,
+        showPips: pipDetailVisible && visiblePips > 0,
         red: settled && RED_NUMBERS.includes(num),
         hot: settled && this.rolledSum !== null && num === this.rolledSum,
       });

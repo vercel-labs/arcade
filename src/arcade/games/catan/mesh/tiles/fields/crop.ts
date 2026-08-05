@@ -5,6 +5,69 @@ import { fieldCoverage, type FieldLayout, fieldRowPoint, harvestedFieldCoverage,
 import { stubbleTuft, wheatStalk, wheatTuft } from './props.ts';
 import { type WindSample } from '../wind.ts';
 
+export interface StandingCanopyCell {
+  ax: number;
+  az: number;
+  bx: number;
+  bz: number;
+  wx: number;
+  wz: number;
+  edgeA: number;
+  crestA: number;
+  edgeB: number;
+  crestB: number;
+  px: number;
+  pz: number;
+  shadeFactor: number;
+}
+
+// Everything here depends only on the tile seed. Preparing it once avoids repeating the
+// harvested-lane and grass-polygon distance tests on every 90 ms wind tick.
+export function prepareStandingCanopy(
+  layout: FieldLayout,
+  soilY: (x: number, z: number) => number,
+): StandingCanopyCell[] {
+  const cells: StandingCanopyCell[] = [];
+  const rows = 33;
+  const segments = 30;
+  for (let k = 0; k < rows; k++) {
+    const row = k - (rows - 1) / 2;
+    for (let i = 0; i < segments; i++) {
+      const u0 = -1.02 + (2.04 * i) / segments;
+      const u1 = -1.02 + (2.04 * (i + 1)) / segments;
+      const a = fieldRowPoint(layout, row, u0);
+      const b = fieldRowPoint(layout, row, u1);
+      if (!insideFieldHex(a.x, a.z) || !insideFieldHex(b.x, b.z)) continue;
+      const wa = smooth((fieldCoverage(layout, a.x, a.z) - 0.44) / 0.28);
+      const wb = smooth((fieldCoverage(layout, b.x, b.z) - 0.44) / 0.28);
+      if (wa < 0.04 && wb < 0.04) continue;
+
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      const len = Math.hypot(dx, dz) || 1;
+      const half = layout.spacing * 0.51;
+      const wx = (-dz / len) * half;
+      const wz = (dx / len) * half;
+      cells.push({
+        ax: a.x,
+        az: a.z,
+        bx: b.x,
+        bz: b.z,
+        wx,
+        wz,
+        edgeA: soilY(a.x, a.z) + 0.009 + wa * 0.021,
+        crestA: soilY(a.x, a.z) + 0.009 + wa * 0.046,
+        edgeB: soilY(b.x, b.z) + 0.009 + wb * 0.021,
+        crestB: soilY(b.x, b.z) + 0.009 + wb * 0.046,
+        px: wx / half,
+        pz: wz / half,
+        shadeFactor: 0.97 + ((k + i) % 3) * 0.025,
+      });
+    }
+  }
+  return cells;
+}
+
 export function harvestedRows(m: Build, layout: FieldLayout, soilY: (x: number, z: number) => number, color: RGB, seed: number): void {
   const count = 33;
   const segments = 28;
@@ -51,55 +114,31 @@ export function standingCanopy(
   soilY: (x: number, z: number) => number,
   color: RGB,
   windAt: (x: number, z: number) => WindSample = () => ({ x: 0, z: 0, strength: 0 }),
+  prepared?: readonly StandingCanopyCell[],
 ): void {
-  const rows = 33;
-  const segments = 30;
-  for (let k = 0; k < rows; k++) {
-    const row = k - (rows - 1) / 2;
-    for (let i = 0; i < segments; i++) {
-      const u0 = -1.02 + (2.04 * i) / segments;
-      const u1 = -1.02 + (2.04 * (i + 1)) / segments;
-      const a = fieldRowPoint(layout, row, u0);
-      const b = fieldRowPoint(layout, row, u1);
-      if (!insideFieldHex(a.x, a.z) || !insideFieldHex(b.x, b.z)) continue;
-      const wa = smooth((fieldCoverage(layout, a.x, a.z) - 0.44) / 0.28);
-      const wb = smooth((fieldCoverage(layout, b.x, b.z) - 0.44) / 0.28);
-      if (wa < 0.04 && wb < 0.04) continue;
-
-      const dx = b.x - a.x;
-      const dz = b.z - a.z;
-      const len = Math.hypot(dx, dz) || 1;
-      const half = layout.spacing * 0.51;
-      const wx = (-dz / len) * half;
-      const wz = (dx / len) * half;
-      const edgeA = soilY(a.x, a.z) + 0.009 + wa * 0.021;
-      const crestA = soilY(a.x, a.z) + 0.009 + wa * 0.046;
-      const edgeB = soilY(b.x, b.z) + 0.009 + wb * 0.021;
-      const crestB = soilY(b.x, b.z) + 0.009 + wb * 0.046;
-      const windA = windAt(a.x, a.z);
-      const windB = windAt(b.x, b.z);
-      // The row edges stay almost rooted while the high crest follows the gust. Because windAt
-      // is sampled in board space, neighbouring tiles receive the same passing wave instead of
-      // independently twitching their crop.
-      const edgeShiftA = windA.strength * 0.007;
-      const crestShiftA = windA.strength * 0.052;
-      const edgeShiftB = windB.strength * 0.007;
-      const crestShiftB = windB.strength * 0.052;
-      const leftA = v(a.x - wx + windA.x * edgeShiftA, edgeA, a.z - wz + windA.z * edgeShiftA);
-      const midA = v(a.x + windA.x * crestShiftA, crestA - windA.strength * 0.009, a.z + windA.z * crestShiftA);
-      const rightA = v(a.x + wx + windA.x * edgeShiftA, edgeA, a.z + wz + windA.z * edgeShiftA);
-      const leftB = v(b.x - wx + windB.x * edgeShiftB, edgeB, b.z - wz + windB.z * edgeShiftB);
-      const midB = v(b.x + windB.x * crestShiftB, crestB - windB.strength * 0.009, b.z + windB.z * crestShiftB);
-      const rightB = v(b.x + wx + windB.x * edgeShiftB, edgeB, b.z + wz + windB.z * edgeShiftB);
-      const lightSweep = (windA.strength + windB.strength) * 0.5;
-      const band = shade(color, 0.97 + ((k + i) % 3) * 0.025 + lightSweep * 0.035);
-      const px = wx / half;
-      const pz = wz / half;
-      const windNx = (windA.x * windA.strength + windB.x * windB.strength) * 0.17;
-      const windNz = (windA.z * windA.strength + windB.z * windB.strength) * 0.17;
-      faceQuadWithNormal(m, leftA, leftB, midB, midA, shade(band, 0.98), v(-px * 0.24 - windNx, 1, -pz * 0.24 - windNz));
-      faceQuadWithNormal(m, midA, midB, rightB, rightA, shade(band, 1.035), v(px * 0.24 - windNx, 1, pz * 0.24 - windNz));
-    }
+  const cells = prepared ?? prepareStandingCanopy(layout, soilY);
+  for (const cell of cells) {
+    const windA = windAt(cell.ax, cell.az);
+    const windB = windAt(cell.bx, cell.bz);
+    // The row edges stay almost rooted while the high crest follows the gust. Because windAt
+    // is sampled in board space, neighbouring tiles receive the same passing wave instead of
+    // independently twitching their crop.
+    const edgeShiftA = windA.strength * 0.007;
+    const crestShiftA = windA.strength * 0.052;
+    const edgeShiftB = windB.strength * 0.007;
+    const crestShiftB = windB.strength * 0.052;
+    const leftA = v(cell.ax - cell.wx + windA.x * edgeShiftA, cell.edgeA, cell.az - cell.wz + windA.z * edgeShiftA);
+    const midA = v(cell.ax + windA.x * crestShiftA, cell.crestA - windA.strength * 0.009, cell.az + windA.z * crestShiftA);
+    const rightA = v(cell.ax + cell.wx + windA.x * edgeShiftA, cell.edgeA, cell.az + cell.wz + windA.z * edgeShiftA);
+    const leftB = v(cell.bx - cell.wx + windB.x * edgeShiftB, cell.edgeB, cell.bz - cell.wz + windB.z * edgeShiftB);
+    const midB = v(cell.bx + windB.x * crestShiftB, cell.crestB - windB.strength * 0.009, cell.bz + windB.z * crestShiftB);
+    const rightB = v(cell.bx + cell.wx + windB.x * edgeShiftB, cell.edgeB, cell.bz + cell.wz + windB.z * edgeShiftB);
+    const lightSweep = (windA.strength + windB.strength) * 0.5;
+    const band = shade(color, cell.shadeFactor + lightSweep * 0.035);
+    const windNx = (windA.x * windA.strength + windB.x * windB.strength) * 0.17;
+    const windNz = (windA.z * windA.strength + windB.z * windB.strength) * 0.17;
+    faceQuadWithNormal(m, leftA, leftB, midB, midA, shade(band, 0.98), v(-cell.px * 0.24 - windNx, 1, -cell.pz * 0.24 - windNz));
+    faceQuadWithNormal(m, midA, midB, rightB, rightA, shade(band, 1.035), v(cell.px * 0.24 - windNx, 1, cell.pz * 0.24 - windNz));
   }
 }
 

@@ -38,9 +38,11 @@ export const TERRAIN_COUNTS: Record<Terrain, number> = {
 };
 
 // The 18 number tokens (one 2, one 12; two each of 3–6 and 8–11; no 7). Placed on the 18
-// non-desert hexes. 6 and 8 are the "red" high-frequency numbers with a placement
-// restriction (never adjacent) — see setup.ts.
+// non-desert hexes. NUMBER_TOKENS is the order-free component multiset used by invariants;
+// OFFICIAL_NUMBER_SEQUENCE is the A–R order printed on the backs of the discs and used by
+// the current rulebook's counterclockwise outside-in spiral setup.
 export const NUMBER_TOKENS = [2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12] as const;
+export const OFFICIAL_NUMBER_SEQUENCE = [5, 2, 6, 3, 8, 10, 9, 12, 11, 4, 8, 10, 9, 4, 5, 6, 3, 11] as const;
 export const RED_NUMBERS: readonly number[] = [6, 8];
 
 // Dots (probability pips) under a token — how many of 36 rolls produce it. Also the

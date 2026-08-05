@@ -14,7 +14,7 @@ function frameHash(target: RenderTarget): string {
 test('authored Catan traversal preserves every showcase framebuffer baseline', () => {
   const cases: { mode: CatanMode; configure(scene: TileScene): void; expected: string }[] = [
     { mode: 'tile', configure: () => {}, expected: 'c0548aa8bb4493d2f588172ae8665ae66d9a11535e55100c60f74038f2eb4e7b' },
-    { mode: 'board', configure: (scene) => scene.seedDemo(), expected: 'cc0fe703f3c6fb04b12bdce7deabd50a9cfa8dafec9f5ea88b2320a2bb233580' },
+    { mode: 'board', configure: (scene) => scene.seedDemo(), expected: '40135cd0a717e4bc9984ea083fa98013bff5d76775e6e06b51dbcb42c6771230' },
     { mode: 'pieces', configure: (scene) => scene.setActiveColor('blue'), expected: '60d15ad9098fc9317b5c12dd0103641a89989e7fe8a49f06e59bddc1f8fa1c0d' },
     { mode: 'port', configure: (scene) => scene.setPortKind('ore'), expected: '13883082470bd0d26188b9932369649d30a178fd53463d0f3bc235b7fdb576ed' },
   ];
@@ -35,8 +35,8 @@ test('authored Catan traversal preserves the staged island-build animation', () 
     { time: 1.5, expected: '354ee4e4007f09af1db2443b4acd32e0c2bcb3544078e93f562281e880c922b9' },
     { time: 3.1, expected: 'a3ec8b4bab2d4b006b247430f3bb1b3447151153af6421fd7d6ea7aec17bf36b' },
     { time: 3.7, expected: '1d72a8e99edb53ed4a69080fbdb5343dfb6807157b0e518ec8fbbc28b0a09b44' },
-    { time: 4.4, expected: 'c807cffec85c256893a4bd93bc43c237f25cff751c2bbe05b3451354b0ace771' },
-    { time: 5.3, expected: '3fa49e9e46f15ddca0ea38bde1b76881b083568e468286309a345e870e72ce92' },
+    { time: 4.4, expected: 'd6881c46c506d4559cc0965b4450c4ccbfe8269f75f6f8c7fefa7f9a5ef04ce4' },
+    { time: 5.3, expected: '142b014309f181cc6a8026b9b2ac054c51b9f45645e66f825c8b39680f83ca8a' },
   ];
   const scene = new TileScene();
   scene.setMode('board');

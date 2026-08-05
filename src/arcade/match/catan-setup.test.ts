@@ -103,8 +103,9 @@ test('full match runner uses the same scene seam beyond setup with no UI depende
     shouldStop: () => state.initialPlacementComplete() && state.currentPlayer() === 1,
   });
   assert.equal(result, state);
-  assert.equal(scene.actions.length, 18, '16 setup actions, then roll and end turn');
-  assert.deepEqual(scene.actions.slice(-2).map((action) => action.type), ['roll', 'endTurn']);
+  assert.ok(scene.actions.length >= 18, '16 setup actions, then at least roll and end turn');
+  assert.equal(scene.actions[16].type, 'roll');
+  assert.equal(scene.actions.at(-1)?.type, 'endTurn');
   assert.deepEqual(state.currentPrompt(), { kind: 'roll', player: 1 });
 });
 

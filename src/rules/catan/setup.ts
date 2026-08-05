@@ -1,22 +1,22 @@
 // Board setup: assign terrain, number tokens, and harbors onto the static topology
 // (board-topology.ts). Pure and seeded — pass an RNG for reproducible boards (tests,
-// snapshots); defaults to Math.random. This is the "variable setup" of the rulebook, not
-// the fixed beginner layout. See docs/catan.md §2, §3.4.
+// snapshots); defaults to Math.random. This is the current rulebook's "variable setup":
+// terrain is shuffled, then the A–R number sequence spirals counterclockwise from a corner
+// toward the center, skipping the desert. It is not the fixed beginner layout.
 
 import {
   coastalEdgeRing,
   edgeNodes,
   HEX_COORDS,
-  type HexCoord,
   hexNodes,
   NUM_HEXES,
   NUM_NODES,
 } from './board-topology.ts';
 import {
   NUMBER_TOKENS,
+  OFFICIAL_NUMBER_SEQUENCE,
   type Port,
   PORTS,
-  RED_NUMBERS,
   type Resource,
   TERRAIN_COUNTS,
   TERRAIN_RESOURCE,
@@ -51,30 +51,6 @@ function shuffle<T>(arr: T[], rng: () => number): T[] {
   return arr;
 }
 
-// Which hexes share an edge (are adjacent), derived from axial coords. Used to enforce the
-// red-number (6/8) adjacency rule.
-const DIRS: readonly [number, number][] = [
-  [1, 0],
-  [1, -1],
-  [0, -1],
-  [-1, 0],
-  [-1, 1],
-  [0, 1],
-];
-function hexNeighbors(): number[][] {
-  const at = new Map<string, number>();
-  HEX_COORDS.forEach((c, i) => at.set(`${c.q},${c.r}`, i));
-  return HEX_COORDS.map((c: HexCoord) => {
-    const nbrs: number[] = [];
-    for (const [dq, dr] of DIRS) {
-      const id = at.get(`${c.q + dq},${c.r + dr}`);
-      if (id !== undefined) nbrs.push(id);
-    }
-    return nbrs;
-  });
-}
-const HEX_NEIGHBORS = hexNeighbors();
-
 // The terrain multiset (19 tiles) in a fixed order, expanded from TERRAIN_COUNTS.
 function terrainBag(): Terrain[] {
   const bag: Terrain[] = [];
@@ -82,31 +58,51 @@ function terrainBag(): Terrain[] {
   return bag;
 }
 
-// True if any two red-number (6/8) tokens sit on adjacent hexes.
-function hasAdjacentRedNumbers(hexes: HexSetup[]): boolean {
-  for (let h = 0; h < hexes.length; h++) {
-    if (hexes[h].token === null || !RED_NUMBERS.includes(hexes[h].token as number)) continue;
-    for (const nb of HEX_NEIGHBORS[h]) {
-      if (hexes[nb].token !== null && RED_NUMBERS.includes(hexes[nb].token as number)) return true;
+// Starting at the southwest corner, walk each ring counterclockwise, then move inward. The
+// rulebook permits any starting corner; fixing one removes a meaningless rotational random
+// choice while terrain remains shuffled. In flat-top world space this direction order moves
+// counterclockwise from southwest through south, southeast, northeast, north, and northwest.
+const COUNTERCLOCKWISE_RING_DIRS: readonly [number, number][] = [
+  [1, -1],
+  [1, 0],
+  [0, 1],
+  [-1, 1],
+  [-1, 0],
+  [0, -1],
+];
+
+function officialHexSpiral(): number[] {
+  const at = new Map(HEX_COORDS.map((coord, id) => [`${coord.q},${coord.r}`, id]));
+  const order: number[] = [];
+  for (let radius = 2; radius >= 1; radius--) {
+    let q = -radius;
+    let r = 0;
+    for (const [dq, dr] of COUNTERCLOCKWISE_RING_DIRS) {
+      for (let step = 0; step < radius; step++) {
+        const id = at.get(`${q},${r}`);
+        if (id === undefined) throw new Error(`Missing Catan hex at ${q},${r}`);
+        order.push(id);
+        q += dq;
+        r += dr;
+      }
     }
   }
-  return false;
+  const center = at.get('0,0');
+  if (center === undefined) throw new Error('Missing center Catan hex');
+  order.push(center);
+  return order;
 }
+const OFFICIAL_HEX_SPIRAL = officialHexSpiral();
 
-// Assign the 18 tokens to the 18 non-desert hexes, reshuffling until the 6/8-not-adjacent
-// rule holds. With only four red tokens among 18 hexes a valid arrangement is found almost
-// immediately; the attempt cap is a safety net (deterministic under a fixed seed).
-function placeTokens(hexes: HexSetup[], rng: () => number): void {
-  const landHexes = hexes.map((h, i) => i).filter((i) => hexes[i].terrain !== 'desert');
-  for (let attempt = 0; attempt < 10000; attempt++) {
-    const tokens = shuffle([...NUMBER_TOKENS], rng);
-    landHexes.forEach((h, i) => {
-      hexes[h].token = tokens[i];
-    });
-    if (!hasAdjacentRedNumbers(hexes)) return;
+// Place discs A through R along the official spiral and skip the desert without consuming a
+// disc. This fixed spatial sequence is what keeps the production numbers broadly balanced.
+function placeTokens(hexes: HexSetup[]): void {
+  let tokenIndex = 0;
+  for (const hex of OFFICIAL_HEX_SPIRAL) {
+    if (hexes[hex].terrain === 'desert') continue;
+    hexes[hex].token = OFFICIAL_NUMBER_SEQUENCE[tokenIndex++];
   }
-  // Extremely unlikely to reach here; leave the last arrangement (still a legal board apart
-  // from the aesthetic red-adjacency preference) rather than loop forever.
+  if (tokenIndex !== NUMBER_TOKENS.length) throw new Error(`Placed ${tokenIndex} Catan number tokens`);
 }
 
 // The physical sea frame has 9 marked harbor slots. Around its 30 coastal edges those slots
@@ -129,7 +125,7 @@ function placeHarbors(rng: () => number): HarborSetup[] {
 export function generateBoard(rng: () => number = Math.random): BoardSetup {
   const bag = shuffle(terrainBag(), rng);
   const hexes: HexSetup[] = bag.map((terrain) => ({ terrain, token: null }));
-  placeTokens(hexes, rng);
+  placeTokens(hexes);
   const robberHex = hexes.findIndex((h) => h.terrain === 'desert');
   const harbors = placeHarbors(rng);
   return { hexes, robberHex, harbors };

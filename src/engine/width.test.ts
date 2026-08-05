@@ -20,6 +20,7 @@ test('card suit pips are single-cell', () => {
 test('other special-cased single-cell glyphs stay narrow', () => {
   assert.equal(cellWidth('♞'.codePointAt(0)!), 1); // chess knight (U+265E)
   assert.equal(cellWidth('✕'.codePointAt(0)!), 1); // close cross (U+2715)
+  assert.equal(cellWidth('•'.codePointAt(0)!), 1); // Catan production pip (U+2022)
 });
 
 test('genuinely wide + zero-width codepoints are unchanged', () => {

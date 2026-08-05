@@ -15,14 +15,30 @@ const CHIP_RED: [number, number, number] = [232, 74, 74]; // 6 & 8 — the high-
 const CHIP_GOLD: [number, number, number] = [232, 190, 60]; // lit when it matches the dice roll
 const CHIP_GOLD_INK: [number, number, number] = [40, 30, 8]; // dark number on the gold chip
 
-// A number token centered over a hex: a black chip with just the number (red for 6/8), lit to
-// gold when it matches the last dice roll. Absolutely positioned at the projected hex center.
+// Keep the production row deliberately simple and compact; adjacent bullets have no spaces.
+function pipLabel(count: number): string {
+  return '•'.repeat(count);
+}
+
+// A number token centered over a hex: the number plus its official production-probability
+// pips. At distant zooms the scene omits the pip row while leaving the number anchored to the
+// same projected cell.
 function tokenChip(tk: BoardToken): Node {
   const label = `${tk.num}`;
+  const pips = pipLabel(tk.pips);
+  const labelWidth = stringWidth(label);
+  const pipWidth = tk.showPips ? stringWidth(pips) : 0;
+  const contentWidth = Math.max(labelWidth, pipWidth);
+  const chipWidth = contentWidth + 2;
+  // Center each row as closely as whole terminal cells allow. floor() deliberately picks the
+  // left-hand position whenever the ideal offset is a half cell.
+  const labelOffset = Math.floor((contentWidth - labelWidth) / 2);
+  const pipOffset = Math.floor((contentWidth - pipWidth) / 2);
   const bg = tk.hot ? CHIP_GOLD : CHIP_BG;
   const ink = tk.hot ? CHIP_GOLD_INK : tk.red ? CHIP_RED : CHIP_INK;
-  return Box({ position: 'absolute', top: tk.row, left: tk.col - Math.floor((label.length + 2) / 2), background: bg, padding: [0, 1] }, [
-    Text({ text: label, style: { color: ink, bold: true } }),
+  return Box({ position: 'absolute', top: tk.row, left: tk.col - Math.floor(chipWidth / 2), width: chipWidth, flexDirection: 'column', alignItems: 'start', gap: 0, background: bg, padding: [0, 1] }, [
+    Text({ text: label, style: { color: ink, bold: true, margin: [0, 0, 0, labelOffset] } }),
+    ...(tk.showPips && pips ? [Text({ text: pips, style: { color: ink, margin: [0, 0, 0, pipOffset] } })] : []),
   ]);
 }
 
