@@ -21,8 +21,8 @@ function pipLabel(count: number): string {
 }
 
 // A number token centered over a hex: the number plus its official production-probability
-// pips. At distant zooms the scene omits the pip row while leaving the number anchored to the
-// same projected cell.
+// pips. A detailed two-row token straddles the projected center (number above, pips on it),
+// while the distant one-row form places the number directly on that center.
 function tokenChip(tk: BoardToken): Node {
   const label = `${tk.num}`;
   const pips = pipLabel(tk.pips);
@@ -36,7 +36,8 @@ function tokenChip(tk: BoardToken): Node {
   const pipOffset = Math.floor((contentWidth - pipWidth) / 2);
   const bg = tk.hot ? CHIP_GOLD : CHIP_BG;
   const ink = tk.hot ? CHIP_GOLD_INK : tk.red ? CHIP_RED : CHIP_INK;
-  return Box({ position: 'absolute', top: tk.row, left: tk.col - Math.floor(chipWidth / 2), width: chipWidth, flexDirection: 'column', alignItems: 'start', gap: 0, background: bg, padding: [0, 1] }, [
+  const top = tk.row - (tk.showPips ? 1 : 0);
+  return Box({ position: 'absolute', top, left: tk.col - Math.floor(chipWidth / 2), width: chipWidth, flexDirection: 'column', alignItems: 'start', gap: 0, background: bg, padding: [0, 1] }, [
     Text({ text: label, style: { color: ink, bold: true, margin: [0, 0, 0, labelOffset] } }),
     ...(tk.showPips && pips ? [Text({ text: pips, style: { color: ink, margin: [0, 0, 0, pipOffset] } })] : []),
   ]);

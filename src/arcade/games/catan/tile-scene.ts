@@ -37,16 +37,17 @@ import {
   type WaterUniforms,
   WorldMaterialInstance,
 } from '../../../engine/index.ts';
-import { HEX_COORDS, NUM_EDGES, NUM_HEXES, NUM_NODES } from '../../../rules/catan/board-topology.ts';
+import { HEX_COORDS, NUM_HEXES } from '../../../rules/catan/board-topology.ts';
 import { type BoardOccupancy, canPlaceRoad, canPlaceSettlement } from '../../../rules/catan/placement.ts';
 import { type BoardSetup, generateBoard } from '../../../rules/catan/setup.ts';
 import { type PlayerColor, RED_NUMBERS, type Terrain, TOKEN_DOTS } from '../../../rules/catan/types.ts';
 import { mulberry32 } from '../../scenes/wisp.ts';
 import { animatedTileMesh, boardOverlayMesh, coastMesh, dieMesh, harborPiersMesh, hoverColorFor, type OverlaySpec, piecesMesh, PORT_SAIL_CENTER, type PortKind, portMesh, surfMesh, swashMesh, tileBackMesh, tileMesh } from './mesh/index.ts';
 import { catanPieceMaterial, type CatanPieceUniforms } from './mesh/piece-material.ts';
-import { EDGE_ENDS, EDGE_MID, hexRing, hexWorld, NODE_XZ, PROBE_Y } from './scene/board-layout.ts';
+import { EDGE_ENDS, hexRing, hexWorld, NODE_XZ } from './scene/board-layout.ts';
 import { DICE_BOX, DICE_EYE, DICE_FOVY, DICE_HOLD, DICE_LAND_TILT, DICE_POS, DICE_ROLL_DUR, DICE_STAGGER, DICE_TARGET, type Die, DIE_RIGHT, diceHeight, type DicePhase, diceViewport, faceAngles, freshDie, TAU } from './scene/dice.ts';
 import { type BoardHarborPose, boardHarborPoses } from './scene/harbors.ts';
+import { type BoardPickTarget, measureBoardTarget, pickBoardTarget } from './scene/placement-picking.ts';
 import { CATAN_WATER_RADIUS_X, CATAN_WATER_RADIUS_Z, catanWaterMesh } from './water.ts';
 
 const FOVY = (44 * Math.PI) / 180;
@@ -126,10 +127,12 @@ function revealedPipCount(total: number, elapsed: number): number {
   return Math.min(total, layer === 1 ? 1 : layer * 2 - 2);
 }
 
-// The number remains useful from the widest board view, but its probability pips turn into
-// noise once the camera is roughly two wheel notches beyond the home framing. Keep the cutoff
-// in camera-distance space so it follows zoom directly and is independent of board rotation.
-const TOKEN_PIP_MAX_CAMERA_DISTANCE = 15.5;
+// The number badge needs two terminal rows (number + probability pips). Decide detail from the
+// projected hex footprint rather than camera distance or height alone: screen-space area accounts
+// for terminal size and zoom, while its square root makes an oblique view only moderately less
+// readable when the hexes remain wide. Separate thresholds prevent resize/orbit flicker.
+const TOKEN_PIP_SHOW_MIN_FOOTPRINT = 9.1;
+const TOKEN_PIP_HIDE_MIN_FOOTPRINT = 8.7;
 
 // Build-drop: a newly built/upgraded piece appears elevated over its spot and drops onto the
 // rim with a small settle (rather than popping in instantly).
@@ -180,6 +183,31 @@ function poseMatrix(x: number, y: number, z: number, rotX: number): Mat4 {
 
 function harborEntryProgress(clock: number, index: number): number {
   return Math.max(0, Math.min(1, (clock - HARBOR_ENTRY_START - index * HARBOR_ENTRY_STEP) / HARBOR_ENTRY_DUR));
+}
+
+function projectedHexFootprint(vp: Mat4, x: number, z: number, cols: number, rows: number): number {
+  const points: { col: number; row: number }[] = [];
+  for (let corner = 0; corner < 6; corner++) {
+    const angle = (-Math.PI / 3) * corner;
+    const point = projectPoint(vp, {
+      x: x + Math.cos(angle),
+      y: 0.14,
+      z: z + Math.sin(angle),
+    });
+    if (point.behind) return 0;
+    points.push({
+      col: (point.x * 0.5 + 0.5) * cols,
+      row: (1 - (point.y * 0.5 + 0.5)) * rows,
+    });
+  }
+  let twiceArea = 0;
+  for (let corner = 0; corner < points.length; corner++) {
+    const next = (corner + 1) % points.length;
+    twiceArea += points[corner].col * points[next].row - points[next].col * points[corner].row;
+  }
+  // sqrt(area) expresses the polygon footprint as a linear terminal-cell scale, so the cutoff
+  // remains intuitive across differently shaped projections of the same hex.
+  return Math.sqrt(Math.abs(twiceArea) * 0.5);
 }
 
 // Start each boat near the water edge behind its final pose, then sail it along the direction
@@ -261,11 +289,13 @@ export class TileScene {
   private roads = new Map<number, PlayerColor>();
   private hoverNode: number | null = null;
   private hoverEdge: number | null = null;
+  private readonly buildingAtNode = (node: number): { city: boolean } | undefined => this.buildings.get(node);
   private placeColor: PlayerColor = 'red';
   // The piece currently playing its build-drop (elevated → seated), or null.
   private dropping: { kind: 'building' | 'road'; id: number } | null = null;
   private readonly dropClock = new FrameClock();
   private lastAspect = 1.6; // target aspect from the last render, for hit-test projection
+  private tokenPipDetailVisible: boolean | null = null;
   private dirty = true;
   private readonly authoredScene = new Scene();
   private readonly sceneRenderer = new SceneRenderer();
@@ -346,31 +376,19 @@ export class TileScene {
     const camera = cam.toCamera({ fovy: FOVY, near: 0.05, far: 100 });
     return this.raycaster.setFromCamera(camera, ndcX, ndcY, this.lastAspect);
   }
-  // Nearest node and nearest edge to the cursor (NDC), with their screen distances (x weighted
-  // by aspect so it's a true on-screen distance).
-  private nearest(ndcX: number, ndcY: number): { node: number; nodeD: number; edge: number; edgeD: number } {
-    const raycaster = this.boardRaycaster(ndcX, ndcY);
-    let node = -1;
-    let nodeD = Infinity;
-    let edge = -1;
-    let edgeD = Infinity;
-    for (let n = 0; n < NUM_NODES; n++) {
-      const p = NODE_XZ[n];
-      const d = raycaster.projectedDistance({ x: p.x, y: PROBE_Y, z: p.z }, true);
-      if (d < nodeD) {
-        nodeD = d;
-        node = n;
-      }
+  private hoveredTarget(): BoardPickTarget | null {
+    if (this.hoverNode !== null) return { kind: 'node', id: this.hoverNode };
+    if (this.hoverEdge !== null) return { kind: 'edge', id: this.hoverEdge };
+    return null;
+  }
+  private setHoveredTarget(target: BoardPickTarget | null): void {
+    const node = target?.kind === 'node' ? target.id : null;
+    const edge = target?.kind === 'edge' ? target.id : null;
+    if (node !== this.hoverNode || edge !== this.hoverEdge) {
+      this.hoverNode = node;
+      this.hoverEdge = edge;
+      this.dirty = true;
     }
-    for (let e = 0; e < NUM_EDGES; e++) {
-      const p = EDGE_MID[e];
-      const d = raycaster.projectedDistance({ x: p.x, y: PROBE_Y, z: p.z }, true);
-      if (d < edgeD) {
-        edgeD = d;
-        edge = e;
-      }
-    }
-    return { node, nodeD, edge, edgeD };
   }
   // Update the hovered vertex/edge from the cursor (board mode only; ignored mid-animation).
   // Sticky: the current hover is kept until the cursor leaves a wider radius, so the ghost
@@ -378,55 +396,39 @@ export class TileScene {
   hoverBoard(ndcX: number, ndcY: number): void {
     if (this.modeName !== 'board' || this.placing || this.revealing) return;
     const raycaster = this.boardRaycaster(ndcX, ndcY);
-    const dist = (p: { x: number; z: number }): number => {
-      return raycaster.projectedDistance({ x: p.x, y: PROBE_Y, z: p.z }, true);
-    };
-    let node = -1;
-    let nodeD = Infinity;
-    for (let n = 0; n < NUM_NODES; n++) {
-      const d = dist(NODE_XZ[n]);
-      if (d < nodeD) {
-        nodeD = d;
-        node = n;
-      }
-    }
-    let edge = -1;
-    let edgeD = Infinity;
-    for (let e = 0; e < NUM_EDGES; e++) {
-      const d = dist(EDGE_MID[e]);
-      if (d < edgeD) {
-        edgeD = d;
-        edge = e;
-      }
-    }
-    const bestNode = nodeD <= edgeD;
-    const bestId = bestNode ? node : edge;
-    const bestD = bestNode ? nodeD : edgeD;
-    const curD = this.hoverNode !== null ? dist(NODE_XZ[this.hoverNode]) : this.hoverEdge !== null ? dist(EDGE_MID[this.hoverEdge]) : Infinity;
-    const ENTER = 0.06;
-    const KEEP = 0.11;
-    let hn: number | null = null;
-    let he: number | null = null;
-    if ((this.hoverNode !== null || this.hoverEdge !== null) && curD <= KEEP && curD <= bestD + 0.02) {
-      hn = this.hoverNode; // sticky: keep the current hover
-      he = this.hoverEdge;
-    } else if (bestD <= ENTER) {
-      if (bestNode) hn = bestId;
-      else he = bestId;
-    }
-    if (hn !== this.hoverNode || he !== this.hoverEdge) {
-      this.hoverNode = hn;
-      this.hoverEdge = he;
-      this.dirty = true;
+    const best = pickBoardTarget(raycaster, this.buildingAtNode);
+    const current = this.hoveredTarget();
+    const currentHit = current ? measureBoardTarget(raycaster, current, this.buildingAtNode) : null;
+    // Preserve the old 0.06 enter / 0.11 leave relationship, expressed relative to each
+    // target's own semantic radius. A normalized switch bias keeps neighbouring targets from
+    // flickering without comparing unrelated raw point distances.
+    const KEEP_SCALE = 0.11 / 0.06;
+    const SWITCH_BIAS = 0.02 / 0.06;
+    if (current && currentHit && currentHit.score <= KEEP_SCALE && (!best || currentHit.score <= best.score + SWITCH_BIAS)) {
+      this.setHoveredTarget(current);
+    } else {
+      this.setHoveredTarget(best);
     }
   }
   // A click on the board: place a piece on an empty spot (per the rules), or — if the spot is
   // occupied — return a descriptor so the caller can open the edit modal.
   clickBoard(ndcX: number, ndcY: number): { kind: 'building' | 'road'; id: number } | null {
     if (this.modeName !== 'board' || this.placing || this.revealing) return null;
-    const { node, nodeD, edge, edgeD } = this.nearest(ndcX, ndcY);
-    const TH = 0.07;
-    if (nodeD <= edgeD && nodeD < TH) {
+    const raycaster = this.boardRaycaster(ndcX, ndcY);
+    const current = this.hoveredTarget();
+    const CLICK_SCALE = 0.07 / 0.06;
+    // A highlighted target owns the click while the pointer remains in click range. If sticky
+    // hover is already outside that range, do nothing rather than activating a different,
+    // unhighlighted neighbour. Direct clicks without a prior hover still perform a fresh pick.
+    const target = current
+      ? (() => {
+          const hit = measureBoardTarget(raycaster, current, this.buildingAtNode);
+          return hit.score <= CLICK_SCALE ? hit : null;
+        })()
+      : pickBoardTarget(raycaster, this.buildingAtNode, CLICK_SCALE);
+    if (!target) return null;
+    if (target.kind === 'node') {
+      const node = target.id;
       if (this.buildings.has(node)) return { kind: 'building', id: node };
       if (canPlaceSettlement(node, this.occ())) {
         this.buildings.set(node, { city: false, color: this.placeColor }); // distance rule enforced
@@ -434,7 +436,8 @@ export class TileScene {
       }
       return null;
     }
-    if (edgeD < TH) {
+    if (target.kind === 'edge') {
+      const edge = target.id;
       if (this.roads.has(edge)) return { kind: 'road', id: edge };
       if (this.roadPlaceable(edge)) {
         this.roads.set(edge, this.placeColor);
@@ -644,7 +647,20 @@ export class TileScene {
     const camera = cam.toCamera({ fovy: FOVY, near: 0.05, far: 100 });
     const vp = cameraMatrices(camera, cols / (rows * 2)).viewProjection; // aspect matches the render target
     const spinStep = Math.floor(this.revealClock.elapsed / REVEAL_FLICKER);
-    const pipDetailVisible = cam.distance <= TOKEN_PIP_MAX_CAMERA_DISTANCE;
+    const hexFootprints = HEX_COORDS.map(({ q, r }) => {
+      const { x, z } = hexWorld(q, r);
+      return projectedHexFootprint(vp, x, z, cols, rows);
+    }).sort((a, b) => a - b);
+    // A lower-quartile footprint represents the smaller, farther hexes without allowing one extreme
+    // perspective corner to suppress detail across the complete board.
+    const detailFootprint = hexFootprints[Math.floor(hexFootprints.length * 0.25)] ?? 0;
+    if (this.tokenPipDetailVisible === null) {
+      this.tokenPipDetailVisible = detailFootprint >= TOKEN_PIP_SHOW_MIN_FOOTPRINT;
+    } else if (this.tokenPipDetailVisible) {
+      if (detailFootprint < TOKEN_PIP_HIDE_MIN_FOOTPRINT) this.tokenPipDetailVisible = false;
+    } else if (detailFootprint >= TOKEN_PIP_SHOW_MIN_FOOTPRINT) {
+      this.tokenPipDetailVisible = true;
+    }
     const out: BoardToken[] = [];
     for (let h = 0; h < NUM_HEXES; h++) {
       const cell = this.board.hexes[h];
@@ -668,7 +684,7 @@ export class TileScene {
         row: Math.round((1 - (point.y * 0.5 + 0.5)) * rows),
         num,
         pips: visiblePips,
-        showPips: pipDetailVisible && visiblePips > 0,
+        showPips: this.tokenPipDetailVisible && visiblePips > 0,
         red: settled && RED_NUMBERS.includes(num),
         hot: settled && this.rolledSum !== null && num === this.rolledSum,
       });

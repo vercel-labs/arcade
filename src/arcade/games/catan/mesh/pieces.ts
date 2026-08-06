@@ -114,12 +114,19 @@ export interface OverlaySpec {
 }
 const BUILDING_SCALE = 0.94; // settlements/cities — big enough to read, may overlap the hex
 const ROAD_SCALE = 0.5; // roads stay slimmer than the buildings
+// Export the rendered dimensions used by semantic board picking. Keeping them beside the
+// builders prevents the interaction silhouette from drifting when a piece is resized.
+export const BOARD_SETTLEMENT_HEIGHT = (0.2 + 0.16) * BUILDING_SCALE;
+export const BOARD_CITY_HEIGHT = (0.42 + 0.12) * BUILDING_SCALE;
+export const BOARD_BUILDING_RADIUS = 0.15 * BUILDING_SCALE;
+export const BOARD_ROAD_LENGTH_SCALE = 0.62;
+export const BOARD_ROAD_HALF_WIDTH = (0.16 * ROAD_SCALE) / 2;
 const RIM_Y = EDGE_Y + 0.01; // pieces sit flush on the rim
 
 function drawRoad(m: Build, e: { x0: number; z0: number; x1: number; z1: number }, color: RGB, y = RIM_Y): void {
   const ang = Math.atan2(e.z1 - e.z0, e.x1 - e.x0);
   const len = Math.hypot(e.x1 - e.x0, e.z1 - e.z0);
-  addRoad(m, (e.x0 + e.x1) / 2, (e.z0 + e.z1) / 2, y, len * 0.62, ang, color, ROAD_SCALE);
+  addRoad(m, (e.x0 + e.x1) / 2, (e.z0 + e.z1) / 2, y, len * BOARD_ROAD_LENGTH_SCALE, ang, color, ROAD_SCALE);
 }
 export function boardOverlayMesh(o: OverlaySpec): Mesh {
   const m = build();

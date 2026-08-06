@@ -14,7 +14,19 @@ export { tileBackMesh } from './base.ts';
 export { BEACH_DRY_WIDTH, BEACH_OUTER_WIDTH, coastMesh, shoreWaveField, surfMesh, swashMesh } from './coast.ts';
 export type { ShoreWaveField } from './coast.ts';
 export { dieMesh } from './dice.ts';
-export { boardOverlayMesh, type BuildingSpec, type EdgeRoadSpec, hoverColorFor, type OverlaySpec, piecesMesh } from './pieces.ts';
+export {
+  BOARD_BUILDING_RADIUS,
+  BOARD_CITY_HEIGHT,
+  BOARD_ROAD_HALF_WIDTH,
+  BOARD_ROAD_LENGTH_SCALE,
+  BOARD_SETTLEMENT_HEIGHT,
+  boardOverlayMesh,
+  type BuildingSpec,
+  type EdgeRoadSpec,
+  hoverColorFor,
+  type OverlaySpec,
+  piecesMesh,
+} from './pieces.ts';
 export { PORT_SAIL_CENTER } from './port/hull.ts';
 export { portMesh } from './port/index.ts';
 export { harborPiersMesh } from './port/piers.ts';

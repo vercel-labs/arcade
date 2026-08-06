@@ -32,25 +32,59 @@ test('board number tokens expose the official production pips at readable zooms'
   }
 });
 
-test('number-token pips disappear when the board is zoomed out but numbers remain', () => {
+test('number-token pips follow projected hex size rather than camera distance alone', () => {
   const scene = new TileScene();
   scene.setMode('board');
   scene.settle();
-  scene.zoomBy(1.21); // home distance 13.2 → 15.972, beyond the pip-detail threshold
+  scene.zoomBy(1.21); // home distance 13.2 → 15.972
 
-  const tokens = scene.boardTokens(160, 90);
-  assert.equal(tokens.length, 18);
-  assert.ok(tokens.every((token) => !token.showPips));
-  assert.ok(tokens.every((token) => Number.isInteger(token.num)));
+  const compact = scene.boardTokens(96, 32);
+  assert.equal(compact.length, 18);
+  assert.ok(compact.every((token) => !token.showPips));
+  assert.ok(compact.every((token) => Number.isInteger(token.num)));
+
+  // The camera did not move again; the larger viewport alone makes the same hexes readable.
+  const spacious = scene.boardTokens(160, 90);
+  assert.ok(spacious.every((token) => token.showPips));
+});
+
+test('a compact terminal suppresses pips at the same home zoom where a larger one shows them', () => {
+  const scene = new TileScene();
+  scene.setMode('board');
+  scene.settle();
+
+  assert.ok(scene.boardTokens(80, 24).every((token) => !token.showPips));
+  assert.ok(scene.boardTokens(160, 90).every((token) => token.showPips));
+});
+
+test('an oblique but still large board retains pips from its complete projected footprint', () => {
+  const scene = new TileScene();
+  scene.setMode('board');
+  scene.settle();
+  // Lower the default 47-degree elevation to roughly 23 degrees. The hexes become shorter but
+  // remain wide and well separated in this large terminal.
+  scene.orbit(0, ((-24 * Math.PI) / 180) / 0.02);
+
+  assert.ok(scene.boardTokens(150, 88).every((token) => token.showPips));
+});
+
+test('a large terminal suppresses pips once the projected board becomes too small', () => {
+  const scene = new TileScene();
+  scene.setMode('board');
+  scene.settle();
+
+  assert.ok(scene.boardTokens(160, 90).every((token) => token.showPips));
+  scene.zoomBy(1.8);
+  assert.ok(scene.boardTokens(160, 90).every((token) => !token.showPips));
 });
 
 test('the board reveal flickers numbers alone, then grows final pips out from the center', () => {
   const scene = new TileScene();
   scene.setMode('board');
-  const target = new RenderTarget(96, 64);
+  const target = new RenderTarget(160, 180);
   const frame = (time: number) => {
     scene.renderScene(target, time);
-    return scene.boardTokens(96, 32);
+    return scene.boardTokens(160, 90);
   };
 
   frame(0); // start the placement clock
@@ -84,6 +118,19 @@ test('the token overlay renders compact unspaced bullet pips only when requested
   const distant = texts(buildCatanTileRoot({ x: 0, y: 0, w: 80, h: 40 }, () => {}, [{ ...token, showPips: false }], 'board'));
   assert.ok(distant.includes('6'));
   assert.ok(!distant.includes('•••••'));
+});
+
+test('detailed token rows straddle the projected center while number-only tokens sit on it', () => {
+  const region = { x: 0, y: 0, w: 80, h: 40 };
+  const token = { col: 20, row: 10, num: 6, pips: 5, showPips: true, red: true, hot: false };
+  const detailed = buildCatanTileRoot(region, () => {}, [token], 'board');
+  layout(detailed, region);
+  assert.equal(findText(detailed, '6')?.layout?.y, 9);
+  assert.equal(findText(detailed, '•••••')?.layout?.y, 10);
+
+  const distant = buildCatanTileRoot(region, () => {}, [{ ...token, showPips: false }], 'board');
+  layout(distant, region);
+  assert.equal(findText(distant, '6')?.layout?.y, 10);
 });
 
 test('all parity combinations use regular bullets centered with left-biased ties', () => {

@@ -44,11 +44,21 @@ test('differently oriented shadow faces retain distinct ASCII brightness buckets
   assert.ok(shadowZ > 80 && shadowZ < 120);
 });
 
-test('non-white player colors keep a broad but face-separated shadow floor', () => {
-  const red = { x: 201, y: 58, z: 47 };
-  const shadowX = shade(red, { x: -1, y: 0, z: 0 });
-  const shadowZ = shade(red, { x: 0, y: 0, z: -1 });
-  assert.ok(Math.abs(shadowX.r - shadowZ.r) > 10);
-  assert.ok(shadowX.r > red.x * 0.5 && shadowX.r < red.x * 0.7);
-  assert.ok(shadowZ.r > red.x * 0.5 && shadowZ.r < red.x * 0.7);
+test('red and blue shadow faces occupy distinct ASCII luminance buckets', () => {
+  for (const color of [
+    { x: 201, y: 58, z: 47 },
+    { x: 56, y: 106, z: 200 },
+  ]) {
+    const shadowX = luminance(shade(color, { x: -1, y: 0, z: 0 }));
+    const shadowZ = luminance(shade(color, { x: 0, y: 0, z: -1 }));
+    assert.ok(Math.abs(shadowX - shadowZ) > 18);
+    assert.ok(Math.min(shadowX, shadowZ) > 45);
+  }
+});
+
+test('orange retains its existing moderate shadow separation', () => {
+  const orange = { x: 227, y: 129, z: 42 };
+  const shadowX = luminance(shade(orange, { x: -1, y: 0, z: 0 }));
+  const shadowZ = luminance(shade(orange, { x: 0, y: 0, z: -1 }));
+  assert.ok(Math.abs(shadowX - shadowZ) > 12 && Math.abs(shadowX - shadowZ) < 18);
 });

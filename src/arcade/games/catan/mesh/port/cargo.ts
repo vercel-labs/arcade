@@ -127,15 +127,60 @@ export function boatCargo(m: Build, kind: PortKind, seed: number): void {
     wheatBundle(m, 0.34, rest(0.082, 0.1), -0.03, -0.34, -0.05, 0.28, 0.082, seed + 21);
   } else if (kind === 'ore') {
     const GREY: RGB = [150, 154, 164];
-    angularRock(m, -0.02, 0.08, y, 0.16, 0.23, 0.13, GREY, seed, 'slab', 0.1);
-    angularRock(m, 0.15, -0.08, y, 0.17, 0.25, 0.14, shade(GREY, 0.93), seed + 3, 'crag', -0.18);
-    angularRock(m, 0.32, 0.04, y, 0.13, 0.18, 0.1, shade(GREY, 1.05), seed + 6, 'wedge', 0.32);
-    angularRock(m, 0.16, 0.11, y, 0.095, 0.15, 0.08, shade(GREY, 0.98), seed + 9, 'wedge', -0.4);
-    angularRock(m, 0.09, 0.0, y + 0.09, 0.11, 0.16, 0.09, shade(GREY, 1.08), seed + 12, 'crag', 0.22);
+    const rng = mulberry32((Math.abs(seed) * 2246822519 + 0x9e3779b9) >>> 0 || 1);
+    const rock = (
+      x: number,
+      z: number,
+      lift: number,
+      rx: number,
+      h: number,
+      rz: number,
+      profile: 'crag' | 'slab' | 'wedge',
+      spin: number,
+      tint: number,
+    ): void => {
+      angularRock(
+        m,
+        x + (rng() - 0.5) * 0.014,
+        z + (rng() - 0.5) * 0.014,
+        y + lift,
+        rx,
+        h,
+        rz,
+        shade(GREY, tint * (0.97 + rng() * 0.06)),
+        seed + Math.floor(rng() * 1000),
+        profile,
+        spin + (rng() - 0.5) * 0.12,
+      );
+    };
+
+    // A dumped load settles as an interlocking oval, not a handful of equally spaced boulders.
+    // Four broad, differently shaped stones hide the deck through the middle; smaller shoulder
+    // pieces fill their seams, and the final crag rests on that support rather than hovering.
+    rock(-0.055, -0.055, 0, 0.17, 0.17, 0.125, 'slab', -0.18, 0.94);
+    rock(0.07, 0.07, 0, 0.165, 0.21, 0.12, 'wedge', 0.48, 1.04);
+    rock(0.19, -0.065, 0, 0.16, 0.235, 0.13, 'crag', -0.34, 0.9);
+    rock(0.315, 0.045, 0, 0.125, 0.16, 0.1, 'wedge', 0.72, 1.08);
+    rock(0.025, 0.025, 0.085, 0.115, 0.15, 0.095, 'crag', 0.2, 1.09);
+    rock(0.15, 0.045, 0.09, 0.14, 0.125, 0.105, 'slab', -0.58, 0.98);
+    rock(0.265, -0.02, 0.075, 0.105, 0.145, 0.085, 'wedge', 0.1, 1.03);
+    rock(0.13, -0.005, 0.165, 0.09, 0.145, 0.075, 'crag', 0.4, 1.12);
   } else if (kind === 'lumber') {
-    felledPine(m, -0.07, -0.135, y, -0.22, 0.05, 0.94, PINE_GREENS[0], seed);
-    felledPine(m, 0.01, 0.135, y + 0.01, 0.32, 0.08, 0.88, PINE_GREENS[1], seed + 3);
-    felledPine(m, 0.04, -0.02, y + 0.14, 1.0, 0.2, 0.9, PINE_GREENS[2], seed + 6);
+    const rng = mulberry32((Math.abs(seed) * 2246822519 + 0x7f4a7c15) >>> 0 || 1);
+    // A -0.36 pitch follows the taper of this exact three-skirt pine: the broad butt skirt,
+    // middle skirt, and narrow crown all reach the horizontal deck instead of only the largest
+    // collision radius touching while the visible tip hovers. All three follow the hull toward
+    // the bow, but their offsets and shallow yaw differences keep the load from looking parallel.
+    // A reversed floor tree was physically possible but presented its broad unlit skirt toward
+    // the camera through half the ASCII orbit, merging the entire load into one dark silhouette.
+    const deckPitch = -0.36;
+    felledPine(m, -0.07, -0.06, y, -0.15 + (rng() - 0.5) * 0.07, deckPitch, 0.94, PINE_GREENS[0], seed);
+    felledPine(m, -0.08, 0.065, y, 0.15 + (rng() - 0.5) * 0.07, deckPitch, 0.92, PINE_GREENS[1], seed + 3);
+    felledPine(m, -0.015, 0.005, y, -0.015 + (rng() - 0.5) * 0.07, deckPitch, 0.9, PINE_GREENS[2], seed + 6);
+    // A shorter fourth tree lies horizontally in the trough formed by all three floor trees.
+    // Keeping its pitch flat is important: the previous raised pitch left one pointed end visibly
+    // unsupported. This lift deliberately nests it into the foliage beneath rather than above it.
+    felledPine(m, -0.005, -0.005, y + 0.125, 0.34 + (rng() - 0.5) * 0.08, 0, 0.84, PINE_GREENS[3], seed + 9);
   } else if (kind === 'wool') {
     sheep(m, 0.28, 0.09, y, 0.2, seed, 1.55);
     sheep(m, 0.05, -0.05, y, -0.4, seed + 4, 1.55);

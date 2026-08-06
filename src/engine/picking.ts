@@ -47,6 +47,12 @@ export interface ProjectedPoint {
   behind: boolean;
 }
 
+export interface ProjectedSegmentDistance {
+  distance: number;
+  /** Closest position along the segment: 0 at start, 1 at end. */
+  t: number;
+}
+
 /** Project a world point into normalized device coordinates. */
 export function projectPoint(viewProjection: Mat4, point: Vec3): ProjectedPoint {
   const clip = mat4MulVec4(viewProjection, { ...point, w: 1 });
@@ -69,6 +75,39 @@ export function projectedDiscHit(
   const radius = Math.hypot(edge.x - c.x, edge.y - c.y);
   const distance = Math.hypot(ndcX - c.x, ndcY - c.y);
   return distance < radius * padding ? { distance, radius } : null;
+}
+
+/**
+ * Screen-space distance from the cursor to a projected world-space segment.
+ * `aspectCorrect` measures x and y in equal display units, which is useful for
+ * terminal viewports whose normalized x axis covers a wider physical span.
+ */
+export function projectedSegmentDistance(
+  viewProjection: Mat4,
+  start: Vec3,
+  end: Vec3,
+  ndcX: number,
+  ndcY: number,
+  aspect = 1,
+  aspectCorrect = false,
+): ProjectedSegmentDistance | null {
+  const a = projectPoint(viewProjection, start);
+  const b = projectPoint(viewProjection, end);
+  if (a.behind || b.behind) return null;
+  const xScale = aspectCorrect ? aspect : 1;
+  const ax = a.x * xScale;
+  const ay = a.y;
+  const bx = b.x * xScale;
+  const by = b.y;
+  const px = ndcX * xScale;
+  const py = ndcY;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lengthSq = dx * dx + dy * dy;
+  const t = lengthSq > 1e-12
+    ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSq))
+    : 0;
+  return { distance: Math.hypot(px - (ax + dx * t), py - (ay + dy * t)), t };
 }
 
 /**
@@ -115,5 +154,17 @@ export class Raycaster {
     const dx = projected.x - this.pointer.x;
     const dy = projected.y - this.pointer.y;
     return Math.hypot(aspectCorrect ? dx * this.aspect : dx, dy);
+  }
+
+  projectedSegmentDistance(start: Vec3, end: Vec3, aspectCorrect = false): ProjectedSegmentDistance | null {
+    return projectedSegmentDistance(
+      this.viewProjection,
+      start,
+      end,
+      this.pointer.x,
+      this.pointer.y,
+      this.aspect,
+      aspectCorrect,
+    );
   }
 }

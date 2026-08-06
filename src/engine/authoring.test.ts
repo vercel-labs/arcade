@@ -24,6 +24,7 @@ import {
   mat4Identity,
   mat4Multiply,
   mat4Translate,
+  projectedSegmentDistance,
   rayFromCamera,
   Raycaster,
   rasterize,
@@ -220,6 +221,23 @@ test('shared camera picking intersects the board plane', () => {
     { x: 0, y: 0, z: 0 },
     { x: 0.5, y: 0, z: 0 },
   ));
+
+  const segment = projectedSegmentDistance(
+    raycaster.viewProjection,
+    { x: -1, y: 0, z: 0 },
+    { x: 1, y: 0, z: 0 },
+    0,
+    0.1,
+    raycaster.aspect,
+    true,
+  );
+  assert.ok(segment);
+  assert.ok(Math.abs(segment.t - 0.5) < 1e-9);
+  assert.ok(Math.abs(segment.distance - 0.1) < 1e-9);
+  assert.deepEqual(
+    raycaster.projectedSegmentDistance({ x: -1, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, true),
+    { distance: 0, t: 0.5 },
+  );
 });
 
 test('OrbitCamera snapshots one pose with explicit projection settings', () => {

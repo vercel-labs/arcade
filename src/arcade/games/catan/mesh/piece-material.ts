@@ -19,6 +19,7 @@ const WHITE_LIGHT_START = 0.2;
 const WHITE_LIGHT_END = 0.78;
 const SHADOW_AXIS_X = 0.8;
 const SHADOW_AXIS_Z = -0.6;
+const DARK_COLOR_LUMINANCE = 0.58;
 
 // Wrapped Lambert lighting intentionally gives pieces a broad readable shadow, but its flat
 // floor used to collapse every away-facing plane to one RGB value—and therefore one repeated
@@ -59,7 +60,15 @@ export const catanPieceMaterial: Material<CatanPieceUniforms> = {
       intensity = shadow + (1 - shadow) * key;
     } else {
       const wrapped = (ndl + u.wrap) / (1 + u.wrap);
-      const shadow = separatedShadow(u.ambient, unitX, unitZ, 0.065);
+      // Red and blue have much lower perceived luminance than orange. The old fixed intensity
+      // range changed their RGB channels, but both faces still landed in one ASCII brightness
+      // bucket. Lift and widen only darker saturated colors; orange keeps its already-readable
+      // shading while red/blue gain distinct rear-face values without changing their hue.
+      const baseLuminance = (vy.color.x * 0.299 + vy.color.y * 0.587 + vy.color.z * 0.114) / 255;
+      const darkBoost = Math.max(0, Math.min(1, (DARK_COLOR_LUMINANCE - baseLuminance) / 0.18));
+      const shadowBase = u.ambient + darkBoost * 0.04;
+      const shadowRange = 0.065 + darkBoost * 0.075;
+      const shadow = separatedShadow(shadowBase, unitX, unitZ, shadowRange);
       intensity = Math.max(shadow, wrapped);
     }
     PIECE_RGBA.r = vy.color.x * intensity;

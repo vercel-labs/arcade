@@ -21,9 +21,11 @@ export {
   intersectRayPlane,
   projectPoint,
   projectedDiscHit,
+  projectedSegmentDistance,
   Raycaster,
   rayFromCamera,
   type ProjectedPoint,
+  type ProjectedSegmentDistance,
   type Ray,
 } from './picking.ts';
 export {
