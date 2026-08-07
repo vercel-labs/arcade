@@ -27,6 +27,7 @@ import { CardsScene, type CardsMode } from '../arcade/games/poker/cards-scene.ts
 import { buildPokerRoot, mountPokerHud } from '../arcade/games/poker/hud.ts';
 import { TileScene } from '../arcade/games/catan/tile-scene.ts';
 import { buildCatanPieceModal, buildCatanTileRoot, mountCatanTileHud } from '../arcade/games/catan/tile-hud.ts';
+import { catanSidebarOpen, toggleCatanSidebar } from '../arcade/games/catan/card-hud.ts';
 import { type Terrain, TERRAINS } from '../rules/catan/types.ts';
 import { PokerGameScene, type PokerSeatView } from '../arcade/games/poker/poker-scene.ts';
 import { betInput as pokerBetInput, buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, mountPokerGameHud, pushPokerChat } from '../arcade/games/poker/poker-hud.ts';
@@ -316,7 +317,7 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot prism-prompt [cols] [rows] [t] [out]    prism loading screen + press-any-key marquee
   pnpm snapshot cards [single|hand|deck] [cols] [rows] [state] [out]   the cards screen
       (single: a code like Kh/10s/As · hand: peek|up · deck: shuffle|deal)
-  pnpm snapshot catan [forest|hills|pasture|fields|mountains|desert] [cols] [rows] [<t>] [hud] [out]   a 3D Catan tile
+  pnpm snapshot catan [sidebar] [hybrid] [forest|hills|pasture|fields|mountains|desert] [cols] [rows] [<t>] [board|board-cards] [hud] [out]   a 3D Catan tile
       (<t> a decimal spins the turntable · azN/elN rotate in degrees · zoomN scales camera distance · hud composites the terrain dropdown panel)
   pnpm snapshot poker [cols] [rows] [preflop|flop|river|showdown] [players=N] [stack=N] [hud|setup|cine|result|menu|notes] [bet=N] [spectate] [longnames] [muck|gather|shuffle] [color] [out]   the poker table
       (muck: fold seats to a burn pile, needs players≥3 · gather/shuffle: the between-hands interlude, mid-sweep / mid-shuffle)
@@ -377,7 +378,7 @@ if (process.argv[2] === 'help' || process.argv[2] === '--help' || process.argv[2
 // truer half-block color path (this is a graphics test); `hud` composites the dropdown panel
 // + bar through the app's ASCII path; a decimal arg spins the turntable to that time.
 // `waterN` captures board-mode current time N so motion can be compared across stills.
-//   pnpm exec tsx src/tools/snapshot.ts catan [forest|hills|pasture|fields|mountains|desert] [cols] [rows] [<t>] [board] [waterN] [azN] [elN] [zoomN] [hud] [out.ppm]
+//   pnpm exec tsx src/tools/snapshot.ts catan [forest|hills|pasture|fields|mountains|desert] [cols] [rows] [<t>] [board|board-cards] [waterN] [azN] [elN] [zoomN] [hud] [out.ppm]
 function catanSnapshot(): void {
   const args = process.argv.slice(3);
   const terrain = ((TERRAINS as readonly string[]).find((x) => args.includes(x)) ?? 'forest') as Terrain;
@@ -394,6 +395,7 @@ function catanSnapshot(): void {
   scene.setTerrain(terrain);
   if (args.includes('robber')) scene.setRobber(true);
   if (args.includes('board')) scene.setMode('board');
+  if (args.includes('board-cards')) scene.setMode('boardCards');
   if (args.includes('pieces')) scene.setMode('pieces');
   if (args.includes('port')) scene.setMode('port');
   const portKind = (['generic', 'brick', 'grain', 'lumber', 'ore', 'wool'] as const).find((x) => args.includes(x));
@@ -422,17 +424,18 @@ function catanSnapshot(): void {
   // stepping frames at 60fps; otherwise a board snapshot settles straight to the finished
   // layout.
   const animArg = args.find((a) => /^anim[\d.]+$/.test(a));
-  if (args.includes('board') && animArg) {
+  const boardMode = args.includes('board') || args.includes('board-cards');
+  if (boardMode && animArg) {
     scene.reroll();
     const frames = Math.max(1, Math.round(Number(animArg.slice(4)) * 60));
     for (let f = 1; f <= frames; f++) scene.renderScene(target, f / 60);
   } else {
-    if (args.includes('board')) scene.settle();
+    if (boardMode) scene.settle();
     scene.renderScene(target, waterTime);
     // `roll` (board mode): roll the dice and step to a chosen time (default past the landing,
     // so the dice rest and the matching chips are lit gold). `roll<seconds>` for a mid-roll.
     const rollArg = args.find((a) => /^roll[\d.]*$/.test(a));
-    if (args.includes('board') && rollArg) {
+    if (boardMode && rollArg) {
       scene.rollDice();
       const secs = rollArg.length > 4 ? Number(rollArg.slice(4)) : 1.4;
       for (let f = 1; f <= Math.round(secs * 60); f++) scene.renderScene(target, f / 60);
@@ -440,7 +443,7 @@ function catanSnapshot(): void {
     // `build<seconds>` (board mode): place a settlement and step to a chosen instant of its
     // build-drop (default mid-air) so the elevated → seated animation can be inspected.
     const buildArg = args.find((a) => /^build[\d.]*$/.test(a));
-    if (args.includes('board') && buildArg) {
+    if (boardMode && buildArg) {
       scene.demoDrop();
       const secs = buildArg.length > 5 ? Number(buildArg.slice(5)) : 0.12;
       for (let f = 1; f <= Math.round(secs * 60); f++) scene.renderScene(target, f / 60);
@@ -451,21 +454,27 @@ function catanSnapshot(): void {
     const screen = new Screen(cols, rows);
     const region = { x: 0, y: 0, w: cols, h: rows };
     screen.setRoot(buildCatanPieceModal({ road: false, city: false, color: 'blue', onUpgrade: noop, onRemove: noop, onColor: () => {}, onClose: noop }), region);
-    const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
+    const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid }));
     surfaceToPpm(surf, cols, rows, out);
     return;
   }
+  // Matches the app: Catan renders without hybrid shading, so the space around the island stays
+  // plain black instead of speckled with ramp glyphs. `hybrid` opts back in for comparison.
+  const hybrid = args.includes('hybrid');
   if (args.includes('hud')) {
     const screen = new Screen(cols, rows);
+    // `sidebar` expands the card rail, which starts collapsed. Note this previews the rail only —
+    // the scene stays full width here, where the app also insets the 3D viewport behind it.
+    if (args.includes('sidebar') && !catanSidebarOpen()) toggleCatanSidebar();
     mountCatanTileHud(screen);
     (screen.component('catan-terrain') as Dropdown | undefined)?.pick(TERRAINS.indexOf(terrain));
-    (screen.component('catan-mode') as Dropdown | undefined)?.pick(['tile', 'board', 'pieces', 'port'].indexOf(scene.currentMode()));
+    (screen.component('catan-mode') as Dropdown | undefined)?.pick(['tile', 'board', 'boardCards', 'pieces', 'port'].indexOf(scene.currentMode()));
     if (pieceColor) (screen.component('catan-color') as Dropdown | undefined)?.pick(['red', 'blue', 'white', 'orange'].indexOf(pieceColor));
     if (portKind) (screen.component('catan-port') as Dropdown | undefined)?.pick(['generic', 'brick', 'grain', 'lumber', 'ore', 'wool'].indexOf(portKind));
     const region = { x: 0, y: 0, w: cols, h: rows };
     const singlePort = scene.portSailLabel(cols, rows);
     screen.setRoot(buildCatanTileRoot(region, noop, scene.boardTokens(cols, rows), scene.currentMode(), singlePort ? [singlePort] : scene.boardPortLabels(cols, rows)), region);
-    const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
+    const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid }));
     surfaceToPpm(surf, cols, rows, out);
     return;
   }

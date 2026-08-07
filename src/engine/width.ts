@@ -22,6 +22,20 @@ function isZeroWidth(cp: number): boolean {
   );
 }
 
+// Text-default pictographs (Extended_Pictographic without Emoji_Presentation) advance one cell in
+// terminals even when a U+FE0F selector makes them draw wide. Queried rather than hand-listed:
+// model chat can contain any emoji. See docs/emoji.md.
+const textPresentation = new Map<number, boolean>();
+function isTextPresentation(cp: number): boolean {
+  let cached = textPresentation.get(cp);
+  if (cached === undefined) {
+    const s = String.fromCodePoint(cp);
+    cached = /\p{Extended_Pictographic}/u.test(s) && !/\p{Emoji_Presentation}/u.test(s);
+    textPresentation.set(cp, cached);
+  }
+  return cached;
+}
+
 // Codepoints that occupy two cells: CJK, fullwidth forms, Hangul, and the main
 // emoji blocks (which modern terminals render double-wide).
 function isWide(cp: number): boolean {
@@ -60,6 +74,10 @@ export function cellWidth(cp: number): number {
   // a cell the terminal never draws, desyncing the surface and leaving a stale
   // placeholder-background remnant to the side of a revealed card.
   if (cp >= 0x2660 && cp <= 0x2667) return 1;
+  // Inside the otherwise-wide emoji blocks, but East_Asian_Width=Neutral.
+  if (isTextPresentation(cp)) return 1;
+  // Emoji-presentation singletons whose blocks are otherwise text-presentation and stay narrow.
+  if (cp === 0x1f0cf || cp === 0x1f004) return 2;
   if (isWide(cp)) return 2;
   return 1;
 }

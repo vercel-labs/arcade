@@ -15,6 +15,7 @@ import type { RGB, Surface } from '../../../engine/index.ts';
 import type { KeyEvent } from '../../../platform/input.ts';
 import type { LayoutBox, PointerHit } from '../../../tui/types.ts';
 import { creatorTint } from '../../scenes/wisp.ts';
+import { RAIL_PAD_L, RAIL_PAD_R } from '../../shell/rail-panel.ts';
 
 // One chat line. Normally a model's rationale, tagged with its slug (drives the name +
 // color). When `event` is set it's a neutral game-event notice (e.g. "Flop  Q♥ 9♦ 5♣"),
@@ -39,8 +40,8 @@ export const CHAT_WIDTH = 34 + SCROLLBAR_W + RIGHT_GAP;
 // Panel insets: a touch more on the left; ZERO on the right so the scrollbar sits
 // flush at the panel edge (a right inset leaves a translucent strip that shows the
 // moving scene through it, reading as a jagged edge). Mirrors the moves panel.
-export const PANEL_PAD_L = 2;
-export const PANEL_PAD_R = 0;
+export const PANEL_PAD_L = RAIL_PAD_L;
+export const PANEL_PAD_R = RAIL_PAD_R;
 const MSG_GAP = 1; // blank rows between messages
 const VIEW_W = CHAT_WIDTH - PANEL_PAD_L - PANEL_PAD_R; // viewport width inside the panel
 const CONTENT_W = VIEW_W - SCROLLBAR_W - RIGHT_GAP; // text wrap width — a gap col, then the scrollbar

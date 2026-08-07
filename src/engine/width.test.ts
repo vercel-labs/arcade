@@ -23,9 +23,27 @@ test('other special-cased single-cell glyphs stay narrow', () => {
   assert.equal(cellWidth('•'.codePointAt(0)!), 1); // Catan production pip (U+2022)
 });
 
+test('emoji-presentation singletons outside the emoji blocks are wide', () => {
+  // Their blocks are otherwise text-presentation, so these two need naming explicitly.
+  assert.equal(cellWidth('🃏'.codePointAt(0)!), 2); // joker (U+1F0CF), Catan player card count
+  assert.equal(cellWidth('🀄'.codePointAt(0)!), 2); // mahjong red dragon (U+1F004)
+  assert.equal(cellWidth('🂡'.codePointAt(0)!), 1); // ace of spades stays text-presentation
+});
+
 test('genuinely wide + zero-width codepoints are unchanged', () => {
   assert.equal(cellWidth('世'.codePointAt(0)!), 2); // CJK
   assert.equal(cellWidth('💬'.codePointAt(0)!), 2); // emoji
   assert.equal(cellWidth('a'.codePointAt(0)!), 1);
   assert.equal(cellWidth(0x0301), 0); // combining acute accent
+});
+
+test('text-presentation pictographs advance one cell even with a selector', () => {
+  // Terminals key width off the base codepoint and ignore U+FE0F, so these advance one column.
+  assert.equal(stringWidth('🛠️'), 1); // hammer and wrench
+  assert.equal(stringWidth('🛡️'), 1); // shield
+  assert.equal(stringWidth('🏘️'), 1); // houses
+  // Emoji_Presentation=Yes neighbours are genuinely two cells and must stay that way.
+  assert.equal(stringWidth('🔨'), 2);
+  assert.equal(stringWidth('🏠'), 2);
+  assert.equal(stringWidth('💂'), 2);
 });

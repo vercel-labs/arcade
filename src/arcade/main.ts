@@ -19,6 +19,7 @@ import { ChessGameScene } from './games/chess/scene.ts';
 import { CardsScene } from './games/poker/cards-scene.ts';
 import { type TileScene } from './games/catan/tile-scene.ts';
 import { CatanController } from './games/catan/catan-controller.ts';
+import { CATAN_RAIL_W, catanRailVisible } from './games/catan/card-hud.ts';
 import { buildPokerRoot, mountPokerHud, pokerMode, setPokerHandlers } from './games/poker/hud.ts';
 import { PokerGameScene } from './games/poker/poker-scene.ts';
 import { buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, type HeroContext, mountPokerGameHud, nudgePokerBet, pushPokerChat, setNotesObserverPick, setPokerGameHandlers, setPokerVoiceStage } from './games/poker/poker-hud.ts';
@@ -316,7 +317,9 @@ function activeSceneViewport(): LayoutBox {
       ? CHAT_WIDTH
       : mode === 'poker' && pokerChatOpen && pokerScene.isActive()
         ? CHAT_WIDTH
-        : 0;
+        : mode === 'catan-tiles' && catan.scene.currentMode() === 'boardCards' && catanRailVisible(cols, rows)
+          ? CATAN_RAIL_W
+          : 0;
   return insetRightSceneViewport(cols, rows, reservedRight);
 }
 
@@ -1741,7 +1744,7 @@ function syncBar(): void {
     popGameOver();
     popSetup();
     popSwap();
-    ui.setRoot(catan.buildRoot(cols, rows), { x: 0, y: 0, w: cols, h: rows });
+    ui.setRoot(catan.buildRoot(cols, rows, activeSceneViewport().w), { x: 0, y: 0, w: cols, h: rows });
   } else if (pokerNotesOpen) {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     popGameOver();
@@ -2291,10 +2294,13 @@ function tick(dt: number): void {
     syncBar();
     const sceneDirty = forceFrame || catan.needsRender();
     if (sceneDirty) catan.renderScene(target, t);
+    // Hybrid shading off for the board: it replaces the shape matcher's "empty cell" verdict with
+    // a luminance-ramp glyph, which speckles the space around the island with faint dots. Catan
+    // wants that space plain black so the board and the rail both have a clean edge against it.
     if (UNIFIED) {
-      if (sceneDirty || ui.dirty()) writeFrame(ui.frameComposited((s) => presentSceneInto(s, false, true), sceneDirty));
+      if (sceneDirty || ui.dirty()) writeFrame(ui.frameComposited((s) => presentSceneInto(s, false, false), sceneDirty));
     } else if (sceneDirty) {
-      writeFrame(presentScene(false, true) + ui.frame());
+      writeFrame(presentScene(false, false) + ui.frame());
     } else if (ui.dirty()) {
       writeFrame(ui.frame());
     }

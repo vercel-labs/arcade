@@ -7,12 +7,13 @@
 // mounted via Slot, rebuilt into a full-screen tree each frame. main owns the scene +
 // driver and wires the handlers; this module owns the controls + the table furniture.
 
-import { Box, Button, CloseButton, Dialog, Dropdown, filledButtonStyle, Input, Modal, type Row, RoundedButton, ScrollBox, Slider, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
+import { Box, Button, Dialog, Dropdown, filledButtonStyle, Input, Modal, type Row, RoundedButton, ScrollBox, Slider, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
 import type { RGB } from '../../../engine/index.ts';
 import { type Card, isRed, RANK_LABELS } from '../../../rules/poker/cards.ts';
 import type { SeatCardView, TableView } from './poker-scene.ts';
 import { creatorTint } from '../../scenes/wisp.ts';
-import { ChatBox, type ChatMessage, CHAT_WIDTH, PANEL_PAD_L, PANEL_PAD_R, wrapText } from '../chess/chat.ts';
+import { ChatBox, type ChatMessage, CHAT_WIDTH, wrapText } from '../chess/chat.ts';
+import { RailPanel } from '../../shell/rail-panel.ts';
 import { shortModel } from '../chess/hud.ts';
 import { UI_CHROME_PILL, uiChromeBg } from '../../theme.ts';
 
@@ -581,15 +582,7 @@ function continuePrompt(nextHand: boolean, seconds: number | null | undefined): 
 function chatPanel(height: number, active: boolean, onToggle: () => void): Node {
   pokerChat.setViewport(Math.max(1, height - 2 * CHAT_PAD_V - CHAT_HEADER_H));
   pokerChat.setActive(active);
-  const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', width: RAIL_W - PANEL_PAD_L - PANEL_PAD_R, padding: [0, 2, 0, 0] }, [
-    Text({ text: 'chat', style: { color: [222, 224, 234], bold: true } }),
-    CloseButton({ id: 'poker-chat-close', onClick: onToggle }),
-  ]);
-  return Box({ flexDirection: 'column', width: RAIL_W, height, padding: [CHAT_PAD_V, PANEL_PAD_R, CHAT_PAD_V, PANEL_PAD_L], background: uiChromeBg(0.9) }, [
-    header,
-    Box({ height: 1 }),
-    Slot('poker-chat'),
-  ]);
+  return RailPanel({ width: RAIL_W, height, title: 'chat', closeId: 'poker-chat-close', onClose: onToggle }, [Slot('poker-chat')]);
 }
 
 // The right rail: the table-talk chat, full height, pinned to the right edge. Present only

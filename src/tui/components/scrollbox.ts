@@ -45,6 +45,14 @@ export class ScrollBox implements Component {
     this.height = opts.height;
   }
 
+  // Resize the viewport. For panels sized from the terminal rather than a constant, which can
+  // only be measured at build time. Re-clamps the offset so shrinking cannot strand the view
+  // past the last row.
+  setHeight(height: number): void {
+    this.height = Math.max(1, height);
+    this.scroll = Math.min(this.scroll, this.maxScroll());
+  }
+
   // Rows actually shown: the full list until it reaches the cap (autoHeight), then
   // the cap. Fixed mode always shows `height` rows (the classic viewport).
   private visibleHeight(): number {

@@ -8,6 +8,7 @@ import { type PlayerColor, type Terrain } from '../../../rules/catan/types.ts';
 import { type BoardToken, type CatanMode, type SailLabel } from './tile-scene.ts';
 import { type PortKind } from './mesh/index.ts';
 import { UI_CHROME_BG, UI_CHROME_PILL } from '../../theme.ts';
+import { buildCatanCardsOverlay, CATAN_RAIL_W, catanSidebarOpen, mountCatanCardsHud, toggleCatanSidebar } from './card-hud.ts';
 
 const CHIP_BG: [number, number, number] = [12, 12, 16]; // black token
 const CHIP_INK: [number, number, number] = [238, 236, 230]; // light number on black
@@ -69,8 +70,8 @@ const SWATCH: Record<PlayerColor, [number, number, number]> = {
   orange: [227, 129, 42],
 };
 // The scene modes, chosen from the Mode dropdown.
-const MODES: CatanMode[] = ['tile', 'board', 'pieces', 'port'];
-const MODE_LABELS = ['Tile', 'Board', 'Pieces', 'Port'];
+const MODES: CatanMode[] = ['tile', 'board', 'boardCards', 'pieces', 'port'];
+const MODE_LABELS = ['Tile', 'Board', 'Board + cards', 'Pieces', 'Port'];
 
 // The nine harbor types: one generic 3:1 (empty ship) + a 2:1 port per resource.
 const PORT_KINDS: PortKind[] = ['generic', 'brick', 'grain', 'lumber', 'ore', 'wool'];
@@ -84,6 +85,7 @@ export interface CatanTileHandlers {
   onRollDice(): void;
   onColor(c: PlayerColor): void;
   onPort(kind: PortKind): void;
+  onToggleSidebar(): void;
 }
 let H: CatanTileHandlers | null = null;
 let robberOn = false; // whether the robber is currently shown (toggled from the panel)
@@ -91,7 +93,7 @@ export function setCatanTileHandlers(h: CatanTileHandlers): void {
   H = h;
 }
 
-const modeDropdown = new Dropdown({ id: 'catan-mode', items: MODE_LABELS, width: 14, index: 0, onSelect: (i) => H?.onMode(MODES[i]) });
+const modeDropdown = new Dropdown({ id: 'catan-mode', items: MODE_LABELS, width: 18, index: 0, onSelect: (i) => H?.onMode(MODES[i]) });
 const terrainDropdown = new Dropdown({ id: 'catan-terrain', items: LABELS, width: 24, index: 0, onSelect: (i) => H?.onTerrain(TERRAINS[i]) });
 const colorDropdown = new Dropdown({ id: 'catan-color', items: COLOR_LABELS, width: 14, index: 0, onSelect: (i) => H?.onColor(COLORS[i]) });
 const portDropdown = new Dropdown({ id: 'catan-port', items: PORT_LABELS, width: 16, index: 0, onSelect: (i) => H?.onPort(PORT_KINDS[i]) });
@@ -101,6 +103,7 @@ export function mountCatanTileHud(ui: Screen): void {
   ui.mount(terrainDropdown);
   ui.mount(colorDropdown);
   ui.mount(portDropdown);
+  mountCatanCardsHud(ui); // the card overlay's scrollable action history
 }
 
 // The terrain the dropdown currently shows (its committed selection).
@@ -153,8 +156,14 @@ export function buildCatanPieceModal(o: PieceModalOpts): Node {
 // trade chips (both are 2D overlays projected onto the scene).
 export function buildCatanTileRoot(region: LayoutBox, onOpenMenu: () => void, tokens: BoardToken[] = [], mode: CatanMode = 'tile', sails: SailLabel[] = []): Node {
   // Per-mode controls: board → regenerate; pieces → color picker; tile → terrain + vary + robber.
+  const boardMode = mode === 'board' || mode === 'boardCards';
+  const railOpen = mode === 'boardCards' && catanSidebarOpen();
+  const toggleSidebar = (): void => {
+    toggleCatanSidebar();
+    H?.onToggleSidebar();
+  };
   const controls: Node[] =
-    mode === 'board'
+    boardMode
       ? [FilledButton({ id: 'catan-reroll', label: '⟳ regenerate', onClick: () => H?.onReroll() }), Field({ label: 'Color', child: Slot('catan-color') })]
       : mode === 'pieces'
         ? [Field({ label: 'Color', child: Slot('catan-color') })]
@@ -177,7 +186,13 @@ export function buildCatanTileRoot(region: LayoutBox, onOpenMenu: () => void, to
     ...tokens.map(tokenChip), // number tokens over the board (bottom layer, under the chrome)
     ...sails.map(sailChip), // board/port mode: trade-info chips projected onto the sails
     Box({ width: region.w, height: region.h, flexDirection: 'column' }, [Box({ flexDirection: 'row', padding: [1, 0, 0, 2] }, [panel])]),
-    Box({ position: 'absolute', top: 1, right: 2 }, [Button({ id: 'catan-menu-button', label: '☰ menu', onClick: onOpenMenu, style: UI_CHROME_PILL })]),
+    ...(mode === 'boardCards' ? [buildCatanCardsOverlay(region, toggleSidebar)] : []),
+    // The rail owns the right strip while open, so the chrome shifts left by its width to stay
+    // over the visible scene. Open, the reopen pill drops — the rail's own ✕ collapses it.
+    Box({ position: 'absolute', top: 1, right: 2 + (railOpen ? CATAN_RAIL_W : 0), flexDirection: 'row', gap: 1 }, [
+      Button({ id: 'catan-menu-button', label: '☰ menu', onClick: onOpenMenu, style: UI_CHROME_PILL }),
+      ...(mode === 'boardCards' && !railOpen ? [Button({ id: 'catan-sidebar-open', label: 'sidebar', onClick: toggleSidebar, style: UI_CHROME_PILL })] : []),
+    ]),
     // Board mode: a roll button in the bottom-right; triggers the big dice overlay. Same
     // margin from the right as the ☰ menu button, same from the bottom as the bottom bar.
     ...(mode === 'board' ? [Box({ position: 'absolute', bottom: 1, right: 2 }, [FilledButton({ id: 'catan-roll', label: 'roll dice', onClick: () => H?.onRollDice() })])] : []),

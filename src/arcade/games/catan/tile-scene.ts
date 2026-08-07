@@ -139,7 +139,11 @@ const TOKEN_PIP_HIDE_MIN_FOOTPRINT = 8.7;
 const BUILD_DROP_DUR = 0.45; // seconds for the drop
 const BUILD_DROP_H = 1.2; // elevation above the rim the piece starts from (world units)
 
-export type CatanMode = 'tile' | 'board' | 'pieces' | 'port';
+export type CatanMode = 'tile' | 'board' | 'boardCards' | 'pieces' | 'port';
+
+function isBoardMode(mode: CatanMode): boolean {
+  return mode === 'board' || mode === 'boardCards';
+}
 
 // A number token to draw over a hex: its screen cell, rolled number, currently revealed
 // production pips, red/high-frequency state, zoom-detail state, and dice-roll highlight.
@@ -260,6 +264,7 @@ function harborEntryModel(harbor: BoardHarborPose, progress: number, index: numb
 export class TileScene {
   private camTile: OrbitCamera;
   private camBoard: OrbitCamera;
+  private camBoardCards: OrbitCamera;
   private camPieces: OrbitCamera;
   private camPort: OrbitCamera;
   private readonly raycaster = new Raycaster();
@@ -336,6 +341,9 @@ export class TileScene {
     // The nine harbor boats extend beyond the old land-only framing. Pull back enough to keep
     // their sails and paired jetties inside the default viewport without making the island tiny.
     this.camBoard = new OrbitCamera({ azimuth: 0.62, elevation: 0.82, distance: 13.2, target: { x: 0.25, y: -0.48, z: 0 } }, 2, 26);
+    // The card workbench leaves a public rail on the right and a hand along the bottom. Pull the
+    // island back and bias it into the remaining upper-left stage instead of covering its ports.
+    this.camBoardCards = new OrbitCamera({ azimuth: 0.62, elevation: 0.82, distance: 15.6, target: { x: 0.9, y: -0.9, z: 0 } }, 2, 30);
     this.camPieces = new OrbitCamera({ azimuth: 0.5, elevation: 0.4, distance: 3.7, target: { x: 0.1, y: 0.24, z: 0 } }, 1.5, 10);
     this.camPort = new OrbitCamera({ azimuth: 0.72, elevation: 0.36, distance: 3.5, target: { x: 0, y: 0.5, z: 0 } }, 1.5, 12);
     this.authoredScene.add(this.waterPool);
@@ -343,6 +351,7 @@ export class TileScene {
     this.authoredScene.add(this.piecePool);
   }
   private cam(): OrbitCamera {
+    if (this.modeName === 'boardCards') return this.camBoardCards;
     if (this.modeName === 'board') return this.camBoard;
     if (this.modeName === 'pieces') return this.camPieces;
     if (this.modeName === 'port') return this.camPort;
@@ -372,7 +381,7 @@ export class TileScene {
     };
   }
   private boardRaycaster(ndcX: number, ndcY: number): Raycaster {
-    const cam = this.camBoard;
+    const cam = this.cam();
     const camera = cam.toCamera({ fovy: FOVY, near: 0.05, far: 100 });
     return this.raycaster.setFromCamera(camera, ndcX, ndcY, this.lastAspect);
   }
@@ -394,7 +403,7 @@ export class TileScene {
   // Sticky: the current hover is kept until the cursor leaves a wider radius, so the ghost
   // doesn't flicker between neighbours as the mouse moves.
   hoverBoard(ndcX: number, ndcY: number): void {
-    if (this.modeName !== 'board' || this.placing || this.revealing) return;
+    if (!isBoardMode(this.modeName) || this.placing || this.revealing) return;
     const raycaster = this.boardRaycaster(ndcX, ndcY);
     const best = pickBoardTarget(raycaster, this.buildingAtNode);
     const current = this.hoveredTarget();
@@ -413,7 +422,7 @@ export class TileScene {
   // A click on the board: place a piece on an empty spot (per the rules), or — if the spot is
   // occupied — return a descriptor so the caller can open the edit modal.
   clickBoard(ndcX: number, ndcY: number): { kind: 'building' | 'road'; id: number } | null {
-    if (this.modeName !== 'board' || this.placing || this.revealing) return null;
+    if (!isBoardMode(this.modeName) || this.placing || this.revealing) return null;
     const raycaster = this.boardRaycaster(ndcX, ndcY);
     const current = this.hoveredTarget();
     const CLICK_SCALE = 0.07 / 0.06;
@@ -517,7 +526,7 @@ export class TileScene {
     this.modeName = m;
     this.hoverNode = null; // hover is board-only
     this.hoverEdge = null;
-    if (m === 'board' && !this.board) this.regenerate(true); // startup uses the full board-build sequence
+    if (isBoardMode(m) && !this.board) this.regenerate(true); // startup uses the full board-build sequence
     this.dirty = true;
   }
   currentMode(): CatanMode {
@@ -563,7 +572,7 @@ export class TileScene {
   // Roll the pair of dice (board mode): big dice appear, tumble, land, light the matching
   // chips, then vanish. Picks results + tumble spins and starts the sequence.
   rollDice(): void {
-    if (this.modeName !== 'board') return;
+    if (!isBoardMode(this.modeName)) return;
     for (const d of this.dice) {
       d.val = 1 + Math.floor(Math.random() * 6);
       // Fractional turn counts (not whole) so the tumble looks free rather than clocked; each
@@ -594,7 +603,7 @@ export class TileScene {
   // In board mode "vary" regenerates the whole arrangement; in tile mode it advances the
   // current tile to its next procedural variant. Both are instant.
   reroll(): void {
-    if (this.modeName === 'board') {
+    if (isBoardMode(this.modeName)) {
       this.boardSeed++;
       this.regenerate(true); // regenerate WITH the placement animation
     } else {
@@ -635,15 +644,15 @@ export class TileScene {
   }
 
   requestAnimationFrame(): void {
-    if (this.modeName === 'board' || (this.modeName === 'tile' && this.terrain !== 'mountains')) this.dirty = true;
+    if (isBoardMode(this.modeName) || (this.modeName === 'tile' && this.terrain !== 'mountains')) this.dirty = true;
   }
 
   // The number tokens to overlay right now: one per non-desert hex, projected to the screen
   // cell of its center with the current board camera (matches what renderScene draws). Empty
   // in tile mode or while tiles are still being placed.
   boardTokens(cols: number, rows: number): BoardToken[] {
-    if (this.modeName !== 'board' || this.placing || !this.board) return [];
-    const cam = this.camBoard;
+    if (!isBoardMode(this.modeName) || this.placing || !this.board) return [];
+    const cam = this.cam();
     const camera = cam.toCamera({ fovy: FOVY, near: 0.05, far: 100 });
     const vp = cameraMatrices(camera, cols / (rows * 2)).viewProjection; // aspect matches the render target
     const spinStep = Math.floor(this.revealClock.elapsed / REVEAL_FLICKER);
@@ -745,8 +754,8 @@ export class TileScene {
   // so its compact trade badge stays legible at terminal resolution. They appear only after the
   // island has landed; during the fly-in the ships themselves provide the frame context.
   boardPortLabels(cols: number, rows: number): SailLabel[] {
-    if (this.modeName !== 'board' || this.placing || !this.board) return [];
-    const cam = this.camBoard;
+    if (!isBoardMode(this.modeName) || this.placing || !this.board) return [];
+    const cam = this.cam();
     const camera = cam.toCamera({ fovy: FOVY, near: 0.05, far: 100 });
     const vp = cameraMatrices(camera, cols / (rows * 2)).viewProjection;
     const out: SailLabel[] = [];
@@ -778,7 +787,7 @@ export class TileScene {
     // stretch while the coast emerges after them.
     const camera = cam.toCamera({ fovy: FOVY, near: 0.05, far: 100 });
     const eye = camera.eye;
-    if (this.modeName === 'board') this.renderBoard(t, eye);
+    if (isBoardMode(this.modeName)) this.renderBoard(t, eye);
     else if (this.modeName === 'pieces') this.queuePiece(piecesMesh(this.pieceColor), MODEL);
     else if (this.modeName === 'port') this.queueLambert(portMesh(this.portKind), MODEL, PORT_LIGHT, PORT_WRAP);
     else {
@@ -787,7 +796,7 @@ export class TileScene {
       if (animated) this.queueLambert(animated, MODEL);
     }
     this.sceneRenderer.render(target, this.authoredScene, camera);
-    if (this.modeName === 'board') this.renderDice(target, t);
+    if (isBoardMode(this.modeName)) this.renderDice(target, t);
     this.dirty = false;
   }
 

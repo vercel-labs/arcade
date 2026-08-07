@@ -127,5 +127,8 @@ Test the exact handler locally: `pnpm exec tsx src/tools/serve-prism.ts` then
 - No dead code — if a refactor orphans a file/export, delete it.
 - The renderer's style hook is the **`Material`** (vertex + fragment shader). New visual
   looks should be materials, so the whole arcade shares one controllable style.
+- Terminal emoji: only use glyphs whose Unicode `Emoji_Presentation` is `Yes`, or the renderer
+  desyncs from the terminal in a way the diff cannot repair. Check with
+  `pnpm exec tsx src/tools/glyph-width.ts` — see [docs/emoji.md](docs/emoji.md).
 - `reference/` holds read-only inspo clones (gitignored). `docs/INSPO.MD` lists sources.
   Rendering patterns are informed by `sinclairzx81/zero` (MIT) — see `NOTICE.md`.

@@ -105,6 +105,7 @@ export class Surface {
   setCell(x: number, y: number, ch: string, fg: RGB, bg: RGB, style = 0): void {
     if (!this.inBounds(x, y)) return;
     const i = y * this.cols + x;
+    this.breakWidePair(x, y, i, ch);
     this.ch[i] = ch === '' ? ' ' : ch;
     this.fg[i * 3] = byte(fg[0]);
     this.fg[i * 3 + 1] = byte(fg[1]);
@@ -164,15 +165,39 @@ export class Surface {
   // wide glyph occupies two cells (the second is a continuation sentinel).
   drawText(x: number, y: number, str: string, fg: RGB, bg: RGB, style = 0): void {
     let cx = x;
+    let lastX = -1;
     for (const g of str) {
       const w = stringWidth(g);
-      if (w === 0) continue; // combining mark / zero-width: no advance
+      if (w === 0) {
+        this.appendToCell(lastX, y, g);
+        continue;
+      }
       this.setCell(cx, y, g, fg, bg, style);
       if (w === 2 && this.inBounds(cx + 1, y)) {
         this.setCell(cx + 1, y, CONTINUATION, fg, bg, style);
       }
+      lastX = cx;
       cx += w;
     }
+  }
+
+  // The terminal draws a wide glyph across both of its cells, so a half-replaced pair is a state
+  // no terminal can reproduce. Overwriting either half blanks the other.
+  private breakWidePair(x: number, y: number, i: number, ch: string): void {
+    if (ch !== CONTINUATION && this.ch[i] === CONTINUATION && x > 0) {
+      this.ch[i - 1] = ' '; // orphaned head
+    }
+    if (stringWidth(ch) < 2 && x + 1 < this.cols && this.ch[i + 1] === CONTINUATION) {
+      this.ch[i + 1] = ' '; // orphaned tail
+    }
+  }
+
+  // A zero-width codepoint modifies the glyph before it and must share its cell. Dropping a
+  // U+FE0F changes what the terminal draws, desyncing the row. See docs/emoji.md.
+  private appendToCell(x: number, y: number, mark: string): void {
+    if (x < 0 || !this.inBounds(x, y)) return;
+    if (this.clipRect && (x < this.clipRect.x || x >= this.clipRect.x + this.clipRect.w || y < this.clipRect.y || y >= this.clipRect.y + this.clipRect.h)) return;
+    this.ch[y * this.cols + x] += mark;
   }
 
   // Draw text over the existing surface without introducing a new background
@@ -180,15 +205,20 @@ export class Surface {
   // cell's current background instead of painting a label chip behind the text.
   drawTextOver(x: number, y: number, str: string, fg: RGB, style = 0): void {
     let cx = x;
+    let lastX = -1;
     for (const g of str) {
       const w = stringWidth(g);
-      if (w === 0) continue;
+      if (w === 0) {
+        this.appendToCell(lastX, y, g);
+        continue;
+      }
       const bg = this.getCell(cx, y)?.bg ?? [0, 0, 0];
       this.setCell(cx, y, g, fg, bg, style);
       if (w === 2 && this.inBounds(cx + 1, y)) {
         const continuationBg = this.getCell(cx + 1, y)?.bg ?? bg;
         this.setCell(cx + 1, y, CONTINUATION, fg, continuationBg, style);
       }
+      lastX = cx;
       cx += w;
     }
   }
@@ -233,7 +263,11 @@ export class Surface {
           runActive = true;
           lastSeq = ''; // force an SGR at the start of each positioned run
         }
-        if (this.ch[i] === CONTINUATION) continue; // wide-glyph tail: emit nothing
+        // The tail emits nothing, so the cursor never advanced over it; end the run.
+        if (this.ch[i] === CONTINUATION) {
+          runActive = false;
+          continue;
+        }
         const seq = this.sgr(i);
         if (seq !== lastSeq) {
           out += seq;
@@ -267,7 +301,12 @@ export class Surface {
           runActive = true;
           lastSeq = '';
         }
-        if (this.ch[i] === CONTINUATION) continue;
+        // The tail emits nothing, so the cursor never advanced over it. Keeping the run open
+        // would write the next cell a column early and shift the rest of the line.
+        if (this.ch[i] === CONTINUATION) {
+          runActive = false;
+          continue;
+        }
         const seq = this.sgr(i);
         if (seq !== lastSeq) {
           out += seq;

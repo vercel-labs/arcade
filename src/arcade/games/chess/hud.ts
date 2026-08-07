@@ -14,7 +14,8 @@ import type { RGB } from '../../../engine/index.ts';
 import { UI_CHROME_BG, UI_CHROME_PILL, uiChromeBg } from '../../theme.ts';
 import type { ChessResult } from '../../../rules/chess/chess.ts';
 import { WHITE } from '../../../rules/chess/types.ts';
-import { CHAT_WIDTH, type ChatMessage, chatBox, mountChat, PANEL_PAD_L, PANEL_PAD_R } from './chat.ts';
+import { CHAT_WIDTH, type ChatMessage, chatBox, mountChat } from './chat.ts';
+import { RailPanel, RailTitleButton } from '../../shell/rail-panel.ts';
 
 const HISTORY_HEIGHT = 18; // MAX visible move rows — the panel grows to this, then scrolls
 const HISTORY_WIDTH = 22; // inner content width — header + list share it (fixed)
@@ -337,15 +338,17 @@ const CHAT_HEADER_H = 2; // header row + a gap row
 function buildChatPanel(height: number, onToggle: () => void, active: boolean): Node {
   chatBox.setViewport(Math.max(1, height - 2 * CHAT_PAD_V - CHAT_HEADER_H));
   chatBox.setActive(active);
-  const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', width: CHAT_WIDTH - PANEL_PAD_L - PANEL_PAD_R, padding: [0, 2, 0, 0] }, [
-    Button({ id: 'chat-toggle', label: 'chat', onClick: onToggle, style: HEADER_BTN }),
-    CloseButton({ id: 'chat-close', onClick: onToggle }),
-  ]);
   // flexShrink 0: the wide chess-game bar in the main column overflows its row, so
   // without this the panel would be squeezed below CHAT_WIDTH and clip its bubbles.
-  return Box({ flexDirection: 'column', width: CHAT_WIDTH, flexShrink: 0, height, padding: [CHAT_PAD_V, PANEL_PAD_R, CHAT_PAD_V, PANEL_PAD_L], background: uiChromeBg(0.9) }, [
-    header,
-    Box({ height: 1 }), // gap between header and the thread
-    Slot('chess-chat'),
-  ]);
+  return RailPanel(
+    {
+      width: CHAT_WIDTH,
+      height,
+      flexShrink: 0,
+      title: RailTitleButton('chat-toggle', 'chat', onToggle, HEADER_BTN),
+      closeId: 'chat-close',
+      onClose: onToggle,
+    },
+    [Slot('chess-chat')],
+  );
 }

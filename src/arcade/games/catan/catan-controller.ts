@@ -55,6 +55,7 @@ export class CatanController {
       onReroll: () => this.change(() => this.scene.reroll()),
       onToggleRobber: (on) => this.change(() => this.scene.setRobber(on)),
       onMode: (m) => this.change(() => this.scene.setMode(m)),
+      onToggleSidebar: () => this.change(() => {}), // card-hud owns the flag; just repaint
       onRollDice: () => this.change(() => this.scene.rollDice()),
       onColor: (c) => this.change(() => this.scene.setActiveColor(c)),
       onPort: (k) => this.change(() => this.scene.setPortKind(k)),
@@ -67,12 +68,12 @@ export class CatanController {
   }
 
   // ── enter / leave ──────────────────────────────────────────────────────────
-  // Entry: mount the HUD and default to the animated full board.
+  // Entry: mount the HUD and default to the animated full board with the card UI over it.
   enter(): void {
     mountCatanTileHud(this.ui);
     this.scene.setTerrain(catanTileTerrain()); // match the scene to the HUD's committed tile
-    this.scene.setMode('board'); // default to the full board
-    setCatanTileMode('board'); // sync the Mode dropdown to match
+    this.scene.setMode('boardCards'); // temporary: card-UI workbench is the default while it is being built
+    setCatanTileMode('boardCards'); // sync the Mode dropdown to match
     this.scene.reroll(); // play the tile-placement + number reveal on entry
     this.startEnvironmentAnimation();
   }
@@ -138,11 +139,15 @@ export class CatanController {
 
   // ── UI roots ─────────────────────────────────────────────────────────────────
   // The normal Catan control panel + ☰ menu button over the scene.
-  buildRoot(cols: number, rows: number): Node {
+  // `sceneCols` is the width the scene actually renders into — narrower than `cols` while the
+  // card sidebar is open. The number chips and port labels are projections of 3D points, so they
+  // must use the scene's aspect and cell mapping, not the terminal's, or they stay put while the
+  // board shifts. The HUD chrome still spans the full region.
+  buildRoot(cols: number, rows: number, sceneCols: number = cols): Node {
     mountCatanTileHud(this.ui); // a prior modal root may have dropped the Slots
-    const singlePort = this.scene.portSailLabel(cols, rows);
-    const sailLabels = singlePort ? [singlePort] : this.scene.boardPortLabels(cols, rows);
-    return buildCatanTileRoot(this.region(cols, rows), () => this.openMenu(), this.scene.boardTokens(cols, rows), this.scene.currentMode(), sailLabels);
+    const singlePort = this.scene.portSailLabel(sceneCols, rows);
+    const sailLabels = singlePort ? [singlePort] : this.scene.boardPortLabels(sceneCols, rows);
+    return buildCatanTileRoot(this.region(cols, rows), () => this.openMenu(), this.scene.boardTokens(sceneCols, rows), this.scene.currentMode(), sailLabels);
   }
 
   // The in-game menu popup (home / reset camera / display / color / controls / quit).
