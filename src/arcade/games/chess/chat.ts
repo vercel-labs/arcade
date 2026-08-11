@@ -15,8 +15,8 @@ import type { RGB, Surface } from '../../../engine/index.ts';
 import type { KeyEvent } from '../../../platform/input.ts';
 import type { LayoutBox, PointerHit } from '../../../tui/types.ts';
 import { creatorTint } from '../../scenes/wisp.ts';
-import { RAIL_MUTED_FG, RAIL_PAD_L, RAIL_PAD_R, RAIL_TEXT_FG } from '../../shell/rail-panel.ts';
-import { ARCADE_THEME } from '../../theme.ts';
+import { SIDEBAR_PAD_L, SIDEBAR_PAD_R } from '../../../tui/index.ts';
+import { ARCADE_THEME, RAIL_MUTED_FG, RAIL_TEXT_FG } from '../../theme.ts';
 import { CHESS_PALETTE } from './palette.ts';
 
 // One chat line. Normally a model's rationale, tagged with its slug (drives the name +
@@ -42,8 +42,8 @@ export const CHAT_WIDTH = 34 + SCROLLBAR_W + RIGHT_GAP;
 // Panel insets: a touch more on the left; ZERO on the right so the scrollbar sits
 // flush at the panel edge (a right inset leaves a translucent strip that shows the
 // moving scene through it, reading as a jagged edge). Mirrors the moves panel.
-export const PANEL_PAD_L = RAIL_PAD_L;
-export const PANEL_PAD_R = RAIL_PAD_R;
+export const PANEL_PAD_L = SIDEBAR_PAD_L;
+export const PANEL_PAD_R = SIDEBAR_PAD_R;
 const MSG_GAP = 1; // blank rows between messages
 const VIEW_W = CHAT_WIDTH - PANEL_PAD_L - PANEL_PAD_R; // viewport width inside the panel
 const CONTENT_W = VIEW_W - SCROLLBAR_W - RIGHT_GAP; // text wrap width — a gap col, then the scrollbar

@@ -3,10 +3,27 @@
 // The seeded snapshot lets the "Board + cards" test mode evolve before a live CatanState is
 // attached; gameplay wiring should later replace only the data source, not the card or rail layout.
 
-import { Box, Button, type LayoutBox, type Node, type PointerHit, type Row, ScrollBox, type Screen, Slot, Text, Tooltip, truncate } from '../../../tui/index.ts';
+import {
+  Box,
+  Button,
+  ScrollBox,
+  Sidebar,
+  SIDEBAR_HEADER_H,
+  SIDEBAR_PAD_L,
+  SIDEBAR_PAD_R,
+  SIDEBAR_PAD_V,
+  Slot,
+  Text,
+  Tooltip,
+  truncate,
+  type LayoutBox,
+  type Node,
+  type PointerHit,
+  type Row,
+  type Screen,
+} from '../../../tui/index.ts';
 import { mulberry32, stringWidth } from '../../../engine/index.ts';
-import { RAIL_HEADER_H, RAIL_MUTED_FG, RAIL_PAD_L, RAIL_PAD_R, RAIL_PAD_V, RAIL_TEXT_FG, RailPanel } from '../../shell/rail-panel.ts';
-import { uiChromeBg } from '../../theme.ts';
+import { ARCADE_CHROME_TEXT, RAIL_MUTED_FG, RAIL_TEXT_FG, uiChromeBg } from '../../theme.ts';
 import { COSTS, DEV_CARD_TYPES, type DevCardType, DISCARD_LIMIT, type PlayerColor, type Resource, resourceIndex, type Terrain } from '../../../rules/catan/types.ts';
 import { buildDevelopmentDeck } from '../../../rules/catan/development.ts';
 import {
@@ -145,16 +162,16 @@ const RAIL_MUTED = RAIL_MUTED_FG;
 const BANK_CARDS = RESOURCE_ORDER.length + 1;
 // Exported so the renderer and camera can inset the 3D viewport by exactly this much while the
 // rail is open — the rail participates in the layout rather than painting over the scene.
-// The panel background runs flush to the terminal edge (RAIL_PAD_R is 0, so no translucent strip
+// The panel background runs flush to the terminal edge (SIDEBAR_PAD_R is 0, so no translucent strip
 // shows the scene through it); the body carries its own right inset so text is not jammed against
 // that edge. Width is set by the one bank row plus all three insets.
 const BODY_PAD_R = 2;
-export const CATAN_RAIL_W = BANK_CARDS * CARD_W + (BANK_CARDS - 1) + RAIL_PAD_L + RAIL_PAD_R + BODY_PAD_R;
+export const CATAN_RAIL_W = BANK_CARDS * CARD_W + (BANK_CARDS - 1) + SIDEBAR_PAD_L + SIDEBAR_PAD_R + BODY_PAD_R;
 const RAIL_W = CATAN_RAIL_W;
 // The panel's full content width. The history ScrollBox spans all of it so its scrollbar lands on
 // the panel's last column — flush, the way the chess chat's does. Everything else is inset from
 // that edge by BODY_PAD_R so text is not jammed against it.
-const CONTENT_W = RAIL_W - RAIL_PAD_L - RAIL_PAD_R;
+const CONTENT_W = RAIL_W - SIDEBAR_PAD_L - SIDEBAR_PAD_R;
 const RAIL_INNER = CONTENT_W - BODY_PAD_R;
 // Rows stop two columns short of the ScrollBox: one for the bar, one blank beside it, so text can
 // never sit flush against the bar. Mirrors the chat's SCROLLBAR_W + RIGHT_GAP reservation.
@@ -171,7 +188,7 @@ const HISTORY_MIN_H = 4;
 function sidebarFixedH(playerCount: number): number {
   const rows = 1 /* history label */ + 1 /* bank label */ + CARD_H /* bank row */ + 1 /* players header */ + playerCount;
   const gaps = 4 + playerCount; // one under every body child except the last
-  return RAIL_PAD_V * 2 + RAIL_HEADER_H + rows + gaps;
+  return SIDEBAR_PAD_V * 2 + SIDEBAR_HEADER_H + rows + gaps;
 }
 
 function catanHistoryHeight(region: LayoutBox, playerCount: number): number {
@@ -651,7 +668,7 @@ function sidebar(view: CatanCardsView, onClose: () => void): Node {
     ...players.map((p) => inset(playerRow(p))),
   ]);
   return Box({ position: 'absolute', top: 0, right: 0, bottom: 0, width: RAIL_W, overflow: 'hidden' }, [
-    RailPanel({ width: RAIL_W, height: { pct: 100 }, title: 'sidebar', closeId: 'catan-sidebar-close', onClose }, [body]),
+    Sidebar({ width: RAIL_W, height: { pct: 100 }, title: 'sidebar', closeId: 'catan-sidebar-close', onClose, background: uiChromeBg(0.9), titleColor: ARCADE_CHROME_TEXT.title }, [body]),
   ]);
 }
 

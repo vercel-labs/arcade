@@ -39,6 +39,12 @@ export function uiChromeBg(alpha: number): RGBA {
   return [UI_CHROME_BG[0], UI_CHROME_BG[1], UI_CHROME_BG[2], alpha];
 }
 
+// Body copy inside a Sidebar. These belong to the content the games put in the
+// panel, not to the panel chrome, so they live app-side rather than travelling
+// with the Sidebar component.
+export const RAIL_TEXT_FG: RGB = ARCADE_CHROME_TEXT.body;
+export const RAIL_MUTED_FG: RGB = ARCADE_CHROME_TEXT.muted; // events, secondary stats
+
 export const UI_CHROME_PILL: Style = {
   padding: [0, 1],
   background: 'surfaceChrome',

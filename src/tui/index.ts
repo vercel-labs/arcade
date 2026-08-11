@@ -12,6 +12,14 @@ export {
 } from './button.ts';
 export { Modal } from './components/modal.ts';
 export { Dialog, CloseButton, type DialogOpts } from './components/dialog.ts';
+export {
+  Sidebar,
+  SIDEBAR_HEADER_H,
+  SIDEBAR_PAD_L,
+  SIDEBAR_PAD_R,
+  SIDEBAR_PAD_V,
+  type SidebarOpts,
+} from './components/sidebar.ts';
 export { ASCIIFont, asciiFontLines } from './components/asciifont.ts';
 export { FrameBuffer, type FrameDraw } from './components/framebuffer.ts';
 export {
