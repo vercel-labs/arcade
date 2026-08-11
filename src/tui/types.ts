@@ -80,6 +80,9 @@ export interface PointerHit {
   w: number;
   h: number;
   wheel?: -1 | 1; // for type 'wheel': -1 = up, +1 = down
+  // SGR button held: 0 = left, 1 = middle, 2 = right. A drag reports the button
+  // its down captured with. Callers that don't forward one are read as left.
+  button?: number;
 }
 
 export interface Node {

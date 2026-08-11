@@ -51,6 +51,8 @@ export class Screen {
   // The node that received the last pointer 'down' and has onMouse — drags route
   // here (pointer capture) until the next up.
   private captured: Node | null = null;
+  // Button held since the last down, replayed onto the drags that follow it.
+  private pressButton = 0;
   // Every expanded node is associated with its persistent component owner. The
   // map includes floating overlay descendants, so their clicks still count as
   // inside the component even when they extend beyond the field's layout box.
@@ -216,9 +218,12 @@ export class Screen {
   // Mouse press (1-based). Focuses + fires the hit node's onClick (the old bar
   // also acted on `down`). If the node has onMouse it also gets a 'down' (with
   // local coords) and captures the pointer, so subsequent drag()s route to it.
+  // `button` is the SGR button (0 = left, 2 = right); it reaches onMouse only —
+  // onClick stays button-agnostic, so every existing pill fires on any button.
   // Returns the hit node, or null if the press missed.
-  pointerDown(x1: number, y1: number): Node | null {
+  pointerDown(x1: number, y1: number, button = 0): Node | null {
     this.captured = null;
+    this.pressButton = button;
     if (!this.root) return null;
 
     const x = x1 - 1;
@@ -300,7 +305,7 @@ export class Screen {
   // Build a PointerHit in coordinates local to node n's layout box.
   private local(n: Node, x1: number, y1: number, type: 'down' | 'drag' | 'wheel'): PointerHit {
     const lb = n.layout!;
-    return { type, x: x1 - 1 - lb.x, y: y1 - 1 - lb.y, w: lb.w, h: lb.h };
+    return { type, x: x1 - 1 - lb.x, y: y1 - 1 - lb.y, w: lb.w, h: lb.h, button: this.pressButton };
   }
 
   // Mouse release: drop the pressed highlight + release the capture.

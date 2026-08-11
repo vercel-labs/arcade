@@ -27,4 +27,4 @@ export { Renderer, type FrameFn, type RendererOpts } from './renderer.ts';
 export { layout } from './layout.ts';
 export { paint, type PaintState } from './paint.ts';
 export { defaultTheme, resolveColor, type Theme, type ColorToken } from './theme.ts';
-export type { Node, Style, Dimension, LayoutBox, BorderStyle } from './types.ts';
+export type { Node, Style, Dimension, LayoutBox, BorderStyle, PointerHit } from './types.ts';
