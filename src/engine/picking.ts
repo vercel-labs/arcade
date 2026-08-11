@@ -53,6 +53,31 @@ export interface ProjectedSegmentDistance {
   t: number;
 }
 
+export interface ProjectedShapeHit {
+  distance: number;
+  radius: number;
+  /** Distance normalized by the projected radius; values <= 1 are inside the shape. */
+  score: number;
+}
+
+export interface ViewportPoint {
+  x: number;
+  y: number;
+}
+
+/** Convert normalized projection coordinates into top-left-origin viewport coordinates. */
+export function projectedPointToViewport(
+  point: ProjectedPoint,
+  width: number,
+  height: number,
+): ViewportPoint | null {
+  if (point.behind) return null;
+  return {
+    x: (point.x * 0.5 + 0.5) * width,
+    y: (1 - (point.y * 0.5 + 0.5)) * height,
+  };
+}
+
 /** Project a world point into normalized device coordinates. */
 export function projectPoint(viewProjection: Mat4, point: Vec3): ProjectedPoint {
   const clip = mat4MulVec4(viewProjection, { ...point, w: 1 });
@@ -108,6 +133,47 @@ export function projectedSegmentDistance(
     ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSq))
     : 0;
   return { distance: Math.hypot(px - (ax + dx * t), py - (ay + dy * t)), t };
+}
+
+/** Largest projected screen-space radius represented by one or more world-space offsets. */
+function projectedMetricRadius(
+  raycaster: Raycaster,
+  center: Vec3,
+  offsets: readonly Vec3[],
+  minimum = 0,
+): number {
+  const projectedCenter = raycaster.project(center);
+  if (projectedCenter.behind) return minimum;
+  let radius = minimum;
+  for (const offset of offsets) {
+    const edge = raycaster.project(add3(center, offset));
+    if (edge.behind) continue;
+    radius = Math.max(
+      radius,
+      Math.hypot((edge.x - projectedCenter.x) * raycaster.aspect, edge.y - projectedCenter.y),
+    );
+  }
+  return radius;
+}
+
+/**
+ * Hit-test a projected world-space capsule. The segment follows the visible object's long axis;
+ * radius offsets describe its constant screen-space thickness at the authored start endpoint.
+ */
+function projectedCapsuleHit(
+  raycaster: Raycaster,
+  start: Vec3,
+  end: Vec3,
+  radiusOffsets: readonly Vec3[],
+  minimumRadius = 0,
+): ProjectedShapeHit {
+  const segment = raycaster.projectedSegmentDistance(start, end, true);
+  // Treat thickness as constant across the projected segment, sampled at its authored start.
+  // Besides matching the established Catan hit areas, this avoids a perspective-near endpoint
+  // inflating the complete capsule into an overly grabby target at close camera distances.
+  const radius = projectedMetricRadius(raycaster, start, radiusOffsets, minimumRadius);
+  const distance = segment?.distance ?? Infinity;
+  return { distance, radius, score: radius > 0 ? distance / radius : Infinity };
 }
 
 /**
@@ -166,5 +232,14 @@ export class Raycaster {
       this.aspect,
       aspectCorrect,
     );
+  }
+
+  projectedCapsule(
+    start: Vec3,
+    end: Vec3,
+    radiusOffsets: readonly Vec3[],
+    minimumRadius = 0,
+  ): ProjectedShapeHit {
+    return projectedCapsuleHit(this, start, end, radiusOffsets, minimumRadius);
   }
 }

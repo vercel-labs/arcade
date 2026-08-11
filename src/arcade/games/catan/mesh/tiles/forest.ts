@@ -1,6 +1,7 @@
 // The forest tile: pines on rolling ground, with felled trunks and a cut woodpile.
 
 import { mulberry32 } from '../../../../scenes/wisp.ts';
+import { ResourceCache } from '../../../../../engine/index.ts';
 import { surfaceY, tileBase } from '../base.ts';
 import { build, type Build, type RGB } from '../build.ts';
 import { pine, PINE_GREENS } from '../nature.ts';
@@ -16,15 +17,9 @@ interface ForestPineSpec {
   treeSeed: number;
 }
 
-const animationLayouts = new Map<number, readonly ForestPineSpec[]>();
-const MAX_ANIMATION_LAYOUTS = 24;
+const animationLayouts = new ResourceCache<number, readonly ForestPineSpec[]>({ maxEntries: 24 });
 
 function rememberAnimationLayout(seed: number, pines: readonly ForestPineSpec[]): readonly ForestPineSpec[] {
-  if (!animationLayouts.has(seed) && animationLayouts.size >= MAX_ANIMATION_LAYOUTS) {
-    const oldest = animationLayouts.keys().next().value;
-    if (oldest !== undefined) animationLayouts.delete(oldest);
-  }
-  animationLayouts.delete(seed);
   animationLayouts.set(seed, pines);
   return pines;
 }

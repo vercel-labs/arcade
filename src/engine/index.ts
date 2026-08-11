@@ -21,10 +21,13 @@ export {
   intersectRayPlane,
   projectPoint,
   projectedDiscHit,
+  projectedPointToViewport,
   projectedSegmentDistance,
   Raycaster,
   rayFromCamera,
   type ProjectedPoint,
+  type ProjectedShapeHit,
+  type ViewportPoint,
   type ProjectedSegmentDistance,
   type Ray,
 } from './picking.ts';
@@ -45,7 +48,12 @@ export {
   type TweenOptions,
 } from './animation.ts';
 export { GeometryBuilder, type VertexOptions } from './geometry.ts';
-export { ResourceCache, type ResourceDisposer, type ResourceFactory } from './resources.ts';
+export {
+  ResourceCache,
+  type ResourceCacheOptions,
+  type ResourceDisposer,
+  type ResourceFactory,
+} from './resources.ts';
 export {
   BufferAttribute,
   BufferGeometry,

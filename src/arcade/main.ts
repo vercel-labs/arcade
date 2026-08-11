@@ -38,7 +38,6 @@ import { buildShowcase, mountShowcase } from './scenes/ui-showcase.ts';
 import { buildChessGameRoot, chessMoveChat, type Commentary, type MatchSide, mountChessHud, movesToPgn, refreshMoveHistory, shortModel } from './games/chess/hud.ts';
 import { creatorTint } from './scenes/wisp.ts';
 import { CHAT_WIDTH, clearChat, pushChatMessage } from './games/chess/chat.ts';
-import { insetRightSceneViewport, pointerNdcInSceneViewport } from './scene-viewport.ts';
 import { buildMatchSetup, buildSwapSetup, chessPreviewSides, matchSetupSelection, mountMatchSetup, mountSwapSetup, openSwapSetup, setMatchSetupChanged, swapSetupSelection } from './match/setup.ts';
 import { copyToClipboard } from '../platform/clipboard.ts';
 import { checkForUpdate, refreshLatestInBackground, type UpdateInfo } from './update.ts';
@@ -46,7 +45,7 @@ import { BLACK, type Color, WHITE } from '../rules/chess/types.ts';
 import { evaluate } from '../rules/chess/eval.ts';
 import type { ChessResult } from '../rules/chess/chess.ts';
 import type { RGB, RGBA } from '../engine/index.ts';
-import { Box, Button, Renderer, Screen, type LayoutBox, type Node } from '../tui/index.ts';
+import { Box, Button, insetSceneViewport, pointerNdcInSceneViewport, Renderer, Screen, type LayoutBox, type Node } from '../tui/index.ts';
 import { UI_CHROME_PILL } from './theme.ts';
 import { installKeymap } from './shell/keybindings.ts';
 import { buildTeamSwitch, markSwitchSucceeded, mountTeamSwitch, setTeamSwitchHandlers, setTeamSwitchTeams, type TeamSwitchView } from './shell/team-switch.ts';
@@ -67,6 +66,7 @@ const MAX_STEP = 0.1;
 // Supersample factor for the prism screen (antialiasing + sub-cell detail
 // for shape-matched glyph mode).
 const SS = 3;
+const SCENE_CELL_PIXEL_ASPECT = 2;
 
 const MODE_ORDER: RenderMode[] = ['ascii', 'pixels'];
 const COLOR_ORDER: TerminalColorMode[] = ['truecolor', '256-color'];
@@ -350,7 +350,7 @@ function activeSceneViewport(): LayoutBox {
             mode === 'catan' && catanDriver.state() !== null && catanRailVisible(cols, rows)
             ? CATAN_RAIL_W
             : 0;
-  return insetRightSceneViewport(cols, rows, reservedRight);
+  return insetSceneViewport(cols, rows, { right: reservedRight });
 }
 
 // The engine target is pixel-sized while the viewport is terminal-cell-sized.
@@ -358,7 +358,7 @@ function activeSceneViewport(): LayoutBox {
 function ensureSceneTarget(): void {
   const viewport = activeSceneViewport();
   const width = viewport.w * SS;
-  const height = viewport.h * 2 * SS;
+  const height = viewport.h * SCENE_CELL_PIXEL_ASPECT * SS;
   if (target.width === width && target.height === height) return;
   target = new RenderTarget(width, height);
   display = undefined;
@@ -2066,7 +2066,7 @@ function presentSceneInto(surf: Surface, withBloom = true, hybridShadow = false)
 // Maps a 1-based terminal mouse cell to a normalized device coordinate (−1..1,
 // +y up) plus the aspect the scene renders at — for ray-picking the board.
 function pointerNdc(x: number, y: number): { ndcX: number; ndcY: number; aspect: number } {
-  return pointerNdcInSceneViewport(x, y, activeSceneViewport());
+  return pointerNdcInSceneViewport(x, y, activeSceneViewport(), SCENE_CELL_PIXEL_ASPECT);
 }
 
 function onKeyImpl(ev: KeyEvent): void {

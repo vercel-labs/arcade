@@ -19,7 +19,6 @@ import { installKeymap } from '../arcade/shell/keybindings.ts';
 import { buildShowcase, mountShowcase } from '../arcade/scenes/ui-showcase.ts';
 import { buildChessGameRoot, chessMoveChat, mountChessHud, refreshMoveHistory } from '../arcade/games/chess/hud.ts';
 import { CHAT_WIDTH, type ChatMessage, clearChat, pushChatMessage } from '../arcade/games/chess/chat.ts';
-import { insetRightSceneViewport } from '../arcade/scene-viewport.ts';
 import { evaluate } from '../rules/chess/eval.ts';
 import { buildMatchSetup, chessPreviewSides, mountMatchSetup } from '../arcade/match/setup.ts';
 import { creators } from '../arcade/match/models.ts';
@@ -41,7 +40,7 @@ import { HoldemState } from '../rules/poker/holdem.ts';
 import { mulberry32 } from '../arcade/scenes/wisp.ts';
 import { RANK_LABELS, type Suit, SUIT_LETTERS } from '../rules/poker/cards.ts';
 import type { Color } from '../rules/chess/types.ts';
-import { Box, Button, Dropdown, layout, paint, Screen, type PaintState } from '../tui/index.ts';
+import { Box, Button, Dropdown, insetSceneViewport, layout, paint, Screen, type PaintState } from '../tui/index.ts';
 import { buildTeamSwitch, markSwitchSucceeded, mountTeamSwitch, setTeamSwitchTeams } from '../arcade/shell/team-switch.ts';
 import { UI_CHROME_PILL } from '../arcade/theme.ts';
 
@@ -686,7 +685,7 @@ function pokerSnapshot(): void {
   // cinematic), then step into its bird's-eye hold before compositing.
   if (args.includes('cine')) {
     const chatOpen = args.includes('chat');
-    const sceneViewport = insetRightSceneViewport(cols, rows, chatOpen ? CHAT_WIDTH : 0);
+    const sceneViewport = insetSceneViewport(cols, rows, { right: chatOpen ? CHAT_WIDTH : 0 });
     const buf = new RenderTarget(sceneViewport.w * SS, sceneViewport.h * 2 * SS);
     let tc = 0.05;
     const stepc = (): void => {
@@ -894,7 +893,7 @@ function pokerSnapshot(): void {
     mountPokerGameHud(screen);
     const st = state;
     const chatOpen = !args.includes('chatclosed');
-    const sceneViewport = insetRightSceneViewport(cols, rows, chatOpen ? CHAT_WIDTH : 0);
+    const sceneViewport = insetSceneViewport(cols, rows, { right: chatOpen ? CHAT_WIDTH : 0 });
     const hudTarget = chatOpen ? new RenderTarget(sceneViewport.w * SS, sceneViewport.h * 2 * SS) : target;
     // Re-render once at the actual visible aspect so the camera and scene match
     // the left-side viewport instead of continuing underneath the chat rail.
@@ -1310,7 +1309,7 @@ function chessOverlaySnapshot(): void {
     const m = cg.state().actionFromString(san);
     if (m) cg.state().applyAction(m);
   }
-  const sceneViewport = insetRightSceneViewport(cols, rows, chatVisible ? CHAT_WIDTH : 0);
+  const sceneViewport = insetSceneViewport(cols, rows, { right: chatVisible ? CHAT_WIDTH : 0 });
   const target = new RenderTarget(sceneViewport.w * SS, sceneViewport.h * 2 * SS);
   cg.renderScene(target, t);
 

@@ -206,6 +206,57 @@ test('ResourceCache creates once and disposes replaced, deleted, and cleared res
   assert.equal(cache.size, 0);
 });
 
+test('ResourceCache evicts the least-recently-used entry at a bounded capacity', () => {
+  const disposed: string[] = [];
+  const cache = new ResourceCache<string, { id: string }>({
+    maxEntries: 2,
+    dispose: (value, key) => disposed.push(`${key}:${value.id}`),
+  });
+  cache.set('a', { id: 'A' }).set('b', { id: 'B' });
+  assert.equal(cache.get('a')?.id, 'A'); // a becomes newer than b
+  cache.set('c', { id: 'C' });
+  assert.equal(cache.has('a'), true);
+  assert.equal(cache.has('b'), false);
+  assert.equal(cache.has('c'), true);
+  assert.deepEqual(disposed, ['b:B']);
+});
+
+test('ResourceCache validates bounded capacity', () => {
+  assert.throws(() => new ResourceCache({ maxEntries: 0 }), /positive integer/);
+});
+
+test('ResourceCache bounds caches whose key type includes undefined', () => {
+  const disposed: Array<number | undefined> = [];
+  const cache = new ResourceCache<number | undefined, string>({
+    maxEntries: 1,
+    dispose: (_value, key) => disposed.push(key),
+  });
+  cache.set(undefined, 'first').set(2, 'second');
+  assert.equal(cache.size, 1);
+  assert.equal(cache.has(undefined), false);
+  assert.deepEqual(disposed, [undefined]);
+});
+
+test('ResourceCache snapshot iterators remain finite while reads update bounded recency', () => {
+  const cache = new ResourceCache<string, number>({ maxEntries: 2 });
+  cache.set('a', 1).set('b', 2);
+  const visited: string[] = [];
+  for (const key of cache.keys()) {
+    visited.push(key);
+    cache.get(key);
+  }
+  assert.deepEqual(visited, ['a', 'b']);
+});
+
+test('unbounded ResourceCache reads preserve insertion order', () => {
+  const cache = new ResourceCache<string, number>();
+  cache.set('a', 1).set('b', 2);
+  cache.get('a');
+  cache.set('a', 3);
+  assert.deepEqual([...cache.keys()], ['a', 'b']);
+  assert.deepEqual([...cache.values()], [3, 2]);
+});
+
 test('shared camera picking intersects the board plane', () => {
   const ray = rayFromCamera(camera, 0, 0, 16 / 9);
   const hit = intersectRayPlane(ray, { x: 0, y: 1, z: 0 });
@@ -238,6 +289,36 @@ test('shared camera picking intersects the board plane', () => {
     raycaster.projectedSegmentDistance({ x: -1, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, true),
     { distance: 0, t: 0.5 },
   );
+
+  const capsule = raycaster.projectedCapsule(
+    { x: -1, y: 0, z: 0 },
+    { x: 1, y: 0, z: 0 },
+    [{ x: 0, y: 0.25, z: 0 }],
+  );
+  assert.equal(capsule.distance, 0);
+  assert.equal(capsule.score, 0);
+  assert.ok(capsule.radius > 0);
+
+  const closeCamera: Camera = {
+    eye: { x: 0, y: 0, z: 3 },
+    target: { x: 0, y: 0, z: 0 },
+    up: { x: 0, y: 1, z: 0 },
+    fovy: Math.PI / 3,
+    near: 0.05,
+    far: 100,
+  };
+  const closeRaycaster = new Raycaster().setFromCamera(closeCamera, 0, 0, 1);
+  const farToNear = closeRaycaster.projectedCapsule(
+    { x: 0, y: 0, z: -1 },
+    { x: 0, y: 0, z: 1 },
+    [{ x: 0.1, y: 0, z: 0 }],
+  );
+  const nearToFar = closeRaycaster.projectedCapsule(
+    { x: 0, y: 0, z: 1 },
+    { x: 0, y: 0, z: -1 },
+    [{ x: 0.1, y: 0, z: 0 }],
+  );
+  assert.ok(farToNear.radius < nearToFar.radius, 'capsule thickness is sampled at its authored start');
 });
 
 test('OrbitCamera snapshots one pose with explicit projection settings', () => {

@@ -2,7 +2,7 @@
 // which terrain tile the scene shows, plus the standard bottom bar. Mirrors the poker cards
 // HUD's shape — persistent component instances mounted via Slot, rebuilt each frame.
 
-import { Box, Button, Dialog, Dropdown, Field, FilledButton, type LayoutBox, Modal, type Node, RoundedButton, type Screen, Slot, Text } from '../../../tui/index.ts';
+import { Box, Button, Dialog, Dropdown, Field, FilledButton, type LayoutBox, Modal, type Node, ProjectedAnchor, RoundedButton, type Screen, Slot, Text } from '../../../tui/index.ts';
 import { stringWidth } from '../../../engine/index.ts';
 import { type PlayerColor, type Terrain } from '../../../rules/catan/types.ts';
 import { type BoardToken, type CatanMode, type SailLabel } from './tile-scene.ts';
@@ -39,18 +39,17 @@ function flyingCard(f: FlyingResource): Node {
   // otherwise leave a column of fill hanging off the chip's edge.
   const width = stringWidth(emoji) + FLIGHT_PAD_X * 2;
   // Centered on the flight point, the way the number chips center on their hex.
-  const left = f.col - Math.floor(width / 2);
   // Half behind the card: fill painted as a foreground half block rather than a cell background,
   // which is the only way to colour part of a cell. The glyph goes — there is no half-height emoji
   // — so the last thing seen is a thin bar of the card's own colour meeting its edge. The cell's
   // other half is given the panel's own field, since this row is always the padding strip just
   // above the cards; left unset it would inherit black and punch a notch in the panel.
   if (f.sinking) {
-    return Box({ position: 'absolute', top: f.row, left, width, height: 1, background: uiChromeBg(0.9) }, [
+    return ProjectedAnchor({ col: f.col, row: f.row, width, style: { background: uiChromeBg(0.9) } }, [
       Text({ text: FLIGHT_SINK_GLYPH.repeat(width), style: { color: fill } }),
     ]);
   }
-  return Box({ position: 'absolute', top: f.row, left, width, height: 1, background: fill, padding: [0, FLIGHT_PAD_X] }, [
+  return ProjectedAnchor({ col: f.col, row: f.row, width, style: { background: fill, padding: [0, FLIGHT_PAD_X] } }, [
     Text({ text: emoji }),
   ]);
 }
@@ -58,8 +57,9 @@ function flyingCard(f: FlyingResource): Node {
 function tokenChip(tk: BoardToken): Node {
   const label = `${tk.num}`;
   const pips = pipLabel(tk.pips);
+  const showPips = tk.showPips && pips.length > 0;
   const labelWidth = stringWidth(label);
-  const pipWidth = tk.showPips ? stringWidth(pips) : 0;
+  const pipWidth = showPips ? stringWidth(pips) : 0;
   const contentWidth = Math.max(labelWidth, pipWidth);
   const chipWidth = contentWidth + 2;
   // Center each row as closely as whole terminal cells allow. floor() deliberately picks the
@@ -68,10 +68,10 @@ function tokenChip(tk: BoardToken): Node {
   const pipOffset = Math.floor((contentWidth - pipWidth) / 2);
   const bg = tk.blocked ? CHIP_BLOCKED : tk.hot ? CHIP_GOLD : CHIP_BG;
   const ink = tk.blocked ? CHIP_BLOCKED_INK : tk.hot ? CHIP_GOLD_INK : tk.red ? CHIP_RED : CHIP_INK;
-  const top = tk.row - (tk.showPips ? 1 : 0);
-  return Box({ position: 'absolute', top, left: tk.col - Math.floor(chipWidth / 2), width: chipWidth, flexDirection: 'column', alignItems: 'start', gap: 0, background: bg, padding: [0, 1] }, [
+  const chipHeight = showPips ? 2 : 1;
+  return ProjectedAnchor({ col: tk.col, row: tk.row, width: chipWidth, height: chipHeight, alignY: 'end', style: { flexDirection: 'column', alignItems: 'start', gap: 0, background: bg, padding: [0, 1] } }, [
     Text({ text: label, style: { color: ink, bold: true, margin: [0, 0, 0, labelOffset] } }),
-    ...(tk.showPips && pips ? [Text({ text: pips, style: { color: ink, margin: [0, 0, 0, pipOffset] } })] : []),
+    ...(showPips ? [Text({ text: pips, style: { color: ink, margin: [0, 0, 0, pipOffset] } })] : []),
   ]);
 }
 
@@ -82,7 +82,8 @@ function tokenChip(tk: BoardToken): Node {
 // horizontally on it — the label's width varies with the icon, hence the measure.
 function sailChip(s: SailLabel): Node {
   const label = s.icon === '?' ? s.ratio : s.icon + ' ' + s.ratio;
-  return Box({ position: 'absolute', top: s.row, left: s.col - Math.floor((stringWidth(label) + 2) / 2), background: CHIP_BG, padding: [0, 1] }, [
+  const width = stringWidth(label) + 2;
+  return ProjectedAnchor({ col: s.col, row: s.row, width, style: { background: CHIP_BG, padding: [0, 1] } }, [
     Text({ text: label, style: { color: CHIP_INK, bold: true } }),
   ]);
 }

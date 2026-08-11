@@ -1,6 +1,7 @@
 // The wheat (fields) tile, plus the small overlay that animates its windmill rotor.
 
 import { mulberry32 } from '../../../../../scenes/wisp.ts';
+import { ResourceCache } from '../../../../../../engine/index.ts';
 import { irregularGround, rimAndWall, surfaceY } from '../../base.ts';
 import { build, type Build, type RGB, shade } from '../../build.ts';
 import { harvestedRows, prepareStandingCanopy, standingCanopy, standingWheat, type StandingCanopyCell } from './crop.ts';
@@ -9,15 +10,13 @@ import { farmBush, farmShack, farmWindmillBody, farmWindmillRotor } from './prop
 import { sampleWind, type WindOrigin } from '../wind.ts';
 
 const WHEAT_CANOPY: RGB = [255, 221, 63];
-const MAX_ANIMATION_RECIPES = 24;
-
 interface FieldsAnimationRecipe {
   layout: FieldLayout;
   canopy: readonly StandingCanopyCell[];
   windmill: { x: number; z: number; y: number };
 }
 
-const animationRecipes = new Map<number, FieldsAnimationRecipe>();
+const animationRecipes = new ResourceCache<number, FieldsAnimationRecipe>({ maxEntries: 24 });
 
 function rememberAnimationRecipe(
   seed: number,
@@ -30,11 +29,6 @@ function rememberAnimationRecipe(
     canopy: prepareStandingCanopy(layout, soilY),
     windmill: { ...windmill, y: soilY(windmill.x, windmill.z) + 0.014 },
   };
-  if (!animationRecipes.has(seed) && animationRecipes.size >= MAX_ANIMATION_RECIPES) {
-    const oldest = animationRecipes.keys().next().value;
-    if (oldest !== undefined) animationRecipes.delete(oldest);
-  }
-  animationRecipes.delete(seed);
   animationRecipes.set(seed, recipe);
   return recipe;
 }

@@ -26,6 +26,7 @@ import {
   ObjectPool,
   OrbitCamera,
   projectPoint,
+  projectedPointToViewport,
   Raycaster,
   rasterize,
   type RenderTarget,
@@ -205,10 +206,9 @@ function projectedHexFootprint(vp: Mat4, x: number, z: number, cols: number, row
       z: z + Math.sin(angle),
     });
     if (point.behind) return 0;
-    points.push({
-      col: (point.x * 0.5 + 0.5) * cols,
-      row: (1 - (point.y * 0.5 + 0.5)) * rows,
-    });
+    const viewport = projectedPointToViewport(point, cols, rows);
+    if (!viewport) return 0;
+    points.push({ col: viewport.x, row: viewport.y });
   }
   let twiceArea = 0;
   for (let corner = 0; corner < points.length; corner++) {
@@ -882,7 +882,8 @@ export class TileScene {
       const { q, r } = HEX_COORDS[h];
       const { x, z } = hexWorld(q, r);
       const point = projectPoint(vp, { x, y: 0.14, z });
-      if (point.behind) continue;
+      const viewport = projectedPointToViewport(point, cols, rows);
+      if (!viewport) continue;
       // During the reveal each chip spins without pips until its ring's settle time. Once the
       // real value locks, its actual pips grow outward from one central dot in short layers.
       const settleAt = REVEAL_BASE + hexRing(q, r) * REVEAL_STEP;
@@ -894,8 +895,8 @@ export class TileScene {
         ? finalPips
         : revealedPipCount(finalPips, pipElapsed);
       out.push({
-        col: Math.round((point.x * 0.5 + 0.5) * cols),
-        row: Math.round((1 - (point.y * 0.5 + 0.5)) * rows),
+        col: Math.round(viewport.x),
+        row: Math.round(viewport.y),
         num,
         pips: visiblePips,
         showPips: this.tokenPipDetailVisible && visiblePips > 0,
@@ -916,13 +917,14 @@ export class TileScene {
     const camera = cam.toCamera({ fovy: FOVY, near: 0.05, far: 100 });
     const vp = cameraMatrices(camera, cols / (rows * 2)).viewProjection;
     const point = projectPoint(vp, PORT_SAIL_CENTER);
-    if (point.behind) return null;
+    const viewport = projectedPointToViewport(point, cols, rows);
+    if (!viewport) return null;
     const info = PORT_SAIL_INFO[this.portKind];
     // Return the sail's midpoint cell (col, row). Centering the chip on it is the HUD's job, since
     // only the HUD knows the chip's width.
     return {
-      col: Math.round((point.x * 0.5 + 0.5) * cols),
-      row: Math.round((1 - (point.y * 0.5 + 0.5)) * rows),
+      col: Math.round(viewport.x),
+      row: Math.round(viewport.y),
       ratio: info.ratio,
       icon: info.icon,
     };
@@ -967,11 +969,12 @@ export class TileScene {
     const out: SailLabel[] = [];
     for (const harbor of this.harbors) {
       const point = projectPoint(vp, harbor.sailCenter);
-      if (point.behind) continue;
+      const viewport = projectedPointToViewport(point, cols, rows);
+      if (!viewport) continue;
       const info = PORT_SAIL_INFO[harbor.kind];
       out.push({
-        col: Math.round((point.x * 0.5 + 0.5) * cols),
-        row: Math.round((1 - (point.y * 0.5 + 0.5)) * rows),
+        col: Math.round(viewport.x),
+        row: Math.round(viewport.y),
         ratio: info.ratio,
         icon: info.icon,
       });

@@ -1,4 +1,4 @@
-import { type Raycaster, type Vec3 } from '../../../../engine/index.ts';
+import { type Raycaster } from '../../../../engine/index.ts';
 import { NUM_EDGES, NUM_NODES } from '../../../../rules/catan/board-topology.ts';
 import {
   BOARD_BUILDING_RADIUS,
@@ -25,13 +25,6 @@ export type BuildingAtNode = (node: number) => { city: boolean } | undefined;
 const NODE_MIN_RADIUS = 0.06;
 const ROAD_MIN_RADIUS = 0.028;
 
-function metricProjectedRadius(raycaster: Raycaster, center: Vec3, offset: Vec3): number {
-  const a = raycaster.project(center);
-  const b = raycaster.project({ x: center.x + offset.x, y: center.y + offset.y, z: center.z + offset.z });
-  if (a.behind || b.behind) return 0;
-  return Math.hypot((b.x - a.x) * raycaster.aspect, b.y - a.y);
-}
-
 function nodeMeasurement(raycaster: Raycaster, node: number, buildingAt: BuildingAtNode): BoardPickMeasurement {
   const p = NODE_XZ[node];
   const building = buildingAt(node);
@@ -40,14 +33,16 @@ function nodeMeasurement(raycaster: Raycaster, node: number, buildingAt: Buildin
   const height = building?.city ? BOARD_CITY_HEIGHT : BOARD_SETTLEMENT_HEIGHT;
   const base = { x: p.x, y: PROBE_Y, z: p.z };
   const top = { x: p.x, y: PROBE_Y + height, z: p.z };
-  const segment = raycaster.projectedSegmentDistance(base, top, true);
-  const projectedRadius = Math.max(
-    metricProjectedRadius(raycaster, base, { x: BOARD_BUILDING_RADIUS, y: 0, z: 0 }),
-    metricProjectedRadius(raycaster, base, { x: 0, y: 0, z: BOARD_BUILDING_RADIUS }),
+  const hit = raycaster.projectedCapsule(
+    base,
+    top,
+    [
+      { x: BOARD_BUILDING_RADIUS, y: 0, z: 0 },
+      { x: 0, y: 0, z: BOARD_BUILDING_RADIUS },
+    ],
+    NODE_MIN_RADIUS,
   );
-  const radius = Math.max(NODE_MIN_RADIUS, projectedRadius);
-  const distance = segment?.distance ?? Infinity;
-  return { kind: 'node', id: node, distance, radius, score: distance / radius };
+  return { kind: 'node', id: node, ...hit };
 }
 
 function roadMeasurement(raycaster: Raycaster, edge: number): BoardPickMeasurement {
@@ -59,16 +54,14 @@ function roadMeasurement(raycaster: Raycaster, edge: number): BoardPickMeasureme
   const dz = e.z1 - e.z0;
   const start = { x: mx - dx * half, y: PROBE_Y, z: mz - dz * half };
   const end = { x: mx + dx * half, y: PROBE_Y, z: mz + dz * half };
-  const segment = raycaster.projectedSegmentDistance(start, end, true);
   const length = Math.hypot(dx, dz) || 1;
   const side = {
     x: (-dz / length) * BOARD_ROAD_HALF_WIDTH,
     y: 0,
     z: (dx / length) * BOARD_ROAD_HALF_WIDTH,
   };
-  const radius = Math.max(ROAD_MIN_RADIUS, metricProjectedRadius(raycaster, start, side));
-  const distance = segment?.distance ?? Infinity;
-  return { kind: 'edge', id: edge, distance, radius, score: distance / radius };
+  const hit = raycaster.projectedCapsule(start, end, [side], ROAD_MIN_RADIUS);
+  return { kind: 'edge', id: edge, ...hit };
 }
 
 export function measureBoardTarget(
