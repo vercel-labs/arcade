@@ -92,8 +92,9 @@ export class CatanDriver {
   // Build the state + players and run the placement phase. Returns immediately; the loop
   // runs in the background and calls syncLive() as it progresses. `autoRun: false` sets the
   // session up without starting the loop — the snapshot tool drives placement itself so a
-  // still needs no model call. `rng` seeds the board so a snapshot lands the same hexes
-  // twice; live sessions leave it unset for a fresh board each game.
+  // still needs no model call. `rng` makes the session reproducible — it seeds everything the
+  // state draws from: the board layout, the dev-card deck, the dice, and the robber's steal.
+  // Live sessions leave it unset and keep Math.random.
   start(seats: CatanSeatSpec[], opts?: { autoRun?: boolean; rng?: () => number }): CatanState {
     this.stop();
     this.seats = seats.slice();
