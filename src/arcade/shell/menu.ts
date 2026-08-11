@@ -16,7 +16,7 @@ export interface MenuItem {
 const ALL_ITEMS: MenuItem[] = [
   { id: 'chess', title: 'Chess', enabled: true },
   { id: 'poker', title: 'Poker', enabled: true },
-  { id: 'catan', title: 'Catan', enabled: false },
+  { id: 'catan', title: 'Catan', enabled: true },
   { id: 'catan-test', title: 'Catan-Test', enabled: true, dev: true },
   { id: 'mahjong', title: 'Mahjong', enabled: false },
   { id: 'leaderboard', title: 'Leaderboard', enabled: false },

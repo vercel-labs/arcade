@@ -40,14 +40,15 @@ import {
 import { HEX_COORDS, NUM_HEXES } from '../../../rules/catan/board-topology.ts';
 import { type BoardOccupancy, canPlaceRoad, canPlaceSettlement } from '../../../rules/catan/placement.ts';
 import { type BoardSetup, generateBoard } from '../../../rules/catan/setup.ts';
-import { type PlayerColor, RED_NUMBERS, type Terrain, TOKEN_DOTS } from '../../../rules/catan/types.ts';
+import { type PlayerColor, RED_NUMBERS, type Resource, type Terrain, TOKEN_DOTS } from '../../../rules/catan/types.ts';
 import { mulberry32 } from '../../scenes/wisp.ts';
-import { animatedTileMesh, boardOverlayMesh, coastMesh, dieMesh, harborPiersMesh, hoverColorFor, type OverlaySpec, piecesMesh, PORT_SAIL_CENTER, type PortKind, portMesh, surfMesh, swashMesh, tileBackMesh, tileMesh } from './mesh/index.ts';
+import { animatedTileMesh, boardOverlayMesh, coastMesh, dieMesh, harborPiersMesh, hoverColorFor, type OverlaySpec, piecesMesh, PORT_SAIL_CENTER, type PortKind, portMesh, robberMarkerMesh, surfMesh, swashMesh, tileBackMesh, tileMesh } from './mesh/index.ts';
 import { catanPieceMaterial, type CatanPieceUniforms } from './mesh/piece-material.ts';
 import { EDGE_ENDS, hexRing, hexWorld, NODE_XZ } from './scene/board-layout.ts';
 import { DICE_BOX, DICE_EYE, DICE_FOVY, DICE_HOLD, DICE_LAND_TILT, DICE_POS, DICE_ROLL_DUR, DICE_STAGGER, DICE_TARGET, type Die, DIE_RIGHT, diceHeight, type DicePhase, diceViewport, faceAngles, freshDie, TAU } from './scene/dice.ts';
 import { type BoardHarborPose, boardHarborPoses } from './scene/harbors.ts';
 import { type BoardPickTarget, measureBoardTarget, pickBoardTarget } from './scene/placement-picking.ts';
+import { rollPayouts, rollYield } from './scene/production.ts';
 import { CATAN_WATER_RADIUS_X, CATAN_WATER_RADIUS_Z, catanWaterMesh } from './water.ts';
 
 const FOVY = (44 * Math.PI) / 180;
@@ -136,6 +137,10 @@ const TOKEN_PIP_HIDE_MIN_FOOTPRINT = 8.7;
 
 // Build-drop: a newly built/upgraded piece appears elevated over its spot and drops onto the
 // rim with a small settle (rather than popping in instantly).
+// How long the matching chips stay gold after the dice land. Outlasts DICE_HOLD so the result
+// survives the dice's own exit, then clears — a highlight that persisted until the next roll left
+// an idle board looking mid-turn.
+const DICE_HIGHLIGHT_HOLD = 3;
 const BUILD_DROP_DUR = 0.45; // seconds for the drop
 const BUILD_DROP_H = 1.2; // elevation above the rim the piece starts from (world units)
 
@@ -155,6 +160,7 @@ export interface BoardToken {
   showPips: boolean;
   red: boolean;
   hot: boolean;
+  blocked: boolean;
 }
 
 // A 2D chip overlaid on a port's sail (projected to a screen cell, like the hex number
@@ -273,6 +279,13 @@ export class TileScene {
   private terrain: Terrain = 'forest';
   private variant = 0; // per-tile seed: same style, different layout
   private robber = false; // show/hide the robber (tile mode)
+  // Board mode: where the robber actually stands. Seeded from the board's desert and then moved
+  // by a rolled 7, so production and the tile mesh both read this rather than board.robberHex.
+  private robberHex = -1;
+  // While moving the robber, the old piece remains baked into `robberHex`; hovering another
+  // legal tile draws a brighter preview robber there. The destination is committed only on click.
+  private robberGate: Set<number> | null = null;
+  private hoverHex: number | null = null;
   private modeName: CatanMode = 'tile';
   private boardSeed = 1; // regenerated board arrangement
   private board: BoardSetup | null = null;
@@ -289,7 +302,14 @@ export class TileScene {
   private dicePhase: DicePhase = 'idle';
   private readonly rollClock = new FrameClock();
   private rolledSum: number | null = null; // the last landed roll (lights matching chips); null until first roll
+  // Fired once per roll, the moment the dice come to rest and the sum is final. The controller
+  // uses it to pay out production; the scene itself does not care who is collecting.
+  onRollLanded: ((sum: number) => void) | null = null;
   // Board editor: placed pieces, the hovered vertex/edge, and the color new pieces get.
+  // Set while a real game owns the board arrangement; null while the editor generates its own.
+  private adoptedBoard: BoardSetup | null = null;
+  // Set while a caller has narrowed placement to an explicit legal set (see setPlacementGate).
+  private gate: { nodes: Set<number>; edges: Set<number> } | null = null;
   private buildings = new Map<number, { city: boolean; color: PlayerColor }>();
   private roads = new Map<number, PlayerColor>();
   private hoverNode: number | null = null;
@@ -369,6 +389,114 @@ export class TileScene {
     this.dirty = true;
   }
 
+  // ── externally-owned board + legal-target gate ──
+  // The board editor generates its own board from `boardSeed`. A real game's board belongs to
+  // the rules engine instead, so it hands the arrangement over here and the scene renders that
+  // rather than one of its own. Same `BoardSetup` type either way, so nothing downstream cares.
+  adoptBoard(setup: BoardSetup, animate: boolean): void {
+    this.adoptedBoard = setup;
+    this.regenerate(animate);
+  }
+
+  // Restrict which vertices/edges may be hovered and clicked. Null (the default, and what the
+  // catan-test editor keeps) means "anywhere the placement rules allow", so the editor stays
+  // free-form. A gate means the caller — the game — has already decided the legal set from the
+  // rules engine, and the scene stops applying geometry rules of its own.
+  setPlacementGate(gate: { nodes?: Iterable<number>; edges?: Iterable<number> } | null): void {
+    this.gate = gate ? { nodes: new Set(gate.nodes ?? []), edges: new Set(gate.edges ?? []) } : null;
+    // A hover left over from the previous gate would keep drawing a ghost on a spot that is no
+    // longer offered.
+    if (this.gate && !this.gateAllows(this.hoveredTarget())) this.setHoveredTarget(null);
+    this.dirty = true;
+  }
+
+  // Enter the tile-picking phase used by a rolled seven (and, in the real game, a knight).
+  // Callers may provide the rules engine's legal destinations; the test bed defaults to every
+  // tile except the robber's current one.
+  beginRobberMove(hexes?: Iterable<number>): void {
+    const candidates = hexes ?? Array.from({ length: NUM_HEXES }, (_, hex) => hex);
+    this.robberGate = new Set(Array.from(candidates).filter((hex) => hex >= 0 && hex < NUM_HEXES && hex !== this.robberHex));
+    this.hoverHex = null;
+    this.setHoveredTarget(null);
+    this.dirty = true;
+  }
+  cancelRobberMove(): void {
+    if (this.robberGate === null && this.hoverHex === null) return;
+    this.robberGate = null;
+    this.hoverHex = null;
+    this.dirty = true;
+  }
+  isMovingRobber(): boolean {
+    return this.robberGate !== null;
+  }
+  currentRobberHex(): number {
+    return this.robberHex;
+  }
+  terrainAtHex(hex: number): Terrain | null {
+    return this.board?.hexes[hex]?.terrain ?? null;
+  }
+  numberAtHex(hex: number): number | null {
+    return this.board?.hexes[hex]?.token ?? null;
+  }
+  // Direct preview is useful for keyboard focus and deterministic snapshots; pointer hover calls
+  // the same gate after resolving its world-space tile.
+  previewRobberHex(hex: number | null): void {
+    const next = hex !== null && this.robberGate?.has(hex) ? hex : null;
+    if (next === this.hoverHex) return;
+    this.hoverHex = next;
+    this.dirty = true;
+  }
+  moveRobberTo(hex: number): boolean {
+    if (!this.robberGate?.has(hex) || hex === this.robberHex) return false;
+    this.robberHex = hex;
+    this.robberGate = null;
+    this.hoverHex = null;
+    this.tokensDirty = true;
+    this.dirty = true;
+    return true;
+  }
+  // Synchronize a move that the rules engine already validated (AI or replay path).
+  syncRobberHex(hex: number): void {
+    if (hex < 0 || hex >= NUM_HEXES || hex === this.robberHex) {
+      this.cancelRobberMove();
+      return;
+    }
+    this.robberHex = hex;
+    this.robberGate = null;
+    this.hoverHex = null;
+    this.tokensDirty = true;
+    this.dirty = true;
+  }
+  private gateAllows(target: BoardPickTarget | null): boolean {
+    if (!target) return false;
+    if (!this.gate) return true;
+    return target.kind === 'node' ? this.gate.nodes.has(target.id) : this.gate.edges.has(target.id);
+  }
+  // Whether a target may receive a piece right now: inside the gate when one is set, otherwise
+  // whatever the free-placement rules allow.
+  private placeable(target: BoardPickTarget): boolean {
+    if (this.gate) return this.gateAllows(target);
+    return target.kind === 'node' ? canPlaceSettlement(target.id, this.occ()) : this.roadPlaceable(target.id);
+  }
+
+  // Put a piece down without a click — the path an AI seat's move takes. Plays the same drop
+  // the editor's own placement does, so a model's move and yours look identical.
+  placePiece(kind: 'building' | 'road', id: number, color: PlayerColor, city = false): void {
+    if (kind === 'building') this.buildings.set(id, { city, color });
+    else this.roads.set(id, color);
+    this.startDrop(kind, id);
+    this.dirty = true;
+  }
+  // Drop every placed piece (a new game on the same board).
+  clearPieces(): void {
+    this.buildings.clear();
+    this.roads.clear();
+    this.hoverNode = null;
+    this.hoverEdge = null;
+    this.cancelRobberMove();
+    this.dirty = true;
+  }
+
   // ── board editor: hover / place / edit ──
   // A read-only occupancy view over the editor's placed pieces, for the shared placement rules.
   private occ(): BoardOccupancy<PlayerColor> {
@@ -384,6 +512,25 @@ export class TileScene {
     const cam = this.cam();
     const camera = cam.toCamera({ fovy: FOVY, near: 0.05, far: 100 });
     return this.raycaster.setFromCamera(camera, ndcX, ndcY, this.lastAspect);
+  }
+  private robberHexAt(ndcX: number, ndcY: number): number | null {
+    if (!this.board || !this.robberGate) return null;
+    const hit = this.boardRaycaster(ndcX, ndcY).intersectPlane({ x: 0, y: 1, z: 0 }, 0.05);
+    if (!hit) return null;
+    const apothem = Math.sqrt(3) / 2;
+    let best: { hex: number; d2: number } | null = null;
+    for (const hex of this.robberGate) {
+      const coord = HEX_COORDS[hex];
+      const center = hexWorld(coord.q, coord.r);
+      const dx = Math.abs(hit.x - center.x);
+      const dz = Math.abs(hit.z - center.z);
+      // Point-in-flat-top-hex, inset just enough that a shared rim does not flicker between two
+      // destinations. The closest centre wins at the remaining exact boundaries.
+      if (dx > 0.98 || dz > apothem * 0.98 || Math.sqrt(3) * dx + dz > Math.sqrt(3) * 0.98) continue;
+      const d2 = dx * dx + dz * dz;
+      if (!best || d2 < best.d2) best = { hex, d2 };
+    }
+    return best?.hex ?? null;
   }
   private hoveredTarget(): BoardPickTarget | null {
     if (this.hoverNode !== null) return { kind: 'node', id: this.hoverNode };
@@ -404,8 +551,15 @@ export class TileScene {
   // doesn't flicker between neighbours as the mouse moves.
   hoverBoard(ndcX: number, ndcY: number): void {
     if (!isBoardMode(this.modeName) || this.placing || this.revealing) return;
+    if (this.robberGate) {
+      this.previewRobberHex(this.robberHexAt(ndcX, ndcY));
+      return;
+    }
     const raycaster = this.boardRaycaster(ndcX, ndcY);
-    const best = pickBoardTarget(raycaster, this.buildingAtNode);
+    const picked = pickBoardTarget(raycaster, this.buildingAtNode);
+    // With a gate set, a target outside the legal set is not a hover candidate at all — the
+    // cursor passes over it as if it were open water.
+    const best = picked && (!this.gate || this.gateAllows(picked)) ? picked : null;
     const current = this.hoveredTarget();
     const currentHit = current ? measureBoardTarget(raycaster, current, this.buildingAtNode) : null;
     // Preserve the old 0.06 enter / 0.11 leave relationship, expressed relative to each
@@ -419,22 +573,37 @@ export class TileScene {
       this.setHoveredTarget(best);
     }
   }
-  // A click on the board: place a piece on an empty spot (per the rules), or — if the spot is
-  // occupied — return a descriptor so the caller can open the edit modal.
-  clickBoard(ndcX: number, ndcY: number): { kind: 'building' | 'road'; id: number } | null {
-    if (!isBoardMode(this.modeName) || this.placing || this.revealing) return null;
+  // Which vertex/edge a click at these coordinates resolves to, without touching the board.
+  // A highlighted target owns the click while the pointer remains in click range. If sticky
+  // hover is already outside that range, resolve to nothing rather than activating a different,
+  // unhighlighted neighbour. Direct clicks without a prior hover still perform a fresh pick.
+  // Gated callers (a real game) get only targets inside the legal set.
+  pickBoardAt(ndcX: number, ndcY: number): BoardPickTarget | null {
+    if (!isBoardMode(this.modeName) || this.placing || this.revealing || this.robberGate) return null;
     const raycaster = this.boardRaycaster(ndcX, ndcY);
     const current = this.hoveredTarget();
     const CLICK_SCALE = 0.07 / 0.06;
-    // A highlighted target owns the click while the pointer remains in click range. If sticky
-    // hover is already outside that range, do nothing rather than activating a different,
-    // unhighlighted neighbour. Direct clicks without a prior hover still perform a fresh pick.
     const target = current
       ? (() => {
           const hit = measureBoardTarget(raycaster, current, this.buildingAtNode);
           return hit.score <= CLICK_SCALE ? hit : null;
         })()
       : pickBoardTarget(raycaster, this.buildingAtNode, CLICK_SCALE);
+    if (!target) return null;
+    return this.gate && !this.gateAllows(target) ? null : target;
+  }
+
+  pickRobberHexAt(ndcX: number, ndcY: number): number | null {
+    if (!isBoardMode(this.modeName) || this.placing || this.revealing || !this.robberGate) return null;
+    const hex = this.robberHexAt(ndcX, ndcY);
+    return hex !== null && this.robberGate.has(hex) ? hex : null;
+  }
+
+  // A click on the board IN THE EDITOR: place a piece on an empty spot (per the free-placement
+  // rules), or — if the spot is occupied — return a descriptor so the caller can open the edit
+  // modal. A real game calls `pickBoardAt` instead and lets the rules engine own the move.
+  clickBoard(ndcX: number, ndcY: number): { kind: 'building' | 'road'; id: number } | null {
+    const target = this.pickBoardAt(ndcX, ndcY);
     if (!target) return null;
     if (target.kind === 'node') {
       const node = target.id;
@@ -469,6 +638,35 @@ export class TileScene {
   }
   buildingInfo(node: number): { city: boolean; color: PlayerColor } | undefined {
     return this.buildings.get(node);
+  }
+  // What one color collects for a roll against the board as it stands. The scene owns the board
+  // and the buildings, so it answers the question rather than exposing both to do it outside.
+  // Empty before the board exists, and on any roll no hex of that color pays out.
+  yieldFor(color: PlayerColor, roll: number): Partial<Record<Resource, number>> {
+    return this.board ? rollYield(this.board, this.buildings, color, roll, this.robberHex) : {};
+  }
+
+  // The same payout, split per hex and projected to the screen cell of that hex's chip — the
+  // point a card should be thrown from. Uses the live camera, so it must be read at launch: the
+  // cell is only right for the frame it was taken on.
+  rollSources(color: PlayerColor, roll: number, cols: number, rows: number): { resource: Resource; count: number; col: number; row: number }[] {
+    if (!this.board) return [];
+    const camera = this.cam().toCamera({ fovy: FOVY, near: 0.05, far: 100 });
+    const vp = cameraMatrices(camera, cols / (rows * 2)).viewProjection;
+    const out: { resource: Resource; count: number; col: number; row: number }[] = [];
+    for (const payout of rollPayouts(this.board, this.buildings, color, roll, this.robberHex)) {
+      const { q, r } = HEX_COORDS[payout.hex];
+      const { x, z } = hexWorld(q, r);
+      const point = projectPoint(vp, { x, y: 0.14, z }); // the chip's height, so cards leave from the token
+      if (point.behind) continue;
+      out.push({
+        resource: payout.resource,
+        count: payout.count,
+        col: Math.round((point.x * 0.5 + 0.5) * cols),
+        row: Math.round((1 - (point.y * 0.5 + 0.5)) * rows),
+      });
+    }
+    return out;
   }
   roadInfo(edge: number): PlayerColor | undefined {
     return this.roads.get(edge);
@@ -506,7 +704,7 @@ export class TileScene {
     this.buildings.set(0, { city: false, color: 'red' });
     this.buildings.set(20, { city: true, color: 'blue' });
     this.roads.set(0, 'orange');
-    this.roads.set(12, 'white');
+    this.roads.set(12, 'purple');
     this.hoverNode = 30;
     this.dirty = true;
   }
@@ -526,6 +724,7 @@ export class TileScene {
     this.modeName = m;
     this.hoverNode = null; // hover is board-only
     this.hoverEdge = null;
+    if (!isBoardMode(m)) this.cancelRobberMove();
     if (isBoardMode(m) && !this.board) this.regenerate(true); // startup uses the full board-build sequence
     this.dirty = true;
   }
@@ -536,7 +735,8 @@ export class TileScene {
   // (Re)build the board arrangement and its center-out placement order. `animate` plays the
   // fly-in; false snaps straight to the finished board.
   private regenerate(animate: boolean): void {
-    this.board = generateBoard(mulberry32(this.boardSeed || 1));
+    this.board = this.adoptedBoard ?? generateBoard(mulberry32(this.boardSeed || 1));
+    this.robberHex = this.board.robberHex; // the desert, until a rolled 7 can move it
     this.harbors = boardHarborPoses(this.board.harbors);
     this.harborEntryDistances = this.harbors.map((harbor, index) =>
       safeHarborEntryDistance(harbor, portMesh(harbor.kind, this.boardSeed * 31 + index)));
@@ -557,6 +757,8 @@ export class TileScene {
     this.placementClock.reset();
     this.revealing = false; // reset any in-progress token reveal for the new board
     this.rolledSum = null; // clear a stale dice highlight from the previous board
+    this.robberGate = null;
+    this.hoverHex = null;
     this.buildings.clear(); // a fresh board has no pieces
     this.roads.clear();
     this.hoverNode = null;
@@ -571,10 +773,11 @@ export class TileScene {
 
   // Roll the pair of dice (board mode): big dice appear, tumble, land, light the matching
   // chips, then vanish. Picks results + tumble spins and starts the sequence.
-  rollDice(): void {
-    if (!isBoardMode(this.modeName)) return;
-    for (const d of this.dice) {
-      d.val = 1 + Math.floor(Math.random() * 6);
+  rollDice(values?: readonly [number, number]): void {
+    if (!isBoardMode(this.modeName) || this.dicePhase !== 'idle' || this.robberGate) return;
+    for (let index = 0; index < this.dice.length; index++) {
+      const d = this.dice[index];
+      d.val = values?.[index] ?? 1 + Math.floor(Math.random() * 6);
       // Fractional turn counts (not whole) so the tumble looks free rather than clocked; each
       // die gets its own spin, yaw, landing offset, wobble, and duration for variety. Kept
       // modest so the descent reads as a clean accelerating drop, not a frantic tumble.
@@ -640,7 +843,9 @@ export class TileScene {
   // when the tokens change. The controller marks board mode, plus animated single-tile terrain,
   // dirty at a low fixed rate so subtle environmental motion does not force a 60 fps loop.
   needsRender(): boolean {
-    return this.dirty || this.placing || this.revealing || this.tokensDirty || this.dicePhase !== 'idle' || this.dropping !== null;
+    // `rolledSum` keeps frames coming after the dice leave, so the tick that expires the chip
+    // highlight is guaranteed to run. It is self-limiting: that tick clears the flag.
+    return this.dirty || this.placing || this.revealing || this.tokensDirty || this.dicePhase !== 'idle' || this.rolledSum !== null || this.dropping !== null;
   }
 
   requestAnimationFrame(): void {
@@ -695,7 +900,8 @@ export class TileScene {
         pips: visiblePips,
         showPips: this.tokenPipDetailVisible && visiblePips > 0,
         red: settled && RED_NUMBERS.includes(num),
-        hot: settled && this.rolledSum !== null && num === this.rolledSum,
+        hot: settled && this.rolledSum !== null && num === this.rolledSum && h !== this.robberHex,
+        blocked: settled && this.rolledSum !== null && num === this.rolledSum && h === this.robberHex,
       });
     }
     return out;
@@ -857,7 +1063,7 @@ export class TileScene {
       }
       const terrain = board.hexes[hex].terrain;
       const seed = this.boardSeed * NUM_HEXES + hex;
-      const mesh = faceUp ? tileMesh(terrain, seed, hex === board.robberHex) : tileBackMesh();
+      const mesh = faceUp ? tileMesh(terrain, seed, hex === this.robberHex) : tileBackMesh();
       this.queueLambert(mesh, model);
       if (faceUp) {
         const animated = animatedTileMesh(terrain, seed, t, dest);
@@ -899,10 +1105,19 @@ export class TileScene {
     }
     const dropB = this.dropping?.kind === 'building' ? this.dropping.id : -1;
     const dropR = this.dropping?.kind === 'road' ? this.dropping.id : -1;
+    // Preview the destination as a second, brighter robber. Because the real robber is still
+    // baked into `robberHex`, the board communicates both the current block and the pending move.
+    if (this.hoverHex !== null && this.board) {
+      const { q, r } = HEX_COORDS[this.hoverHex];
+      const center = hexWorld(q, r);
+      const terrain = this.board.hexes[this.hoverHex].terrain;
+      const seed = this.boardSeed * NUM_HEXES + this.hoverHex;
+      this.queueLambert(robberMarkerMesh(terrain, seed), mat4Translate(center.x, 0, center.z));
+    }
     // Ghosts only preview a *legal* placement (distance rule for a settlement, connectivity for
     // a road), so hovering an illegal spot shows nothing.
-    const hoverEmptyNode = this.hoverNode !== null && canPlaceSettlement(this.hoverNode, this.occ());
-    const hoverEmptyEdge = this.hoverEdge !== null && !this.roads.has(this.hoverEdge) && this.roadPlaceable(this.hoverEdge);
+    const hoverEmptyNode = this.hoverNode !== null && this.placeable({ kind: 'node', id: this.hoverNode });
+    const hoverEmptyEdge = this.hoverEdge !== null && !this.roads.has(this.hoverEdge) && this.placeable({ kind: 'edge', id: this.hoverEdge });
     const spec: OverlaySpec = {
       buildings: [...this.buildings].map(([n, b]) => ({ x: NODE_XZ[n].x, z: NODE_XZ[n].z, city: b.city, color: b.color, hot: n === this.hoverNode, lift: n === dropB ? dropLift : 0 })),
       roads: [...this.roads].map(([e, c]) => ({ x0: EDGE_ENDS[e].x0, z0: EDGE_ENDS[e].z0, x1: EDGE_ENDS[e].x1, z1: EDGE_ENDS[e].z1, color: c, hot: e === this.hoverEdge, lift: e === dropR ? dropLift : 0 })),
@@ -917,7 +1132,10 @@ export class TileScene {
   // Advance the roll sequence, then (unless idle) draw the BIG dice on top of the board. The
   // depth buffer is cleared first so the dice always sit over the scene, never occluded.
   private renderDice(target: RenderTarget, t: number): void {
-    if (this.dicePhase !== 'idle') {
+    // The clock outlives the dice: the lit chips linger past their exit, and noticing that
+    // deadline needs a tick. Hence the second condition — 'idle' alone would stop the clock
+    // while a highlight is still up, and it would never clear.
+    if (this.dicePhase !== 'idle' || this.rolledSum !== null) {
       this.rollClock.tick(t);
       // Both dice have come to rest once the later of the two (its own duration + stagger) lands.
       const allLanded = Math.max(DICE_ROLL_DUR * this.dice[0].dur, DICE_STAGGER + DICE_ROLL_DUR * this.dice[1].dur);
@@ -925,9 +1143,16 @@ export class TileScene {
         this.dicePhase = 'hold';
         this.rolledSum = this.dice[0].val + this.dice[1].val;
         this.tokensDirty = true; // light the matching chips on the next composite
+        this.onRollLanded?.(this.rolledSum); // the result is final here — pay out production
       }
       if (this.dicePhase === 'hold' && this.rollClock.elapsed >= allLanded + DICE_HOLD) {
-        this.dicePhase = 'idle'; // dice vanish; the lit chips remain
+        this.dicePhase = 'idle'; // dice vanish; the lit chips remain a moment longer
+      }
+      // The gold expires on its own rather than lasting until the next roll, so a board left
+      // alone stops advertising a stale result.
+      if (this.rolledSum !== null && this.rollClock.elapsed >= allLanded + DICE_HIGHLIGHT_HOLD) {
+        this.rolledSum = null;
+        this.tokensDirty = true; // drop the chips back to black on the next composite
       }
     }
     if (this.dicePhase === 'idle') return;

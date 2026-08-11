@@ -10,8 +10,9 @@ import { box } from './props.ts';
 const PLAYER_RGB: Record<PlayerColor, RGB> = {
   red: [201, 58, 47],
   blue: [56, 106, 200],
-  // Keep the white player distinctly brighter than the new sand-colored tile frame.
-  white: [252, 249, 238],
+  // A lilac, kept light enough to stand off the sand-colored tile frame the way the old white
+  // did, but chromatic enough to shade as a colored object rather than a bright neutral.
+  purple: [196, 158, 228],
   orange: [227, 129, 42],
 };
 

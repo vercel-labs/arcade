@@ -51,7 +51,9 @@ export const TOKEN_DOTS: Record<number, number> = { 2: 1, 3: 2, 4: 3, 5: 4, 6: 5
 
 // ── Players & pieces ───────────────────────────────────────────────────────────
 // Seats are indices 0..n-1 (the harness contract). Colors are purely presentational.
-export const PLAYER_COLORS = ['red', 'blue', 'white', 'orange'] as const;
+// `purple` stands where the physical game has white: as ink on a dark rail, white is the same
+// color as ordinary body copy, so a white seat could not be told from unstyled text.
+export const PLAYER_COLORS = ['red', 'blue', 'purple', 'orange'] as const;
 export type PlayerColor = (typeof PLAYER_COLORS)[number];
 
 export type BuildingType = 'settlement' | 'city';

@@ -87,8 +87,8 @@ function boneSkull(m: Build, cx: number, cz: number, y0: number, yaw: number, rn
 
 // The robber: a dark charcoal pawn — a solid of revolution (flared base → pinched waist →
 // rounded body → neck → domed head). NOT terrain; baked in only when the toggle is on.
-function robber(m: Build, cx: number, cz: number, y0: number): void {
-  const GREY: RGB = [130, 134, 144]; // medium charcoal — stays legible even in ASCII
+export function robber(m: Build, cx: number, cz: number, y0: number, color?: RGB): void {
+  const GREY: RGB = color ?? [130, 134, 144]; // medium charcoal — stays legible even in ASCII
   const sides = 8;
   const S = 1.2; // scale relative to the tile
   // Skittle profile [radius, height] matched to the real piece: a thin foot disk on a narrow
@@ -161,17 +161,17 @@ function spotBlocked(m: Build, x: number, z: number, r: number, aboveY: number):
 }
 // Seat the robber flush on the ground at the spot nearest the centre whose base area is clear
 // of props — so it never perches on top of a piece or floats. Falls back to the centre.
-export function placeRobber(m: Build): void {
+export function placeRobber(m: Build, color?: RGB): void {
   const cands: { x: number; z: number }[] = [{ x: 0, z: 0 }];
   for (const rr of [0.22, 0.34, 0.46]) for (let k = 0; k < 8; k++) cands.push({ x: Math.cos((k * Math.PI) / 4) * rr, z: Math.sin((k * Math.PI) / 4) * rr });
   for (const c of cands) {
     const gy = groundYAt(m, c.x, c.z, 0.07);
     if (!spotBlocked(m, c.x, c.z, 0.17, gy + 0.1)) {
-      robber(m, c.x, c.z, gy);
+      robber(m, c.x, c.z, gy, color);
       return;
     }
   }
-  robber(m, 0, 0, groundYAt(m, 0, 0, 0.07));
+  robber(m, 0, 0, groundYAt(m, 0, 0, 0.07), color);
 }
 
 // DESERT dunes: pale wind-blown sand shaped as long, gently-meandering RIDGE LINES (not

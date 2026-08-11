@@ -7,14 +7,17 @@ import { stringWidth } from '../../../engine/index.ts';
 import { type PlayerColor, type Terrain } from '../../../rules/catan/types.ts';
 import { type BoardToken, type CatanMode, type SailLabel } from './tile-scene.ts';
 import { type PortKind } from './mesh/index.ts';
-import { UI_CHROME_BG, UI_CHROME_PILL } from '../../theme.ts';
-import { buildCatanCardsOverlay, CATAN_RAIL_W, catanSidebarOpen, mountCatanCardsHud, toggleCatanSidebar } from './card-hud.ts';
+import { UI_CHROME_BG, UI_CHROME_PILL, uiChromeBg } from '../../theme.ts';
+import { buildCatanCardsOverlay, CATAN_RAIL_W, catanResourceFace, catanSidebarOpen, mountCatanCardsHud, toggleCatanSidebar } from './card-hud.ts';
+import { type FlyingResource } from './scene/resource-flight.ts';
 
 const CHIP_BG: [number, number, number] = [12, 12, 16]; // black token
 const CHIP_INK: [number, number, number] = [238, 236, 230]; // light number on black
 const CHIP_RED: [number, number, number] = [232, 74, 74]; // 6 & 8 — the high-frequency reds
 const CHIP_GOLD: [number, number, number] = [232, 190, 60]; // lit when it matches the dice roll
 const CHIP_GOLD_INK: [number, number, number] = [40, 30, 8]; // dark number on the gold chip
+const CHIP_BLOCKED: [number, number, number] = [92, 98, 108]; // rolled, but suppressed by the robber
+const CHIP_BLOCKED_INK: [number, number, number] = [226, 229, 235];
 
 // Keep the production row deliberately simple and compact; adjacent bullets have no spaces.
 function pipLabel(count: number): string {
@@ -24,6 +27,34 @@ function pipLabel(count: number): string {
 // A number token centered over a hex: the number plus its official production-probability
 // pips. A detailed two-row token straddles the projected center (number above, pips on it),
 // while the distant one-row form places the number directly on that center.
+// A resource card in flight: its glyph on its own card's fill, so it stays readable over the
+// board's ASCII and lands on an exact color match. Deliberately the smallest chip that reads as
+// one — a single row, and one column of fill either side of the two-cell glyph. Any taller and
+// it stops looking like a card skimming the board and starts looking like a panel.
+const FLIGHT_PAD_X = 1;
+const FLIGHT_SINK_GLYPH = '▄'; // lower half: what is left of the chip once its base is behind the panel
+function flyingCard(f: FlyingResource): Node {
+  const { emoji, fill } = catanResourceFace(f.resource);
+  // Measured rather than assumed to be two: a glyph that turns out to advance one cell would
+  // otherwise leave a column of fill hanging off the chip's edge.
+  const width = stringWidth(emoji) + FLIGHT_PAD_X * 2;
+  // Centered on the flight point, the way the number chips center on their hex.
+  const left = f.col - Math.floor(width / 2);
+  // Half behind the card: fill painted as a foreground half block rather than a cell background,
+  // which is the only way to colour part of a cell. The glyph goes — there is no half-height emoji
+  // — so the last thing seen is a thin bar of the card's own colour meeting its edge. The cell's
+  // other half is given the panel's own field, since this row is always the padding strip just
+  // above the cards; left unset it would inherit black and punch a notch in the panel.
+  if (f.sinking) {
+    return Box({ position: 'absolute', top: f.row, left, width, height: 1, background: uiChromeBg(0.9) }, [
+      Text({ text: FLIGHT_SINK_GLYPH.repeat(width), style: { color: fill } }),
+    ]);
+  }
+  return Box({ position: 'absolute', top: f.row, left, width, height: 1, background: fill, padding: [0, FLIGHT_PAD_X] }, [
+    Text({ text: emoji }),
+  ]);
+}
+
 function tokenChip(tk: BoardToken): Node {
   const label = `${tk.num}`;
   const pips = pipLabel(tk.pips);
@@ -35,8 +66,8 @@ function tokenChip(tk: BoardToken): Node {
   // left-hand position whenever the ideal offset is a half cell.
   const labelOffset = Math.floor((contentWidth - labelWidth) / 2);
   const pipOffset = Math.floor((contentWidth - pipWidth) / 2);
-  const bg = tk.hot ? CHIP_GOLD : CHIP_BG;
-  const ink = tk.hot ? CHIP_GOLD_INK : tk.red ? CHIP_RED : CHIP_INK;
+  const bg = tk.blocked ? CHIP_BLOCKED : tk.hot ? CHIP_GOLD : CHIP_BG;
+  const ink = tk.blocked ? CHIP_BLOCKED_INK : tk.hot ? CHIP_GOLD_INK : tk.red ? CHIP_RED : CHIP_INK;
   const top = tk.row - (tk.showPips ? 1 : 0);
   return Box({ position: 'absolute', top, left: tk.col - Math.floor(chipWidth / 2), width: chipWidth, flexDirection: 'column', alignItems: 'start', gap: 0, background: bg, padding: [0, 1] }, [
     Text({ text: label, style: { color: ink, bold: true, margin: [0, 0, 0, labelOffset] } }),
@@ -61,12 +92,13 @@ const TERRAINS: Terrain[] = ['forest', 'hills', 'pasture', 'fields', 'mountains'
 const LABELS = ['Forest · lumber', 'Hills · brick', 'Pasture · wool', 'Fields · grain', 'Mountains · ore', 'Desert · —'];
 
 // The player colors selectable in pieces mode / the piece editor.
-const COLORS: PlayerColor[] = ['red', 'blue', 'white', 'orange'];
-const COLOR_LABELS = ['Red', 'Blue', 'White', 'Orange'];
+const COLORS: PlayerColor[] = ['red', 'blue', 'purple', 'orange'];
+const COLOR_LABELS = ['Red', 'Blue', 'Purple', 'Orange'];
+// The chip previews the piece, so these match PLAYER_RGB exactly.
 const SWATCH: Record<PlayerColor, [number, number, number]> = {
   red: [201, 58, 47],
   blue: [56, 106, 200],
-  white: [232, 230, 222],
+  purple: [196, 158, 228],
   orange: [227, 129, 42],
 };
 // The scene modes, chosen from the Mode dropdown.
@@ -154,7 +186,7 @@ export function buildCatanPieceModal(o: PieceModalOpts): Node {
 // ☰ menu button (top-right). No bottom bar — home/reset/display/etc. all live in the menu.
 // `onOpenMenu` opens the game menu; `tokens` are the board number chips; `sails` are the port
 // trade chips (both are 2D overlays projected onto the scene).
-export function buildCatanTileRoot(region: LayoutBox, onOpenMenu: () => void, tokens: BoardToken[] = [], mode: CatanMode = 'tile', sails: SailLabel[] = []): Node {
+export function buildCatanTileRoot(region: LayoutBox, onOpenMenu: () => void, tokens: BoardToken[] = [], mode: CatanMode = 'tile', sails: SailLabel[] = [], flights: FlyingResource[] = [], movingRobber = false): Node {
   // Per-mode controls: board → regenerate; pieces → color picker; tile → terrain + vary + robber.
   const boardMode = mode === 'board' || mode === 'boardCards';
   const railOpen = mode === 'boardCards' && catanSidebarOpen();
@@ -187,14 +219,32 @@ export function buildCatanTileRoot(region: LayoutBox, onOpenMenu: () => void, to
     ...sails.map(sailChip), // board/port mode: trade-info chips projected onto the sails
     Box({ width: region.w, height: region.h, flexDirection: 'column' }, [Box({ flexDirection: 'row', padding: [1, 0, 0, 2] }, [panel])]),
     ...(mode === 'boardCards' ? [buildCatanCardsOverlay(region, toggleSidebar)] : []),
+    // Cards in flight paint OVER the hand panel, not under it: they have to cross the panel's top
+    // padding to reach the card's edge, and paint order alone would hide them a row too early.
+    // What keeps them off the card faces is the clip in ResourceFlights — a chip is culled the
+    // moment it reaches the card's first row, so the face is never covered. Above the panel but
+    // below the chrome, so the menu and roll button stay clickable-looking on top.
+    ...flights.map(flyingCard),
+    ...(movingRobber
+      ? [Box({ position: 'absolute', top: 1, left: 0, width: region.w - (railOpen ? CATAN_RAIL_W : 0), justifyContent: 'center' }, [
+          Box({ flexDirection: 'column', alignItems: 'center', padding: [0, 2], background: UI_CHROME_BG }, [
+            Text({ text: 'moving robber', style: { color: CHIP_BLOCKED_INK, bold: true } }),
+            Text({ text: 'choose a different tile', style: { color: [154, 159, 170] } }),
+          ]),
+        ])]
+      : []),
     // The rail owns the right strip while open, so the chrome shifts left by its width to stay
     // over the visible scene. Open, the reopen pill drops — the rail's own ✕ collapses it.
     Box({ position: 'absolute', top: 1, right: 2 + (railOpen ? CATAN_RAIL_W : 0), flexDirection: 'row', gap: 1 }, [
       Button({ id: 'catan-menu-button', label: '☰ menu', onClick: onOpenMenu, style: UI_CHROME_PILL }),
       ...(mode === 'boardCards' && !railOpen ? [Button({ id: 'catan-sidebar-open', label: 'sidebar', onClick: toggleSidebar, style: UI_CHROME_PILL })] : []),
     ]),
-    // Board mode: a roll button in the bottom-right; triggers the big dice overlay. Same
-    // margin from the right as the ☰ menu button, same from the bottom as the bottom bar.
-    ...(mode === 'board' ? [Box({ position: 'absolute', bottom: 1, right: 2 }, [FilledButton({ id: 'catan-roll', label: 'roll dice', onClick: () => H?.onRollDice() })])] : []),
+    // Either board mode: a roll button in the bottom-right; triggers the big dice overlay. Same
+    // margin from the right as the ☰ menu button, same from the bottom as the bottom bar, and it
+    // steps left by the rail's width alongside that chrome so it stays over the visible scene.
+    // The hand panel hugs the bottom-LEFT corner, so the two never meet.
+    ...(boardMode && !movingRobber
+      ? [Box({ position: 'absolute', bottom: 1, right: 2 + (railOpen ? CATAN_RAIL_W : 0) }, [FilledButton({ id: 'catan-roll', label: 'roll dice', onClick: () => H?.onRollDice() })])]
+      : []),
   ]);
 }

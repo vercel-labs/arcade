@@ -844,6 +844,11 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
   bankDeck(): readonly number[] {
     return this.bank;
   }
+  // How many development cards remain undrawn. Public information — at the table the deck's
+  // height is visible to everyone — so this is safe to show without leaking which cards.
+  developmentDeckSize(): number {
+    return this.devDeck.length;
+  }
   handOf(seat: number): readonly number[] {
     return this.hands[seat];
   }

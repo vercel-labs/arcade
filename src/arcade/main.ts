@@ -20,6 +20,10 @@ import { CardsScene } from './games/poker/cards-scene.ts';
 import { type TileScene } from './games/catan/tile-scene.ts';
 import { CatanController } from './games/catan/catan-controller.ts';
 import { CATAN_RAIL_W, catanRailVisible } from './games/catan/card-hud.ts';
+import { CatanGameScene } from './games/catan/game-scene.ts';
+import { buildCatanGameRoot, mountCatanGameHud } from './games/catan/game-hud.ts';
+import { CatanDriver } from './match/catan-driver.ts';
+import { catanSetupSelection, setCatanSetupChanged } from './match/catan-setup-panel.ts';
 import { buildPokerRoot, mountPokerHud, pokerMode, setPokerHandlers } from './games/poker/hud.ts';
 import { PokerGameScene } from './games/poker/poker-scene.ts';
 import { buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, type HeroContext, mountPokerGameHud, nudgePokerBet, pushPokerChat, setNotesObserverPick, setPokerGameHandlers, setPokerVoiceStage } from './games/poker/poker-hud.ts';
@@ -127,6 +131,27 @@ const catan = new CatanController({
   },
 });
 
+// The Catan GAME (distinct from the catan-test bed above): the played board plus the driver
+// that runs the seats through the rules engine. The scene wraps the same TileScene the test
+// bed uses, so both screens share one renderer.
+const catanGameScene = new CatanGameScene();
+const catanDriver = new CatanDriver({
+  scene: catanGameScene,
+  syncLive: () => {
+    forceFrame = true;
+    r.requestRender();
+  },
+});
+catanGameScene.setOnChange(() => {
+  forceFrame = true;
+  r.requestRender();
+});
+let catanGameTimer: ReturnType<typeof setInterval> | null = null;
+// ~11 fps for the island's ambient motion (water, blades, livestock) — the same cadence the
+// test bed runs at, and far cheaper than repainting the board at the full frame rate.
+const CATAN_ANIMATION_FRAME_MS = 90;
+let catanGameMenuOpen = false;
+
 // Bar geometry: a band of pills composited over the scene, lifted off the very
 // bottom edge by a margin so it doesn't hug it. BAR_HEIGHT must match the pill
 // height (1 text row + the pill's vertical padding, top and bottom). Opaque
@@ -154,6 +179,7 @@ function activeOrbit(): ChessGameScene | LogosScene | AudioScene | CardsScene | 
   if (mode === 'audio') return audioScene;
   if (mode === 'cards') return cardsScene;
   if (mode === 'catan-tiles') return catan.scene;
+  if (mode === 'catan') return catanGameScene.scene;
   if (mode === 'poker') return pokerScene;
   if (mode === 'ui') return chessGame;
   return orbitScene();
@@ -319,7 +345,11 @@ function activeSceneViewport(): LayoutBox {
         ? CHAT_WIDTH
         : mode === 'catan-tiles' && catan.scene.currentMode() === 'boardCards' && catanRailVisible(cols, rows)
           ? CATAN_RAIL_W
-          : 0;
+          : // The game reserves the rail only once a session exists — the setup panel owns the
+            // whole board area before that.
+            mode === 'catan' && catanDriver.state() !== null && catanRailVisible(cols, rows)
+            ? CATAN_RAIL_W
+            : 0;
   return insetRightSceneViewport(cols, rows, reservedRight);
 }
 
@@ -870,6 +900,15 @@ setPokerSetupChanged(() => {
   r.requestRender();
 });
 
+// Catan's setup panel has no scene preview to drive — the island looks the same whoever is
+// about to sit at it — but the panel itself has to repaint, because a committed change can
+// add or remove a seat row and re-tint the seat labels.
+setCatanSetupChanged(() => {
+  if (mode !== 'catan') return;
+  forceFrame = true;
+  r.requestRender();
+});
+
 // The chess mirror: any committed setup change (mode / creator / model) updates the
 // king-wisp preview behind the panel — each side's wisp follows its chosen creator,
 // a human side shows none.
@@ -1165,6 +1204,74 @@ function enterCatanTiles(): void {
   fullRepaint();
 }
 
+// The Catan game screen: the played board. Entering shows the setup panel (mode / players /
+// your color / a model per AI seat) over an idle island; "start game" builds the state and
+// runs the initial-placement phase. Distinct from catan-tiles, which stays a free-placement
+// graphics bed with no rules attached.
+function enterCatanGame(): void {
+  stopAiMatch();
+  audioScene.deactivate();
+  mode = 'catan';
+  draggingCamera = false;
+  mountCatanGameHud(ui);
+  // The island animates (water, blades, livestock) on its own timer, like the test bed's.
+  if (catanGameTimer === null) {
+    catanGameTimer = setInterval(() => {
+      catanGameScene.requestAnimationFrame();
+      if (catanGameScene.needsRender()) r.requestRender();
+    }, CATAN_ANIMATION_FRAME_MS);
+  }
+  fullRepaint();
+}
+
+// Begin a session from the setup panel's committed choices.
+function startCatanGame(): void {
+  const seats = catanSetupSelection();
+  if (!seats) return;
+  const state = catanDriver.start(seats);
+  catanGameScene.beginSession(state, seats.map((s) => s.color));
+  fullRepaint();
+}
+
+// Tear the session down and return to the setup panel.
+function newCatanGame(): void {
+  catanDriver.reset();
+  catanGameScene.endSession();
+  fullRepaint();
+}
+
+// The Catan game's ☰ popup — the same shell menu every game screen uses.
+function buildCatanGameMenu(): Node {
+  const closeMenu = (): void => {
+    catanGameMenuOpen = false;
+    fullRepaint();
+  };
+  const groups: MenuItem[][] = [
+    [{ id: 'catan-game-menu-home', label: 'home', onClick: () => enterMenu() }],
+    [
+      { id: 'catan-game-menu-new', label: 'new game', onClick: () => { newCatanGame(); closeMenu(); } },
+      { id: 'catan-game-menu-reset', label: 'reset camera', onClick: () => { catanGameScene.scene.resetView(); closeMenu(); } },
+      { id: 'catan-game-menu-mode', label: 'display', value: renderMode, onClick: () => cycleMode() },
+      { id: 'catan-game-menu-color', label: 'color', value: colorMode, onClick: () => cycleColor() },
+    ],
+    [
+      { id: 'catan-game-menu-shortcuts', label: 'controls', onClick: () => openShortcuts() },
+      { id: 'catan-game-menu-quit', label: 'quit', onClick: () => quit() },
+    ],
+  ];
+  return buildGameMenu({ groups, onClose: closeMenu, valueColW: MENU_VALUE_W });
+}
+
+// Leaving the Catan game screen entirely.
+function leaveCatanGame(): void {
+  catanDriver.reset();
+  catanGameScene.endSession();
+  if (catanGameTimer !== null) {
+    clearInterval(catanGameTimer);
+    catanGameTimer = null;
+  }
+}
+
 // The poker game screen: a 3D table where you play no-limit Hold'em against AI
 // models. Entering shows the idle felt (shuffling deck + chair ring); the bottom-left
 // "new match" button opens the settings panel, then reads "start match" to deal.
@@ -1251,6 +1358,7 @@ function enterGame(id: string): void {
   else if (id === 'audio') enterAudio();
   else if (id === 'poker') enterPoker();
   else if (id === 'poker-test') enterCards();
+  else if (id === 'catan') enterCatanGame();
   else if (id === 'catan-test') enterCatanTiles();
   else if (id === 'ui') enterUi();
 }
@@ -1413,6 +1521,10 @@ function syncBar(): void {
   if (mode !== 'poker') pokerNotesOpen = false; // ditto for the notes modal
   if (mode !== 'chess-game') chessMenuOpen = false; // ditto for the chess menu
   if (mode !== 'catan-tiles') catan.reset(); // drop the catan menu + piece-edit modal state
+  if (mode !== 'catan') {
+    catanGameMenuOpen = false;
+    leaveCatanGame(); // abort a running placement session and stop its animation timer
+  }
   if (mode !== 'chess-game' && mode !== 'poker') confirmHomeOpen = false; // the confirm only lives in a game
   if (mode !== 'menu') {
     homeMenuOpen = false;
@@ -1745,6 +1857,33 @@ function syncBar(): void {
     popSetup();
     popSwap();
     ui.setRoot(catan.buildRoot(cols, rows, activeSceneViewport().w), { x: 0, y: 0, w: cols, h: rows });
+  } else if (mode === 'catan' && catanGameMenuOpen) {
+    popGameOver();
+    popSetup();
+    popSwap();
+    ui.setRoot(buildCatanGameMenu(), { x: 0, y: 0, w: cols, h: rows });
+  } else if (mode === 'catan') {
+    popGameOver();
+    popSetup();
+    popSwap();
+    // Re-mount the setup dropdowns + history scrollbox (a prior modal root may have dropped
+    // their Slots), then build whichever face the session state calls for.
+    mountCatanGameHud(ui);
+    ui.setRoot(
+      buildCatanGameRoot(
+        { x: 0, y: 0, w: cols, h: rows },
+        {
+          driver: catanDriver,
+          onOpenMenu: () => {
+            catanGameMenuOpen = true;
+            fullRepaint();
+          },
+          onStart: startCatanGame,
+          onNewGame: newCatanGame,
+        },
+      ),
+      { x: 0, y: 0, w: cols, h: rows },
+    );
   } else if (pokerNotesOpen) {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     popGameOver();
@@ -2069,14 +2208,19 @@ function onMouseImpl(e: MouseEvent): void {
         // Board mode: highlight the vertex/edge under the cursor.
         const { ndcX, ndcY } = pointerNdc(e.x, e.y);
         catan.hoverAt(ndcX, ndcY);
+      } else if (mode === 'catan') {
+        // Only the current prompt's legal spots highlight; everything else reads as water.
+        const { ndcX, ndcY } = pointerNdc(e.x, e.y);
+        catanGameScene.hoverAt(ndcX, ndcY);
+        if (catanGameScene.needsRender()) r.requestRender();
       }
       return;
     }
     if (e.type === 'down') {
       // A hit on a UI node (bar button or component) fires its onClick / onMouse
       // and captures the pointer; a miss begins a camera drag (an up near here is
-      // a click).
-      if (!ui.pointerDown(e.x, e.y)) {
+      // a click). The button goes along so an onMouse can tell left from right.
+      if (!ui.pointerDown(e.x, e.y, e.button)) {
         draggingCamera = true;
         lastMouseX = downX = e.x;
         lastMouseY = downY = e.y;
@@ -2136,6 +2280,11 @@ function onMouseImpl(e: MouseEvent): void {
         // Board mode: place a piece on an empty vertex/edge, or open the edit modal on a piece.
         const { ndcX, ndcY } = pointerNdc(e.x, e.y);
         catan.clickAt(ndcX, ndcY);
+      } else if (isClick && mode === 'catan') {
+        // A click on a highlighted spot commits the awaiting human placement; anything else
+        // is ignored, since the gate already excluded every illegal target.
+        const { ndcX, ndcY } = pointerNdc(e.x, e.y);
+        catanGameScene.clickAt(ndcX, ndcY);
       }
       draggingCamera = false;
       return;
@@ -2306,6 +2455,25 @@ function tick(dt: number): void {
     }
     forceFrame = false;
     if (catan.needsRender()) r.requestRender();
+    return;
+  }
+
+  if (mode === 'catan') {
+    // The played board renders on the same on-demand terms as the test bed, and with the same
+    // hybrid-shading choice — plain black around the island so the board and rail keep a clean
+    // edge against it.
+    syncBar();
+    const sceneDirty = forceFrame || catanGameScene.needsRender();
+    if (sceneDirty) catanGameScene.renderScene(target, t);
+    if (UNIFIED) {
+      if (sceneDirty || ui.dirty()) writeFrame(ui.frameComposited((s) => presentSceneInto(s, false, false), sceneDirty));
+    } else if (sceneDirty) {
+      writeFrame(presentScene(false, false) + ui.frame());
+    } else if (ui.dirty()) {
+      writeFrame(ui.frame());
+    }
+    forceFrame = false;
+    if (catanGameScene.needsRender()) r.requestRender();
     return;
   }
 

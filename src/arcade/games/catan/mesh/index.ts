@@ -31,4 +31,4 @@ export { PORT_SAIL_CENTER } from './port/hull.ts';
 export { portMesh } from './port/index.ts';
 export { harborPiersMesh } from './port/piers.ts';
 export type { PortKind } from './port/spec.ts';
-export { animatedTileMesh, tileMesh } from './tiles/index.ts';
+export { animatedTileMesh, robberMarkerMesh, tileMesh } from './tiles/index.ts';

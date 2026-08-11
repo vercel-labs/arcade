@@ -110,7 +110,7 @@ test('the board reveal flickers numbers alone, then grows final pips out from th
 });
 
 test('the token overlay renders compact unspaced bullet pips only when requested', () => {
-  const token = { col: 20, row: 10, num: 6, pips: 5, showPips: true, red: true, hot: false };
+  const token = { col: 20, row: 10, num: 6, pips: 5, showPips: true, red: true, hot: false, blocked: false };
   const detailed = texts(buildCatanTileRoot({ x: 0, y: 0, w: 80, h: 40 }, () => {}, [token], 'board'));
   assert.ok(detailed.includes('6'));
   assert.ok(detailed.includes('•••••'));
@@ -122,7 +122,7 @@ test('the token overlay renders compact unspaced bullet pips only when requested
 
 test('detailed token rows straddle the projected center while number-only tokens sit on it', () => {
   const region = { x: 0, y: 0, w: 80, h: 40 };
-  const token = { col: 20, row: 10, num: 6, pips: 5, showPips: true, red: true, hot: false };
+  const token = { col: 20, row: 10, num: 6, pips: 5, showPips: true, red: true, hot: false, blocked: false };
   const detailed = buildCatanTileRoot(region, () => {}, [token], 'board');
   layout(detailed, region);
   assert.equal(findText(detailed, '6')?.layout?.y, 9);
@@ -136,20 +136,69 @@ test('detailed token rows straddle the projected center while number-only tokens
 test('all parity combinations use regular bullets centered with left-biased ties', () => {
   const region = { x: 0, y: 0, w: 80, h: 40 };
   const threePips = buildCatanTileRoot(region, () => {}, [
-    { col: 20, row: 10, num: 10, pips: 3, showPips: true, red: false, hot: false },
+    { col: 20, row: 10, num: 10, pips: 3, showPips: true, red: false, hot: false, blocked: false },
   ], 'board');
   layout(threePips, region);
   assert.equal(findText(threePips, '10')?.layout?.x, findText(threePips, '•••')?.layout?.x);
 
   const fivePips = buildCatanTileRoot(region, () => {}, [
-    { col: 20, row: 10, num: 6, pips: 5, showPips: true, red: true, hot: false },
+    { col: 20, row: 10, num: 6, pips: 5, showPips: true, red: true, hot: false, blocked: false },
   ], 'board');
   layout(fivePips, region);
   assert.equal((findText(fivePips, '6')?.layout?.x ?? 0) - (findText(fivePips, '•••••')?.layout?.x ?? 0), 2);
 
   const onePip = buildCatanTileRoot(region, () => {}, [
-    { col: 20, row: 10, num: 12, pips: 1, showPips: true, red: false, hot: false },
+    { col: 20, row: 10, num: 12, pips: 1, showPips: true, red: false, hot: false, blocked: false },
   ], 'board');
   layout(onePip, region);
   assert.equal(findText(onePip, '12')?.layout?.x, findText(onePip, '•')?.layout?.x);
+});
+
+test('moving the robber keeps the old tile occupied until a different tile is committed', () => {
+  const scene = new TileScene();
+  scene.setMode('board');
+  scene.settle();
+  const start = scene.currentRobberHex();
+  const destination = Array.from({ length: 19 }, (_, hex) => hex).find((hex) => hex !== start)!;
+
+  scene.beginRobberMove();
+  scene.previewRobberHex(destination);
+  assert.equal(scene.isMovingRobber(), true);
+  assert.equal(scene.currentRobberHex(), start, 'hover is only a preview');
+  assert.equal(scene.moveRobberTo(start), false, 'the current tile is not a legal destination');
+  assert.equal(scene.currentRobberHex(), start);
+  assert.equal(scene.moveRobberTo(destination), true);
+  assert.equal(scene.currentRobberHex(), destination);
+  assert.equal(scene.isMovingRobber(), false);
+});
+
+test('a rolled number is gray-blocked on the robber tile while its other hexes remain productive', () => {
+  const scene = new TileScene();
+  scene.setMode('board');
+  scene.settle();
+  const destination = Array.from({ length: 19 }, (_, hex) => hex).find((hex) => scene.numberAtHex(hex) !== null)!;
+  const number = scene.numberAtHex(destination)!;
+  scene.beginRobberMove();
+  assert.equal(scene.moveRobberTo(destination), true);
+
+  const first = Math.max(1, number - 6);
+  const second = number - first;
+  scene.rollDice([first, second]);
+  const target = new RenderTarget(96, 64);
+  // The slower die can take just over two seconds to settle; sample after that but well before
+  // the three-second chip-highlight hold expires.
+  for (let frame = 1; frame <= 150; frame++) scene.renderScene(target, frame / 60);
+
+  const matching = scene.boardTokens(160, 90).filter((token) => token.num === number);
+  assert.equal(matching.filter((token) => token.blocked).length, 1);
+  assert.ok(matching.some((token) => token.hot) || matching.length === 1);
+  assert.ok(matching.every((token) => token.hot !== token.blocked));
+});
+
+test('the Catan test HUD announces the robber gate and replaces the roll action', () => {
+  const root = buildCatanTileRoot({ x: 0, y: 0, w: 100, h: 40 }, () => {}, [], 'board', [], [], true);
+  const copy = texts(root);
+  assert.ok(copy.includes('moving robber'));
+  assert.ok(copy.includes('choose a different tile'));
+  assert.ok(!copy.includes('roll dice'));
 });

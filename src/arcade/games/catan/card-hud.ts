@@ -3,11 +3,11 @@
 // The seeded snapshot lets the "Board + cards" test mode evolve before a live CatanState is
 // attached; gameplay wiring should later replace only the data source, not the card or rail layout.
 
-import { Box, type LayoutBox, type Node, type Row, ScrollBox, type Screen, Slot, Text } from '../../../tui/index.ts';
+import { Box, type LayoutBox, type Node, type PointerHit, type Row, ScrollBox, type Screen, Slot, Text } from '../../../tui/index.ts';
 import { stringWidth } from '../../../engine/index.ts';
 import { RAIL_HEADER_H, RAIL_MUTED_FG, RAIL_PAD_L, RAIL_PAD_R, RAIL_PAD_V, RAIL_TEXT_FG, RailPanel } from '../../shell/rail-panel.ts';
 import { uiChromeBg } from '../../theme.ts';
-import type { PlayerColor, Resource } from '../../../rules/catan/types.ts';
+import { DEV_CARD_TYPES, type DevCardType, DISCARD_LIMIT, type PlayerColor, type Resource, type Terrain } from '../../../rules/catan/types.ts';
 
 type Rgb = [number, number, number];
 
@@ -35,19 +35,42 @@ const SETTLEMENT_ICON = '🏠';
 // `fill` is the flat background; `ink` colors the name under the glyph. Emoji keep their own
 // colors in most terminals, so a fill only reads as a backdrop when its luminance is far from the
 // glyph's — the tree, brick, and wheat icons all sit mid-tone in their own hue, so those fills
-// stay on-hue but move well away in brightness. Fills must also stay dark enough for the white
-// count, and every ink far enough from its fill for the name to hold up at one cell tall.
+// stay on-hue but move well away in brightness. Every fill also sits in one narrow lightness band
+// (~0.35–0.46 relative luminance): that is what lets a dark on-hue ink carry every name while the
+// white count still holds on every card. A fill dark enough to need white ink instead — the red
+// and the purple, left to their natural depth — reads as a different family sitting in the row.
 // `name` is the table name players use, not the rules-engine key (wool -> sheep, grain -> wheat).
 const RESOURCE_ORDER: Resource[] = ['lumber', 'brick', 'wool', 'grain', 'ore'];
 const RESOURCE_LOOK: Record<Resource, ResourceLook> = {
   lumber: { emoji: '🌲', name: 'wood', fill: [91, 181, 99], ink: [19, 65, 27] },
-  brick: { emoji: '🧱', name: 'brick', fill: [168, 70, 52], ink: [255, 236, 226] },
+  brick: { emoji: '🧱', name: 'brick', fill: [176, 77, 60], ink: [74, 26, 16] },
   wool: { emoji: '🐑', name: 'sheep', fill: [148, 196, 79], ink: [27, 48, 22] },
   grain: { emoji: '🌾', name: 'wheat', fill: [201, 160, 8], ink: [66, 48, 4] },
   ore: { emoji: '🪨', name: 'ore', fill: [135, 167, 161], ink: [26, 44, 42] },
 };
-const DEV_LOOK: ResourceLook = { emoji: DEV_CARD_ICON, name: 'dev', fill: [125, 86, 167], ink: [250, 245, 255] };
+const DEV_FILL: Rgb = [125, 86, 167];
+const DEV_INK: Rgb = [48, 28, 74];
+// The bank's aggregate face: the undrawn deck, not a card anyone holds.
+const DEV_LOOK: ResourceLook = { emoji: DEV_CARD_ICON, name: 'dev', fill: DEV_FILL, ink: DEV_INK };
+// One face per card the rules engine defines. Shorthand names keep every face inside CARD_W, and
+// knight/road reuse the glyphs the players table already uses for those same two concepts.
+const DEV_HAND_LOOK: Record<DevCardType, ResourceLook> = {
+  knight: { emoji: KNIGHT_ICON, name: 'knght', fill: DEV_FILL, ink: DEV_INK },
+  victoryPoint: { emoji: '\u{1F3C6}', name: 'vp', fill: DEV_FILL, ink: DEV_INK },
+  roadBuilding: { emoji: ROAD_ICON, name: 'rb', fill: DEV_FILL, ink: DEV_INK },
+  yearOfPlenty: { emoji: '\u{1F381}', name: 'yop', fill: DEV_FILL, ink: DEV_INK },
+  monopoly: { emoji: '\u{1F4B0}', name: 'mono', fill: DEV_FILL, ink: DEV_INK },
+};
 const COUNT_INK: Rgb = [250, 252, 255];
+// A resource you hold none of keeps its card, so the row never reflows as a hand empties and
+// refills. The fill drops to a lift off the panel background and the name and count go muted:
+// present, plainly spent. The emoji cannot follow — terminals paint it in its own colors and
+// ignore the foreground we set — so a zero card keeps a full-color glyph over the gray.
+const EMPTY_FILL: Rgb = [48, 51, 62];
+const EMPTY_INK: Rgb = RAIL_MUTED_FG;
+// Gold marks a held award; red marks a hand the robber would force a discard from.
+const AWARD: Rgb = [226, 184, 74];
+const AT_RISK: Rgb = [226, 96, 84];
 
 // ── Card geometry: the shared shape every card is stamped from ──────────────────────────────
 // Width is set by the longest name (brick/sheep/wheat at five cells) plus a column of padding on
@@ -64,7 +87,14 @@ const EMOJI_LEFT = 2; // glyph's left column inside the card (it occupies this c
 const COUNT_RIGHT = 1; // count's gap from the card's right edge
 
 // ── Hand panel spacing ──────────────────────────────────────────────────────────────────────
-const HAND_TITLE_GAP = 1; // rows of air between the title and the cards
+const HAND_PAD_T = 1; // air between the panel's top edge and the card faces
+// Wider than the 1-cell gap between cards, so the two hands read as separate groups without
+// needing a rule drawn between them.
+const HAND_SPLIT_GAP = 3;
+// What each group of the hand costs, panel padding included. The dev group is the optional half:
+// when the board area cannot hold both, it is the one that goes.
+const RESOURCE_HAND_W = RESOURCE_ORDER.length * CARD_W + (RESOURCE_ORDER.length - 1) + 2;
+const DEV_HAND_W = HAND_SPLIT_GAP + DEV_CARD_TYPES.length * CARD_W + (DEV_CARD_TYPES.length - 1);
 const HAND_PAD_B = 1; // air between the cards and the panel's bottom edge
 
 // ── Sidebar chrome ──────────────────────────────────────────────────────────────────────────
@@ -114,10 +144,10 @@ function catanHistoryHeight(region: LayoutBox, playerCount: number): number {
 // Player colors are font colors here, never fills — a seat's color reads as its name's ink the
 // way a model's creator tint does in the chess chat, which is what these become once models sit
 // at the table.
-const PLAYER_LOOK: Record<PlayerColor, Rgb> = {
+export const PLAYER_LOOK: Record<PlayerColor, Rgb> = {
   red: [226, 96, 84],
   blue: [104, 148, 235],
-  white: [228, 230, 238],
+  purple: [212, 172, 232],
   orange: [232, 148, 62],
 };
 
@@ -133,6 +163,11 @@ export interface CatanCardsPlayerView {
   knights: number;
   longestRoad: number;
   active?: boolean;
+  // Who currently HOLDS each award, which is not the same as who has the highest number: the
+  // rules engine only awards past a minimum and the incumbent keeps it on a tie. These come
+  // straight from CatanState.largestArmy() / longestRoad() === seat, never recomputed here.
+  hasLargestArmy?: boolean;
+  hasLongestRoad?: boolean;
 }
 
 export interface CatanActionHistoryView {
@@ -146,24 +181,114 @@ export interface CatanActionHistoryView {
 export interface CatanCardsView {
   localPlayer: CatanCardsPlayerView;
   hand: Record<Resource, number>;
+  // Only the local player's own dev cards; every other seat sees a count, never the types.
+  devHand: Record<DevCardType, number>;
   bank: Record<Resource, number>;
   developmentDeck: number;
   opponents: CatanCardsPlayerView[];
   history: CatanActionHistoryView[];
+  // TEST BED ONLY. When set, the hand's cards accept click-to-adjust so the card UI can be
+  // driven through its states by hand. The game's live adapter leaves it unset, so in a real
+  // match the cards are inert and only the rules engine moves them.
+  editable?: boolean;
+}
+
+// ── The local seat ──────────────────────────────────────────────────────────────────────────
+// The test bed has one human at the table and it is red, so the board's red pieces are "yours":
+// they are what a roll pays out on. Everything else on the board still belongs to the seeded
+// opponents. When a real CatanState is attached this becomes the seat the viewer is bound to.
+export const CATAN_LOCAL_COLOR: PlayerColor = 'red';
+
+// The live hand, filled only by dice rolls — building is still free, so nothing spends it yet.
+// Module state like the sidebar flag: the HUD is rebuilt from it every frame.
+const liveHand: Record<Resource, number> = { lumber: 0, brick: 0, wool: 0, grain: 0, ore: 0 };
+// The workbench's development hand. Module state for the same reason the resource hand is:
+// the view is rebuilt every frame, so anything that has to survive a frame lives out here.
+const liveDevHand: Record<DevCardType, number> = { knight: 0, victoryPoint: 0, roadBuilding: 0, yearOfPlenty: 0, monopoly: 0 };
+
+// ── Workbench card editing (catan-test only) ────────────────────────────────────────────────
+// Click-to-adjust exists so the card UI can be driven through its states by hand while it is
+// being built. It belongs to the TEST BED and must never reach the game, where the rules engine
+// is the only thing allowed to move a card — hence `editable` on the view rather than a check
+// on some ambient mode: the workbench view opts in, and the live adapter simply does not.
+// These write the module state above, NOT the per-frame view object, which is a fresh copy.
+export function adjustCatanWorkbenchHand(resource: Resource, delta: number): boolean {
+  const next = liveHand[resource] + delta;
+  if (next < 0) return false;
+  liveHand[resource] = next;
+  return true;
+}
+export function adjustCatanWorkbenchDev(type: DevCardType, delta: number): boolean {
+  const next = liveDevHand[type] + delta;
+  if (next < 0) return false;
+  liveDevHand[type] = next;
+  return true;
+}
+// Real events, appended after the seeded ones so the log reads as one timeline.
+const liveHistory: CatanActionHistoryView[] = [];
+
+// A roll's production: banked, then logged the way the seeded "received" entries read. The
+// resource list is one icon per card, so three lumber shows three trees.
+// One card, banked the moment it lands. Cards arrive one at a time on their own arcs, so the
+// count has to tick up per arrival rather than jumping by the roll's total.
+export function bankCatanResource(resource: Resource): void {
+  liveHand[resource] += 1;
+}
+
+// Logged once the roll's last card is in, so the entry reports what actually arrived.
+export function logCatanReceived(drawn: Resource[]): void {
+  if (drawn.length) liveHistory.push({ actor: 'You', color: CATAN_LOCAL_COLOR, message: 'received', resources: drawn });
+}
+
+export function logCatanRoll(sum: number): void {
+  liveHistory.push({ actor: 'You', color: CATAN_LOCAL_COLOR, message: `rolled a ${sum}` });
+}
+
+export function logCatanRobberMove(terrain: Terrain): void {
+  liveHistory.push({ actor: 'You', color: CATAN_LOCAL_COLOR, message: `moved the robber to the ${terrain} tile` });
+}
+
+// What a flying card is drawn as: the same glyph and fill its hand card wears, so it reads as
+// that card crossing the screen and lands on an exact color match.
+export function catanResourceFace(resource: Resource): { emoji: string; fill: Rgb } {
+  const look = RESOURCE_LOOK[resource];
+  return { emoji: look.emoji, fill: look.fill };
+}
+
+// The seeded view with the live hand grafted on. The local seat's public card count has to be
+// derived here too, or the players table would keep advertising the seeded number.
+export function catanWorkbenchView(): CatanCardsView {
+  const seeded = CATAN_CARD_WORKBENCH_VIEW;
+  const held = RESOURCE_ORDER.reduce((sum, resource) => sum + liveHand[resource], 0);
+  const dev = DEV_CARD_TYPES.reduce((sum, type) => sum + liveDevHand[type], 0);
+  return {
+    ...seeded,
+    hand: { ...liveHand },
+    devHand: { ...liveDevHand },
+    // The workbench is the one view whose cards may be clicked; see adjustCatanWorkbenchHand.
+    editable: true,
+    localPlayer: { ...seeded.localPlayer, resourceCards: held, developmentCards: dev },
+    history: [...seeded.history, ...liveHistory],
+  };
 }
 
 // Uneven counts and mixed events exercise count corners, hidden-card summaries, resource icons,
 // and chat folded into the same chronological action history. Enough entries to overflow the
 // history viewport, so the scrollbar has something to show.
 export const CATAN_CARD_WORKBENCH_VIEW: CatanCardsView = {
-  localPlayer: { name: 'You', color: 'red', publicVp: 3, resourceCards: 9, developmentCards: 1, knights: 2, longestRoad: 5, active: true },
-  hand: { lumber: 2, brick: 1, wool: 3, grain: 2, ore: 1 },
+  localPlayer: { name: 'You', color: CATAN_LOCAL_COLOR, publicVp: 3, resourceCards: 0, developmentCards: 0, knights: 2, longestRoad: 5, active: true },
+  // Replaced by the live hand in catanWorkbenchView(); the zeros are what a fresh board starts on.
+  hand: { lumber: 0, brick: 0, wool: 0, grain: 0, ore: 0 },
+  // Replaced by the live dev hand in catanWorkbenchView(); a fresh board holds none.
+  devHand: { knight: 0, victoryPoint: 0, roadBuilding: 0, yearOfPlenty: 0, monopoly: 0 },
   bank: { lumber: 16, brick: 18, wool: 17, grain: 18, ore: 17 },
   developmentDeck: 25,
   opponents: [
     { name: 'claude-haiku-4.5', color: 'blue', publicVp: 2, resourceCards: 3, developmentCards: 0, knights: 1, longestRoad: 4 },
-    { name: 'gpt-5-nano', color: 'orange', publicVp: 2, resourceCards: 2, developmentCards: 1, knights: 0, longestRoad: 10 }, // two digits, to keep the row's widest case covered
-    { name: 'gemini-3-flash', color: 'white', publicVp: 4, resourceCards: 6, developmentCards: 2, knights: 3, longestRoad: 6 },
+    // Holds Longest Road at 10 (two digits, keeping the row's widest case covered).
+    { name: 'gpt-5-nano', color: 'orange', publicVp: 2, resourceCards: 2, developmentCards: 1, knights: 0, longestRoad: 10, hasLongestRoad: true },
+    // Holds Largest Army at exactly the LARGEST_ARMY_MIN of 3.
+    { name: 'gemini-3-flash', color: 'purple', publicVp: 4, resourceCards: 6, developmentCards: 2, knights: 3, longestRoad: 6, hasLargestArmy: true },
   ],
   history: [
     { actor: 'You', color: 'red', message: `placed a settlement ${SETTLEMENT_ICON}` },
@@ -172,19 +297,19 @@ export const CATAN_CARD_WORKBENCH_VIEW: CatanCardsView = {
     { actor: 'claude-haiku-4.5', color: 'blue', message: `placed a road ${ROAD_ICON}` },
     { actor: 'gpt-5-nano', color: 'orange', message: `placed a settlement ${SETTLEMENT_ICON}` },
     { actor: 'gpt-5-nano', color: 'orange', message: 'good luck all', chat: true },
-    { actor: 'gemini-3-flash', color: 'white', message: `placed a settlement ${SETTLEMENT_ICON}` },
-    { actor: 'gemini-3-flash', color: 'white', message: `placed a road ${ROAD_ICON}` },
+    { actor: 'gemini-3-flash', color: 'purple', message: `placed a settlement ${SETTLEMENT_ICON}` },
+    { actor: 'gemini-3-flash', color: 'purple', message: `placed a road ${ROAD_ICON}` },
     { actor: 'You', color: 'red', message: 'rolled a 9' },
     { actor: 'You', color: 'red', message: 'received', resources: ['grain', 'lumber'] },
-    { actor: 'gemini-3-flash', color: 'white', message: 'received', resources: ['ore'] },
+    { actor: 'gemini-3-flash', color: 'purple', message: 'received', resources: ['ore'] },
     { actor: 'claude-haiku-4.5', color: 'blue', message: 'rolled a 4' },
     { actor: 'claude-haiku-4.5', color: 'blue', message: 'received', resources: ['brick', 'brick'] },
     { actor: 'claude-haiku-4.5', color: 'blue', message: `built a road ${ROAD_ICON}` },
     { actor: 'gpt-5-nano', color: 'orange', message: 'rolled a 7' },
     { actor: 'gpt-5-nano', color: 'orange', message: 'moved the robber to the ore hex' },
     { actor: 'gpt-5-nano', color: 'orange', message: 'stole a card from gemini-3-flash' },
-    { actor: 'gemini-3-flash', color: 'white', message: 'rude', chat: true },
-    { actor: 'gemini-3-flash', color: 'white', message: 'rolled an 11' },
+    { actor: 'gemini-3-flash', color: 'purple', message: 'rude', chat: true },
+    { actor: 'gemini-3-flash', color: 'purple', message: 'rolled an 11' },
     { actor: 'You', color: 'red', message: 'received', resources: ['wool'] },
     { actor: 'You', color: 'red', message: 'rolled a 6' },
     { actor: 'You', color: 'red', message: 'received', resources: ['brick', 'grain'] },
@@ -194,17 +319,17 @@ export const CATAN_CARD_WORKBENCH_VIEW: CatanCardsView = {
     { actor: 'claude-haiku-4.5', color: 'blue', message: 'anyone need sheep? I have plenty', chat: true },
     { actor: 'gpt-5-nano', color: 'orange', message: 'traded 2 wheat for 1 ore' },
     { actor: 'gpt-5-nano', color: 'orange', message: 'saving for a city', chat: true },
-    { actor: 'gemini-3-flash', color: 'white', message: 'rolled a 5' },
-    { actor: 'gemini-3-flash', color: 'white', message: 'received', resources: ['ore', 'ore'] },
-    { actor: 'gemini-3-flash', color: 'white', message: 'upgraded to a city' },
+    { actor: 'gemini-3-flash', color: 'purple', message: 'rolled a 5' },
+    { actor: 'gemini-3-flash', color: 'purple', message: 'received', resources: ['ore', 'ore'] },
+    { actor: 'gemini-3-flash', color: 'purple', message: 'upgraded to a city' },
     { actor: 'You', color: 'red', message: 'rolled a 10' },
     { actor: 'You', color: 'red', message: `built a road ${ROAD_ICON}` },
     { actor: 'claude-haiku-4.5', color: 'blue', message: 'played a knight' },
     { actor: 'claude-haiku-4.5', color: 'blue', message: 'moved the robber to the wheat hex' },
     { actor: 'gpt-5-nano', color: 'orange', message: 'rolled a 3' },
     { actor: 'gpt-5-nano', color: 'orange', message: 'received', resources: ['brick'] },
-    { actor: 'gemini-3-flash', color: 'white', message: 'claimed the longest road' },
-    { actor: 'gemini-3-flash', color: 'white', message: 'anyone trading wheat?', chat: true },
+    { actor: 'gemini-3-flash', color: 'purple', message: 'claimed the longest road' },
+    { actor: 'gemini-3-flash', color: 'purple', message: 'anyone trading wheat?', chat: true },
     { actor: 'You', color: 'red', message: 'your turn — roll to begin' },
   ],
 };
@@ -251,15 +376,19 @@ export function catanCardsLayout(region: LayoutBox): CatanCardsLayout {
     compact,
     showPublicRail: region.w >= 112 && region.h >= 40,
     railWidth: RAIL_W,
-    // Compact is the card slot alone; otherwise a title row and its gap sit above it. Both carry
-    // the slot's two reserved peek rows and the panel's bottom pad.
-    handHeight: compact ? CARD_H_COMPACT + HAND_PAD_B : 1 + HAND_TITLE_GAP + CARD_H + HAND_PAD_B,
+    // No title: the cards are self-evident. Just the row of faces, a row of air above it, and
+    // the panel's bottom pad.
+    handHeight: HAND_PAD_T + (compact ? CARD_H_COMPACT : CARD_H) + HAND_PAD_B,
   };
 }
 
 // A deliberately flat rectangle like the reference cards: one uninterrupted color field, the
-// glyph over its name, and a plain white count in the top-right. No frame.
-function card(look: ResourceLook, count: number, height = CARD_H): Node {
+// glyph over its name, and a plain white count in the top-right. No frame. `dim` swaps in the
+// spent-slot colors without touching the geometry, so an empty card holds its place in the row.
+function card(look: ResourceLook, count: number, height = CARD_H, dim = false): Node {
+  const fill = dim ? EMPTY_FILL : look.fill;
+  const ink = dim ? EMPTY_INK : look.ink;
+  const countInk = dim ? EMPTY_INK : COUNT_INK;
   // Glyph and name read as one block, so center the pair rather than each row; the count keeps
   // the top-right corner and overlaps whatever blank space is left above.
   const glyphRow = Math.floor((height - 2) / 2);
@@ -267,16 +396,19 @@ function card(look: ResourceLook, count: number, height = CARD_H): Node {
   // splits into a half cell per side. The layout's own centering rounds that half to the right,
   // which left `wood` — the one even-length name — visibly shoved toward the card's right edge.
   // Flooring the column instead biases the odd cell left, matching how the names read as a set.
-  const nameLeft = Math.floor((CARD_W - look.name.length) / 2);
-  return Box({ width: CARD_W, height, position: 'relative', background: look.fill }, [
+  // Clamped to one so a name only a cell short of the card keeps a left margin rather than
+  // sitting flush against the edge, which reads as a rendering fault.
+  const spare = CARD_W - look.name.length;
+  const nameLeft = spare <= 0 ? 0 : Math.max(1, Math.floor(spare / 2));
+  return Box({ width: CARD_W, height, position: 'relative', background: fill }, [
     Box({ position: 'absolute', top: 0, right: COUNT_RIGHT, width: 2, height: 1, justifyContent: 'center' }, [
-      Text({ text: `${count}`, style: { color: COUNT_INK, bold: true } }),
+      Text({ text: `${count}`, style: { color: countInk, bold: true } }),
     ]),
     Box({ position: 'absolute', top: glyphRow, left: EMOJI_LEFT, width: 2, height: 1 }, [
-      Text({ text: look.emoji, style: { color: look.ink } }),
+      Text({ text: look.emoji, style: { color: ink } }),
     ]),
     Box({ position: 'absolute', top: glyphRow + 1, left: nameLeft, width: look.name.length, height: 1 }, [
-      Text({ text: look.name, style: { color: look.ink, bold: true } }),
+      Text({ text: look.name, style: { color: ink, bold: true } }),
     ]),
   ]);
 }
@@ -339,11 +471,15 @@ function bankRow(view: CatanCardsView): Node {
 // run from `cards` on the left. `strong` is the score's emphasis, carried on the column rather
 // than its position so the order can change without moving the styling with it.
 const STAT_GAP = 1;
-const STAT_COLUMNS: { head: string; w: number; strong?: boolean; read: (p: CatanCardsPlayerView) => number }[] = [
-  { head: 'cards', w: 5, read: (p) => p.resourceCards },
+// `flag` promotes a value out of the muted default when the game state says it matters: gold for
+// the seat that HOLDS an award, red for a hand the robber would force a discard from. Both are
+// decided by the rules engine (award holders, DISCARD_LIMIT), never by comparing numbers here —
+// the highest army is not necessarily the holder, and the threshold is a rule, not a style.
+const STAT_COLUMNS: { head: string; w: number; strong?: boolean; read: (p: CatanCardsPlayerView) => number; flag?: (p: CatanCardsPlayerView) => Rgb | null }[] = [
+  { head: 'cards', w: 5, read: (p) => p.resourceCards, flag: (p) => (p.resourceCards > DISCARD_LIMIT ? AT_RISK : null) },
   { head: DEV_CARD_ICON, w: 3, read: (p) => p.developmentCards },
-  { head: KNIGHT_ICON, w: 3, read: (p) => p.knights },
-  { head: ROAD_ICON, w: 3, read: (p) => p.longestRoad },
+  { head: KNIGHT_ICON, w: 3, read: (p) => p.knights, flag: (p) => (p.hasLargestArmy ? AWARD : null) },
+  { head: ROAD_ICON, w: 3, read: (p) => p.longestRoad, flag: (p) => (p.hasLongestRoad ? AWARD : null) },
   { head: 'vp', w: 2, strong: true, read: (p) => p.publicVp },
 ];
 const NAME_W = RAIL_INNER - STAT_COLUMNS.reduce((n, c) => n + c.w + STAT_GAP, 0);
@@ -367,8 +503,12 @@ function playerRow(player: CatanCardsPlayerView): Node {
     Box({ width: NAME_W, overflow: 'hidden' }, [
       Text({ text: `${player.active ? '▸ ' : '  '}${player.name}`, style: { color: seat, bold: true } }),
     ]),
-    // vp is the score, so it keeps the reading white; the rest are supporting detail.
-    ...STAT_COLUMNS.map((c) => statCell(`${c.read(player)}`, c.w, c.strong ? RAIL_TEXT : RAIL_MUTED, c.strong)),
+    // vp is the score, so it keeps the reading white; the rest are supporting detail until a
+    // flag promotes them.
+    ...STAT_COLUMNS.map((c) => {
+      const flag = c.flag?.(player) ?? null;
+      return statCell(`${c.read(player)}`, c.w, flag ?? (c.strong ? RAIL_TEXT : RAIL_MUTED), flag !== null || c.strong);
+    }),
   ]);
 }
 
@@ -392,22 +532,74 @@ function sidebar(view: CatanCardsView, onClose: () => void): Node {
   ]);
 }
 
+// TEMPORARY (testing): left-click a hand card to add one of that resource, right-click to spend
+// one, and the count floors at zero. Both write module state through the workbench setters rather
+// than the `view` handed in, which is rebuilt every frame — mutating that would last exactly until
+// the next repaint. Delete this and the wrappers in `handPanel` once a live CatanState feeds the
+// HUD, since the rules engine is the only thing allowed to move cards then.
+function adjustHand(resource: Resource, ev: PointerHit): boolean {
+  if (ev.type !== 'down') return false;
+  return adjustCatanWorkbenchHand(resource, ev.button === 2 ? -1 : 1);
+}
+
+// Same click contract as the resource hand: left draws one of that development card, right
+// discards one.
+function adjustDevHand(type: DevCardType, ev: PointerHit): boolean {
+  if (ev.type !== 'down') return false;
+  return adjustCatanWorkbenchDev(type, ev.button === 2 ? -1 : 1);
+}
+
 // Bottom-left corner only: the panel hugs its cards instead of spanning the window, so the board
 // stays visible across the rest of the bottom row.
-function handPanel(view: CatanCardsView, layout: CatanCardsLayout): Node {
-  const cards = RESOURCE_ORDER.map((resource) => card(RESOURCE_LOOK[resource], view.hand[resource], layout.compact ? CARD_H_COMPACT : CARD_H));
-  if (layout.compact) {
-    return Box({ position: 'absolute', left: 1, bottom: 1, height: layout.handHeight, padding: [0, 1, HAND_PAD_B, 1], background: uiChromeBg(0.9) }, [
-      Box({ gap: 1, alignItems: 'center' }, cards),
-    ]);
-  }
-  return Box({ position: 'absolute', left: 1, bottom: 1, height: layout.handHeight, flexDirection: 'column', gap: HAND_TITLE_GAP, padding: [0, 1, HAND_PAD_B, 1], background: uiChromeBg(0.9) }, [
-    Text({ text: 'your hand', style: { color: RAIL_TEXT, bold: true } }),
+// The resource hand and the development hand are two groups of the same card, split by a seam:
+// resources are spendable, dev cards are played. Only dev cards actually held are drawn, so the
+// panel grows and shrinks with the hand instead of showing five mostly-empty purple slots.
+function handPanel(view: CatanCardsView, layout: CatanCardsLayout, avail: number): Node {
+  const height = layout.compact ? CARD_H_COMPACT : CARD_H;
+  const showDev = avail >= RESOURCE_HAND_W + DEV_HAND_W;
+  // A card is wrapped in its own click target only on an editable (workbench) view. In the game
+  // the wrapper is skipped entirely, so the hit-test finds nothing interactive over the hand and
+  // a click falls through to the board exactly as it did before the cards existed.
+  const clickable = (face: Node, onMouse: (ev: PointerHit) => boolean): Node => {
+    if (!view.editable) return face;
+    // The wrapper carries the handler so `card` stays presentational. The hit-test takes the
+    // innermost INTERACTIVE node and the face has none, so it never competes; `Box` has no
+    // handler slot, hence attaching it to the node.
+    const hit = Box({ width: CARD_W, height }, [face]);
+    hit.onMouse = onMouse;
+    return hit;
+  };
+  const devCards = !showDev
+    ? []
+    : DEV_CARD_TYPES.map((type) =>
+        clickable(card(DEV_HAND_LOOK[type], view.devHand[type], height, view.devHand[type] === 0), (ev) => adjustDevHand(type, ev)),
+      );
+  const cards = RESOURCE_ORDER.map((resource) =>
+    clickable(card(RESOURCE_LOOK[resource], view.hand[resource], height, view.hand[resource] === 0), (ev) => adjustHand(resource, ev)),
+  );
+  return Box({ position: 'absolute', left: 1, bottom: 1, height: layout.handHeight, gap: HAND_SPLIT_GAP, padding: [HAND_PAD_T, 1, HAND_PAD_B, 1], background: uiChromeBg(0.9) }, [
     Box({ gap: 1, alignItems: 'end' }, cards),
+    ...(devCards.length === 0 ? [] : [Box({ gap: 1, alignItems: 'end' }, devCards)]),
   ]);
 }
 
-export function buildCatanCardsOverlay(region: LayoutBox, onCloseSidebar: () => void, view: CatanCardsView = CATAN_CARD_WORKBENCH_VIEW): Node {
+// Where a card flying in from its tile is headed: centred on its resource's column, on the card
+// face's own first row. The chip is clipped against exactly this row, so it crosses the panel's
+// top padding in full view and vanishes where the colour starts — the cut lands on the card's
+// edge rather than on the dark strip above it. Arriving and being banked are the same instant.
+//
+// Derived from the same constants handPanel lays out with, because a laid out node's position
+// cannot be read back from outside the paint. Keep the two in step: this is the panel's own
+// geometry (bottom-left anchor, one column of padding, cards a column apart) restated, and the
+// dev half never matters here since only resources are ever thrown.
+export function catanHandLandingCell(region: LayoutBox, resource: Resource): { col: number; row: number } {
+  const layout = catanCardsLayout(region);
+  const panelTop = region.h - 1 - layout.handHeight;
+  const left = 2 + RESOURCE_ORDER.indexOf(resource) * (CARD_W + 1);
+  return { col: left + Math.floor(CARD_W / 2), row: panelTop + HAND_PAD_T };
+}
+
+export function buildCatanCardsOverlay(region: LayoutBox, onCloseSidebar: () => void, view: CatanCardsView = catanWorkbenchView()): Node {
   const layout = catanCardsLayout(region);
   const showSidebar = sidebarOpen && layout.showPublicRail;
   if (showSidebar) {
@@ -422,6 +614,8 @@ export function buildCatanCardsOverlay(region: LayoutBox, onCloseSidebar: () => 
   }
   return Box({ position: 'absolute', top: 0, left: 0, width: region.w, height: region.h }, [
     ...(showSidebar ? [sidebar(view, onCloseSidebar)] : []),
-    handPanel(view, layout),
+    // The hand shares the bottom row with the board, and the rail eats into it. Hand it the
+    // width actually left over so it can drop its optional half instead of sliding under the rail.
+    handPanel(view, layout, region.w - (showSidebar ? RAIL_W : 0) - 2),
   ]);
 }

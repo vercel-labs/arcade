@@ -27,8 +27,13 @@ import { CardsScene, type CardsMode } from '../arcade/games/poker/cards-scene.ts
 import { buildPokerRoot, mountPokerHud } from '../arcade/games/poker/hud.ts';
 import { TileScene } from '../arcade/games/catan/tile-scene.ts';
 import { buildCatanPieceModal, buildCatanTileRoot, mountCatanTileHud } from '../arcade/games/catan/tile-hud.ts';
+import { CATAN_LOCAL_COLOR, catanHandLandingCell } from '../arcade/games/catan/card-hud.ts';
+import { type FlyingResource, ResourceFlights } from '../arcade/games/catan/scene/resource-flight.ts';
 import { catanSidebarOpen, toggleCatanSidebar } from '../arcade/games/catan/card-hud.ts';
-import { type Terrain, TERRAINS } from '../rules/catan/types.ts';
+import { CatanGameScene } from '../arcade/games/catan/game-scene.ts';
+import { buildCatanGameRoot, mountCatanGameHud } from '../arcade/games/catan/game-hud.ts';
+import { CatanDriver, type CatanSeatSpec } from '../arcade/match/catan-driver.ts';
+import { type PlayerColor, type Terrain, TERRAINS } from '../rules/catan/types.ts';
 import { PokerGameScene, type PokerSeatView } from '../arcade/games/poker/poker-scene.ts';
 import { betInput as pokerBetInput, buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, mountPokerGameHud, pushPokerChat } from '../arcade/games/poker/poker-hud.ts';
 import { buildPokerSetupPanel, modeDropdown as pokerModeDropdown, mountPokerSetup, playersDropdown as pokerPlayersDropdown, pokerPreviewSeats, pokerStartingStack } from '../arcade/match/poker-setup.ts';
@@ -317,7 +322,9 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot prism-prompt [cols] [rows] [t] [out]    prism loading screen + press-any-key marquee
   pnpm snapshot cards [single|hand|deck] [cols] [rows] [state] [out]   the cards screen
       (single: a code like Kh/10s/As · hand: peek|up · deck: shuffle|deal)
-  pnpm snapshot catan [sidebar] [hybrid] [forest|hills|pasture|fields|mountains|desert] [cols] [rows] [<t>] [board|board-cards] [hud] [out]   a 3D Catan tile
+  pnpm snapshot catan [sidebar] [hybrid] [forest|hills|pasture|fields|mountains|desert] [cols] [rows] [<t>] [board|board-cards] [robber-moveN] [fly<roll>@<s>] [hud] [out]   a 3D Catan tile
+      (fly8@0.4: freeze the resource cards mid-arc, 0.4s after a roll of 8 pays out — needs hud)
+      (robber-move5: preview moving the robber to hex 5 while leaving the current robber in place)
       (<t> a decimal spins the turntable · azN/elN rotate in degrees · zoomN scales camera distance · hud composites the terrain dropdown panel)
   pnpm snapshot poker [cols] [rows] [preflop|flop|river|showdown] [players=N] [stack=N] [hud|setup|cine|result|menu|notes] [bet=N] [spectate] [longnames] [muck|gather|shuffle] [color] [out]   the poker table
       (muck: fold seats to a burn pile, needs players≥3 · gather/shuffle: the between-hands interlude, mid-sweep / mid-shuffle)
@@ -368,6 +375,8 @@ if (process.argv[2] === 'help' || process.argv[2] === '--help' || process.argv[2
   cardsSnapshot();
 } else if (process.argv[2] === 'poker') {
   pokerSnapshot();
+} else if (process.argv[2] === 'catan-game') {
+  catanGameSnapshot();
 } else if (process.argv[2] === 'catan') {
   catanSnapshot();
 } else {
@@ -405,7 +414,14 @@ function catanSnapshot(): void {
     scene.settle();
     scene.seedDemo();
   }
-  const pieceColor = (['red', 'blue', 'white', 'orange'] as const).find((x) => args.includes(x));
+  // `fly` previews the resource-card arcs, which only exist if the local seat owns pieces to
+  // produce from — seed the sample board, and make its corner a city so a paying roll throws the
+  // two staggered cards rather than a single one.
+  if (args.some((a) => a.startsWith('fly'))) {
+    scene.seedDemo();
+    scene.upgradeBuilding(0);
+  }
+  const pieceColor = (['red', 'blue', 'purple', 'orange'] as const).find((x) => args.includes(x));
   if (pieceColor) scene.setActiveColor(pieceColor);
   // `varN` selects procedural variant N (e.g. var2); `top` orbits toward top-down; a decimal
   // rotates the azimuth.
@@ -431,6 +447,12 @@ function catanSnapshot(): void {
     for (let f = 1; f <= frames; f++) scene.renderScene(target, f / 60);
   } else {
     if (boardMode) scene.settle();
+    const robberMoveArg = args.find((a) => /^robber-move\d+$/.test(a));
+    if (boardMode && robberMoveArg) {
+      const hex = Number(robberMoveArg.slice('robber-move'.length));
+      scene.beginRobberMove();
+      scene.previewRobberHex(hex);
+    }
     scene.renderScene(target, waterTime);
     // `roll` (board mode): roll the dice and step to a chosen time (default past the landing,
     // so the dice rest and the matching chips are lit gold). `roll<seconds>` for a mid-roll.
@@ -469,16 +491,75 @@ function catanSnapshot(): void {
     mountCatanTileHud(screen);
     (screen.component('catan-terrain') as Dropdown | undefined)?.pick(TERRAINS.indexOf(terrain));
     (screen.component('catan-mode') as Dropdown | undefined)?.pick(['tile', 'board', 'boardCards', 'pieces', 'port'].indexOf(scene.currentMode()));
-    if (pieceColor) (screen.component('catan-color') as Dropdown | undefined)?.pick(['red', 'blue', 'white', 'orange'].indexOf(pieceColor));
+    if (pieceColor) (screen.component('catan-color') as Dropdown | undefined)?.pick(['red', 'blue', 'purple', 'orange'].indexOf(pieceColor));
     if (portKind) (screen.component('catan-port') as Dropdown | undefined)?.pick(['generic', 'brick', 'grain', 'lumber', 'ore', 'wool'].indexOf(portKind));
     const region = { x: 0, y: 0, w: cols, h: rows };
     const singlePort = scene.portSailLabel(cols, rows);
-    screen.setRoot(buildCatanTileRoot(region, noop, scene.boardTokens(cols, rows), scene.currentMode(), singlePort ? [singlePort] : scene.boardPortLabels(cols, rows)), region);
+    screen.setRoot(buildCatanTileRoot(region, noop, scene.boardTokens(cols, rows), scene.currentMode(), singlePort ? [singlePort] : scene.boardPortLabels(cols, rows), catanFlights(scene, region, args), scene.isMovingRobber()), region);
     const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid }));
     surfaceToPpm(surf, cols, rows, out);
     return;
   }
   writeDisplayPpm(downsample(target, SS), out);
+}
+
+// The Catan GAME screen (not the tile bed): `setup` captures the pre-game panel, and the default
+// captures a placement in progress. Placement is driven with the rules engine's own legal options
+// rather than models, so the still is reproducible and needs no network.
+//   pnpm exec tsx src/tools/snapshot.ts catan-game [setup] [sidebar] [seats=N] [plies=N] [cols] [rows] [out.ppm]
+function catanGameSnapshot(): void {
+  const args = process.argv.slice(3);
+  const nums = args.filter((a) => /^\d+$/.test(a)).map(Number);
+  const cols = nums[0] ?? 170;
+  const rows = nums[1] ?? 52;
+  const seats = Number(args.find((a) => a.startsWith('seats='))?.slice(6) ?? 3);
+  const plies = Number(args.find((a) => a.startsWith('plies='))?.slice(6) ?? 5);
+  const out = args.find((a) => a.endsWith('.ppm')) ?? `.snapshots/catan-game.ppm`;
+  const region = { x: 0, y: 0, w: cols, h: rows };
+  const SS = 3;
+
+  const gameScene = new CatanGameScene();
+  const driver = new CatanDriver({ scene: gameScene, syncLive: noop });
+  if (!args.includes('setup')) {
+    if (args.includes('sidebar') && !catanSidebarOpen()) toggleCatanSidebar();
+    const colors: PlayerColor[] = ['red', 'blue', 'purple', 'orange'].slice(0, seats) as PlayerColor[];
+    const specs: CatanSeatSpec[] = colors.map((color, i) => (i === 0 ? { kind: 'human', color } : { kind: 'ai', color, model: `openai/gpt-5.4-nano` }));
+    const state = driver.start(specs, { autoRun: false });
+    gameScene.beginSession(state, colors);
+    // Walk the snake order by taking each prompt's first legal option — enough placed pieces to
+    // show the board mid-setup without asking a model anything.
+    for (let i = 0; i < plies && !state.initialPlacementComplete(); i++) {
+      const action = state.legalActions()[0];
+      if (!action) break;
+      void gameScene.playMove(action);
+    }
+  }
+  gameScene.scene.settle();
+
+  const target = new RenderTarget(cols * SS, rows * SS);
+  gameScene.renderScene(target, 0.7);
+  const screen = new Screen(cols, rows);
+  mountCatanGameHud(screen);
+  screen.setRoot(buildCatanGameRoot(region, { driver, onOpenMenu: noop, onStart: noop, onNewGame: noop }), region);
+  const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: false }));
+  surfaceToPpm(surf, cols, rows, out);
+}
+
+// `fly<roll>@<seconds>` freezes the resource-card animation mid-arc: pay out that roll to the
+// local seat and step the flights to that instant. Mirrors what CatanController does on a landed
+// roll — the tool has no controller, so it drives the same two pieces directly.
+function catanFlights(scene: TileScene, region: { w: number; h: number }, args: string[]): FlyingResource[] {
+  const arg = args.find((a) => /^fly\d+@[\d.]+$/.test(a));
+  if (!arg) return [];
+  const [roll, at] = arg.slice(3).split('@').map(Number);
+  const flights = new ResourceFlights();
+  let thrown = 0;
+  for (const source of scene.rollSources(CATAN_LOCAL_COLOR, roll, region.w, region.h)) {
+    flights.spawn(source.resource, source.count, source, catanHandLandingCell({ x: 0, y: 0, ...region }, source.resource), thrown);
+    thrown += source.count;
+  }
+  for (let f = 1; f <= Math.round(at * 60); f++) flights.advance(f / 60);
+  return flights.active();
 }
 
 // The poker table with a dealt hand at a chosen street, presented through the app's

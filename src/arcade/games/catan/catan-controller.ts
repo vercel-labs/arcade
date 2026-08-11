@@ -10,6 +10,9 @@
 import { type RenderTarget } from '../../../engine/index.ts';
 import { type LayoutBox, type Node, type Screen } from '../../../tui/index.ts';
 import { buildGameMenu, type MenuItem } from '../../shell/bars.ts';
+import { type Resource } from '../../../rules/catan/types.ts';
+import { bankCatanResource, CATAN_LOCAL_COLOR, catanHandLandingCell, logCatanReceived, logCatanRobberMove, logCatanRoll } from './card-hud.ts';
+import { ResourceFlights } from './scene/resource-flight.ts';
 import { buildCatanPieceModal, buildCatanTileRoot, catanTileTerrain, mountCatanTileHud, setCatanTileHandlers, setCatanTileMode } from './tile-hud.ts';
 import { TileScene } from './tile-scene.ts';
 
@@ -43,6 +46,15 @@ export class CatanController {
   private menuOpen = false;
   private pieceEdit: { kind: 'building' | 'road'; id: number } | null = null;
   private animationTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly flights = new ResourceFlights();
+  // Cards banked since the current roll's first arrival, held so the log can report the whole
+  // haul in one entry once the last one is down.
+  private arrived: Resource[] = [];
+  // The last geometry the HUD was built at. A roll lands inside renderScene, which knows the
+  // scene target but not the terminal, and the launch/landing cells need both.
+  private lastCols = 0;
+  private lastRows = 0;
+  private lastSceneCols = 0;
 
   constructor(deps: CatanDeps) {
     this.ui = deps.ui;
@@ -60,6 +72,24 @@ export class CatanController {
       onColor: (c) => this.change(() => this.scene.setActiveColor(c)),
       onPort: (k) => this.change(() => this.scene.setPortKind(k)),
     });
+    // Production. The scene reports the sum once the dice rest; what that pays out depends on
+    // whose pieces sit on the matching hexes, so the seat is applied here rather than in the
+    // scene. Building is still free — this only ever adds to the hand.
+    //
+    // Nothing is banked yet: each card is thrown from its hex and credited when it lands, so the
+    // counts tick up as the cards arrive. The launch cells come from the camera as it stands
+    // right now, which is why they are read here rather than at spawn-time in the flight.
+    this.scene.onRollLanded = (sum) => {
+      logCatanRoll(sum);
+      if (sum === 7) this.scene.beginRobberMove();
+      let thrown = 0;
+      for (const source of this.scene.rollSources(CATAN_LOCAL_COLOR, sum, this.lastSceneCols, this.lastRows)) {
+        const target = catanHandLandingCell(this.region(this.lastCols, this.lastRows), source.resource);
+        this.flights.spawn(source.resource, source.count, source, target, thrown);
+        thrown += source.count;
+      }
+      this.requestFrame();
+    };
   }
 
   private change(mutate: () => void): void {
@@ -82,6 +112,16 @@ export class CatanController {
   reset(): void {
     this.menuOpen = false;
     this.pieceEdit = null;
+    // Settle any roll still in the air. Left in place they would ride a clock that keeps running
+    // while the screen is closed, so re-entering banks the whole lot on the first frame and logs
+    // a receipt for a roll from minutes ago.
+    const owed = this.flights.drain();
+    for (const resource of owed) bankCatanResource(resource);
+    this.arrived.push(...owed);
+    if (this.arrived.length) {
+      logCatanReceived(this.arrived);
+      this.arrived = [];
+    }
     if (this.animationTimer !== null) {
       clearInterval(this.animationTimer);
       this.animationTimer = null;
@@ -124,6 +164,15 @@ export class CatanController {
     if (this.scene.needsRender()) this.requestRender();
   }
   clickAt(ndcX: number, ndcY: number): void {
+    if (this.scene.isMovingRobber()) {
+      const hex = this.scene.pickRobberHexAt(ndcX, ndcY);
+      if (hex !== null && this.scene.moveRobberTo(hex)) {
+        const terrain = this.scene.terrainAtHex(hex);
+        if (terrain) logCatanRobberMove(terrain);
+      }
+      this.requestFrame();
+      return;
+    }
     const hit = this.scene.clickBoard(ndcX, ndcY);
     if (hit) this.pieceEdit = hit; // clicked a placed piece → open its edit modal
     this.requestFrame();
@@ -131,10 +180,22 @@ export class CatanController {
 
   // ── render / dirty ───────────────────────────────────────────────────────────
   needsRender(): boolean {
-    return this.scene.needsRender();
+    return this.scene.needsRender() || this.flights.busy();
   }
   renderScene(target: RenderTarget, t: number): void {
     this.scene.renderScene(target, t);
+    // Cards in the air ride the scene's clock, so they advance on the same frames it does. Each
+    // arrival is banked on the spot; the log waits for the last one so one roll reads as one
+    // entry rather than a line per card.
+    const landed = this.flights.advance(t);
+    if (!landed.length) return;
+    for (const resource of landed) bankCatanResource(resource);
+    this.arrived.push(...landed);
+    if (!this.flights.busy()) {
+      logCatanReceived(this.arrived);
+      this.arrived = [];
+    }
+    this.requestFrame(); // the hand count changed, so the HUD has to be rebuilt
   }
 
   // ── UI roots ─────────────────────────────────────────────────────────────────
@@ -145,9 +206,20 @@ export class CatanController {
   // board shifts. The HUD chrome still spans the full region.
   buildRoot(cols: number, rows: number, sceneCols: number = cols): Node {
     mountCatanTileHud(this.ui); // a prior modal root may have dropped the Slots
+    this.lastCols = cols;
+    this.lastRows = rows;
+    this.lastSceneCols = sceneCols;
     const singlePort = this.scene.portSailLabel(sceneCols, rows);
     const sailLabels = singlePort ? [singlePort] : this.scene.boardPortLabels(sceneCols, rows);
-    return buildCatanTileRoot(this.region(cols, rows), () => this.openMenu(), this.scene.boardTokens(sceneCols, rows), this.scene.currentMode(), sailLabels);
+    return buildCatanTileRoot(
+      this.region(cols, rows),
+      () => this.openMenu(),
+      this.scene.boardTokens(sceneCols, rows),
+      this.scene.currentMode(),
+      sailLabels,
+      this.flights.active(),
+      this.scene.isMovingRobber(),
+    );
   }
 
   // The in-game menu popup (home / reset camera / display / color / controls / quit).

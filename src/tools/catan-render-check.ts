@@ -44,7 +44,7 @@ const portViews: View[] = (['generic', 'brick', 'grain', 'lumber', 'ore', 'wool'
   },
 }));
 
-const pieceViews: View[] = (['red', 'blue', 'white', 'orange'] as const).map((color) => ({
+const pieceViews: View[] = (['red', 'blue', 'purple', 'orange'] as const).map((color) => ({
   name: `pieces-${color}`,
   setup: (s: TileScene) => {
     s.setMode('pieces');

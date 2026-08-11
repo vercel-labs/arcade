@@ -8,7 +8,7 @@ import { BISHOP, BLACK, type Color, KNIGHT, type PieceType, QUEEN, ROOK } from '
 import type { RGB } from '../../engine/index.ts';
 import { UI_CHROME_BG } from '../theme.ts';
 
-export type Mode = 'prism' | 'menu' | 'chess-game' | 'logos' | 'ui' | 'audio' | 'cards' | 'poker' | 'catan-tiles';
+export type Mode = 'prism' | 'menu' | 'chess-game' | 'logos' | 'ui' | 'audio' | 'cards' | 'poker' | 'catan' | 'catan-tiles';
 export type RenderMode = 'ascii' | 'pixels';
 
 export interface BarActions {
@@ -106,10 +106,10 @@ export function buildBar(
       Button({ id: 'mode', label: displayLabel(renderMode), onClick: a.mode, style: PILL }),
       Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
     ];
-  } else if (mode === 'poker') {
-    // The poker table has NO bottom bar: everything system-level (home / new game /
-    // reset camera / display / quit) lives in the menu popup; play/pause is 'p', and betting
-    // lives in the HUD — so the felt stays a clean broadcast overlay, not a toolbar.
+  } else if (mode === 'poker' || mode === 'catan') {
+    // The poker table and the Catan board have NO bottom bar: everything system-level (home /
+    // new game / reset camera / display / quit) lives in the menu popup, and the game's own
+    // controls live in the HUD — so the play surface stays a clean overlay, not a toolbar.
     buttons = [];
   }
 
@@ -359,7 +359,7 @@ function prettyChord(k: string): string {
 // The mouse controls documented in the controls overlay, per screen. Orbit screens
 // share drag/pan/zoom; the menu browses covers + launches; chess adds click-to-select/
 // move on top of orbit. Screens absent here (e.g. the prism) have no mouse row.
-const ORBIT_MODES: Mode[] = ['chess-game', 'poker', 'logos', 'audio', 'cards', 'catan-tiles', 'ui'];
+const ORBIT_MODES: Mode[] = ['chess-game', 'poker', 'logos', 'audio', 'cards', 'catan', 'catan-tiles', 'ui'];
 export function mouseControlsFor(mode: Mode): { keys: string; label: string }[] {
   if (mode === 'menu') return [{ keys: 'scroll', label: 'prev / next' }, { keys: 'click', label: 'launch' }];
   const rows: { keys: string; label: string }[] = [];
@@ -367,6 +367,8 @@ export function mouseControlsFor(mode: Mode): { keys: string; label: string }[] 
   if (mode === 'chess-game') rows.push({ keys: 'click', label: 'select / move' });
   // Poker: hover a hole card to peek (bends it up), click to lift it fully face-on.
   if (mode === 'poker') rows.push({ keys: 'hover', label: 'peek at card' }, { keys: 'click', label: 'lift card' });
+  // Catan: only legal spots highlight, so a click is always a legal placement.
+  if (mode === 'catan') rows.push({ keys: 'click', label: 'place on a highlighted spot' });
   return rows;
 }
 

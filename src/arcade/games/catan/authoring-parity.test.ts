@@ -14,7 +14,7 @@ function frameHash(target: RenderTarget): string {
 test('authored Catan traversal preserves every showcase framebuffer baseline', () => {
   const cases: { mode: CatanMode; configure(scene: TileScene): void; expected: string }[] = [
     { mode: 'tile', configure: () => {}, expected: 'c0548aa8bb4493d2f588172ae8665ae66d9a11535e55100c60f74038f2eb4e7b' },
-    { mode: 'board', configure: (scene) => scene.seedDemo(), expected: '430e725a5b52955ea1ce92d3b81b01065e7297962b56068608d1842a4698754e' },
+    { mode: 'board', configure: (scene) => scene.seedDemo(), expected: '6c10168cfcab6e550ce1492c316dfe1bd55195e8c4318552960725ae3faad610' },
     { mode: 'pieces', configure: (scene) => scene.setActiveColor('blue'), expected: '2446ef4446021cbb402048154da0846bca91ad2f0a230d7806851814cdcc7ee3' },
     { mode: 'port', configure: (scene) => scene.setPortKind('ore'), expected: 'e13e798a204d243ff546b218e1ec564f67e81a08bd7108fb910f78ba24719c0b' },
   ];
