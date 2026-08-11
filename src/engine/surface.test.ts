@@ -58,3 +58,28 @@ test('a diff run re-anchors the cursor after a wide glyph tail', () => {
   assert.ok(afterGlyph.includes('a'), 'the later cells are emitted');
   assert.ok(/\x1b\[\d+;\d+H/.test(afterGlyph.slice(0, afterGlyph.indexOf('a'))), 'cursor re-anchored before them');
 });
+
+test('a wide glyph is refused the final column, where the terminal would wrap it', () => {
+  // Two cells of glyph and one column left. The terminal draws it anyway and advances two, so it
+  // spills onto the next row's first cell — a cell the model never wrote, which makes the debris
+  // invisible to the diff and permanent until something else overdraws it.
+  const s = new Surface(6, 2);
+  s.drawText(5, 0, '🐑', W, K);
+  assert.equal(s.getCell(5, 0)?.ch, ' ', 'the glyph is dropped, not kept where it cannot fit');
+  assert.equal(s.getCell(0, 1)?.ch, ' ', 'and nothing is written on the row below');
+  assert.ok(!s.diff(new Surface(6, 2)).includes('🐑'), 'so it is never emitted at the edge');
+
+  // One column further left it fits, and still occupies both of its cells.
+  const ok = new Surface(6, 2);
+  ok.drawText(4, 0, '🐑', W, K);
+  assert.equal(ok.getCell(4, 0)?.ch, '🐑');
+  assert.ok(ok.diff(new Surface(6, 2)).includes('🐑'));
+});
+
+test('setCell refuses a wide glyph in the final column however it is reached', () => {
+  // drawText is not the only writer — component draw hooks call setCell directly.
+  const s = new Surface(4, 1);
+  s.setCell(3, 0, '🧱', W, K);
+  assert.equal(s.getCell(3, 0)?.ch, ' ');
+  assert.equal(stringWidth(s.getCell(3, 0)!.ch), 1, 'whatever lands there advances exactly one cell');
+});

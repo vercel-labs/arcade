@@ -104,6 +104,13 @@ export class Surface {
   // exceed 255; a raw Uint8Array store would wrap mod 256 and corrupt the hue).
   setCell(x: number, y: number, ch: string, fg: RGB, bg: RGB, style = 0): void {
     if (!this.inBounds(x, y)) return;
+    // A two-cell glyph cannot live in the final column: there is no second cell for its other
+    // half, and the terminal draws it regardless and advances the cursor two columns — off the
+    // edge, which wraps. The glyph then appears at the START of the next row, somewhere the model
+    // never wrote, so the differ compares that cell against an identical shadow and reports no
+    // change: the debris is unreachable until something else happens to overdraw it. Keeping the
+    // colours but dropping the glyph costs one blank column and cannot desync the row.
+    if (x + 1 >= this.cols && stringWidth(ch) === 2) ch = ' ';
     const i = y * this.cols + x;
     this.breakWidePair(x, y, i, ch);
     this.ch[i] = ch === '' ? ' ' : ch;
