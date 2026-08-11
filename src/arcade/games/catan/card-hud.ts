@@ -13,9 +13,14 @@ import {
   SIDEBAR_PAD_R,
   SIDEBAR_PAD_V,
   Slot,
+  Table,
+  TableCell,
+  TableHeader,
+  TableRow,
   Text,
   Tooltip,
   truncate,
+  type ColumnDef,
   type LayoutBox,
   type Node,
   type PointerHit,
@@ -615,40 +620,54 @@ const STAT_GAP = 1;
 // the seat that HOLDS an award, red for a hand the robber would force a discard from. Both are
 // decided by the rules engine (award holders, DISCARD_LIMIT), never by comparing numbers here —
 // the highest army is not necessarily the holder, and the threshold is a rule, not a style.
-const STAT_COLUMNS: { head: string; w: number; strong?: boolean; read: (p: CatanCardsPlayerView) => number; flag?: (p: CatanCardsPlayerView) => Rgb | null }[] = [
-  { head: 'cards', w: 5, read: (p) => p.resourceCards, flag: (p) => (p.resourceCards > DISCARD_LIMIT ? AT_RISK : null) },
-  { head: DEV_CARD_ICON, w: 3, read: (p) => p.developmentCards },
-  { head: KNIGHT_ICON, w: 3, read: (p) => p.knights, flag: (p) => (p.hasLargestArmy ? AWARD : null) },
-  { head: ROAD_ICON, w: 3, read: (p) => p.longestRoad, flag: (p) => (p.hasLongestRoad ? AWARD : null) },
-  { head: 'vp', w: 2, strong: true, read: (p) => p.publicVp },
-];
-const NAME_W = RAIL_INNER - STAT_COLUMNS.reduce((n, c) => n + c.w + STAT_GAP, 0);
-
-function statCell(text: string, w: number, color: Rgb, bold = false): Node {
-  return Box({ width: w, justifyContent: 'end' }, [Text({ text, style: { color, bold } })]);
+// `col` is the geometry the Table resolves; the name column is the flexible one, so adding or
+// widening a stat no longer means recomputing the name's width by hand.
+interface StatColumn {
+  head: string;
+  col: ColumnDef;
+  strong?: boolean;
+  read: (p: CatanCardsPlayerView) => number;
+  flag?: (p: CatanCardsPlayerView) => Rgb | null;
 }
+const STAT_COLUMNS: StatColumn[] = [
+  { head: 'cards', col: { width: 5, align: 'end' }, read: (p) => p.resourceCards, flag: (p) => (p.resourceCards > DISCARD_LIMIT ? AT_RISK : null) },
+  { head: DEV_CARD_ICON, col: { width: 3, align: 'end' }, read: (p) => p.developmentCards },
+  { head: KNIGHT_ICON, col: { width: 3, align: 'end' }, read: (p) => p.knights, flag: (p) => (p.hasLargestArmy ? AWARD : null) },
+  { head: ROAD_ICON, col: { width: 3, align: 'end' }, read: (p) => p.longestRoad, flag: (p) => (p.hasLongestRoad ? AWARD : null) },
+  { head: 'vp', col: { width: 2, align: 'end' }, strong: true, read: (p) => p.publicVp },
+];
+// The name column takes whatever the stats leave, down to a floor that keeps a seat
+// identifiable rather than letting it collapse to nothing on a narrow terminal.
+const PLAYER_COLUMNS: ColumnDef[] = [{ flex: 1, min: 8 }, ...STAT_COLUMNS.map((c) => c.col)];
 
 // The section label doubles as the table's corner cell, so "players" heads the name column the
 // way each icon heads its own — one header row instead of a title stacked on top of one.
 function playersHeader(): Node {
-  return Box({ width: { pct: 100 }, gap: STAT_GAP }, [
-    Box({ width: NAME_W }, [sectionTitle('players')]),
-    ...STAT_COLUMNS.map((c) => statCell(c.head, c.w, RAIL_MUTED)),
+  return TableHeader([
+    TableCell(sectionTitle('players')),
+    ...STAT_COLUMNS.map((c) => TableCell(c.head, { style: { color: RAIL_MUTED } })),
   ]);
 }
 
 function playerRow(player: CatanCardsPlayerView): Node {
   const seat = PLAYER_LOOK[player.color];
-  return Box({ width: { pct: 100 }, gap: STAT_GAP }, [
-    Box({ width: NAME_W, overflow: 'hidden' }, [
-      Text({ text: `${player.active ? '▸ ' : '  '}${player.name}`, style: { color: seat, bold: true } }),
-    ]),
+  return TableRow({}, [
+    TableCell(`${player.active ? '▸ ' : '  '}${player.name}`, { style: { color: seat, bold: true } }),
     // vp is the score, so it keeps the reading white; the rest are supporting detail until a
     // flag promotes them.
     ...STAT_COLUMNS.map((c) => {
       const flag = c.flag?.(player) ?? null;
-      return statCell(`${c.read(player)}`, c.w, flag ?? (c.strong ? RAIL_TEXT : RAIL_MUTED), flag !== null || c.strong);
+      return TableCell(`${c.read(player)}`, {
+        style: { color: flag ?? (c.strong ? RAIL_TEXT : RAIL_MUTED), bold: flag !== null || c.strong },
+      });
     }),
+  ]);
+}
+
+function playersTable(players: CatanCardsPlayerView[]): Node {
+  return Table({ columns: PLAYER_COLUMNS, width: RAIL_INNER, gap: STAT_GAP, rowGap: 1 }, [
+    playersHeader(),
+    ...players.map(playerRow),
   ]);
 }
 
@@ -664,8 +683,7 @@ function sidebar(view: CatanCardsView, onClose: () => void): Node {
     Slot('catan-history'),
     inset(sectionTitle('bank')),
     inset(bankRow(view)),
-    inset(playersHeader()),
-    ...players.map((p) => inset(playerRow(p))),
+    inset(playersTable(players)),
   ]);
   return Box({ position: 'absolute', top: 0, right: 0, bottom: 0, width: RAIL_W, overflow: 'hidden' }, [
     Sidebar({ width: RAIL_W, height: { pct: 100 }, title: 'sidebar', closeId: 'catan-sidebar-close', onClose, background: uiChromeBg(0.9), titleColor: ARCADE_CHROME_TEXT.title }, [body]),

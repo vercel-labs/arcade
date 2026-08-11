@@ -13,6 +13,17 @@ export {
 export { Modal } from './components/modal.ts';
 export { Dialog, CloseButton, type DialogOpts } from './components/dialog.ts';
 export {
+  resolveColumns,
+  Table,
+  TableCell,
+  TableHeader,
+  TableRow,
+  type CellOpts,
+  type ColumnDef,
+  type RowOpts,
+  type TableOpts,
+} from './components/table.ts';
+export {
   Sidebar,
   SIDEBAR_HEADER_H,
   SIDEBAR_PAD_L,
