@@ -3,7 +3,8 @@
 //                     stat card (right).
 //   • Head-to-Head  — two models' records as one diverging bar, their wisps
 //                     direct-labeled beneath.
-//   • Matrix        — who-beats-whom as a diverging heatmap.
+//   • Matrix        — every model against every metric, as a diverging heatmap. The only
+//                     view that spans both games at once.
 // Everything is mouse-clickable and reuses the shared TUI components. The left is
 // a dark scrim; the right region is transparent so LeaderboardScene's creator
 // wisp(s) show through (which creators is decided by activeWispCreators()).
@@ -17,12 +18,13 @@
 //     appears without the creator's name beside it.
 //   · The interval, not the point, is the headline mark — see stats.ts.
 
-import type { RGB } from '../../engine/index.ts';
+import { STYLE_BOLD, type RGB } from '../../engine/index.ts';
 import { ASCIIFont, asciiFontLines, Box, Button, Dropdown, FrameBuffer, ScrollBox, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../tui/index.ts';
 import { UI_CHROME_PILL } from '../theme.ts';
 import { creatorTint } from '../scenes/wisp.ts';
-import { dummyHeadToHead, leaderboardCreators, modelsForGame, type ChessRow, type LeaderGame, type LeaderboardData, type PokerRow } from './data.ts';
-import { bbPer100, divergingBin, duelArms, fitDomain, fitSymmetric, SHRINK_GAMES, SHRINK_HANDS, shrink, THIN_SAMPLE, ticksFor, toCell, wilson, type Domain, type Interval, type Tick } from './stats.ts';
+import { buildMatrix, COLUMNS, sortRows, type MatrixCell, type MatrixColumn, type MatrixRow, type MatrixTable } from './columns.ts';
+import { dummyH2HSlices, dummyHeadToHead, leaderboardCreators, modelsForGame, type ChessRow, type H2HRecord, type H2HSlice, type LeaderGame, type LeaderboardData, type PokerRow } from './data.ts';
+import { bbPer100, fitDomain, fitSymmetric, rampStep, SHRINK_GAMES, SHRINK_HANDS, shrink, THIN_SAMPLE, ticksFor, toCell, wilson, type Domain, type Interval, type Tick } from './stats.ts';
 
 export type Metric = 'standings' | 'headtohead' | 'matrix';
 
@@ -36,7 +38,6 @@ const INK: RGB = [212, 214, 224];
 const INK_DIM: RGB = [120, 124, 140];
 const RULE: RGB = [42, 45, 58];
 const GRID: RGB = [30, 32, 41]; // recessive axis gridline, one shade off the scrim
-const TRACK: RGB = [48, 51, 64];
 const SCRIM: [number, number, number, number] = [10, 12, 18, 0.93];
 const CARD: [number, number, number, number] = [14, 16, 24, 0.95];
 const CARD_BG: RGB = [14, 16, 24];
@@ -48,7 +49,7 @@ const ALL = 'all creators';
 const ROOT_PAD_X = 3;
 const BODY_GAP = 2;
 const STANDINGS_PANEL_W = 80;
-const H2H_PANEL_W = 60;
+const H2H_PANEL_W = 68;
 const TOP_RESERVE = 4; // top pad (1) + tab row (1) + rule (1) + column gap (1)
 
 // Row geometry. The track is the shared win-rate axis every row is plotted on.
@@ -135,6 +136,7 @@ const gameDrop = new Dropdown({ id: 'lb-game', items: GAMES, width: 10, bare: tr
 
 export function mountLeaderboard(ui: Screen): void {
   ui.mount(rowList);
+  ui.mount(matrixList);
   ui.mount(creatorDrop);
   ui.mount(gameDrop);
 }
@@ -354,8 +356,15 @@ function controls(onMenu: () => void): Node {
   // A bare dropdown, not one pill per game: it sits on the tab strip's baseline at the
   // same 1-row height as everything else there, and adding a third game is a list entry
   // rather than another pill competing for header width.
+  // The matrix spans every game at once, so a game selector has nothing to select there —
+  // its Slot is parked in a 0×0 clipped box rather than dropped, which keeps the Dropdown
+  // referenced in the tree so Screen.expand() doesn't auto-unmount it (mirrors chess's HUD).
+  const gamePick =
+    metric === 'matrix'
+      ? Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot('lb-game')])
+      : Box({ flexDirection: 'row', alignItems: 'center', gap: 1 }, [Text({ text: 'game', style: { color: INK_DIM } }), Slot('lb-game')]);
   const right = Box({ flexDirection: 'row', alignItems: 'end', gap: 2 }, [
-    Box({ flexDirection: 'row', alignItems: 'center', gap: 1 }, [Text({ text: 'game', style: { color: INK_DIM } }), Slot('lb-game')]),
+    gamePick,
     // ☰ menu (home / controls / account / telemetry / quit) top-right, like the other screens.
     Button({ id: 'lb-menu-button', label: '☰ menu', onClick: onMenu, style: UI_CHROME_PILL }),
   ]);
@@ -676,210 +685,381 @@ function standingsView(data: LeaderboardData, listH: number, regionW: number): N
 }
 
 // ---- head-to-head ----
+//
+// A rivalry read as CUTS, not as one number. The aggregate record is usually the least
+// informative figure a pairing has — Djokovic–Nadal sit level at 31-29 overall while every
+// slice underneath is lopsided — so the total is context in the header and the cuts are the
+// body. Order follows the way rivalry pages that work are built: aggregate, then slices,
+// then a verdict.
+//
+// Each row is a butterfly: one shared scale across both wings (uneven wings misread as a
+// difference that isn't there), values at the outer ends, and the label centered in the gap
+// so it's written once rather than mirrored. Rows are drawn as a single FrameBuffer for the
+// same reason the matrix is — nothing can wedge a flex gap into the middle of a bar.
 
-// One center-anchored diverging bar: A's wins grow left of the midline, B's right,
-// draws as a neutral block in the middle. The canonical encoding for a duel — and
-// an even record is unmistakable because the fill stops at the tick.
-function duelBar(aWins: number, bWins: number, draws: number, aTint: RGB, bTint: RGB, width: number): Node {
+const H2H_VAL_W = 4;
+const H2H_ARM_W = 17;
+const H2H_LABEL_W = 20;
+const H2H_ROW_W = H2H_VAL_W * 2 + H2H_ARM_W * 2 + H2H_LABEL_W;
+
+// The two SIDES of the duel, not good and bad. This is the pair already validated for this
+// screen (ΔE 21.0 protanopia, 28.2 normal), reused here because a duel needs two hues that
+// read as opposed — and each side is direct-labelled above, so hue is never load-bearing.
+const SIDE_A = WIN_BLUE;
+const SIDE_B = LOSS_RED;
+
+// One butterfly row. `scale` is shared by every row so arms are comparable down the column.
+function h2hRow(s: H2HSlice, scale: number): Node {
+  const win = s.a === s.b ? 0 : s.a > s.b ? -1 : 1;
   return FrameBuffer({
-    width,
+    width: H2H_ROW_W,
     height: 1,
     draw: (surf, box) => {
-      for (let i = 0; i < box.w; i++) surf.setCell(box.x + i, box.y, '·', TRACK, CARD_BG);
-      const { mid, aCells, bCells, drawCells } = duelArms(aWins, bWins, draws, box.w);
-      const dLeft = Math.floor(drawCells / 2);
-      // A grows leftward from the draw block, B rightward, draws straddle the midpoint.
-      for (let i = 0; i < aCells; i++) {
-        const x = mid - dLeft - 1 - i;
-        if (x >= 0) surf.setCell(box.x + x, box.y, '█', aTint, CARD_BG);
-      }
-      for (let i = 0; i < drawCells; i++) {
-        const x = mid - dLeft + i;
-        if (x >= 0 && x < box.w) surf.setCell(box.x + x, box.y, '▓', EVEN_GRAY, CARD_BG);
-      }
-      for (let i = 0; i < bCells; i++) {
-        const x = mid + (drawCells - dLeft) + i;
-        if (x < box.w) surf.setCell(box.x + x, box.y, '█', bTint, CARD_BG);
-      }
-      if (drawCells === 0) surf.setCell(box.x + mid, box.y, '│', [96, 100, 120], CARD_BG);
+      const cells = (v: number): number => (scale <= 0 ? 0 : Math.round((v / scale) * H2H_ARM_W));
+      const centre = box.x + H2H_VAL_W + H2H_ARM_W;
+
+      // Values sit at the outer ends, so the eye reads number → bar → label → bar → number.
+      const av = String(s.a);
+      surf.drawText(box.x + H2H_VAL_W - av.length - 1, box.y, av, win === -1 ? SIDE_A : INK_DIM, CARD_BG, win === -1 ? STYLE_BOLD : 0);
+      const bv = String(s.b);
+      surf.drawText(centre + H2H_LABEL_W + H2H_ARM_W + 1, box.y, bv, win === 1 ? SIDE_B : INK_DIM, CARD_BG, win === 1 ? STYLE_BOLD : 0);
+
+      // A's arm grows leftward from the label, B's rightward. Drawn with a block glyph rather
+      // than a filled background — the exact opposite of the matrix, and for the opposite
+      // reason: there the tiles form one continuous field and seams are the bug, here each row
+      // is a separate reading and neighbouring arms of similar length would fuse into a slab.
+      //
+      // Too few games shows as a THINNER bar at full colour, never as a dimmed row. Fading a
+      // row reads as the panel being clipped — the eye takes it for content continuing past
+      // the edge rather than for a weak sample.
+      const glyph = s.thin ? '▁' : '▄';
+      for (let i = 0; i < cells(s.a); i++) surf.setCell(centre - 1 - i, box.y, glyph, SIDE_A, CARD_BG);
+      for (let i = 0; i < cells(s.b); i++) surf.setCell(centre + H2H_LABEL_W + i, box.y, glyph, SIDE_B, CARD_BG);
+
+      surf.drawText(centre, box.y, padCenter(s.label, H2H_LABEL_W), INK_DIM, CARD_BG);
     },
   });
+}
+
+// Header: the two names with their creator spines, and the aggregate underneath — stated
+// plainly and immediately qualified, because on its own it is the number most likely to
+// mislead.
+function h2hHeader(a: string, b: string, rec: H2HRecord): Node {
+  const name = (slug: string, color: RGB, align: 'start' | 'end'): Node =>
+    Box({ flexDirection: 'row', gap: 1, alignItems: 'center', flexGrow: 1, justifyContent: align }, [
+      ...(align === 'start' ? [Text({ text: '▌', style: { color: tintOf(slug) } })] : []),
+      Text({ text: fit(shortModel(slug), 22), style: { color, bold: true } }),
+      ...(align === 'end' ? [Text({ text: '▌', style: { color: tintOf(slug) } })] : []),
+    ]);
+  const drawn = game === 'chess' ? ` · ${rec.draws} drawn` : '';
+  return Box({ flexDirection: 'column', alignItems: 'stretch', width: H2H_ROW_W }, [
+    Box({ flexDirection: 'row', alignItems: 'center' }, [name(a, SIDE_A, 'start'), Text({ text: 'VS', style: { color: INK_DIM } }), name(b, SIDE_B, 'end')]),
+    Box({ flexDirection: 'row', justifyContent: 'center', padding: [1, 0, 0, 0] }, [
+      // ASCII hyphen, not an en dash: blockBits draws '–' across both middle pixel rows, so
+      // at 8px it reads as '=' and the scoreline turns into an equation.
+      Text({ text: `${rec.aWins}`, style: { color: SIDE_A, bold: true } }),
+      Text({ text: ' - ', style: { color: INK_DIM } }),
+      Text({ text: `${rec.bWins}`, style: { color: SIDE_B, bold: true } }),
+    ]),
+    Box({ flexDirection: 'row', justifyContent: 'center' }, [Text({ text: `${rec.total} games${drawn}`, style: { color: INK_DIM } })]),
+  ]);
+}
+
+// The verdict, in the spirit of the matchup pages that award a point per category won: the
+// total can be level while the categories are one-sided, and that split is the finding.
+// Categories with too few games are left out — they can't decide anything.
+function h2hVerdict(a: string, b: string, slices: H2HSlice[]): Node {
+  const live = slices.filter((s) => !s.thin && s.a !== s.b);
+  const aWon = live.filter((s) => s.a > s.b).length;
+  const bWon = live.length - aWon;
+  if (live.length === 0) return Text({ text: padCenter('too few games in every category', H2H_ROW_W), style: { color: INK_DIM } });
+  const lead = aWon === bWon ? null : aWon > bWon ? a : b;
+  const text = lead === null ? `even — ${aWon} categories each` : `${fit(shortModel(lead), 20)} leads ${Math.max(aWon, bWon)} of ${live.length}`;
+  return Text({ text: padCenter(text, H2H_ROW_W), style: { color: lead === null ? INK_DIM : lead === a ? SIDE_A : SIDE_B, bold: lead !== null } });
 }
 
 function h2hView(regionW: number): Node {
   const a = h2hA;
   const b = h2hB;
   const rec = dummyHeadToHead(a, b, game);
-  const aT = tintOf(a);
-  const bT = tintOf(b);
+  const slices = dummyH2HSlices(a, b, game);
   const panelW = panelWidth(regionW, H2H_PANEL_W);
-  const inner = panelW - 6;
+
   const body: Node[] = rec
     ? [
-        // Direct labels in each model's own tint — no legend, and it names which
-        // wisp is which (the tints alone cannot be trusted to do that).
-        Box({ flexDirection: 'row', justifyContent: 'between' }, [
-          Text({ text: fit(shortModel(a), 24), style: { color: aT, bold: true } }),
-          Text({ text: fit(shortModel(b), 24), style: { color: bT, bold: true } }),
-        ]),
-        Box({ flexDirection: 'row', justifyContent: 'between' }, [Text({ text: `${rec.aWins} wins`, style: { color: INK } }), Text({ text: `${rec.bWins} wins`, style: { color: INK } })]),
+        h2hHeader(a, b, rec),
         Box({ height: 1 }),
-        duelBar(rec.aWins, rec.bWins, rec.draws, aT, bT, inner),
-        Box({ flexDirection: 'row', justifyContent: 'center' }, [Text({ text: `${rec.total} games${game === 'chess' ? ` · ${rec.draws} drawn` : ''}`, style: { color: INK_DIM } })]),
+        rule(H2H_ROW_W),
+        ...slices.map((s) => h2hRow(s, Math.max(1, ...slices.map((x) => Math.max(x.a, x.b))))),
+        rule(H2H_ROW_W),
         Box({ height: 1 }),
-        rule(inner),
-        Box({ height: 1 }),
-        rowBox([Text({ text: 'edge', style: { color: INK_DIM, width: 10 } }), Text({ text: edgeLabel(rec.aWins, rec.bWins, a, b), style: { color: rec.aWins === rec.bWins ? EVEN_GRAY : rec.aWins > rec.bWins ? aT : bT } })]),
-        rowBox([Text({ text: 'sample', style: { color: INK_DIM, width: 10 } }), Text({ text: rec.total < THIN_SAMPLE ? `${rec.total} games — indicative only` : `${rec.total} games`, style: { color: rec.total < THIN_SAMPLE ? INK_DIM : INK } })]),
+        h2hVerdict(a, b, slices),
+        ...(rec.total < THIN_SAMPLE ? [Text({ text: padCenter(`${rec.total} games — indicative only`, H2H_ROW_W), style: { color: INK_DIM } })] : []),
       ]
     : [Text({ text: 'click a wisp to pick a model.', style: { color: INK_DIM } })];
-  const left = Box({ flexDirection: 'column', width: panelW, padding: [1, 2], background: SCRIM, alignItems: 'stretch' }, [
+
+  const left = Box({ flexDirection: 'column', width: panelW, padding: [1, 2], background: SCRIM, alignItems: 'start' }, [
     Text({ text: `${game.toUpperCase()} · HEAD-TO-HEAD`, style: { color: 'accent', bold: true } }),
+    Text({ text: 'the record broken down · a thin bar is too few games', style: { color: INK_DIM } }),
     Box({ height: 1 }),
     ...body,
   ]);
-  // The right region is transparent — the two models' wisps (LeaderboardScene) show
-  // through it side by side. Clicking a wisp opens the shared model-swap modal (main.ts).
-  // The wisps split symmetrically about that region's center, so a two-column label
-  // row along its bottom sits under the right orb: direct labeling, because the tints
-  // alone can't be trusted to say which wisp is which.
-  const label = (slug: string, tint: RGB): Node =>
-    Box({ flexDirection: 'column', flexGrow: 1, alignItems: 'center' }, [Text({ text: fit(shortModel(slug), 26), style: { color: tint, bold: true } }), Text({ text: 'click wisp to swap', style: { color: INK_DIM } })]);
-  const wispLabels = Box({ flexDirection: 'column', flexGrow: 1, alignItems: 'stretch', justifyContent: 'end', padding: [0, 0, 2, 0] }, [
-    Box({ flexDirection: 'row', alignItems: 'start' }, [label(a, aT), label(b, bT)]),
-  ]);
-  // The row stretches so the label column can push its content to the bottom; the
-  // record panel hugs its own content via a spacer beneath it, instead of becoming a
-  // tall empty slab (the standings list is the only panel that should fill height).
-  return Box({ flexDirection: 'row', gap: BODY_GAP, alignItems: 'stretch', flexGrow: 1 }, [Box({ flexDirection: 'column', width: panelW }, [left, Box({ flexGrow: 1 })]), wispLabels]);
-}
-
-function edgeLabel(aWins: number, bWins: number, a: string, b: string): string {
-  if (aWins === bWins) return 'even';
-  const lead = aWins > bWins ? a : b;
-  return `${fit(shortModel(lead), 20)} +${Math.abs(aWins - bWins)}`;
+  // The right region is left EMPTY on purpose: the two models' wisps (LeaderboardScene) show
+  // through it side by side, and they carry their own labelling — each wisp is tinted to match
+  // its side of the panel, and the panel names both models directly above. Clicking a wisp
+  // opens the shared model-swap modal; that hit test is raw coordinates against the scene
+  // viewport in main.ts, not a node here, so there is nothing to label and nothing to
+  // instruct — the orbs are the affordance.
+  return Box({ flexDirection: 'row', gap: BODY_GAP, alignItems: 'stretch', flexGrow: 1 }, [Box({ flexDirection: 'column', width: panelW }, [left, Box({ flexGrow: 1 })]), Box({ flexGrow: 1 })]);
 }
 
 // ---- matrix ----
-
-const MATRIX_N = 12;
-const MATRIX_LABEL_W = 24;
-const MATRIX_CELL_W = 3; // 2 cells of fill + 1 of surface gap
-
-// Diverging steps per arm, near-even → decisive. Each arm validated as an ordinal
-// ramp against this surface (monotone lightness, ΔL ≥ 0.06, single hue).
 //
-// Cells are drawn with '▄' (lower half) rather than '▀': the 8x8 font's ink sits in
-// the lower two thirds of a cell, so a lower-half block lines up with its row label
-// while the gap lands above it. An upper-half block reads as the row above's cell.
-const WIN_STEPS: RGB[] = [
-  [53, 98, 150],
-  [74, 144, 217],
-  [122, 180, 232],
-];
-const LOSS_STEPS: RGB[] = [
-  [131, 58, 58],
-  [192, 75, 75],
-  [232, 133, 133],
+// A models × metrics heatmap: every model down the left, one column per metric across a
+// sticky header, each tile the model's signed distance from the field on that metric.
+// Unlike the other two views this one spans BOTH games at once — the question it answers is
+// "how good is each model, and at what?", which no single game can answer.
+//
+// Design notes that are easy to undo by accident:
+//   · Tiles are painted as cell BACKGROUNDS (a space glyph), never as '█' or '▄'
+//     foreground blocks — that's what makes them touch. See ScrollBox.paintBar, which
+//     documents the same trick: a foreground block shows line-spacing seams between rows.
+//   · One FrameBuffer per row draws the WHOLE numeric strip. Sibling nodes per cell would
+//     let a flex gap open between columns, and gaps are the thing this view is fixing.
+//   · Polarity is per COLUMN, not per sign — a cost metric's improvement is negative, and a
+//     style metric has no good direction at all. See columns.ts.
+
+const MX_LABEL_W = 34;
+const MX_CELL_W = 10;
+const MX_RAMP_STEPS = 5;
+// Rows the panel spends on chrome, so the list can fill exactly the rest: root pad (1 top +
+// 1 bottom) + tab strip (2) + body gap (1) + panel top pad (1) + title (1) + subtitle (1) +
+// spacer (1) + band row (1) + column row (1) + rule (1).
+const MX_CHROME_H = 12;
+
+// A dark-on-dark diverging scale: the FILL is a dark tint of the arm's hue carrying
+// magnitude, and the INK is a bright saturated version of the same hue carrying the sign.
+// Light fills with near-black text were tried first and rejected — flipping the ink between
+// black and white partway up each ramp reads as two unrelated palettes stacked, and the pale
+// neutral midpoint glares on an otherwise dark screen.
+//
+// This arrangement is also what makes green↔red safe here. Bright inks separate far better
+// than pale fills do: #6edc82 vs #f0706a holds ΔE 10.1 under deuteranopia (above the target
+// of 8), where the earlier pale-fill pair collapsed to 3.1. The ▲/▼ prefix then carries the
+// sign a third time, in shape, so nothing depends on hue alone.
+//
+// Fills are deliberately dark enough to keep every step at ≥4.5:1 against its own ink. That
+// caps how strong the red tint can get — brightening the red ink to allow lighter fills
+// dropped the CVD separation to 4.7 — so the warm arm's tint range is slightly narrower than
+// the cool arm's. Acceptable: the fill only has to be monotone WITHIN an arm, because the
+// ink and the arrow are what distinguish the arms.
+interface RampStep {
+  fill: RGB;
+  ink: RGB;
+}
+const POS_INK: RGB = [110, 220, 130];
+const NEG_INK: RGB = [240, 112, 106];
+const STYLE_INK: RGB = [185, 192, 212];
+
+// Row backgrounds alternate by one shade so the eye can track a row across a wide table.
+// A zero-delta or absent cell takes its own row's background, which is what "no deviation"
+// should look like — the grid simply continues.
+const MX_ROW_BG: RGB[] = [
+  [22, 24, 30],
+  [26, 28, 35],
 ];
 
-// Who-beats-whom. Hue carries the SIGN (blue = row wins, red = row loses) and
-// lightness the MAGNITUDE. Cells are drawn as '▀' — a top-half block over the panel
-// background — so every cell has a gap beneath it and the grid reads as discrete
-// cells instead of continuous vertical stripes. Pairings under 5 games are blanked.
-function matrixCell(rowModel: string, colModel: string, self: boolean): Node {
-  const rec = self ? null : dummyHeadToHead(rowModel, colModel, game);
-  const thin = !rec || rec.total < 5;
-  return FrameBuffer({
-    width: MATRIX_CELL_W,
+const POS_FILLS: RGB[] = [
+  [26, 38, 32],
+  [29, 47, 34],
+  [32, 56, 37],
+  [36, 66, 40],
+  [39, 74, 43],
+];
+const NEG_FILLS: RGB[] = [
+  [37, 30, 30],
+  [46, 31, 31],
+  [55, 31, 31],
+  [64, 33, 33],
+  [74, 36, 34],
+];
+// Style columns (no good direction) get a desaturated ramp keyed to MAGNITUDE only, and no
+// arrow, so the grid never claims that "more decisive" is "better".
+const STYLE_FILLS: RGB[] = [
+  [33, 36, 48],
+  [38, 42, 56],
+  [43, 48, 64],
+  [48, 54, 72],
+  [54, 61, 82],
+];
+const MX_DIM_INK: RGB = [122, 128, 144];
+
+let matrixSort = 0; // column index; 0 is the aggregate
+let matrixDesc = true;
+
+const matrixList = new ScrollBox({ id: 'lb-matrix', width: MX_LABEL_W + COLUMNS.length * MX_CELL_W + 1, height: 20, rows: [] });
+
+function applySort(col: number, desc: boolean): void {
+  matrixSort = col;
+  matrixDesc = desc;
+  matrixList.scroll = 0; // a new order makes the old offset meaningless
+}
+
+// Sort by column KEY (see COLUMNS) so callers don't depend on column order. Unknown keys
+// are ignored rather than silently sorting by the aggregate.
+export function setMatrixSort(key: string, desc = true): void {
+  const i = COLUMNS.findIndex((c) => c.key === key);
+  if (i >= 0) applySort(i, desc);
+}
+
+// Scroll the table, so a snapshot can review the sticky header against a non-default offset.
+export function setMatrixScroll(n: number): void {
+  matrixList.scroll = Math.max(0, Math.floor(n));
+}
+
+// Clicking the active column flips direction; clicking another takes it over, descending —
+// which for every column means "most interesting first" (best, or most unusual for a style
+// column, per sortRows).
+function toggleMatrixSort(col: number): void {
+  if (col === matrixSort) matrixDesc = !matrixDesc;
+  else applySort(col, true);
+}
+
+function mxStep(col: MatrixColumn, c: MatrixCell, d: Domain, parity: number): RampStep {
+  const bg = MX_ROW_BG[parity];
+  if (!c.present) return { fill: bg, ink: RULE };
+  const bin = rampStep(c.delta, d, MX_RAMP_STEPS);
+  if (bin.arm === 'zero') return { fill: bg, ink: MX_DIM_INK };
+  if (col.polarity === 0) return { fill: STYLE_FILLS[bin.step], ink: STYLE_INK };
+  // Which side is "good" is the column's to say: a cost metric improves downward.
+  const good = col.polarity > 0 ? bin.arm === 'pos' : bin.arm === 'neg';
+  return good ? { fill: POS_FILLS[bin.step], ink: POS_INK } : { fill: NEG_FILLS[bin.step], ink: NEG_INK };
+}
+
+// ▲/▼ prefix the value on columns that have a good direction, so the sign is legible as a
+// SHAPE and not only as a hue. A style column gets no arrow — there is no "up" to point at.
+function mxText(col: MatrixColumn, c: MatrixCell): string {
+  if (!c.present) return '·';
+  const mag = Math.abs(c.delta);
+  const num = col.unit === 'bb100' ? mag.toFixed(1) : `${(mag * 100).toFixed(2)}%`;
+  if (col.polarity === 0) return num;
+  if (c.delta === 0) return num;
+  return `${c.delta > 0 ? '▲' : '▼'} ${num}`;
+}
+
+function padLeft(s: string, w: number): string {
+  return s.length >= w ? s.slice(0, w) : ' '.repeat(w - s.length) + s;
+}
+function padCenter(s: string, w: number): string {
+  if (s.length >= w) return s.slice(0, w);
+  const left = Math.floor((w - s.length) / 2);
+  return ' '.repeat(left) + s + ' '.repeat(w - s.length - left);
+}
+
+// One row: a fixed label column, then every tile in a single FrameBuffer so nothing can
+// wedge a gap between them. Numbers are right-aligned one cell in from each tile's edge,
+// which keeps the decimal points of a column in a line.
+function matrixRow(r: MatrixRow, t: MatrixTable, rank: number): Node {
+  const stripW = t.columns.length * MX_CELL_W;
+  const parity = rank % 2;
+  const label = Box({ flexDirection: 'row', gap: 1, width: MX_LABEL_W, flexShrink: 0, background: MX_ROW_BG[parity] }, [
+    Text({ text: padLeft(String(rank), 3), style: { color: INK_DIM } }),
+    Text({ text: '▌', style: { color: tintOf(r.model) } }),
+    Text({ text: fit(shortModel(r.model), MX_LABEL_W - 7), style: { color: rank <= 3 ? INK : [178, 182, 196] } }),
+  ]);
+  const strip = FrameBuffer({
+    width: stripW,
     height: 1,
+    style: { flexShrink: 0 },
     draw: (surf, box) => {
-      if (self) return; // the diagonal stays empty — an unfilled cell reads as "self"
-      if (thin || !rec) {
-        surf.setCell(box.x, box.y, '·', RULE, CARD_BG);
-        return;
+      for (const [i, col] of t.columns.entries()) {
+        const step = mxStep(col, r.cells[i], t.domains[i], parity);
+        const x0 = box.x + i * MX_CELL_W;
+        for (let k = 0; k < MX_CELL_W; k++) surf.setCell(x0 + k, box.y, ' ', step.fill, step.fill);
+        const text = mxText(col, r.cells[i]);
+        const start = x0 + MX_CELL_W - 1 - text.length;
+        for (let k = 0; k < text.length; k++) surf.setCell(start + k, box.y, text[k], step.ink, step.fill, i === matrixSort ? STYLE_BOLD : 0);
       }
-      const decided = rec.total - rec.draws;
-      const bin = divergingBin(decided > 0 ? rec.aWins / decided : 0.5);
-      const color = bin.sign === 'win' ? WIN_STEPS[bin.step] : bin.sign === 'loss' ? LOSS_STEPS[bin.step] : EVEN_GRAY;
-      surf.setCell(box.x, box.y, '▄', color, CARD_BG);
-      surf.setCell(box.x + 1, box.y, '▄', color, CARD_BG);
     },
   });
+  return {
+    kind: 'box',
+    id: `lb-mx-row-${r.model}`,
+    style: { flexDirection: 'row', gap: 0, width: MX_LABEL_W + stripW, flexShrink: 0 },
+    children: [label, strip],
+  };
 }
 
-function swatch(label: string, steps: RGB[]): Node {
-  return Box({ flexDirection: 'row', gap: 1 }, [Box({ flexDirection: 'row' }, steps.map((c) => Text({ text: '▄▄', style: { color: c } }))), Text({ text: label, style: { color: INK_DIM } })]);
+// The sticky header: a band row naming the game each group of columns belongs to, then the
+// clickable column row. Both are siblings ABOVE the ScrollBox, which is the whole
+// stickiness mechanism — the scroller only ever moves its own rows.
+function matrixHeader(t: MatrixTable): Node {
+  const bands: Node[] = [Text({ text: '', style: { width: MX_LABEL_W, flexShrink: 0 } })];
+  for (let i = 0; i < t.columns.length; ) {
+    const band = t.columns[i].band;
+    let n = 1;
+    while (i + n < t.columns.length && t.columns[i + n].band === band) n++;
+    const w = n * MX_CELL_W;
+    bands.push(
+      Text({
+        text: band === null ? '' : padCenter(band.toUpperCase(), w),
+        style: { width: w, flexShrink: 0, color: INK_DIM, bold: true },
+      }),
+    );
+    i += n;
+  }
+  const cols: Node[] = [Text({ text: ' MODEL', style: { width: MX_LABEL_W, flexShrink: 0, color: INK_DIM } })];
+  for (const [i, col] of t.columns.entries()) {
+    const on = i === matrixSort;
+    cols.push(
+      Button({
+        id: `lb-mx-col-${col.key}`,
+        label: padLeft(`${col.label}${on ? (matrixDesc ? '▼' : '▲') : ''}`, MX_CELL_W - 1) + ' ',
+        onClick: () => toggleMatrixSort(i),
+        style: {
+          width: MX_CELL_W,
+          flexShrink: 0,
+          padding: 0,
+          background: 'transparent',
+          color: on ? INK : INK_DIM,
+          bold: on,
+          hover: { color: [238, 240, 248] as RGB },
+        },
+      }),
+    );
+  }
+  return Box({ flexDirection: 'column', alignItems: 'stretch' }, [
+    Box({ flexDirection: 'row', gap: 0 }, bands),
+    Box({ flexDirection: 'row', gap: 0 }, cols),
+    rule(MX_LABEL_W + t.columns.length * MX_CELL_W),
+  ]);
 }
 
-function matrixView(data: LeaderboardData): Node {
-  const rows = standings(data).slice(0, MATRIX_N);
-  const models = rows.map((r) => r.model);
-  // Column labels are the row numbers: 2-char name truncations collide ("gp" three
-  // times over), so the row list beside the grid is the only usable key.
-  const header = rowBox([
-    cell('', MATRIX_LABEL_W, INK_DIM),
-    ...models.map((_, i) => Text({ text: String(i + 1).padStart(2), style: { color: INK_DIM, width: MATRIX_CELL_W } })),
-  ]);
-  const grid = models.map((rowModel, ri) =>
-    rowBox([
-      Box({ flexDirection: 'row', gap: 1, width: MATRIX_LABEL_W }, [
-        Text({ text: String(ri + 1).padStart(2), style: { color: INK_DIM } }),
-        Text({ text: '▌', style: { color: tintOf(rowModel) } }),
-        Text({ text: fit(shortModel(rowModel), MATRIX_LABEL_W - 6), style: { color: ri < 3 ? INK : INK_DIM } }),
-      ]),
-      ...models.map((colModel, ci) => matrixCell(rowModel, colModel, ri === ci)),
-    ]),
-  );
-  const legend = Box({ flexDirection: 'row', gap: 3 }, [
-    swatch('row loses', [...LOSS_STEPS].reverse()),
-    Box({ flexDirection: 'row', gap: 1 }, [Text({ text: '▄▄', style: { color: EVEN_GRAY } }), Text({ text: 'even', style: { color: INK_DIM } })]),
-    swatch('row wins', WIN_STEPS),
-    Text({ text: '·  under 5 games', style: { color: INK_DIM } }),
-  ]);
-  const panel = Box({ flexDirection: 'column', padding: [1, 2], background: SCRIM, alignItems: 'stretch' }, [
-    Text({ text: `${game.toUpperCase()} · WHO BEATS WHOM · top ${MATRIX_N}`, style: { color: 'accent', bold: true } }),
-    Text({ text: 'row vs column · decided games only', style: { color: INK_DIM } }),
-    Box({ height: 1 }),
-    header,
-    rule(MATRIX_LABEL_W + models.length * (MATRIX_CELL_W + 1)),
-    ...grid,
-    Box({ height: 1 }),
-    legend,
-  ]);
-  const t = data.totals;
-  const totals = Box({ flexDirection: 'column', padding: [1, 2], background: CARD, border: 'round', borderColor: RULE, width: 30 }, [
-    Text({ text: 'TOTALS', style: { color: 'accent', bold: true } }),
-    Box({ height: 1 }),
-    rowBox([cell('models', 15, INK_DIM), cell(String(t.modelsRanked), 10)]),
-    rowBox([cell('games', 15, INK_DIM), cell(t.gamesRecorded.toLocaleString(), 10)]),
-    rowBox([cell('last game', 15, INK_DIM), cell(t.lastGame, 10)]),
-    Box({ height: 1 }),
-    Text({ text: 'ACTIVITY · 30d', style: { color: INK_DIM } }),
-    activityStrip(24, data),
-  ]);
-  // Matrix reserves no scene region, so it owns the whole frame — center the block
-  // rather than leaving it stranded against the top-left corner.
-  return Box({ flexDirection: 'column', flexGrow: 1, justifyContent: 'center', alignItems: 'center' }, [Box({ flexDirection: 'row', gap: 2, alignItems: 'start' }, [panel, totals])]);
-}
+function matrixView(data: LeaderboardData, regionH: number): Node {
+  const table = buildMatrix(data);
+  const slug = creatorFilterSlug();
+  const sorted = sortRows(table, matrixSort, matrixDesc).filter((r) => !slug || creatorOf(r.model) === slug);
+  const tableW = MX_LABEL_W + table.columns.length * MX_CELL_W;
 
-// Activity demoted to a thin sparkline: it's context for the totals, not a metric
-// worth its own screen. Eighth-blocks give 8 steps of height in one cell row.
-function activityStrip(width: number, data: LeaderboardData): Node {
-  return FrameBuffer({
-    width,
-    height: 2,
-    draw: (surf, box) => {
-      const pts = data.activity.slice(-box.w);
-      const max = Math.max(1, ...pts.map((p) => p.chess + p.poker));
-      const ramp = ' ▁▂▃▄▅▆▇█';
-      pts.forEach((p, i) => {
-        const t = (p.chess + p.poker) / max;
-        const idx = Math.max(1, Math.round(t * 8));
-        surf.setCell(box.x + i, box.y + 1, ramp[idx], [112, 122, 188], CARD_BG);
-      });
-    },
-  });
+  matrixList.setWidth(tableW + 1); // +1 for the scrollbar column
+  matrixList.setHeight(Math.max(6, regionH - MX_CHROME_H));
+  matrixList.rows = sorted.map((r, i) => matrixRow(r, table, i + 1));
+
+  // Title and filter share one row; the subtitle gets the next one to itself. Text nodes
+  // reserve width but don't clip, so a long subtitle on the title's row would run straight
+  // through the dropdown beside it.
+  // alignItems: 'stretch' is load-bearing — without it the inner row sizes to its content
+  // and justifyContent has no free space to push the filter to the far edge with.
+  const title = Box({ flexDirection: 'column', width: tableW, alignItems: 'stretch' }, [
+    Box({ flexDirection: 'row', alignItems: 'center', justifyContent: 'between' }, [Text({ text: 'PER-METRIC RANKINGS', style: { color: 'accent', bold: true } }), Slot('lb-creator')]),
+    Text({ text: `signed distance from the field average · ${sorted.length} models · click a column to sort`, style: { color: INK_DIM } }),
+  ]);
+  // The table owns the screen: corpus-level totals and activity are a different question
+  // (how much data is there?) from the one this view answers (which model is good at what?),
+  // so they belong on their own screen rather than as a card wedged beside the grid.
+  return Box({ flexDirection: 'column', alignItems: 'start', flexGrow: 1 }, [
+    Box({ flexDirection: 'column', padding: [1, 2, 0, 2], background: SCRIM, alignItems: 'start' }, [title, Box({ height: 1 }), matrixHeader(table), Slot('lb-matrix')]),
+  ]);
 }
 
 // ---- root ----
@@ -896,7 +1076,7 @@ export function buildLeaderboard(region: LayoutBox, onMenu: () => void): Node {
       ? standingsView(current, listH, region.w)
       : metric === 'headtohead'
         ? h2hView(region.w)
-        : matrixView(current);
+        : matrixView(current, region.h);
 
   // Transparent root: the left panels are dark scrims; the right region shows the
   // LeaderboardScene wisp(s) through. Nav lives in the top-right ☰ menu (no bottom bar).

@@ -137,28 +137,6 @@ export function ticksFor(d: Domain, width: number, want = 4, unit = 0.05): Tick[
   return out;
 }
 
-// ---- diverging scale (the head-to-head matrix) ----
-//
-// Win rate against a specific opponent is polarity data: it diverges around 50%,
-// where "even" must read as nothing. So hue carries the SIGN (blue = row wins, red
-// = row loses) and glyph density carries the MAGNITUDE — a composite encoding, which
-// also means the scale survives being read by someone who can't separate the hues.
-
-export type DivergingBin = { sign: 'win' | 'loss' | 'even'; step: 0 | 1 | 2 };
-
-// `rate` is the row's win rate vs the column (0..1). Distance from 0.5 picks one of
-// three lightness steps per arm, so the whole scale is 7 classes — at the ceiling
-// past which adjacent bins stop being separable. Shading glyphs (░▒▓) were tried
-// first and rejected: at 8px per cell their dither patterns read as moiré, not as
-// magnitude. Solid fills on a validated lightness ramp are both cleaner and safer.
-export function divergingBin(rate: number): DivergingBin {
-  const delta = rate - 0.5;
-  const mag = Math.abs(delta);
-  if (mag < 0.06) return { sign: 'even', step: 0 };
-  const step = mag < 0.18 ? 0 : mag < 0.3 ? 1 : 2;
-  return { sign: delta > 0 ? 'win' : 'loss', step };
-}
-
 // A domain centered on zero, for a signed measure (poker's net chips). Symmetric so
 // the zero line lands mid-track and "up" and "down" are drawn at the same scale.
 export function fitSymmetric(values: number[]): Domain {
@@ -171,25 +149,37 @@ export function fitSymmetric(values: number[]): Domain {
   return { lo: -snapped, hi: snapped };
 }
 
-// ---- head-to-head duel bar ----
+// ---- signed deltas (the metric heatmap) ----
 //
-// Cell spans for a center-anchored diverging bar of `width` cells. Each side is
-// scaled to the HALF it grows into, so a share of the total maps to a share of that
-// arm: 9–0 fills one side completely and 5–4 reads as a near tie. (Scaling each arm
-// by the full width instead silently clamps every close record to "total blowout".)
-export interface DuelArms {
-  mid: number; // the even-point column
-  aCells: number; // cells filled leftward from just left of the draw block
-  bCells: number; // cells filled rightward from just right of it
-  drawCells: number; // cells straddling the midpoint
+// A heatmap of absolute rates is unreadable: chess win rates cluster in 60–80%, so every
+// tile lands on the same step and the grid is one flat color. The readable quantity is the
+// distance from the FIELD — zero means "average", and the ramp diverges from there.
+//
+// The delta is taken on the SHRUNK figure, not the raw one, so a model with 8 games lands
+// near zero rather than posting a ±20pp tile it hasn't earned. Volume therefore decides how
+// far from the field a model is allowed to appear, which is the same contract the standings
+// board ranks on — the two views can't disagree about who is good.
+export function matrixDelta(own: number, n: number, field: number, m: number): number {
+  return shrink(own, n, field, m) - field;
 }
 
-export function duelArms(aWins: number, bWins: number, draws: number, width: number): DuelArms {
-  const total = Math.max(1, aWins + bWins + draws);
-  const mid = Math.floor(width / 2);
-  const drawCells = Math.round((draws / total) * mid);
-  // Draws eat into both arms, so the arms share what's left of each half.
-  const arm = Math.max(0, mid - Math.ceil(drawCells / 2));
-  const decided = Math.max(1, aWins + bWins);
-  return { mid, drawCells, aCells: Math.min(arm, Math.round((aWins / decided) * arm)), bCells: Math.min(arm, Math.round((bWins / decided) * arm)) };
+// Below this share of the domain a delta reads as "no signal" and takes the neutral
+// midpoint instead of an arm. Without a dead zone the sign of statistical noise picks a
+// hue, and a field of near-average models flickers green/red with no meaning.
+const ZERO_BAND = 0.08;
+
+export type RampBin = { arm: 'pos' | 'neg' | 'zero'; step: number };
+
+// Map a signed delta onto one of `steps` lightness steps per arm. The domain is symmetric
+// (see fitSymmetric) so both arms are scaled identically and "up" and "down" of equal size
+// are equally dark. Magnitude is measured as a share of the domain rather than in absolute
+// units, which is what lets each column carry its own scale.
+export function rampStep(value: number, d: Domain, steps: number): RampBin {
+  const max = Math.max(Math.abs(d.lo), Math.abs(d.hi));
+  if (max <= 0 || steps <= 0 || !Number.isFinite(value)) return { arm: 'zero', step: 0 };
+  const mag = Math.min(1, Math.abs(value) / max);
+  if (mag < ZERO_BAND) return { arm: 'zero', step: 0 };
+  const t = (mag - ZERO_BAND) / (1 - ZERO_BAND);
+  const step = Math.max(0, Math.min(steps - 1, Math.floor(t * steps)));
+  return { arm: value > 0 ? 'pos' : 'neg', step };
 }

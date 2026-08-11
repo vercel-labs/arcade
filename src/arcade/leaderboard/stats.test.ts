@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { bbPer100, divergingBin, duelArms, fitDomain, fitSymmetric, SHRINK_GAMES, SHRINK_HANDS, shrink, THIN_SAMPLE, ticksFor, toCell, wilson } from './stats.ts';
+import { bbPer100, fitDomain, fitSymmetric, matrixDelta, rampStep, SHRINK_GAMES, SHRINK_HANDS, shrink, THIN_SAMPLE, ticksFor, toCell, wilson } from './stats.ts';
 
 test('wilson: interval brackets the point estimate', () => {
   const iv = wilson(31, 39);
@@ -61,59 +61,8 @@ test('toCell: maps domain ends to track ends and clamps beyond them', () => {
   assert.equal(toCell(0.99, d, 20), 19, 'above the domain clamps to the right end');
 });
 
-test('divergingBin: sign follows the 50% midpoint, magnitude follows distance', () => {
-  assert.equal(divergingBin(0.5).sign, 'even');
-  assert.equal(divergingBin(0.52).sign, 'even', 'near-even must read as nothing');
-  assert.equal(divergingBin(0.75).sign, 'win');
-  assert.equal(divergingBin(0.25).sign, 'loss');
-  // A higher lightness step the further from even.
-  assert.ok(divergingBin(0.95).step > divergingBin(0.62).step);
-  assert.ok(divergingBin(0.05).step > divergingBin(0.38).step);
-});
-
 test('THIN_SAMPLE marks the dummy data rows we expect to de-emphasize', () => {
   assert.ok(THIN_SAMPLE > 0 && THIN_SAMPLE < 30);
-});
-
-test('duelArms: a blowout fills one arm and leaves the other empty', () => {
-  const a = duelArms(9, 0, 0, 26);
-  assert.equal(a.bCells, 0);
-  assert.equal(a.aCells, a.mid, 'the winning arm fills its half');
-  assert.equal(a.drawCells, 0);
-});
-
-test('duelArms: a near-tie reads as a near-tie, not a blowout', () => {
-  const a = duelArms(5, 4, 0, 26);
-  assert.ok(Math.abs(a.aCells - a.bCells) <= 2, `arms should be close, got ${a.aCells} vs ${a.bCells}`);
-  assert.ok(a.aCells > a.bCells, 'the leader still leads');
-  // The bug this guards: scaling each arm by the full width clamped both to the half.
-  assert.ok(a.aCells < a.mid, 'a 5-4 record must not fill the whole arm');
-});
-
-test('duelArms: an exact tie is symmetric', () => {
-  const a = duelArms(6, 6, 0, 24);
-  assert.equal(a.aCells, a.bCells);
-});
-
-test('duelArms: arms never overflow their half, and draws take from both', () => {
-  for (const [w, l, d] of [
-    [3, 3, 6],
-    [0, 0, 12],
-    [20, 1, 3],
-    [1, 1, 0],
-  ]) {
-    const a = duelArms(w, l, d, 26);
-    assert.ok(a.aCells >= 0 && a.bCells >= 0 && a.drawCells >= 0);
-    assert.ok(a.aCells + Math.floor(a.drawCells / 2) <= a.mid, `left side overflowed for ${w}/${l}/${d}`);
-    assert.ok(a.bCells + Math.ceil(a.drawCells / 2) <= a.mid + 1, `right side overflowed for ${w}/${l}/${d}`);
-  }
-});
-
-test('duelArms: all draws leaves both arms empty', () => {
-  const a = duelArms(0, 0, 10, 26);
-  assert.equal(a.aCells, 0);
-  assert.equal(a.bCells, 0);
-  assert.ok(a.drawCells > 0);
 });
 
 test('fitSymmetric: zero sits mid-track and both signs share one scale', () => {
@@ -199,4 +148,75 @@ test('bbPer100: converts chips per hand into big blinds per 100 hands', () => {
 test('bbPer100 is volume-independent where net chips is not', () => {
   // Same skill, ten times the volume: net chips differ 10x, bb/100 is identical.
   assert.equal(bbPer100(1000, 100), bbPer100(10000, 1000));
+});
+
+test('matrixDelta: an average model sits at zero', () => {
+  assert.equal(matrixDelta(0.5, 100, 0.5, SHRINK_GAMES), 0);
+});
+
+test('matrixDelta: a thin sample is pulled toward zero, a fat one is believed', () => {
+  const field = 0.5;
+  const thin = matrixDelta(0.9, 8, field, SHRINK_GAMES);
+  const fat = matrixDelta(0.9, 400, field, SHRINK_GAMES);
+  assert.ok(thin > 0 && fat > 0, 'both beat the field');
+  assert.ok(thin < fat / 3, 'the same 90% over 8 games must read far weaker than over 400');
+  assert.ok(fat > 0.37, 'a large sample keeps almost all of its edge');
+});
+
+test('matrixDelta: no games is exactly zero, not a negative', () => {
+  // A model with no record is unproven, not bad — it must not paint a red tile.
+  assert.equal(matrixDelta(0, 0, 0.42, SHRINK_GAMES), 0);
+});
+
+test('matrixDelta: sign follows which side of the field the model is on', () => {
+  assert.ok(matrixDelta(0.3, 60, 0.5, SHRINK_GAMES) < 0);
+  assert.ok(matrixDelta(0.7, 60, 0.5, SHRINK_GAMES) > 0);
+});
+
+test('rampStep: near-zero deltas take the neutral midpoint, not an arm', () => {
+  const d = fitSymmetric([-0.2, 0.2]);
+  assert.equal(rampStep(0, d, 5).arm, 'zero');
+  assert.equal(rampStep(0.001, d, 5).arm, 'zero', 'noise must not pick a hue');
+  assert.equal(rampStep(-0.001, d, 5).arm, 'zero');
+});
+
+test('rampStep: arms follow the sign and saturate at the domain edge', () => {
+  const d = fitSymmetric([-0.2, 0.2]);
+  assert.equal(rampStep(0.2, d, 5).arm, 'pos');
+  assert.equal(rampStep(-0.2, d, 5).arm, 'neg');
+  assert.equal(rampStep(0.2, d, 5).step, 4, 'the domain edge is the last step');
+  assert.equal(rampStep(999, d, 5).step, 4, 'past the edge clamps rather than overflowing');
+});
+
+test('rampStep: step rises monotonically with magnitude', () => {
+  const d = fitSymmetric([-1, 1]);
+  let prev = -1;
+  for (const v of [0.1, 0.3, 0.5, 0.7, 0.9, 1]) {
+    const s = rampStep(v, d, 5).step;
+    assert.ok(s >= prev, `step must not go backwards at ${v}`);
+    prev = s;
+  }
+});
+
+test('rampStep: equal magnitudes either side land on the same step', () => {
+  const d = fitSymmetric([-0.5, 0.5]);
+  for (const v of [0.12, 0.25, 0.4, 0.5]) {
+    assert.equal(rampStep(v, d, 5).step, rampStep(-v, d, 5).step, `arms must be scaled alike at ${v}`);
+  }
+});
+
+test('rampStep: a degenerate domain is neutral rather than dividing by zero', () => {
+  assert.equal(rampStep(1, { lo: 0, hi: 0 }, 5).arm, 'zero');
+  assert.equal(rampStep(Number.NaN, fitSymmetric([-1, 1]), 5).arm, 'zero');
+});
+
+test('rampStep: every step index is reachable and in range', () => {
+  const d = fitSymmetric([-1, 1]);
+  const seen = new Set<number>();
+  for (let i = 0; i <= 100; i++) {
+    const { step } = rampStep(i / 100, d, 5);
+    assert.ok(step >= 0 && step < 5, 'step must index the ramp');
+    seen.add(step);
+  }
+  assert.equal(seen.size, 5, 'a ramp with an unreachable step wastes a color');
 });

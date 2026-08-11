@@ -17,7 +17,7 @@ import { MENU_ITEMS } from '../arcade/shell/menu.ts';
 import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, mouseControlsFor, type Mode } from '../arcade/shell/bars.ts';
 import { installKeymap } from '../arcade/shell/keybindings.ts';
 import { buildShowcase, mountShowcase } from '../arcade/scenes/ui-showcase.ts';
-import { activeWispCreators, buildLeaderboard, leaderboardSceneReserve, mountLeaderboard, setGame, setLeaderboardData, setLeaderboardSelection, setMetric } from '../arcade/leaderboard/view.ts';
+import { activeWispCreators, buildLeaderboard, leaderboardSceneReserve, mountLeaderboard, setGame, setLeaderboardData, setLeaderboardH2HModel, setLeaderboardSelection, setMatrixScroll, setMatrixSort, setMetric } from '../arcade/leaderboard/view.ts';
 import { LeaderboardScene } from '../arcade/leaderboard/scene.ts';
 import { dummyLeaderboardData } from '../arcade/leaderboard/data.ts';
 import { buildChessGameRoot, chessMoveChat, mountChessHud, refreshMoveHistory } from '../arcade/games/chess/hud.ts';
@@ -168,6 +168,15 @@ function blockBits(ch: string, px: number, py: number): boolean {
     }
     case '·':
       return (px === 3 || px === 4) && (py === 3 || py === 4);
+    case '▲':
+    case '▼': {
+      // Sign markers on the leaderboard matrix's tiles. Widening 2→8 px over six rows is
+      // as smooth as a triangle gets in an 8x8 cell; ▼ is the vertical mirror of ▲.
+      const r = ch === '▲' ? py - 1 : 6 - py;
+      if (r < 0 || r > 5) return false;
+      const grow = Math.floor((r * 3) / 5);
+      return px >= 3 - grow && px <= 4 + grow;
+    }
     case '–': // en dash
     case '—': // em dash
     case '−': // U+2212 minus sign — absent from the 8x8 font, unlike ASCII '-'
@@ -338,7 +347,8 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot overlay [chess-game|prism] [cols] [rows] [out]   bar over a scene
   pnpm snapshot unified [prism|chess|chess-game|logos] [cols] [rows] [out]   unified compositing path
   pnpm snapshot showcase [cols] [rows] [focus=<id>] [query=<text>] [blur] [out]   the UI component playground
-  pnpm snapshot leaderboard [cols] [rows] [chess|poker] [standings|headtohead|matrix] [row=N] [out]   the model leaderboard (dummy data)
+  pnpm snapshot leaderboard [cols] [rows] [chess|poker] [standings|headtohead|matrix] [row=N] [sort=<col>] [asc] [vs=N,M] [out]   the model leaderboard (dummy data)
+      (row=N selects a standings row, or scrolls the matrix · sort= takes a matrix column key · vs= picks the h2h pair by rank)
   pnpm snapshot modal [cols] [rows] [out]          promotion modal over chess
   pnpm snapshot chess-overlay [cols] [rows] [min|empty|illegal|short] [eval] [chat] [menu] [out]   match HUD + moves panel (menu → ☰ popup)
   pnpm snapshot setup [cols] [rows] [out] [open|models|thinking]   AI match setup modal
@@ -1106,14 +1116,34 @@ function leaderboardSnapshot(): void {
   setLeaderboardData(dummyLeaderboardData());
   setMetric(args.includes('headtohead') ? 'headtohead' : args.includes('matrix') ? 'matrix' : 'standings');
   setGame(args.includes('poker') ? 'poker' : 'chess');
-  // row=N selects the Nth ranked model, so the selected-row styling AND the wisp it
-  // drives can both be reviewed (the default selection is rank 1).
-  const rowArg = args.find((a) => a.startsWith('row='));
-  if (rowArg) {
+  // vs=N,M picks the head-to-head pairing by standings rank, so a competitive record can be
+  // reviewed and not just whichever pair happens to sit at the top of the list.
+  const vsArg = args.find((a) => a.startsWith('vs='));
+  if (vsArg) {
     const data = dummyLeaderboardData();
     const list = args.includes('poker') ? data.poker : data.chess;
-    const pick = list[Math.max(1, Number(rowArg.split('=')[1])) - 1];
-    if (pick) setLeaderboardSelection(pick.model);
+    const [i, j] = (vsArg.split('=')[1] ?? '').split(',').map((n) => Math.max(1, Number(n)) - 1);
+    if (list[i]) setLeaderboardH2HModel('a', list[i].model);
+    if (list[j]) setLeaderboardH2HModel('b', list[j].model);
+  }
+  // sort=<column key> [asc] reviews the ramp on a column other than the aggregate — the
+  // style column's neutral ramp in particular is only visible when it's the sort key. Applied
+  // BEFORE row=, because changing the sort resets the scroll.
+  const sortArg = args.find((a) => a.startsWith('sort='));
+  if (sortArg) setMatrixSort(sortArg.split('=')[1] ?? '', !args.includes('asc'));
+  // row=N selects the Nth ranked model, so the selected-row styling AND the wisp it
+  // drives can both be reviewed (the default selection is rank 1). In the matrix — which has
+  // no selection — it scrolls the table instead, to review the sticky header off the top.
+  const rowArg = args.find((a) => a.startsWith('row='));
+  if (rowArg) {
+    const n = Math.max(1, Number(rowArg.split('=')[1]));
+    if (args.includes('matrix')) setMatrixScroll(n - 1);
+    else {
+      const data = dummyLeaderboardData();
+      const list = args.includes('poker') ? data.poker : data.chess;
+      const pick = list[n - 1];
+      if (pick) setLeaderboardSelection(pick.model);
+    }
   }
   // Inset the scene to the region the panels don't cover — matches main.ts so the
   // snapshot shows the same centered/rotatable framing the live app renders.
