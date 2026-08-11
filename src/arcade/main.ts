@@ -2166,10 +2166,12 @@ function onMouseImpl(e: MouseEvent): void {
         if (seat !== null) openPokerWispSwap(seat);
         else pokerScene.clickCard(ndcX, ndcY, aspect);
       } else if (isClick && mode === 'leaderboard' && leaderboardH2HActive()) {
-        // Head-to-head: click a wisp (left half = A, right half = B) to open the shared
-        // model-swap modal. Only within the wisp region — not the record card on the left.
-        const vp = activeSceneViewport();
-        if (e.x - 1 >= vp.x) openLeaderboardWispSwap(e.x - 1 < vp.x + vp.w / 2 ? 'a' : 'b');
+        // Head-to-head: click a wisp to open the shared model-swap modal. Ask the scene what
+        // is actually under the pointer — testing the viewport edge instead made the entire
+        // empty right-hand side a hit target.
+        const { ndcX, ndcY, aspect } = pointerNdc(e.x, e.y);
+        const side = leaderboardScene.wispAt(ndcX, ndcY, aspect);
+        if (side) openLeaderboardWispSwap(side);
       }
       draggingCamera = false;
       return;
