@@ -92,15 +92,16 @@ export class CatanDriver {
   // Build the state + players and run the placement phase. Returns immediately; the loop
   // runs in the background and calls syncLive() as it progresses. `autoRun: false` sets the
   // session up without starting the loop — the snapshot tool drives placement itself so a
-  // still needs no model call.
-  start(seats: CatanSeatSpec[], opts?: { autoRun?: boolean }): CatanState {
+  // still needs no model call. `rng` seeds the board so a snapshot lands the same hexes
+  // twice; live sessions leave it unset for a fresh board each game.
+  start(seats: CatanSeatSpec[], opts?: { autoRun?: boolean; rng?: () => number }): CatanState {
     this.stop();
     this.seats = seats.slice();
     this.labels = seats.map((s) => (s.kind === 'human' ? 'You' : shortModel(s.model)));
     this.log = [];
     this.failure = null;
     this.complete = false;
-    const state = new CatanState({ numPlayers: seats.length, seatNames: this.labels });
+    const state = new CatanState({ numPlayers: seats.length, seatNames: this.labels, rng: opts?.rng });
     this.live = state;
     this.players = seats.map((s, i) => this.makePlayer(s, i));
     this.abort = new AbortController();

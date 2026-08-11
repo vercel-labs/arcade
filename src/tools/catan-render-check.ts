@@ -4,9 +4,11 @@
 //   pnpm catan:check capture    # record the current renders as the baseline
 //   pnpm catan:check            # re-render and report which views changed (exit 1 if any)
 //
-// The fingerprint is a hash of the downsampled frame — the same bytes a .ppm snapshot would
-// contain — so a match here means the snapshot images are byte-identical too. The baseline is a
-// small text manifest (one line per view), which diffs cleanly and costs nothing to keep.
+// Two kinds of view. A scene view fingerprints the downsampled frame — the same bytes a .ppm
+// snapshot would contain — so a match means the snapshot images are byte-identical too. A composite
+// view paints the HUD over that frame and fingerprints the emitted cells instead, which is the only
+// way the card rail, the game screen and the resource-card arcs get covered at all. The baseline is
+// a small text manifest (one line per view), which diffs cleanly and costs nothing to keep.
 //
 // Every view must be deterministic. The dice roll is deliberately absent: it seeds itself from
 // Math.random(), so it differs between any two runs and can't be fingerprinted.
@@ -14,9 +16,17 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { downsample, RenderTarget } from '../engine/index.ts';
+import { downsample, RenderTarget, shapeGlyphToSurface, type Surface } from '../engine/index.ts';
+import { Screen } from '../tui/index.ts';
 import { TileScene } from '../arcade/games/catan/tile-scene.ts';
 import { type PortKind } from '../arcade/games/catan/mesh/index.ts';
+import { buildCatanTileRoot, mountCatanTileHud } from '../arcade/games/catan/tile-hud.ts';
+import { CATAN_LOCAL_COLOR, catanHandLandingCell, catanSidebarOpen, toggleCatanSidebar } from '../arcade/games/catan/card-hud.ts';
+import { ResourceFlights } from '../arcade/games/catan/scene/resource-flight.ts';
+import { CatanGameScene } from '../arcade/games/catan/game-scene.ts';
+import { buildCatanGameRoot, mountCatanGameHud } from '../arcade/games/catan/game-hud.ts';
+import { CatanDriver, type CatanSeatSpec } from '../arcade/match/catan-driver.ts';
+import { mulberry32 } from '../arcade/scenes/wisp.ts';
 import { type PlayerColor, type Terrain, TERRAINS } from '../rules/catan/types.ts';
 
 const MANIFEST = '.snapshots/catan-render.manifest';
@@ -66,6 +76,117 @@ const VIEWS: View[] = [
   { name: 'board-water', cols: 140, rows: 50, time: 1.0, setup: (s) => { s.setMode('board'); s.settle(); } },
   { name: 'board-edit', cols: 140, rows: 50, setup: (s) => { s.setMode('board'); s.settle(); s.seedDemo(); } },
   { name: 'board-flyin', cols: 140, rows: 50, frames: 24, setup: (s) => { s.setMode('board'); s.reroll(); } },
+  { name: 'board-robber-move', cols: 140, rows: 50, setup: (s) => { s.setMode('board'); s.settle(); s.beginRobberMove(); s.previewRobberHex(5); } },
+];
+
+// A composited view: the scene *with the HUD painted over it*, fingerprinted from the Surface the
+// terminal would emit rather than from scene pixels. The scene-only views above are blind to the
+// UI layer, which is where the card rail, the game screen's seat panel, the resource-card arcs and
+// every label actually live — so a HUD regression would pass them unnoticed.
+interface CompositeView {
+  name: string;
+  cols?: number;
+  rows?: number;
+  render: (cols: number, rows: number) => Surface;
+}
+
+// Paint `root` over a scene render, the way the app composites Catan (no hybrid shading, so the
+// water around the island stays plain black).
+function composite(cols: number, rows: number, draw: (target: RenderTarget) => void, mount: (screen: Screen) => void): Surface {
+  const target = new RenderTarget(cols * SS, rows * 2 * SS);
+  draw(target);
+  const screen = new Screen(cols, rows);
+  mount(screen);
+  return screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: false }));
+}
+
+// The tile bed's own HUD (terrain panel + bar) over a scene set up by `setup`. `rail` opens the
+// card sidebar, which is module-level state — restored afterward so view order can't leak.
+function tileComposite(setup: (s: TileScene) => void, opts: { time?: number; rail?: boolean; flights?: (s: TileScene, w: number, h: number) => ResourceFlights } = {}): (cols: number, rows: number) => Surface {
+  return (cols, rows) => {
+    const scene = new TileScene();
+    setup(scene);
+    const wasOpen = catanSidebarOpen();
+    if (!!opts.rail !== wasOpen) toggleCatanSidebar();
+    try {
+      const flights = opts.flights?.(scene, cols, rows);
+      return composite(
+        cols,
+        rows,
+        (target) => scene.renderScene(target, opts.time ?? 0),
+        (screen) => {
+          mountCatanTileHud(screen);
+          const region = { x: 0, y: 0, w: cols, h: rows };
+          const singlePort = scene.portSailLabel(cols, rows);
+          screen.setRoot(
+            buildCatanTileRoot(region, () => {}, scene.boardTokens(cols, rows), scene.currentMode(), singlePort ? [singlePort] : scene.boardPortLabels(cols, rows), flights?.active() ?? [], scene.isMovingRobber()),
+            region,
+          );
+        },
+      );
+    } finally {
+      if (catanSidebarOpen() !== wasOpen) toggleCatanSidebar();
+    }
+  };
+}
+
+// Pay out `roll` to the local seat and step the arcs to `at` seconds — the resource-card animation
+// mid-flight, which only the composited surface can see.
+function rollFlights(roll: number, at: number): (s: TileScene, w: number, h: number) => ResourceFlights {
+  return (scene, w, h) => {
+    const flights = new ResourceFlights();
+    let thrown = 0;
+    for (const source of scene.rollSources(CATAN_LOCAL_COLOR, roll, w, h)) {
+      flights.spawn(source.resource, source.count, source, catanHandLandingCell({ x: 0, y: 0, w, h }, source.resource), thrown);
+      thrown += source.count;
+    }
+    for (let f = 1; f <= Math.round(at * 60); f++) flights.advance(f / 60);
+    return flights;
+  };
+}
+
+// The game screen. Placement is walked with the rules engine's own first legal option and the board
+// is seeded, so the still needs no model call and lands the same hexes every run.
+function gameComposite(opts: { plies?: number; setup?: boolean } = {}): (cols: number, rows: number) => Surface {
+  return (cols, rows) => {
+    const gameScene = new CatanGameScene();
+    const driver = new CatanDriver({ scene: gameScene, syncLive: () => {} });
+    if (!opts.setup) {
+      const colors: PlayerColor[] = ['red', 'blue', 'purple'];
+      const specs: CatanSeatSpec[] = colors.map((color, i) => (i === 0 ? { kind: 'human', color } : { kind: 'ai', color, model: 'openai/gpt-5.4-nano' }));
+      const state = driver.start(specs, { autoRun: false, rng: mulberry32(0xca7a4) });
+      gameScene.beginSession(state, colors);
+      for (let i = 0; i < (opts.plies ?? 5) && !state.initialPlacementComplete(); i++) {
+        const action = state.legalActions()[0];
+        if (!action) break;
+        void gameScene.playMove(action);
+      }
+    }
+    gameScene.scene.settle();
+    return composite(
+      cols,
+      rows,
+      (target) => gameScene.renderScene(target, 0.7),
+      (screen) => {
+        mountCatanGameHud(screen);
+        const region = { x: 0, y: 0, w: cols, h: rows };
+        screen.setRoot(buildCatanGameRoot(region, { driver, onOpenMenu: () => {}, onStart: () => {}, onNewGame: () => {} }), region);
+      },
+    );
+  };
+}
+
+const COMPOSITE_VIEWS: CompositeView[] = [
+  { name: 'hud-tile', render: tileComposite((s) => s.setTerrain('forest')) },
+  { name: 'hud-board', cols: 140, rows: 50, render: tileComposite((s) => { s.setMode('board'); s.settle(); }) },
+  { name: 'hud-board-cards-rail', cols: 140, rows: 50, render: tileComposite((s) => { s.setMode('boardCards'); s.settle(); }, { rail: true }) },
+  { name: 'hud-robber-move', cols: 140, rows: 50, render: tileComposite((s) => { s.setMode('board'); s.settle(); s.beginRobberMove(); s.previewRobberHex(5); }) },
+  // Roll 5 is one the sample board actually pays — and its corner is upgraded to a city, so it
+  // throws the two staggered cards rather than one. A non-paying roll would fingerprint an empty
+  // flight list and cover nothing.
+  { name: 'hud-flights-roll5', cols: 140, rows: 50, render: tileComposite((s) => { s.setMode('boardCards'); s.settle(); s.seedDemo(); s.upgradeBuilding(0); }, { rail: true, flights: rollFlights(5, 0.4) }) },
+  { name: 'game-placement', cols: 170, rows: 52, render: gameComposite() },
+  { name: 'game-setup', cols: 170, rows: 52, render: gameComposite({ setup: true }) },
 ];
 
 // Render one view and hash the frame the terminal would actually show.
@@ -84,9 +205,17 @@ function fingerprint(view: View): string {
   return createHash('sha256').update(bytes).digest('hex').slice(0, 16);
 }
 
+// The composited surface hashes its serialized cells — the glyphs, colors and styles the terminal
+// would receive — so a moved label or a recolored chip changes the hash just as a moved vertex does.
+function fingerprintComposite(view: CompositeView): string {
+  const surf = view.render(view.cols ?? 120, view.rows ?? 44);
+  return createHash('sha256').update(surf.serialize()).digest('hex').slice(0, 16);
+}
+
 function render(): Map<string, string> {
   const out = new Map<string, string>();
   for (const view of VIEWS) out.set(view.name, fingerprint(view));
+  for (const view of COMPOSITE_VIEWS) out.set(view.name, fingerprintComposite(view));
   return out;
 }
 

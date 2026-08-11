@@ -321,10 +321,14 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot prism-prompt [cols] [rows] [t] [out]    prism loading screen + press-any-key marquee
   pnpm snapshot cards [single|hand|deck] [cols] [rows] [state] [out]   the cards screen
       (single: a code like Kh/10s/As · hand: peek|up · deck: shuffle|deal)
-  pnpm snapshot catan [sidebar] [hybrid] [forest|hills|pasture|fields|mountains|desert] [cols] [rows] [<t>] [board|board-cards] [robber-moveN] [fly<roll>@<s>] [hud] [out]   a 3D Catan tile
-      (fly8@0.4: freeze the resource cards mid-arc, 0.4s after a roll of 8 pays out — needs hud)
+  pnpm snapshot catan [sidebar] [hybrid] [forest|hills|pasture|fields|mountains|desert] [cols] [rows] [<t>] [board|board-cards|pieces|port|edit] [robber|robber-moveN] [fly<roll>@<s>] [hud|modal] [out]   a 3D Catan tile
+      (fly5@0.4: freeze the resource cards mid-arc, 0.4s after a roll of 5 pays out — needs hud; the sample board pays on 2, 5 and 10, and a non-paying roll throws nothing)
       (robber-move5: preview moving the robber to hex 5 while leaving the current robber in place)
       (<t> a decimal spins the turntable · azN/elN rotate in degrees · zoomN scales camera distance · hud composites the terrain dropdown panel)
+      (board modes also take anim<s>|roll[<s>]|build[<s>] to freeze the fly-in, a dice roll, or a build-drop · water<N> sets the current time · varN rerolls the layout · top orbits overhead · modal shows the piece-edit popup)
+  pnpm snapshot catan-game [setup] [sidebar] [seats=N] [plies=N] [seed=N] [cols] [rows] [out]   the Catan game screen
+      (default: placement in progress, driven by the rules engine's own legal options — no model calls · setup: the pre-game seat panel)
+      (the board is seeded, so the same arguments always render the same hexes; seed=N picks another)
   pnpm snapshot poker [cols] [rows] [preflop|flop|river|showdown] [players=N] [stack=N] [hud|setup|cine|result|menu|notes] [bet=N] [spectate] [longnames] [muck|gather|shuffle] [color] [out]   the poker table
       (muck: fold seats to a burn pile, needs players≥3 · gather/shuffle: the between-hands interlude, mid-sweep / mid-shuffle)
 
@@ -504,8 +508,10 @@ function catanSnapshot(): void {
 
 // The Catan GAME screen (not the tile bed): `setup` captures the pre-game panel, and the default
 // captures a placement in progress. Placement is driven with the rules engine's own legal options
-// rather than models, so the still is reproducible and needs no network.
-//   pnpm exec tsx src/tools/snapshot.ts catan-game [setup] [sidebar] [seats=N] [plies=N] [cols] [rows] [out.ppm]
+// rather than models, so the still is reproducible and needs no network. The board is seeded
+// (`seed=N` to pick another one), so re-rendering the same arguments lands the same hexes — a
+// visual change is then the only thing that can move the pixels.
+//   pnpm exec tsx src/tools/snapshot.ts catan-game [setup] [sidebar] [seats=N] [plies=N] [seed=N] [cols] [rows] [out.ppm]
 function catanGameSnapshot(): void {
   const args = process.argv.slice(3);
   const nums = args.filter((a) => /^\d+$/.test(a)).map(Number);
@@ -513,6 +519,7 @@ function catanGameSnapshot(): void {
   const rows = nums[1] ?? 52;
   const seats = Number(args.find((a) => a.startsWith('seats='))?.slice(6) ?? 3);
   const plies = Number(args.find((a) => a.startsWith('plies='))?.slice(6) ?? 5);
+  const seed = Number(args.find((a) => a.startsWith('seed='))?.slice(5) ?? 0xca7a4);
   const out = args.find((a) => a.endsWith('.ppm')) ?? `.snapshots/catan-game.ppm`;
   const region = { x: 0, y: 0, w: cols, h: rows };
   const SS = 3;
@@ -523,7 +530,7 @@ function catanGameSnapshot(): void {
     if (args.includes('sidebar') && !catanSidebarOpen()) toggleCatanSidebar();
     const colors: PlayerColor[] = ['red', 'blue', 'purple', 'orange'].slice(0, seats) as PlayerColor[];
     const specs: CatanSeatSpec[] = colors.map((color, i) => (i === 0 ? { kind: 'human', color } : { kind: 'ai', color, model: `openai/gpt-5.4-nano` }));
-    const state = driver.start(specs, { autoRun: false });
+    const state = driver.start(specs, { autoRun: false, rng: mulberry32(seed) });
     gameScene.beginSession(state, colors);
     // Walk the snake order by taking each prompt's first legal option — enough placed pieces to
     // show the board mid-setup without asking a model anything.
