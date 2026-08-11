@@ -36,6 +36,7 @@ export {
   type ScenePointer,
   type SceneViewportInsets,
 } from './scene-viewport.ts';
+export { clipText, truncate, wrapText, type WrapOpts } from './text.ts';
 export { layout } from './layout.ts';
 export { paint, paintWithForeground, type ForegroundPainter, type PaintState } from './paint.ts';
 export { createTheme, defaultTheme, resolveColor, type Theme, type ColorToken } from './theme.ts';
@@ -46,6 +47,7 @@ export type {
   LayoutBox,
   BorderStyle,
   PointerHit,
+  TextOverflow,
   TooltipContent,
   TooltipPlacement,
   TooltipSpec,

@@ -7,12 +7,12 @@
 // mounted via Slot, rebuilt into a full-screen tree each frame. main owns the scene +
 // driver and wires the handlers; this module owns the controls + the table furniture.
 
-import { Box, Button, Dialog, Dropdown, filledButtonStyle, Input, Modal, type Row, RoundedButton, ScrollBox, Slider, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
+import { Box, Button, Dialog, Dropdown, filledButtonStyle, Input, Modal, type Row, RoundedButton, ScrollBox, Slider, Slot, Text, wrapText, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
 import type { RGB } from '../../../engine/index.ts';
 import { type Card, isRed, RANK_LABELS } from '../../../rules/poker/cards.ts';
 import type { SeatCardView, TableView } from './poker-scene.ts';
 import { creatorTint } from '../../scenes/wisp.ts';
-import { ChatBox, type ChatMessage, CHAT_WIDTH, wrapText } from '../chess/chat.ts';
+import { ChatBox, type ChatMessage, CHAT_WIDTH } from '../chess/chat.ts';
 import { RailPanel } from '../../shell/rail-panel.ts';
 import { shortModel } from '../chess/hud.ts';
 import { ARCADE_CHROME_TEXT, ARCADE_OUTLINE_CONTROL, UI_CHROME_PILL, uiChromeBg } from '../../theme.ts';

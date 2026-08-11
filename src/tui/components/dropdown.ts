@@ -7,6 +7,7 @@ import type { Surface } from '../../engine/index.ts';
 import type { KeyEvent } from '../../platform/input.ts';
 import type { Component } from '../component.ts';
 import { Box, Text } from '../nodes.ts';
+import { wrapText } from '../text.ts';
 import type { ColorToken, Theme } from '../theme.ts';
 import type { LayoutBox, Node, PointerHit, Style } from '../types.ts';
 
@@ -40,30 +41,6 @@ interface VLine {
 }
 
 const WHEEL_STEP = 3;
-
-function wrapText(text: string, width: number): string[] {
-  if (width <= 0) return [text];
-  const lines: string[] = [];
-  let line = '';
-  for (const word of text.split(' ')) {
-    if (word.length > width) {
-      if (line) lines.push(line);
-      let rest = word;
-      while (rest.length > width) {
-        lines.push(rest.slice(0, width));
-        rest = rest.slice(width);
-      }
-      line = rest;
-    } else if (!line) line = word;
-    else if (line.length + word.length + 1 <= width) line += ' ' + word;
-    else {
-      lines.push(line);
-      line = word;
-    }
-  }
-  if (line) lines.push(line);
-  return lines.length ? lines : [''];
-}
 
 function charClass(char: string): 'space' | 'word' | 'punct' {
   if (/\s/.test(char)) return 'space';

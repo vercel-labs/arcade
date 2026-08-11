@@ -3,7 +3,7 @@
 // The seeded snapshot lets the "Board + cards" test mode evolve before a live CatanState is
 // attached; gameplay wiring should later replace only the data source, not the card or rail layout.
 
-import { Box, Button, type LayoutBox, type Node, type PointerHit, type Row, ScrollBox, type Screen, Slot, Text, Tooltip } from '../../../tui/index.ts';
+import { Box, Button, type LayoutBox, type Node, type PointerHit, type Row, ScrollBox, type Screen, Slot, Text, Tooltip, truncate } from '../../../tui/index.ts';
 import { mulberry32, stringWidth } from '../../../engine/index.ts';
 import { RAIL_HEADER_H, RAIL_MUTED_FG, RAIL_PAD_L, RAIL_PAD_R, RAIL_PAD_V, RAIL_TEXT_FG, RailPanel } from '../../shell/rail-panel.ts';
 import { uiChromeBg } from '../../theme.ts';
@@ -569,27 +569,11 @@ function sectionTitle(label: string): Node {
 // separation and marks the cut.
 function historyRow(entry: CatanActionHistoryView): Node {
   const resourceIcons = (entry.resources ?? []).map((resource) => RESOURCE_LOOK[resource].emoji).join(' ');
-  const body = clampToWidth(`${entry.message}${resourceIcons ? ` ${resourceIcons}` : ''}`, HISTORY_ROW_W - stringWidth(entry.actor) - 1);
+  const body = truncate(`${entry.message}${resourceIcons ? ` ${resourceIcons}` : ''}`, HISTORY_ROW_W - stringWidth(entry.actor) - 1);
   return Box({ width: HISTORY_ROW_W, gap: 1, overflow: 'hidden' }, [
     Text({ text: entry.actor, style: { color: PLAYER_LOOK[entry.color], bold: true } }),
     Text({ text: body, style: { color: entry.chat ? RAIL_MUTED : RAIL_TEXT } }),
   ]);
-}
-
-// Trim to a cell budget, counting emoji as the two cells they occupy and never splitting one.
-// The ellipsis costs a cell of its own, so it only earns its place if something was cut.
-function clampToWidth(text: string, limit: number): string {
-  if (limit <= 0) return '';
-  if (stringWidth(text) <= limit) return text;
-  let out = '';
-  let w = 0;
-  for (const ch of text) {
-    const cw = stringWidth(ch);
-    if (w + cw > limit - 1) break;
-    out += ch;
-    w += cw;
-  }
-  return `${out}…`;
 }
 
 function bankRow(view: CatanCardsView): Node {

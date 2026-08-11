@@ -10,7 +10,7 @@
 // positioned content column inside an overflow-clipped viewport, with follow-to-
 // bottom (sticks to the newest entry until the reader scrolls up).
 
-import { Box, Text, type Component, type Node, type Screen } from '../../../tui/index.ts';
+import { Box, Text, wrapText, type Component, type Node, type Screen } from '../../../tui/index.ts';
 import type { RGB, Surface } from '../../../engine/index.ts';
 import type { KeyEvent } from '../../../platform/input.ts';
 import type { LayoutBox, PointerHit } from '../../../tui/types.ts';
@@ -70,51 +70,6 @@ function creatorColor(slug: string): RGB {
   return [Math.round(t.x), Math.round(t.y), Math.round(t.z)];
 }
 
-// Greedy word-wrap. `first` is the width available on the FIRST line (it shares the
-// row with the "name: " prefix); `rest` is the width for wrapped continuation lines.
-// A word longer than the line is hard-split so a single token can't overflow.
-function wrapInline(s: string, rest: number, first: number): string[] {
-  const out: string[] = [];
-  let line = '';
-  const cap = (): number => Math.max(1, out.length === 0 ? first : rest);
-  for (const word of s.split(/\s+/).filter(Boolean)) {
-    let w = word;
-    while (w.length > cap()) {
-      if (line) {
-        out.push(line);
-        line = '';
-      } else {
-        const width = cap();
-        if (out.length === 0 && width < rest && w.length <= rest) {
-          // A long speaker name can leave only a few cells on the first row.
-          // Keep a normal-sized first word intact on the continuation row instead
-          // of producing awkward fragments such as "Gem" / "ini,".
-          out.push('');
-        } else {
-          // Capture the width before pushing: cap() switches from the first-line
-          // width to the continuation width once out gains an entry. Calling it
-          // again after push used to discard the remainder of the word.
-          out.push(w.slice(0, width));
-          w = w.slice(width);
-        }
-      }
-    }
-    if (!line) line = w;
-    else if (line.length + 1 + w.length <= cap()) line += ' ' + w;
-    else {
-      out.push(line);
-      line = w;
-    }
-  }
-  out.push(line);
-  return out;
-}
-
-// Plain greedy wrap to a single width (kept for reuse/tests).
-export function wrapText(s: string, width: number): string[] {
-  return wrapInline(s, width, width);
-}
-
 // A message's rendered form: the colored bold name, and its dialogue split into
 // lines (line 0 shares the row with the "name: " prefix; the rest are flush-left).
 // `event` lines have no name — the whole text wraps full-width in grey.
@@ -127,10 +82,10 @@ interface Rendered {
 
 function render(messages: ChatMessage[]): Rendered[] {
   return messages.map((m) => {
-    if (m.event) return { name: '', color: m.error ? ERROR_FG : EVENT_FG, lines: wrapInline(m.text, CONTENT_W, CONTENT_W), event: true };
+    if (m.event) return { name: '', color: m.error ? ERROR_FG : EVENT_FG, lines: wrapText(m.text, CONTENT_W), event: true };
     const name = m.label ?? shortModel(m.model);
     const prefixW = name.length + 2; // "name" + ": "
-    return { name, color: creatorColor(m.model), lines: wrapInline(m.text, CONTENT_W, CONTENT_W - prefixW), event: false };
+    return { name, color: creatorColor(m.model), lines: wrapText(m.text, CONTENT_W, { first: CONTENT_W - prefixW }), event: false };
   });
 }
 
@@ -246,7 +201,7 @@ export class ChatBox implements Component {
     // Empty state (no dialogue yet and no match running): a muted hint centered in
     // the viewport. A match in progress suppresses it — its dialogue is imminent.
     if (this.messages.length === 0 && !this.active) {
-      const lines = wrapInline(this.placeholder, CONTENT_W, CONTENT_W);
+      const lines = wrapText(this.placeholder, CONTENT_W);
       return {
         ...Box({ width: VIEW_W, height: this.viewport, flexDirection: 'column', justifyContent: 'center', alignItems: 'center' },
           lines.map((l) => Text({ text: l, style: { color: PLACEHOLDER_FG } }))),

@@ -16,11 +16,11 @@ import { type RealtimeCodec, RealtimeSession, type RealtimeSocket } from '../voi
 import type { Move } from '../rules/chess/types.ts';
 import { readFileSync } from 'node:fs';
 import { decodePng, RenderTarget, stringWidth } from '../engine/index.ts';
-import { Dropdown, Screen } from '../tui/index.ts';
+import { Dropdown, Screen, wrapText } from '../tui/index.ts';
 import { ChessGameScene } from '../arcade/games/chess/scene.ts';
 import { buildBar, buildGameOver, type BarActions } from '../arcade/shell/bars.ts';
 import { buildChessGameRoot, mountChessHud, moveHistory, movesToPgn, refreshMoveHistory } from '../arcade/games/chess/hud.ts';
-import { ChatBox, wrapText } from '../arcade/games/chess/chat.ts';
+import { ChatBox } from '../arcade/games/chess/chat.ts';
 import { BISHOP, BLACK, FLAG_CAPTURE, KING, pieceColor, pieceType, QUEEN, ROOK, square, WHITE } from '../rules/chess/types.ts';
 import { creators, modelsFor } from '../arcade/match/models.ts';
 import { matchSetupReady, matchSetupSelection, mountMatchSetup } from '../arcade/match/setup.ts';
