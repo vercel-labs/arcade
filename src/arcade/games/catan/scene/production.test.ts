@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { mulberry32 } from '../../../../engine/index.ts';
 import { hexNodes } from '../../../../rules/catan/board-topology.ts';
 import { generateBoard } from '../../../../rules/catan/setup.ts';
 import { TERRAIN_RESOURCE } from '../../../../rules/catan/types.ts';
-import { mulberry32 } from '../../../scenes/wisp.ts';
 import { rollYield } from './production.ts';
 
 const board = generateBoard(mulberry32(7));

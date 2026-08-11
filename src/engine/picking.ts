@@ -78,6 +78,30 @@ export function projectedPointToViewport(
   };
 }
 
+/**
+ * Project a world-space polygon and return sqrt(screen-space area), a stable linear footprint
+ * suitable for label-detail and level-of-detail thresholds.
+ */
+export function projectedPolygonFootprint(
+  viewProjection: Mat4,
+  points: readonly Vec3[],
+  width: number,
+  height: number,
+): number {
+  const projected: ViewportPoint[] = [];
+  for (const point of points) {
+    const viewport = projectedPointToViewport(projectPoint(viewProjection, point), width, height);
+    if (!viewport) return 0;
+    projected.push(viewport);
+  }
+  let twiceArea = 0;
+  for (let index = 0; index < projected.length; index++) {
+    const next = (index + 1) % projected.length;
+    twiceArea += projected[index].x * projected[next].y - projected[next].x * projected[index].y;
+  }
+  return Math.sqrt(Math.abs(twiceArea) * 0.5);
+}
+
 /** Project a world point into normalized device coordinates. */
 export function projectPoint(viewProjection: Mat4, point: Vec3): ProjectedPoint {
   const clip = mat4MulVec4(viewProjection, { ...point, w: 1 });
@@ -93,13 +117,15 @@ export function projectedDiscHit(
   ndcX: number,
   ndcY: number,
   padding = 1,
-): { distance: number; radius: number } | null {
+): ProjectedShapeHit | null {
   const c = projectPoint(viewProjection, center);
   if (c.behind) return null;
   const edge = projectPoint(viewProjection, add3(center, radiusAxis));
   const radius = Math.hypot(edge.x - c.x, edge.y - c.y);
   const distance = Math.hypot(ndcX - c.x, ndcY - c.y);
-  return distance < radius * padding ? { distance, radius } : null;
+  return distance < radius * padding
+    ? { distance, radius, score: radius > 0 ? distance / radius : Infinity }
+    : null;
 }
 
 /**
@@ -203,7 +229,7 @@ export class Raycaster {
     return projectPoint(this.viewProjection, point);
   }
 
-  projectedDisc(center: Vec3, radiusAxis: Vec3, padding = 1): { distance: number; radius: number } | null {
+  projectedDisc(center: Vec3, radiusAxis: Vec3, padding = 1): ProjectedShapeHit | null {
     return projectedDiscHit(
       this.viewProjection,
       center,

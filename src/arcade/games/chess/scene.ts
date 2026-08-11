@@ -10,6 +10,8 @@ import {
   meshBounds,
   type Mesh,
   MeshObject,
+  mulberry32,
+  nearestHit,
   normalize3,
   ObjectPool,
   OrbitCamera,
@@ -49,7 +51,7 @@ import {
   square,
   WHITE,
 } from '../../../rules/chess/types.ts';
-import { loadCreatorWisp, mulberry32, type Wisp, WISP_SIZE } from '../../scenes/wisp.ts';
+import { loadCreatorWisp, type Wisp, WISP_SIZE } from '../../scenes/wisp.ts';
 import { asset } from '../../assets.ts';
 
 const PIECE_NAMES = ['pawn', 'queen', 'bishop', 'rook', 'king', 'knight'];
@@ -442,8 +444,7 @@ export class ChessGameScene {
     const raycaster = this.raycaster.setFromCamera(camera, ndcX, ndcY, aspect);
     const { up } = this.cam.basis();
     const size = WISP_SIZE * WISP_SCALE;
-    let best: Color | null = null;
-    let bestD = Infinity;
+    const hits: ({ color: Color } & NonNullable<ReturnType<Raycaster['projectedDisc']>>)[] = [];
     const test = (color: Color, wisp: Wisp | null): void => {
       if (!wisp) return;
       const k = this.kingWorldPos(color);
@@ -454,14 +455,11 @@ export class ChessGameScene {
         { x: up.x * size, y: up.y * size, z: up.z * size },
         1.6,
       );
-      if (hit && hit.distance < bestD) {
-        bestD = hit.distance;
-        best = color;
-      }
+      if (hit) hits.push({ color, ...hit });
     };
     test(WHITE, this.whiteWisp);
     test(BLACK, this.blackWisp);
-    return best;
+    return nearestHit(hits, { maxScore: 1.6 })?.color ?? null;
   }
 
   // Preview the two sides' creator wisps over the kings while the match-setup panel

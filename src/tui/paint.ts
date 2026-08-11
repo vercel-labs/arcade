@@ -30,6 +30,11 @@ export interface PaintState {
   pressedId: string | null;
 }
 
+// A non-TUI layer painted between ordinary UI and portal overlays. This is the seam for
+// foreground scene content (for example 3D dice that should cover projected labels while
+// menus and dialogs still remain on top).
+export type ForegroundPainter = (surf: Surface) => void;
+
 const rgbOf = (c: RGBA): RGB => [c[0], c[1], c[2]];
 
 function styleBits(s: Style): number {
@@ -138,9 +143,13 @@ function paintNode(node: Node, surf: Surface, st: PaintState, theme: Theme, inhe
   for (const c of node.children ?? []) paintNode(c, surf, st, theme, inheritedBg, overlays, true);
 }
 
-export function paint(root: Node, surf: Surface, st: PaintState, theme: Theme = defaultTheme): void {
+function paintPhases(root: Node, surf: Surface, st: PaintState, theme: Theme, foreground?: ForegroundPainter): void {
   const overlays: Node[] = [];
   paintNode(root, surf, st, theme, undefined, overlays);
+  // Ordinary descendants may leave an ancestor clip active. A foreground scene layer owns the
+  // whole Surface, just like the base scene, so it must not inherit that implementation detail.
+  surf.setClip(null);
+  foreground?.(surf);
   // Each overlay layer is appended while its parent layer paints. That makes a
   // nested popover a later/topper layer than every ordinary child of its modal.
   for (let i = 0; i < overlays.length; i++) {
@@ -149,4 +158,13 @@ export function paint(root: Node, surf: Surface, st: PaintState, theme: Theme = 
     paintNode(o, surf, st, theme, undefined, overlays, false);
   }
   surf.setClip(null); // don't leak a clip into later direct Surface writes
+}
+
+export function paint(root: Node, surf: Surface, st: PaintState, theme: Theme = defaultTheme): void {
+  paintPhases(root, surf, st, theme);
+}
+
+/** Paint ordinary UI, then a foreground scene layer, then portal overlays. */
+export function paintWithForeground(root: Node, surf: Surface, st: PaintState, foreground: ForegroundPainter, theme: Theme = defaultTheme): void {
+  paintPhases(root, surf, st, theme, foreground);
 }

@@ -2,8 +2,7 @@
 // access structures, brick stockpiles, and an ox cart. The centre remains clear for the number
 // token; variation rotates and reshapes the quarry rather than changing its identity.
 
-import { type Vec3 } from '../../../../../engine/index.ts';
-import { mulberry32 } from '../../../../scenes/wisp.ts';
+import { mulberry32, type Vec3 } from '../../../../../engine/index.ts';
 import { EDGE_Y, hexCorners, R_RIM, rimAndWall } from '../base.ts';
 import { build, type Build, faceTri, hash2, type RGB, shade, smooth, UP, v } from '../build.ts';
 import { brickHeap, brickStack } from '../nature.ts';

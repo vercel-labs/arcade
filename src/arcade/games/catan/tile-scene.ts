@@ -10,6 +10,7 @@ import {
   type Camera,
   cameraMatrices,
   FrameClock,
+  hysteresisThreshold,
   lambertMaterial,
   type LambertUniforms,
   type Mat4,
@@ -22,13 +23,16 @@ import {
   mat4RotZ,
   mat4Translate,
   MeshObject,
+  mulberry32,
   normalize3,
   ObjectPool,
   OrbitCamera,
   projectPoint,
+  projectedPolygonFootprint,
   projectedPointToViewport,
   Raycaster,
   rasterize,
+  resolveStickyHover,
   type RenderTarget,
   Scene,
   SceneRenderer,
@@ -42,7 +46,6 @@ import { HEX_COORDS, NUM_HEXES } from '../../../rules/catan/board-topology.ts';
 import { type BoardOccupancy, canPlaceRoad, canPlaceSettlement } from '../../../rules/catan/placement.ts';
 import { type BoardSetup, generateBoard } from '../../../rules/catan/setup.ts';
 import { type PlayerColor, RED_NUMBERS, type Resource, type Terrain, TOKEN_DOTS } from '../../../rules/catan/types.ts';
-import { mulberry32 } from '../../scenes/wisp.ts';
 import { animatedTileMesh, boardOverlayMesh, coastMesh, dieMesh, harborPiersMesh, hoverColorFor, type OverlaySpec, piecesMesh, PORT_SAIL_CENTER, type PortKind, portMesh, robberMarkerMesh, surfMesh, swashMesh, tileBackMesh, tileMesh } from './mesh/index.ts';
 import { catanPieceMaterial, type CatanPieceUniforms } from './mesh/piece-material.ts';
 import { EDGE_ENDS, hexRing, hexWorld, NODE_XZ } from './scene/board-layout.ts';
@@ -197,27 +200,18 @@ function harborEntryProgress(clock: number, index: number): number {
 }
 
 function projectedHexFootprint(vp: Mat4, x: number, z: number, cols: number, rows: number): number {
-  const points: { col: number; row: number }[] = [];
+  const points: Vec3[] = [];
   for (let corner = 0; corner < 6; corner++) {
     const angle = (-Math.PI / 3) * corner;
-    const point = projectPoint(vp, {
+    points.push({
       x: x + Math.cos(angle),
       y: 0.14,
       z: z + Math.sin(angle),
     });
-    if (point.behind) return 0;
-    const viewport = projectedPointToViewport(point, cols, rows);
-    if (!viewport) return 0;
-    points.push({ col: viewport.x, row: viewport.y });
-  }
-  let twiceArea = 0;
-  for (let corner = 0; corner < points.length; corner++) {
-    const next = (corner + 1) % points.length;
-    twiceArea += points[corner].col * points[next].row - points[next].col * points[corner].row;
   }
   // sqrt(area) expresses the polygon footprint as a linear terminal-cell scale, so the cutoff
   // remains intuitive across differently shaped projections of the same hex.
-  return Math.sqrt(Math.abs(twiceArea) * 0.5);
+  return projectedPolygonFootprint(vp, points, cols, rows);
 }
 
 // Start each boat near the water edge behind its final pose, then sail it along the direction
@@ -567,11 +561,10 @@ export class TileScene {
     // flickering without comparing unrelated raw point distances.
     const KEEP_SCALE = 0.11 / 0.06;
     const SWITCH_BIAS = 0.02 / 0.06;
-    if (current && currentHit && currentHit.score <= KEEP_SCALE && (!best || currentHit.score <= best.score + SWITCH_BIAS)) {
-      this.setHoveredTarget(current);
-    } else {
-      this.setHoveredTarget(best);
-    }
+    this.setHoveredTarget(resolveStickyHover(currentHit, best, {
+      leaveScore: KEEP_SCALE,
+      switchBias: SWITCH_BIAS,
+    }));
   }
   // Which vertex/edge a click at these coordinates resolves to, without touching the board.
   // A highlighted target owns the click while the pointer remains in click range. If sticky
@@ -848,6 +841,13 @@ export class TileScene {
     return this.dirty || this.placing || this.revealing || this.tokensDirty || this.dicePhase !== 'idle' || this.rolledSum !== null || this.dropping !== null;
   }
 
+  // The dice are rendered after clearing depth, so finite depth now identifies exactly their
+  // pixels. The shared compositor uses this to replay them as a sparse foreground scene layer
+  // above projected number chips without putting ordinary HUD chrome underneath them.
+  hasForegroundSceneLayer(): boolean {
+    return this.dicePhase !== 'idle';
+  }
+
   requestAnimationFrame(): void {
     if (isBoardMode(this.modeName) || (this.modeName === 'tile' && this.terrain !== 'mountains')) this.dirty = true;
   }
@@ -868,13 +868,12 @@ export class TileScene {
     // A lower-quartile footprint represents the smaller, farther hexes without allowing one extreme
     // perspective corner to suppress detail across the complete board.
     const detailFootprint = hexFootprints[Math.floor(hexFootprints.length * 0.25)] ?? 0;
-    if (this.tokenPipDetailVisible === null) {
-      this.tokenPipDetailVisible = detailFootprint >= TOKEN_PIP_SHOW_MIN_FOOTPRINT;
-    } else if (this.tokenPipDetailVisible) {
-      if (detailFootprint < TOKEN_PIP_HIDE_MIN_FOOTPRINT) this.tokenPipDetailVisible = false;
-    } else if (detailFootprint >= TOKEN_PIP_SHOW_MIN_FOOTPRINT) {
-      this.tokenPipDetailVisible = true;
-    }
+    this.tokenPipDetailVisible = hysteresisThreshold(
+      detailFootprint,
+      this.tokenPipDetailVisible,
+      TOKEN_PIP_SHOW_MIN_FOOTPRINT,
+      TOKEN_PIP_HIDE_MIN_FOOTPRINT,
+    );
     const out: BoardToken[] = [];
     for (let h = 0; h < NUM_HEXES; h++) {
       const cell = this.board.hexes[h];

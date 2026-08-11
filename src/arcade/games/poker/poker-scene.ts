@@ -21,6 +21,8 @@ import {
   mat4RotY,
   mat4Translate,
   MeshObject,
+  mulberry32,
+  nearestHit,
   normalize3,
   OrbitCamera,
   Raycaster,
@@ -32,7 +34,7 @@ import {
   type Vec3,
   WorldMaterialInstance,
 } from '../../../engine/index.ts';
-import { loadCreatorWisp, mulberry32, type Wisp, WISP_SIZE } from '../../scenes/wisp.ts';
+import { loadCreatorWisp, type Wisp, WISP_SIZE } from '../../scenes/wisp.ts';
 import type { RGB } from '../../../engine/index.ts';
 import { type Card, RANK_LABELS } from '../../../rules/poker/cards.ts';
 import type { HoldemState, PokerAction } from '../../../rules/poker/holdem.ts';
@@ -1701,8 +1703,7 @@ export class PokerGameScene {
     const raycaster = this.raycaster.setFromCamera(camera, ndcX, ndcY, aspect);
     const { up } = this.cam.basis();
     const size = WISP_SIZE * WISP_SCALE;
-    let best: number | null = null;
-    let bestD = Infinity;
+    const hits: ({ seat: number } & NonNullable<ReturnType<Raycaster['projectedDisc']>>)[] = [];
     for (let s = 0; s < this.wisps.length; s++) {
       if (!this.wisps[s]) continue;
       const c = this.seatPos(s, TABLE_RADIUS + 0.4);
@@ -1712,11 +1713,8 @@ export class PokerGameScene {
         { x: up.x * size, y: up.y * size, z: up.z * size },
         1.6,
       );
-      if (hit && hit.distance < bestD) {
-        bestD = hit.distance;
-        best = s;
-      }
+      if (hit) hits.push({ seat: s, ...hit });
     }
-    return best;
+    return nearestHit(hits, { maxScore: 1.6 })?.seat ?? null;
   }
 }

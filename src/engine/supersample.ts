@@ -18,6 +18,8 @@ export function downsample(src: RenderTarget, factor: number, out?: RenderTarget
   const dst = out && out.width === W && out.height === H ? out : new RenderTarget(W, H);
   const sc = src.color;
   const dc = dst.color;
+  const sd = src.depth;
+  const dd = dst.depth;
   const sw = src.width;
   const inv = 1 / (factor * factor);
   for (let y = 0; y < H; y++) {
@@ -25,19 +27,26 @@ export function downsample(src: RenderTarget, factor: number, out?: RenderTarget
       let r = 0;
       let g = 0;
       let b = 0;
+      let depth = Infinity;
       for (let dy = 0; dy < factor; dy++) {
         const row = (y * factor + dy) * sw;
         for (let dx = 0; dx < factor; dx++) {
-          const si = (row + x * factor + dx) * 3;
+          const spi = row + x * factor + dx;
+          const si = spi * 3;
           r += toLinear(sc[si]);
           g += toLinear(sc[si + 1]);
           b += toLinear(sc[si + 2]);
+          if (sd[spi] < depth) depth = sd[spi];
         }
       }
-      const di = (y * W + x) * 3;
+      const dpi = y * W + x;
+      const di = dpi * 3;
       dc[di] = toSrgb(r * inv);
       dc[di + 1] = toSrgb(g * inv);
       dc[di + 2] = toSrgb(b * inv);
+      // Preserve nearest coverage as well as color. Presenters normally ignore depth, but a
+      // sparse foreground layer uses finite depth as its transparency mask after downsampling.
+      dd[dpi] = depth;
     }
   }
   return dst;

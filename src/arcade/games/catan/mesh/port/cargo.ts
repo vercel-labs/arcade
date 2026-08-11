@@ -1,8 +1,7 @@
 // What a 2:1 port carries on deck — one load per traded resource, sized so it nearly fills the
 // open well. Grain rides as tied wheat sheaves; a 3:1 (generic) ship carries nothing.
 
-import { type Vec3 } from '../../../../../engine/index.ts';
-import { mulberry32 } from '../../../../scenes/wisp.ts';
+import { mulberry32, type Vec3 } from '../../../../../engine/index.ts';
 import { type Build, cross, faceQuadFlat, faceTriWithNormal, norm, type RGB, shade, UP, v } from '../build.ts';
 import { felledPine, PINE_GREENS, sheep } from '../nature.ts';
 import { angularRock, box } from '../props.ts';

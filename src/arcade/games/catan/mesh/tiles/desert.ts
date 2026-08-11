@@ -1,7 +1,6 @@
 // The desert tile: dunes and sun-bleached bones, plus the robber that can stand on it.
 
-import { type Vec3 } from '../../../../../engine/index.ts';
-import { mulberry32 } from '../../../../scenes/wisp.ts';
+import { mulberry32, type Vec3 } from '../../../../../engine/index.ts';
 import { EDGE_Y, hexCorners, R_RIM, rimAndWall } from '../base.ts';
 import { build, type Build, DOWN, faceQuad, faceTri, faceTriWithNormal, hash2, norm, type RGB, shade, smooth, sub, UP, v } from '../build.ts';
 import { blob, scatter } from '../props.ts';

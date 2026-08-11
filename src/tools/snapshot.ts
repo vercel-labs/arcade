@@ -6,7 +6,7 @@
 //   pnpm exec tsx src/tools/snapshot.ts ui [cols] [rows] [hover=<id>|focus=<id>] [out.ppm]
 //   pnpm exec tsx src/tools/snapshot.ts overlay [chess|chess-game|prism] [cols] [rows] [out.ppm]
 import { writeFileSync } from 'node:fs';
-import { bloom, downsample, halfBlockToSurface, RenderTarget, shapeGlyphToSurface, STYLE_BOLD, STYLE_DIM, Surface } from '../engine/index.ts';
+import { bloom, downsample, halfBlockToSurface, mulberry32, RenderTarget, shapeGlyphLayerToSurface, shapeGlyphToSurface, STYLE_BOLD, STYLE_DIM, Surface } from '../engine/index.ts';
 import { FONT } from '../engine/font8x8.ts';
 import { PrismScene, SplashScene } from '../prism/index.ts';
 import { ChessGameScene } from '../arcade/games/chess/scene.ts';
@@ -37,7 +37,6 @@ import { PokerGameScene, type PokerSeatView } from '../arcade/games/poker/poker-
 import { betInput as pokerBetInput, buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, mountPokerGameHud, pushPokerChat } from '../arcade/games/poker/poker-hud.ts';
 import { buildPokerSetupPanel, modeDropdown as pokerModeDropdown, mountPokerSetup, playersDropdown as pokerPlayersDropdown, pokerPreviewSeats, pokerStartingStack } from '../arcade/match/poker-setup.ts';
 import { HoldemState } from '../rules/poker/holdem.ts';
-import { mulberry32 } from '../arcade/scenes/wisp.ts';
 import { RANK_LABELS, type Suit, SUIT_LETTERS } from '../rules/poker/cards.ts';
 import type { Color } from '../rules/chess/types.ts';
 import { Box, Button, Dropdown, insetSceneViewport, layout, paint, Screen, type PaintState } from '../tui/index.ts';
@@ -479,7 +478,7 @@ function catanSnapshot(): void {
     const screen = new Screen(cols, rows);
     const region = { x: 0, y: 0, w: cols, h: rows };
     screen.setRoot(buildCatanPieceModal({ road: false, city: false, color: 'blue', onUpgrade: noop, onRemove: noop, onColor: () => {}, onClose: noop }), region);
-    const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid }));
+    const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true }));
     surfaceToPpm(surf, cols, rows, out);
     return;
   }
@@ -499,7 +498,12 @@ function catanSnapshot(): void {
     const region = { x: 0, y: 0, w: cols, h: rows };
     const singlePort = scene.portSailLabel(cols, rows);
     screen.setRoot(buildCatanTileRoot(region, noop, scene.boardTokens(cols, rows), scene.currentMode(), singlePort ? [singlePort] : scene.boardPortLabels(cols, rows), catanFlights(scene, region, args), scene.isMovingRobber()), region);
-    const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid }));
+    const surf = screen.snapshot(
+      (s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid }),
+      scene.hasForegroundSceneLayer()
+        ? (s) => shapeGlyphLayerToSurface(s, target, cols, rows, { color: true, hybrid })
+        : undefined,
+    );
     surfaceToPpm(surf, cols, rows, out);
     return;
   }

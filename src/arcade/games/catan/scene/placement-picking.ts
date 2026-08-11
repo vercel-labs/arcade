@@ -1,4 +1,4 @@
-import { type Raycaster } from '../../../../engine/index.ts';
+import { nearestHit, type Raycaster } from '../../../../engine/index.ts';
 import { NUM_EDGES, NUM_NODES } from '../../../../rules/catan/board-topology.ts';
 import {
   BOARD_BUILDING_RADIUS,
@@ -83,17 +83,15 @@ export function pickBoardTarget(
   buildingAt: BuildingAtNode,
   radiusScale = 1,
 ): BoardPickMeasurement | null {
-  let node: BoardPickMeasurement | null = null;
+  const hits: BoardPickMeasurement[] = [];
   for (let id = 0; id < NUM_NODES; id++) {
-    const hit = nodeMeasurement(raycaster, id, buildingAt);
-    if (hit.score <= radiusScale && (!node || hit.score < node.score)) node = hit;
+    hits.push(nodeMeasurement(raycaster, id, buildingAt));
   }
-  if (node) return node;
-
-  let edge: BoardPickMeasurement | null = null;
   for (let id = 0; id < NUM_EDGES; id++) {
-    const hit = roadMeasurement(raycaster, id);
-    if (hit.score <= radiusScale && (!edge || hit.score < edge.score)) edge = hit;
+    hits.push(roadMeasurement(raycaster, id));
   }
-  return edge;
+  return nearestHit(hits, {
+    maxScore: radiusScale,
+    priority: (hit) => hit.kind === 'node' ? 0 : 1,
+  });
 }

@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { mulberry32 } from '../../engine/index.ts';
 import { analyzeLogo, bakeMarkAlpha, decodePng, markCoverage, type Texture } from '../../engine/index.ts';
 import { asset } from '../assets.ts';
 import { creators } from '../match/models.ts';
-import { deriveTint, FALLBACK_CREATOR_TINT, loadCreatorWisp, mulberry32 } from './wisp.ts';
+import { deriveTint, FALLBACK_CREATOR_TINT, loadCreatorWisp } from './wisp.ts';
 
 function logo(name: string): Texture {
   return decodePng(readFileSync(asset(`logos/${name}.png`)));

@@ -129,7 +129,20 @@ function drawRoad(m: Build, e: { x0: number; z0: number; x1: number; z1: number 
   const len = Math.hypot(e.x1 - e.x0, e.z1 - e.z0);
   addRoad(m, (e.x0 + e.x1) / 2, (e.z0 + e.z1) / 2, y, len * BOARD_ROAD_LENGTH_SCALE, ang, color, ROAD_SCALE);
 }
-export function boardOverlayMesh(o: OverlaySpec): Mesh {
+
+// Water and terrain animate while editor pieces usually do not. Retain the exact combined mesh
+// for stable placement/hover states instead of rebuilding every box and roof on each water frame.
+// The bounded LRU accommodates normal hover movement without letting an editor session retain
+// every state it has ever visited. Continuous drop-animation lifts deliberately bypass it.
+const overlayCache = new ResourceCache<string, Mesh>({ maxEntries: 96 });
+
+function overlayCacheKey(o: OverlaySpec): string | null {
+  if (o.buildings.some((building) => (building.lift ?? 0) !== 0)) return null;
+  if (o.roads.some((road) => (road.lift ?? 0) !== 0)) return null;
+  return JSON.stringify(o);
+}
+
+function buildBoardOverlayMesh(o: OverlaySpec): Mesh {
   const m = build();
   for (const b of o.buildings) {
     const col = b.hot ? o.hoverColor : PLAYER_RGB[b.color];
@@ -142,4 +155,9 @@ export function boardOverlayMesh(o: OverlaySpec): Mesh {
   if (o.ghostSettlement) addSettlement(m, o.ghostSettlement.x, o.ghostSettlement.z, RIM_Y, BUILDING_SCALE, o.hoverColor);
   if (o.ghostRoad) drawRoad(m, o.ghostRoad, o.hoverColor);
   return m;
+}
+
+export function boardOverlayMesh(o: OverlaySpec): Mesh {
+  const key = overlayCacheKey(o);
+  return key === null ? buildBoardOverlayMesh(o) : overlayCache.getOrCreate(key, () => buildBoardOverlayMesh(o));
 }

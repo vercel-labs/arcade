@@ -26,6 +26,7 @@ import {
   mat4Translate,
   MeshObject,
   normalize3,
+  mulberry32,
   OrbitCamera,
   type RenderTarget,
   Scene,
@@ -35,7 +36,6 @@ import {
   WorldMaterialInstance,
 } from '../../../engine/index.ts';
 import type { OrbitState } from '../../../engine/index.ts';
-import { mulberry32 } from '../../scenes/wisp.ts';
 import { type Card, fullDeck, shuffle } from '../../../rules/poker/cards.ts';
 import { cardBackTexture } from './card-textures.ts';
 import { CARD_SCALE, CARD_W, drawCard, flatDown } from './card-render.ts';

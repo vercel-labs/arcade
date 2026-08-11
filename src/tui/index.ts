@@ -36,6 +36,6 @@ export {
   type SceneViewportInsets,
 } from './scene-viewport.ts';
 export { layout } from './layout.ts';
-export { paint, type PaintState } from './paint.ts';
+export { paint, paintWithForeground, type ForegroundPainter, type PaintState } from './paint.ts';
 export { defaultTheme, resolveColor, type Theme, type ColorToken } from './theme.ts';
 export type { Node, Style, Dimension, LayoutBox, BorderStyle, PointerHit } from './types.ts';

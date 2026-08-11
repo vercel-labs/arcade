@@ -215,9 +215,10 @@ export function buildCatanTileRoot(region: LayoutBox, onOpenMenu: () => void, to
             }),
           ];
   const panel = Box({ flexDirection: 'column', gap: 1, padding: [1, 2], background: [16, 18, 26, 0.9] }, [Field({ label: 'Mode', child: Slot('catan-mode') }), ...controls]);
-  return Box({ width: region.w, height: region.h }, [
-    ...tokens.map(tokenChip), // number tokens over the board (bottom layer, under the chrome)
-    ...sails.map(sailChip), // board/port mode: trade-info chips projected onto the sails
+  // Portal chrome is deliberately a later compositing phase: the shared Screen can insert a
+  // sparse foreground 3D layer (the rolling dice) after ordinary projected labels but before
+  // controls, cards, menus, and dialogs. Nested dropdown portals still paint one phase later.
+  const chrome = Box({ width: region.w, height: region.h }, [
     Box({ width: region.w, height: region.h, flexDirection: 'column' }, [Box({ flexDirection: 'row', padding: [1, 0, 0, 2] }, [panel])]),
     ...(mode === 'boardCards' ? [buildCatanCardsOverlay(region, toggleSidebar)] : []),
     // Cards in flight paint OVER the hand panel, not under it: they have to cross the panel's top
@@ -247,5 +248,11 @@ export function buildCatanTileRoot(region: LayoutBox, onOpenMenu: () => void, to
     ...(boardMode && !movingRobber
       ? [Box({ position: 'absolute', bottom: 1, right: 2 + (railOpen ? CATAN_RAIL_W : 0) }, [FilledButton({ id: 'catan-roll', label: 'roll dice', onClick: () => H?.onRollDice() })])]
       : []),
+  ]);
+  chrome.overlay = true;
+  return Box({ width: region.w, height: region.h }, [
+    ...tokens.map(tokenChip), // ordinary projected UI: above the board, below foreground 3D
+    ...sails.map(sailChip),
+    chrome,
   ]);
 }

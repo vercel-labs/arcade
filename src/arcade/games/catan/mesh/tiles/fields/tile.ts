@@ -1,7 +1,6 @@
 // The wheat (fields) tile, plus the small overlay that animates its windmill rotor.
 
-import { mulberry32 } from '../../../../../scenes/wisp.ts';
-import { ResourceCache } from '../../../../../../engine/index.ts';
+import { mulberry32, ResourceCache } from '../../../../../../engine/index.ts';
 import { irregularGround, rimAndWall, surfaceY } from '../../base.ts';
 import { build, type Build, type RGB, shade } from '../../build.ts';
 import { harvestedRows, prepareStandingCanopy, standingCanopy, standingWheat, type StandingCanopyCell } from './crop.ts';

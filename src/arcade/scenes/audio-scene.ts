@@ -1,5 +1,6 @@
 import {
   cameraMatrices,
+  mulberry32,
   type RenderTarget,
   type RGB,
   STYLE_BOLD,
@@ -7,7 +8,7 @@ import {
 } from '../../engine/index.ts';
 import { OrbitCamera } from '../orbit.ts';
 import { includeEarlyAccessModels } from '../match/models.ts';
-import { loadCreatorWisp, mulberry32, type Wisp } from './wisp.ts';
+import { loadCreatorWisp, type Wisp } from './wisp.ts';
 import {
   AudioLog,
   AUDIO_RATE,

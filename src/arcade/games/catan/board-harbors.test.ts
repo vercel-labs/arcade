@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mat4MulVec4 } from '../../../engine/index.ts';
+import { mat4MulVec4, mulberry32 } from '../../../engine/index.ts';
 import { generateBoard } from '../../../rules/catan/setup.ts';
-import { mulberry32 } from '../../scenes/wisp.ts';
 import { BEACH_OUTER_WIDTH, coastMesh, harborPiersMesh, portMesh, shoreWaveField, surfMesh, swashMesh } from './mesh/index.ts';
 import { EDGE_ENDS } from './scene/board-layout.ts';
 import { boardHarborPoses } from './scene/harbors.ts';

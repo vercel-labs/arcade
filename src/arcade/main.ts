@@ -2,9 +2,11 @@ import {
   applyTerminalColorMode,
   bloom,
   downsample,
+  halfBlockLayerToSurface,
   halfBlockToSurface,
   RenderTarget,
   shapeGlyphToSurface,
+  shapeGlyphLayerToSurface,
   STYLE_BOLD,
   STYLE_DIM,
   type Surface,
@@ -2063,6 +2065,26 @@ function presentSceneInto(surf: Surface, withBloom = true, hybridShadow = false)
   halfBlockToSurface(surf, preparePixelDisplay(withBloom), viewport.x, viewport.y);
 }
 
+// Sparse scene layer inserted by Screen between ordinary projected UI and portal chrome.
+// RenderTarget depth is the transparency mask: Catan clears it immediately before drawing its
+// dice, so finite pixels are dice and infinite pixels leave the already-painted TUI untouched.
+function presentSceneForegroundInto(surf: Surface, withBloom = true, hybridShadow = false): void {
+  const viewport = activeSceneViewport();
+  if (renderMode === 'ascii') {
+    shapeGlyphLayerToSurface(
+      surf,
+      target,
+      viewport.w,
+      viewport.h,
+      { color: true, hybrid: hybridShadow },
+      viewport.x,
+      viewport.y,
+    );
+    return;
+  }
+  halfBlockLayerToSurface(surf, preparePixelDisplay(withBloom), viewport.x, viewport.y);
+}
+
 // Maps a 1-based terminal mouse cell to a normalized device coordinate (−1..1,
 // +y up) plus the aspect the scene renders at — for ray-picking the board.
 function pointerNdc(x: number, y: number): { ndcX: number; ndcY: number; aspect: number } {
@@ -2447,7 +2469,15 @@ function tick(dt: number): void {
     // a luminance-ramp glyph, which speckles the space around the island with faint dots. Catan
     // wants that space plain black so the board and the rail both have a clean edge against it.
     if (UNIFIED) {
-      if (sceneDirty || ui.dirty()) writeFrame(ui.frameComposited((s) => presentSceneInto(s, false, false), sceneDirty));
+      if (sceneDirty || ui.dirty()) {
+        writeFrame(
+          ui.frameComposited(
+            (s) => presentSceneInto(s, false, false),
+            sceneDirty,
+            catan.scene.hasForegroundSceneLayer() ? (s) => presentSceneForegroundInto(s, false, false) : undefined,
+          ),
+        );
+      }
     } else if (sceneDirty) {
       writeFrame(presentScene(false, false) + ui.frame());
     } else if (ui.dirty()) {
@@ -2466,7 +2496,15 @@ function tick(dt: number): void {
     const sceneDirty = forceFrame || catanGameScene.needsRender();
     if (sceneDirty) catanGameScene.renderScene(target, t);
     if (UNIFIED) {
-      if (sceneDirty || ui.dirty()) writeFrame(ui.frameComposited((s) => presentSceneInto(s, false, false), sceneDirty));
+      if (sceneDirty || ui.dirty()) {
+        writeFrame(
+          ui.frameComposited(
+            (s) => presentSceneInto(s, false, false),
+            sceneDirty,
+            catanGameScene.scene.hasForegroundSceneLayer() ? (s) => presentSceneForegroundInto(s, false, false) : undefined,
+          ),
+        );
+      }
     } else if (sceneDirty) {
       writeFrame(presentScene(false, false) + ui.frame());
     } else if (ui.dirty()) {

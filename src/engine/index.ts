@@ -21,6 +21,7 @@ export {
   intersectRayPlane,
   projectPoint,
   projectedDiscHit,
+  projectedPolygonFootprint,
   projectedPointToViewport,
   projectedSegmentDistance,
   Raycaster,
@@ -47,7 +48,21 @@ export {
   type SpringOptions,
   type TweenOptions,
 } from './animation.ts';
-export { GeometryBuilder, type VertexOptions } from './geometry.ts';
+export {
+  appendTriangle,
+  appendQuad,
+  GeometryBuilder,
+  type MutableGeometry,
+  type VertexOptions,
+} from './geometry.ts';
+export { hash2, mulberry32, sineHash2 } from './random.ts';
+export {
+  hysteresisThreshold,
+  nearestHit,
+  resolveStickyHover,
+  type NearestHitOptions,
+  type StickyHoverOptions,
+} from './interaction.ts';
 export {
   ResourceCache,
   type ResourceCacheOptions,
@@ -108,4 +123,10 @@ export {
 } from './surface.ts';
 export { applyTerminalColorMode, rgbToAnsi256, type TerminalColorMode } from './terminal-color.ts';
 export { CellDiffer } from './diff.ts';
-export { halfBlockToSurface, shapeGlyphToSurface, luminanceToSurface } from './present-cells.ts';
+export {
+  halfBlockToSurface,
+  halfBlockLayerToSurface,
+  shapeGlyphToSurface,
+  shapeGlyphLayerToSurface,
+  luminanceToSurface,
+} from './present-cells.ts';

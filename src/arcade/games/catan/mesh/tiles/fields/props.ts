@@ -1,8 +1,7 @@
 // Props that dress the wheat tile: grain heads, stalks and tufts, cut stubble, the windmill
 // (body plus its animated rotor), a field shack and hedge bushes.
 
-import { type Vec3 } from '../../../../../../engine/index.ts';
-import { mulberry32 } from '../../../../../scenes/wisp.ts';
+import { mulberry32, type Vec3 } from '../../../../../../engine/index.ts';
 import { WALL } from '../../base.ts';
 import { type Build, cross, faceQuad, faceQuadFlat, faceQuadWithNormal, faceTri, faceTriWithNormal, norm, type RGB, shade, v } from '../../build.ts';
 import { beam, blob, box, cone } from '../../props.ts';

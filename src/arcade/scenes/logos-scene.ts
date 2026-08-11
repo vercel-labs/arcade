@@ -1,6 +1,6 @@
-import { cameraMatrices, type Mat4, mat4MulVec4, type RenderTarget, type Vec3 } from '../../engine/index.ts';
+import { cameraMatrices, type Mat4, mat4MulVec4, mulberry32, type RenderTarget, type Vec3 } from '../../engine/index.ts';
 import { OrbitCamera } from '../orbit.ts';
-import { loadCreatorWisp, mulberry32, type Wisp, WISP_SIZE } from './wisp.ts';
+import { loadCreatorWisp, type Wisp, WISP_SIZE } from './wisp.ts';
 
 // Will-o'-wisp logos in 3D: each AI Gateway provider mark floats as a spectral
 // plasma orb (see wisp.ts) with the logo billboarded inside, plus drifting ember

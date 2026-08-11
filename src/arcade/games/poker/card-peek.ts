@@ -11,6 +11,7 @@
 
 import {
   type Mat4,
+  nearestHit,
   type OrbitCamera,
   Raycaster,
   type RenderTarget,
@@ -134,11 +135,11 @@ export class HandPeek {
   // Ray-pick: through the felt for a flat/peeking card, else proximity to the projected
   // (bent) card center once it's lifted off the table.
   //
-  // Nearest-hit, not last-match: each candidate scores its cursor distance normalized to
-  // its own hitbox (0 = dead center, 1 = at the edge), and the smallest wins. A raised
-  // card's hitbox is deliberately fat so hover doesn't flicker as it arches up, which
-  // makes it overlap its flat neighbour — so raised hits are ranked *after* any flat
-  // footprint hit (score biased by +1). Without this, whichever card had the higher
+  // Shared nearest-hit ranking scores cursor distance normalized to each candidate's own
+  // hitbox (0 = dead center, 1 = at the edge). A raised card's hitbox is deliberately fat
+  // so hover doesn't flicker as it arches up, which makes it overlap its flat neighbour —
+  // so semantic priority ranks raised hits *after* any flat footprint hit. Without this,
+  // whichever card had the higher
   // index won every overlap tie: gliding onto the lower-index (left) card left the
   // still-raised right card previewed until the cursor fully cleared its inflated box.
   private pick(cam: OrbitCamera, ndcX: number, ndcY: number, aspect: number): number {
@@ -148,18 +149,23 @@ export class HandPeek {
     // Felt-plane (y=0) hit for flat / peeking cards.
     const hitX = planeHit?.x ?? Infinity;
     const hitZ = planeHit?.z ?? Infinity;
-    let best = -1;
-    let bestScore = Infinity;
+    const hits: {
+      index: number;
+      priority: number;
+      distance: number;
+      radius: number;
+      score: number;
+    }[] = [];
     for (let i = 0; i < this.cards.length; i++) {
       const c = this.cards[i];
-      let score = Infinity;
       if (c.reveal.value < 0.5) {
         // Flat: normalized distance inside the resting footprint (score in [0,1]).
         const hw = CARD_W / 2 + 0.12;
         const hh = CARD_H / 2 + 0.12;
         const nx = Math.abs(hitX - c.seatX) / hw;
         const nz = Math.abs(hitZ - this.seatZ) / hh;
-        if (nx <= 1 && nz <= 1) score = Math.max(nx, nz);
+        const score = Math.max(nx, nz);
+        if (score <= 1) hits.push({ index: i, priority: 0, distance: score, radius: 1, score });
       } else {
         // Raised: normalized distance to the projected bent center, ranked below any
         // flat hit (+1) so the fat box can't outrank a footprint the cursor is inside.
@@ -168,14 +174,11 @@ export class HandPeek {
         if (point.clipW > 1e-4) {
           const nx = Math.abs(point.x - ndcX) / 0.35;
           const ny = Math.abs(point.y - ndcY) / 0.45;
-          if (nx < 1 && ny < 1) score = 1 + Math.max(nx, ny);
+          const score = Math.max(nx, ny);
+          if (score < 1) hits.push({ index: i, priority: 1, distance: score, radius: 1, score });
         }
       }
-      if (score < bestScore) {
-        bestScore = score;
-        best = i;
-      }
     }
-    return best;
+    return nearestHit(hits, { priority: (hit) => hit.priority })?.index ?? -1;
   }
 }

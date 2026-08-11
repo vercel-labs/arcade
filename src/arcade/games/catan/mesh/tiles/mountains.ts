@@ -1,7 +1,6 @@
 // The mountains tile: jagged peaks over a bare rock shelf.
 
-import { type Vec3 } from '../../../../../engine/index.ts';
-import { mulberry32 } from '../../../../scenes/wisp.ts';
+import { mulberry32, type Vec3 } from '../../../../../engine/index.ts';
 import { EDGE_Y, hexCorners, R_RIM, rimAndWall } from '../base.ts';
 import { build, type Build, faceTri, hash2, type RGB, shade, smooth, UP, v } from '../build.ts';
 
@@ -77,4 +76,3 @@ export function mountainsTile(seed: number): Build {
   rimAndWall(m, ROCK);
   return m;
 }
-

@@ -12,9 +12,9 @@
 // what the picker offers; a creator with no baked logo shows its neutral-grey
 // initial fallback, which is itself a valid audit result.
 import { writeFileSync } from 'node:fs';
-import { bloom, downsample, FONT, RenderTarget, type Camera, cameraMatrices } from '../engine/index.ts';
+import { bloom, downsample, FONT, RenderTarget, type Camera, cameraMatrices, mulberry32 } from '../engine/index.ts';
 import { OrbitCamera } from '../arcade/orbit.ts';
-import { loadCreatorWisp, mulberry32 } from '../arcade/scenes/wisp.ts';
+import { loadCreatorWisp } from '../arcade/scenes/wisp.ts';
 import { creators } from '../arcade/match/models.ts';
 
 const FOVY = (50 * Math.PI) / 180;

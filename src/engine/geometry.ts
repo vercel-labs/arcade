@@ -8,7 +8,56 @@ export interface VertexOptions {
   color?: Vec3;
 }
 
+export interface MutableGeometry {
+  readonly vertices: VertexIn[];
+  readonly indices: number[];
+}
+
 const WHITE: Vec3 = { x: 255, y: 255, z: 255 };
+
+/** Append one independently shaded triangle to any mutable engine-compatible geometry. */
+export function appendTriangle(
+  geometry: MutableGeometry,
+  a: Vec3,
+  b: Vec3,
+  c: Vec3,
+  options: VertexOptions = {},
+  outward?: Vec3,
+): void {
+  let bb = b;
+  let cc = c;
+  let normal = options.normal ?? normalize3(cross3(sub3(bb, a), sub3(cc, a)));
+  if (outward && dot3(normal, outward) < 0) {
+    [bb, cc] = [cc, bb];
+    normal = { x: -normal.x, y: -normal.y, z: -normal.z };
+  }
+  const color = options.color ?? WHITE;
+  const uv = options.uv ?? [0, 0];
+  const base = geometry.vertices.length;
+  for (const position of [a, bb, cc]) {
+    geometry.vertices.push({
+      position: { ...position },
+      normal: { ...normal },
+      uv: [...uv] as [number, number],
+      color: { ...color },
+    });
+  }
+  geometry.indices.push(base, base + 1, base + 2);
+}
+
+/** Append a quad as two independently shaded triangles, preserving established vertex order. */
+export function appendQuad(
+  geometry: MutableGeometry,
+  a: Vec3,
+  b: Vec3,
+  c: Vec3,
+  d: Vec3,
+  options: VertexOptions = {},
+  outward?: Vec3,
+): void {
+  appendTriangle(geometry, a, b, c, options, outward);
+  appendTriangle(geometry, a, c, d, options, outward);
+}
 
 /** Mutable triangle buffer for procedural geometry authoring. */
 export class GeometryBuilder {
@@ -26,24 +75,12 @@ export class GeometryBuilder {
   }
 
   triangle(a: Vec3, b: Vec3, c: Vec3, options: VertexOptions = {}, outward?: Vec3): this {
-    let bb = b;
-    let cc = c;
-    let normal = options.normal ?? normalize3(cross3(sub3(bb, a), sub3(cc, a)));
-    if (outward && dot3(normal, outward) < 0) {
-      [bb, cc] = [cc, bb];
-      normal = { x: -normal.x, y: -normal.y, z: -normal.z };
-    }
-    const base = this.vertices.length;
-    this.vertex(a, { ...options, normal });
-    this.vertex(bb, { ...options, normal });
-    this.vertex(cc, { ...options, normal });
-    this.indices.push(base, base + 1, base + 2);
+    appendTriangle(this, a, b, c, options, outward);
     return this;
   }
 
   quad(a: Vec3, b: Vec3, c: Vec3, d: Vec3, options: VertexOptions = {}, outward?: Vec3): this {
-    this.triangle(a, b, c, options, outward);
-    this.triangle(a, c, d, options, outward);
+    appendQuad(this, a, b, c, d, options, outward);
     return this;
   }
 

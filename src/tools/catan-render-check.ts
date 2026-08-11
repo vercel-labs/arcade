@@ -26,7 +26,7 @@ import { ResourceFlights } from '../arcade/games/catan/scene/resource-flight.ts'
 import { CatanGameScene } from '../arcade/games/catan/game-scene.ts';
 import { buildCatanGameRoot, mountCatanGameHud } from '../arcade/games/catan/game-hud.ts';
 import { CatanDriver, type CatanSeatSpec } from '../arcade/match/catan-driver.ts';
-import { mulberry32 } from '../arcade/scenes/wisp.ts';
+import { mulberry32 } from '../engine/index.ts';
 import { type PlayerColor, type Terrain, TERRAINS } from '../rules/catan/types.ts';
 
 const MANIFEST = '.snapshots/catan-render.manifest';

@@ -14,7 +14,7 @@ import { type Component, Registry } from './component.ts';
 import { focusOrder } from './focus.ts';
 import { hitSurface, hitTest } from './hit.ts';
 import { layout } from './layout.ts';
-import { paint, type PaintState } from './paint.ts';
+import { paint, paintWithForeground, type ForegroundPainter, type PaintState } from './paint.ts';
 import type { LayoutBox, Node, PointerHit } from './types.ts';
 
 export class Screen {
@@ -163,14 +163,19 @@ export class Screen {
   // expensive scene re-sample and reuse the cached scene layer — the perf
   // fix that makes this viable on static screens like the chess turntable.
   // resetDiff() (after an ESC[2J / resize) forces a full repaint next frame.
-  frameComposited(present: (surf: Surface) => void, sceneChanged = true): string {
+  frameComposited(present: (surf: Surface) => void, sceneChanged = true, foreground?: ForegroundPainter): string {
     if (sceneChanged || !this.sceneValid) {
       this.sceneLayer.clear();
       present(this.sceneLayer);
       this.sceneValid = true;
     }
     this.sceneLayer.copyInto(this.surface);
-    if (this.root) paint(this.root, this.surface, this.state);
+    if (this.root) {
+      if (foreground) paintWithForeground(this.root, this.surface, this.state, foreground);
+      else paint(this.root, this.surface, this.state);
+    } else {
+      foreground?.(this.surface);
+    }
     this.painted = { ...this.state };
     this.contentDirty = false;
     return this.differ.diff(this.surface);
@@ -183,10 +188,15 @@ export class Screen {
 
   // Composite scene + UI into a fresh Surface and return it (no diff) — for
   // headless rasterization (snapshots / tests). The root must already be set.
-  snapshot(present: (surf: Surface) => void): Surface {
+  snapshot(present: (surf: Surface) => void, foreground?: ForegroundPainter): Surface {
     const surf = new Surface(this.cols, this.rows);
     present(surf);
-    if (this.root) paint(this.root, surf, this.state);
+    if (this.root) {
+      if (foreground) paintWithForeground(this.root, surf, this.state, foreground);
+      else paint(this.root, surf, this.state);
+    } else {
+      foreground?.(surf);
+    }
     return surf;
   }
 
