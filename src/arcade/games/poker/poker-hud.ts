@@ -699,9 +699,14 @@ export function buildPokerGameRoot(
       ? [RoundedButton({ id: 'poker-match', label: 'new match', onClick: mc.onPrimary, color: MATCH_NEUTRAL })]
       : [
           Box({ flexDirection: 'row', gap: 2 }, [
-            mc.onPrimary
-              ? RoundedButton({ id: 'poker-start', label: 'start', onClick: mc.onPrimary, color: MATCH_GO })
-              : RoundedButton({ id: 'poker-start', label: 'start', color: MATCH_OFF_FG }),
+            RoundedButton({
+              id: 'poker-start',
+              label: 'start',
+              onClick: mc.onPrimary ?? undefined,
+              disabled: !mc.onPrimary,
+              color: mc.onPrimary ? MATCH_GO : MATCH_OFF_FG,
+              style: mc.onPrimary ? undefined : { disabled: { color: MATCH_OFF_FG, borderColor: MATCH_OFF_FG } },
+            }),
             RoundedButton({ id: 'poker-cancel', label: 'cancel', onClick: mc.onCancel, color: MATCH_NEUTRAL, borderColor: MATCH_NEUTRAL_BORDER }),
           ]),
         ];

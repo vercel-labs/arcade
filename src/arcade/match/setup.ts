@@ -300,9 +300,16 @@ export function buildMatchSetup(region: LayoutBox, opts: { onStart: () => void; 
   const ready = matchSetupReady();
   // Rounded (outlined) controls over the board: a green "start" (dim + inert until both
   // sides are ready) beside a neutral "cancel". Green matches poker's new-match button.
-  const start = ready
-    ? RoundedButton({ id: 'setup-start', label: 'start', onClick: opts.onStart, color: SETUP_GO })
-    : RoundedButton({ id: 'setup-start', label: 'start', color: SETUP_OFF });
+  // `disabled` rather than just dropping onClick: a Button is focusable by construction,
+  // so without it the dead control still brightened on hover and still took Tab focus.
+  const start = RoundedButton({
+    id: 'setup-start',
+    label: 'start',
+    onClick: opts.onStart,
+    disabled: !ready,
+    color: ready ? SETUP_GO : SETUP_OFF,
+    style: ready ? undefined : { disabled: { color: SETUP_OFF, borderColor: SETUP_OFF } },
+  });
   const cancel = RoundedButton({ id: 'setup-cancel', label: 'cancel', onClick: opts.onCancel, color: SETUP_NEUTRAL, borderColor: SETUP_NEUTRAL_BORDER });
 
   const panel = Box({ flexDirection: 'column', gap: 1, alignItems: 'start' }, [
@@ -363,9 +370,14 @@ export function swapSetupSelection(): string | null {
 // label ("White"/"Black"); the column tints it via swap.key.
 export function buildSwapSetup(_region: LayoutBox, opts: { title: string; onConfirm: () => void; onCancel: () => void }): Node {
   const ready = swap.modelId !== null;
-  const confirm = ready
-    ? RoundedButton({ id: 'swap-confirm', label: 'switch', onClick: opts.onConfirm, color: SWITCH_GO })
-    : RoundedButton({ id: 'swap-confirm', label: 'switch', color: SETUP_OFF });
+  const confirm = RoundedButton({
+    id: 'swap-confirm',
+    label: 'switch',
+    onClick: opts.onConfirm,
+    disabled: !ready,
+    color: ready ? SWITCH_GO : SETUP_OFF,
+    style: ready ? undefined : { disabled: { color: SETUP_OFF, borderColor: SETUP_OFF } },
+  });
   const cancel = RoundedButton({ id: 'swap-cancel', label: 'cancel', onClick: opts.onCancel, color: SETUP_NEUTRAL, borderColor: SETUP_NEUTRAL_BORDER });
   const card = Dialog(
     {

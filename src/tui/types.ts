@@ -89,6 +89,9 @@ export interface Style {
   hover?: Partial<Style>;
   focus?: Partial<Style>;
   pressed?: Partial<Style>;
+  // Applied when the node sets `disabled`, INSTEAD of the three above — a control
+  // that does nothing must not light up when the pointer crosses it.
+  disabled?: Partial<Style>;
   // `none` makes this node and its descendants purely visual: pointer hover,
   // presses, wheels, and hover-scroll keys pass through to whatever is behind
   // the subtree. Useful for projected scene labels that paint an opaque badge
@@ -128,6 +131,11 @@ export interface Node {
   children?: Node[];
   text?: string; // Text/Button content
   focusable?: boolean;
+  // Inert: no clicks, no hover/focus/pressed styling, skipped by Tab. Mirrors the DOM
+  // attribute — `focusable` still describes what the control IS, so re-enabling it
+  // doesn't have to restore anything. The node keeps absorbing pointer gestures, so a
+  // click on a dead button doesn't fall through and drag the scene behind it.
+  disabled?: boolean;
   // Opt into hover hit-testing without also making the node clickable or
   // keyboard-focusable. Tooltip() sets this for passive and disabled controls.
   hoverable?: boolean;

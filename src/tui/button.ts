@@ -58,6 +58,11 @@ export function roundedButtonStyle(o: RoundedButtonStyleOpts = {}): Style {
     hover: lit,
     focus: lit,
     pressed: { color: WHITE, borderColor: WHITE, bold: true },
+    // No fill to gray out (see the file header), so an inert rounded button drops its
+    // ink and outline together and gives up the bold. Override via `style: { disabled }`,
+    // which merges last — it can't be an opt here because ButtonProps already owns the
+    // name `disabled` for the boolean flag.
+    disabled: { color: 'disabledFg', borderColor: 'disabledFg', bold: false },
   };
 }
 
@@ -84,6 +89,8 @@ export function filledButtonStyle(o: FilledButtonStyleOpts = {}): Style {
     hover: o.hover ?? { background: 'controlHoverBg', color: 'controlHoverFg' },
     focus: o.focus ?? { background: 'controlFocusBg', color: 'controlFocusFg' },
     pressed: o.pressed ?? { background: 'controlPressedBg', color: 'controlPressedFg' },
+    // Override via `style: { disabled }` — see roundedButtonStyle for why not an opt.
+    disabled: { background: 'disabledBg', color: 'disabledFg' },
   };
 }
 
@@ -92,17 +99,20 @@ interface ButtonProps {
   label: string;
   onClick?: () => void;
   onKey?: (ev: KeyEvent) => boolean;
+  // Inert and visibly so. Prefer this over dropping onClick and dimming the color by
+  // hand: that leaves the button hoverable and Tab-focusable while it does nothing.
+  disabled?: boolean;
   // Extra style merged LAST, over the generated treatment — for layout tweaks
-  // (margin, width, alignSelf) or one-off overrides without leaving the helper.
+  // (margin, width) or one-off overrides without leaving the helper.
   style?: Style;
 }
 
 // A rounded (outlined) button: Button + roundedButtonStyle in one call.
 export function RoundedButton(o: ButtonProps & RoundedButtonStyleOpts): Node {
-  return Button({ id: o.id, label: o.label, onClick: o.onClick, onKey: o.onKey, style: { ...roundedButtonStyle(o), ...o.style } });
+  return Button({ id: o.id, label: o.label, onClick: o.onClick, onKey: o.onKey, disabled: o.disabled, style: { ...roundedButtonStyle(o), ...o.style } });
 }
 
 // A filled (square) button: Button + filledButtonStyle in one call.
 export function FilledButton(o: ButtonProps & FilledButtonStyleOpts): Node {
-  return Button({ id: o.id, label: o.label, onClick: o.onClick, onKey: o.onKey, style: { ...filledButtonStyle(o), ...o.style } });
+  return Button({ id: o.id, label: o.label, onClick: o.onClick, onKey: o.onKey, disabled: o.disabled, style: { ...filledButtonStyle(o), ...o.style } });
 }

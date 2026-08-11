@@ -50,6 +50,9 @@ function styleBits(s: Style): number {
 function effective(node: Node, st: PaintState): Style {
   const s = node.style;
   let e: Style = { ...s };
+  // Disabled replaces the interaction states rather than layering under them: the
+  // control is inert, so reacting to the pointer would be a lie.
+  if (node.disabled) return s.disabled ? { ...e, ...s.disabled } : e;
   if (node.id) {
     if (node.id === st.hoverId && s.hover) e = { ...e, ...s.hover };
     if (node.id === st.focusId && s.focus) e = { ...e, ...s.focus };
