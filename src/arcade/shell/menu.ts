@@ -18,7 +18,7 @@ const ALL_ITEMS: MenuItem[] = [
   { id: 'poker', title: 'Poker', enabled: true },
   { id: 'catan', title: 'Catan', enabled: false },
   { id: 'mahjong', title: 'Mahjong', enabled: false },
-  { id: 'leaderboard', title: 'Leaderboard', enabled: false },
+  { id: 'leaderboard', title: 'Leaderboard', enabled: true, dev: true },
   { id: 'achievements', title: 'Achievements', enabled: false },
   { id: 'poker-test', title: 'Poker-Test', enabled: true, dev: true },
   { id: 'logos', title: 'Logos', enabled: true, dev: true },

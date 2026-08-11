@@ -17,9 +17,12 @@ import { MENU_ITEMS } from '../arcade/shell/menu.ts';
 import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, mouseControlsFor, type Mode } from '../arcade/shell/bars.ts';
 import { installKeymap } from '../arcade/shell/keybindings.ts';
 import { buildShowcase, mountShowcase } from '../arcade/scenes/ui-showcase.ts';
+import { activeWispCreators, buildLeaderboard, leaderboardSceneReserve, mountLeaderboard, setGame, setLeaderboardData, setLeaderboardH2HModel, setLeaderboardSelection, setMatrixScroll, setMatrixSort, setMetric } from '../arcade/leaderboard/view.ts';
+import { LeaderboardScene } from '../arcade/leaderboard/scene.ts';
+import { dummyLeaderboardData } from '../arcade/leaderboard/data.ts';
 import { buildChessGameRoot, chessMoveChat, mountChessHud, refreshMoveHistory } from '../arcade/games/chess/hud.ts';
 import { CHAT_WIDTH, type ChatMessage, clearChat, pushChatMessage } from '../arcade/games/chess/chat.ts';
-import { insetRightSceneViewport } from '../arcade/scene-viewport.ts';
+import { insetLeftSceneViewport, insetRightSceneViewport } from '../arcade/scene-viewport.ts';
 import { evaluate } from '../rules/chess/eval.ts';
 import { buildMatchSetup, chessPreviewSides, mountMatchSetup } from '../arcade/match/setup.ts';
 import { creators } from '../arcade/match/models.ts';
@@ -123,15 +126,16 @@ function blockBits(ch: string, px: number, py: number): boolean {
   }
   const midX = px === 3 || px === 4;
   const midY = py === 3 || py === 4;
+  // Eighth blocks: lower ▁▂▃▄▅▆▇ and left ▏▎▍▌▋▊▉ fill N/8 of the cell from that
+  // edge. Sparkline columns and sub-cell bar ends need the whole family, not just
+  // the halves — spelled out as a lookup so the ramp stays obvious.
+  const lower = '▁▂▃▄▅▆▇█'.indexOf(ch);
+  if (lower >= 0) return py >= 7 - lower;
+  const left = '▏▎▍▌▋▊▉█'.indexOf(ch);
+  if (left >= 0) return px <= left;
   switch (ch) {
-    case '█':
-      return true;
     case '▀':
       return py < 4;
-    case '▄':
-      return py >= 4;
-    case '▌':
-      return px < 4;
     case '▐':
       return px >= 4;
     case '░':
@@ -152,6 +156,52 @@ function blockBits(ch: string, px: number, py: number): boolean {
       return (px - 3.5) ** 2 + (py - 3.5) ** 2 <= 7;
     case '•':
       return (px - 3.5) ** 2 + (py - 3.5) ** 2 <= 3;
+    case '○': {
+      // Ring: the ● disc minus its core, so a hollow marker reads as "same place,
+      // less certain" beside a filled one.
+      const r2 = (px - 3.5) ** 2 + (py - 3.5) ** 2;
+      return r2 <= 8 && r2 >= 2;
+    }
+    case '◐': {
+      const r2 = (px - 3.5) ** 2 + (py - 3.5) ** 2;
+      return r2 <= 8 && (px < 4 || r2 >= 2);
+    }
+    case '·':
+      return (px === 3 || px === 4) && (py === 3 || py === 4);
+    case '▲':
+    case '▼': {
+      // Sign markers on the leaderboard matrix's tiles. Widening 2→8 px over six rows is
+      // as smooth as a triangle gets in an 8x8 cell; ▼ is the vertical mirror of ▲.
+      const r = ch === '▲' ? py - 1 : 6 - py;
+      if (r < 0 || r > 5) return false;
+      const grow = Math.floor((r * 3) / 5);
+      return px >= 3 - grow && px <= 4 + grow;
+    }
+    case '–': // en dash
+    case '—': // em dash
+    case '−': // U+2212 minus sign — absent from the 8x8 font, unlike ASCII '-'
+      return midY && px >= 1 && px <= 6;
+    case '…':
+      // Truncation ellipsis — used by every clipped label on the leaderboard, so a
+      // blank here silently eats the "this name is cut off" signal.
+      return py >= 5 && py <= 6 && (px === 0 || px === 1 || px === 3 || px === 4 || px === 6 || px === 7);
+    case '▔':
+      return py < 1;
+    case '├':
+      return midX || (midY && px >= 3);
+    case '┤':
+      return midX || (midY && px <= 4);
+    case '┬':
+      return midY || (midX && py >= 3);
+    case '┴':
+      return midY || (midX && py <= 4);
+    case '┼':
+      return midX || midY;
+    case '▸':
+      // Right-pointing triangle: a wedge narrowing toward px = 6.
+      return px >= 2 && px <= 6 && Math.abs(py - 3.5) <= (6 - px) * 0.9;
+    case '▾':
+      return py >= 2 && py <= 6 && Math.abs(px - 3.5) <= (6 - py) * 0.9;
     case '╭':
     case '┌':
       return (midY && px >= 3) || (midX && py >= 3);
@@ -297,6 +347,8 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot overlay [chess-game|prism] [cols] [rows] [out]   bar over a scene
   pnpm snapshot unified [prism|chess|chess-game|logos] [cols] [rows] [out]   unified compositing path
   pnpm snapshot showcase [cols] [rows] [focus=<id>] [query=<text>] [blur] [out]   the UI component playground
+  pnpm snapshot leaderboard [cols] [rows] [chess|poker] [standings|headtohead|matrix] [row=N] [sort=<col>] [asc] [vs=N,M] [out]   the model leaderboard (dummy data)
+      (row=N selects a standings row, or scrolls the matrix · sort= takes a matrix column key · vs= picks the h2h pair by rank)
   pnpm snapshot modal [cols] [rows] [out]          promotion modal over chess
   pnpm snapshot chess-overlay [cols] [rows] [min|empty|illegal|short] [eval] [chat] [menu] [out]   match HUD + moves panel (menu → ☰ popup)
   pnpm snapshot setup [cols] [rows] [out] [open|models|thinking]   AI match setup modal
@@ -336,6 +388,8 @@ if (process.argv[2] === 'help' || process.argv[2] === '--help' || process.argv[2
   confirmQuitSnapshot();
 } else if (process.argv[2] === 'shortcuts') {
   shortcutsSnapshot();
+} else if (process.argv[2] === 'leaderboard') {
+  leaderboardSnapshot();
 } else if (process.argv[2] === 'showcase') {
   showcaseSnapshot();
 } else if (process.argv[2] === 'chess-overlay') {
@@ -1050,6 +1104,61 @@ function splashSnapshot(): void {
 // The 'ui' component playground composited over the chess scene via the real
 // Screen (so Slots expand to their live components). `focus=<id>` focuses one
 // component so its focused styling (caret/highlight/thumb) shows.
+function leaderboardSnapshot(): void {
+  const args = process.argv.slice(3);
+  const cols = Number(args[0]) || 120;
+  const rows = Number(args[1]) || 40;
+  const out = args.find((a) => a.endsWith('.ppm')) ?? '.snapshots/leaderboard.ppm';
+  const SS = 3;
+
+  const screen = new Screen(cols, rows);
+  mountLeaderboard(screen);
+  setLeaderboardData(dummyLeaderboardData());
+  setMetric(args.includes('headtohead') ? 'headtohead' : args.includes('matrix') ? 'matrix' : 'standings');
+  setGame(args.includes('poker') ? 'poker' : 'chess');
+  // vs=N,M picks the head-to-head pairing by standings rank, so a competitive record can be
+  // reviewed and not just whichever pair happens to sit at the top of the list.
+  const vsArg = args.find((a) => a.startsWith('vs='));
+  if (vsArg) {
+    const data = dummyLeaderboardData();
+    const list = args.includes('poker') ? data.poker : data.chess;
+    const [i, j] = (vsArg.split('=')[1] ?? '').split(',').map((n) => Math.max(1, Number(n)) - 1);
+    if (list[i]) setLeaderboardH2HModel('a', list[i].model);
+    if (list[j]) setLeaderboardH2HModel('b', list[j].model);
+  }
+  // sort=<column key> [asc] reviews the ramp on a column other than the aggregate — the
+  // style column's neutral ramp in particular is only visible when it's the sort key. Applied
+  // BEFORE row=, because changing the sort resets the scroll.
+  const sortArg = args.find((a) => a.startsWith('sort='));
+  if (sortArg) setMatrixSort(sortArg.split('=')[1] ?? '', !args.includes('asc'));
+  // row=N selects the Nth ranked model, so the selected-row styling AND the wisp it
+  // drives can both be reviewed (the default selection is rank 1). In the matrix — which has
+  // no selection — it scrolls the table instead, to review the sticky header off the top.
+  const rowArg = args.find((a) => a.startsWith('row='));
+  if (rowArg) {
+    const n = Math.max(1, Number(rowArg.split('=')[1]));
+    if (args.includes('matrix')) setMatrixScroll(n - 1);
+    else {
+      const data = dummyLeaderboardData();
+      const list = args.includes('poker') ? data.poker : data.chess;
+      const pick = list[n - 1];
+      if (pick) setLeaderboardSelection(pick.model);
+    }
+  }
+  // Inset the scene to the region the panels don't cover — matches main.ts so the
+  // snapshot shows the same centered/rotatable framing the live app renders.
+  const { left, top, bottom } = leaderboardSceneReserve(cols);
+  const vp = insetLeftSceneViewport(cols, rows, left, top, bottom);
+  const target = new RenderTarget(vp.w * SS, vp.h * 2 * SS);
+  const scene = new LeaderboardScene();
+  scene.setCreators(activeWispCreators());
+  scene.renderScene(target, 0.7);
+  const region = { x: 0, y: 0, w: cols, h: rows };
+  screen.setRoot(buildLeaderboard(region, () => {}), region);
+  const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, vp.w, vp.h, { color: true, hybrid: true }, vp.x, vp.y));
+  surfaceToPpm(surf, cols, rows, out);
+}
+
 function showcaseSnapshot(): void {
   const args = process.argv.slice(3);
   const cols = Number(args[0]) || 110;

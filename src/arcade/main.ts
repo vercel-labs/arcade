@@ -28,10 +28,13 @@ import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/i
 import { detectTerminalColorMode } from '../platform/terminal-color-detection.ts';
 import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, buildUpdateModal, mouseControlsFor, type BarActions, type MenuItem, type Mode, type RenderMode } from './shell/bars.ts';
 import { buildShowcase, mountShowcase } from './scenes/ui-showcase.ts';
+import { activeWispCreators, buildLeaderboard, leaderboardH2HActive, leaderboardH2HModel, leaderboardSceneReserve, mountLeaderboard, setGame as lbSetGame, setLeaderboardData, setLeaderboardH2HModel, setMetric as lbSetMetric } from './leaderboard/view.ts';
+import { dummyLeaderboardData } from './leaderboard/data.ts';
+import { LeaderboardScene } from './leaderboard/scene.ts';
 import { buildChessGameRoot, chessMoveChat, type Commentary, type MatchSide, mountChessHud, movesToPgn, refreshMoveHistory, shortModel } from './games/chess/hud.ts';
 import { creatorTint } from './scenes/wisp.ts';
 import { CHAT_WIDTH, clearChat, pushChatMessage } from './games/chess/chat.ts';
-import { insetRightSceneViewport, pointerNdcInSceneViewport } from './scene-viewport.ts';
+import { insetLeftSceneViewport, insetRightSceneViewport, pointerNdcInSceneViewport } from './scene-viewport.ts';
 import { buildMatchSetup, buildSwapSetup, chessPreviewSides, matchSetupSelection, mountMatchSetup, mountSwapSetup, openSwapSetup, setMatchSetupChanged, swapSetupSelection } from './match/setup.ts';
 import { copyToClipboard } from '../platform/clipboard.ts';
 import { checkForUpdate, refreshLatestInBackground, type UpdateInfo } from './update.ts';
@@ -47,7 +50,8 @@ import * as term from '../platform/terminal.ts';
 import { availableTeams, ensureGatewayKey, isLoggedIn, loadEnv, signOut as signOutVercel, switchTeam, type Team, useTeam } from '../auth/index.ts';
 import { AiMatch, type Seat } from './match/driver.ts';
 import { disambiguateLabels } from './match/labels.ts';
-import { flushTelemetry, initTelemetry, isTelemetryEnabled, setTelemetryEnabled, telemetryStatus, trackSessionStart, type RecordEndReason } from '../telemetry/index.ts';
+import { flushTelemetry, initTelemetry, isTelemetryEnabled, setTelemetryEnabled, telemetryStatus, trackSessionStart } from '../telemetry/index.ts';
+import { createShutdownCoordinator } from './lifecycle.ts';
 
 // Populate process.env from .env.local before anything reads AI_GATEWAY_API_KEY.
 loadEnv();
@@ -93,6 +97,7 @@ const logosScene = new LogosScene();
 const audioScene = new AudioScene();
 const cardsScene = new CardsScene();
 const pokerScene = new PokerGameScene();
+const leaderboardScene = new LeaderboardScene();
 // Game events (new hand, flop/turn/river, who won) go into the table-talk thread as grey
 // lines. Betting actions are NOT here — those live on the bottom-left seat strips.
 pokerScene.setEventSink((text) => pushPokerChat({ text, model: '', event: true }));
@@ -124,12 +129,13 @@ function orbitScene(): ChessGameScene | null {
 // is camera-controllable too, so dragging on the scene behind the panel rotates
 // it.) `orbitScene()` stays null for 'ui' so the tick uses the dedicated 'ui'
 // branch, which always recomposites for live component edits.
-function activeOrbit(): ChessGameScene | LogosScene | AudioScene | CardsScene | PokerGameScene | null {
+function activeOrbit(): ChessGameScene | LogosScene | AudioScene | CardsScene | PokerGameScene | LeaderboardScene | null {
   if (mode === 'logos') return logosScene;
   if (mode === 'audio') return audioScene;
   if (mode === 'cards') return cardsScene;
   if (mode === 'poker') return pokerScene;
   if (mode === 'ui') return chessGame;
+  if (mode === 'leaderboard') return leaderboardScene;
   return orbitScene();
 }
 
@@ -243,7 +249,8 @@ function chessMatchupLabels(seats: { white: Seat; black: Seat }): { white: Match
 // being edited and whether its match was already paused when it opened.
 type WispSwap =
   | { game: 'chess'; color: Color; wasPaused: boolean }
-  | { game: 'poker'; seat: number; wasPaused: boolean };
+  | { game: 'poker'; seat: number; wasPaused: boolean }
+  | { game: 'leaderboard'; which: 'a' | 'b'; wasPaused: boolean };
 let wispSwap: WispSwap | null = null;
 let wispSwapFocused = false;
 // The poker new-match settings panel (an in-scene top-left stack, not a modal — the
@@ -286,6 +293,12 @@ let pokerChatOpen = false;
 // The HUDs use the same CHAT_WIDTH, so the renderer, camera projection, and UI
 // agree on the exact left-side viewport that remains visible.
 function activeSceneViewport(): LayoutBox {
+  // The leaderboard's data panels sit on the LEFT (and a tab bar on top), so inset the
+  // wisp scene to the uncovered region — camera + orbit pivot centered on what's visible.
+  if (mode === 'leaderboard') {
+    const { left, top, bottom } = leaderboardSceneReserve(cols);
+    return insetLeftSceneViewport(cols, rows, left, top, bottom);
+  }
   const reservedRight =
     mode === 'chess-game' && chatVisible
       ? CHAT_WIDTH
@@ -383,24 +396,24 @@ function fullRepaint(): void {
   r.requestRender();
 }
 
-let finalizing = false;
 // One finalize path for every exit route (quit button, ctrl+c, SIGTERM/SIGHUP, uncaught
 // crash). stop() writes any active canonical record to the durable outbox synchronously,
 // so the record survives even if the async telemetry flush below can't finish. The cap
 // keeps exit from ever visibly hanging on the network.
-function finalizeAndExit(reason: Exclude<RecordEndReason, 'natural'>, code: number, err?: unknown): void {
-  if (finalizing) return;
-  finalizing = true;
-  try { aiMatch.stop(reason); } catch {}
-  try { pokerMatch.stop(reason); } catch {}
-  try { r.destroy(); } catch {}
-  try { term.leave(); } catch {}
-  if (err !== undefined) console.error(err); // after leaving the alt-screen so it's readable
-  void flushTelemetry(400).finally(() => process.exit(code));
-}
+const shutdown = createShutdownCoordinator({
+  cleanup: [
+    (reason) => aiMatch.stop(reason),
+    (reason) => pokerMatch.stop(reason),
+    () => r.destroy(),
+    () => term.leave(),
+  ],
+  flush: flushTelemetry,
+  report: (error) => console.error(error), // terminal cleanup runs first, so this is readable
+  exit: (code) => process.exit(code),
+});
 
 function quit(): void {
-  finalizeAndExit('user_stopped', 0);
+  shutdown.signal();
 }
 
 // Run an async plain-text flow outside the alt-screen: stop the frame loop,
@@ -596,6 +609,7 @@ const aiMatch = new AiMatch({
     r.requestRender();
   },
   allowIllegal: () => illegalAllowed,
+  onError: shutdown.crash,
 });
 
 // Fully stop the match and return chess to a clean free-play slate. Used by
@@ -683,6 +697,17 @@ function openPokerWispSwap(seat: number): void {
   r.requestRender();
 }
 
+// Leaderboard head-to-head: clicking a wisp opens the SAME model-swap modal the games
+// use, preseeded with that side's current model. There's no match to pause.
+function openLeaderboardWispSwap(which: 'a' | 'b'): void {
+  wispSwap = { game: 'leaderboard', which, wasPaused: false };
+  wispSwapFocused = false;
+  mountSwapSetup(ui);
+  openSwapSetup('white', leaderboardH2HModel(which));
+  forceFrame = true;
+  r.requestRender();
+}
+
 // Close the popup, restoring only the match that was paused to open it.
 function closeWispSwap(): void {
   const swapState = wispSwap;
@@ -712,6 +737,12 @@ function confirmWispSwap(): void {
     return;
   }
 
+  if (swapState.game === 'leaderboard') {
+    setLeaderboardH2HModel(swapState.which, slug);
+    closeWispSwap();
+    return;
+  }
+
   if (!matchSeats) return;
   aiMatch.setPlayer(swapState.color === WHITE ? 0 : 1, slug);
   chessGame.setSideCreator(swapState.color, slug.split('/')[0] ?? slug);
@@ -737,6 +768,7 @@ const pokerMatch = new PokerMatch({
     forceFrame = true;
     r.requestRender();
   },
+  onError: shutdown.crash,
   // Heads-up voice: spoken lines (bot + human) and game-event lines to the chat rail.
   onChat: (text, speaker, event, label) => {
     pushPokerChat({ text, model: event ? '' : speaker, label: event ? undefined : label, event });
@@ -1213,6 +1245,7 @@ function enterGame(id: string): void {
   else if (id === 'poker') enterPoker();
   else if (id === 'poker-test') enterCards();
   else if (id === 'ui') enterUi();
+  else if (id === 'leaderboard') enterLeaderboard();
 }
 
 // Step the Cover Flow selection by ±1 (clamped). The carousel eases to it in tick.
@@ -1259,6 +1292,31 @@ function enterUi(): void {
   fullRepaint();
 }
 
+// The model leaderboard. Dummy data for now (deterministic); a live provider that
+// fetches the proxy's read endpoint drops in behind setLeaderboardData later.
+// Reuses the 'ui' render/input path (the panel composited over a chess backdrop);
+// entering focuses the ranked table so ↑/↓ scroll it immediately.
+function enterLeaderboard(): void {
+  stopAiMatch();
+  mode = 'leaderboard';
+  mountLeaderboard(ui);
+  setLeaderboardData(dummyLeaderboardData());
+  lbSetMetric('standings');
+  lbSetGame('chess');
+  ui.setFocus('lb-winlist');
+  fullRepaint();
+}
+
+let leaderboardMenuOpen = false;
+function openLeaderboardMenu(): void {
+  leaderboardMenuOpen = true;
+  fullRepaint();
+}
+function closeLeaderboardMenu(): void {
+  leaderboardMenuOpen = false;
+  fullRepaint();
+}
+
 // Bar button actions, wired to the screen-transition functions above. buildBar
 // closes each Button's onClick over these, so clicks and Enter dispatch the same
 // way the old onMouse id→action branch did.
@@ -1293,6 +1351,9 @@ const keymap = installKeymap({
   audioCycleModel: () => audioScene.cycleModel(),
   enterChessGame,
   enterUi,
+  enterLeaderboard,
+  openLeaderboardMenu,
+  closeLeaderboardMenu,
   activeOrbit,
   cancelPromotion,
   aiButton,
@@ -1372,6 +1433,7 @@ function syncBar(): void {
   if (mode !== 'poker') pokerMenuOpen = false; // the in-game menu only lives in the poker view
   if (mode !== 'poker') pokerNotesOpen = false; // ditto for the notes modal
   if (mode !== 'chess-game') chessMenuOpen = false; // ditto for the chess menu
+  if (mode !== 'leaderboard') leaderboardMenuOpen = false;
   if (mode !== 'chess-game' && mode !== 'poker') confirmHomeOpen = false; // the confirm only lives in a game
   if (mode !== 'menu') {
     homeMenuOpen = false;
@@ -1384,6 +1446,7 @@ function syncBar(): void {
   if (!pokerNotesOpen && keymap.hasContext('poker-notes')) keymap.popContext('poker-notes');
   if (!pokerNotesOpen) pokerNotesFocused = false; // re-focus the scroll body on the next open
   if (!chessMenuOpen && keymap.hasContext('chess-menu')) keymap.popContext('chess-menu');
+  if (!leaderboardMenuOpen && keymap.hasContext('leaderboard-menu')) keymap.popContext('leaderboard-menu');
   if (!confirmHomeOpen && keymap.hasContext('confirm-home')) keymap.popContext('confirm-home');
   if (!confirmHomeOpen) confirmHomeFocused = false; // re-focus "Return home" on the next open
   if (!shortcutsOpen && keymap.hasContext('shortcuts')) keymap.popContext('shortcuts');
@@ -1527,9 +1590,14 @@ function syncBar(): void {
     // Re-mount the swap dropdowns (a prior modal root may have dropped their Slots)
     // before rebuilding the one-column picker for the clicked side.
     mountSwapSetup(ui);
-    const title = wispSwap.game === 'chess'
-      ? (wispSwap.color === WHITE ? 'white' : 'black')
-      : 'seat ' + (wispSwap.seat + 1);
+    const title =
+      wispSwap.game === 'chess'
+        ? wispSwap.color === WHITE
+          ? 'white'
+          : 'black'
+        : wispSwap.game === 'poker'
+          ? 'seat ' + (wispSwap.seat + 1)
+          : 'model ' + wispSwap.which.toUpperCase();
     ui.setRoot(buildSwapSetup({ x: 0, y: 0, w: cols, h: rows }, { title, onConfirm: confirmWispSwap, onCancel: cancelWispSwap }), {
       x: 0,
       y: 0,
@@ -1601,6 +1669,31 @@ function syncBar(): void {
       w: cols,
       h: rows,
     });
+  } else if (mode === 'leaderboard') {
+    popGameOver();
+    popSetup();
+    popSwap();
+    // Re-mount every frame: switching metric (or opening the ☰ menu) drops the win-rate
+    // Slots from the tree, so the Screen auto-unmounts winList/creatorDrop — without this
+    // they'd be gone when win-rate comes back. mount() is idempotent (mirrors mountSwapSetup).
+    mountLeaderboard(ui);
+    if (leaderboardMenuOpen) {
+      // The leaderboard's ☰ menu popup (home / controls / account / telemetry / quit).
+      if (!keymap.hasContext('leaderboard-menu')) keymap.pushContext('leaderboard-menu', true);
+      const groups: MenuItem[][] = [
+        [{ id: 'lb-menu-home', label: 'home', onClick: enterMenu }],
+        [
+          { id: 'lb-menu-controls', label: 'controls', onClick: openShortcuts },
+          { id: 'lb-menu-account', label: 'account', onClick: openTeamSwitch },
+          { id: 'lb-menu-telemetry', label: 'telemetry', value: isTelemetryEnabled() ? 'on' : 'off', onClick: toggleTelemetry },
+        ],
+        [{ id: 'lb-menu-quit', label: 'quit', onClick: openConfirmQuit }],
+      ];
+      ui.setRoot(buildGameMenu({ groups, onClose: closeLeaderboardMenu, valueColW: MENU_VALUE_W }), { x: 0, y: 0, w: cols, h: rows });
+    } else {
+      if (keymap.hasContext('leaderboard-menu')) keymap.popContext('leaderboard-menu');
+      ui.setRoot(buildLeaderboard({ x: 0, y: 0, w: cols, h: rows }, openLeaderboardMenu), { x: 0, y: 0, w: cols, h: rows });
+    }
   } else if (chessMenuOpen) {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     popGameOver();
@@ -1841,12 +1934,15 @@ function presentScene(withBloom = true, hybridShadow = false): string {
 // `surf` (the bottom layer) instead of returning a string. Same display logic.
 function presentSceneInto(surf: Surface, withBloom = true, hybridShadow = false): void {
   const viewport = activeSceneViewport();
-  const reservedX = viewport.x + viewport.w;
-  if (reservedX < surf.cols) {
-    // The UI rail is translucent. Paint its reserved area black so opening it
-    // cannot blend over scene colors left behind by the previous full-width frame.
-    surf.fillRect(reservedX, 0, surf.cols - reservedX, surf.rows, [0, 0, 0]);
-  }
+  // Paint every margin outside the scene viewport black, so translucent UI over the
+  // reserved area — a right rail (chess/poker) or the leaderboard's left/top panels —
+  // cannot blend over scene colors left behind by a previous full-region frame.
+  const rx = viewport.x + viewport.w;
+  const by = viewport.y + viewport.h;
+  if (viewport.x > 0) surf.fillRect(0, 0, viewport.x, surf.rows, [0, 0, 0]);
+  if (rx < surf.cols) surf.fillRect(rx, 0, surf.cols - rx, surf.rows, [0, 0, 0]);
+  if (viewport.y > 0) surf.fillRect(viewport.x, 0, viewport.w, viewport.y, [0, 0, 0]);
+  if (by < surf.rows) surf.fillRect(viewport.x, by, viewport.w, surf.rows - by, [0, 0, 0]);
   if (renderMode === 'ascii') {
     shapeGlyphToSurface(
       surf,
@@ -2069,6 +2165,13 @@ function onMouseImpl(e: MouseEvent): void {
         const seat = pokerScene.wispAt(ndcX, ndcY, aspect);
         if (seat !== null) openPokerWispSwap(seat);
         else pokerScene.clickCard(ndcX, ndcY, aspect);
+      } else if (isClick && mode === 'leaderboard' && leaderboardH2HActive()) {
+        // Head-to-head: click a wisp to open the shared model-swap modal. Ask the scene what
+        // is actually under the pointer — testing the viewport edge instead made the entire
+        // empty right-hand side a hit target.
+        const { ndcX, ndcY, aspect } = pointerNdc(e.x, e.y);
+        const side = leaderboardScene.wispAt(ndcX, ndcY, aspect);
+        if (side) openLeaderboardWispSwap(side);
       }
       draggingCamera = false;
       return;
@@ -2182,6 +2285,20 @@ function tick(dt: number): void {
           })
         : presentScene() + ui.frame(),
     );
+    return;
+  }
+
+  if (mode === 'leaderboard') {
+    // The leaderboard's own wisp backdrop (creator wisps on the right, decided by
+    // activeWispCreators); the data panels composite over the left. The wisps
+    // animate, so always recomposite and keep the loop alive.
+    syncBar();
+    leaderboardScene.setCreators(activeWispCreators());
+    leaderboardScene.renderScene(target, t);
+    if (UNIFIED) writeFrame(ui.frameComposited((s) => presentSceneInto(s, false, true), true));
+    else writeFrame(presentScene(false, true) + ui.frame());
+    forceFrame = false;
+    r.requestRender();
     return;
   }
 
@@ -2342,10 +2459,11 @@ trackSessionStart({
 // External termination (terminal closed, `kill`) and uncaught crashes finalize through
 // the same path, so an in-progress game is still recorded. ctrl+c arrives as a keypress
 // in raw mode (handled by the quit button), not SIGINT.
-process.once('SIGTERM', () => finalizeAndExit('user_stopped', 0));
-process.once('SIGHUP', () => finalizeAndExit('user_stopped', 0));
-process.once('uncaughtException', (err) => finalizeAndExit('process_exit_recovered', 1, err));
-process.once('unhandledRejection', (err) => finalizeAndExit('process_exit_recovered', 1, err));
+process.once('SIGINT', shutdown.signal);
+process.once('SIGTERM', shutdown.signal);
+process.once('SIGHUP', shutdown.signal);
+process.once('uncaughtException', shutdown.crash);
+process.once('unhandledRejection', shutdown.crash);
 
 // Update notice (startup): the last boot line before the alt-screen — beneath the
 // truecolor + AI Gateway lines. The modal over the prism is the more prominent surface.

@@ -16,6 +16,7 @@ import { normalizerModel } from './models.ts';
 import { isTelemetryEnabled, localPlayerKey, trackMatchEnded, trackMatchRecord, trackMatchStarted, trackModelFallback } from '../../telemetry/index.ts';
 import { ChessGameRecorder, type RecorderController } from './game-recorders.ts';
 import type { RecordEndReason } from '../../telemetry/records.ts';
+import { reportUnexpectedAsyncError } from './async-error.ts';
 
 // A seat's telemetry identity: the model slug, or 'human' for a keyboard seat.
 const seatId = (seat: Seat): string => (seat.kind === 'ai' ? seat.model : 'human');
@@ -43,6 +44,9 @@ export interface AiMatchDeps {
   onCommentary(text: string, model: string, label: string): void;
   // Live illegal-moves flag, read per move by each ModelPlayer.
   allowIllegal(): boolean;
+  // Unexpected async failures are fatal to the live match. Main routes them
+  // through the same graceful shutdown path as an uncaught process error.
+  onError(error: unknown): void;
 }
 
 export class AiMatch {
@@ -146,7 +150,7 @@ export class AiMatch {
       .then((returns) => {
         finalReturns = returns;
       })
-      .catch(() => {}) // aborted mid-decision (pause/stop) — fine
+      .catch((error) => reportUnexpectedAsyncError(error, ctrl.signal.aborted, this.deps.onError))
       .finally(() => {
         if (this.abort === ctrl) this.abort = null;
         if (this.paused) return; // paused: keep the match alive on the current turn

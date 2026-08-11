@@ -29,6 +29,9 @@ export interface KeyHandlers {
   audioCycleModel(): void;
   enterChessGame(): void;
   enterUi(): void;
+  enterLeaderboard(): void;
+  openLeaderboardMenu(): void;
+  closeLeaderboardMenu(): void;
   enterPoker(): void;
   enterCards(): void;
   activeOrbit(): OrbitLike | null;
@@ -94,6 +97,9 @@ export function installKeymap(h: KeyHandlers): Keymap {
     { id: 'audio.nextModel', title: 'Audio: next model', run: h.audioCycleModel },
     { id: 'nav.chessGame', title: 'Open chess game', run: h.enterChessGame },
     { id: 'nav.ui', title: 'Open UI playground', run: h.enterUi },
+    { id: 'nav.leaderboard', title: 'Open leaderboard', run: h.enterLeaderboard },
+    { id: 'leaderboard.openMenu', title: 'Leaderboard: open menu', run: h.openLeaderboardMenu },
+    { id: 'leaderboard.closeMenu', title: 'Close leaderboard menu', run: h.closeLeaderboardMenu },
     { id: 'nav.poker', title: 'Open poker', run: h.enterPoker }, // agent-only (no user key)
     { id: 'nav.cards', title: 'Open cards (poker-test)', run: h.enterCards }, // agent-only (no user key)
     { id: 'camera.resetView', title: 'Reset camera', run: () => h.activeOrbit()?.resetView() },
@@ -199,6 +205,12 @@ export function installKeymap(h: KeyHandlers): Keymap {
   ]) {
     keymap.bind('audio', b);
   }
+  // Leaderboard: mouse-clickable (metric tabs, game pills, model dropdowns, ☰ menu);
+  // up/down scroll the focused list. 'm' opens the ☰ menu; escape returns to the menu.
+  keymap.bind('leaderboard', { key: 'escape', cmd: 'nav.escBack' });
+  keymap.bind('leaderboard', { key: 'm', cmd: 'leaderboard.openMenu' });
+  keymap.bind('leaderboard-menu', { key: 'escape', cmd: 'leaderboard.closeMenu' });
+  keymap.bind('leaderboard-menu', { key: 'm', cmd: 'leaderboard.closeMenu' });
   // Promotion picker is modal: Escape cancels; the modal layer (pushed in syncBar)
   // swallows every other stray key so 'q' can't quit mid-choice.
   keymap.bind('promoting', { key: 'escape', cmd: 'chess.cancelPromotion' });

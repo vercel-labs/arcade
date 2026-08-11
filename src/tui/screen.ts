@@ -12,7 +12,7 @@ import { CellDiffer, Surface } from '../engine/index.ts';
 import type { KeyEvent } from '../platform/input.ts';
 import { type Component, Registry } from './component.ts';
 import { focusOrder } from './focus.ts';
-import { hitSurface, hitTest } from './hit.ts';
+import { hitGesture, hitKey, hitSurface, hitTest } from './hit.ts';
 import { layout } from './layout.ts';
 import { paint, type PaintState } from './paint.ts';
 import type { LayoutBox, Node, PointerHit } from './types.ts';
@@ -275,7 +275,9 @@ export class Screen {
   // the scene's wheel-zoom (the wheel doesn't propagate through the panel).
   wheel(x1: number, y1: number, dir: -1 | 1): boolean {
     if (!this.root) return false;
-    const target = hitTest(this.root, x1 - 1, y1 - 1);
+    // hitGesture, not hitTest: a ScrollBox whose rows are themselves clickable would
+    // otherwise hand the wheel to the row (interactive, but no onMouse) and never scroll.
+    const target = hitGesture(this.root, x1 - 1, y1 - 1);
     if (target?.onMouse && target.layout) {
       target.onMouse({ ...this.local(target, x1, y1, 'wheel'), wheel: dir });
       this.contentDirty = true; // the scrollable likely moved — force a repaint
@@ -291,7 +293,9 @@ export class Screen {
   tryScrollKey(x1: number, y1: number, ev: KeyEvent): boolean {
     if (ev.name !== 'up' && ev.name !== 'down' && ev.name !== 'pageup' && ev.name !== 'pagedown') return false;
     if (!this.root) return false;
-    const target = hitTest(this.root, x1 - 1, y1 - 1);
+    // hitKey for the same reason as hitGesture in wheel(): clickable rows inside a
+    // scrollable handle no keys, and must not shadow the scrollable that does.
+    const target = hitKey(this.root, x1 - 1, y1 - 1);
     const consumed = target?.onKey ? target.onKey(ev) : false;
     if (consumed) this.contentDirty = true;
     return consumed;
