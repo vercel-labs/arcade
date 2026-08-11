@@ -20,8 +20,8 @@ import { Button } from './nodes.ts';
 import type { ColorToken } from './theme.ts';
 import type { Node, Padding, Style } from './types.ts';
 
-const WHITE: ColorToken = [255, 255, 255];
-const NEUTRAL_FG: ColorToken = [212, 214, 224];
+const WHITE: ColorToken = 'controlPressedBg';
+const NEUTRAL_FG: ColorToken = 'textPrimary';
 
 export interface RoundedButtonStyleOpts {
   color?: ColorToken; // label + border at rest
@@ -78,12 +78,12 @@ export interface FilledButtonStyleOpts {
 export function filledButtonStyle(o: FilledButtonStyleOpts = {}): Style {
   return {
     padding: o.padding ?? [0, 2],
-    background: o.background ?? [44, 46, 56],
+    background: o.background ?? 'surfaceControl',
     color: o.color ?? NEUTRAL_FG,
     bold: o.bold ?? true,
-    hover: o.hover ?? { background: [238, 240, 248], color: [16, 16, 24] },
-    focus: o.focus ?? { background: [86, 90, 108], color: [248, 248, 252] },
-    pressed: o.pressed ?? { background: [255, 255, 255], color: [12, 12, 18] },
+    hover: o.hover ?? { background: 'controlHoverBg', color: 'controlHoverFg' },
+    focus: o.focus ?? { background: 'controlFocusBg', color: 'controlFocusFg' },
+    pressed: o.pressed ?? { background: 'controlPressedBg', color: 'controlPressedFg' },
   };
 }
 

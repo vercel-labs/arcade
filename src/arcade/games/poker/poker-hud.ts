@@ -15,7 +15,8 @@ import { creatorTint } from '../../scenes/wisp.ts';
 import { ChatBox, type ChatMessage, CHAT_WIDTH, wrapText } from '../chess/chat.ts';
 import { RailPanel } from '../../shell/rail-panel.ts';
 import { shortModel } from '../chess/hud.ts';
-import { UI_CHROME_PILL, uiChromeBg } from '../../theme.ts';
+import { ARCADE_CHROME_TEXT, ARCADE_OUTLINE_CONTROL, UI_CHROME_PILL, uiChromeBg } from '../../theme.ts';
+import { POKER_PALETTE } from './palette.ts';
 
 // The hero's decision context for this frame (from the live HoldemState). When
 // `toAct` is false the betting controls are hidden.
@@ -180,10 +181,20 @@ const BTN: Style = filledButtonStyle();
 // the felt like a WSOP client. Labels are space-centred to a common width so all three are
 // equal-width (paint centres text only via symmetric padding, so we pad the string).
 const ACTION: Style = { ...BTN, padding: [1, 2] };
-const FOLD: Style = { ...ACTION, background: [96, 44, 44], color: [246, 220, 218], hover: { background: [150, 58, 58], color: [255, 240, 238] } };
-const RAISE: Style = { ...ACTION, background: [62, 70, 118], color: [228, 232, 248], hover: { background: [88, 98, 154], color: [244, 246, 255] } };
+const FOLD: Style = {
+  ...ACTION,
+  background: POKER_PALETTE.actionFoldBg,
+  color: POKER_PALETTE.actionFoldFg,
+  hover: { background: POKER_PALETTE.actionFoldHoverBg, color: POKER_PALETTE.actionFoldHoverFg },
+};
+const RAISE: Style = {
+  ...ACTION,
+  background: POKER_PALETTE.actionRaiseBg,
+  color: POKER_PALETTE.actionRaiseFg,
+  hover: { background: POKER_PALETTE.actionRaiseHoverBg, color: POKER_PALETTE.actionRaiseHoverFg },
+};
 // The sizing row's pot-fraction / max chips (1 row tall, tight padding).
-const CHIP: Style = { ...BTN, padding: [0, 1], background: [38, 40, 50], color: [200, 204, 216] };
+const CHIP: Style = { ...BTN, padding: [0, 1], background: POKER_PALETTE.actionChipBg, color: POKER_PALETTE.actionChipFg };
 
 // Centre a label within `w` cells with spaces so equal-width buttons render centred text.
 function centerLabel(s: string, w: number): string {
@@ -196,12 +207,12 @@ function centerLabel(s: string, w: number): string {
 // which becomes a green "start" + a neutral "cancel" while the settings panel is open.
 // "start" dims (no onClick) until every shown seat has a committed model. Rounded
 // (outlined) treatment — hover/focus whiten the border + label (see tui/button.ts).
-const MATCH_GO: RGB = [120, 205, 142]; // ready-to-go green (shared look with chess setup)
-const MATCH_OFF_FG: RGB = [110, 114, 126]; // dim, inert "start" before every seat is set
-const MATCH_NEUTRAL: RGB = [212, 214, 224]; // cancel label
-const MATCH_NEUTRAL_BORDER: RGB = [88, 92, 110]; // cancel border at rest
-const PAUSE_FG: RGB = [200, 206, 236]; // chess-style active tint for the pause/resume button
-const PAUSE_BORDER: RGB = [112, 122, 188];
+const MATCH_GO: RGB = POKER_PALETTE.matchReady;
+const MATCH_OFF_FG: RGB = POKER_PALETTE.matchDisabled;
+const MATCH_NEUTRAL: RGB = ARCADE_OUTLINE_CONTROL.neutralText;
+const MATCH_NEUTRAL_BORDER: RGB = ARCADE_OUTLINE_CONTROL.neutralBorder;
+const PAUSE_FG: RGB = POKER_PALETTE.pauseFg;
+const PAUSE_BORDER: RGB = POKER_PALETTE.pauseBorder;
 
 // The bottom-left corner controls for this frame (null → none, e.g. mid-session).
 // `setup` picks the shape: false → a single green "new match"; true → a green "start"
@@ -285,7 +296,7 @@ function bettingControls(hero: HeroContext): Node {
   const voicePrompt: Node[] = voiceStage
     ? [
         Box({ padding: [0, 1], background: uiChromeBg(0.94) }, [
-          Text({ text: `say "yes" to confirm the ${voiceStage}`, style: { color: [232, 210, 140], bold: true } }),
+          Text({ text: `say "yes" to confirm the ${voiceStage}`, style: { color: POKER_PALETTE.voiceConfirm, bold: true } }),
         ]),
       ]
     : [];
@@ -308,11 +319,11 @@ const CHAT_PAD_V = 1; // chat panel top/bottom inset
 const CHAT_HEADER_H = 2; // header row + a gap row
 
 const SUIT_ICON = ['♠', '♥', '♦', '♣'] as const; // indexed by Suit (spades, hearts, diamonds, clubs)
-const CARD_FACE: RGB = [230, 230, 236]; // light card stock
-const CARD_RED: RGB = [196, 30, 40]; // ♥ / ♦
-const CARD_BLACK: RGB = [20, 20, 28]; // ♠ / ♣
-const CELL_DOWN: RGB = [44, 46, 56]; // face-down / undealt slot
-const CELL_DOWN_FG: RGB = [126, 130, 148];
+const CARD_FACE: RGB = POKER_PALETTE.cardFace;
+const CARD_RED: RGB = POKER_PALETTE.cardRed;
+const CARD_BLACK: RGB = POKER_PALETTE.cardBlack;
+const CELL_DOWN: RGB = POKER_PALETTE.cardDown;
+const CELL_DOWN_FG: RGB = POKER_PALETTE.cardDownFg;
 
 // Thousands separators for chip amounts (POT 1,240) — a tiny formatter, locale-free.
 const withCommas = (n: number): string => n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -346,10 +357,10 @@ const NOTES_WRAP_W = NOTES_INNER_W - 3; // minus the "• " bullet gutter and th
 const NOTES_VIEW_H = 16; // fixed viewport height (rows) — generous, always this tall
 const NOTES_OBSERVER_W = 34; // observer dropdown: the open list's width (the field is bare + content-sized)
 const NOTES_PLACEHOLDERS = 2; // grey placeholder bullets shown per opponent with no reads yet
-const NOTE_HEAD: RGB = [232, 214, 150]; // gold subject name
-const NOTE_FG: RGB = [206, 210, 222]; // a read's text
-const NOTE_PLACEHOLDER: RGB = [92, 96, 112]; // grey empty-slot bullet
-const NOTES_LABEL_FG: RGB = [222, 224, 234]; // the "reads" caption + no-creator fallback tint
+const NOTE_HEAD: RGB = POKER_PALETTE.noteHeading;
+const NOTE_FG: RGB = POKER_PALETTE.noteText;
+const NOTE_PLACEHOLDER: RGB = POKER_PALETTE.notePlaceholder;
+const NOTES_LABEL_FG: RGB = ARCADE_CHROME_TEXT.title;
 
 // The scrollable body: a fixed-height viewport over all the entries' rows (rebuilt each
 // frame). Persistent so its scroll offset survives the per-frame rebuild; mounted in
@@ -432,8 +443,8 @@ export function buildPokerNotesModal(opts: {
 }
 
 // ── Pot pill (top-left) ────────────────────────────────────────────────────────────
-const POT_BG: RGB = [150, 116, 40]; // WSOP gold
-const POT_FG: RGB = [24, 18, 6]; // dark ink on the gold pill
+const POT_BG: RGB = POKER_PALETTE.potBg;
+const POT_FG: RGB = POKER_PALETTE.potFg;
 // The gold pot pill: a spade emblem + "POT  1,240", with the blinds as a muted line
 // beneath. `alignItems: 'stretch'` makes both rows take the column's width (the wider of
 // the two), so the gold bar and the blinds line always share an edge — a small pot no
@@ -447,15 +458,15 @@ function potPill(pot: number, blinds: string): Node {
 
 // ── Player strips (bottom-left) ──────────────────────────────────────────────────
 const STRIP_W = 30; // strip content width, so the SB/BB position badge pins to the right
-const NAME_DEFAULT: RGB = [224, 226, 236];
-const CHIP_FG: RGB = [236, 238, 246]; // chip count
-const ACTION_FG: RGB = [232, 214, 150]; // warm "last action" text
-const MADE_FG: RGB = [176, 182, 200]; // the made-hand shown at the end
-const DIM_FG: RGB = [116, 120, 136]; // folded seats
+const NAME_DEFAULT: RGB = POKER_PALETTE.playerName;
+const CHIP_FG: RGB = POKER_PALETTE.chipText;
+const ACTION_FG: RGB = POKER_PALETTE.actionText;
+const MADE_FG: RGB = POKER_PALETTE.madeHandText;
+const DIM_FG: RGB = POKER_PALETTE.foldedText;
 // The winner's strip goes gold (matching the pot pill) with dark ink, so at the end of a
 // hand the eye lands on who won while the revealed state lingers before the reshuffle.
-const WIN_BG: RGB = [150, 116, 40];
-const WIN_INK: RGB = [26, 20, 6];
+const WIN_BG: RGB = POKER_PALETTE.winnerBg;
+const WIN_INK: RGB = POKER_PALETTE.winnerInk;
 
 function seatTint(creator?: string): RGB {
   if (!creator) return NAME_DEFAULT;
@@ -514,7 +525,7 @@ function playerStrip(s: SeatCardView, ended: boolean): Node {
   const cardRow = Box({ flexDirection: 'row', gap: 1, alignItems: 'center', width: STRIP_W }, [...cells, ...info]);
 
   // Winner → gold; the seat to act → lit; everyone else → the base slate.
-  const bg: [number, number, number, number] = win ? [...WIN_BG, 1] : s.toAct ? [46, 52, 72, 0.96] : uiChromeBg(0.9);
+  const bg: [number, number, number, number] = win ? [...WIN_BG, 1] : s.toAct ? [...POKER_PALETTE.activeSeatBg] : uiChromeBg(0.9);
   return Box({ flexDirection: 'column', gap: 0, padding: [0, 1], background: bg }, [header, cardRow]);
 }
 
@@ -536,7 +547,7 @@ function boardPanel(v: TableView | null): Node {
   const shown = v?.boardShown ?? 0;
   const street = v ? (STREET_LABEL[v.street] ?? v.street) : '';
   const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', width: STRIP_W }, [
-    Text({ text: 'board', style: { color: [222, 224, 234], bold: true } }),
+    Text({ text: 'board', style: { color: ARCADE_CHROME_TEXT.title, bold: true } }),
     Text({ text: street, style: { color: 'muted', bold: true } }),
   ]);
   const cells = Array.from({ length: 5 }, (_, i) => cardCell(i < shown && i < board.length ? board[i] : null, '??'));
@@ -552,14 +563,14 @@ function boardPanel(v: TableView | null): Node {
 // Board-strip card style; the card cells keep their own light stock.
 function cineBanner(label: string, cards: Card[]): Node {
   return Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [
-    Text({ text: label, style: { color: [222, 224, 234], bold: true } }),
+    Text({ text: label, style: { color: ARCADE_CHROME_TEXT.title, bold: true } }),
     ...cards.map((c) => cardCell(c, '??')),
   ]);
 }
 
 // The end-of-hand winner line ("Claude wins $240" / "You win $240"), gold to match the
 // pot / winning-strip theme. Sits in the same top-centre slot as the cine banner.
-const WIN_TEXT: RGB = [232, 214, 150];
+const WIN_TEXT: RGB = POKER_PALETTE.actionText;
 function resultBanner(text: string): Node {
   return Text({ text, style: { color: WIN_TEXT, bold: true } });
 }

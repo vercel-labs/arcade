@@ -25,6 +25,7 @@ export { Input, type InputOpts } from './components/input.ts';
 export { Select, type SelectOpts } from './components/select.ts';
 export { type Row, ScrollBox, type ScrollBoxOpts } from './components/scrollbox.ts';
 export { Slider, type SliderOpts } from './components/slider.ts';
+export { Tooltip, type TooltipOpts } from './components/tooltip.ts';
 export { type Component, Registry } from './component.ts';
 export { Screen } from './screen.ts';
 export { Keymap, eventToChord, type Command, type Binding } from './keymap.ts';
@@ -37,5 +38,16 @@ export {
 } from './scene-viewport.ts';
 export { layout } from './layout.ts';
 export { paint, paintWithForeground, type ForegroundPainter, type PaintState } from './paint.ts';
-export { defaultTheme, resolveColor, type Theme, type ColorToken } from './theme.ts';
-export type { Node, Style, Dimension, LayoutBox, BorderStyle, PointerHit } from './types.ts';
+export { createTheme, defaultTheme, resolveColor, type Theme, type ColorToken } from './theme.ts';
+export type {
+  Node,
+  Style,
+  Dimension,
+  LayoutBox,
+  BorderStyle,
+  PointerHit,
+  TooltipContent,
+  TooltipPlacement,
+  TooltipSpec,
+  TooltipText,
+} from './types.ts';

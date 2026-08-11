@@ -15,7 +15,9 @@ import type { RGB, Surface } from '../../../engine/index.ts';
 import type { KeyEvent } from '../../../platform/input.ts';
 import type { LayoutBox, PointerHit } from '../../../tui/types.ts';
 import { creatorTint } from '../../scenes/wisp.ts';
-import { RAIL_PAD_L, RAIL_PAD_R } from '../../shell/rail-panel.ts';
+import { RAIL_MUTED_FG, RAIL_PAD_L, RAIL_PAD_R, RAIL_TEXT_FG } from '../../shell/rail-panel.ts';
+import { ARCADE_THEME } from '../../theme.ts';
+import { CHESS_PALETTE } from './palette.ts';
 
 // One chat line. Normally a model's rationale, tagged with its slug (drives the name +
 // color). When `event` is set it's a neutral game-event notice (e.g. "Flop  Q♥ 9♦ 5♣"),
@@ -46,13 +48,13 @@ const MSG_GAP = 1; // blank rows between messages
 const VIEW_W = CHAT_WIDTH - PANEL_PAD_L - PANEL_PAD_R; // viewport width inside the panel
 const CONTENT_W = VIEW_W - SCROLLBAR_W - RIGHT_GAP; // text wrap width — a gap col, then the scrollbar
 
-const MSG_FG: RGB = [224, 226, 234]; // dialogue + colon — normal white
-const EVENT_FG: RGB = [138, 142, 156]; // grey — game-event notices
-const ERROR_FG: RGB = [226, 92, 86]; // red — illegal-move events (matches the moves panel)
+const MSG_FG: RGB = RAIL_TEXT_FG; // dialogue + colon — normal white
+const EVENT_FG: RGB = RAIL_MUTED_FG; // grey — game-event notices
+const ERROR_FG: RGB = CHESS_PALETTE.illegal; // red — illegal-move events (matches the moves panel)
 const DEFAULT_PLACEHOLDER = 'ai dialogue will appear here';
-const PLACEHOLDER_FG: RGB = [120, 124, 140]; // muted
-const TRACK: RGB = [44, 46, 56];
-const THUMB: RGB = [150, 154, 170];
+const PLACEHOLDER_FG: RGB = ARCADE_THEME.textMuted;
+const TRACK: RGB = ARCADE_THEME.scrollbarTrack;
+const THUMB: RGB = ARCADE_THEME.scrollbarThumb;
 const WHEEL_STEP = 3;
 
 // "anthropic/claude-opus-4.8" → "claude-opus-4.8".

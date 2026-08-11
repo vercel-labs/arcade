@@ -10,14 +10,15 @@ import { type PortKind } from './mesh/index.ts';
 import { UI_CHROME_BG, UI_CHROME_PILL, uiChromeBg } from '../../theme.ts';
 import { buildCatanCardsOverlay, CATAN_RAIL_W, catanResourceFace, catanSidebarOpen, mountCatanCardsHud, toggleCatanSidebar } from './card-hud.ts';
 import { type FlyingResource } from './scene/resource-flight.ts';
+import { CATAN_NUMBER_TOKEN } from './palette.ts';
 
-const CHIP_BG: [number, number, number] = [12, 12, 16]; // black token
-const CHIP_INK: [number, number, number] = [238, 236, 230]; // light number on black
-const CHIP_RED: [number, number, number] = [232, 74, 74]; // 6 & 8 — the high-frequency reds
-const CHIP_GOLD: [number, number, number] = [232, 190, 60]; // lit when it matches the dice roll
-const CHIP_GOLD_INK: [number, number, number] = [40, 30, 8]; // dark number on the gold chip
-const CHIP_BLOCKED: [number, number, number] = [92, 98, 108]; // rolled, but suppressed by the robber
-const CHIP_BLOCKED_INK: [number, number, number] = [226, 229, 235];
+const CHIP_BG = CATAN_NUMBER_TOKEN.background;
+const CHIP_INK = CATAN_NUMBER_TOKEN.ink;
+const CHIP_RED = CATAN_NUMBER_TOKEN.red;
+const CHIP_GOLD = CATAN_NUMBER_TOKEN.hot;
+const CHIP_GOLD_INK = CATAN_NUMBER_TOKEN.hotInk;
+const CHIP_BLOCKED = CATAN_NUMBER_TOKEN.blocked;
+const CHIP_BLOCKED_INK = CATAN_NUMBER_TOKEN.blockedInk;
 
 // Keep the production row deliberately simple and compact; adjacent bullets have no spaces.
 function pipLabel(count: number): string {
@@ -69,7 +70,7 @@ function tokenChip(tk: BoardToken): Node {
   const bg = tk.blocked ? CHIP_BLOCKED : tk.hot ? CHIP_GOLD : CHIP_BG;
   const ink = tk.blocked ? CHIP_BLOCKED_INK : tk.hot ? CHIP_GOLD_INK : tk.red ? CHIP_RED : CHIP_INK;
   const chipHeight = showPips ? 2 : 1;
-  return ProjectedAnchor({ col: tk.col, row: tk.row, width: chipWidth, height: chipHeight, alignY: 'end', style: { flexDirection: 'column', alignItems: 'start', gap: 0, background: bg, padding: [0, 1] } }, [
+  return ProjectedAnchor({ col: tk.col, row: tk.row, width: chipWidth, height: chipHeight, alignY: 'end', style: { flexDirection: 'column', alignItems: 'start', gap: 0, background: bg, padding: [0, 1], pointerEvents: 'none' } }, [
     Text({ text: label, style: { color: ink, bold: true, margin: [0, 0, 0, labelOffset] } }),
     ...(showPips ? [Text({ text: pips, style: { color: ink, margin: [0, 0, 0, pipOffset] } })] : []),
   ]);
@@ -220,7 +221,7 @@ export function buildCatanTileRoot(region: LayoutBox, onOpenMenu: () => void, to
   // controls, cards, menus, and dialogs. Nested dropdown portals still paint one phase later.
   const chrome = Box({ width: region.w, height: region.h }, [
     Box({ width: region.w, height: region.h, flexDirection: 'column' }, [Box({ flexDirection: 'row', padding: [1, 0, 0, 2] }, [panel])]),
-    ...(mode === 'boardCards' ? [buildCatanCardsOverlay(region, toggleSidebar)] : []),
+    ...(mode === 'boardCards' ? [buildCatanCardsOverlay(region, toggleSidebar, undefined, () => H?.onToggleSidebar())] : []),
     // Cards in flight paint OVER the hand panel, not under it: they have to cross the panel's top
     // padding to reach the card's edge, and paint order alone would hide them a row too early.
     // What keeps them off the card faces is the clip in ResourceFlights — a chip is culled the

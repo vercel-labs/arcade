@@ -2,11 +2,10 @@
 // (and h/l) nudge by `step`. The track + thumb are hand-drawn via the FrameBuffer
 // hook: a filled bar up to the thumb, an empty track after it.
 
-import { type RGB } from '../../engine/index.ts';
 import type { Surface } from '../../engine/index.ts';
 import type { KeyEvent } from '../../platform/input.ts';
 import type { Component } from '../component.ts';
-import { defaultTheme } from '../theme.ts';
+import type { Theme } from '../theme.ts';
 import type { LayoutBox, Node, PointerHit } from '../types.ts';
 
 export interface SliderOpts {
@@ -16,11 +15,6 @@ export interface SliderOpts {
   step?: number; // default 0.05
   onChange?: (value: number) => void;
 }
-
-const FILL: RGB = defaultTheme.accent;
-const TRACK: RGB = defaultTheme.pillBg;
-const THUMB_FOCUS: RGB = defaultTheme.fg;
-const THUMB: RGB = defaultTheme.muted;
 
 export class Slider implements Component {
   id: string;
@@ -75,14 +69,14 @@ export class Slider implements Component {
     return true;
   }
 
-  private paint(surf: Surface, box: LayoutBox): void {
+  private paint(surf: Surface, box: LayoutBox, theme: Theme): void {
     const w = box.w;
     const thumbX = Math.round(this.value * (w - 1));
     for (let i = 0; i < w; i++) {
       const filled = i < thumbX;
-      surf.setCell(box.x + i, box.y, filled ? '━' : '─', filled ? FILL : TRACK, defaultTheme.bg);
+      surf.setCell(box.x + i, box.y, filled ? '━' : '─', filled ? theme.accent : theme.surfaceControl, theme.surfaceCanvas);
     }
-    surf.setCell(box.x + thumbX, box.y, '●', this.focused ? THUMB_FOCUS : THUMB, defaultTheme.bg);
+    surf.setCell(box.x + thumbX, box.y, '●', this.focused ? theme.textPrimary : theme.textMuted, theme.surfaceCanvas);
   }
 
   build(): Node {
@@ -93,7 +87,7 @@ export class Slider implements Component {
       style: { width: this.width, height: 1 },
       onKey: (ev) => this.onKey(ev),
       onMouse: (ev) => this.onMouse(ev),
-      draw: (surf, b) => this.paint(surf, b),
+      draw: (surf, b, theme) => this.paint(surf, b, theme),
     };
   }
 }

@@ -19,12 +19,12 @@ import { registerGame } from '../registry.ts';
 import { edgeNodes, nodeEdges, nodeHexes, NUM_EDGES, NUM_HEXES, NUM_NODES } from './board-topology.ts';
 import { canPlaceRoad, canPlaceSettlement, canUpgradeCity, type BoardOccupancy } from './placement.ts';
 import { type BoardSetup, generateBoard, nodeProduction } from './setup.ts';
+import { buildDevelopmentDeck } from './development.ts';
 import {
   type BuildingType,
   type CatanAction,
   COSTS,
   DISCARD_LIMIT,
-  DEV_CARD_COUNTS,
   DEV_CARD_TYPES,
   type DevCardType,
   emptyFreqDeck,
@@ -230,7 +230,7 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
 
     this.bank = fullBank();
     this.hands = Array.from({ length: this.n }, () => emptyFreqDeck());
-    this.devDeck = buildDevDeck(() => this.random());
+    this.devDeck = buildDevelopmentDeck(() => this.random());
     this.initialDevDeck = this.devDeck.slice();
     this.initialRandomCursor = this.randomCursor;
     this.devHand = Array.from({ length: this.n }, () => new Array(DEV_CARD_TYPES.length).fill(0));
@@ -1535,17 +1535,6 @@ function actionTail(text: string, pattern: RegExp): string | null {
 
 function validDice(dice: readonly number[]): boolean {
   return dice.length === 2 && dice.every((die) => Number.isInteger(die) && die >= 1 && die <= 6);
-}
-
-// The shuffled 25-card development deck (order is hidden information).
-function buildDevDeck(rng: () => number): DevCardType[] {
-  const deck: DevCardType[] = [];
-  for (const t of DEV_CARD_TYPES) for (let i = 0; i < DEV_CARD_COUNTS[t]; i++) deck.push(t);
-  for (let i = deck.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    [deck[i], deck[j]] = [deck[j], deck[i]];
-  }
-  return deck;
 }
 
 // The harness Game wrapper. Defaults to a 4-player game; the arcade driver constructs states

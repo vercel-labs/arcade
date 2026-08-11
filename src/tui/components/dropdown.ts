@@ -3,12 +3,11 @@
 // stays sticky above the options. Overflow scrolls automatically after the
 // configured number of visible rows.
 
-import { type RGB } from '../../engine/index.ts';
 import type { Surface } from '../../engine/index.ts';
 import type { KeyEvent } from '../../platform/input.ts';
 import type { Component } from '../component.ts';
 import { Box, Text } from '../nodes.ts';
-import { type ColorToken, defaultTheme } from '../theme.ts';
+import type { ColorToken, Theme } from '../theme.ts';
 import type { LayoutBox, Node, PointerHit, Style } from '../types.ts';
 
 export interface DropdownOpts {
@@ -40,11 +39,7 @@ interface VLine {
   text: string;
 }
 
-const TRACK: RGB = defaultTheme.pillBg;
-const THUMB: RGB = [150, 154, 170];
 const WHEEL_STEP = 3;
-const CURSOR: RGB = [131, 165, 152]; // #83A598
-const CURSOR_FG: RGB = [12, 18, 24];
 
 function wrapText(text: string, width: number): string[] {
   if (width <= 0) return [text];
@@ -402,14 +397,14 @@ export class Dropdown implements Component {
     return true;
   }
 
-  private paintBar(surf: Surface, box: LayoutBox): void {
+  private paintBar(surf: Surface, box: LayoutBox, theme: Theme): void {
     if (this.lines.length <= this.rows) return;
     const x = box.x + box.w - 1;
     const thumb = Math.max(1, Math.round((this.rows / this.lines.length) * box.h));
     const span = box.h - thumb;
     const top = box.y + (this.maxScroll() ? Math.round((this.scroll / this.maxScroll()) * span) : 0);
     for (let y = box.y; y < box.y + box.h; y++) {
-      const color = y >= top && y < top + thumb ? THUMB : TRACK;
+      const color = y >= top && y < top + thumb ? theme.scrollbarThumb : theme.scrollbarTrack;
       surf.setCell(x, y, ' ', color, color);
     }
   }
@@ -441,13 +436,13 @@ export class Dropdown implements Component {
     return this.query.slice(this.queryScroll, this.queryScroll + this.searchRoom());
   }
 
-  private paintCursor(surf: Surface, box: LayoutBox): void {
+  private paintCursor(surf: Surface, box: LayoutBox, theme: Theme): void {
     if (!this.editing || !this.focused || box.w <= 0) return;
     this.reflowQuery();
     const x = box.x + this.caret - this.queryScroll;
     if (x < box.x || x >= box.x + box.w) return;
     const char = this.query[this.caret] ?? ' ';
-    surf.setCell(x, box.y, char, CURSOR_FG, CURSOR);
+    surf.setCell(x, box.y, char, theme.selectionFg, theme.selectionBg);
   }
 
   build(): Node {
@@ -457,17 +452,17 @@ export class Dropdown implements Component {
       ? {
           padding: [0, 0],
           bold: true,
-          color: this.index >= 0 ? (this.opts.accentColor ?? 'fg') : 'muted',
-          background: active ? 'focusRing' : undefined, // transparent until hover/focus
-          hover: { background: 'focusRing' },
+          color: this.index >= 0 ? (this.opts.accentColor ?? 'textPrimary') : 'textMuted',
+          background: active ? 'controlFocusBg' : undefined, // transparent until hover/focus
+          hover: { background: 'controlFocusBg' },
         }
       : {
           width: this.width,
           padding: [0, 1],
           bold: true,
-          color: this.index >= 0 ? (this.opts.accentColor ?? 'fg') : 'muted',
-          background: active ? 'focusRing' : 'pillBg',
-          hover: { background: 'focusRing' },
+          color: this.index >= 0 ? (this.opts.accentColor ?? 'textPrimary') : 'textMuted',
+          background: active ? 'controlFocusBg' : 'surfaceControl',
+          hover: { background: 'controlFocusBg' },
         };
     const field: Node = {
       ...Text({ text: this.selectionText(), style: fieldStyle }),
@@ -490,25 +485,25 @@ export class Dropdown implements Component {
               left: 0,
               width: this.width,
               padding: [0, 1],
-              color: this.editing ? 'fg' : 'muted',
-              background: 'pillBg',
-              hover: { background: 'focusRing' },
-              focus: { background: 'focusRing' },
+              color: this.editing ? 'textPrimary' : 'textMuted',
+              background: 'surfaceControl',
+              hover: { background: 'controlFocusBg' },
+              focus: { background: 'controlFocusBg' },
             },
           }),
           focusable: true,
           overlay: true,
           onKey: (ev) => this.onKey(ev),
           onMouse: (ev) => this.onSearchMouse(ev),
-          draw: (surf, box) => this.paintCursor(surf, box),
+          draw: (surf, box, theme) => this.paintCursor(surf, box, theme),
         };
         children.push(search);
       }
 
       if (!this.lines.length) {
         children.push({
-          ...Box({ position: 'absolute', top: dropdownTop, left: 0, width: this.width, height: 1, background: 'pillBg' }, [
-            Text({ text: this.opts.emptyLabel ?? 'No matches', style: { width: this.width, padding: [0, 1], color: 'muted', background: 'pillBg' } }),
+          ...Box({ position: 'absolute', top: dropdownTop, left: 0, width: this.width, height: 1, background: 'surfaceControl' }, [
+            Text({ text: this.opts.emptyLabel ?? 'No matches', style: { width: this.width, padding: [0, 1], color: 'textMuted', background: 'surfaceControl' } }),
           ]),
           overlay: true,
           onMouse: (ev: PointerHit) => this.onListMouse(ev),
@@ -525,9 +520,9 @@ export class Dropdown implements Component {
               style: {
                 width: this.width - (scrollable ? 1 : 0),
                 padding: [0, 1],
-                color: activeRow ? 'pillHoverFg' : 'fg',
-                background: activeRow ? 'pillHoverBg' : 'pillBg',
-                hover: { color: 'pillHoverFg', background: 'pillHoverBg' },
+                color: activeRow ? 'controlHoverFg' : 'textPrimary',
+                background: activeRow ? 'controlHoverBg' : 'surfaceControl',
+                hover: { color: 'controlHoverFg', background: 'controlHoverBg' },
               },
             }),
             onMouse: (ev: PointerHit) => this.onOptionMouse(match, ev),
@@ -545,13 +540,13 @@ export class Dropdown implements Component {
               overflow: 'hidden',
               flexDirection: 'column',
               alignItems: 'start',
-              background: 'pillBg',
+              background: 'surfaceControl',
             },
             listRows,
           ),
           overlay: true,
           onMouse: (ev: PointerHit) => this.onListMouse(ev),
-          draw: (surf, box) => this.paintBar(surf, box),
+          draw: (surf, box, theme) => this.paintBar(surf, box, theme),
         });
       }
     }

@@ -30,12 +30,12 @@ test('FilledButton preserves the shared neutral button recipe', () => {
       label: 'submit',
       style: {
         padding: [0, 2],
-        background: [44, 46, 56],
-        color: [212, 214, 224],
+        background: 'surfaceControl',
+        color: 'textPrimary',
         bold: true,
-        hover: { background: [238, 240, 248], color: [16, 16, 24] },
-        focus: { background: [86, 90, 108], color: [248, 248, 252] },
-        pressed: { background: [255, 255, 255], color: [12, 12, 18] },
+        hover: { background: 'controlHoverBg', color: 'controlHoverFg' },
+        focus: { background: 'controlFocusBg', color: 'controlFocusFg' },
+        pressed: { background: 'controlPressedBg', color: 'controlPressedFg' },
       },
     }),
   );

@@ -4,7 +4,7 @@
 
 import type { Surface } from '../engine/index.ts';
 import type { KeyEvent } from '../platform/input.ts';
-import type { ColorToken } from './theme.ts';
+import type { ColorToken, Theme } from './theme.ts';
 
 // A size along one axis: fixed cells, a percentage of the parent's content box,
 // or 'auto' (intrinsic — text width for Text, summed children for Box).
@@ -19,6 +19,29 @@ export type Padding = Spacing;
 export type Position = 'relative' | 'absolute';
 export type Overflow = 'visible' | 'hidden';
 export type BorderStyle = 'none' | 'square' | 'round';
+
+// A tooltip is deliberately data on its trigger rather than a hidden child in
+// the layout tree. The painter only materializes the active tooltip, after all
+// portal overlays, so it cannot resize its trigger or intercept pointer input.
+export interface TooltipText {
+  text: string;
+  bold?: boolean;
+  color?: ColorToken;
+}
+
+export type TooltipContent = string | readonly (string | TooltipText)[];
+export type TooltipPlacement = 'top' | 'bottom' | 'auto';
+
+export interface TooltipSpec {
+  content: TooltipContent;
+  maxWidth?: number;
+  placement?: TooltipPlacement;
+  gap?: number;
+  padding?: Padding;
+  background?: ColorToken;
+  color?: ColorToken;
+  arrow?: boolean;
+}
 
 export interface Style {
   width?: Dimension;
@@ -58,6 +81,11 @@ export interface Style {
   hover?: Partial<Style>;
   focus?: Partial<Style>;
   pressed?: Partial<Style>;
+  // `none` makes this node and its descendants purely visual: pointer hover,
+  // presses, wheels, and hover-scroll keys pass through to whatever is behind
+  // the subtree. Useful for projected scene labels that paint an opaque badge
+  // without becoming an invisible interaction blocker.
+  pointerEvents?: 'auto' | 'none';
 }
 
 // Absolute cell rectangle filled in by the layout pass.
@@ -92,6 +120,10 @@ export interface Node {
   children?: Node[];
   text?: string; // Text/Button content
   focusable?: boolean;
+  // Opt into hover hit-testing without also making the node clickable or
+  // keyboard-focusable. Tooltip() sets this for passive and disabled controls.
+  hoverable?: boolean;
+  tooltip?: TooltipSpec;
   onClick?: () => void;
   // Returns true if the key was consumed (stops fall-through to app handlers).
   onKey?: (ev: KeyEvent) => boolean;
@@ -111,7 +143,7 @@ export interface Node {
   // FrameBuffer escape hatch: hand-draw into this node's content box. Called by
   // paint after the node's own bg/border, clipped to the node. The box is the
   // content rect (inside border + padding), in absolute Surface cells.
-  draw?: (surf: Surface, box: LayoutBox) => void;
+  draw?: (surf: Surface, box: LayoutBox, theme: Theme) => void;
   // Portal: paint this subtree LAST (above everything) and hit-test it FIRST, so
   // it floats over later siblings — a dropdown list, popover, tooltip. Pair with
   // position:'absolute' so it's out of flow and doesn't resize its container; it

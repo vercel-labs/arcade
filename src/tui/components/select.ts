@@ -3,16 +3,12 @@
 // chooses. Rendered declaratively as a column of Text rows — the selected row
 // gets a highlight style, brighter while focused.
 
-import { type RGB } from '../../engine/index.ts';
 import type { Surface } from '../../engine/index.ts';
 import type { KeyEvent } from '../../platform/input.ts';
 import type { Component } from '../component.ts';
 import { Box, Text } from '../nodes.ts';
-import { defaultTheme } from '../theme.ts';
+import type { Theme } from '../theme.ts';
 import type { LayoutBox, Node, PointerHit, Style } from '../types.ts';
-
-const TRACK: RGB = defaultTheme.pillBg;
-const THUMB: RGB = [150, 154, 170];
 
 interface VLine {
   item: number;
@@ -173,7 +169,7 @@ export class Select implements Component {
   }
 
   // Draw the track in the list's rightmost cell so it stays flush with its container.
-  private paintBar(surf: Surface, box: LayoutBox): void {
+  private paintBar(surf: Surface, box: LayoutBox, theme: Theme): void {
     const lines = this.visualLines();
     const maxScroll = this.maxScroll(lines);
     if (maxScroll === 0) return;
@@ -182,7 +178,7 @@ export class Select implements Component {
     const span = box.h - thumb;
     const top = box.y + Math.round((this.scroll / maxScroll) * span);
     for (let y = box.y; y < box.y + box.h; y++) {
-      const color = y >= top && y < top + thumb ? THUMB : TRACK;
+      const color = y >= top && y < top + thumb ? theme.scrollbarThumb : theme.scrollbarTrack;
       surf.setCell(x, y, ' ', color, color);
     }
   }
@@ -204,9 +200,9 @@ export class Select implements Component {
       const style: Style = {
         width: rowWidth,
         padding: [0, 1],
-        color: selected ? (this.focused ? 'pillHoverFg' : 'fg') : 'muted',
+        color: selected ? (this.focused ? 'controlHoverFg' : 'textPrimary') : 'textMuted',
         // Selected row = near-white like a hovered bar button (not the blue accent).
-        background: selected ? (this.focused ? 'pillHoverBg' : 'focusRing') : 'transparent',
+        background: selected ? (this.focused ? 'controlHoverBg' : 'controlFocusBg') : 'transparent',
       };
       rows.push(Text({ text: line.text, style }));
     }
@@ -216,7 +212,7 @@ export class Select implements Component {
       focusable: true,
       onKey: (ev) => this.onKey(ev),
       onMouse: (ev) => this.onMouse(ev),
-      draw: (surf, box) => this.paintBar(surf, box),
+      draw: (surf, box, theme) => this.paintBar(surf, box, theme),
     };
   }
 }

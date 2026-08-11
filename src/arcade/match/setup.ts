@@ -14,7 +14,8 @@ import { availableRealtimeModels } from '../../voice/index.ts';
 import { SLOW_MODELS } from './beta-allowlist.ts';
 import { creatorTint } from '../scenes/wisp.ts';
 import type { Seat } from './driver.ts';
-import { UI_CHROME_BG } from '../theme.ts';
+import { ARCADE_OUTLINE_CONTROL, UI_CHROME_BG } from '../theme.ts';
+import { CHESS_PALETTE } from '../games/chess/palette.ts';
 
 interface PickerCreator {
   slug: string;
@@ -212,18 +213,18 @@ export function chessPreviewSides(): { white: string | null; black: string | nul
   };
 }
 
-const TITLE_TINT: Record<Side['key'], RGB> = { white: [232, 228, 216], black: [184, 126, 74] };
+const TITLE_TINT: Record<Side['key'], RGB> = { white: CHESS_PALETTE.lightPiece, black: CHESS_PALETTE.darkPiece };
 // Rounded action colors. Green is reserved for starting a match; switching an
 // in-progress model uses the app's slate-indigo action color.
 const SETUP_GO: RGB = [120, 205, 142];
-const SWITCH_GO: RGB = [112, 122, 188];
+const SWITCH_GO: RGB = ARCADE_OUTLINE_CONTROL.activeBorder;
 const SETUP_OFF: RGB = [110, 114, 126];
-const SETUP_NEUTRAL: RGB = [212, 214, 224];
-const SETUP_NEUTRAL_BORDER: RGB = [88, 92, 110];
+const SETUP_NEUTRAL: RGB = ARCADE_OUTLINE_CONTROL.neutralText;
+const SETUP_NEUTRAL_BORDER: RGB = ARCADE_OUTLINE_CONTROL.neutralBorder;
 
 // A side's brand hue (the creator's wisp color), as an RGB tuple for the field.
 function brandTint(side: Side): RGB {
-  if (!side.creator) return [212, 214, 224];
+  if (!side.creator) return ARCADE_OUTLINE_CONTROL.neutralText;
   const t = creatorTint(side.creator);
   return [t.x | 0, t.y | 0, t.z | 0];
 }

@@ -14,12 +14,13 @@ import { Box, Button, type LayoutBox, type Node, type Screen, Text } from '../..
 import { UI_CHROME_BG, UI_CHROME_PILL } from '../../theme.ts';
 import { buildCatanSetupPanel, catanSetupReady, mountCatanSetup } from '../../match/catan-setup-panel.ts';
 import type { CatanDriver } from '../../match/catan-driver.ts';
-import { CATAN_RAIL_W, buildCatanCardsOverlay, type CatanActionHistoryView, type CatanCardsPlayerView, type CatanCardsView, catanRailVisible, mountCatanCardsHud, PLAYER_LOOK, toggleCatanSidebar } from './card-hud.ts';
+import { CATAN_RAIL_W, buildCatanCardsOverlay, type CatanActionHistoryView, type CatanCardsPlayerView, type CatanCardsView, catanRailVisible, mountCatanCardsHud, toggleCatanSidebar } from './card-hud.ts';
 import { CatanState } from '../../../rules/catan/catan.ts';
 import { DEV_CARD_TYPES, type DevCardType, RESOURCES, type Resource, resourceIndex } from '../../../rules/catan/types.ts';
+import { CATAN_STATUS, PLAYER_LOOK } from './palette.ts';
 
-const STATUS_FG: [number, number, number] = [232, 234, 242];
-const STATUS_MUTED: [number, number, number] = [150, 154, 168];
+const STATUS_FG = CATAN_STATUS.foreground;
+const STATUS_MUTED = CATAN_STATUS.muted;
 
 export function mountCatanGameHud(ui: Screen): void {
   mountCatanSetup(ui);

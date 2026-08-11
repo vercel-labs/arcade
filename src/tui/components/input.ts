@@ -3,11 +3,11 @@
 // reason it's a Component, not a plain builder. The visible text + caret are
 // hand-drawn via a FrameBuffer draw hook so the caret can invert exactly one cell.
 
-import { type RGB, STYLE_REVERSE } from '../../engine/index.ts';
+import { STYLE_REVERSE } from '../../engine/index.ts';
 import type { Surface } from '../../engine/index.ts';
 import type { KeyEvent } from '../../platform/input.ts';
 import type { Component } from '../component.ts';
-import { defaultTheme } from '../theme.ts';
+import type { Theme } from '../theme.ts';
 import type { LayoutBox, Node } from '../types.ts';
 
 export interface InputOpts {
@@ -18,10 +18,6 @@ export interface InputOpts {
   onChange?: (value: string) => void;
   onEnter?: (value: string) => void;
 }
-
-const FG: RGB = defaultTheme.fg;
-const MUTED: RGB = defaultTheme.muted;
-const BG: RGB = defaultTheme.pillBg;
 
 export class Input implements Component {
   id: string;
@@ -75,17 +71,17 @@ export class Input implements Component {
     else if (this.caret >= this.scroll + this.width) this.scroll = this.caret - this.width + 1;
   }
 
-  private paint(surf: Surface, box: LayoutBox): void {
+  private paint(surf: Surface, box: LayoutBox, theme: Theme): void {
     this.reflow();
     const showPlaceholder = this.value.length === 0 && this.opts.placeholder != null;
     const text = showPlaceholder ? this.opts.placeholder! : this.value;
-    const fg = showPlaceholder ? MUTED : FG;
+    const fg = showPlaceholder ? theme.textMuted : theme.textPrimary;
     const visible = text.slice(this.scroll, this.scroll + box.w);
-    surf.drawText(box.x, box.y, visible.padEnd(box.w), fg, BG);
+    surf.drawText(box.x, box.y, visible.padEnd(box.w), fg, theme.surfaceControl);
     if (this.focused) {
       const cx = box.x + (this.caret - this.scroll);
       const ch = (showPlaceholder ? text[this.caret] : this.value[this.caret]) ?? ' ';
-      if (cx >= box.x && cx < box.x + box.w) surf.setCell(cx, box.y, ch, FG, BG, STYLE_REVERSE);
+      if (cx >= box.x && cx < box.x + box.w) surf.setCell(cx, box.y, ch, theme.textPrimary, theme.surfaceControl, STYLE_REVERSE);
     }
   }
 
@@ -94,9 +90,9 @@ export class Input implements Component {
       kind: 'box',
       id: this.id,
       focusable: true,
-      style: { width: this.width, height: 1, background: 'pillBg' },
+      style: { width: this.width, height: 1, background: 'surfaceControl' },
       onKey: (ev) => this.onKey(ev),
-      draw: (surf, b) => this.paint(surf, b),
+      draw: (surf, b, theme) => this.paint(surf, b, theme),
     };
   }
 }

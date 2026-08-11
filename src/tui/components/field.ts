@@ -15,7 +15,7 @@ export function Field(options: FieldOpts): Node {
   return Box(
     { flexDirection: 'column', gap: 0, ...options.style },
     [
-      Text({ text: options.label, style: { color: 'muted', ...options.labelStyle } }),
+      Text({ text: options.label, style: { color: 'textMuted', ...options.labelStyle } }),
       options.child,
     ],
   );

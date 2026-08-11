@@ -26,7 +26,7 @@ import { CardsScene, type CardsMode } from '../arcade/games/poker/cards-scene.ts
 import { buildPokerRoot, mountPokerHud } from '../arcade/games/poker/hud.ts';
 import { TileScene } from '../arcade/games/catan/tile-scene.ts';
 import { buildCatanPieceModal, buildCatanTileRoot, mountCatanTileHud } from '../arcade/games/catan/tile-hud.ts';
-import { CATAN_LOCAL_COLOR, catanHandLandingCell } from '../arcade/games/catan/card-hud.ts';
+import { adjustCatanWorkbenchHand, CATAN_LOCAL_COLOR, catanHandLandingCell, resetCatanWorkbenchCards, setCatanTradeEditorOpen, setCatanWorkbenchTradeSelection } from '../arcade/games/catan/card-hud.ts';
 import { type FlyingResource, ResourceFlights } from '../arcade/games/catan/scene/resource-flight.ts';
 import { catanSidebarOpen, toggleCatanSidebar } from '../arcade/games/catan/card-hud.ts';
 import { CatanGameScene } from '../arcade/games/catan/game-scene.ts';
@@ -137,6 +137,14 @@ function blockBits(ch: string, px: number, py: number): boolean {
       return py < 4;
     case '▄':
       return py >= 4;
+    case '◥':
+      return px >= py;
+    case '◤':
+      return px + py <= 7;
+    case '◢':
+      return px + py >= 7;
+    case '◣':
+      return px <= py;
     case '▌':
       return px < 4;
     case '▐':
@@ -320,7 +328,7 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot prism-prompt [cols] [rows] [t] [out]    prism loading screen + press-any-key marquee
   pnpm snapshot cards [single|hand|deck] [cols] [rows] [state] [out]   the cards screen
       (single: a code like Kh/10s/As · hand: peek|up · deck: shuffle|deal)
-  pnpm snapshot catan [sidebar] [hybrid] [forest|hills|pasture|fields|mountains|desert] [cols] [rows] [<t>] [board|board-cards|pieces|port|edit] [robber|robber-moveN] [fly<roll>@<s>] [hud|modal] [out]   a 3D Catan tile
+  pnpm snapshot catan [sidebar] [trade|trade-empty] [hover=<id>] [hybrid] [forest|hills|pasture|fields|mountains|desert] [cols] [rows] [<t>] [board|board-cards|pieces|port|edit] [robber|robber-moveN] [fly<roll>@<s>] [hud|modal] [out]   a 3D Catan tile
       (fly5@0.4: freeze the resource cards mid-arc, 0.4s after a roll of 5 pays out — needs hud; the sample board pays on 2, 5 and 10, and a non-paying roll throws nothing)
       (robber-move5: preview moving the robber to hex 5 while leaving the current robber in place)
       (<t> a decimal spins the turntable · azN/elN rotate in degrees · zoomN scales camera distance · hud composites the terrain dropdown panel)
@@ -487,6 +495,12 @@ function catanSnapshot(): void {
   const hybrid = args.includes('hybrid');
   if (args.includes('hud')) {
     const screen = new Screen(cols, rows);
+    if (args.includes('trade') || args.includes('trade-empty')) {
+      resetCatanWorkbenchCards();
+      for (let i = 0; i < 4; i++) adjustCatanWorkbenchHand('brick', 1);
+      setCatanTradeEditorOpen(true);
+      if (args.includes('trade')) setCatanWorkbenchTradeSelection('brick', 'ore');
+    }
     // `sidebar` expands the card rail, which starts collapsed. Note this previews the rail only —
     // the scene stays full width here, where the app also insets the 3D viewport behind it.
     if (args.includes('sidebar') && !catanSidebarOpen()) toggleCatanSidebar();
@@ -498,6 +512,7 @@ function catanSnapshot(): void {
     const region = { x: 0, y: 0, w: cols, h: rows };
     const singlePort = scene.portSailLabel(cols, rows);
     screen.setRoot(buildCatanTileRoot(region, noop, scene.boardTokens(cols, rows), scene.currentMode(), singlePort ? [singlePort] : scene.boardPortLabels(cols, rows), catanFlights(scene, region, args), scene.isMovingRobber()), region);
+    screen.setHover(args.find((arg) => arg.startsWith('hover='))?.slice(6) ?? null);
     const surf = screen.snapshot(
       (s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid }),
       scene.hasForegroundSceneLayer()

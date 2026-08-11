@@ -38,6 +38,7 @@ import { detectTerminalColorMode } from '../platform/terminal-color-detection.ts
 import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, buildUpdateModal, mouseControlsFor, type BarActions, type MenuItem, type Mode, type RenderMode } from './shell/bars.ts';
 import { buildShowcase, mountShowcase } from './scenes/ui-showcase.ts';
 import { buildChessGameRoot, chessMoveChat, type Commentary, type MatchSide, mountChessHud, movesToPgn, refreshMoveHistory, shortModel } from './games/chess/hud.ts';
+import { CHESS_PALETTE } from './games/chess/palette.ts';
 import { creatorTint } from './scenes/wisp.ts';
 import { CHAT_WIDTH, clearChat, pushChatMessage } from './games/chess/chat.ts';
 import { buildMatchSetup, buildSwapSetup, chessPreviewSides, matchSetupSelection, mountMatchSetup, mountSwapSetup, openSwapSetup, setMatchSetupChanged, swapSetupSelection } from './match/setup.ts';
@@ -48,7 +49,7 @@ import { evaluate } from '../rules/chess/eval.ts';
 import type { ChessResult } from '../rules/chess/chess.ts';
 import type { RGB, RGBA } from '../engine/index.ts';
 import { Box, Button, insetSceneViewport, pointerNdcInSceneViewport, Renderer, Screen, type LayoutBox, type Node } from '../tui/index.ts';
-import { UI_CHROME_PILL } from './theme.ts';
+import { ARCADE_THEME, UI_CHROME_PILL } from './theme.ts';
 import { installKeymap } from './shell/keybindings.ts';
 import { buildTeamSwitch, markSwitchSucceeded, mountTeamSwitch, setTeamSwitchHandlers, setTeamSwitchTeams, type TeamSwitchView } from './shell/team-switch.ts';
 import * as term from '../platform/terminal.ts';
@@ -106,7 +107,7 @@ const pokerScene = new PokerGameScene();
 // lines. Betting actions are NOT here — those live on the bottom-left seat strips.
 pokerScene.setEventSink((text) => pushPokerChat({ text, model: '', event: true }));
 // The 2D UI overlay (button bar). Lays out + paints over the scene each frame.
-const ui = new Screen(cols, rows);
+const ui = new Screen(cols, rows, ARCADE_THEME);
 // Render-on-demand loop. Animating screens hold a live lease; static screens
 // (chess turntable) render only when an interaction requests it.
 const r = new Renderer({ targetFps: FPS });
@@ -397,7 +398,7 @@ function gameOverText(r: ChessResult): { title: string; subtitle: string; tint: 
     'insufficient-material': 'insufficient material',
   };
   const title = r.winner === null ? 'draw' : r.winner === WHITE ? 'white wins' : 'black wins';
-  const tint: RGB = r.winner === BLACK ? [184, 126, 74] : r.winner === WHITE ? [232, 228, 216] : [222, 224, 234];
+  const tint: RGB = r.winner === BLACK ? CHESS_PALETTE.darkPiece : r.winner === WHITE ? CHESS_PALETTE.lightPiece : ARCADE_THEME.textStrong;
   return { title, subtitle: `by ${reasons[r.reason]}`, tint };
 }
 

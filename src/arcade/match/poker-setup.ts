@@ -17,6 +17,7 @@ import { shortModel } from '../games/chess/hud.ts';
 import { BIG_BLIND, type PokerSeatSpec } from './poker-driver.ts';
 import { pokerVoiceCapable } from './poker-voice.ts';
 import type { PokerSeatView } from '../games/poker/poker-scene.ts';
+import { ARCADE_CHROME_TEXT, ARCADE_OUTLINE_CONTROL } from '../theme.ts';
 
 interface AiCreator {
   slug: string;
@@ -297,8 +298,8 @@ export function pokerPreviewSeats(): PokerSeatView[] {
   return seats;
 }
 
-const TITLE_FG: RGB = [222, 224, 234];
-const HERO_FG: RGB = [224, 226, 236];
+const TITLE_FG: RGB = ARCADE_CHROME_TEXT.title;
+const HERO_FG: RGB = ARCADE_CHROME_TEXT.body;
 const SLOW_FG: RGB = [210, 168, 90]; // amber hint for slow-but-working models
 const RANDOM_HOVER_FG: RGB = [255, 255, 255]; // "↻ random" brightens on hover/focus
 
@@ -325,7 +326,7 @@ function slowBadge(modelId: string | null): Node[] {
 }
 
 function brandTint(side: AiSide): RGB {
-  if (!side.creator) return [212, 214, 224];
+  if (!side.creator) return ARCADE_OUTLINE_CONTROL.neutralText;
   const t = creatorTint(side.creator);
   return [t.x | 0, t.y | 0, t.z | 0];
 }

@@ -3,20 +3,26 @@
 // The seeded snapshot lets the "Board + cards" test mode evolve before a live CatanState is
 // attached; gameplay wiring should later replace only the data source, not the card or rail layout.
 
-import { Box, type LayoutBox, type Node, type PointerHit, type Row, ScrollBox, type Screen, Slot, Text } from '../../../tui/index.ts';
-import { stringWidth } from '../../../engine/index.ts';
+import { Box, Button, type LayoutBox, type Node, type PointerHit, type Row, ScrollBox, type Screen, Slot, Text, Tooltip } from '../../../tui/index.ts';
+import { mulberry32, stringWidth } from '../../../engine/index.ts';
 import { RAIL_HEADER_H, RAIL_MUTED_FG, RAIL_PAD_L, RAIL_PAD_R, RAIL_PAD_V, RAIL_TEXT_FG, RailPanel } from '../../shell/rail-panel.ts';
 import { uiChromeBg } from '../../theme.ts';
-import { DEV_CARD_TYPES, type DevCardType, DISCARD_LIMIT, type PlayerColor, type Resource, type Terrain } from '../../../rules/catan/types.ts';
-
-type Rgb = [number, number, number];
-
-interface ResourceLook {
-  emoji: string;
-  name: string;
-  fill: Rgb;
-  ink: Rgb;
-}
+import { COSTS, DEV_CARD_TYPES, type DevCardType, DISCARD_LIMIT, type PlayerColor, type Resource, resourceIndex, type Terrain } from '../../../rules/catan/types.ts';
+import { buildDevelopmentDeck } from '../../../rules/catan/development.ts';
+import {
+  CATAN_CARD,
+  type CatanCardLook as ResourceLook,
+  type CatanRgb as Rgb,
+  DEV_CARD_ICON,
+  DEV_HAND_LOOK,
+  DEV_LOOK,
+  KNIGHT_ICON,
+  PLAYER_LOOK,
+  RESOURCE_LOOK,
+  RESOURCE_ORDER,
+  ROAD_ICON,
+  SETTLEMENT_ICON,
+} from './palette.ts';
 
 // Only use codepoints whose Unicode Emoji_Presentation is Yes. One with Emoji_Presentation=No
 // (🛠️ 🛡️ 🏘️ ⚔️ …) is a TEXT glyph that a trailing U+FE0F promotes to an emoji: terminals honour
@@ -26,11 +32,6 @@ interface ResourceLook {
 // written, and the diff cannot repair it — it compares the model against itself. That debris is
 // what survived until a resize. `pnpm exec tsx src/tools/glyph-width.ts` shows which glyphs are
 // safe in a given terminal.
-const DEV_CARD_ICON = '🔨';
-const KNIGHT_ICON = '💂';
-const ROAD_ICON = '➖';
-const SETTLEMENT_ICON = '🏠';
-
 // ── Card face: the per-card colors ──────────────────────────────────────────────────────────
 // `fill` is the flat background; `ink` colors the name under the glyph. Emoji keep their own
 // colors in most terminals, so a fill only reads as a backdrop when its luminance is far from the
@@ -40,37 +41,16 @@ const SETTLEMENT_ICON = '🏠';
 // white count still holds on every card. A fill dark enough to need white ink instead — the red
 // and the purple, left to their natural depth — reads as a different family sitting in the row.
 // `name` is the table name players use, not the rules-engine key (wool -> sheep, grain -> wheat).
-const RESOURCE_ORDER: Resource[] = ['lumber', 'brick', 'wool', 'grain', 'ore'];
-const RESOURCE_LOOK: Record<Resource, ResourceLook> = {
-  lumber: { emoji: '🌲', name: 'wood', fill: [91, 181, 99], ink: [19, 65, 27] },
-  brick: { emoji: '🧱', name: 'brick', fill: [176, 77, 60], ink: [74, 26, 16] },
-  wool: { emoji: '🐑', name: 'sheep', fill: [148, 196, 79], ink: [27, 48, 22] },
-  grain: { emoji: '🌾', name: 'wheat', fill: [201, 160, 8], ink: [66, 48, 4] },
-  ore: { emoji: '🪨', name: 'ore', fill: [135, 167, 161], ink: [26, 44, 42] },
-};
-const DEV_FILL: Rgb = [125, 86, 167];
-const DEV_INK: Rgb = [48, 28, 74];
-// The bank's aggregate face: the undrawn deck, not a card anyone holds.
-const DEV_LOOK: ResourceLook = { emoji: DEV_CARD_ICON, name: 'dev', fill: DEV_FILL, ink: DEV_INK };
-// One face per card the rules engine defines. Shorthand names keep every face inside CARD_W, and
-// knight/road reuse the glyphs the players table already uses for those same two concepts.
-const DEV_HAND_LOOK: Record<DevCardType, ResourceLook> = {
-  knight: { emoji: KNIGHT_ICON, name: 'knght', fill: DEV_FILL, ink: DEV_INK },
-  victoryPoint: { emoji: '\u{1F3C6}', name: 'vp', fill: DEV_FILL, ink: DEV_INK },
-  roadBuilding: { emoji: ROAD_ICON, name: 'rb', fill: DEV_FILL, ink: DEV_INK },
-  yearOfPlenty: { emoji: '\u{1F381}', name: 'yop', fill: DEV_FILL, ink: DEV_INK },
-  monopoly: { emoji: '\u{1F4B0}', name: 'mono', fill: DEV_FILL, ink: DEV_INK },
-};
-const COUNT_INK: Rgb = [250, 252, 255];
+const COUNT_INK = CATAN_CARD.countInk;
 // A resource you hold none of keeps its card, so the row never reflows as a hand empties and
 // refills. The fill drops to a lift off the panel background and the name and count go muted:
 // present, plainly spent. The emoji cannot follow — terminals paint it in its own colors and
 // ignore the foreground we set — so a zero card keeps a full-color glyph over the gray.
-const EMPTY_FILL: Rgb = [48, 51, 62];
+const EMPTY_FILL = CATAN_CARD.emptyFill;
 const EMPTY_INK: Rgb = RAIL_MUTED_FG;
 // Gold marks a held award; red marks a hand the robber would force a discard from.
-const AWARD: Rgb = [226, 184, 74];
-const AT_RISK: Rgb = [226, 96, 84];
+const AWARD = CATAN_CARD.award;
+const AT_RISK = CATAN_CARD.atRisk;
 
 // ── Card geometry: the shared shape every card is stamped from ──────────────────────────────
 // Width is set by the longest name (brick/sheep/wheat at five cells) plus a column of padding on
@@ -88,14 +68,36 @@ const COUNT_RIGHT = 1; // count's gap from the card's right edge
 
 // ── Hand panel spacing ──────────────────────────────────────────────────────────────────────
 const HAND_PAD_T = 1; // air between the panel's top edge and the card faces
+const HAND_PAD_X = 2; // terminal cells are tall, so a wider side inset balances the full-row vertical air
+const HAND_PANEL_LEFT = 2; // align the bottom workbench with the top-left control panel
 // Wider than the 1-cell gap between cards, so the two hands read as separate groups without
 // needing a rule drawn between them.
 const HAND_SPLIT_GAP = 3;
 // What each group of the hand costs, panel padding included. The dev group is the optional half:
 // when the board area cannot hold both, it is the one that goes.
-const RESOURCE_HAND_W = RESOURCE_ORDER.length * CARD_W + (RESOURCE_ORDER.length - 1) + 2;
+const RESOURCE_HAND_W = RESOURCE_ORDER.length * CARD_W + (RESOURCE_ORDER.length - 1) + HAND_PAD_X * 2;
 const DEV_HAND_W = HAND_SPLIT_GAP + DEV_CARD_TYPES.length * CARD_W + (DEV_CARD_TYPES.length - 1);
 const HAND_PAD_B = 1; // air between the cards and the panel's bottom edge
+const HAND_ACTION_W = 9;
+const ACTION_W = 12;
+const ACTION_GAP = 1;
+const ACTIONS_W = HAND_ACTION_W * 2 + ACTION_GAP;
+const ACTION_BG = CATAN_CARD.actionBg;
+const ACTION_HOVER = CATAN_CARD.actionHover;
+const ACTION_DISABLED = CATAN_CARD.actionDisabled;
+const ACTION_DISABLED_INK = CATAN_CARD.actionDisabledInk;
+
+// The expanded editor replaces the compact hand in-place. Bank and hand use the exact same five
+// columns, with two fixed transfer rows between them; this preserves the reference's physical
+// model of moving cards up out of your hand and down out of the bank. Actions sit in a separate
+// rail to the right instead of consuming one of those rows.
+const TRADE_ROW_W = RESOURCE_ORDER.length * CARD_W + (RESOURCE_ORDER.length - 1);
+const TRADE_TABLE_W = TRADE_ROW_W + 4;
+const TRADE_PANEL_W = TRADE_TABLE_W + 1 + ACTION_W;
+const TRADE_RATIO = 4;
+const TRADE_BG = CATAN_CARD.tradeBg;
+const TRADE_ACCENT = CATAN_CARD.tradeAccent;
+const TRADE_SLOT_BG = CATAN_CARD.tradeSlotBg;
 
 // ── Sidebar chrome ──────────────────────────────────────────────────────────────────────────
 // The same dark translucent field the mode panel and the chess/poker chat rails use, so the
@@ -144,12 +146,7 @@ function catanHistoryHeight(region: LayoutBox, playerCount: number): number {
 // Player colors are font colors here, never fills — a seat's color reads as its name's ink the
 // way a model's creator tint does in the chess chat, which is what these become once models sit
 // at the table.
-export const PLAYER_LOOK: Record<PlayerColor, Rgb> = {
-  red: [226, 96, 84],
-  blue: [104, 148, 235],
-  purple: [212, 172, 232],
-  orange: [232, 148, 62],
-};
+export { PLAYER_LOOK } from './palette.ts';
 
 // Only what an opponent can legitimately see and act on: hand size, unplayed dev cards, knights
 // already played, and how long their road actually runs. `longestRoad` is a run length, not a
@@ -205,6 +202,23 @@ const liveHand: Record<Resource, number> = { lumber: 0, brick: 0, wool: 0, grain
 // The workbench's development hand. Module state for the same reason the resource hand is:
 // the view is rebuilt every frame, so anything that has to survive a frame lives out here.
 const liveDevHand: Record<DevCardType, number> = { knight: 0, victoryPoint: 0, roadBuilding: 0, yearOfPlenty: 0, monopoly: 0 };
+const WORKBENCH_BANK_START: Record<Resource, number> = { lumber: 16, brick: 18, wool: 17, grain: 18, ore: 17 };
+const liveBank: Record<Resource, number> = { ...WORKBENCH_BANK_START };
+const WORKBENCH_DEV_SEED = 0xc47a_2026;
+let liveDevelopmentDeck = buildDevelopmentDeck(mulberry32(WORKBENCH_DEV_SEED));
+let workbenchTradeOpen = false;
+function emptyResourceCounts(): Record<Resource, number> {
+  return { lumber: 0, brick: 0, wool: 0, grain: 0, ore: 0 };
+}
+const workbenchTradeGive = emptyResourceCounts();
+const workbenchTradeGet = emptyResourceCounts();
+
+function clearWorkbenchTradeStaging(): void {
+  for (const resource of RESOURCE_ORDER) {
+    workbenchTradeGive[resource] = 0;
+    workbenchTradeGet[resource] = 0;
+  }
+}
 
 // ── Workbench card editing (catan-test only) ────────────────────────────────────────────────
 // Click-to-adjust exists so the card UI can be driven through its states by hand while it is
@@ -223,6 +237,90 @@ export function adjustCatanWorkbenchDev(type: DevCardType, delta: number): boole
   if (next < 0) return false;
   liveDevHand[type] = next;
   return true;
+}
+
+export function catanTradeEditorOpen(): boolean {
+  return workbenchTradeOpen;
+}
+
+export function setCatanTradeEditorOpen(open: boolean): void {
+  workbenchTradeOpen = open;
+  if (!open) clearWorkbenchTradeStaging();
+}
+
+// Snapshot/test seam. The UI itself reaches this state one card at a time from the two source
+// rows; the helper stages a complete standard bank trade for deterministic visual capture.
+export function setCatanWorkbenchTradeSelection(give: Resource | null, get: Resource | null): void {
+  clearWorkbenchTradeStaging();
+  if (give) workbenchTradeGive[give] = TRADE_RATIO;
+  if (get) workbenchTradeGet[get] = 1;
+}
+
+export function adjustCatanWorkbenchTradeStaging(side: 'give' | 'receive', resource: Resource, delta: number): boolean {
+  const staged = side === 'give' ? workbenchTradeGive : workbenchTradeGet;
+  const available = side === 'give' ? liveHand[resource] : liveBank[resource];
+  const next = staged[resource] + delta;
+  if (next < 0 || next > available) return false;
+  staged[resource] = next;
+  return true;
+}
+
+function stagedBankTrade(): { give: Resource; get: Resource } | null {
+  const giveResources = RESOURCE_ORDER.filter((resource) => workbenchTradeGive[resource] > 0);
+  const getResources = RESOURCE_ORDER.filter((resource) => workbenchTradeGet[resource] > 0);
+  if (giveResources.length !== 1 || getResources.length !== 1) return null;
+  const give = giveResources[0];
+  const get = getResources[0];
+  if (give === get || workbenchTradeGive[give] !== TRADE_RATIO || workbenchTradeGet[get] !== 1) return null;
+  return { give, get };
+}
+
+export function performCatanWorkbenchBankTrade(give: Resource, get: Resource): boolean {
+  if (give === get || liveHand[give] < TRADE_RATIO || liveBank[get] < 1) return false;
+  liveHand[give] -= TRADE_RATIO;
+  liveBank[give] += TRADE_RATIO;
+  liveBank[get] -= 1;
+  liveHand[get] += 1;
+  liveHistory.push({ actor: 'You', color: CATAN_LOCAL_COLOR, message: `traded ${TRADE_RATIO} ${RESOURCE_LOOK[give].name} for 1 ${RESOURCE_LOOK[get].name}` });
+  return true;
+}
+
+export function performStagedCatanWorkbenchBankTrade(): boolean {
+  const trade = stagedBankTrade();
+  if (!trade || !performCatanWorkbenchBankTrade(trade.give, trade.get)) return false;
+  clearWorkbenchTradeStaging();
+  return true;
+}
+
+export function buyCatanWorkbenchDevCard(): boolean {
+  if (liveDevelopmentDeck.length === 0) return false;
+  for (const resource of RESOURCE_ORDER) {
+    const amount = COSTS.devCard[resourceIndex(resource)];
+    if (liveHand[resource] < amount) return false;
+  }
+  for (const resource of RESOURCE_ORDER) {
+    const amount = COSTS.devCard[resourceIndex(resource)];
+    liveHand[resource] -= amount;
+    liveBank[resource] += amount;
+  }
+  // Draw from the same official shuffled deck model as CatanState. The fixed workbench seed keeps
+  // snapshots repeatable without turning the deck into an even type rotation.
+  const drawn = liveDevelopmentDeck.pop();
+  if (!drawn) return false;
+  liveDevHand[drawn] += 1;
+  liveHistory.push({ actor: 'You', color: CATAN_LOCAL_COLOR, message: 'bought a development card' });
+  return true;
+}
+
+export function resetCatanWorkbenchCards(): void {
+  for (const resource of RESOURCE_ORDER) {
+    liveHand[resource] = 0;
+    liveBank[resource] = WORKBENCH_BANK_START[resource];
+  }
+  for (const type of DEV_CARD_TYPES) liveDevHand[type] = 0;
+  liveDevelopmentDeck = buildDevelopmentDeck(mulberry32(WORKBENCH_DEV_SEED));
+  liveHistory.length = 0;
+  setCatanTradeEditorOpen(false);
 }
 // Real events, appended after the seeded ones so the log reads as one timeline.
 const liveHistory: CatanActionHistoryView[] = [];
@@ -265,6 +363,8 @@ export function catanWorkbenchView(): CatanCardsView {
     ...seeded,
     hand: { ...liveHand },
     devHand: { ...liveDevHand },
+    bank: { ...liveBank },
+    developmentDeck: liveDevelopmentDeck.length,
     // The workbench is the one view whose cards may be clicked; see adjustCatanWorkbenchHand.
     editable: true,
     localPlayer: { ...seeded.localPlayer, resourceCards: held, developmentCards: dev },
@@ -281,7 +381,7 @@ export const CATAN_CARD_WORKBENCH_VIEW: CatanCardsView = {
   hand: { lumber: 0, brick: 0, wool: 0, grain: 0, ore: 0 },
   // Replaced by the live dev hand in catanWorkbenchView(); a fresh board holds none.
   devHand: { knight: 0, victoryPoint: 0, roadBuilding: 0, yearOfPlenty: 0, monopoly: 0 },
-  bank: { lumber: 16, brick: 18, wool: 17, grain: 18, ore: 17 },
+  bank: { ...WORKBENCH_BANK_START },
   developmentDeck: 25,
   opponents: [
     { name: 'claude-haiku-4.5', color: 'blue', publicVp: 2, resourceCards: 3, developmentCards: 0, knights: 1, longestRoad: 4 },
@@ -385,7 +485,7 @@ export function catanCardsLayout(region: LayoutBox): CatanCardsLayout {
 // A deliberately flat rectangle like the reference cards: one uninterrupted color field, the
 // glyph over its name, and a plain white count in the top-right. No frame. `dim` swaps in the
 // spent-slot colors without touching the geometry, so an empty card holds its place in the row.
-function card(look: ResourceLook, count: number, height = CARD_H, dim = false): Node {
+function card(look: ResourceLook, count: number, height = CARD_H, dim = false, selected = false): Node {
   const fill = dim ? EMPTY_FILL : look.fill;
   const ink = dim ? EMPTY_INK : look.ink;
   const countInk = dim ? EMPTY_INK : COUNT_INK;
@@ -401,6 +501,9 @@ function card(look: ResourceLook, count: number, height = CARD_H, dim = false): 
   const spare = CARD_W - look.name.length;
   const nameLeft = spare <= 0 ? 0 : Math.max(1, Math.floor(spare / 2));
   return Box({ width: CARD_W, height, position: 'relative', background: fill }, [
+    ...(selected
+      ? [Box({ position: 'absolute', top: 0, left: 0, width: 1, height: 1 }, [Text({ text: '✓', style: { color: COUNT_INK, bold: true } })])]
+      : []),
     Box({ position: 'absolute', top: 0, right: COUNT_RIGHT, width: 2, height: 1, justifyContent: 'center' }, [
       Text({ text: `${count}`, style: { color: countInk, bold: true } }),
     ]),
@@ -549,14 +652,169 @@ function adjustDevHand(type: DevCardType, ev: PointerHit): boolean {
   return adjustCatanWorkbenchDev(type, ev.button === 2 ? -1 : 1);
 }
 
+function workbenchActionButton(id: string, icon: string, label: string, enabled: boolean, onClick: () => void): Node {
+  const ink: Rgb = enabled ? [242, 247, 249] : ACTION_DISABLED_INK;
+  const content = (): Node[] => [
+    Text({ text: icon, style: { color: ink, bold: true } }),
+    Text({ text: label, style: { color: ink, bold: true } }),
+  ];
+  if (!enabled) {
+    return Box({
+      width: HAND_ACTION_W,
+      height: CARD_H,
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: ACTION_DISABLED,
+      color: ACTION_DISABLED_INK,
+      hover: { background: [55, 60, 70], color: [142, 148, 161] },
+    }, content());
+  }
+  const button = Button({
+    id,
+    label: '',
+    onClick,
+    style: {
+      width: HAND_ACTION_W,
+      height: CARD_H,
+      padding: 0,
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: ACTION_BG,
+      color: [242, 247, 249],
+      bold: true,
+      hover: { background: ACTION_HOVER, color: [255, 255, 255] },
+      focus: { background: ACTION_HOVER, color: [255, 255, 255] },
+      pressed: { background: [221, 241, 244], color: [19, 48, 54] },
+    },
+  });
+  button.children = content();
+  return button;
+}
+
+function canBuyWorkbenchDev(view: CatanCardsView): boolean {
+  return view.developmentDeck > 0 && RESOURCE_ORDER.every((resource) => view.hand[resource] >= COSTS.devCard[resourceIndex(resource)]);
+}
+
+function tradeCardButton(resource: Resource, count: number, enabled: boolean, onPick: () => void): Node {
+  const face = card(RESOURCE_LOOK[resource], count, CARD_H, !enabled);
+  if (!enabled) return face;
+  const hit = Box({ width: CARD_W, height: CARD_H }, [face]);
+  hit.onMouse = (ev): boolean => {
+    if (ev.type !== 'down' || ev.button === 2) return false;
+    onPick();
+    return true;
+  };
+  return hit;
+}
+
+function tradeSourceRow(
+  available: Record<Resource, number>,
+  staged: Record<Resource, number>,
+  onPick: (resource: Resource) => void,
+): Node {
+  return Box({ width: TRADE_ROW_W, gap: 1 }, RESOURCE_ORDER.map((resource) => {
+    const remaining = available[resource] - staged[resource];
+    return tradeCardButton(resource, remaining, remaining > 0, () => onPick(resource));
+  }));
+}
+
+function tradeStagedRow(staged: Record<Resource, number>, onRemove: (resource: Resource) => void): Node {
+  return Box({ width: TRADE_ROW_W, gap: 1 }, RESOURCE_ORDER.map((resource) => {
+    const count = staged[resource];
+    if (count === 0) return Box({ width: CARD_W, height: CARD_H, background: TRADE_SLOT_BG });
+    return tradeCardButton(resource, count, true, () => onRemove(resource));
+  }));
+}
+
+function tradeRailButton(id: string, label: string, enabled: boolean, onClick: () => void): Node {
+  if (!enabled) {
+    return Box({ width: ACTION_W, height: 6, alignItems: 'center', justifyContent: 'center', background: ACTION_DISABLED }, [
+      Text({ text: label, style: { color: ACTION_DISABLED_INK, bold: true } }),
+    ]);
+  }
+  return Button({
+    id,
+    label,
+    onClick,
+    style: {
+      width: ACTION_W,
+      height: 6,
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: TRADE_ACCENT,
+      color: [13, 36, 41],
+      bold: true,
+      hover: { background: [102, 194, 201], color: [8, 27, 31] },
+      focus: { background: [102, 194, 201], color: [8, 27, 31] },
+      pressed: { background: [221, 241, 244], color: [19, 48, 54] },
+    },
+  });
+}
+
+function tradeEditor(view: CatanCardsView, onChange: () => void): Node {
+  const valid = stagedBankTrade() !== null;
+  const adjust = (side: 'give' | 'receive', resource: Resource, delta: number): void => {
+    if (adjustCatanWorkbenchTradeStaging(side, resource, delta)) onChange();
+  };
+  const confirm = (): void => {
+    if (performStagedCatanWorkbenchBankTrade()) onChange();
+  };
+  const close = (): void => {
+    setCatanTradeEditorOpen(false);
+    onChange();
+  };
+  return Box({
+    position: 'absolute',
+    left: HAND_PANEL_LEFT,
+    bottom: 1,
+    width: TRADE_PANEL_W,
+    gap: 1,
+  }, [
+    Box({ width: TRADE_TABLE_W, flexDirection: 'column', gap: 1, padding: [1, 2], background: TRADE_BG }, [
+      Text({ text: 'bank', style: { color: RAIL_TEXT, bold: true } }),
+      tradeSourceRow(view.bank, workbenchTradeGet, (resource) => adjust('receive', resource, 1)),
+      Text({ text: 'bank sends  ↓', style: { color: RAIL_MUTED, bold: true } }),
+      tradeStagedRow(workbenchTradeGet, (resource) => adjust('receive', resource, -1)),
+      tradeStagedRow(workbenchTradeGive, (resource) => adjust('give', resource, -1)),
+      Text({ text: 'your hand   ↑ you send', style: { color: RAIL_MUTED, bold: true } }),
+      tradeSourceRow(view.hand, workbenchTradeGive, (resource) => adjust('give', resource, 1)),
+    ]),
+    Box({ width: ACTION_W, flexDirection: 'column', gap: 1, padding: [1, 0], background: TRADE_BG }, [
+      Text({ text: 'trade', style: { color: RAIL_TEXT, bold: true } }),
+      tradeRailButton('catan-trade-confirm', 'bank trade', valid, confirm),
+      Box({ width: ACTION_W, height: 6, alignItems: 'center', justifyContent: 'center', background: ACTION_DISABLED }, [
+        Text({ text: 'player soon', style: { color: ACTION_DISABLED_INK, bold: true } }),
+      ]),
+      Button({
+        id: 'catan-trade-close',
+        label: 'x close',
+        onClick: close,
+        style: {
+          width: ACTION_W,
+          height: 4,
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: ACTION_BG,
+          color: RAIL_TEXT,
+          bold: true,
+          hover: { background: ACTION_HOVER, color: [255, 255, 255] },
+        },
+      }),
+    ]),
+  ]);
+}
+
 // Bottom-left corner only: the panel hugs its cards instead of spanning the window, so the board
 // stays visible across the rest of the bottom row.
 // The resource hand and the development hand are two groups of the same card, split by a seam:
 // resources are spendable, dev cards are played. Only dev cards actually held are drawn, so the
 // panel grows and shrinks with the hand instead of showing five mostly-empty purple slots.
-function handPanel(view: CatanCardsView, layout: CatanCardsLayout, avail: number): Node {
+function handPanel(view: CatanCardsView, layout: CatanCardsLayout, avail: number, onChange: () => void): Node {
   const height = layout.compact ? CARD_H_COMPACT : CARD_H;
-  const showDev = avail >= RESOURCE_HAND_W + DEV_HAND_W;
+  const showActions = view.editable === true && avail >= RESOURCE_HAND_W + ACTION_GAP + ACTIONS_W;
+  const showDev = avail >= RESOURCE_HAND_W + DEV_HAND_W + (showActions ? ACTION_GAP + ACTIONS_W : 0);
   // A card is wrapped in its own click target only on an editable (workbench) view. In the game
   // the wrapper is skipped entirely, so the hit-test finds nothing interactive over the hand and
   // a click falls through to the board exactly as it did before the cards existed.
@@ -577,9 +835,37 @@ function handPanel(view: CatanCardsView, layout: CatanCardsLayout, avail: number
   const cards = RESOURCE_ORDER.map((resource) =>
     clickable(card(RESOURCE_LOOK[resource], view.hand[resource], height, view.hand[resource] === 0), (ev) => adjustHand(resource, ev)),
   );
-  return Box({ position: 'absolute', left: 1, bottom: 1, height: layout.handHeight, gap: HAND_SPLIT_GAP, padding: [HAND_PAD_T, 1, HAND_PAD_B, 1], background: uiChromeBg(0.9) }, [
-    Box({ gap: 1, alignItems: 'end' }, cards),
-    ...(devCards.length === 0 ? [] : [Box({ gap: 1, alignItems: 'end' }, devCards)]),
+  const actions = !showActions
+    ? []
+    : [
+        Tooltip({
+          content: [
+            { text: 'Trade', bold: true },
+            'Exchange resources with the bank. Player trades are coming later.',
+          ],
+          maxWidth: 34,
+        }, workbenchActionButton('catan-trade-open', '🔄', 'trade', true, () => {
+          setCatanTradeEditorOpen(!workbenchTradeOpen);
+          onChange();
+        })),
+        Tooltip({
+          id: 'catan-buy-dev',
+          content: [
+            { text: 'Buy development card', bold: true },
+            'Costs 1 sheep, 1 wheat, and 1 ore. Draws from the remaining deck.',
+          ],
+          maxWidth: 36,
+        }, workbenchActionButton('catan-buy-dev', DEV_CARD_ICON, 'buy dev', canBuyWorkbenchDev(view), () => {
+          if (buyCatanWorkbenchDevCard()) onChange();
+        })),
+      ];
+  const tray = Box({ height: layout.handHeight, gap: HAND_SPLIT_GAP, padding: [HAND_PAD_T, HAND_PAD_X, HAND_PAD_B, HAND_PAD_X], background: uiChromeBg(0.9) }, [
+    Box({ gap: 1 }, cards),
+    ...(devCards.length === 0 ? [] : [Box({ gap: 1 }, devCards)]),
+  ]);
+  return Box({ position: 'absolute', left: HAND_PANEL_LEFT, bottom: 1, height: layout.handHeight, gap: ACTION_GAP }, [
+    tray,
+    ...(actions.length === 0 ? [] : [Box({ height: layout.handHeight, gap: ACTION_GAP, alignItems: 'center' }, actions)]),
   ]);
 }
 
@@ -595,11 +881,11 @@ function handPanel(view: CatanCardsView, layout: CatanCardsLayout, avail: number
 export function catanHandLandingCell(region: LayoutBox, resource: Resource): { col: number; row: number } {
   const layout = catanCardsLayout(region);
   const panelTop = region.h - 1 - layout.handHeight;
-  const left = 2 + RESOURCE_ORDER.indexOf(resource) * (CARD_W + 1);
+  const left = HAND_PANEL_LEFT + HAND_PAD_X + RESOURCE_ORDER.indexOf(resource) * (CARD_W + 1);
   return { col: left + Math.floor(CARD_W / 2), row: panelTop + HAND_PAD_T };
 }
 
-export function buildCatanCardsOverlay(region: LayoutBox, onCloseSidebar: () => void, view: CatanCardsView = catanWorkbenchView()): Node {
+export function buildCatanCardsOverlay(region: LayoutBox, onCloseSidebar: () => void, view: CatanCardsView = catanWorkbenchView(), onWorkbenchChange: () => void = () => {}): Node {
   const layout = catanCardsLayout(region);
   const showSidebar = sidebarOpen && layout.showPublicRail;
   if (showSidebar) {
@@ -616,6 +902,8 @@ export function buildCatanCardsOverlay(region: LayoutBox, onCloseSidebar: () => 
     ...(showSidebar ? [sidebar(view, onCloseSidebar)] : []),
     // The hand shares the bottom row with the board, and the rail eats into it. Hand it the
     // width actually left over so it can drop its optional half instead of sliding under the rail.
-    handPanel(view, layout, region.w - (showSidebar ? RAIL_W : 0) - 2),
+    ...(view.editable && workbenchTradeOpen
+      ? [tradeEditor(view, onWorkbenchChange)]
+      : [handPanel(view, layout, region.w - (showSidebar ? RAIL_W : 0) - 2, onWorkbenchChange)]),
   ]);
 }

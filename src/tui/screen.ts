@@ -12,9 +12,10 @@ import { CellDiffer, Surface } from '../engine/index.ts';
 import type { KeyEvent } from '../platform/input.ts';
 import { type Component, Registry } from './component.ts';
 import { focusOrder } from './focus.ts';
-import { hitSurface, hitTest } from './hit.ts';
+import { hitSurface, hitTest, hoverTest } from './hit.ts';
 import { layout } from './layout.ts';
 import { paint, paintWithForeground, type ForegroundPainter, type PaintState } from './paint.ts';
+import { defaultTheme, type Theme } from './theme.ts';
 import type { LayoutBox, Node, PointerHit } from './types.ts';
 
 export class Screen {
@@ -41,6 +42,7 @@ export class Screen {
   // cells is the expensive step, so we recompute it only when the scene actually
   // changed and reuse it (cheap copy) on UI-only frames (e.g. a hover).
   private sceneLayer: Surface;
+  private theme: Theme;
   private sceneValid = false;
   // Persistent components + the bookkeeping for their per-frame lifecycle: the
   // set of component ids referenced by last frame's tree, and which component
@@ -61,11 +63,21 @@ export class Screen {
   // internal search row) while still belonging to one component lifecycle.
   private focusOwners = new Map<string, string>();
 
-  constructor(cols: number, rows: number) {
+  constructor(cols: number, rows: number, theme: Theme = defaultTheme) {
     this.cols = cols;
     this.rows = rows;
+    this.theme = theme;
     this.surface = new Surface(cols, rows);
     this.sceneLayer = new Surface(cols, rows);
+  }
+
+  /** Replace the active palette without rebuilding component state. */
+  setTheme(theme: Theme): void {
+    if (theme === this.theme) return;
+    this.theme = theme;
+    this.sceneValid = false;
+    this.differ.reset();
+    this.contentDirty = true;
   }
 
   resize(cols: number, rows: number): void {
@@ -150,7 +162,7 @@ export class Screen {
   // geometry per screen, so they leave no ghosts.
   frame(): string {
     this.surface.clear();
-    if (this.root) paint(this.root, this.surface, this.state);
+    if (this.root) paint(this.root, this.surface, this.state, this.theme);
     this.painted = { ...this.state };
     this.contentDirty = false;
     return this.surface.serialize();
@@ -171,8 +183,8 @@ export class Screen {
     }
     this.sceneLayer.copyInto(this.surface);
     if (this.root) {
-      if (foreground) paintWithForeground(this.root, this.surface, this.state, foreground);
-      else paint(this.root, this.surface, this.state);
+      if (foreground) paintWithForeground(this.root, this.surface, this.state, foreground, this.theme);
+      else paint(this.root, this.surface, this.state, this.theme);
     } else {
       foreground?.(this.surface);
     }
@@ -192,8 +204,8 @@ export class Screen {
     const surf = new Surface(this.cols, this.rows);
     present(surf);
     if (this.root) {
-      if (foreground) paintWithForeground(this.root, surf, this.state, foreground);
-      else paint(this.root, surf, this.state);
+      if (foreground) paintWithForeground(this.root, surf, this.state, foreground, this.theme);
+      else paint(this.root, surf, this.state, this.theme);
     } else {
       foreground?.(surf);
     }
@@ -216,9 +228,16 @@ export class Screen {
     this.state.focusId = id;
   }
 
+  // Set hover directly for headless previews and non-pointer integrations. The
+  // normal terminal path should continue to use hover(x, y), which hit-tests the
+  // laid-out tree before assigning the id.
+  setHover(id: string | null): void {
+    this.state.hoverId = id;
+  }
+
   // Mouse move (1-based). Returns whether the hovered node changed.
   hover(x1: number, y1: number): boolean {
-    const n = this.root ? hitTest(this.root, x1 - 1, y1 - 1) : null;
+    const n = this.root ? hoverTest(this.root, x1 - 1, y1 - 1) : null;
     const id = n?.id ?? null;
     if (id === this.state.hoverId) return false;
     this.state.hoverId = id;

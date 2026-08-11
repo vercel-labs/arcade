@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { RenderTarget } from '../../../engine/index.ts';
 import { TOKEN_DOTS } from '../../../rules/catan/types.ts';
-import { layout, type Node } from '../../../tui/index.ts';
+import { layout, type Node, Screen } from '../../../tui/index.ts';
 import { buildCatanTileRoot } from './tile-hud.ts';
 import { TileScene } from './tile-scene.ts';
 
@@ -118,6 +118,17 @@ test('the token overlay renders compact unspaced bullet pips only when requested
   const distant = texts(buildCatanTileRoot({ x: 0, y: 0, w: 80, h: 40 }, () => {}, [{ ...token, showPips: false }], 'board'));
   assert.ok(distant.includes('6'));
   assert.ok(!distant.includes('•••••'));
+});
+
+test('number-token overlays do not intercept board clicks', () => {
+  const region = { x: 0, y: 0, w: 80, h: 40 };
+  const token = { col: 20, row: 10, num: 6, pips: 5, showPips: true, red: true, hot: false, blocked: false };
+  const screen = new Screen(region.w, region.h);
+  screen.setRoot(buildCatanTileRoot(region, () => {}, [token], 'board', [], [], true), region);
+
+  // Screen pointer coordinates are 1-based. This is the visual centre of the
+  // projected two-row number chip and must fall through to the board raycast.
+  assert.equal(screen.pointerDown(token.col + 1, token.row + 1), null);
 });
 
 test('detailed token rows straddle the projected center while number-only tokens sit on it', () => {

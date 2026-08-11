@@ -9,7 +9,7 @@
 
 import { Box, Button, CloseButton, type Dimension, type Node, type Style, Text } from '../../tui/index.ts';
 import type { RGB } from '../../engine/index.ts';
-import { uiChromeBg } from '../theme.ts';
+import { ARCADE_CHROME_TEXT, uiChromeBg } from '../theme.ts';
 
 export const RAIL_PAD_L = 2; // a touch more on the left, to hold the text off the scene edge
 // ZERO on the right so a scrollbar sits flush at the panel edge. A right inset leaves a
@@ -19,9 +19,9 @@ export const RAIL_PAD_V = 1; // top/bottom inset
 export const RAIL_HEADER_H = 2; // header row + the gap row under it
 const HEADER_RIGHT_PAD = 2; // insets the ✕ from the terminal edge
 
-export const RAIL_TITLE_FG: RGB = [222, 224, 234];
-export const RAIL_TEXT_FG: RGB = [224, 226, 234]; // body copy
-export const RAIL_MUTED_FG: RGB = [138, 142, 156]; // events, secondary stats
+export const RAIL_TITLE_FG: RGB = ARCADE_CHROME_TEXT.title;
+export const RAIL_TEXT_FG: RGB = ARCADE_CHROME_TEXT.body; // body copy
+export const RAIL_MUTED_FG: RGB = ARCADE_CHROME_TEXT.muted; // events, secondary stats
 
 export interface RailPanelOpts {
   width: number;

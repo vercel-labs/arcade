@@ -13,6 +13,10 @@ function isInteractive(n: Node): boolean {
   return Boolean(n.focusable || n.onClick || n.onMouse);
 }
 
+function isHoverTarget(n: Node): boolean {
+  return Boolean(n.hoverable || isInteractive(n));
+}
+
 // A painted surface — interactive nodes, plus any node with a non-transparent
 // background or a scrim. The web model: a solid panel catches the pointer so
 // gestures don't fall through to whatever is painted behind it (here, the 3D
@@ -34,6 +38,10 @@ function deepest(root: Node, x: number, y: number, pred: (n: Node) => boolean): 
   let best: Node | null = null;
   let bestDepth = -1;
   const walk = (n: Node, overlayDepth: number): void => {
+    // A pass-through visual suppresses the whole subtree. Treating descendants
+    // the same way keeps an opaque label's Text child from unexpectedly becoming
+    // interactive when the label itself is deliberately transparent to input.
+    if (n.style.pointerEvents === 'none') return;
     const depth = overlayDepth + (n.overlay ? 1 : 0);
     const visible = n.layout && contains(n.layout, x, y) && (!n.clip || contains(n.clip, x, y));
     // At equal depth, later preorder nodes paint later and therefore win.
@@ -52,6 +60,12 @@ function deepest(root: Node, x: number, y: number, pred: (n: Node) => boolean): 
 // so events route to the component that owns it.
 export function hitTest(root: Node, x: number, y: number): Node | null {
   return deepest(root, x, y, isInteractive);
+}
+
+// Hover-only nodes (for example a passive Tooltip trigger) participate here
+// without becoming click targets or swallowing scene gestures.
+export function hoverTest(root: Node, x: number, y: number): Node | null {
+  return deepest(root, x, y, isHoverTarget);
 }
 
 // Topmost SURFACE at the point — used to decide whether a gesture is absorbed by

@@ -90,7 +90,7 @@ test('Select: wrapped items remain one selectable row block', () => {
   });
   sel.onKey(key('down'));
   const rows = sel.build().children ?? [];
-  const wrapped = rows.filter((row) => row.style.background === 'focusRing');
+  const wrapped = rows.filter((row) => row.style.background === 'controlFocusBg');
   assert.ok(wrapped.length >= 2, 'the selected long item spans multiple highlighted lines');
   assert.ok(rows.every((row) => (row.text ?? '').length <= 12), 'no visual line exceeds the padded content width');
 
@@ -476,7 +476,7 @@ test('mouse (via Screen): capture, wheel, overlays, wrapping', () => {
   ok(wlines().every((n) => (n.text ?? '').length <= 11), 'wrapping: no line exceeds the inner width (nothing cut off)');
   // Highlight the long (2nd) item; all of its lines should carry the accent bg.
   wd.onKey(key('down')); // highlight item 1 (the long one)
-  const litLines = wlines().filter((n) => n.style.background === 'pillHoverBg');
+  const litLines = wlines().filter((n) => n.style.background === 'controlHoverBg');
   ok(litLines.length >= 2, `wrapping: the whole wrapped item highlights (${litLines.length} highlighted lines)`);
   // Clicking any line of the wrapped item commits that ITEM (index 1).
   const wsel = wlist();
@@ -499,4 +499,26 @@ test('propagation: panel blocks scene, transparent area passes through', () => {
   s.pointerUp();
   ok(s.wheel(3, 3, 1) === true, 'wheel over the panel is blocked from the scene');
   ok(s.wheel(30, 8, 1) === false, 'wheel over the transparent area reaches the scene');
+});
+
+test('propagation: pointerEvents none makes an opaque subtree pass through', () => {
+  const s = new Screen(40, 10);
+  let clicked = false;
+  const tree = Box({ width: 40, height: 10 }, [
+    Box({ width: 20, height: 5, background: [10, 10, 10], pointerEvents: 'none' }, [
+      {
+        kind: 'button',
+        id: 'decorative-child',
+        text: 'visual only',
+        focusable: true,
+        onClick: () => { clicked = true; },
+        style: { background: [20, 20, 20] },
+      },
+    ]),
+  ]) as Node;
+  s.setRoot(tree, { x: 0, y: 0, w: 40, h: 10 });
+
+  ok(s.pointerDown(3, 3) == null, 'opaque pass-through visual does not absorb a scene press');
+  ok(!clicked, 'interactive descendants of a pass-through visual are not routed');
+  ok(s.wheel(3, 3, 1) === false, 'wheel reaches the scene through the visual');
 });

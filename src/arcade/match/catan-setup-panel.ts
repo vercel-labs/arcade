@@ -17,6 +17,7 @@ import { shortModel } from '../games/chess/hud.ts';
 import { PLAYER_LOOK } from '../games/catan/card-hud.ts';
 import { PLAYER_COLORS, type PlayerColor } from '../../rules/catan/types.ts';
 import type { CatanSeatSpec } from './catan-driver.ts';
+import { ARCADE_CHROME_TEXT, ARCADE_OUTLINE_CONTROL } from '../theme.ts';
 
 interface AiCreator {
   slug: string;
@@ -226,8 +227,8 @@ function seatLabel(side: AiSide): string {
   return side.modelId ? shortModel(side.modelId) : side.creator ?? 'AI';
 }
 
-const TITLE_FG: RGB = [222, 224, 234];
-const HERO_FG: RGB = [224, 226, 236];
+const TITLE_FG: RGB = ARCADE_CHROME_TEXT.title;
+const HERO_FG: RGB = ARCADE_CHROME_TEXT.body;
 const SLOW_FG: RGB = [210, 168, 90];
 const RANDOM_HOVER_FG: RGB = [255, 255, 255];
 
@@ -245,7 +246,7 @@ function slowBadge(modelId: string | null): Node[] {
 }
 
 function brandTint(side: AiSide): RGB {
-  if (!side.creator) return [212, 214, 224];
+  if (!side.creator) return ARCADE_OUTLINE_CONTROL.neutralText;
   const t = creatorTint(side.creator);
   return [t.x | 0, t.y | 0, t.z | 0];
 }

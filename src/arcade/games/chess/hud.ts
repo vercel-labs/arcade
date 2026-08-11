@@ -16,10 +16,11 @@ import type { ChessResult } from '../../../rules/chess/chess.ts';
 import { WHITE } from '../../../rules/chess/types.ts';
 import { CHAT_WIDTH, type ChatMessage, chatBox, mountChat } from './chat.ts';
 import { RailPanel, RailTitleButton } from '../../shell/rail-panel.ts';
+import { CHESS_PALETTE } from './palette.ts';
 
 const HISTORY_HEIGHT = 18; // MAX visible move rows — the panel grows to this, then scrolls
 const HISTORY_WIDTH = 22; // inner content width — header + list share it (fixed)
-const ILLEGAL: RGB = [226, 92, 86]; // a move played under the illegal-moves toggle
+const ILLEGAL = CHESS_PALETTE.illegal; // a move played under the illegal-moves toggle
 
 // Long-lived so scroll position persists across frames/visits. autoHeight: the
 // panel is only as tall as the moves played (tiny/empty at game start) and grows
@@ -118,8 +119,8 @@ const EVAL_LABEL_W = 4; // widest numeric label ("+1.2")
 const EVAL_RIGHT_PAD = 2; // matches the top-right menu/chat control inset
 const EVAL_COL_W = EVAL_LABEL_W + EVAL_RIGHT_PAD;
 const EVAL_VPAD = 4; // rows of gap above and below the rail
-const EVAL_LIGHT: RGB = [232, 228, 216]; // white side (ivory, matches the set)
-const EVAL_DARK: RGB = [48, 46, 52]; // black side (charcoal)
+const EVAL_LIGHT = CHESS_PALETTE.evalLight; // white side (ivory, matches the set)
+const EVAL_DARK = CHESS_PALETTE.evalDark; // black side (charcoal)
 const EVAL_LABEL_BG = uiChromeBg(0.9); // matches the move panel
 
 // White's share of the bar (0..1) from a centipawn score. tanh squashes so a huge
