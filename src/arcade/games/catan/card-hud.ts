@@ -730,22 +730,11 @@ function workbenchActionButton(
     Text({ text: icon, style: { color: ink, bold: true } }),
     Text({ text: label, style: { color: ink, bold: true } }),
   ];
-  if (!enabled) {
-    return Box({
-      width: HAND_ACTION_W,
-      height: CARD_H,
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: ACTION_DISABLED,
-      color: ACTION_DISABLED_INK,
-      hover: { background: [55, 60, 70], color: [142, 148, 161] },
-    }, content());
-  }
   const button = Button({
     id,
     label: '',
     onClick,
+    disabled: !enabled,
     style: {
       width: HAND_ACTION_W,
       height: CARD_H,
@@ -759,6 +748,7 @@ function workbenchActionButton(
       hover: { background: colors.hover, color: [255, 255, 255] },
       focus: { background: colors.hover, color: [255, 255, 255] },
       pressed: { background: colors.pressed, color: [19, 48, 54] },
+      disabled: { background: ACTION_DISABLED, color: ACTION_DISABLED_INK, bold: false },
     },
   });
   button.children = content();
@@ -805,15 +795,11 @@ function tradeStagedRow(staged: Record<Resource, number>, onRemove: (resource: R
 }
 
 function tradeRailButton(id: string, label: string, enabled: boolean, onClick: () => void): Node {
-  if (!enabled) {
-    return Box({ width: ACTION_W, height: 6, alignItems: 'center', justifyContent: 'center', background: ACTION_DISABLED }, [
-      Text({ text: label, style: { color: ACTION_DISABLED_INK, bold: true } }),
-    ]);
-  }
   return Button({
     id,
     label,
     onClick,
+    disabled: !enabled,
     style: {
       width: ACTION_W,
       height: 6,
@@ -825,6 +811,7 @@ function tradeRailButton(id: string, label: string, enabled: boolean, onClick: (
       hover: { background: [102, 194, 201], color: [8, 27, 31] },
       focus: { background: [102, 194, 201], color: [8, 27, 31] },
       pressed: { background: [221, 241, 244], color: [19, 48, 54] },
+      disabled: { background: ACTION_DISABLED, color: ACTION_DISABLED_INK, bold: false },
     },
   });
 }
