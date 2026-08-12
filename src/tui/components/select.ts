@@ -7,6 +7,7 @@ import type { Surface } from '../../engine/index.ts';
 import type { KeyEvent } from '../../platform/input.ts';
 import type { Component } from '../component.ts';
 import { Box, Text } from '../nodes.ts';
+import { wrapText } from '../text.ts';
 import type { Theme } from '../theme.ts';
 import type { LayoutBox, Node, PointerHit, Style } from '../types.ts';
 
@@ -15,34 +16,16 @@ interface VLine {
   text: string;
 }
 
-function wrapText(text: string, width: number, hangingIndent = 0): string[] {
+// A hanging indent: the item's own leading `hangingIndent` cells stay on row one,
+// and continuation rows are padded to line up under them. The wrapping itself is
+// shared; only the prefix bookkeeping is local, since it's presentation.
+function wrapIndented(text: string, width: number, hangingIndent = 0): string[] {
   if (width <= 0) return [text];
   const indent = Math.max(0, Math.min(hangingIndent, text.length));
   const prefix = text.slice(0, indent);
   const continuation = ' '.repeat(indent);
-  const contentWidth = Math.max(1, width - indent);
-  const content = text.slice(indent);
-  const lines: string[] = [];
-  let line = '';
-  for (const word of content.split(' ')) {
-    if (word.length > contentWidth) {
-      if (line) lines.push(line);
-      let rest = word;
-      while (rest.length > contentWidth) {
-        lines.push(rest.slice(0, contentWidth));
-        rest = rest.slice(contentWidth);
-      }
-      line = rest;
-    } else if (!line) line = word;
-    else if (line.length + word.length + 1 <= contentWidth) line += ' ' + word;
-    else {
-      lines.push(line);
-      line = word;
-    }
-  }
-  if (line) lines.push(line);
-  const wrapped = lines.length ? lines : [''];
-  return wrapped.map((part, index) => (index === 0 ? prefix : continuation) + part);
+  const lines = wrapText(text.slice(indent), Math.max(1, width - indent));
+  return lines.map((part, index) => (index === 0 ? prefix : continuation) + part);
 }
 
 export interface SelectOpts {
@@ -98,7 +81,7 @@ export class Select implements Component {
       return this.items.map((text, item) => ({ item, text }));
     }
     const make = (width: number): VLine[] =>
-      this.items.flatMap((text, item) => wrapText(text, width, this.opts.wrapIndent ?? 0).map((line) => ({ item, text: line })));
+      this.items.flatMap((text, item) => wrapIndented(text, width, this.opts.wrapIndent ?? 0).map((line) => ({ item, text: line })));
     let lines = make(Math.max(1, this.opts.width - 2)); // horizontal row padding
     if (lines.length > this.height) lines = make(Math.max(1, this.opts.width - 3)); // scrollbar
     return lines;

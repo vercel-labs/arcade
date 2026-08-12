@@ -3,10 +3,32 @@
 // The seeded snapshot lets the "Board + cards" test mode evolve before a live CatanState is
 // attached; gameplay wiring should later replace only the data source, not the card or rail layout.
 
-import { Box, Button, type LayoutBox, type Node, type PointerHit, type Row, ScrollBox, type Screen, Slot, Text, Tooltip } from '../../../tui/index.ts';
+import {
+  Box,
+  Button,
+  ScrollBox,
+  Sidebar,
+  SIDEBAR_HEADER_H,
+  SIDEBAR_PAD_L,
+  SIDEBAR_PAD_R,
+  SIDEBAR_PAD_V,
+  Slot,
+  Table,
+  TableCell,
+  TableHeader,
+  TableRow,
+  Text,
+  Tooltip,
+  truncate,
+  type ColumnDef,
+  type LayoutBox,
+  type Node,
+  type PointerHit,
+  type Row,
+  type Screen,
+} from '../../../tui/index.ts';
 import { mulberry32, stringWidth } from '../../../engine/index.ts';
-import { RAIL_HEADER_H, RAIL_MUTED_FG, RAIL_PAD_L, RAIL_PAD_R, RAIL_PAD_V, RAIL_TEXT_FG, RailPanel } from '../../shell/rail-panel.ts';
-import { uiChromeBg } from '../../theme.ts';
+import { ARCADE_CHROME_TEXT, RAIL_MUTED_FG, RAIL_TEXT_FG, uiChromeBg } from '../../theme.ts';
 import { COSTS, DEV_CARD_TYPES, type DevCardType, DISCARD_LIMIT, type PlayerColor, type Resource, resourceIndex, type Terrain } from '../../../rules/catan/types.ts';
 import { buildDevelopmentDeck } from '../../../rules/catan/development.ts';
 import {
@@ -145,16 +167,16 @@ const RAIL_MUTED = RAIL_MUTED_FG;
 const BANK_CARDS = RESOURCE_ORDER.length + 1;
 // Exported so the renderer and camera can inset the 3D viewport by exactly this much while the
 // rail is open — the rail participates in the layout rather than painting over the scene.
-// The panel background runs flush to the terminal edge (RAIL_PAD_R is 0, so no translucent strip
+// The panel background runs flush to the terminal edge (SIDEBAR_PAD_R is 0, so no translucent strip
 // shows the scene through it); the body carries its own right inset so text is not jammed against
 // that edge. Width is set by the one bank row plus all three insets.
 const BODY_PAD_R = 2;
-export const CATAN_RAIL_W = BANK_CARDS * CARD_W + (BANK_CARDS - 1) + RAIL_PAD_L + RAIL_PAD_R + BODY_PAD_R;
+export const CATAN_RAIL_W = BANK_CARDS * CARD_W + (BANK_CARDS - 1) + SIDEBAR_PAD_L + SIDEBAR_PAD_R + BODY_PAD_R;
 const RAIL_W = CATAN_RAIL_W;
 // The panel's full content width. The history ScrollBox spans all of it so its scrollbar lands on
 // the panel's last column — flush, the way the chess chat's does. Everything else is inset from
 // that edge by BODY_PAD_R so text is not jammed against it.
-const CONTENT_W = RAIL_W - RAIL_PAD_L - RAIL_PAD_R;
+const CONTENT_W = RAIL_W - SIDEBAR_PAD_L - SIDEBAR_PAD_R;
 const RAIL_INNER = CONTENT_W - BODY_PAD_R;
 // Rows stop two columns short of the ScrollBox: one for the bar, one blank beside it, so text can
 // never sit flush against the bar. Mirrors the chat's SCROLLBAR_W + RIGHT_GAP reservation.
@@ -171,7 +193,7 @@ const HISTORY_MIN_H = 4;
 function sidebarFixedH(playerCount: number): number {
   const rows = 1 /* history label */ + 1 /* bank label */ + CARD_H /* bank row */ + 1 /* players header */ + playerCount;
   const gaps = 4 + playerCount; // one under every body child except the last
-  return RAIL_PAD_V * 2 + RAIL_HEADER_H + rows + gaps;
+  return SIDEBAR_PAD_V * 2 + SIDEBAR_HEADER_H + rows + gaps;
 }
 
 function catanHistoryHeight(region: LayoutBox, playerCount: number): number {
@@ -569,27 +591,11 @@ function sectionTitle(label: string): Node {
 // separation and marks the cut.
 function historyRow(entry: CatanActionHistoryView): Node {
   const resourceIcons = (entry.resources ?? []).map((resource) => RESOURCE_LOOK[resource].emoji).join(' ');
-  const body = clampToWidth(`${entry.message}${resourceIcons ? ` ${resourceIcons}` : ''}`, HISTORY_ROW_W - stringWidth(entry.actor) - 1);
+  const body = truncate(`${entry.message}${resourceIcons ? ` ${resourceIcons}` : ''}`, HISTORY_ROW_W - stringWidth(entry.actor) - 1);
   return Box({ width: HISTORY_ROW_W, gap: 1, overflow: 'hidden' }, [
     Text({ text: entry.actor, style: { color: PLAYER_LOOK[entry.color], bold: true } }),
     Text({ text: body, style: { color: entry.chat ? RAIL_MUTED : RAIL_TEXT } }),
   ]);
-}
-
-// Trim to a cell budget, counting emoji as the two cells they occupy and never splitting one.
-// The ellipsis costs a cell of its own, so it only earns its place if something was cut.
-function clampToWidth(text: string, limit: number): string {
-  if (limit <= 0) return '';
-  if (stringWidth(text) <= limit) return text;
-  let out = '';
-  let w = 0;
-  for (const ch of text) {
-    const cw = stringWidth(ch);
-    if (w + cw > limit - 1) break;
-    out += ch;
-    w += cw;
-  }
-  return `${out}…`;
 }
 
 function bankRow(view: CatanCardsView): Node {
@@ -614,40 +620,54 @@ const STAT_GAP = 1;
 // the seat that HOLDS an award, red for a hand the robber would force a discard from. Both are
 // decided by the rules engine (award holders, DISCARD_LIMIT), never by comparing numbers here —
 // the highest army is not necessarily the holder, and the threshold is a rule, not a style.
-const STAT_COLUMNS: { head: string; w: number; strong?: boolean; read: (p: CatanCardsPlayerView) => number; flag?: (p: CatanCardsPlayerView) => Rgb | null }[] = [
-  { head: 'cards', w: 5, read: (p) => p.resourceCards, flag: (p) => (p.resourceCards > DISCARD_LIMIT ? AT_RISK : null) },
-  { head: DEV_CARD_ICON, w: 3, read: (p) => p.developmentCards },
-  { head: KNIGHT_ICON, w: 3, read: (p) => p.knights, flag: (p) => (p.hasLargestArmy ? AWARD : null) },
-  { head: ROAD_ICON, w: 3, read: (p) => p.longestRoad, flag: (p) => (p.hasLongestRoad ? AWARD : null) },
-  { head: 'vp', w: 2, strong: true, read: (p) => p.publicVp },
-];
-const NAME_W = RAIL_INNER - STAT_COLUMNS.reduce((n, c) => n + c.w + STAT_GAP, 0);
-
-function statCell(text: string, w: number, color: Rgb, bold = false): Node {
-  return Box({ width: w, justifyContent: 'end' }, [Text({ text, style: { color, bold } })]);
+// `col` is the geometry the Table resolves; the name column is the flexible one, so adding or
+// widening a stat no longer means recomputing the name's width by hand.
+interface StatColumn {
+  head: string;
+  col: ColumnDef;
+  strong?: boolean;
+  read: (p: CatanCardsPlayerView) => number;
+  flag?: (p: CatanCardsPlayerView) => Rgb | null;
 }
+const STAT_COLUMNS: StatColumn[] = [
+  { head: 'cards', col: { width: 5, align: 'end' }, read: (p) => p.resourceCards, flag: (p) => (p.resourceCards > DISCARD_LIMIT ? AT_RISK : null) },
+  { head: DEV_CARD_ICON, col: { width: 3, align: 'end' }, read: (p) => p.developmentCards },
+  { head: KNIGHT_ICON, col: { width: 3, align: 'end' }, read: (p) => p.knights, flag: (p) => (p.hasLargestArmy ? AWARD : null) },
+  { head: ROAD_ICON, col: { width: 3, align: 'end' }, read: (p) => p.longestRoad, flag: (p) => (p.hasLongestRoad ? AWARD : null) },
+  { head: 'vp', col: { width: 2, align: 'end' }, strong: true, read: (p) => p.publicVp },
+];
+// The name column takes whatever the stats leave, down to a floor that keeps a seat
+// identifiable rather than letting it collapse to nothing on a narrow terminal.
+const PLAYER_COLUMNS: ColumnDef[] = [{ flex: 1, min: 8 }, ...STAT_COLUMNS.map((c) => c.col)];
 
 // The section label doubles as the table's corner cell, so "players" heads the name column the
 // way each icon heads its own — one header row instead of a title stacked on top of one.
 function playersHeader(): Node {
-  return Box({ width: { pct: 100 }, gap: STAT_GAP }, [
-    Box({ width: NAME_W }, [sectionTitle('players')]),
-    ...STAT_COLUMNS.map((c) => statCell(c.head, c.w, RAIL_MUTED)),
+  return TableHeader([
+    TableCell(sectionTitle('players')),
+    ...STAT_COLUMNS.map((c) => TableCell(c.head, { style: { color: RAIL_MUTED } })),
   ]);
 }
 
 function playerRow(player: CatanCardsPlayerView): Node {
   const seat = PLAYER_LOOK[player.color];
-  return Box({ width: { pct: 100 }, gap: STAT_GAP }, [
-    Box({ width: NAME_W, overflow: 'hidden' }, [
-      Text({ text: `${player.active ? '▸ ' : '  '}${player.name}`, style: { color: seat, bold: true } }),
-    ]),
+  return TableRow({}, [
+    TableCell(`${player.active ? '▸ ' : '  '}${player.name}`, { style: { color: seat, bold: true } }),
     // vp is the score, so it keeps the reading white; the rest are supporting detail until a
     // flag promotes them.
     ...STAT_COLUMNS.map((c) => {
       const flag = c.flag?.(player) ?? null;
-      return statCell(`${c.read(player)}`, c.w, flag ?? (c.strong ? RAIL_TEXT : RAIL_MUTED), flag !== null || c.strong);
+      return TableCell(`${c.read(player)}`, {
+        style: { color: flag ?? (c.strong ? RAIL_TEXT : RAIL_MUTED), bold: flag !== null || c.strong },
+      });
     }),
+  ]);
+}
+
+function playersTable(players: CatanCardsPlayerView[]): Node {
+  return Table({ columns: PLAYER_COLUMNS, width: RAIL_INNER, gap: STAT_GAP, rowGap: 1 }, [
+    playersHeader(),
+    ...players.map(playerRow),
   ]);
 }
 
@@ -663,11 +683,10 @@ function sidebar(view: CatanCardsView, onClose: () => void): Node {
     Slot('catan-history'),
     inset(sectionTitle('bank')),
     inset(bankRow(view)),
-    inset(playersHeader()),
-    ...players.map((p) => inset(playerRow(p))),
+    inset(playersTable(players)),
   ]);
   return Box({ position: 'absolute', top: 0, right: 0, bottom: 0, width: RAIL_W, overflow: 'hidden' }, [
-    RailPanel({ width: RAIL_W, height: { pct: 100 }, title: 'sidebar', closeId: 'catan-sidebar-close', onClose }, [body]),
+    Sidebar({ width: RAIL_W, height: { pct: 100 }, title: 'sidebar', closeId: 'catan-sidebar-close', onClose, background: uiChromeBg(0.9), titleColor: ARCADE_CHROME_TEXT.title }, [body]),
   ]);
 }
 
@@ -711,22 +730,11 @@ function workbenchActionButton(
     Text({ text: icon, style: { color: ink, bold: true } }),
     Text({ text: label, style: { color: ink, bold: true } }),
   ];
-  if (!enabled) {
-    return Box({
-      width: HAND_ACTION_W,
-      height: CARD_H,
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: ACTION_DISABLED,
-      color: ACTION_DISABLED_INK,
-      hover: { background: [55, 60, 70], color: [142, 148, 161] },
-    }, content());
-  }
   const button = Button({
     id,
     label: '',
     onClick,
+    disabled: !enabled,
     style: {
       width: HAND_ACTION_W,
       height: CARD_H,
@@ -740,6 +748,7 @@ function workbenchActionButton(
       hover: { background: colors.hover, color: [255, 255, 255] },
       focus: { background: colors.hover, color: [255, 255, 255] },
       pressed: { background: colors.pressed, color: [19, 48, 54] },
+      disabled: { background: ACTION_DISABLED, color: ACTION_DISABLED_INK, bold: false },
     },
   });
   button.children = content();
@@ -786,15 +795,11 @@ function tradeStagedRow(staged: Record<Resource, number>, onRemove: (resource: R
 }
 
 function tradeRailButton(id: string, label: string, enabled: boolean, onClick: () => void): Node {
-  if (!enabled) {
-    return Box({ width: ACTION_W, height: 6, alignItems: 'center', justifyContent: 'center', background: ACTION_DISABLED }, [
-      Text({ text: label, style: { color: ACTION_DISABLED_INK, bold: true } }),
-    ]);
-  }
   return Button({
     id,
     label,
     onClick,
+    disabled: !enabled,
     style: {
       width: ACTION_W,
       height: 6,
@@ -806,6 +811,7 @@ function tradeRailButton(id: string, label: string, enabled: boolean, onClick: (
       hover: { background: [102, 194, 201], color: [8, 27, 31] },
       focus: { background: [102, 194, 201], color: [8, 27, 31] },
       pressed: { background: [221, 241, 244], color: [19, 48, 54] },
+      disabled: { background: ACTION_DISABLED, color: ACTION_DISABLED_INK, bold: false },
     },
   });
 }

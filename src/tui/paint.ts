@@ -20,6 +20,7 @@ import {
   type Surface,
 } from '../engine/index.ts';
 
+import { clipText, truncate } from './text.ts';
 import { defaultTheme, resolveColor, type Theme } from './theme.ts';
 import type { LayoutBox, Node, Padding, Style, TooltipSpec, TooltipText } from './types.ts';
 
@@ -49,6 +50,9 @@ function styleBits(s: Style): number {
 function effective(node: Node, st: PaintState): Style {
   const s = node.style;
   let e: Style = { ...s };
+  // Disabled replaces the interaction states rather than layering under them: the
+  // control is inert, so reacting to the pointer would be a lie.
+  if (node.disabled) return s.disabled ? { ...e, ...s.disabled } : e;
   if (node.id) {
     if (node.id === st.hoverId && s.hover) e = { ...e, ...s.hover };
     if (node.id === st.focusId && s.focus) e = { ...e, ...s.focus };
@@ -126,7 +130,16 @@ function paintNode(node: Node, surf: Surface, st: PaintState, theme: Theme, inhe
     if (b) drawBorder(surf, lb, e, bg, bits, theme);
     if (node.kind !== 'box' && node.text) {
       const p = padOf(e);
-      surf.drawText(lb.x + p.h + b, lb.y + p.v + b, node.text, fg, bg, bits);
+      // Measured against the same inset the text is drawn at, so the fit and the
+      // origin can't disagree.
+      const inner = lb.w - 2 * (p.h + b);
+      const text =
+        e.textOverflow === 'ellipsis'
+          ? truncate(node.text, inner)
+          : e.textOverflow === 'clip'
+            ? clipText(node.text, inner)
+            : node.text;
+      surf.drawText(lb.x + p.h + b, lb.y + p.v + b, text, fg, bg, bits);
     }
     // FrameBuffer escape hatch: hand-draw into this node's content box (inside the
     // border + padding), clipped like everything else. Runs after the node's own

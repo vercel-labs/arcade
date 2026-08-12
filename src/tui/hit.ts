@@ -8,8 +8,11 @@ function contains(lb: LayoutBox, x: number, y: number): boolean {
   return x >= lb.x && x < lb.x + lb.w && y >= lb.y && y < lb.y + lb.h;
 }
 
-// A node that handles input — the routing target for clicks/keys/wheel.
+// A node that handles input — the routing target for clicks/keys/wheel, and what the
+// Screen resolves hover against. A disabled control is not one, however it was declared,
+// which is also what keeps it from taking hover styling.
 function isInteractive(n: Node): boolean {
+  if (n.disabled) return false;
   return Boolean(n.focusable || n.onClick || n.onMouse);
 }
 
@@ -24,6 +27,10 @@ function isHoverTarget(n: Node): boolean {
 // pills) is NOT a surface, so the scene stays draggable through the gaps.
 function isSurface(n: Node): boolean {
   if (isInteractive(n)) return true;
+  // A disabled control still absorbs the gesture. It stopped being a click target, but
+  // it's still a thing you clicked ON — letting the press through would rotate the
+  // board behind a dead button.
+  if (n.disabled) return true;
   const bg = n.style.background;
   if (bg != null && bg !== 'transparent') return true;
   return n.style.scrim != null;

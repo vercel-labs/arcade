@@ -36,6 +36,7 @@ test('FilledButton preserves the shared neutral button recipe', () => {
         hover: { background: 'controlHoverBg', color: 'controlHoverFg' },
         focus: { background: 'controlFocusBg', color: 'controlFocusFg' },
         pressed: { background: 'controlPressedBg', color: 'controlPressedFg' },
+        disabled: { background: 'disabledBg', color: 'disabledFg' },
       },
     }),
   );

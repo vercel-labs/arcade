@@ -12,6 +12,25 @@ export {
 } from './button.ts';
 export { Modal } from './components/modal.ts';
 export { Dialog, CloseButton, type DialogOpts } from './components/dialog.ts';
+export {
+  resolveColumns,
+  Table,
+  TableCell,
+  TableHeader,
+  TableRow,
+  type CellOpts,
+  type ColumnDef,
+  type RowOpts,
+  type TableOpts,
+} from './components/table.ts';
+export {
+  Sidebar,
+  SIDEBAR_HEADER_H,
+  SIDEBAR_PAD_L,
+  SIDEBAR_PAD_R,
+  SIDEBAR_PAD_V,
+  type SidebarOpts,
+} from './components/sidebar.ts';
 export { ASCIIFont, asciiFontLines } from './components/asciifont.ts';
 export { FrameBuffer, type FrameDraw } from './components/framebuffer.ts';
 export {
@@ -36,6 +55,7 @@ export {
   type ScenePointer,
   type SceneViewportInsets,
 } from './scene-viewport.ts';
+export { clipText, truncate, wrapText, type WrapOpts } from './text.ts';
 export { layout } from './layout.ts';
 export { paint, paintWithForeground, type ForegroundPainter, type PaintState } from './paint.ts';
 export { createTheme, defaultTheme, resolveColor, type Theme, type ColorToken } from './theme.ts';
@@ -46,6 +66,7 @@ export type {
   LayoutBox,
   BorderStyle,
   PointerHit,
+  TextOverflow,
   TooltipContent,
   TooltipPlacement,
   TooltipSpec,

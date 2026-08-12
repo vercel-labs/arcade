@@ -7,13 +7,12 @@
 // mounted via Slot, rebuilt into a full-screen tree each frame. main owns the scene +
 // driver and wires the handlers; this module owns the controls + the table furniture.
 
-import { Box, Button, Dialog, Dropdown, filledButtonStyle, Input, Modal, type Row, RoundedButton, ScrollBox, Slider, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
+import { Box, Button, Dialog, Dropdown, filledButtonStyle, Input, Modal, type Row, RoundedButton, ScrollBox, Sidebar, Slider, Slot, Text, wrapText, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
 import type { RGB } from '../../../engine/index.ts';
 import { type Card, isRed, RANK_LABELS } from '../../../rules/poker/cards.ts';
 import type { SeatCardView, TableView } from './poker-scene.ts';
 import { creatorTint } from '../../scenes/wisp.ts';
-import { ChatBox, type ChatMessage, CHAT_WIDTH, wrapText } from '../chess/chat.ts';
-import { RailPanel } from '../../shell/rail-panel.ts';
+import { ChatBox, type ChatMessage, CHAT_WIDTH } from '../chess/chat.ts';
 import { shortModel } from '../chess/hud.ts';
 import { ARCADE_CHROME_TEXT, ARCADE_OUTLINE_CONTROL, UI_CHROME_PILL, uiChromeBg } from '../../theme.ts';
 import { POKER_PALETTE } from './palette.ts';
@@ -593,7 +592,7 @@ function continuePrompt(nextHand: boolean, seconds: number | null | undefined): 
 function chatPanel(height: number, active: boolean, onToggle: () => void): Node {
   pokerChat.setViewport(Math.max(1, height - 2 * CHAT_PAD_V - CHAT_HEADER_H));
   pokerChat.setActive(active);
-  return RailPanel({ width: RAIL_W, height, title: 'chat', closeId: 'poker-chat-close', onClose: onToggle }, [Slot('poker-chat')]);
+  return Sidebar({ width: RAIL_W, height, title: 'chat', closeId: 'poker-chat-close', onClose: onToggle, background: uiChromeBg(0.9), titleColor: ARCADE_CHROME_TEXT.title }, [Slot('poker-chat')]);
 }
 
 // The right rail: the table-talk chat, full height, pinned to the right edge. Present only
@@ -700,9 +699,14 @@ export function buildPokerGameRoot(
       ? [RoundedButton({ id: 'poker-match', label: 'new match', onClick: mc.onPrimary, color: MATCH_NEUTRAL })]
       : [
           Box({ flexDirection: 'row', gap: 2 }, [
-            mc.onPrimary
-              ? RoundedButton({ id: 'poker-start', label: 'start', onClick: mc.onPrimary, color: MATCH_GO })
-              : RoundedButton({ id: 'poker-start', label: 'start', color: MATCH_OFF_FG }),
+            RoundedButton({
+              id: 'poker-start',
+              label: 'start',
+              onClick: mc.onPrimary ?? undefined,
+              disabled: !mc.onPrimary,
+              color: mc.onPrimary ? MATCH_GO : MATCH_OFF_FG,
+              style: mc.onPrimary ? undefined : { disabled: { color: MATCH_OFF_FG, borderColor: MATCH_OFF_FG } },
+            }),
             RoundedButton({ id: 'poker-cancel', label: 'cancel', onClick: mc.onCancel, color: MATCH_NEUTRAL, borderColor: MATCH_NEUTRAL_BORDER }),
           ]),
         ];

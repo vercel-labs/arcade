@@ -23,6 +23,9 @@ export function Button(opts: {
   label: string;
   onClick?: () => void;
   onKey?: (ev: KeyEvent) => boolean;
+  // Inert but still painted. Dropping onClick is not enough on its own: the node stays
+  // `focusable`, so it would keep taking hover styling and Tab focus while doing nothing.
+  disabled?: boolean;
   style?: Style;
 }): Node {
   return {
@@ -30,6 +33,7 @@ export function Button(opts: {
     id: opts.id,
     text: opts.label,
     focusable: true,
+    disabled: opts.disabled,
     onClick: opts.onClick,
     onKey: opts.onKey,
     style: { padding: [0, 2], ...opts.style },

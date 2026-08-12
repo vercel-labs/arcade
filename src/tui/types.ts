@@ -18,6 +18,10 @@ export type Spacing = number | [number, number] | [number, number, number, numbe
 export type Padding = Spacing;
 export type Position = 'relative' | 'absolute';
 export type Overflow = 'visible' | 'hidden';
+// What to do with Text/Button content wider than its own content box, named after
+// the CSS property. Opt-in: without it text overflows its box and is clipped only
+// by an ancestor's overflow:hidden, which is what most of the app still relies on.
+export type TextOverflow = 'clip' | 'ellipsis';
 export type BorderStyle = 'none' | 'square' | 'round';
 
 // A tooltip is deliberately data on its trigger rather than a hidden child in
@@ -77,10 +81,17 @@ export interface Style {
   bold?: boolean;
   dim?: boolean;
   underline?: boolean;
+  // Fit Text/Button content to this node's content box (see TextOverflow). Needs a
+  // resolved width to measure against, so it's inert on an 'auto'-width node —
+  // which is sized to its text and therefore never overflows anyway.
+  textOverflow?: TextOverflow;
   // State overlays merged over the base style at paint time.
   hover?: Partial<Style>;
   focus?: Partial<Style>;
   pressed?: Partial<Style>;
+  // Applied when the node sets `disabled`, INSTEAD of the three above — a control
+  // that does nothing must not light up when the pointer crosses it.
+  disabled?: Partial<Style>;
   // `none` makes this node and its descendants purely visual: pointer hover,
   // presses, wheels, and hover-scroll keys pass through to whatever is behind
   // the subtree. Useful for projected scene labels that paint an opaque badge
@@ -120,6 +131,11 @@ export interface Node {
   children?: Node[];
   text?: string; // Text/Button content
   focusable?: boolean;
+  // Inert: no clicks, no hover/focus/pressed styling, skipped by Tab. Mirrors the DOM
+  // attribute — `focusable` still describes what the control IS, so re-enabling it
+  // doesn't have to restore anything. The node keeps absorbing pointer gestures, so a
+  // click on a dead button doesn't fall through and drag the scene behind it.
+  disabled?: boolean;
   // Opt into hover hit-testing without also making the node clickable or
   // keyboard-focusable. Tooltip() sets this for passive and disabled controls.
   hoverable?: boolean;

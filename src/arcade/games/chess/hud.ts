@@ -9,13 +9,12 @@
 // shared solid chrome fill — no line border), and expands back. It's left-anchored, so
 // the "Moves" label keeps the same position in both states. Click it (or the ✕,
 // shown when expanded) to toggle.
-import { Box, Button, CloseButton, type Row, ScrollBox, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
+import { Box, Button, CloseButton, type Row, ScrollBox, Sidebar, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
 import type { RGB } from '../../../engine/index.ts';
 import { UI_CHROME_BG, UI_CHROME_PILL, uiChromeBg } from '../../theme.ts';
 import type { ChessResult } from '../../../rules/chess/chess.ts';
 import { WHITE } from '../../../rules/chess/types.ts';
 import { CHAT_WIDTH, type ChatMessage, chatBox, mountChat } from './chat.ts';
-import { RailPanel, RailTitleButton } from '../../shell/rail-panel.ts';
 import { CHESS_PALETTE } from './palette.ts';
 
 const HISTORY_HEIGHT = 18; // MAX visible move rows — the panel grows to this, then scrolls
@@ -341,14 +340,16 @@ function buildChatPanel(height: number, onToggle: () => void, active: boolean): 
   chatBox.setActive(active);
   // flexShrink 0: the wide chess-game bar in the main column overflows its row, so
   // without this the panel would be squeezed below CHAT_WIDTH and clip its bubbles.
-  return RailPanel(
+  return Sidebar(
     {
       width: CHAT_WIDTH,
       height,
       flexShrink: 0,
-      title: RailTitleButton('chat-toggle', 'chat', onToggle, HEADER_BTN),
+      // The title doubles as a collapse target, so it's a Button rather than a label.
+      title: Button({ id: 'chat-toggle', label: 'chat', onClick: onToggle, style: HEADER_BTN }),
       closeId: 'chat-close',
       onClose: onToggle,
+      background: uiChromeBg(0.9),
     },
     [Slot('chess-chat')],
   );

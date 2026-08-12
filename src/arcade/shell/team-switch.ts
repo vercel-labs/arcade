@@ -2,7 +2,7 @@
 // A persistent searchable Dropdown shows the current billing team in its committed
 // field and owns filtering, wrapped options, and overflow scrolling. main.ts owns
 // async loading/switching and the modal lifecycle.
-import { Box, Button, Dialog, Dropdown, Modal, Slot, Text, type Node, type Screen, type Style } from '../../tui/index.ts';
+import { Box, Button, Dialog, Dropdown, Modal, Slot, Text, wrapText, type Node, type Screen, type Style } from '../../tui/index.ts';
 import type { Team } from '../../auth/index.ts';
 
 const LIST_W = 36;
@@ -36,29 +36,6 @@ export function setTeamSwitchHandlers(h: { onPick: (team: Team) => void }): void
   onPick = h.onPick;
 }
 
-function wrapText(text: string, width: number): string[] {
-  if (width <= 0) return [text];
-  const lines: string[] = [];
-  let line = '';
-  for (const word of text.split(' ')) {
-    if (word.length > width) {
-      if (line) lines.push(line);
-      let rest = word;
-      while (rest.length > width) {
-        lines.push(rest.slice(0, width));
-        rest = rest.slice(width);
-      }
-      line = rest;
-    } else if (!line) line = word;
-    else if (line.length + word.length + 1 <= width) line += ' ' + word;
-    else {
-      lines.push(line);
-      line = word;
-    }
-  }
-  if (line) lines.push(line);
-  return lines.length ? lines : [''];
-}
 
 // Feed the loaded teams into the dropdown and commit the current billing team so
 // the closed field itself is the current-account indicator.
