@@ -18,6 +18,7 @@ import { CATAN_RAIL_W, buildCatanCardsOverlay, type CatanActionHistoryView, type
 import { CatanState } from '../../../rules/catan/catan.ts';
 import { DEV_CARD_TYPES, type DevCardType, RESOURCES, type Resource, resourceIndex } from '../../../rules/catan/types.ts';
 import { CATAN_STATUS, PLAYER_LOOK } from './palette.ts';
+import { hudBottomRight, hudTopCenter, hudTopRight } from '../../shell/hud-chrome.ts';
 
 const STATUS_FG = CATAN_STATUS.foreground;
 const STATUS_MUTED = CATAN_STATUS.muted;
@@ -120,12 +121,11 @@ function statusPanel(driver: CatanDriver, region: LayoutBox): Node[] {
   if (!status) return [];
   const rail = catanRailVisible(region.w, region.h) ? CATAN_RAIL_W : 0;
   return [
-    Box({ position: 'absolute', top: 1, left: 0, width: region.w - rail, justifyContent: 'center' }, [
+    hudTopCenter(
       Box({ flexDirection: 'column', alignItems: 'center', padding: [0, 2], background: UI_CHROME_BG }, [
         Text({ text: status.text, style: { color: status.color, bold: true } }),
         ...(status.hint ? [Text({ text: status.hint, style: { color: STATUS_MUTED } })] : []),
-      ]),
-    ]),
+      ]), region.w, { railWidth: rail }),
   ];
 }
 
@@ -144,9 +144,9 @@ export function buildCatanGameRoot(region: LayoutBox, deps: CatanGameHudDeps): N
   const rail = catanRailVisible(region.w, region.h) ? CATAN_RAIL_W : 0;
 
   const chrome: Node[] = [
-    Box({ position: 'absolute', top: 1, right: 2 + rail, flexDirection: 'row', gap: 1 }, [
+    hudTopRight([
       Button({ id: 'catan-game-menu', label: '☰ menu', onClick: deps.onOpenMenu, style: UI_CHROME_PILL }),
-    ]),
+    ], { railWidth: rail }),
   ];
 
   if (!playing) {
@@ -168,8 +168,6 @@ export function buildCatanGameRoot(region: LayoutBox, deps: CatanGameHudDeps): N
     buildCatanCardsOverlay(region, toggleCatanSidebar, catanLiveView(state, deps.driver)),
     ...statusPanel(driver, region),
     ...chrome,
-    Box({ position: 'absolute', right: 2 + rail, bottom: 1 }, [
-      Button({ id: 'catan-new-game', label: 'new game', onClick: deps.onNewGame, style: UI_CHROME_PILL }),
-    ]),
+    hudBottomRight(Button({ id: 'catan-new-game', label: 'new game', onClick: deps.onNewGame, style: UI_CHROME_PILL }), { railWidth: rail }),
   ]);
 }

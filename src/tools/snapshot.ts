@@ -18,7 +18,7 @@ import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, b
 import { installKeymap } from '../arcade/shell/keybindings.ts';
 import { buildShowcase, mountShowcase } from '../arcade/scenes/ui-showcase.ts';
 import { buildChessGameRoot, chessMoveChat, mountChessHud, refreshMoveHistory } from '../arcade/games/chess/hud.ts';
-import { CHAT_WIDTH, type ChatMessage, clearChat, pushChatMessage } from '../arcade/games/chess/chat.ts';
+import { CHAT_WIDTH, type ChatMessage, clearChat, pushChatMessage } from '../arcade/match/chat.ts';
 import { evaluate } from '../rules/chess/eval.ts';
 import { buildMatchSetup, chessPreviewSides, mountMatchSetup } from '../arcade/match/setup.ts';
 import { creators } from '../arcade/match/models.ts';

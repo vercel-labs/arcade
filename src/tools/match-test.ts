@@ -20,7 +20,7 @@ import { Dropdown, Screen, wrapText } from '../tui/index.ts';
 import { ChessGameScene } from '../arcade/games/chess/scene.ts';
 import { buildBar, buildGameOver, type BarActions } from '../arcade/shell/bars.ts';
 import { buildChessGameRoot, mountChessHud, moveHistory, movesToPgn, refreshMoveHistory } from '../arcade/games/chess/hud.ts';
-import { ChatBox } from '../arcade/games/chess/chat.ts';
+import { ChatBox } from '../arcade/match/chat.ts';
 import { BISHOP, BLACK, FLAG_CAPTURE, KING, pieceColor, pieceType, QUEEN, ROOK, square, WHITE } from '../rules/chess/types.ts';
 import { creators, modelsFor } from '../arcade/match/models.ts';
 import { matchSetupReady, matchSetupSelection, mountMatchSetup } from '../arcade/match/setup.ts';

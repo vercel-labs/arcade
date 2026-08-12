@@ -48,10 +48,16 @@ export const CATAN_CARD = {
   actionDisabled: [45, 49, 58] as CatanRgb,
   actionDisabledInk: [112, 117, 130] as CatanRgb,
   actionInk: [242, 247, 249] as CatanRgb,
+  actionHoverInk: [255, 255, 255] as CatanRgb,
+  actionPressed: [221, 241, 244] as CatanRgb,
+  actionPressedInk: [19, 48, 54] as CatanRgb,
   devActionHover: [149, 109, 190] as CatanRgb,
   devActionPressed: [205, 181, 229] as CatanRgb,
   tradeBg: [20, 23, 31, 0.96] as [number, number, number, number],
   tradeAccent: [78, 167, 177] as CatanRgb,
+  tradeInk: [13, 36, 41] as CatanRgb,
+  tradeHover: [102, 194, 201] as CatanRgb,
+  tradeHoverInk: [8, 27, 31] as CatanRgb,
   tradeSlotBg: [29, 32, 42] as CatanRgb,
 };
 

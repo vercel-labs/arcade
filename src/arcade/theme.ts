@@ -44,6 +44,7 @@ export function uiChromeBg(alpha: number): RGBA {
 // with the Sidebar component.
 export const RAIL_TEXT_FG: RGB = ARCADE_CHROME_TEXT.body;
 export const RAIL_MUTED_FG: RGB = ARCADE_CHROME_TEXT.muted; // events, secondary stats
+export const RAIL_ERROR_FG: RGB = [220, 80, 80]; // error/system events shared by every game rail
 
 export const UI_CHROME_PILL: Style = {
   padding: [0, 1],

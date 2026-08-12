@@ -12,7 +12,7 @@ import type { Player } from '../../ai/player.ts';
 import { CatanState } from '../../rules/catan/catan.ts';
 import type { CatanAction, PlayerColor } from '../../rules/catan/types.ts';
 import { createCatanSetupModelPlayer, runCatanInitialPlacement } from './catan-setup.ts';
-import { shortModel } from '../games/chess/hud.ts';
+import { shortModel } from './model-label.ts';
 
 // One seat in the session: you, or an AI model (a Gateway slug). The color is the seat's
 // piece color — picked in setup and distinct per seat.

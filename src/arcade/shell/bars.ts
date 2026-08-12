@@ -153,18 +153,9 @@ export function buildPromotion(color: Color, onPick: (t: PieceType) => void, onC
 
   // The card's fill reads as a panel against the busy ASCII scene; the rounded choices
   // sit over it with transparent interiors. Tight padding keeps it compact.
-  const popup = Box(
-    {
-      flexDirection: 'column',
-      alignItems: 'stretch',
-      gap: 1, // one row between the "promote to" header and the choices (the choices stay flush)
-      padding: [1, 2],
-      background: UI_CHROME_BG,
-    },
-    [
-      Box({ justifyContent: 'center' }, [Text({ text: 'promote to', style: { color: ARCADE_CHROME_TEXT.title, bold: true } })]),
-      Box({ flexDirection: 'column', alignItems: 'stretch', gap: 0 }, options),
-    ],
+  const popup = Dialog(
+    { title: 'promote to', align: 'center', titleColor: ARCADE_CHROME_TEXT.title, padding: [1, 2], background: UI_CHROME_BG },
+    [Box({ flexDirection: 'column', alignItems: 'stretch', gap: 0 }, options)],
   );
 
   // Centered modal: a translucent scrim dims the scene behind the popup (real
@@ -194,13 +185,10 @@ export function buildGameOver(
   // Centered title/subtitle, then a centered row of content-sized buttons (same layout as
   // buildConfirm) — the buttons size to their labels + padding rather than stretching to
   // the card width.
-  const card = Box(
-    { flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [1, 3], background: UI_CHROME_BG },
+  const card = Dialog(
+    { title: opts.title, align: 'center', titleColor: opts.tint, padding: [1, 3], background: UI_CHROME_BG },
     [
-      Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1 }, [
-        Box({ justifyContent: 'center' }, [Text({ text: opts.title, style: { color: opts.tint, bold: true } })]),
-        Box({ justifyContent: 'center' }, [Text({ text: opts.subtitle, style: { color: ARCADE_CHROME_TEXT.secondary } })]),
-      ]),
+      Box({ justifyContent: 'center' }, [Text({ text: opts.subtitle, style: { color: ARCADE_CHROME_TEXT.secondary } })]),
       Box({ flexDirection: 'row', justifyContent: 'center', gap: 2 }, [
         btn('over-newgame', 'new game', onNewGame, true),
         btn('over-close', 'close', onClose, false),
@@ -227,10 +215,9 @@ export function buildConfirm(opts: {
 
   // One row between the prompt and the buttons (the middle ground — no double spacer);
   // the two buttons keep a horizontal gap so they read as separate actions.
-  const card = Box(
-    { flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [1, 3], background: UI_CHROME_BG },
+  const card = Dialog(
+    { title: opts.prompt, align: 'center', titleColor: ARCADE_CHROME_TEXT.title, padding: [1, 3], background: UI_CHROME_BG },
     [
-      Box({ justifyContent: 'center' }, [Text({ text: opts.prompt, style: { color: ARCADE_CHROME_TEXT.title, bold: true } })]),
       Box({ flexDirection: 'row', justifyContent: 'center', gap: 2 }, [
         btn(`${opts.idPrefix}-yes`, opts.confirmLabel, opts.onConfirm, true),
         btn(`${opts.idPrefix}-cancel`, 'cancel', opts.onCancel, false),

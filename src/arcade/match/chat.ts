@@ -10,14 +10,14 @@
 // positioned content column inside an overflow-clipped viewport, with follow-to-
 // bottom (sticks to the newest entry until the reader scrolls up).
 
-import { Box, Text, wrapText, type Component, type Node, type Screen } from '../../../tui/index.ts';
-import type { RGB, Surface } from '../../../engine/index.ts';
-import type { KeyEvent } from '../../../platform/input.ts';
-import type { LayoutBox, PointerHit } from '../../../tui/types.ts';
-import { creatorTint } from '../../scenes/wisp.ts';
-import { SIDEBAR_PAD_L, SIDEBAR_PAD_R } from '../../../tui/index.ts';
-import { ARCADE_THEME, RAIL_MUTED_FG, RAIL_TEXT_FG } from '../../theme.ts';
-import { CHESS_PALETTE } from './palette.ts';
+import { Box, Text, wrapText, type Component, type Node, type Screen } from '../../tui/index.ts';
+import type { RGB, Surface } from '../../engine/index.ts';
+import type { KeyEvent } from '../../platform/input.ts';
+import type { LayoutBox, PointerHit } from '../../tui/types.ts';
+import { creatorTint } from '../scenes/wisp.ts';
+import { shortModel } from './model-label.ts';
+import { SIDEBAR_PAD_L, SIDEBAR_PAD_R } from '../../tui/index.ts';
+import { ARCADE_THEME, RAIL_ERROR_FG, RAIL_MUTED_FG, RAIL_TEXT_FG } from '../theme.ts';
 
 // One chat line. Normally a model's rationale, tagged with its slug (drives the name +
 // color). When `event` is set it's a neutral game-event notice (e.g. "Flop  Q♥ 9♦ 5♣"),
@@ -50,18 +50,12 @@ const CONTENT_W = VIEW_W - SCROLLBAR_W - RIGHT_GAP; // text wrap width — a gap
 
 const MSG_FG: RGB = RAIL_TEXT_FG; // dialogue + colon — normal white
 const EVENT_FG: RGB = RAIL_MUTED_FG; // grey — game-event notices
-const ERROR_FG: RGB = CHESS_PALETTE.illegal; // red — illegal-move events (matches the moves panel)
+const ERROR_FG: RGB = RAIL_ERROR_FG;
 const DEFAULT_PLACEHOLDER = 'ai dialogue will appear here';
 const PLACEHOLDER_FG: RGB = ARCADE_THEME.textMuted;
 const TRACK: RGB = ARCADE_THEME.scrollbarTrack;
 const THUMB: RGB = ARCADE_THEME.scrollbarThumb;
 const WHEEL_STEP = 3;
-
-// "anthropic/claude-opus-4.8" → "claude-opus-4.8".
-function shortModel(slug: string): string {
-  const i = slug.indexOf('/');
-  return i >= 0 ? slug.slice(i + 1) : slug;
-}
 
 // The creator's wisp color for a slug (its provider's tint — the same signature
 // color the model's orb glows in the match HUD).

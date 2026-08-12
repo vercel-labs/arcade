@@ -8,27 +8,17 @@
 // Colors are picked once, for you: the remaining seats take the rest of PLAYER_COLORS in
 // order, so two seats can never share a color and no per-seat color control is needed.
 
-import { Box, Button, Dropdown, Slot, Text, type Node, type Screen } from '../../tui/index.ts';
+import { Box, Dropdown, Field, Slot, Text, type Node, type Screen } from '../../tui/index.ts';
 import type { RGB } from '../../engine/index.ts';
 import { pickerCreators, type ModelInfo } from './models.ts';
-import { SLOW_MODELS } from './beta-allowlist.ts';
-import { creatorTint } from '../scenes/wisp.ts';
-import { shortModel } from '../games/chess/hud.ts';
-import { PLAYER_LOOK } from '../games/catan/card-hud.ts';
+import { shortModel } from './model-label.ts';
+import { PLAYER_LOOK } from '../games/catan/palette.ts';
 import { PLAYER_COLORS, type PlayerColor } from '../../rules/catan/types.ts';
 import type { CatanSeatSpec } from './catan-driver.ts';
-import { ARCADE_CHROME_TEXT, ARCADE_OUTLINE_CONTROL } from '../theme.ts';
+import { ARCADE_CHROME_TEXT } from '../theme.ts';
+import { createModelSeatPicker, hiddenModelSeat, modelSeatControls, mountModelSeat, type ModelCreator, type ModelSeatPicker } from './model-seat-picker.ts';
 
-interface AiCreator {
-  slug: string;
-  name: string;
-  models: ModelInfo[];
-}
-
-const TEXT_CREATORS: AiCreator[] = pickerCreators();
-const LIST_ROWS = 7; // visible rows when a dropdown is open (lists scroll past this)
-const CREATOR_W = 22;
-const MODEL_W = 22;
+const TEXT_CREATORS: ModelCreator[] = pickerCreators();
 const MAX_SEATS = 4; // the base game's ceiling; the rules engine allows 2 for heads-up
 const MIN_SEATS = 2;
 const SEAT_LABEL_W = 10; // wide enough for "your color"; keeps every control aligned
@@ -44,85 +34,6 @@ const changed = (): void => {
   onChanged?.();
 };
 
-interface AiSide {
-  readonly creators: readonly AiCreator[];
-  readonly creatorDropdown: Dropdown;
-  readonly modelDropdown: Dropdown;
-  readonly randomId: string;
-  creator: string | null;
-  models: ModelInfo[];
-  modelId: string | null;
-}
-
-function creatorIndex(creators: readonly AiCreator[], slug: string): number {
-  const i = creators.findIndex((c) => c.slug === slug);
-  return i < 0 ? 0 : i;
-}
-
-function pickCreator(side: AiSide, slug: string): void {
-  if (side.creator === slug) return;
-  side.creator = slug;
-  side.models = side.creators.find((creator) => creator.slug === slug)?.models ?? [];
-  side.modelDropdown.setItems(side.models.map((m) => m.name));
-  side.modelId = null;
-}
-
-// Drop a random creator+model combo into a seat, driving the seat's own dropdowns via
-// pick() so the field, model list, and preview update exactly as a manual pick would.
-// Prefers a combo different from the current one so a click always feels like it did
-// something; every offered combo is pre-validated by pickerCreators().
-function randomizeSide(side: AiSide): void {
-  const creators = side.creators;
-  if (creators.length === 0) return;
-  const prev = side.modelId;
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const c = creators[(Math.random() * creators.length) | 0];
-    if (c.models.length === 0) continue;
-    const m = c.models[(Math.random() * c.models.length) | 0];
-    if (m.id === prev && attempt < 7) continue;
-    side.creator = null;
-    side.creatorDropdown.pick(creatorIndex(creators, c.slug));
-    const i = side.models.findIndex((mm) => mm.id === m.id);
-    if (i >= 0) side.modelDropdown.pick(i);
-    return;
-  }
-}
-
-function makeSide(idPrefix: string, creators: readonly AiCreator[], defaultCreator: string, defaultModelId: string): AiSide {
-  let side: AiSide;
-  const creatorDropdown = new Dropdown({
-    searchable: true,
-    searchPlaceholder: 'Search',
-    id: `${idPrefix}-creator`,
-    items: creators.map((creator) => creator.name),
-    width: CREATOR_W,
-    rows: LIST_ROWS,
-    index: creatorIndex(creators, defaultCreator),
-    onSelect: (i) => {
-      pickCreator(side, creators[i].slug);
-      changed();
-    },
-  });
-  const modelDropdown = new Dropdown({
-    searchable: true,
-    searchPlaceholder: 'Search',
-    id: `${idPrefix}-model`,
-    items: [],
-    width: MODEL_W,
-    rows: LIST_ROWS,
-    placeholder: 'pick a model…',
-    onSelect: (i) => {
-      side.modelId = side.models[i]?.id ?? null;
-      changed();
-    },
-  });
-  side = { creators, creator: null, models: [], modelId: null, creatorDropdown, modelDropdown, randomId: `${idPrefix}-random` };
-  pickCreator(side, defaultCreator);
-  const i = side.models.findIndex((m) => m.id === defaultModelId);
-  if (i >= 0) modelDropdown.pick(i);
-  return side;
-}
-
 // One config per AI seat the table can hold. Index 0 is only used when spectating (where
 // seat 1 is a model too); playing, you are seat 1 and indices 1.. are your opponents.
 // Spanning four creators keeps the default 4-seat spectate table from repeating one.
@@ -132,7 +43,7 @@ const DEFAULT_MODELS = [
   ['openai', 'openai/gpt-5.4-nano'],
   ['google', 'google/gemini-2.5-flash'],
 ] as const;
-const sides: AiSide[] = DEFAULT_MODELS.map(([prov, model], i) => makeSide(`catan-seat${i}`, TEXT_CREATORS, prov, model));
+const sides: ModelSeatPicker[] = DEFAULT_MODELS.map(([prov, model], i) => createModelSeatPicker({ idPrefix: `catan-seat${i}`, creators: TEXT_CREATORS, defaultCreator: prov, defaultModelId: model, onChange: changed }));
 
 // How many players sit at the board, you included when playing: 2..4. Defaults to 3, the
 // smallest count the physical base game ships for.
@@ -193,10 +104,7 @@ export function mountCatanSetup(ui: Screen): void {
   ui.mount(seatsDropdown);
   ui.mount(modeDropdown);
   ui.mount(colorDropdown);
-  for (const s of sides) {
-    ui.mount(s.creatorDropdown);
-    ui.mount(s.modelDropdown);
-  }
+  for (const side of sides) mountModelSeat(ui, side);
 }
 
 // Ready when every shown seat's config has a committed model.
@@ -223,53 +131,21 @@ export function catanSetupLabels(): string[] {
   for (let i = 1; i < seatCount(); i++) labels.push(seatLabel(sides[i]));
   return labels;
 }
-function seatLabel(side: AiSide): string {
+function seatLabel(side: ModelSeatPicker): string {
   return side.modelId ? shortModel(side.modelId) : side.creator ?? 'AI';
 }
 
 const TITLE_FG: RGB = ARCADE_CHROME_TEXT.title;
 const HERO_FG: RGB = ARCADE_CHROME_TEXT.body;
-const SLOW_FG: RGB = [210, 168, 90];
-const RANDOM_HOVER_FG: RGB = [255, 255, 255];
-
-function randomBadge(side: AiSide): Node {
-  return Button({
-    id: side.randomId,
-    label: '↻ random',
-    onClick: () => randomizeSide(side),
-    style: { padding: [0, 0], color: 'muted', hover: { color: RANDOM_HOVER_FG }, focus: { color: RANDOM_HOVER_FG } },
-  });
-}
-
-function slowBadge(modelId: string | null): Node[] {
-  return modelId && SLOW_MODELS.has(modelId) ? [Text({ text: '(slow)', style: { color: SLOW_FG } })] : [];
-}
-
-function brandTint(side: AiSide): RGB {
-  if (!side.creator) return ARCADE_OUTLINE_CONTROL.neutralText;
-  const t = creatorTint(side.creator);
-  return [t.x | 0, t.y | 0, t.z | 0];
-}
-
 // A settings line: a muted label gutter + the control, so the columns align.
 function row(label: string, control: Node): Node {
-  return Box({ flexDirection: 'row', gap: 1, alignItems: 'start' }, [
-    Box({ width: SEAT_LABEL_W }, [Text({ text: label, style: { color: 'muted' } })]),
-    control,
-  ]);
+  return Field({ label, child: control, direction: 'row', labelWidth: SEAT_LABEL_W });
 }
 
 // One seat's row: the seat number in that seat's PIECE color (not the creator's brand hue —
 // on this board the color IS the player's identity), then the creator and model pickers.
-function seatRow(side: AiSide, seatNo: number, color: PlayerColor): Node {
-  side.creatorDropdown.setAccent(brandTint(side));
-  return Box({ flexDirection: 'row', gap: 1, alignItems: 'start' }, [
-    Box({ width: SEAT_LABEL_W }, [Text({ text: `seat ${seatNo}`, style: { color: PLAYER_LOOK[color], bold: true } })]),
-    Slot(side.creatorDropdown.id),
-    Slot(side.modelDropdown.id),
-    randomBadge(side),
-    ...slowBadge(side.modelId),
-  ]);
+function seatRow(side: ModelSeatPicker, seatNo: number, color: PlayerColor): Node {
+  return Field({ label: `seat ${seatNo}`, child: modelSeatControls(side), direction: 'row', labelWidth: SEAT_LABEL_W, labelStyle: { color: PLAYER_LOOK[color], bold: true } });
 }
 
 // The top-left settings panel: title, mode / seats / color, then one row per seat. No card
@@ -292,7 +168,7 @@ export function buildCatanSetupPanel(): Node {
   const visible = new Set(shownIdx);
   const hidden = sides
     .filter((_, i) => !visible.has(i))
-    .map((side) => Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot(side.creatorDropdown.id), Slot(side.modelDropdown.id)]));
+    .map(hiddenModelSeat);
 
   return Box({ flexDirection: 'column', gap: 1, alignItems: 'start' }, [
     Text({ text: 'new game', style: { color: TITLE_FG, bold: true } }),

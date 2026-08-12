@@ -22,6 +22,25 @@ test('Field composes a muted label with one caller-owned control', () => {
   });
 });
 
+test('Field composes a horizontal labeled row with aligned controls', () => {
+  const first = Button({ id: 'creator', label: 'OpenAI' });
+  const second = Button({ id: 'model', label: 'GPT' });
+  const field = Field({ label: 'white', child: [first, second], direction: 'row', labelWidth: 8 });
+  assert.deepEqual(field, {
+    kind: 'box',
+    style: { flexDirection: 'row', gap: 1, alignItems: 'start' },
+    children: [
+      {
+        kind: 'box',
+        style: { width: 8 },
+        children: [{ kind: 'text', text: 'white', id: undefined, style: { color: 'textMuted' } }],
+      },
+      first,
+      second,
+    ],
+  });
+});
+
 test('FilledButton preserves the shared neutral button recipe', () => {
   assert.deepEqual(
     FilledButton({ id: 'submit', label: 'submit' }),

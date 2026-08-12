@@ -40,7 +40,7 @@ import { buildShowcase, mountShowcase } from './scenes/ui-showcase.ts';
 import { buildChessGameRoot, chessMoveChat, type Commentary, type MatchSide, mountChessHud, movesToPgn, refreshMoveHistory, shortModel } from './games/chess/hud.ts';
 import { CHESS_PALETTE } from './games/chess/palette.ts';
 import { creatorTint } from './scenes/wisp.ts';
-import { CHAT_WIDTH, clearChat, pushChatMessage } from './games/chess/chat.ts';
+import { CHAT_WIDTH, clearChat, pushChatMessage } from './match/chat.ts';
 import { buildMatchSetup, buildSwapSetup, chessPreviewSides, matchSetupSelection, mountMatchSetup, mountSwapSetup, openSwapSetup, setMatchSetupChanged, swapSetupSelection } from './match/setup.ts';
 import { copyToClipboard } from '../platform/clipboard.ts';
 import { checkForUpdate, refreshLatestInBackground, type UpdateInfo } from './update.ts';

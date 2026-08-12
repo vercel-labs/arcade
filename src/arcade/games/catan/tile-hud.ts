@@ -9,6 +9,7 @@ import { type BoardToken, type CatanMode, type SailLabel } from './tile-scene.ts
 import { type PortKind } from './mesh/index.ts';
 import { UI_CHROME_BG, UI_CHROME_PILL, uiChromeBg } from '../../theme.ts';
 import { buildCatanCardsOverlay, CATAN_RAIL_W, catanResourceFace, catanSidebarOpen, mountCatanCardsHud, toggleCatanSidebar } from './card-hud.ts';
+import { hudBottomRight, hudTopCenter, hudTopRight } from '../../shell/hud-chrome.ts';
 import { type FlyingResource } from './scene/resource-flight.ts';
 import { CATAN_NUMBER_TOKEN } from './palette.ts';
 
@@ -229,25 +230,24 @@ export function buildCatanTileRoot(region: LayoutBox, onOpenMenu: () => void, to
     // below the chrome, so the menu and roll button stay clickable-looking on top.
     ...flights.map(flyingCard),
     ...(movingRobber
-      ? [Box({ position: 'absolute', top: 1, left: 0, width: region.w - (railOpen ? CATAN_RAIL_W : 0), justifyContent: 'center' }, [
+      ? [hudTopCenter(
           Box({ flexDirection: 'column', alignItems: 'center', padding: [0, 2], background: UI_CHROME_BG }, [
             Text({ text: 'moving robber', style: { color: CHIP_BLOCKED_INK, bold: true } }),
             Text({ text: 'choose a different tile', style: { color: [154, 159, 170] } }),
-          ]),
-        ])]
+          ]), region.w, { railWidth: railOpen ? CATAN_RAIL_W : 0 })]
       : []),
     // The rail owns the right strip while open, so the chrome shifts left by its width to stay
     // over the visible scene. Open, the reopen pill drops — the rail's own ✕ collapses it.
-    Box({ position: 'absolute', top: 1, right: 2 + (railOpen ? CATAN_RAIL_W : 0), flexDirection: 'row', gap: 1 }, [
+    hudTopRight([
       Button({ id: 'catan-menu-button', label: '☰ menu', onClick: onOpenMenu, style: UI_CHROME_PILL }),
       ...(mode === 'boardCards' && !railOpen ? [Button({ id: 'catan-sidebar-open', label: 'sidebar', onClick: toggleSidebar, style: UI_CHROME_PILL })] : []),
-    ]),
+    ], { railWidth: railOpen ? CATAN_RAIL_W : 0 }),
     // Either board mode: a roll button in the bottom-right; triggers the big dice overlay. Same
     // margin from the right as the ☰ menu button, same from the bottom as the bottom bar, and it
     // steps left by the rail's width alongside that chrome so it stays over the visible scene.
     // The hand panel hugs the bottom-LEFT corner, so the two never meet.
     ...(boardMode && !movingRobber
-      ? [Box({ position: 'absolute', bottom: 1, right: 2 + (railOpen ? CATAN_RAIL_W : 0) }, [FilledButton({ id: 'catan-roll', label: 'roll dice', onClick: () => H?.onRollDice() })])]
+      ? [hudBottomRight(FilledButton({ id: 'catan-roll', label: 'roll dice', onClick: () => H?.onRollDice() }), { railWidth: railOpen ? CATAN_RAIL_W : 0 })]
       : []),
   ]);
   chrome.overlay = true;

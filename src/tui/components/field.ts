@@ -6,17 +6,23 @@ import type { Node, Style } from '../types.ts';
 
 export interface FieldOpts {
   label: string;
-  child: Node;
+  child: Node | Node[];
+  direction?: 'column' | 'row';
+  labelWidth?: number;
   style?: Style;
   labelStyle?: Style;
 }
 
 export function Field(options: FieldOpts): Node {
+  const row = options.direction === 'row';
+  const children = Array.isArray(options.child) ? options.child : [options.child];
   return Box(
-    { flexDirection: 'column', gap: 0, ...options.style },
+    { flexDirection: row ? 'row' : 'column', gap: row ? 1 : 0, ...(row ? { alignItems: 'start' as const } : {}), ...options.style },
     [
-      Text({ text: options.label, style: { color: 'textMuted', ...options.labelStyle } }),
-      options.child,
+      ...(row && options.labelWidth != null
+        ? [Box({ width: options.labelWidth }, [Text({ text: options.label, style: { color: 'textMuted', ...options.labelStyle } })])]
+        : [Text({ text: options.label, style: { color: 'textMuted', ...options.labelStyle } })]),
+      ...children,
     ],
   );
 }

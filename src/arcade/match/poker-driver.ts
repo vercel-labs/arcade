@@ -12,7 +12,7 @@ import { isTelemetryEnabled, localPlayerKey, trackHandEnded, trackMatchRecord, t
 import type { Player } from '../../ai/player.ts';
 import { type HandPublicRecord, HoldemState, type PokerAction } from '../../rules/poker/holdem.ts';
 import type { PokerGameScene, PokerSeatView } from '../games/poker/poker-scene.ts';
-import { shortModel } from '../games/chess/hud.ts';
+import { shortModel } from './model-label.ts';
 import { disambiguateLabels } from './labels.ts';
 import { PokerMemory } from './poker-memory.ts';
 import { PokerVoice, pokerVoiceCapable } from './poker-voice.ts';
