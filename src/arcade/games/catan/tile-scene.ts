@@ -184,7 +184,7 @@ const PORT_SAIL_INFO: Record<PortKind, { ratio: string; icon: string }> = {
   generic: { ratio: '3:1', icon: '?' },
   brick: { ratio: '2:1', icon: '🧱' },
   grain: { ratio: '2:1', icon: '🌾' },
-  lumber: { ratio: '2:1', icon: '🌲' },
+  lumber: { ratio: '2:1', icon: '🪵' },
   ore: { ratio: '2:1', icon: '🪨' },
   wool: { ratio: '2:1', icon: '🐑' },
 };

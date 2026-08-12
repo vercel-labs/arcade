@@ -73,19 +73,55 @@ const HAND_PANEL_LEFT = 2; // align the bottom workbench with the top-left contr
 // Wider than the 1-cell gap between cards, so the two hands read as separate groups without
 // needing a rule drawn between them.
 const HAND_SPLIT_GAP = 3;
-// What each group of the hand costs, panel padding included. The dev group is the optional half:
-// when the board area cannot hold both, it is the one that goes.
+// What the fixed resource half of the hand costs, panel padding included. Development cards are
+// intrinsic-width: the workbench shows every type, while a real hand shows only types it owns.
 const RESOURCE_HAND_W = RESOURCE_ORDER.length * CARD_W + (RESOURCE_ORDER.length - 1) + HAND_PAD_X * 2;
-const DEV_HAND_W = HAND_SPLIT_GAP + DEV_CARD_TYPES.length * CARD_W + (DEV_CARD_TYPES.length - 1);
 const HAND_PAD_B = 1; // air between the cards and the panel's bottom edge
 const HAND_ACTION_W = 9;
 const ACTION_W = 12;
-const ACTION_GAP = 1;
-const ACTIONS_W = HAND_ACTION_W * 2 + ACTION_GAP;
+// These are intentionally independent. The action pair needs its own seam, and the whole pair
+// needs more air from the taller hand tray so their different silhouettes feel deliberate.
+const HAND_ACTION_GAP = 2;
+const ACTION_BUTTON_GAP = 2;
+const ACTIONS_W = HAND_ACTION_W * 2 + ACTION_BUTTON_GAP;
 const ACTION_BG = CATAN_CARD.actionBg;
 const ACTION_HOVER = CATAN_CARD.actionHover;
 const ACTION_DISABLED = CATAN_CARD.actionDisabled;
 const ACTION_DISABLED_INK = CATAN_CARD.actionDisabledInk;
+
+interface DevCardHelp {
+  title: string;
+  effect: string;
+}
+
+// Accurate, compact paraphrases of the base-game development cards. The card faces stay terse so
+// the hand remains usable in narrow terminals; this copy carries the rules meaning on hover.
+const DEV_CARD_HELP: Record<DevCardType, DevCardHelp> = {
+  knight: {
+    title: 'Knight',
+    effect: 'Move the robber to another hex. Then steal 1 random resource from a player with a settlement or city beside its new hex.',
+  },
+  victoryPoint: {
+    title: 'Victory Point',
+    effect: 'Keep this card hidden. It is worth 1 victory point; reveal it when it gives you enough points to win.',
+  },
+  roadBuilding: {
+    title: 'Road Building',
+    effect: 'Place 2 new roads for free, following the normal road placement rules.',
+  },
+  yearOfPlenty: {
+    title: 'Year of Plenty',
+    effect: 'Take any 2 resources from the supply and add them to your hand. They may be the same resource or different resources.',
+  },
+  monopoly: {
+    title: 'Monopoly',
+    effect: 'Name 1 resource type. Every other player gives you every resource of that type in their hand.',
+  },
+};
+
+function devHandWidth(count: number): number {
+  return count === 0 ? 0 : HAND_SPLIT_GAP + count * CARD_W + (count - 1);
+}
 
 // The expanded editor replaces the compact hand in-place. Bank and hand use the exact same five
 // columns, with two fixed transfer rows between them; this preserves the reference's physical
@@ -652,7 +688,24 @@ function adjustDevHand(type: DevCardType, ev: PointerHit): boolean {
   return adjustCatanWorkbenchDev(type, ev.button === 2 ? -1 : 1);
 }
 
-function workbenchActionButton(id: string, icon: string, label: string, enabled: boolean, onClick: () => void): Node {
+interface WorkbenchActionColors {
+  background: Rgb;
+  hover: Rgb;
+  pressed: Rgb;
+}
+
+function workbenchActionButton(
+  id: string,
+  icon: string,
+  label: string,
+  enabled: boolean,
+  onClick: () => void,
+  colors: WorkbenchActionColors = {
+    background: ACTION_BG,
+    hover: ACTION_HOVER,
+    pressed: [221, 241, 244],
+  },
+): Node {
   const ink: Rgb = enabled ? [242, 247, 249] : ACTION_DISABLED_INK;
   const content = (): Node[] => [
     Text({ text: icon, style: { color: ink, bold: true } }),
@@ -681,12 +734,12 @@ function workbenchActionButton(id: string, icon: string, label: string, enabled:
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
-      background: ACTION_BG,
+      background: colors.background,
       color: [242, 247, 249],
       bold: true,
-      hover: { background: ACTION_HOVER, color: [255, 255, 255] },
-      focus: { background: ACTION_HOVER, color: [255, 255, 255] },
-      pressed: { background: [221, 241, 244], color: [19, 48, 54] },
+      hover: { background: colors.hover, color: [255, 255, 255] },
+      focus: { background: colors.hover, color: [255, 255, 255] },
+      pressed: { background: colors.pressed, color: [19, 48, 54] },
     },
   });
   button.children = content();
@@ -695,6 +748,10 @@ function workbenchActionButton(id: string, icon: string, label: string, enabled:
 
 function canBuyWorkbenchDev(view: CatanCardsView): boolean {
   return view.developmentDeck > 0 && RESOURCE_ORDER.every((resource) => view.hand[resource] >= COSTS.devCard[resourceIndex(resource)]);
+}
+
+function canOpenWorkbenchTrade(view: CatanCardsView): boolean {
+  return RESOURCE_ORDER.some((resource) => view.hand[resource] > 0);
 }
 
 function tradeCardButton(resource: Resource, count: number, enabled: boolean, onPick: () => void): Node {
@@ -813,8 +870,13 @@ function tradeEditor(view: CatanCardsView, onChange: () => void): Node {
 // panel grows and shrinks with the hand instead of showing five mostly-empty purple slots.
 function handPanel(view: CatanCardsView, layout: CatanCardsLayout, avail: number, onChange: () => void): Node {
   const height = layout.compact ? CARD_H_COMPACT : CARD_H;
-  const showActions = view.editable === true && avail >= RESOURCE_HAND_W + ACTION_GAP + ACTIONS_W;
-  const showDev = avail >= RESOURCE_HAND_W + DEV_HAND_W + (showActions ? ACTION_GAP + ACTIONS_W : 0);
+  const visibleDevTypes = view.editable
+    ? DEV_CARD_TYPES
+    : DEV_CARD_TYPES.filter((type) => view.devHand[type] > 0);
+  const visibleDevWidth = devHandWidth(visibleDevTypes.length);
+  const showActions = view.editable === true && avail >= RESOURCE_HAND_W + HAND_ACTION_GAP + ACTIONS_W;
+  const showDev = visibleDevTypes.length > 0
+    && avail >= RESOURCE_HAND_W + visibleDevWidth + (showActions ? HAND_ACTION_GAP + ACTIONS_W : 0);
   // A card is wrapped in its own click target only on an editable (workbench) view. In the game
   // the wrapper is skipped entirely, so the hit-test finds nothing interactive over the hand and
   // a click falls through to the board exactly as it did before the cards existed.
@@ -829,9 +891,17 @@ function handPanel(view: CatanCardsView, layout: CatanCardsLayout, avail: number
   };
   const devCards = !showDev
     ? []
-    : DEV_CARD_TYPES.map((type) =>
-        clickable(card(DEV_HAND_LOOK[type], view.devHand[type], height, view.devHand[type] === 0), (ev) => adjustDevHand(type, ev)),
-      );
+    : visibleDevTypes.map((type) => Tooltip({
+        id: `catan-dev-${type}`,
+        content: [
+          { text: DEV_CARD_HELP[type].title, bold: true },
+          DEV_CARD_HELP[type].effect,
+        ],
+        maxWidth: 46,
+      }, clickable(
+        card(DEV_HAND_LOOK[type], view.devHand[type], height, view.devHand[type] === 0),
+        (ev) => adjustDevHand(type, ev),
+      )));
   const cards = RESOURCE_ORDER.map((resource) =>
     clickable(card(RESOURCE_LOOK[resource], view.hand[resource], height, view.hand[resource] === 0), (ev) => adjustHand(resource, ev)),
   );
@@ -839,33 +909,44 @@ function handPanel(view: CatanCardsView, layout: CatanCardsLayout, avail: number
     ? []
     : [
         Tooltip({
+          id: 'catan-trade',
           content: [
             { text: 'Trade', bold: true },
             'Exchange resources with the bank. Player trades are coming later.',
           ],
           maxWidth: 34,
-        }, workbenchActionButton('catan-trade-open', '🔄', 'trade', true, () => {
-          setCatanTradeEditorOpen(!workbenchTradeOpen);
-          onChange();
-        })),
+        }, workbenchActionButton(
+          'catan-trade-open',
+          `${RESOURCE_LOOK.lumber.emoji}⇄${RESOURCE_LOOK.wool.emoji}`,
+          'trade',
+          canOpenWorkbenchTrade(view),
+          () => {
+            setCatanTradeEditorOpen(!workbenchTradeOpen);
+            onChange();
+          },
+        )),
         Tooltip({
           id: 'catan-buy-dev',
           content: [
             { text: 'Buy development card', bold: true },
-            'Costs 1 sheep, 1 wheat, and 1 ore. Draws from the remaining deck.',
+            'Costs 🐑 🌾 🪨. Draws from the remaining deck.',
           ],
           maxWidth: 36,
         }, workbenchActionButton('catan-buy-dev', DEV_CARD_ICON, 'buy dev', canBuyWorkbenchDev(view), () => {
           if (buyCatanWorkbenchDevCard()) onChange();
+        }, {
+          background: DEV_LOOK.fill,
+          hover: CATAN_CARD.devActionHover,
+          pressed: CATAN_CARD.devActionPressed,
         })),
       ];
   const tray = Box({ height: layout.handHeight, gap: HAND_SPLIT_GAP, padding: [HAND_PAD_T, HAND_PAD_X, HAND_PAD_B, HAND_PAD_X], background: uiChromeBg(0.9) }, [
     Box({ gap: 1 }, cards),
     ...(devCards.length === 0 ? [] : [Box({ gap: 1 }, devCards)]),
   ]);
-  return Box({ position: 'absolute', left: HAND_PANEL_LEFT, bottom: 1, height: layout.handHeight, gap: ACTION_GAP }, [
+  return Box({ position: 'absolute', left: HAND_PANEL_LEFT, bottom: 1, height: layout.handHeight, gap: HAND_ACTION_GAP }, [
     tray,
-    ...(actions.length === 0 ? [] : [Box({ height: layout.handHeight, gap: ACTION_GAP, alignItems: 'center' }, actions)]),
+    ...(actions.length === 0 ? [] : [Box({ height: layout.handHeight, gap: ACTION_BUTTON_GAP, alignItems: 'center' }, actions)]),
   ]);
 }
 

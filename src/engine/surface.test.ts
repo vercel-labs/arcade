@@ -16,8 +16,8 @@ test('a variation selector stays in its glyph cell instead of being dropped', ()
 
   // A genuinely wide emoji keeps its two-cell reservation with the selector attached.
   const wide = new Surface(10, 1);
-  wide.drawText(0, 0, '🌲x', [255, 255, 255], [0, 0, 0]);
-  assert.equal(stringWidth('🌲'), 2);
+  wide.drawText(0, 0, '🪵x', [255, 255, 255], [0, 0, 0]);
+  assert.equal(stringWidth('🪵'), 2);
   assert.equal(wide.getCell(2, 0)?.ch, 'x');
 });
 
@@ -34,13 +34,13 @@ const K: [number, number, number] = [0, 0, 0];
 test('overwriting either half of a double-width glyph blanks the other', () => {
   // A half-replaced pair cannot be rendered: the old glyph stays and new content lands on it.
   const tail = new Surface(6, 1);
-  tail.drawText(0, 0, '🌲', W, K);
+  tail.drawText(0, 0, '🪵', W, K);
   tail.setCell(1, 0, 'x', W, K);
   assert.equal(tail.getCell(0, 0)?.ch, ' ', 'head blanked when its tail is taken');
   assert.equal(tail.getCell(1, 0)?.ch, 'x');
 
   const head = new Surface(6, 1);
-  head.drawText(0, 0, '🌲', W, K);
+  head.drawText(0, 0, '🪵', W, K);
   head.setCell(0, 0, 'x', W, K);
   assert.equal(head.getCell(1, 0)?.ch, ' ', 'tail cleared when its head goes narrow');
 });
@@ -51,10 +51,10 @@ test('a diff run re-anchors the cursor after a wide glyph tail', () => {
   const cur = new Surface(8, 1);
   prev.drawText(0, 0, '........', W, K);
   cur.drawText(0, 0, '..', W, K);
-  cur.drawText(2, 0, '🌲', W, K);
+  cur.drawText(2, 0, '🪵', W, K);
   cur.drawText(4, 0, 'ab..', W, K);
   const out = cur.diff(prev);
-  const afterGlyph = out.slice(out.indexOf('🌲'));
+  const afterGlyph = out.slice(out.indexOf('🪵'));
   assert.ok(afterGlyph.includes('a'), 'the later cells are emitted');
   assert.ok(/\x1b\[\d+;\d+H/.test(afterGlyph.slice(0, afterGlyph.indexOf('a'))), 'cursor re-anchored before them');
 });

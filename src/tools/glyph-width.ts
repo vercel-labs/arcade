@@ -24,7 +24,7 @@ interface Probe {
 // Emoji_Presentation=No is a TEXT glyph by default and only becomes an emoji via a trailing U+FE0F
 // selector — terminals are free to honour that for drawing while still advancing the text width.
 const PRESENTATION_YES: Probe[] = [
-  { glyph: '🌲', note: 'lumber card' },
+  { glyph: '🪵', note: 'lumber card' },
   { glyph: '🧱', note: 'brick card' },
   { glyph: '🐑', note: 'wool card' },
   { glyph: '🌾', note: 'grain card' },

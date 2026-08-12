@@ -11,7 +11,7 @@ import { type RenderTarget } from '../../../engine/index.ts';
 import { type LayoutBox, type Node, type Screen } from '../../../tui/index.ts';
 import { buildGameMenu, type MenuItem } from '../../shell/bars.ts';
 import { type Resource } from '../../../rules/catan/types.ts';
-import { bankCatanResource, CATAN_LOCAL_COLOR, catanHandLandingCell, logCatanReceived, logCatanRobberMove, logCatanRoll } from './card-hud.ts';
+import { bankCatanResource, CATAN_LOCAL_COLOR, catanHandLandingCell, logCatanReceived, logCatanRobberMove, logCatanRoll, resetCatanWorkbenchCards } from './card-hud.ts';
 import { ResourceFlights } from './scene/resource-flight.ts';
 import { buildCatanPieceModal, buildCatanTileRoot, catanTileTerrain, mountCatanTileHud, setCatanTileHandlers, setCatanTileMode } from './tile-hud.ts';
 import { TileScene } from './tile-scene.ts';
@@ -64,7 +64,7 @@ export class CatanController {
     // Wire the HUD dropdowns/buttons to the scene once (the HUD components are module-level).
     setCatanTileHandlers({
       onTerrain: (t) => this.change(() => this.scene.setTerrain(t)),
-      onReroll: () => this.change(() => this.scene.reroll()),
+      onReroll: () => this.change(() => this.regenerateWorkbench()),
       onToggleRobber: (on) => this.change(() => this.scene.setRobber(on)),
       onMode: (m) => this.change(() => this.scene.setMode(m)),
       onToggleSidebar: () => this.change(() => {}), // card-hud owns the flag; just repaint
@@ -95,6 +95,24 @@ export class CatanController {
   private change(mutate: () => void): void {
     mutate();
     this.requestFrame();
+  }
+
+  private regenerateWorkbench(): void {
+    // Tile showcase modes call this same handler for "vary". Varying one authored tile is not a
+    // new board session, so it must leave the card workbench alone.
+    const mode = this.scene.currentMode();
+    if (mode !== 'board' && mode !== 'boardCards') {
+      this.scene.reroll();
+      return;
+    }
+    // Regeneration starts a fresh test-board session, not merely a new terrain arrangement.
+    // Forget cards from a previous roll rather than allowing them to land after the reset and
+    // repopulate the new hand. `drain` also resets the flight clock; its returned cards are
+    // intentionally discarded here because resetCatanWorkbenchCards restores the whole bank.
+    this.flights.drain();
+    this.arrived = [];
+    resetCatanWorkbenchCards();
+    this.scene.reroll();
   }
 
   // ── enter / leave ──────────────────────────────────────────────────────────

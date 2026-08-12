@@ -20,7 +20,7 @@ export const SETTLEMENT_ICON = '🏠';
 
 export const RESOURCE_ORDER: Resource[] = ['lumber', 'brick', 'wool', 'grain', 'ore'];
 export const RESOURCE_LOOK: Record<Resource, CatanCardLook> = {
-  lumber: { emoji: '🌲', name: 'wood', fill: [91, 181, 99], ink: [19, 65, 27] },
+  lumber: { emoji: '🪵', name: 'wood', fill: [86, 174, 95], ink: [19, 65, 27] },
   brick: { emoji: '🧱', name: 'brick', fill: [176, 77, 60], ink: [74, 26, 16] },
   wool: { emoji: '🐑', name: 'sheep', fill: [148, 196, 79], ink: [27, 48, 22] },
   grain: { emoji: '🌾', name: 'wheat', fill: [201, 160, 8], ink: [66, 48, 4] },
@@ -48,6 +48,8 @@ export const CATAN_CARD = {
   actionDisabled: [45, 49, 58] as CatanRgb,
   actionDisabledInk: [112, 117, 130] as CatanRgb,
   actionInk: [242, 247, 249] as CatanRgb,
+  devActionHover: [149, 109, 190] as CatanRgb,
+  devActionPressed: [205, 181, 229] as CatanRgb,
   tradeBg: [20, 23, 31, 0.96] as [number, number, number, number],
   tradeAccent: [78, 167, 177] as CatanRgb,
   tradeSlotBg: [29, 32, 42] as CatanRgb,

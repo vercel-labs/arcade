@@ -17,7 +17,7 @@ Emoji come in two classes:
 | Default look | colour emoji | monochrome text glyph |
 | `East_Asian_Width` | Wide | Neutral |
 | Terminal advances | **2 cells** | **1 cell** |
-| Examples | 🌲 🧱 🐑 🎲 🤖 🏰 🔨 💂 | 🛡 🛠 🏘 ⚔ ⚒ ⚙ 🗺 |
+| Examples | 🪵 🧱 🐑 🎲 🤖 🏰 🔨 💂 | 🛡 🛠 🏘 ⚔ ⚒ ⚙ 🗺 |
 
 A text-default emoji only *looks* like an emoji when followed by U+FE0F (variation selector-16):
 `🛡️` is `U+1F6E1 U+FE0F`. The catch is that **the selector changes how it is drawn but not how it
@@ -86,7 +86,7 @@ None are used in the UI today. Run them through the tool first if you want one.
 
 ## Current state of the codebase
 
-Audited with `\p{Emoji_Presentation}`; the five Catan resource glyphs (🌲 🧱 🐑 🌾 🪨) and every
+Audited with `\p{Emoji_Presentation}`; the five Catan resource glyphs (🪵 🧱 🐑 🌾 🪨) and every
 other emoji rendered through the TUI are emoji-by-default. The text-default characters that remain
 in `src/` are card suits and chess pieces (already special-cased narrow in `width.ts`), strings in
 CLI tools that print straight to stdout rather than through a `Surface`, and the width tables and

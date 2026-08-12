@@ -110,3 +110,28 @@ test('workbench development purchases exhaust the official uneven 25-card deck',
   assert.equal(buyCatanWorkbenchDevCard(), false);
   resetCatanWorkbenchCards();
 });
+
+test('workbench reset restores the complete bank and development deck', () => {
+  resetCatanWorkbenchCards();
+  adjustCatanWorkbenchHand('ore', 1);
+  adjustCatanWorkbenchHand('wool', 1);
+  adjustCatanWorkbenchHand('grain', 1);
+  assert.equal(buyCatanWorkbenchDevCard(), true);
+
+  const bought = catanWorkbenchView();
+  assert.equal(bought.developmentDeck, 24);
+  assert.equal(Object.values(bought.devHand).reduce((sum, count) => sum + count, 0), 1);
+
+  resetCatanWorkbenchCards();
+  const reset = catanWorkbenchView();
+  assert.equal(reset.developmentDeck, 25);
+  assert.deepEqual(reset.devHand, {
+    knight: 0,
+    victoryPoint: 0,
+    roadBuilding: 0,
+    yearOfPlenty: 0,
+    monopoly: 0,
+  });
+  assert.deepEqual(reset.bank, { lumber: 16, brick: 18, wool: 17, grain: 18, ore: 17 });
+  assert.deepEqual(reset.hand, { lumber: 0, brick: 0, wool: 0, grain: 0, ore: 0 });
+});
