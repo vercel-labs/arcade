@@ -74,9 +74,8 @@ export function installKeymap(h: KeyHandlers): Keymap {
     { id: 'menu.closeTeamSwitch', title: 'Close team switcher', run: h.closeTeamSwitch },
     { id: 'menu.openMenu', title: 'Open menu', run: h.openHomeMenu },
     { id: 'menu.closeMenu', title: 'Close menu', run: h.closeHomeMenu },
-    // Render style changes via the bar / menu "display" setting (ascii is the default). The
-    // cycle command is intentionally UNBOUND — the old 'm' key was repurposed to the ☰ menu —
-    // but stays on the command surface so it's agent-drivable and trivial to re-bind.
+    // Render style changes via the bar / menu "display" setting or the global 'd' shortcut.
+    // ASCII remains the default; each trigger advances through ascii → pixels → hybrid.
     { id: 'view.cycleRenderMode', title: 'Cycle display style', run: h.cycleMode },
     { id: 'nav.back', title: 'Back to menu', run: h.enterMenu },
     { id: 'nav.toPrism', title: 'Back to prism', run: h.toPrism },
@@ -127,11 +126,13 @@ export function installKeymap(h: KeyHandlers): Keymap {
   // Global: the always-available keys. `ctrl+c` is the instant quit hatch (caught in
   // onKeyImpl before the keymap, so it works even under a modal). `q` opens the quit-confirm
   // popup. `escape` = back one level — overridden per screen (see below), so it only reaches
-  // this quit binding on the prism (the last level). `?` opens the shortcuts overlay.
+  // this quit binding on the prism (the last level). `d` cycles display style everywhere the
+  // normal keymap is active; `?` opens the shortcuts overlay.
   for (const b of [
     { key: 'q', cmd: 'app.confirmQuit' },
     { key: 'escape', cmd: 'app.quit' },
     { key: 'ctrl+c', cmd: 'app.quit' },
+    { key: 'd', cmd: 'view.cycleRenderMode' },
     { key: '?', cmd: 'app.shortcuts' }, // show the shortcuts overlay for the current screen
   ]) {
     keymap.bind('global', b);
@@ -245,5 +246,25 @@ export function installKeymap(h: KeyHandlers): Keymap {
   // Startup update popup: Escape dismisses ("not now"); the modal layer shadows stray keys.
   // Enter on the default-focused "quit to update" button quits so the user can upgrade.
   keymap.bind('update', { key: 'escape', cmd: 'app.closeUpdateModal' });
+  // Display style is presentation-only, so it remains safe and useful while a popup is open —
+  // including the controls popup where the binding is documented. Focused text components still
+  // receive printable input before the keymap, preserving normal typing behavior.
+  for (const layer of [
+    'promoting',
+    'gameover',
+    'setup',
+    'swap',
+    'home-menu',
+    'teamswitch',
+    'poker-menu',
+    'poker-notes',
+    'chess-menu',
+    'confirm-home',
+    'shortcuts',
+    'confirm-quit',
+    'update',
+  ]) {
+    keymap.bind(layer, { key: 'd', cmd: 'view.cycleRenderMode' });
+  }
   return keymap;
 }

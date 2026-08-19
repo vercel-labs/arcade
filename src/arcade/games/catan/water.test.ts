@@ -23,6 +23,14 @@ test('Catan water is a subdivided finite pointy-top hex aligned with the complet
   assert.equal(CATAN_WATER_RADIUS_Z, CATAN_WATER_RADIUS);
 });
 
+test('settled Catan water omits only the hidden island center', () => {
+  const full = catanWaterMesh();
+  const settled = catanWaterMesh({ omitSettledLand: true });
+  assert.equal(settled.vertices.length, full.vertices.length);
+  assert.ok(settled.indices.length < full.indices.length * 0.7, 'most center triangles are removed');
+  assert.ok(settled.indices.length > full.indices.length * 0.3, 'the visible outer water ring remains');
+});
+
 test('water material keeps bright irregular ripples visible across camera angles and time', () => {
   const uniforms: WaterUniforms = {
     mvp: mat4Identity(),

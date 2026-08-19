@@ -1,8 +1,8 @@
-// Resource cards flying from the tile that produced them to the card they land on.
+// Compact Catan cards flying from a source pile to the hand card they land on.
 //
-// A roll does not pay out instantly: each card is thrown from its hex, arcs across the screen,
-// and only increments the hand when it arrives. Two cards off one city leave in quick succession,
-// so the count ticks up twice a beat apart rather than jumping by two.
+// Rolls, maritime trades, and development purchases all use the same screen-space arc and delayed
+// settlement. Staggered cards report departure and landing separately so their source and hand
+// counts can tick at the exact moments represented by the animation.
 //
 // These live in screen cells, not the 3D scene. They are projected once at launch and then follow
 // a flat 2D arc, the same way the number chips are 2D overlays pinned to a projected point — the
@@ -13,8 +13,8 @@ import { FrameClock, smoothstep } from '../../../../engine/index.ts';
 import { type Resource } from '../../../../rules/catan/types.ts';
 
 // Where a card is right now, for the HUD to place a glyph.
-export interface FlyingResource {
-  resource: Resource;
+export interface FlyingResource<Card extends string = Resource> {
+  resource: Card;
   col: number;
   row: number;
   // The chip is passing behind the hand panel's top edge: only its upper part is still clear, and
@@ -23,15 +23,26 @@ export interface FlyingResource {
   sinking: boolean;
 }
 
-interface Flight {
-  resource: Resource;
+interface Flight<Card extends string> {
+  resource: Card;
   fromCol: number;
   fromRow: number;
   toCol: number;
   toRow: number;
   launchAt: number; // clock time this card leaves the tile
   arc: number; // peak lift above the straight line, in rows
+  departed: boolean;
   banked: boolean;
+}
+
+export interface ResourceFlightAdvance<Card extends string = Resource> {
+  departed: Card[];
+  landed: Card[];
+}
+
+export interface DrainedResourceFlight<Card extends string = Resource> {
+  resource: Card;
+  departed: boolean;
 }
 
 // Exported so tuning these does not silently invalidate the tests that step through a flight.
@@ -53,15 +64,22 @@ const ARC_MAX = 12;
 // because there is no sideways left.
 const COL_SETTLE = 0.86;
 
-export class ResourceFlights {
-  private flights: Flight[] = [];
+export class ResourceFlights<Card extends string = Resource> {
+  private flights: Flight<Card>[] = [];
   private readonly clock = new FrameClock();
 
   // Throw `count` cards from one hex, staggered. `order` offsets the whole group so several hexes
   // paying at once do not launch on top of each other.
-  spawn(resource: Resource, count: number, from: { col: number; row: number }, to: { col: number; row: number }, order: number): void {
+  spawn(
+    resource: Card,
+    count: number,
+    from: { col: number; row: number },
+    to: { col: number; row: number },
+    order: number,
+    maxArc = ARC_MAX,
+  ): void {
     const span = Math.hypot(to.col - from.col, (to.row - from.row) * 2);
-    const arc = Math.max(ARC_MIN, Math.min(ARC_MAX, span * ARC_PER_COL));
+    const arc = Math.max(ARC_MIN, Math.min(maxArc, span * ARC_PER_COL));
     for (let i = 0; i < count; i++) {
       this.flights.push({
         resource,
@@ -71,6 +89,7 @@ export class ResourceFlights {
         toRow: to.row,
         launchAt: this.clock.elapsed + (order + i) * STAGGER,
         arc,
+        departed: false,
         banked: false,
       });
     }
@@ -84,8 +103,15 @@ export class ResourceFlights {
   // clock is fed the app's monotonic time, so coming back later would advance it by the whole
   // absence and land the lot in one tick. The caller banks what it gets — the roll did happen,
   // so the cards are owed whether or not their animation got to finish.
-  drain(): Resource[] {
-    const owed = this.flights.map((f) => f.resource);
+  drain(): Card[] {
+    return this.drainPending().map((flight) => flight.resource);
+  }
+
+  // Trade flights need to distinguish cards that have already left the bank from staggered cards
+  // that are still waiting on its face. Production only needs `drain`; this richer form lets a
+  // caller settle both states correctly when the screen closes mid-animation.
+  drainPending(): DrainedResourceFlight<Card>[] {
+    const owed = this.flights.map((f) => ({ resource: f.resource, departed: f.departed }));
     this.flights = [];
     this.clock.reset();
     return owed;
@@ -93,11 +119,23 @@ export class ResourceFlights {
 
   // Advance to `t` and report each card that touched down on this tick, in arrival order. The
   // caller banks them — nothing here touches the hand.
-  advance(t: number): Resource[] {
+  advance(t: number): Card[] {
+    return this.advanceWithDepartures(t).landed;
+  }
+
+  // Advance to `t`, reporting the two inventory boundaries independently. A trade removes a
+  // card from the bank at departure and adds it to the hand at landing; ordinary production
+  // callers can keep using `advance`, which reports landings exactly as before.
+  advanceWithDepartures(t: number): ResourceFlightAdvance<Card> {
     this.clock.tick(t);
-    if (!this.flights.length) return [];
-    const landed: Resource[] = [];
+    if (!this.flights.length) return { departed: [], landed: [] };
+    const departed: Card[] = [];
+    const landed: Card[] = [];
     for (const flight of this.flights) {
+      if (!flight.departed && this.clock.elapsed >= flight.launchAt) {
+        flight.departed = true;
+        departed.push(flight.resource);
+      }
       if (!flight.banked && this.clock.elapsed >= flight.launchAt + FLIGHT_DUR) {
         flight.banked = true;
         landed.push(flight.resource);
@@ -108,16 +146,16 @@ export class ResourceFlights {
     this.flights = this.flights.filter((f) => !f.banked);
     // Idle runs reset the clock so the next roll starts from zero and launch times stay small.
     if (!this.flights.length) this.clock.reset();
-    return landed;
+    return { departed, landed };
   }
 
   // Cards currently in the air. A card that has not launched yet is not drawn — it is still
   // sitting in the tile.
-  active(): FlyingResource[] {
-    const out: FlyingResource[] = [];
+  active(): FlyingResource<Card>[] {
+    const out: FlyingResource<Card>[] = [];
     for (const flight of this.flights) {
+      if (!flight.departed) continue;
       const p = (this.clock.elapsed - flight.launchAt) / FLIGHT_DUR;
-      if (p < 0) continue;
       // Eased, so the card leaves the tile gently, covers the distance quickly, then settles onto
       // its card slowly enough to watch it arrive. Only the pacing changes — the path through
       // space is the same curve either way. Clamped at 1, so a card in its landing hold sits

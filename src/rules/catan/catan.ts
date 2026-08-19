@@ -21,6 +21,13 @@ import { canPlaceRoad, canPlaceSettlement, canUpgradeCity, type BoardOccupancy }
 import { type BoardSetup, generateBoard, nodeProduction } from './setup.ts';
 import { buildDevelopmentDeck } from './development.ts';
 import {
+  maritimePortTradeRates,
+  maritimeTradeRates,
+  portsAtNodes,
+  type MaritimePortTradeRates,
+  type MaritimeTradeRates,
+} from './maritime-trade.ts';
+import {
   type BuildingType,
   type CatanAction,
   COSTS,
@@ -494,7 +501,7 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
     }
 
     if (action.type === 'maritimeTrade' && this.prompt.kind === 'playTurn') {
-      const rate = this.maritimeRate(actor, action.give);
+      const rate = action.via === 'bank' ? 4 : action.rate;
       this.transferResource(actor, -1, action.give, rate);
       this.transferResource(-1, actor, action.get, 1);
       this.record(actor, action);
@@ -667,7 +674,9 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
       case 'moveRobber':
         return `robber ${a.hex}${a.victim === null ? '' : ` steal P${a.victim}`}`;
       case 'maritimeTrade':
-        return `trade ${a.give}->${a.get}`;
+        return a.via === 'bank'
+          ? `bank-trade ${a.give}->${a.get}`
+          : `port-trade ${a.rate}:1 ${a.give}->${a.get}`;
       case 'offerTrade':
         return `offer ${a.give.join('/')} for ${a.receive.join('/')}`;
       case 'acceptTrade':
@@ -711,7 +720,7 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
     const cityId = lastCapture(t, /\bcity\s+(-?\d+)\b/g);
     const knight = lastMatch(t, /\bknight\s+(-?\d+)(?:\s+steal\s+p?(-?\d+))?/g);
     const robber = lastMatch(t, /\brobber\s+(-?\d+)(?:\s+steal\s+p?(-?\d+))?/g);
-    const trade = lastMatch(t, /\btrade\s+(brick|grain|lumber|ore|wool)\s*->\s*(brick|grain|lumber|ore|wool)\b/g);
+    const trade = lastMatch(t, /\b(?:(bank|port)[-\s]*)?trade(?:\s+([23]):1)?\s+(brick|grain|lumber|ore|wool)\s*->\s*(brick|grain|lumber|ore|wool)\b/g);
     const confirm = lastCapture(t, /\bconfirm\s+p?(-?\d+)\b/g);
     const roadBuildingTail = actionTail(t, /\b(?:road-building|road building)\b/g);
     const plentyTail = actionTail(t, /\b(?:year-of-plenty|year of plenty|plenty)\b/g);
@@ -736,7 +745,18 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
     else if (/^offer/.test(t)) {
       const match = t.match(/^offer\s+([\d/]+)\s+for\s+([\d/]+)$/);
       if (match) parsed = { type: 'offerTrade', give: match[1].split('/').map(Number), receive: match[2].split('/').map(Number) };
-    } else if (trade) parsed = { type: 'maritimeTrade', give: trade[1] as Resource, get: trade[2] as Resource };
+    } else if (trade) {
+      const give = trade[3] as Resource;
+      const get = trade[4] as Resource;
+      const via = trade[1] as 'bank' | 'port' | undefined;
+      const rate = trade[2] === undefined ? undefined : Number(trade[2]) as 2 | 3;
+      parsed = via === 'bank'
+        ? { type: 'maritimeTrade', via: 'bank', give, get }
+        : via === 'port' && rate !== undefined
+          ? { type: 'maritimeTrade', via: 'port', rate, give, get }
+          : legal.find((action) => action.type === 'maritimeTrade' && action.via === via && action.give === give && action.get === get) ??
+            legal.find((action) => action.type === 'maritimeTrade' && action.give === give && action.get === get) ?? null;
+    }
     else if (/^accept/.test(t)) parsed = { type: 'acceptTrade' };
     else if (/^reject/.test(t)) parsed = { type: 'rejectTrade' };
     else if (confirm !== undefined) parsed = { type: 'confirmTrade', with: Number(confirm) };
@@ -889,9 +909,10 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
   portfolio(seat: number): CatanPortfolio {
     const production: Partial<Record<Resource, number>> = {};
     const numbers = new Set<number>();
-    const ports: Port[] = [];
+    const occupiedNodes: number[] = [];
     for (const [node, building] of this.buildings) {
       if (building.player !== seat) continue;
+      occupiedNodes.push(node);
       const multiplier = building.type === 'city' ? 2 : 1;
       for (const resource of RESOURCES) {
         const pips = (this.productionByNode[node][resource] ?? 0) * multiplier;
@@ -901,9 +922,8 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
         const token = this.board.hexes[hex].token;
         if (token !== null) numbers.add(token);
       }
-      const port = this.board.harbors.find((harbor) => harbor.nodes.includes(node))?.port;
-      if (port && !ports.some((p) => p.ratio === port.ratio && p.resource === port.resource)) ports.push(port);
     }
+    const ports = portsAtNodes(this.board.harbors, occupiedNodes);
     return {
       production,
       totalPips: Object.values(production).reduce((sum, pips) => sum + (pips ?? 0), 0),
@@ -915,6 +935,14 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
       citiesLeft: PIECE_LIMITS.city - this.pieceCount(seat, 'city'),
       longestRoadLength: this.longestRoadLengths[seat],
     };
+  }
+
+  maritimeTradeRates(seat: number): MaritimeTradeRates {
+    return maritimeTradeRates(this.portfolio(seat).ports);
+  }
+
+  maritimePortTradeRates(seat: number): MaritimePortTradeRates {
+    return maritimePortTradeRates(this.portfolio(seat).ports);
   }
 
   initialPlacementComplete(): boolean {
@@ -1079,20 +1107,18 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
 
   private maritimeTradeActions(player: number): CatanAction[] {
     const actions: CatanAction[] = [];
+    const portRates = this.maritimePortTradeRates(player);
     for (const give of RESOURCES) {
-      if (this.hands[player][resourceIndex(give)] < this.maritimeRate(player, give)) continue;
+      const held = this.hands[player][resourceIndex(give)];
       for (const get of RESOURCES) {
-        if (give !== get && this.bank[resourceIndex(get)] > 0) actions.push({ type: 'maritimeTrade', give, get });
+        if (give === get || this.bank[resourceIndex(get)] <= 0) continue;
+        for (const rate of portRates[give]) {
+          if (held >= rate) actions.push({ type: 'maritimeTrade', via: 'port', rate, give, get });
+        }
+        if (held >= 4) actions.push({ type: 'maritimeTrade', via: 'bank', give, get });
       }
     }
     return actions;
-  }
-
-  private maritimeRate(player: number, resource: Resource): 2 | 3 | 4 {
-    const ports = this.portfolio(player).ports;
-    if (ports.some((port) => port.ratio === 2 && port.resource === resource)) return 2;
-    if (ports.some((port) => port.ratio === 3)) return 3;
-    return 4;
   }
 
   private validTradeOffer(player: number, give: FreqDeck, receive: FreqDeck): boolean {

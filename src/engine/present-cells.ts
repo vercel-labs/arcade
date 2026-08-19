@@ -7,7 +7,7 @@
 
 import type { RenderTarget } from './framebuffer.ts';
 import { GH, GW, matchGlyph } from './glyph.ts';
-import type { ShapeGlyphOptions, LuminanceOptions } from './present.ts';
+import { SHAPE_GLYPH_BACKGROUND_SCALE, type ShapeGlyphOptions, type LuminanceOptions } from './present.ts';
 import type { Surface } from './surface.ts';
 import type { RGB } from './color.ts';
 
@@ -103,7 +103,8 @@ export function halfBlockLayerToSurface(surf: Surface, target: RenderTarget, x0 
 // Shape-matched glyph mode → cells. Mirrors toShapeGlyph: sample each cell's
 // region to a GW×GH luminance grid + average color, optionally enhance contrast,
 // match a glyph, and (hybrid) fall back to a ramp glyph for shadowed cells. The
-// cell background is black (the scene's backdrop), matching the string path.
+// cell background is black by default. `coloredBackground` instead uses a
+// darker version of the glyph's average color while blank cells remain black.
 export function shapeGlyphToSurface(
   surf: Surface,
   target: RenderTarget,
@@ -113,11 +114,15 @@ export function shapeGlyphToSurface(
   x0 = 0,
   y0 = 0,
 ): void {
-  const { color = true, contrast = 2, jitterTemp = 0, hybrid = false } = options;
+  const { color = true, contrast = 2, jitterTemp = 0, hybrid = false, coloredBackground = false } = options;
   const rampMax = LUMINANCE_RAMP.length - 1;
   const W = target.width;
   const H = target.height;
   const c = target.color;
+  if (W === cols * GW && H === rows * GH) {
+    shapeGlyphGridToSurface(surf, c, W, cols, rows, options, x0, y0);
+    return;
+  }
   const fw = W / cols;
   const fh = H / rows;
   const dim = GW * GH;
@@ -125,6 +130,7 @@ export function shapeGlyphToSurface(
   const cnt = new Array(dim);
   const vec = new Array(dim);
   const fg: RGB = [0, 0, 0];
+  const bg: RGB = [0, 0, 0];
 
   for (let cy = 0; cy < rows; cy++) {
     const yy0 = Math.floor(cy * fh);
@@ -177,8 +183,82 @@ export function shapeGlyphToSurface(
         fg[0] = cr / cc;
         fg[1] = cg / cc;
         fg[2] = cb / cc;
-        surf.setCell(x0 + cx, y0 + cy, ch, fg, BLACK, 0);
+        if (coloredBackground) {
+          bg[0] = fg[0] * SHAPE_GLYPH_BACKGROUND_SCALE;
+          bg[1] = fg[1] * SHAPE_GLYPH_BACKGROUND_SCALE;
+          bg[2] = fg[2] * SHAPE_GLYPH_BACKGROUND_SCALE;
+        }
+        surf.setCell(x0 + cx, y0 + cy, ch, fg, coloredBackground ? bg : BLACK, 0);
       }
+    }
+  }
+}
+
+// The live ASCII/Hybrid target is deliberately SS3: each terminal cell maps to
+// the glyph matcher's native 3x6 sample grid exactly. Avoid rebuilding bin
+// bounds/counts for those 18 one-to-one samples while preserving the generic
+// resampler above for snapshots and unusual target sizes.
+function shapeGlyphGridToSurface(
+  surf: Surface,
+  c: Float32Array,
+  width: number,
+  cols: number,
+  rows: number,
+  options: ShapeGlyphOptions,
+  x0: number,
+  y0: number,
+): void {
+  const { color = true, contrast = 2, jitterTemp = 0, hybrid = false, coloredBackground = false } = options;
+  const rampMax = LUMINANCE_RAMP.length - 1;
+  const dim = GW * GH;
+  const vec = new Array<number>(dim);
+  const fg: RGB = [0, 0, 0];
+  const bg: RGB = [0, 0, 0];
+
+  for (let cy = 0; cy < rows; cy++) {
+    const firstY = cy * GH;
+    for (let cx = 0; cx < cols; cx++) {
+      const firstX = cx * GW;
+      let cr = 0;
+      let cg = 0;
+      let cb = 0;
+      let mx = 0;
+      for (let gy = 0; gy < GH; gy++) {
+        let pixel = ((firstY + gy) * width + firstX) * 3;
+        const row = gy * GW;
+        for (let gx = 0; gx < GW; gx++, pixel += 3) {
+          const r = c[pixel];
+          const g = c[pixel + 1];
+          const b = c[pixel + 2];
+          const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+          vec[row + gx] = lum;
+          if (lum > mx) mx = lum;
+          cr += r;
+          cg += g;
+          cb += b;
+        }
+      }
+      if (mx > 0 && contrast !== 1) {
+        for (let i = 0; i < dim; i++) vec[i] = Math.pow(vec[i] / mx, contrast) * mx;
+      }
+      let ch = matchGlyph(vec, mx > JITTER_MIN_BRIGHTNESS ? jitterTemp : 0);
+      if (ch === ' ' && hybrid) {
+        const lum = (0.299 * cr + 0.587 * cg + 0.114 * cb) / dim / 255;
+        ch = LUMINANCE_RAMP[Math.min(rampMax, Math.max(0, Math.round(lum * rampMax)))];
+      }
+      if (ch === ' ' || !color) {
+        surf.setCell(x0 + cx, y0 + cy, ' ', BLACK, BLACK, 0);
+        continue;
+      }
+      fg[0] = cr / dim;
+      fg[1] = cg / dim;
+      fg[2] = cb / dim;
+      if (coloredBackground) {
+        bg[0] = fg[0] * SHAPE_GLYPH_BACKGROUND_SCALE;
+        bg[1] = fg[1] * SHAPE_GLYPH_BACKGROUND_SCALE;
+        bg[2] = fg[2] * SHAPE_GLYPH_BACKGROUND_SCALE;
+      }
+      surf.setCell(x0 + cx, y0 + cy, ch, fg, coloredBackground ? bg : BLACK, 0);
     }
   }
 }
@@ -195,7 +275,7 @@ export function shapeGlyphLayerToSurface(
   x0 = 0,
   y0 = 0,
 ): void {
-  const { color = true, contrast = 2, jitterTemp = 0, hybrid = false } = options;
+  const { color = true, contrast = 2, jitterTemp = 0, hybrid = false, coloredBackground = false } = options;
   const rampMax = LUMINANCE_RAMP.length - 1;
   const W = target.width;
   const H = target.height;
@@ -210,6 +290,7 @@ export function shapeGlyphLayerToSurface(
   const cnt = new Array(dim);
   const vec = new Array(dim);
   const fg: RGB = [0, 0, 0];
+  const coloredBg: RGB = [0, 0, 0];
 
   const firstCol = Math.max(0, Math.floor(bounds.minX / fw));
   const lastCol = Math.min(cols - 1, Math.floor(bounds.maxX / fw));
@@ -267,7 +348,13 @@ export function shapeGlyphLayerToSurface(
       fg[0] = cr / cc;
       fg[1] = cg / cc;
       fg[2] = cb / cc;
-      const bg = surf.getCell(x0 + cx, y0 + cy)?.bg ?? BLACK;
+      let bg = surf.getCell(x0 + cx, y0 + cy)?.bg ?? BLACK;
+      if (coloredBackground) {
+        coloredBg[0] = fg[0] * SHAPE_GLYPH_BACKGROUND_SCALE;
+        coloredBg[1] = fg[1] * SHAPE_GLYPH_BACKGROUND_SCALE;
+        coloredBg[2] = fg[2] * SHAPE_GLYPH_BACKGROUND_SCALE;
+        bg = coloredBg;
+      }
       surf.setCell(x0 + cx, y0 + cy, ch, fg, bg, 0);
     }
   }

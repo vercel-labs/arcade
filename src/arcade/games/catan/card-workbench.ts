@@ -1,11 +1,20 @@
 import { mulberry32 } from '../../../engine/index.ts';
 import { buildDevelopmentDeck } from '../../../rules/catan/development.ts';
+import {
+  maritimePortTradeRates,
+  maritimeTradeRates,
+  type MaritimePortTradeRate,
+  type MaritimePortTradeRates,
+  type MaritimeTradeRates,
+} from '../../../rules/catan/maritime-trade.ts';
 import { COSTS, DEV_CARD_TYPES, type DevCardType, type PlayerColor, type Resource, resourceIndex, type Terrain } from '../../../rules/catan/types.ts';
-import type { CatanActionHistoryView, CatanCardsView } from './card-types.ts';
+import type { CatanActionHistoryView, CatanCardsPlayerView, CatanCardsView } from './card-types.ts';
 import { type CatanRgb as Rgb, RESOURCE_LOOK, RESOURCE_ORDER, ROAD_ICON, SETTLEMENT_ICON } from './palette.ts';
 
 export const CATAN_LOCAL_COLOR: PlayerColor = 'red';
-export const CATAN_TRADE_RATIO = 4;
+export const CATAN_BANK_TRADE_RATE = 4;
+const DEFAULT_MARITIME_RATES = maritimeTradeRates([]);
+const DEFAULT_MARITIME_PORT_RATES = maritimePortTradeRates([]);
 
 const liveHand: Record<Resource, number> = { lumber: 0, brick: 0, wool: 0, grain: 0, ore: 0 };
 const liveDevHand: Record<DevCardType, number> = { knight: 0, victoryPoint: 0, roadBuilding: 0, yearOfPlenty: 0, monopoly: 0 };
@@ -14,6 +23,22 @@ const liveBank: Record<Resource, number> = { ...WORKBENCH_BANK_START };
 const WORKBENCH_DEV_SEED = 0xc47a_2026;
 let liveDevelopmentDeck = buildDevelopmentDeck(mulberry32(WORKBENCH_DEV_SEED));
 let tradeOpen = false;
+let nextPlayerTradeId = 1;
+
+export type CatanPlayerTradeReactionStatus = 'pending' | 'accepted' | 'rejected';
+
+export interface CatanPlayerTradeReaction {
+  player: CatanCardsPlayerView;
+  status: CatanPlayerTradeReactionStatus;
+}
+
+export interface CatanPlayerTradeOffer {
+  id: number;
+  offerer: CatanCardsPlayerView;
+  give: Record<Resource, number>;
+  get: Record<Resource, number>;
+  reactions: CatanPlayerTradeReaction[];
+}
 
 function emptyResourceCounts(): Record<Resource, number> {
   return { lumber: 0, brick: 0, wool: 0, grain: 0, ore: 0 };
@@ -22,6 +47,8 @@ function emptyResourceCounts(): Record<Resource, number> {
 export const workbenchTradeGive = emptyResourceCounts();
 export const workbenchTradeGet = emptyResourceCounts();
 const liveHistory: CatanActionHistoryView[] = [];
+const livePlayerTradeOffers: CatanPlayerTradeOffer[] = [];
+const playerTradeTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
 function clearTradeStaging(): void {
   for (const resource of RESOURCE_ORDER) {
@@ -53,9 +80,9 @@ export function setCatanTradeEditorOpen(open: boolean): void {
   if (!open) clearTradeStaging();
 }
 
-export function setCatanWorkbenchTradeSelection(give: Resource | null, get: Resource | null): void {
+export function setCatanWorkbenchTradeSelection(give: Resource | null, get: Resource | null, giveCount = CATAN_BANK_TRADE_RATE): void {
   clearTradeStaging();
-  if (give) workbenchTradeGive[give] = CATAN_TRADE_RATIO;
+  if (give) workbenchTradeGive[give] = giveCount;
   if (get) workbenchTradeGet[get] = 1;
 }
 
@@ -68,47 +95,254 @@ export function adjustCatanWorkbenchTradeStaging(side: 'give' | 'receive', resou
   return true;
 }
 
-export function stagedCatanBankTrade(): { give: Resource; get: Resource } | null {
+export interface CatanWorkbenchMaritimeTrade {
+  give: Resource;
+  gets: Resource[];
+  rate: 2 | 3 | 4;
+}
+
+export type CatanWorkbenchMaritimeTradeVia = 'bank' | 'port';
+
+function stagedCatanTrade(ratesFor: (resource: Resource) => readonly (2 | 3 | 4)[]): CatanWorkbenchMaritimeTrade | null {
   const giveResources = RESOURCE_ORDER.filter((resource) => workbenchTradeGive[resource] > 0);
-  const getResources = RESOURCE_ORDER.filter((resource) => workbenchTradeGet[resource] > 0);
-  if (giveResources.length !== 1 || getResources.length !== 1) return null;
+  if (giveResources.length !== 1) return null;
   const give = giveResources[0];
-  const get = getResources[0];
-  if (give === get || workbenchTradeGive[give] !== CATAN_TRADE_RATIO || workbenchTradeGet[get] !== 1) return null;
-  return { give, get };
+  if (workbenchTradeGive[give] > liveHand[give]) return null;
+
+  const gets: Resource[] = [];
+  for (const resource of RESOURCE_ORDER) {
+    const count = workbenchTradeGet[resource];
+    if (count > liveBank[resource] || (resource === give && count > 0)) return null;
+    for (let i = 0; i < count; i++) gets.push(resource);
+  }
+  if (gets.length === 0) return null;
+  const stagedRate = workbenchTradeGive[give] / gets.length;
+  const rate = ratesFor(give).find((candidate) => candidate === stagedRate);
+  if (rate === undefined) return null;
+  return { give, gets, rate };
+}
+
+export function stagedCatanBankTrade(): CatanWorkbenchMaritimeTrade | null {
+  return stagedCatanTrade(() => [CATAN_BANK_TRADE_RATE]);
+}
+
+export function stagedCatanPortTrade(rates: MaritimePortTradeRates): CatanWorkbenchMaritimeTrade | null {
+  return stagedCatanTrade((resource) => rates[resource]);
+}
+
+export function stagedCatanPlayerTradeValid(): boolean {
+  let giveTotal = 0;
+  let getTotal = 0;
+  for (const resource of RESOURCE_ORDER) {
+    const give = workbenchTradeGive[resource];
+    const get = workbenchTradeGet[resource];
+    if (give > liveHand[resource] || (give > 0 && get > 0)) return false;
+    giveTotal += give;
+    getTotal += get;
+  }
+  return giveTotal > 0 && getTotal > 0;
+}
+
+function finishDummyPlayerTradeReactions(id: number): boolean {
+  const offer = livePlayerTradeOffers.find((candidate) => candidate.id === id);
+  if (!offer || offer.reactions.every((reaction) => reaction.status !== 'pending')) return false;
+  const acceptingIndex = (id - 1) % Math.max(1, offer.reactions.length);
+  for (let i = 0; i < offer.reactions.length; i++) {
+    offer.reactions[i].status = i === acceptingIndex ? 'accepted' : 'rejected';
+  }
+  const timer = playerTradeTimers.get(id);
+  if (timer) clearTimeout(timer);
+  playerTradeTimers.delete(id);
+  return true;
+}
+
+export function createCatanWorkbenchPlayerTrade(
+  offerer: CatanCardsPlayerView,
+  opponents: CatanCardsPlayerView[],
+  onResolve: () => void,
+): number | null {
+  if (!stagedCatanPlayerTradeValid() || opponents.length === 0) return null;
+  const id = nextPlayerTradeId++;
+  livePlayerTradeOffers.push({
+    id,
+    offerer: { ...offerer },
+    give: { ...workbenchTradeGive },
+    get: { ...workbenchTradeGet },
+    reactions: opponents.map((player) => ({ player: { ...player }, status: 'pending' })),
+  });
+  clearTradeStaging();
+  tradeOpen = false;
+  const timer = setTimeout(() => {
+    if (finishDummyPlayerTradeReactions(id)) onResolve();
+  }, 500);
+  playerTradeTimers.set(id, timer);
+  return id;
+}
+
+export function resolveCatanWorkbenchPlayerTradeOffer(id: number): boolean {
+  return finishDummyPlayerTradeReactions(id);
+}
+
+export function catanWorkbenchPlayerTradeOffers(): CatanPlayerTradeOffer[] {
+  return livePlayerTradeOffers.map((offer) => ({
+    ...offer,
+    offerer: { ...offer.offerer },
+    give: { ...offer.give },
+    get: { ...offer.get },
+    reactions: offer.reactions.map((reaction) => ({
+      player: { ...reaction.player },
+      status: reaction.status,
+    })),
+  }));
+}
+
+export function cancelCatanWorkbenchPlayerTrade(id: number): boolean {
+  const index = livePlayerTradeOffers.findIndex((offer) => offer.id === id);
+  if (index < 0) return false;
+  const timer = playerTradeTimers.get(id);
+  if (timer) clearTimeout(timer);
+  playerTradeTimers.delete(id);
+  livePlayerTradeOffers.splice(index, 1);
+  return true;
+}
+
+export function completeCatanWorkbenchPlayerTrade(id: number, playerName: string): boolean {
+  const offer = livePlayerTradeOffers.find((candidate) => candidate.id === id);
+  const reaction = offer?.reactions.find((candidate) => candidate.player.name === playerName);
+  if (!offer || reaction?.status !== 'accepted') return false;
+  for (const resource of RESOURCE_ORDER) {
+    if (liveHand[resource] < offer.give[resource]) return false;
+  }
+  for (const resource of RESOURCE_ORDER) {
+    liveHand[resource] -= offer.give[resource];
+    liveHand[resource] += offer.get[resource];
+  }
+  liveHistory.push({ actor: 'You', color: CATAN_LOCAL_COLOR, message: `completed a trade with ${playerName}` });
+  return cancelCatanWorkbenchPlayerTrade(id);
+}
+
+function commitCatanWorkbenchMaritimePayment(trade: CatanWorkbenchMaritimeTrade): boolean {
+  const giveCount = trade.rate * trade.gets.length;
+  if (trade.gets.length === 0 || liveHand[trade.give] < giveCount || trade.gets.some((get) => get === trade.give)) return false;
+  const received = emptyResourceCounts();
+  for (const get of trade.gets) received[get]++;
+  if (RESOURCE_ORDER.some((resource) => received[resource] > liveBank[resource])) return false;
+
+  liveHand[trade.give] -= giveCount;
+  liveBank[trade.give] += giveCount;
+  return true;
+}
+
+export function departCatanWorkbenchBankResource(resource: Resource): boolean {
+  if (liveBank[resource] <= 0) return false;
+  liveBank[resource] -= 1;
+  return true;
+}
+
+export function logCatanWorkbenchMaritimeTrade(
+  trade: CatanWorkbenchMaritimeTrade,
+  via: CatanWorkbenchMaritimeTradeVia,
+): void {
+  const giveCount = trade.rate * trade.gets.length;
+  const received = emptyResourceCounts();
+  for (const resource of trade.gets) received[resource]++;
+  const summary = RESOURCE_ORDER
+    .filter((resource) => received[resource] > 0)
+    .map((resource) => `${received[resource]} ${RESOURCE_LOOK[resource].name}`)
+    .join(' + ');
+  liveHistory.push({ actor: 'You', color: CATAN_LOCAL_COLOR, message: `traded ${giveCount} ${RESOURCE_LOOK[trade.give].name} for ${summary} via ${via}` });
+}
+
+function beginStagedCatanWorkbenchMaritimeTrade(trade: CatanWorkbenchMaritimeTrade | null): CatanWorkbenchMaritimeTrade | null {
+  if (!trade || !commitCatanWorkbenchMaritimePayment(trade)) return null;
+  setCatanTradeEditorOpen(false);
+  return trade;
+}
+
+export function beginStagedCatanWorkbenchBankTrade(): CatanWorkbenchMaritimeTrade | null {
+  return beginStagedCatanWorkbenchMaritimeTrade(stagedCatanBankTrade());
+}
+
+export function beginStagedCatanWorkbenchPortTrade(rates: MaritimePortTradeRates): CatanWorkbenchMaritimeTrade | null {
+  return beginStagedCatanWorkbenchMaritimeTrade(stagedCatanPortTrade(rates));
+}
+
+function performCatanWorkbenchMaritimeTrade(
+  give: Resource,
+  gets: Resource[],
+  rate: 2 | 3 | 4,
+  via: CatanWorkbenchMaritimeTradeVia,
+): boolean {
+  const trade = { give, gets, rate };
+  if (!commitCatanWorkbenchMaritimePayment(trade)) return false;
+  for (const resource of gets) {
+    if (!departCatanWorkbenchBankResource(resource)) return false;
+    bankCatanResource(resource);
+  }
+  logCatanWorkbenchMaritimeTrade(trade, via);
+  return true;
 }
 
 export function performCatanWorkbenchBankTrade(give: Resource, get: Resource): boolean {
-  if (give === get || liveHand[give] < CATAN_TRADE_RATIO || liveBank[get] < 1) return false;
-  liveHand[give] -= CATAN_TRADE_RATIO;
-  liveBank[give] += CATAN_TRADE_RATIO;
-  liveBank[get] -= 1;
-  liveHand[get] += 1;
-  liveHistory.push({ actor: 'You', color: CATAN_LOCAL_COLOR, message: `traded ${CATAN_TRADE_RATIO} ${RESOURCE_LOOK[give].name} for 1 ${RESOURCE_LOOK[get].name}` });
-  return true;
+  return performCatanWorkbenchMaritimeTrade(give, [get], CATAN_BANK_TRADE_RATE, 'bank');
+}
+
+export function performCatanWorkbenchPortTrade(
+  give: Resource,
+  get: Resource,
+  rates: MaritimePortTradeRates,
+  rate: MaritimePortTradeRate = rates[give][0],
+): boolean {
+  return rates[give].includes(rate) && performCatanWorkbenchMaritimeTrade(give, [get], rate, 'port');
 }
 
 export function performStagedCatanWorkbenchBankTrade(): boolean {
   const trade = stagedCatanBankTrade();
-  if (!trade || !performCatanWorkbenchBankTrade(trade.give, trade.get)) return false;
+  if (!trade || !performCatanWorkbenchMaritimeTrade(trade.give, trade.gets, trade.rate, 'bank')) return false;
   clearTradeStaging();
   return true;
 }
 
-export function buyCatanWorkbenchDevCard(): boolean {
-  if (liveDevelopmentDeck.length === 0) return false;
+export function performStagedCatanWorkbenchPortTrade(rates: MaritimePortTradeRates): boolean {
+  const trade = stagedCatanPortTrade(rates);
+  if (!trade || !performCatanWorkbenchMaritimeTrade(trade.give, trade.gets, trade.rate, 'port')) return false;
+  clearTradeStaging();
+  return true;
+}
+
+export function beginCatanWorkbenchDevPurchase(): DevCardType | null {
+  const drawn = liveDevelopmentDeck.at(-1);
+  if (!drawn) return null;
   for (const resource of RESOURCE_ORDER) {
-    if (liveHand[resource] < COSTS.devCard[resourceIndex(resource)]) return false;
+    if (liveHand[resource] < COSTS.devCard[resourceIndex(resource)]) return null;
   }
   for (const resource of RESOURCE_ORDER) {
     const amount = COSTS.devCard[resourceIndex(resource)];
     liveHand[resource] -= amount;
     liveBank[resource] += amount;
   }
-  const drawn = liveDevelopmentDeck.pop();
-  if (!drawn) return false;
-  liveDevHand[drawn] += 1;
+  return drawn;
+}
+
+export function departCatanWorkbenchDevCard(expected: DevCardType): boolean {
+  if (liveDevelopmentDeck.at(-1) !== expected) return false;
+  liveDevelopmentDeck.pop();
+  return true;
+}
+
+export function landCatanWorkbenchDevCard(type: DevCardType): void {
+  liveDevHand[type] += 1;
+}
+
+export function logCatanWorkbenchDevPurchase(): void {
   liveHistory.push({ actor: 'You', color: CATAN_LOCAL_COLOR, message: 'bought a development card' });
+}
+
+export function buyCatanWorkbenchDevCard(): boolean {
+  const drawn = beginCatanWorkbenchDevPurchase();
+  if (!drawn || !departCatanWorkbenchDevCard(drawn)) return false;
+  landCatanWorkbenchDevCard(drawn);
+  logCatanWorkbenchDevPurchase();
   return true;
 }
 
@@ -120,6 +354,10 @@ export function resetCatanWorkbenchCards(): void {
   for (const type of DEV_CARD_TYPES) liveDevHand[type] = 0;
   liveDevelopmentDeck = buildDevelopmentDeck(mulberry32(WORKBENCH_DEV_SEED));
   liveHistory.length = 0;
+  for (const timer of playerTradeTimers.values()) clearTimeout(timer);
+  playerTradeTimers.clear();
+  livePlayerTradeOffers.length = 0;
+  nextPlayerTradeId = 1;
   setCatanTradeEditorOpen(false);
 }
 
@@ -144,7 +382,20 @@ export function catanResourceFace(resource: Resource): { emoji: string; fill: Rg
   return { emoji: look.emoji, fill: look.fill };
 }
 
-export function catanWorkbenchView(): CatanCardsView {
+function inferredPortRates(rates: MaritimeTradeRates): MaritimePortTradeRates {
+  const generic = Object.values(rates).some((rate) => rate === 3);
+  return Object.fromEntries(RESOURCE_ORDER.map((resource) => {
+    const options: MaritimePortTradeRate[] = [];
+    if (rates[resource] === 2) options.push(2);
+    if (generic) options.push(3);
+    return [resource, options];
+  })) as MaritimePortTradeRates;
+}
+
+export function catanWorkbenchView(
+  rates: MaritimeTradeRates = DEFAULT_MARITIME_RATES,
+  portRates: MaritimePortTradeRates = inferredPortRates(rates),
+): CatanCardsView {
   const seeded = CATAN_CARD_WORKBENCH_VIEW;
   const held = RESOURCE_ORDER.reduce((sum, resource) => sum + liveHand[resource], 0);
   const dev = DEV_CARD_TYPES.reduce((sum, type) => sum + liveDevHand[type], 0);
@@ -153,6 +404,8 @@ export function catanWorkbenchView(): CatanCardsView {
     hand: { ...liveHand },
     devHand: { ...liveDevHand },
     bank: { ...liveBank },
+    maritimeRates: { ...rates },
+    maritimePortRates: Object.fromEntries(RESOURCE_ORDER.map((resource) => [resource, [...portRates[resource]]])) as MaritimePortTradeRates,
     developmentDeck: liveDevelopmentDeck.length,
     editable: true,
     localPlayer: { ...seeded.localPlayer, resourceCards: held, developmentCards: dev },
@@ -165,6 +418,8 @@ export const CATAN_CARD_WORKBENCH_VIEW: CatanCardsView = {
   hand: { lumber: 0, brick: 0, wool: 0, grain: 0, ore: 0 },
   devHand: { knight: 0, victoryPoint: 0, roadBuilding: 0, yearOfPlenty: 0, monopoly: 0 },
   bank: { ...WORKBENCH_BANK_START },
+  maritimeRates: { ...DEFAULT_MARITIME_RATES },
+  maritimePortRates: { ...DEFAULT_MARITIME_PORT_RATES },
   developmentDeck: 25,
   opponents: [
     { name: 'claude-haiku-4.5', color: 'blue', publicVp: 2, resourceCards: 3, developmentCards: 0, knights: 1, longestRoad: 4 },

@@ -26,13 +26,36 @@ import { CardsScene, type CardsMode } from '../arcade/games/poker/cards-scene.ts
 import { buildPokerRoot, mountPokerHud } from '../arcade/games/poker/hud.ts';
 import { TileScene } from '../arcade/games/catan/tile-scene.ts';
 import { buildCatanPieceModal, buildCatanTileRoot, mountCatanTileHud } from '../arcade/games/catan/tile-hud.ts';
-import { adjustCatanWorkbenchHand, CATAN_LOCAL_COLOR, catanHandLandingCell, resetCatanWorkbenchCards, setCatanTradeEditorOpen, setCatanWorkbenchTradeSelection } from '../arcade/games/catan/card-hud.ts';
+import {
+  adjustCatanWorkbenchHand,
+  adjustCatanWorkbenchTradeStaging,
+  bankCatanResource,
+  beginCatanWorkbenchDevPurchase,
+  beginStagedCatanWorkbenchBankTrade,
+  CATAN_LOCAL_COLOR,
+  catanBankDepartureCell,
+  catanDevDeckDepartureCell,
+  catanDevHandLandingCell,
+  catanHandLandingCell,
+  catanRailVisible,
+  catanSidebarOpen,
+  catanWorkbenchView,
+  createCatanWorkbenchPlayerTrade,
+  departCatanWorkbenchBankResource,
+  departCatanWorkbenchDevCard,
+  landCatanWorkbenchDevCard,
+  resetCatanWorkbenchCards,
+  resolveCatanWorkbenchPlayerTradeOffer,
+  setCatanTradeEditorOpen,
+  setCatanWorkbenchTradeSelection,
+  toggleCatanSidebar,
+} from '../arcade/games/catan/card-hud.ts';
 import { type FlyingResource, ResourceFlights } from '../arcade/games/catan/scene/resource-flight.ts';
-import { catanSidebarOpen, toggleCatanSidebar } from '../arcade/games/catan/card-hud.ts';
 import { CatanGameScene } from '../arcade/games/catan/game-scene.ts';
 import { buildCatanGameRoot, mountCatanGameHud } from '../arcade/games/catan/game-hud.ts';
 import { CatanDriver, type CatanSeatSpec } from '../arcade/match/catan-driver.ts';
-import { type PlayerColor, type Terrain, TERRAINS } from '../rules/catan/types.ts';
+import { generateBoard } from '../rules/catan/setup.ts';
+import { type DevCardType, type PlayerColor, type Resource, type Terrain, TERRAINS } from '../rules/catan/types.ts';
 import { PokerGameScene, type PokerSeatView } from '../arcade/games/poker/poker-scene.ts';
 import { betInput as pokerBetInput, buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, mountPokerGameHud, pushPokerChat } from '../arcade/games/poker/poker-hud.ts';
 import { buildPokerSetupPanel, modeDropdown as pokerModeDropdown, mountPokerSetup, playersDropdown as pokerPlayersDropdown, pokerPreviewSeats, pokerStartingStack } from '../arcade/match/poker-setup.ts';
@@ -161,6 +184,12 @@ function blockBits(ch: string, px: number, py: number): boolean {
     case '│':
     case '┃':
       return midX;
+    case '↑':
+      // Single-cell up arrow: a two-pixel stem with a compact three-row head.
+      return (midX && py >= 2) || (py <= 2 && Math.abs(px - 3.5) <= py + 0.5);
+    case '↓':
+      // Mirror the up arrow so terminal UI direction cues remain visible in PNG snapshots.
+      return (midX && py <= 5) || (py >= 5 && Math.abs(px - 3.5) <= 7.5 - py);
     case '▯':
       return px === 1 || px === 6 || py === 1 || py === 6;
     case '●':
@@ -328,8 +357,10 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot prism-prompt [cols] [rows] [t] [out]    prism loading screen + press-any-key marquee
   pnpm snapshot cards [single|hand|deck] [cols] [rows] [state] [out]   the cards screen
       (single: a code like Kh/10s/As · hand: peek|up · deck: shuffle|deal)
-  pnpm snapshot catan [sidebar] [trade|trade-empty] [hover=<id>] [hybrid] [forest|hills|pasture|fields|mountains|desert] [cols] [rows] [<t>] [board|board-cards|pieces|port|edit] [robber|robber-moveN] [fly<roll>@<s>] [hud|modal] [out]   a 3D Catan tile
+  pnpm snapshot catan [sidebar] [trade|trade-port3|trade-port2|trade-empty|player-trade|player-trade-ready|player-trade-mixed] [hover=<id>] [hybrid] [shadow-glyphs] [forest|hills|pasture|fields|mountains|desert] [cols] [rows] [<t>] [board|board-cards|pieces|port|edit] [robber|robber-moveN] [fly<roll>@<s>|trade-fly<N>@<s>|dev-fly@<s>] [hud|modal] [out]   a 3D Catan tile
       (fly5@0.4: freeze the resource cards mid-arc, 0.4s after a roll of 5 pays out — needs hud; the sample board pays on 2, 5 and 10, and a non-paying roll throws nothing)
+      (trade-fly2@0.4: freeze two staggered bank-trade cards mid-arc; add sidebar to launch them from the visible bank row)
+      (dev-fly@0.4: freeze a purchased development card mid-arc; add sidebar to launch it from the visible dev pile)
       (robber-move5: preview moving the robber to hex 5 while leaving the current robber in place)
       (<t> a decimal spins the turntable · azN/elN rotate in degrees · zoomN scales camera distance · hud composites the terrain dropdown panel)
       (board modes also take anim<s>|roll[<s>]|build[<s>] to freeze the fly-in, a dice roll, or a build-drop · water<N> sets the current time · varN rerolls the layout · top orbits overhead · modal shows the piece-edit popup)
@@ -437,6 +468,13 @@ function catanSnapshot(): void {
   // rotates the azimuth.
   const varArg = args.find((a) => /^var\d+$/.test(a));
   for (let i = 0; i < (varArg ? Number(varArg.slice(3)) : 0); i++) scene.reroll();
+  const portTradeArg = args.includes('trade-port3') ? 'generic' : args.includes('trade-port2') ? 'brick' : null;
+  if (portTradeArg) {
+    const board = generateBoard(mulberry32(0xc47a));
+    scene.adoptBoard(board, false);
+    const harbor = board.harbors.find(({ port }) => port.resource === (portTradeArg === 'generic' ? null : 'brick'))!;
+    scene.placePiece('building', harbor.nodes[0], CATAN_LOCAL_COLOR);
+  }
   if (args.includes('top')) scene.orbit(0, 34);
   if (spinTo) scene.orbit(-spinTo * 120, 0);
   const azArg = args.find((a) => /^az-?[\d.]+$/.test(a));
@@ -482,24 +520,66 @@ function catanSnapshot(): void {
     }
   }
 
+  const coloredBackground = args.includes('hybrid');
+  // The engine's older `hybrid` option fills shadow cells with fallback ramp glyphs. Keep it
+  // independently inspectable now that `hybrid` names the user-facing colored-background mode.
+  const shadowGlyphs = args.includes('shadow-glyphs');
   if (args.includes('modal')) {
     const screen = new Screen(cols, rows);
     const region = { x: 0, y: 0, w: cols, h: rows };
     screen.setRoot(buildCatanPieceModal({ road: false, city: false, color: 'blue', onUpgrade: noop, onRemove: noop, onColor: () => {}, onClose: noop }), region);
-    const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true }));
+    const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, coloredBackground }));
     surfaceToPpm(surf, cols, rows, out);
     return;
   }
-  // Matches the app: Catan renders without hybrid shading, so the space around the island stays
-  // plain black instead of speckled with ramp glyphs. `hybrid` opts back in for comparison.
-  const hybrid = args.includes('hybrid');
   if (args.includes('hud')) {
     const screen = new Screen(cols, rows);
-    if (args.includes('trade') || args.includes('trade-empty')) {
+    const tradeFlightArg = args.find((arg) => /^trade-fly\d*@\d+(?:\.\d+)?$/.test(arg));
+    if (args.includes('trade') || args.includes('trade-port3') || args.includes('trade-port2') || args.includes('trade-empty') || tradeFlightArg) {
       resetCatanWorkbenchCards();
-      for (let i = 0; i < 4; i++) adjustCatanWorkbenchHand('brick', 1);
+      const animatedGets = tradeFlightArg ? Number(tradeFlightArg.match(/^trade-fly(\d*)@/)?.[1] || 1) : 1;
+      const giveCount = portTradeArg ? scene.maritimeTradeRates(CATAN_LOCAL_COLOR).brick : 4 * animatedGets;
+      for (let i = 0; i < giveCount; i++) adjustCatanWorkbenchHand('brick', 1);
       setCatanTradeEditorOpen(true);
-      if (args.includes('trade')) setCatanWorkbenchTradeSelection('brick', 'ore');
+      if (!args.includes('trade-empty')) {
+        setCatanWorkbenchTradeSelection('brick', 'ore', giveCount);
+        for (let i = 1; i < animatedGets; i++) adjustCatanWorkbenchTradeStaging('receive', 'ore', 1);
+      }
+    }
+    if (args.some((arg) => /^dev-fly@\d+(?:\.\d+)?$/.test(arg))) {
+      resetCatanWorkbenchCards();
+      adjustCatanWorkbenchHand('ore', 1);
+      adjustCatanWorkbenchHand('wool', 1);
+      adjustCatanWorkbenchHand('grain', 1);
+    }
+    if (args.includes('player-trade') || args.includes('player-trade-ready') || args.includes('player-trade-mixed')) {
+      resetCatanWorkbenchCards();
+      const stageOffer = (
+        giveCounts: readonly (readonly ['lumber' | 'brick' | 'wool' | 'grain' | 'ore', number])[],
+        receive: 'lumber' | 'brick' | 'wool' | 'grain' | 'ore',
+        ready: boolean,
+      ): void => {
+        for (const [resource, count] of giveCounts) {
+          for (let i = 0; i < count; i++) {
+            adjustCatanWorkbenchHand(resource, 1);
+            adjustCatanWorkbenchTradeStaging('give', resource, 1);
+          }
+        }
+        adjustCatanWorkbenchTradeStaging('receive', receive, 1);
+        const view = catanWorkbenchView();
+        const id = createCatanWorkbenchPlayerTrade(view.localPlayer, view.opponents, noop);
+        if (id !== null && ready) resolveCatanWorkbenchPlayerTradeOffer(id);
+      };
+      if (args.includes('player-trade-mixed')) {
+        stageOffer([['lumber', 1]], 'ore', true);
+        stageOffer([['lumber', 1], ['brick', 2], ['wool', 3], ['grain', 10]], 'ore', true);
+      } else {
+        stageOffer(
+          [['lumber', 1], ['brick', 2], ['wool', 3], ['grain', 10]],
+          'ore',
+          args.includes('player-trade-ready'),
+        );
+      }
     }
     // `sidebar` expands the card rail, which starts collapsed. Note this previews the rail only —
     // the scene stays full width here, where the app also insets the 3D viewport behind it.
@@ -511,12 +591,23 @@ function catanSnapshot(): void {
     if (portKind) (screen.component('catan-port') as Dropdown | undefined)?.pick(['generic', 'brick', 'grain', 'lumber', 'ore', 'wool'].indexOf(portKind));
     const region = { x: 0, y: 0, w: cols, h: rows };
     const singlePort = scene.portSailLabel(cols, rows);
-    screen.setRoot(buildCatanTileRoot(region, noop, scene.boardTokens(cols, rows), scene.currentMode(), singlePort ? [singlePort] : scene.boardPortLabels(cols, rows), catanFlights(scene, region, args), scene.isMovingRobber()), region);
+    const flightState = catanFlights(scene, region, args);
+    const cardsView = scene.currentMode() === 'boardCards'
+      ? catanWorkbenchView(
+          scene.maritimeTradeRates(CATAN_LOCAL_COLOR),
+          scene.maritimePortTradeRates(CATAN_LOCAL_COLOR),
+        )
+      : undefined;
+    if (cardsView && flightState.pendingDevelopmentCard) {
+      cardsView.developmentPurchaseBusy = true;
+      cardsView.pendingDevelopmentCard = flightState.pendingDevelopmentCard;
+    }
+    screen.setRoot(buildCatanTileRoot(region, noop, scene.boardTokens(cols, rows), scene.currentMode(), singlePort ? [singlePort] : scene.boardPortLabels(cols, rows), flightState.active, scene.isMovingRobber(), cardsView), region);
     screen.setHover(args.find((arg) => arg.startsWith('hover='))?.slice(6) ?? null);
     const surf = screen.snapshot(
-      (s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid }),
+      (s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: shadowGlyphs, coloredBackground }),
       scene.hasForegroundSceneLayer()
-        ? (s) => shapeGlyphLayerToSurface(s, target, cols, rows, { color: true, hybrid })
+        ? (s) => shapeGlyphLayerToSurface(s, target, cols, rows, { color: true, hybrid: shadowGlyphs, coloredBackground })
         : undefined,
     );
     surfaceToPpm(surf, cols, rows, out);
@@ -573,9 +664,74 @@ function catanGameSnapshot(): void {
 // `fly<roll>@<seconds>` freezes the resource-card animation mid-arc: pay out that roll to the
 // local seat and step the flights to that instant. Mirrors what CatanController does on a landed
 // roll — the tool has no controller, so it drives the same two pieces directly.
-function catanFlights(scene: TileScene, region: { w: number; h: number }, args: string[]): FlyingResource[] {
+interface CatanSnapshotFlightState {
+  active: FlyingResource<Resource | DevCardType>[];
+  pendingDevelopmentCard?: DevCardType;
+}
+
+function catanFlights(scene: TileScene, region: { w: number; h: number }, args: string[]): CatanSnapshotFlightState {
+  const devArg = args.find((arg) => /^dev-fly@\d+(?:\.\d+)?$/.test(arg));
+  if (devArg) {
+    const at = Number(devArg.slice('dev-fly@'.length));
+    const card = beginCatanWorkbenchDevPurchase();
+    if (!card) return { active: [] };
+    const flights = new ResourceFlights<DevCardType>();
+    const layoutRegion = { x: 0, y: 0, ...region };
+    const railVisible = catanRailVisible(region.w, region.h);
+    const view = catanWorkbenchView();
+    view.developmentPurchaseBusy = true;
+    view.pendingDevelopmentCard = card;
+    flights.spawn(
+      card,
+      1,
+      catanDevDeckDepartureCell(layoutRegion, view.opponents.length + 1, railVisible),
+      catanDevHandLandingCell(layoutRegion, card, railVisible, view),
+      0,
+      7,
+    );
+    for (let f = 0; f <= Math.round(at * 60); f++) {
+      const events = flights.advanceWithDepartures(f / 60);
+      for (const departed of events.departed) departCatanWorkbenchDevCard(departed);
+      for (const landed of events.landed) landCatanWorkbenchDevCard(landed);
+    }
+    return {
+      active: flights.active(),
+      ...(flights.busy() ? { pendingDevelopmentCard: card } : {}),
+    };
+  }
+
+  const tradeArg = args.find((arg) => /^trade-fly\d*@\d+(?:\.\d+)?$/.test(arg));
+  if (tradeArg) {
+    const match = tradeArg.match(/^trade-fly(\d*)@(\d+(?:\.\d+)?)$/)!;
+    const count = Number(match[1] || 1);
+    const at = Number(match[2]);
+    const trade = beginStagedCatanWorkbenchBankTrade();
+    if (!trade || trade.gets.length !== count) return { active: [] };
+    const flights = new ResourceFlights();
+    const layoutRegion = { x: 0, y: 0, ...region };
+    const playerCount = catanWorkbenchView().opponents.length + 1;
+    const railVisible = catanRailVisible(region.w, region.h);
+    for (let order = 0; order < trade.gets.length; order++) {
+      const resource = trade.gets[order];
+      flights.spawn(
+        resource,
+        1,
+        catanBankDepartureCell(layoutRegion, resource, playerCount, railVisible),
+        catanHandLandingCell(layoutRegion, resource),
+        order,
+        7,
+      );
+    }
+    for (let f = 0; f <= Math.round(at * 60); f++) {
+      const events = flights.advanceWithDepartures(f / 60);
+      for (const resource of events.departed) departCatanWorkbenchBankResource(resource);
+      for (const resource of events.landed) bankCatanResource(resource);
+    }
+    return { active: flights.active() };
+  }
+
   const arg = args.find((a) => /^fly\d+@[\d.]+$/.test(a));
-  if (!arg) return [];
+  if (!arg) return { active: [] };
   const [roll, at] = arg.slice(3).split('@').map(Number);
   const flights = new ResourceFlights();
   let thrown = 0;
@@ -584,7 +740,7 @@ function catanFlights(scene: TileScene, region: { w: number; h: number }, args: 
     thrown += source.count;
   }
   for (let f = 1; f <= Math.round(at * 60); f++) flights.advance(f / 60);
-  return flights.active();
+  return { active: flights.active() };
 }
 
 // The poker table with a dealt hand at a chosen street, presented through the app's

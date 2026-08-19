@@ -23,7 +23,7 @@ export const RESOURCE_LOOK: Record<Resource, CatanCardLook> = {
   lumber: { emoji: '🪵', name: 'wood', fill: [86, 174, 95], ink: [19, 65, 27] },
   brick: { emoji: '🧱', name: 'brick', fill: [176, 77, 60], ink: [74, 26, 16] },
   wool: { emoji: '🐑', name: 'sheep', fill: [148, 196, 79], ink: [27, 48, 22] },
-  grain: { emoji: '🌾', name: 'wheat', fill: [201, 160, 8], ink: [66, 48, 4] },
+  grain: { emoji: '🌾', name: 'wheat', fill: [189, 140, 8], ink: [66, 48, 4] },
   ore: { emoji: '🪨', name: 'ore', fill: [135, 167, 161], ink: [26, 44, 42] },
 };
 
@@ -47,6 +47,8 @@ export const CATAN_CARD = {
   actionHover: [70, 139, 151] as CatanRgb,
   actionDisabled: [45, 49, 58] as CatanRgb,
   actionDisabledInk: [112, 117, 130] as CatanRgb,
+  cancelBg: [68, 72, 82] as CatanRgb,
+  cancelHover: [91, 96, 108] as CatanRgb,
   actionInk: [242, 247, 249] as CatanRgb,
   actionHoverInk: [255, 255, 255] as CatanRgb,
   actionPressed: [221, 241, 244] as CatanRgb,

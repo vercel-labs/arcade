@@ -10,13 +10,37 @@
 import { type RenderTarget } from '../../../engine/index.ts';
 import { type LayoutBox, type Node, type Screen } from '../../../tui/index.ts';
 import { buildGameMenu, type MenuItem } from '../../shell/bars.ts';
-import { type Resource } from '../../../rules/catan/types.ts';
-import { bankCatanResource, CATAN_LOCAL_COLOR, catanHandLandingCell, logCatanReceived, logCatanRobberMove, logCatanRoll, resetCatanWorkbenchCards } from './card-hud.ts';
+import { type DevCardType, type Resource } from '../../../rules/catan/types.ts';
+import {
+  bankCatanResource,
+  beginCatanWorkbenchDevPurchase,
+  beginStagedCatanWorkbenchBankTrade,
+  beginStagedCatanWorkbenchPortTrade,
+  CATAN_LOCAL_COLOR,
+  catanBankDepartureCell,
+  catanDevDeckDepartureCell,
+  catanDevHandLandingCell,
+  catanHandLandingCell,
+  catanRailVisible,
+  catanWorkbenchView,
+  departCatanWorkbenchBankResource,
+  departCatanWorkbenchDevCard,
+  landCatanWorkbenchDevCard,
+  logCatanReceived,
+  logCatanRobberMove,
+  logCatanRoll,
+  logCatanWorkbenchDevPurchase,
+  logCatanWorkbenchMaritimeTrade,
+  resetCatanWorkbenchCards,
+} from './card-hud.ts';
+import { type CatanWorkbenchMaritimeTrade, type CatanWorkbenchMaritimeTradeVia } from './card-workbench.ts';
 import { ResourceFlights } from './scene/resource-flight.ts';
 import { buildCatanPieceModal, buildCatanTileRoot, catanTileTerrain, mountCatanTileHud, setCatanTileHandlers, setCatanTileMode } from './tile-hud.ts';
 import { TileScene } from './tile-scene.ts';
 
 const ANIMATION_FRAME_MS = 90; // ~11 fps: enough for water, blades, and livestock without repainting at 60 fps
+const TRADE_ARC_MAX = 7; // a shallow lift from the low bank row before the card drops into the hand
+const DEV_ARC_MAX = 7;
 
 // The Catan in-game menu is the standard shell menu; its items dispatch shared app actions,
 // which main.ts supplies here (evaluated lazily so ordering/late-bound values are fine).
@@ -47,6 +71,10 @@ export class CatanController {
   private pieceEdit: { kind: 'building' | 'road'; id: number } | null = null;
   private animationTimer: ReturnType<typeof setInterval> | null = null;
   private readonly flights = new ResourceFlights();
+  private readonly tradeFlights = new ResourceFlights();
+  private readonly developmentFlights = new ResourceFlights<DevCardType>();
+  private pendingMaritimeTrade: { trade: CatanWorkbenchMaritimeTrade; via: CatanWorkbenchMaritimeTradeVia } | null = null;
+  private pendingDevelopmentCard: DevCardType | null = null;
   // Cards banked since the current roll's first arrival, held so the log can report the whole
   // haul in one entry once the last one is down.
   private arrived: Resource[] = [];
@@ -71,6 +99,8 @@ export class CatanController {
       onRollDice: () => this.change(() => this.scene.rollDice()),
       onColor: (c) => this.change(() => this.scene.setActiveColor(c)),
       onPort: (k) => this.change(() => this.scene.setPortKind(k)),
+      onMaritimeTrade: (via) => this.beginMaritimeTrade(via),
+      onBuyDevelopmentCard: () => this.beginDevelopmentPurchase(),
     });
     // Production. The scene reports the sum once the dice rest; what that pays out depends on
     // whose pieces sit on the matching hexes, so the seat is applied here rather than in the
@@ -97,6 +127,88 @@ export class CatanController {
     this.requestFrame();
   }
 
+  private beginMaritimeTrade(via: CatanWorkbenchMaritimeTradeVia): boolean {
+    if (this.tradeFlights.busy()) return false;
+    const trade = via === 'bank'
+      ? beginStagedCatanWorkbenchBankTrade()
+      : beginStagedCatanWorkbenchPortTrade(this.scene.maritimePortTradeRates(CATAN_LOCAL_COLOR));
+    if (!trade) return false;
+
+    this.pendingMaritimeTrade = { trade, via };
+    const region = this.region(this.lastCols, this.lastRows);
+    const railVisible = catanRailVisible(this.lastCols, this.lastRows);
+    const playerCount = catanWorkbenchView().opponents.length + 1;
+    for (let order = 0; order < trade.gets.length; order++) {
+      const resource = trade.gets[order];
+      this.tradeFlights.spawn(
+        resource,
+        1,
+        catanBankDepartureCell(region, resource, playerCount, railVisible),
+        catanHandLandingCell(region, resource),
+        order,
+        TRADE_ARC_MAX,
+      );
+    }
+    return true;
+  }
+
+  private finishPendingMaritimeTrade(): void {
+    if (!this.pendingMaritimeTrade) return;
+    logCatanWorkbenchMaritimeTrade(this.pendingMaritimeTrade.trade, this.pendingMaritimeTrade.via);
+    this.pendingMaritimeTrade = null;
+  }
+
+  private beginDevelopmentPurchase(): boolean {
+    if (this.developmentFlights.busy()) return false;
+    const card = beginCatanWorkbenchDevPurchase();
+    if (!card) return false;
+
+    this.pendingDevelopmentCard = card;
+    const region = this.region(this.lastCols, this.lastRows);
+    const railVisible = catanRailVisible(this.lastCols, this.lastRows);
+    const view = catanWorkbenchView(
+      this.scene.maritimeTradeRates(CATAN_LOCAL_COLOR),
+      this.scene.maritimePortTradeRates(CATAN_LOCAL_COLOR),
+    );
+    view.developmentPurchaseBusy = true;
+    view.pendingDevelopmentCard = card;
+    this.developmentFlights.spawn(
+      card,
+      1,
+      catanDevDeckDepartureCell(region, view.opponents.length + 1, railVisible),
+      catanDevHandLandingCell(region, card, railVisible, view),
+      0,
+      DEV_ARC_MAX,
+    );
+    return true;
+  }
+
+  private finishPendingDevelopmentPurchase(): void {
+    if (!this.pendingDevelopmentCard) return;
+    logCatanWorkbenchDevPurchase();
+    this.pendingDevelopmentCard = null;
+  }
+
+  private settleTradeFlights(): void {
+    for (const flight of this.tradeFlights.drainPending()) {
+      if (!flight.departed && !departCatanWorkbenchBankResource(flight.resource)) {
+        throw new Error(`Catan bank ran out of ${flight.resource} during a reserved maritime trade`);
+      }
+      bankCatanResource(flight.resource);
+    }
+    this.finishPendingMaritimeTrade();
+  }
+
+  private settleDevelopmentFlights(): void {
+    for (const flight of this.developmentFlights.drainPending()) {
+      if (!flight.departed && !departCatanWorkbenchDevCard(flight.resource)) {
+        throw new Error('Catan development deck changed during a reserved purchase');
+      }
+      landCatanWorkbenchDevCard(flight.resource);
+    }
+    this.finishPendingDevelopmentPurchase();
+  }
+
   private regenerateWorkbench(): void {
     // Tile showcase modes call this same handler for "vary". Varying one authored tile is not a
     // new board session, so it must leave the card workbench alone.
@@ -110,6 +222,10 @@ export class CatanController {
     // repopulate the new hand. `drain` also resets the flight clock; its returned cards are
     // intentionally discarded here because resetCatanWorkbenchCards restores the whole bank.
     this.flights.drain();
+    this.tradeFlights.drain();
+    this.developmentFlights.drain();
+    this.pendingMaritimeTrade = null;
+    this.pendingDevelopmentCard = null;
     this.arrived = [];
     resetCatanWorkbenchCards();
     this.scene.reroll();
@@ -140,6 +256,8 @@ export class CatanController {
       logCatanReceived(this.arrived);
       this.arrived = [];
     }
+    this.settleTradeFlights();
+    this.settleDevelopmentFlights();
     if (this.animationTimer !== null) {
       clearInterval(this.animationTimer);
       this.animationTimer = null;
@@ -198,7 +316,7 @@ export class CatanController {
 
   // ── render / dirty ───────────────────────────────────────────────────────────
   needsRender(): boolean {
-    return this.scene.needsRender() || this.flights.busy();
+    return this.scene.needsRender() || this.flights.busy() || this.tradeFlights.busy() || this.developmentFlights.busy();
   }
   renderScene(target: RenderTarget, t: number): void {
     this.scene.renderScene(target, t);
@@ -206,6 +324,8 @@ export class CatanController {
     // arrival is banked on the spot; the log waits for the last one so one roll reads as one
     // entry rather than a line per card.
     const landed = this.flights.advance(t);
+    this.advanceTradeFlights(t);
+    this.advanceDevelopmentFlights(t);
     if (!landed.length) return;
     for (const resource of landed) bankCatanResource(resource);
     this.arrived.push(...landed);
@@ -214,6 +334,30 @@ export class CatanController {
       this.arrived = [];
     }
     this.requestFrame(); // the hand count changed, so the HUD has to be rebuilt
+  }
+
+  private advanceTradeFlights(t: number): void {
+    const { departed, landed } = this.tradeFlights.advanceWithDepartures(t);
+    for (const resource of departed) {
+      if (!departCatanWorkbenchBankResource(resource)) {
+        throw new Error(`Catan bank ran out of ${resource} during a reserved maritime trade`);
+      }
+    }
+    for (const resource of landed) bankCatanResource(resource);
+    if (this.pendingMaritimeTrade && !this.tradeFlights.busy()) this.finishPendingMaritimeTrade();
+    if (departed.length || landed.length) this.requestFrame();
+  }
+
+  private advanceDevelopmentFlights(t: number): void {
+    const { departed, landed } = this.developmentFlights.advanceWithDepartures(t);
+    for (const card of departed) {
+      if (!departCatanWorkbenchDevCard(card)) {
+        throw new Error('Catan development deck changed during a reserved purchase');
+      }
+    }
+    for (const card of landed) landCatanWorkbenchDevCard(card);
+    if (this.pendingDevelopmentCard && !this.developmentFlights.busy()) this.finishPendingDevelopmentPurchase();
+    if (departed.length || landed.length) this.requestFrame();
   }
 
   // ── UI roots ─────────────────────────────────────────────────────────────────
@@ -229,14 +373,26 @@ export class CatanController {
     this.lastSceneCols = sceneCols;
     const singlePort = this.scene.portSailLabel(sceneCols, rows);
     const sailLabels = singlePort ? [singlePort] : this.scene.boardPortLabels(sceneCols, rows);
+    const cardsView = this.scene.currentMode() === 'boardCards'
+      ? catanWorkbenchView(
+          this.scene.maritimeTradeRates(CATAN_LOCAL_COLOR),
+          this.scene.maritimePortTradeRates(CATAN_LOCAL_COLOR),
+        )
+      : undefined;
+    if (cardsView) cardsView.maritimeTradeBusy = this.tradeFlights.busy();
+    if (cardsView) {
+      cardsView.developmentPurchaseBusy = this.developmentFlights.busy();
+      if (this.pendingDevelopmentCard) cardsView.pendingDevelopmentCard = this.pendingDevelopmentCard;
+    }
     return buildCatanTileRoot(
       this.region(cols, rows),
       () => this.openMenu(),
       this.scene.boardTokens(sceneCols, rows),
       this.scene.currentMode(),
       sailLabels,
-      this.flights.active(),
+      [...this.flights.active(), ...this.tradeFlights.active(), ...this.developmentFlights.active()],
       this.scene.isMovingRobber(),
+      cardsView,
     );
   }
 

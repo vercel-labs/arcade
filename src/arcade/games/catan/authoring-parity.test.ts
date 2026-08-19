@@ -46,3 +46,15 @@ test('authored Catan traversal preserves the staged island-build animation', () 
     assert.equal(frameHash(target), frame.expected, `t=${frame.time}`);
   }
 });
+
+test('large Catan water layer remains attached across repeated renders', () => {
+  const scene = new TileScene();
+  scene.setMode('board');
+  scene.seedDemo();
+  scene.settle();
+  const first = new RenderTarget(180, 120);
+  const second = new RenderTarget(180, 120);
+  scene.renderScene(first, 0.7);
+  scene.renderScene(second, 0.7);
+  assert.equal(frameHash(second), frameHash(first));
+});

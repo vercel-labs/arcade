@@ -1,8 +1,52 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { RenderTarget } from './framebuffer.ts';
-import { halfBlockLayerToSurface, shapeGlyphLayerToSurface } from './present-cells.ts';
+import { halfBlockLayerToSurface, shapeGlyphLayerToSurface, shapeGlyphToSurface } from './present-cells.ts';
+import { toShapeGlyph } from './present.ts';
 import { Surface } from './surface.ts';
+
+function solidTarget(width: number, height: number, color: { r: number; g: number; b: number }): RenderTarget {
+  const target = new RenderTarget(width, height);
+  target.clear();
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) target.plot(x, y, 0.2, { ...color, a: 1 }, 'opaque');
+  }
+  return target;
+}
+
+test('colored shape-glyph backgrounds preserve ASCII output and darken only painted cells', () => {
+  const target = solidTarget(16, 16, { r: 240, g: 120, b: 60 });
+  const ascii = new Surface(1, 1);
+  const hybrid = new Surface(1, 1);
+
+  shapeGlyphToSurface(ascii, target, 1, 1);
+  shapeGlyphToSurface(hybrid, target, 1, 1, { coloredBackground: true });
+
+  assert.notEqual(ascii.getCell(0, 0)?.ch, ' ');
+  assert.equal(hybrid.getCell(0, 0)?.ch, ascii.getCell(0, 0)?.ch, 'hybrid keeps the exact ASCII glyph');
+  assert.deepEqual(hybrid.getCell(0, 0)?.fg, ascii.getCell(0, 0)?.fg, 'hybrid keeps the exact foreground color');
+  assert.deepEqual(hybrid.getCell(0, 0)?.bg, [67, 34, 17], 'hybrid adds a darker version of the scene color');
+
+  const empty = new RenderTarget(16, 16);
+  empty.clear();
+  const black = new Surface(1, 1);
+  shapeGlyphToSurface(black, empty, 1, 1, { coloredBackground: true });
+  assert.equal(black.getCell(0, 0)?.ch, ' ');
+  assert.deepEqual(black.getCell(0, 0)?.bg, [0, 0, 0], 'blank scene cells stay black');
+});
+
+test('ANSI shape-glyph output resets the colored background for blank cells', () => {
+  const target = new RenderTarget(32, 16);
+  target.clear();
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) target.plot(x, y, 0.2, { r: 240, g: 120, b: 60, a: 1 }, 'opaque');
+  }
+
+  const output = toShapeGlyph(target, 2, 1, { coloredBackground: true });
+
+  assert.match(output, /;48;2;67;34;17m/);
+  assert.ok(output.includes('\x1b[48;2;0;0;0m'), 'blank cells explicitly restore the black backdrop');
+});
 
 test('shape glyph foreground layer leaves untouched cells transparent', () => {
   const target = new RenderTarget(16, 16);
@@ -21,6 +65,16 @@ test('shape glyph foreground layer leaves untouched cells transparent', () => {
   assert.deepEqual(surface.getCell(0, 0)?.bg, [10, 20, 30], 'foreground glyph preserves the existing cell background');
 });
 
+test('shape glyph foreground layer can paint its dimmed scene background', () => {
+  const target = solidTarget(16, 16, { r: 200, g: 100, b: 50 });
+  const surface = new Surface(1, 1);
+  surface.drawText(0, 0, 'U', [255, 255, 255], [10, 20, 30]);
+
+  shapeGlyphLayerToSurface(surface, target, 1, 1, { coloredBackground: true });
+
+  assert.deepEqual(surface.getCell(0, 0)?.bg, [56, 28, 14]);
+});
+
 test('half-block foreground layer replaces covered cells and preserves untouched UI', () => {
   const target = new RenderTarget(2, 2);
   target.clear();
@@ -32,4 +86,50 @@ test('half-block foreground layer replaces covered cells and preserves untouched
 
   assert.equal(surface.getCell(0, 0)?.ch, '▀');
   assert.equal(surface.getCell(1, 0)?.ch, 'I');
+});
+
+test('native 3x6 shape-glyph fast path matches the generic resampler exactly', () => {
+  const cols = 5;
+  const rows = 4;
+  const target = new RenderTarget(cols * 3, rows * 6);
+  target.clear();
+  for (let y = 0; y < target.height; y++) {
+    for (let x = 0; x < target.width; x++) {
+      target.plot(x, y, 0.2, {
+        r: (x * 43 + y * 17) % 256,
+        g: (x * 11 + y * 61) % 256,
+        b: (x * 29 + y * 7) % 256,
+        a: 1,
+      }, 'opaque');
+    }
+  }
+
+  const fast = new Surface(cols, rows);
+  shapeGlyphToSurface(fast, target, cols, rows, { hybrid: true, coloredBackground: true });
+
+  // Doubling every source sample forces the generic path while preserving the
+  // exact 3x6 luminance/color values represented by each terminal cell.
+  const doubled = new RenderTarget(target.width * 2, target.height * 2);
+  doubled.clear();
+  for (let y = 0; y < target.height; y++) {
+    for (let x = 0; x < target.width; x++) {
+      const i = (y * target.width + x) * 3;
+      for (let dy = 0; dy < 2; dy++) {
+        for (let dx = 0; dx < 2; dx++) {
+          doubled.plot(x * 2 + dx, y * 2 + dy, 0.2, {
+            r: target.color[i],
+            g: target.color[i + 1],
+            b: target.color[i + 2],
+            a: 1,
+          }, 'opaque');
+        }
+      }
+    }
+  }
+  const generic = new Surface(cols, rows);
+  shapeGlyphToSurface(generic, doubled, cols, rows, { hybrid: true, coloredBackground: true });
+
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) assert.deepEqual(fast.getCell(x, y), generic.getCell(x, y), `${x},${y}`);
+  }
 });

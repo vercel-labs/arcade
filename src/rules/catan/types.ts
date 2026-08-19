@@ -154,7 +154,8 @@ export type CatanAction =
   | { type: 'discard'; resources: Resource[] }
   | { type: 'moveRobber'; hex: number; victim: number | null }
   // Trade.
-  | { type: 'maritimeTrade'; give: Resource; get: Resource }
+  | { type: 'maritimeTrade'; via: 'bank'; give: Resource; get: Resource }
+  | { type: 'maritimeTrade'; via: 'port'; rate: 2 | 3; give: Resource; get: Resource }
   | { type: 'offerTrade'; give: FreqDeck; receive: FreqDeck }
   | { type: 'acceptTrade' }
   | { type: 'rejectTrade' }

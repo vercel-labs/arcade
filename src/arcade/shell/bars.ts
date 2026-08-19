@@ -10,7 +10,7 @@ import { ARCADE_CHROME_TEXT, ARCADE_OUTLINE_CONTROL, UI_CHROME_BG, UI_CHROME_PIL
 import { CHESS_PALETTE } from '../games/chess/palette.ts';
 
 export type Mode = 'prism' | 'menu' | 'chess-game' | 'logos' | 'ui' | 'audio' | 'cards' | 'poker' | 'catan' | 'catan-tiles';
-export type RenderMode = 'ascii' | 'pixels';
+export type RenderMode = 'ascii' | 'pixels' | 'hybrid';
 
 export interface BarActions {
   back(): void;

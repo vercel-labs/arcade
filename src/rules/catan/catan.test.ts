@@ -11,10 +11,12 @@ import {
   RESOURCES,
   resourceIndex,
   TERRAIN_RESOURCE,
+  type BuildingType,
   type CatanAction,
   type DevCardType,
   type FreqDeck,
   type Prompt,
+  type Resource,
 } from './types.ts';
 import { CatanState } from './catan.ts';
 
@@ -398,7 +400,7 @@ test('large discard spaces are bounded for enumeration but remain fully valid as
   assert.equal(s.handOf(0).reduce((sum, count) => sum + count, 0), 48);
 });
 
-test('main phase supports paid building, development-card purchase, and best available maritime rate', () => {
+test('main phase supports paid building, development-card purchase, and maritime trade', () => {
   const s = fresh();
   finishSetup(s);
   s.applyAction({ type: 'roll' }, { dice: [1, 1] });
@@ -446,32 +448,91 @@ test('main phase supports paid building, development-card purchase, and best ava
   assert.equal(s.developmentCardCount(0, 'victoryPoint'), devBefore + 1);
 });
 
-test('maritime trades derive exact 4:1, generic 3:1, and matching 2:1 rates and require bank supply', () => {
-  const rateAt = (node: number | null): number => {
+test('maritime trades derive exact 4:1, generic 3:1, and matching 2:1 rates for settlements and cities', () => {
+  const rateAt = (
+    node: number | null,
+    type: BuildingType = 'settlement',
+    give: Resource = 'brick',
+    via: 'bank' | 'port' = 'bank',
+  ): number => {
     const s = fresh();
     finishSetup(s);
     s.applyAction({ type: 'roll' }, { dice: [1, 1] });
     const internals = mutable(s);
     internals.buildings.clear();
-    if (node !== null) internals.buildings.set(node, { player: 0, type: 'settlement' });
-    setHand(s, 0, { brick: 4 });
-    const before = s.handOf(0)[resourceIndex('brick')];
+    if (node !== null) internals.buildings.set(node, { player: 0, type });
+    setHand(s, 0, { [give]: 4 });
+    const get = RESOURCES.find((resource) => resource !== give)!;
+    const before = s.handOf(0)[resourceIndex(give)];
     const action = s.legalActions().find(
-      (candidate) => candidate.type === 'maritimeTrade' && candidate.give === 'brick' && candidate.get === 'ore',
+      (candidate) => candidate.type === 'maritimeTrade' && candidate.via === via && candidate.give === give && candidate.get === get,
     );
     assert.ok(action);
     s.applyAction(action);
-    return before - s.handOf(0)[resourceIndex('brick')];
+    return before - s.handOf(0)[resourceIndex(give)];
   };
   const board = fresh().boardSetup();
   const harborNodes = new Set(board.harbors.flatMap((harbor) => harbor.nodes));
   const plainNode = Array.from({ length: NUM_NODES }, (_, node) => node).find((node) => !harborNodes.has(node))!;
-  const genericNode = board.harbors.find((harbor) => harbor.port.resource === null)!.nodes[0];
-  const brickNode = board.harbors.find((harbor) => harbor.port.resource === 'brick')!.nodes[0];
+  const genericHarbor = board.harbors.find((harbor) => harbor.port.resource === null)!;
+  const brickHarbor = board.harbors.find((harbor) => harbor.port.resource === 'brick')!;
+  const genericNode = genericHarbor.nodes[0];
+  const brickNode = brickHarbor.nodes[0];
   assert.equal(rateAt(plainNode), 4);
-  assert.equal(rateAt(genericNode), 3);
-  assert.equal(rateAt(brickNode), 2);
+  for (const resource of RESOURCES) assert.equal(rateAt(genericNode, 'settlement', resource, 'port'), 3);
+  assert.equal(rateAt(brickHarbor.nodes[0], 'settlement', 'brick', 'port'), 2);
+  assert.equal(rateAt(brickHarbor.nodes[1], 'settlement', 'brick', 'port'), 2);
+  assert.equal(rateAt(brickNode, 'settlement', 'grain'), 4);
+  assert.equal(rateAt(genericNode, 'city', 'brick', 'port'), 3);
+  assert.equal(rateAt(brickNode, 'city', 'brick', 'port'), 2);
+  assert.equal(rateAt(genericNode, 'settlement', 'brick', 'bank'), 4, 'owning a port leaves 4:1 bank trade available');
 
+  const channels = fresh();
+  finishSetup(channels);
+  channels.applyAction({ type: 'roll' }, { dice: [1, 1] });
+  mutable(channels).buildings.clear();
+  mutable(channels).buildings.set(genericNode, { player: 0, type: 'settlement' });
+  setHand(channels, 0, { brick: 4 });
+  const brickForOre = channels.legalActions().filter(
+    (action) => action.type === 'maritimeTrade' && action.give === 'brick' && action.get === 'ore',
+  );
+  assert.deepEqual(brickForOre.map((action) => action.type === 'maritimeTrade' && action.via), ['port', 'bank']);
+  assert.deepEqual(channels.actionFromString('port-trade brick->ore'), brickForOre[0]);
+  assert.deepEqual(channels.actionFromString('bank-trade brick->ore'), brickForOre[1]);
+
+  mutable(channels).buildings.set(brickNode, { player: 0, type: 'settlement' });
+  const brickChoices = channels.legalActions().filter(
+    (action) => action.type === 'maritimeTrade' && action.give === 'brick' && action.get === 'ore',
+  );
+  assert.deepEqual(brickChoices.map((action) => action.type === 'maritimeTrade' && (
+    action.via === 'bank' ? 'bank 4:1' : `port ${action.rate}:1`
+  )), ['port 2:1', 'port 3:1', 'bank 4:1']);
+  assert.deepEqual(channels.actionFromString('port-trade 2:1 brick->ore'), brickChoices[0]);
+  assert.deepEqual(channels.actionFromString('port-trade 3:1 brick->ore'), brickChoices[1]);
+
+  const rates = fresh();
+  const internals = mutable(rates);
+  internals.buildings.clear();
+  internals.buildings.set(genericNode, { player: 0, type: 'settlement' });
+  internals.buildings.set(brickNode, { player: 0, type: 'city' });
+  assert.deepEqual(rates.maritimeTradeRates(0), {
+    brick: 2,
+    grain: 3,
+    lumber: 3,
+    ore: 3,
+    wool: 3,
+  });
+  assert.deepEqual(rates.maritimePortTradeRates(0), {
+    brick: [2, 3],
+    grain: [3],
+    lumber: [3],
+    ore: [3],
+    wool: [3],
+  });
+
+});
+
+test('maritime trades require bank supply', () => {
   const emptyBank = fresh();
   finishSetup(emptyBank);
   emptyBank.applyAction({ type: 'roll' }, { dice: [1, 1] });

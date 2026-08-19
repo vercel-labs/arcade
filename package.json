@@ -11,6 +11,7 @@
     "dev": "ARCADE_DEV=1 tsx src/arcade/main.ts",
     "snapshot": "ARCADE_DEV=1 tsx src/tools/snapshot.ts",
     "snapshot:png": "sh scripts/snapshot-png.sh",
+    "bench": "node --import tsx src/tools/bench.ts",
     "catan:check": "ARCADE_DEV=1 tsx src/tools/catan-render-check.ts",
     "models:audit": "tsx src/tools/model-compat-report.ts",
     "models:report": "tsx src/tools/model-compat-view.ts",

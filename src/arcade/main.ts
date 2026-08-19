@@ -57,6 +57,7 @@ import { availableTeams, ensureGatewayKey, isLoggedIn, loadEnv, signOut as signO
 import { AiMatch, type Seat } from './match/driver.ts';
 import { disambiguateLabels } from './match/labels.ts';
 import { flushTelemetry, initTelemetry, isTelemetryEnabled, setTelemetryEnabled, telemetryStatus, trackSessionStart, type RecordEndReason } from '../telemetry/index.ts';
+import { supersampleForMode } from './render-quality.ts';
 
 // Populate process.env from .env.local before anything reads AI_GATEWAY_API_KEY.
 loadEnv();
@@ -66,12 +67,9 @@ const FPS = 30;
 // at wall-clock speed even when a large terminal drops the loop below FPS. The step
 // is clamped so a stall or an idle→interaction gap can't teleport the animation.
 const MAX_STEP = 0.1;
-// Supersample factor for the prism screen (antialiasing + sub-cell detail
-// for shape-matched glyph mode).
-const SS = 3;
 const SCENE_CELL_PIXEL_ASPECT = 2;
 
-const MODE_ORDER: RenderMode[] = ['ascii', 'pixels'];
+const MODE_ORDER: RenderMode[] = ['ascii', 'pixels', 'hybrid'];
 const COLOR_ORDER: TerminalColorMode[] = ['truecolor', '256-color'];
 // Reserve the widest setting value so the popup keeps a stable width as either
 // display or color cycles in place (see buildGameMenu `valueColW`).
@@ -93,7 +91,10 @@ let rows = process.stdout.rows ?? 24;
 // The prism/chess/logos scenes render through the engine to a supersampled
 // RGBA target at FULL height — the button bar composites on top of the scene's
 // bottom row rather than sitting on a reserved blank strip.
-let target = new RenderTarget(cols * SS, rows * 2 * SS);
+let target = new RenderTarget(
+  cols * supersampleForMode('ascii'),
+  rows * SCENE_CELL_PIXEL_ASPECT * supersampleForMode('ascii'),
+);
 let display: RenderTarget | undefined;
 const prism = new PrismScene();
 const coverflow = new CoverFlowScene();
@@ -360,8 +361,9 @@ function activeSceneViewport(): LayoutBox {
 // Reallocate only when a rail or terminal resize changes the available geometry.
 function ensureSceneTarget(): void {
   const viewport = activeSceneViewport();
-  const width = viewport.w * SS;
-  const height = viewport.h * SCENE_CELL_PIXEL_ASPECT * SS;
+  const supersample = supersampleForMode(renderMode);
+  const width = viewport.w * supersample;
+  const height = viewport.h * SCENE_CELL_PIXEL_ASPECT * supersample;
   if (target.width === width && target.height === height) return;
   target = new RenderTarget(width, height);
   display = undefined;
@@ -2011,7 +2013,7 @@ function syncBar(): void {
 // white. Give only the menu a lower exposure and a restrained highlight bloom.
 // ASCII bypasses this path entirely, preserving its existing contrast.
 function preparePixelDisplay(withBloom: boolean): RenderTarget {
-  display = downsample(target, SS, display);
+  display = downsample(target, supersampleForMode(renderMode), display);
   if (mode === 'menu') {
     const colors = display.color;
     for (let i = 0; i < colors.length; i++) colors[i] *= 0.86;
@@ -2029,10 +2031,11 @@ function preparePixelDisplay(withBloom: boolean): RenderTarget {
 // effects, off for solid geometry like the chess pieces.
 function presentScene(withBloom = true, hybridShadow = false): string {
   const viewport = activeSceneViewport();
-  if (renderMode === 'ascii') {
+  if (renderMode !== 'pixels') {
     return toShapeGlyph(target, viewport.w, viewport.h, {
       color: true,
       hybrid: hybridShadow,
+      coloredBackground: renderMode === 'hybrid',
     });
   }
   return toHalfBlock(preparePixelDisplay(withBloom));
@@ -2048,7 +2051,7 @@ function presentSceneInto(surf: Surface, withBloom = true, hybridShadow = false)
     // cannot blend over scene colors left behind by the previous full-width frame.
     surf.fillRect(reservedX, 0, surf.cols - reservedX, surf.rows, [0, 0, 0]);
   }
-  if (renderMode === 'ascii') {
+  if (renderMode !== 'pixels') {
     shapeGlyphToSurface(
       surf,
       target,
@@ -2057,6 +2060,7 @@ function presentSceneInto(surf: Surface, withBloom = true, hybridShadow = false)
       {
         color: true,
         hybrid: hybridShadow,
+        coloredBackground: renderMode === 'hybrid',
       },
       viewport.x,
       viewport.y,
@@ -2071,13 +2075,13 @@ function presentSceneInto(surf: Surface, withBloom = true, hybridShadow = false)
 // dice, so finite pixels are dice and infinite pixels leave the already-painted TUI untouched.
 function presentSceneForegroundInto(surf: Surface, withBloom = true, hybridShadow = false): void {
   const viewport = activeSceneViewport();
-  if (renderMode === 'ascii') {
+  if (renderMode !== 'pixels') {
     shapeGlyphLayerToSurface(
       surf,
       target,
       viewport.w,
       viewport.h,
-      { color: true, hybrid: hybridShadow },
+      { color: true, hybrid: hybridShadow, coloredBackground: renderMode === 'hybrid' },
       viewport.x,
       viewport.y,
     );
@@ -2573,7 +2577,8 @@ function tick(dt: number): void {
 process.stdout.on('resize', () => {
   cols = process.stdout.columns ?? 80;
   rows = process.stdout.rows ?? 24;
-  target = new RenderTarget(cols * SS, rows * 2 * SS);
+  const supersample = supersampleForMode(renderMode);
+  target = new RenderTarget(cols * supersample, rows * SCENE_CELL_PIXEL_ASPECT * supersample);
   ui.resize(cols, rows);
   display = undefined;
   // The scene repaints every cell it owns each frame, but the reserved button

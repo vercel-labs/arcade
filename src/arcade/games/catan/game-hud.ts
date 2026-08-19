@@ -78,6 +78,8 @@ export function catanLiveView(state: CatanState, driver: CatanDriver): CatanCard
     hand: freq(state, viewer),
     devHand,
     bank,
+    maritimeRates: state.maritimeTradeRates(viewer),
+    maritimePortRates: state.maritimePortTradeRates(viewer),
     developmentDeck: state.developmentDeckSize(),
     opponents,
     history,

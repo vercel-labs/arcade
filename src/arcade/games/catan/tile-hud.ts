@@ -4,14 +4,14 @@
 
 import { Box, Button, Dialog, Dropdown, Field, FilledButton, type LayoutBox, Modal, type Node, ProjectedAnchor, RoundedButton, type Screen, Slot, Text } from '../../../tui/index.ts';
 import { stringWidth } from '../../../engine/index.ts';
-import { type PlayerColor, type Terrain } from '../../../rules/catan/types.ts';
+import { type DevCardType, type PlayerColor, type Resource, type Terrain } from '../../../rules/catan/types.ts';
 import { type BoardToken, type CatanMode, type SailLabel } from './tile-scene.ts';
 import { type PortKind } from './mesh/index.ts';
 import { UI_CHROME_BG, UI_CHROME_PILL, uiChromeBg } from '../../theme.ts';
-import { buildCatanCardsOverlay, CATAN_RAIL_W, catanResourceFace, catanSidebarOpen, mountCatanCardsHud, toggleCatanSidebar } from './card-hud.ts';
+import { buildCatanCardsOverlay, CATAN_RAIL_W, catanResourceFace, catanSidebarOpen, mountCatanCardsHud, toggleCatanSidebar, type CatanCardsView } from './card-hud.ts';
 import { hudBottomRight, hudTopCenter, hudTopRight } from '../../shell/hud-chrome.ts';
 import { type FlyingResource } from './scene/resource-flight.ts';
-import { CATAN_NUMBER_TOKEN } from './palette.ts';
+import { CATAN_NUMBER_TOKEN, DEV_CARD_ICON, DEV_LOOK, RESOURCE_ORDER } from './palette.ts';
 
 const CHIP_BG = CATAN_NUMBER_TOKEN.background;
 const CHIP_INK = CATAN_NUMBER_TOKEN.ink;
@@ -29,14 +29,22 @@ function pipLabel(count: number): string {
 // A number token centered over a hex: the number plus its official production-probability
 // pips. A detailed two-row token straddles the projected center (number above, pips on it),
 // while the distant one-row form places the number directly on that center.
-// A resource card in flight: its glyph on its own card's fill, so it stays readable over the
-// board's ASCII and lands on an exact color match. Deliberately the smallest chip that reads as
+// A resource or development card in flight: its glyph on its own card's fill, so it stays readable
+// over the board's ASCII and lands on an exact color match. Deliberately the smallest chip that reads as
 // one — a single row, and one column of fill either side of the two-cell glyph. Any taller and
 // it stops looking like a card skimming the board and starts looking like a panel.
 const FLIGHT_PAD_X = 1;
 const FLIGHT_SINK_GLYPH = '▄'; // lower half: what is left of the chip once its base is behind the panel
-function flyingCard(f: FlyingResource): Node {
-  const { emoji, fill } = catanResourceFace(f.resource);
+type CatanFlyingCard = Resource | DevCardType;
+
+function isFlyingResource(card: CatanFlyingCard): card is Resource {
+  return (RESOURCE_ORDER as readonly string[]).includes(card);
+}
+
+function flyingCard(f: FlyingResource<CatanFlyingCard>): Node {
+  const { emoji, fill } = isFlyingResource(f.resource)
+    ? catanResourceFace(f.resource)
+    : { emoji: DEV_CARD_ICON, fill: DEV_LOOK.fill };
   // Measured rather than assumed to be two: a glyph that turns out to advance one cell would
   // otherwise leave a column of fill hanging off the chip's edge.
   const width = stringWidth(emoji) + FLIGHT_PAD_X * 2;
@@ -121,6 +129,8 @@ export interface CatanTileHandlers {
   onColor(c: PlayerColor): void;
   onPort(kind: PortKind): void;
   onToggleSidebar(): void;
+  onMaritimeTrade(via: 'bank' | 'port'): boolean;
+  onBuyDevelopmentCard(): boolean;
 }
 let H: CatanTileHandlers | null = null;
 let robberOn = false; // whether the robber is currently shown (toggled from the panel)
@@ -189,7 +199,7 @@ export function buildCatanPieceModal(o: PieceModalOpts): Node {
 // ☰ menu button (top-right). No bottom bar — home/reset/display/etc. all live in the menu.
 // `onOpenMenu` opens the game menu; `tokens` are the board number chips; `sails` are the port
 // trade chips (both are 2D overlays projected onto the scene).
-export function buildCatanTileRoot(region: LayoutBox, onOpenMenu: () => void, tokens: BoardToken[] = [], mode: CatanMode = 'tile', sails: SailLabel[] = [], flights: FlyingResource[] = [], movingRobber = false): Node {
+export function buildCatanTileRoot(region: LayoutBox, onOpenMenu: () => void, tokens: BoardToken[] = [], mode: CatanMode = 'tile', sails: SailLabel[] = [], flights: FlyingResource<CatanFlyingCard>[] = [], movingRobber = false, cardsView?: CatanCardsView): Node {
   // Per-mode controls: board → regenerate; pieces → color picker; tile → terrain + vary + robber.
   const boardMode = mode === 'board' || mode === 'boardCards';
   const railOpen = mode === 'boardCards' && catanSidebarOpen();
@@ -222,7 +232,16 @@ export function buildCatanTileRoot(region: LayoutBox, onOpenMenu: () => void, to
   // controls, cards, menus, and dialogs. Nested dropdown portals still paint one phase later.
   const chrome = Box({ width: region.w, height: region.h }, [
     Box({ width: region.w, height: region.h, flexDirection: 'column' }, [Box({ flexDirection: 'row', padding: [1, 0, 0, 2] }, [panel])]),
-    ...(mode === 'boardCards' ? [buildCatanCardsOverlay(region, toggleSidebar, undefined, () => H?.onToggleSidebar())] : []),
+    ...(mode === 'boardCards'
+      ? [buildCatanCardsOverlay(
+          region,
+          toggleSidebar,
+          cardsView,
+          () => H?.onToggleSidebar(),
+          H?.onMaritimeTrade,
+          H?.onBuyDevelopmentCard,
+        )]
+      : []),
     // Cards in flight paint OVER the hand panel, not under it: they have to cross the panel's top
     // padding to reach the card's edge, and paint order alone would hide them a row too early.
     // What keeps them off the card faces is the clip in ResourceFlights — a chip is culled the

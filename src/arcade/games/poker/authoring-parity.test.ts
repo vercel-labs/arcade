@@ -31,3 +31,12 @@ test('authored Poker composition preserves live-idle and card-showcase baselines
     assert.equal(frameHash(target), entry.expected, entry.mode);
   }
 });
+
+test('cached Poker idle base preserves an unchanged animated frame', () => {
+  const scene = new PokerGameScene();
+  const first = new RenderTarget(96, 64);
+  const cached = new RenderTarget(96, 64);
+  scene.renderScene(first, 0);
+  scene.renderScene(cached, 0);
+  assert.equal(frameHash(cached), frameHash(first));
+});

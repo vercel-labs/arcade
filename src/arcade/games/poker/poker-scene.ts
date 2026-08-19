@@ -26,7 +26,7 @@ import {
   normalize3,
   OrbitCamera,
   Raycaster,
-  type RenderTarget,
+  RenderTarget,
   Scene,
   SceneRenderer,
   smoothstep,
@@ -340,6 +340,11 @@ export class PokerGameScene {
       ambient: TABLE_AMBIENT,
     }),
   );
+  // Idle animation only moves the centre deck (and optional wisps). Cache the
+  // rasterized table, chairs, decorative cards, and chip stacks until geometry,
+  // camera, or viewport state changes.
+  private idleBase: RenderTarget | null = null;
+  private idleBaseChairCount = -1;
 
   private hand: HoldemState | null = null;
   private seats: PokerSeatView[] = [];
@@ -1068,24 +1073,39 @@ export class PokerGameScene {
     }
     this.advanceCine(dt); // may hard-cut this.cam before we read the eye below
     this.tickAutoContinue(dt); // may fire continueGesture (restoring the camera) before the eye read
-    target.clear(6, 10, 8);
     const camera = this.cam.toCamera({ fovy: FOVY, near: 0.05, far: 200 });
-    const eye = camera.eye;
     const { viewProjection: vp } = cameraMatrices(camera, target.width / target.height);
 
     // Table + chairs: one per seat during a session, else a default idle ring.
     // Frame (rail/apron/legs) is plain matte; the felt gets the stipple material.
     const idle = this.isIdle();
     const chairCount = idle ? this.seats.length || IDLE_SEATS : this.seats.length;
-    this.queueTable();
-    this.queueChairRing(chairCount);
-    this.sceneRenderer.render(target, this.authoredScene, camera);
     if (idle) {
       // Idle state: a ring of chairs around a centre deck shuffling on a loop. With
       // the setup preview up, the ring follows the chosen player count instead.
+      const cacheChanged =
+        !this.idleBase ||
+        this.idleBase.width !== target.width ||
+        this.idleBase.height !== target.height ||
+        this.idleBaseChairCount !== chairCount;
+      if (cacheChanged) this.idleBase = new RenderTarget(target.width, target.height);
+      if (cacheChanged || this.dirty || viewportChanged) {
+        this.idleBase!.clear(6, 10, 8);
+        this.queueTable();
+        this.queueChairRing(chairCount);
+        this.sceneRenderer.render(this.idleBase!, this.authoredScene, camera);
+        this.drawIdleFurniture(this.idleBase!, vp, chairCount);
+        this.idleBaseChairCount = chairCount;
+      }
+      target.color.set(this.idleBase!.color);
+      target.depth.set(this.idleBase!.depth);
       this.idleDeck.step(dt);
-      this.drawIdleFurniture(target, vp, chairCount); // static pre-flop hands + carried stacks per chair
       this.idleDeck.draw(target, vp);
+    } else {
+      target.clear(6, 10, 8);
+      this.queueTable();
+      this.queueChairRing(chairCount);
+      this.sceneRenderer.render(target, this.authoredScene, camera);
     }
 
     const hand = this.hand;

@@ -107,3 +107,26 @@ test('a card is not drawn before its launch, and hexes paying together do not ov
   run(STAGGER + 0.05);
   assert.deepEqual(flights.active().map((f) => f.resource), ['ore', 'grain']);
 });
+
+test('staggered departures are reported separately from landings', () => {
+  const flights = new ResourceFlights();
+  flights.spawn('ore', 2, FROM, TO, 0);
+
+  assert.deepEqual(flights.advanceWithDepartures(0), { departed: ['ore'], landed: [] });
+  assert.deepEqual(flights.advanceWithDepartures(STAGGER / 2), { departed: [], landed: [] });
+  assert.deepEqual(flights.advanceWithDepartures(STAGGER + 0.01), { departed: ['ore'], landed: [] });
+  assert.deepEqual(flights.advanceWithDepartures(FLIGHT_DUR + 0.01), { departed: [], landed: ['ore'] });
+  assert.deepEqual(flights.advanceWithDepartures(FLIGHT_DUR + STAGGER + 0.02), { departed: [], landed: ['ore'] });
+});
+
+test('draining preserves whether each staggered card has left its source', () => {
+  const flights = new ResourceFlights();
+  flights.spawn('grain', 2, FROM, TO, 0);
+  flights.advanceWithDepartures(0);
+
+  assert.deepEqual(flights.drainPending(), [
+    { resource: 'grain', departed: true },
+    { resource: 'grain', departed: false },
+  ]);
+  assert.equal(flights.busy(), false);
+});

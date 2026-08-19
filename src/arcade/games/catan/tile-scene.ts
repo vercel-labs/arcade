@@ -33,7 +33,7 @@ import {
   Raycaster,
   rasterize,
   resolveStickyHover,
-  type RenderTarget,
+  RenderTarget,
   Scene,
   SceneRenderer,
   smoothstep,
@@ -45,6 +45,13 @@ import {
 import { HEX_COORDS, NUM_HEXES } from '../../../rules/catan/board-topology.ts';
 import { type BoardOccupancy, canPlaceRoad, canPlaceSettlement } from '../../../rules/catan/placement.ts';
 import { type BoardSetup, generateBoard } from '../../../rules/catan/setup.ts';
+import {
+  maritimePortTradeRates,
+  maritimeTradeRates,
+  portsAtNodes,
+  type MaritimePortTradeRates,
+  type MaritimeTradeRates,
+} from '../../../rules/catan/maritime-trade.ts';
 import { type PlayerColor, RED_NUMBERS, type Resource, type Terrain, TOKEN_DOTS } from '../../../rules/catan/types.ts';
 import { animatedTileMesh, boardOverlayMesh, coastMesh, dieMesh, harborPiersMesh, hoverColorFor, type OverlaySpec, piecesMesh, PORT_SAIL_CENTER, type PortKind, portMesh, robberMarkerMesh, surfMesh, swashMesh, tileBackMesh, tileMesh } from './mesh/index.ts';
 import { catanPieceMaterial, type CatanPieceUniforms } from './mesh/piece-material.ts';
@@ -56,6 +63,34 @@ import { rollPayouts, rollYield } from './scene/production.ts';
 import { CATAN_WATER_RADIUS_X, CATAN_WATER_RADIUS_Z, catanWaterMesh } from './water.ts';
 
 const FOVY = (44 * Math.PI) / 180;
+const WATER_BUILD_LAYER_SCALE = 2 / 3;
+const WATER_SETTLED_LAYER_SCALE = 1 / 2;
+const WATER_LAYER_MIN_WIDTH = 180;
+const WATER_LAYER_MIN_HEIGHT = 120;
+
+function blitNearest(source: RenderTarget, target: RenderTarget): void {
+  const xScale = source.width / target.width;
+  const yScale = source.height / target.height;
+  for (let y = 0; y < target.height; y++) {
+    const sourceRow = Math.min(source.height - 1, Math.floor(y * yScale)) * source.width;
+    const targetRow = y * target.width;
+    for (let x = 0; x < target.width; x++) {
+      const sourcePixel = sourceRow + Math.min(source.width - 1, Math.floor(x * xScale));
+      const depth = source.depth[sourcePixel];
+      // The destination was already cleared to the same backdrop. Skip both the
+      // outer hex corners and the settled island hole instead of copying values
+      // that full-resolution land will immediately replace.
+      if (!Number.isFinite(depth)) continue;
+      const targetPixel = targetRow + x;
+      const sourceColor = sourcePixel * 3;
+      const targetColor = targetPixel * 3;
+      target.color[targetColor] = source.color[sourceColor];
+      target.color[targetColor + 1] = source.color[sourceColor + 1];
+      target.color[targetColor + 2] = source.color[sourceColor + 2];
+      target.depth[targetPixel] = depth;
+    }
+  }
+}
 // A warm key from the upper front-right so tops read bright and the raised content casts its
 // form; a high ambient floor keeps side faces legible (especially in ASCII mode).
 const LIGHT: Vec3 = normalize3({ x: 0.42, y: 0.86, z: 0.5 });
@@ -79,6 +114,7 @@ const PORT_LIGHT: Vec3 = normalize3({ x: 0.62, y: 0.4, z: 0.52 });
 const PORT_WRAP = 0.95;
 const MODEL: Mat4 = mat4Identity();
 const WATER_MESH = catanWaterMesh();
+const SETTLED_WATER_MESH = catanWaterMesh({ omitSettledLand: true });
 const COAST_MESH = coastMesh();
 // Catan's sea frame is a clear cyan-blue rather than near-black ocean. Keep enough depth for
 // the island to pop, but lift the palette into multiple ASCII luminance buckets so the ripple
@@ -317,7 +353,9 @@ export class TileScene {
   private tokenPipDetailVisible: boolean | null = null;
   private dirty = true;
   private readonly authoredScene = new Scene();
+  private readonly waterScene = new Scene();
   private readonly sceneRenderer = new SceneRenderer();
+  private waterTarget: RenderTarget | null = null;
   private renderSequence = 0;
   private readonly waterPool = new ObjectPool(() => new MeshObject(
     EMPTY_MESH,
@@ -631,6 +669,20 @@ export class TileScene {
   }
   buildingInfo(node: number): { city: boolean; color: PlayerColor } | undefined {
     return this.buildings.get(node);
+  }
+  maritimeTradeRates(color: PlayerColor): MaritimeTradeRates {
+    if (!this.board) return maritimeTradeRates([]);
+    const nodes = [...this.buildings]
+      .filter(([, building]) => building.color === color)
+      .map(([node]) => node);
+    return maritimeTradeRates(portsAtNodes(this.board.harbors, nodes));
+  }
+  maritimePortTradeRates(color: PlayerColor): MaritimePortTradeRates {
+    if (!this.board) return maritimePortTradeRates([]);
+    const nodes = [...this.buildings]
+      .filter(([, building]) => building.color === color)
+      .map(([node]) => node);
+    return maritimePortTradeRates(portsAtNodes(this.board.harbors, nodes));
   }
   // What one color collects for a roll against the board as it stands. The scene owns the board
   // and the buildings, so it answers the question rather than exposing both to do it outside.
@@ -995,7 +1047,11 @@ export class TileScene {
     // stretch while the coast emerges after them.
     const camera = cam.toCamera({ fovy: FOVY, near: 0.05, far: 100 });
     const eye = camera.eye;
-    if (isBoardMode(this.modeName)) this.renderBoard(t, eye);
+    const useWaterLayer =
+      isBoardMode(this.modeName) &&
+      target.width >= WATER_LAYER_MIN_WIDTH &&
+      target.height >= WATER_LAYER_MIN_HEIGHT;
+    if (isBoardMode(this.modeName)) this.renderBoard(t, eye, useWaterLayer);
     else if (this.modeName === 'pieces') this.queuePiece(piecesMesh(this.pieceColor), MODEL);
     else if (this.modeName === 'port') this.queueLambert(portMesh(this.portKind), MODEL, PORT_LIGHT, PORT_WRAP);
     else {
@@ -1003,18 +1059,48 @@ export class TileScene {
       const animated = animatedTileMesh(this.terrain, this.variant, t);
       if (animated) this.queueLambert(animated, MODEL);
     }
-    this.sceneRenderer.render(target, this.authoredScene, camera);
+    if (isBoardMode(this.modeName)) this.renderBoardLayers(target, camera);
+    else this.sceneRenderer.render(target, this.authoredScene, camera);
     if (isBoardMode(this.modeName)) this.renderDice(target, t);
     this.dirty = false;
+  }
+
+  // Water's fragment shader is the board's most expensive material. At normal
+  // terminal sizes render that background at SS2-equivalent detail, expand its
+  // color/depth layer, then rasterize the crisp island and pieces at full SS3.
+  // Tiny authoring targets keep the original single-pass path.
+  private renderBoardLayers(target: RenderTarget, camera: Camera): void {
+    if (target.width < WATER_LAYER_MIN_WIDTH || target.height < WATER_LAYER_MIN_HEIGHT) {
+      this.sceneRenderer.render(target, this.authoredScene, camera);
+      return;
+    }
+
+    const scale = this.placing ? WATER_BUILD_LAYER_SCALE : WATER_SETTLED_LAYER_SCALE;
+    const width = Math.max(1, Math.round(target.width * scale));
+    const height = Math.max(1, Math.round(target.height * scale));
+    if (!this.waterTarget || this.waterTarget.width !== width || this.waterTarget.height !== height) {
+      this.waterTarget = new RenderTarget(width, height);
+    }
+    this.waterTarget.clear(14, 16, 22);
+
+    this.authoredScene.remove(this.waterPool);
+    this.waterScene.add(this.waterPool);
+    try {
+      this.sceneRenderer.render(this.waterTarget, this.waterScene, camera);
+      blitNearest(this.waterTarget, target);
+      this.sceneRenderer.render(target, this.authoredScene, camera);
+    } finally {
+      this.waterScene.remove(this.waterPool);
+      this.authoredScene.add(this.waterPool);
+    }
   }
 
   // The full 19-hex board. Each hex has a distinct per-tile seed for procedural variation and
   // the robber is baked onto the desert. While `placing`, each tile is posed along its fly-in
   // (stack → arc → drop) and shows its blank back until it flips past edge-on.
-  private renderBoard(t: number, eye: Vec3): void {
+  private renderBoard(t: number, eye: Vec3, optimizeWater: boolean): void {
     if (!this.board) this.regenerate(false);
     const board = this.board!;
-    this.queueWater(WATER_MESH, t, eye);
     if (this.placing) {
       this.placementClock.tick(t);
       if (this.placementClock.elapsed > BOARD_BUILD_END) {
@@ -1023,6 +1109,7 @@ export class TileScene {
         this.revealClock.reset();
       }
     }
+    this.queueWater(optimizeWater && !this.placing ? SETTLED_WATER_MESH : WATER_MESH, t, eye);
     const coastProgress = this.placing
       ? Math.max(0, Math.min(1, (this.placementClock.elapsed - COAST_GROW_START) / COAST_GROW_DUR))
       : 1;

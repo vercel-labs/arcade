@@ -420,7 +420,10 @@ type CatanAction =
   | { type: 'playRoadBuilding'; edges: number[] } | { type: 'playYearOfPlenty'; resources: Resource[] } | { type: 'playMonopoly'; resource: Resource }
   | { type: 'moveRobber'; hex: number; victim: number | null }
   | { type: 'discard'; resources: Resource[] }
-  | { type: 'maritimeTrade'; give: Resource; get: Resource }          // ratio derived from ports held
+  | { type: 'maritimeTrade'; via: 'bank'; give: Resource; get: Resource }
+      // bank is always 4:1
+  | { type: 'maritimeTrade'; via: 'port'; rate: 2 | 3; give: Resource; get: Resource }
+      // every applicable owned port rate remains selectable
   | { type: 'offerTrade'; give: FreqDeck; receive: FreqDeck } | { type: 'acceptTrade' } | { type: 'rejectTrade' } | { type: 'confirmTrade'; with: number } | { type: 'cancelTrade' }
   | { type: 'initialSettlement'; node: number } | { type: 'initialRoad'; edge: number }
   | { type: 'endTurn' };

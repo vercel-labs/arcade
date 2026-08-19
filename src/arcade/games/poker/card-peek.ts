@@ -99,6 +99,11 @@ export class HandPeek {
     return { seatX: this.cards[i].seatX, seatZ: this.seatZ, reveal: this.cards[i].reveal.value, peek: PEEK, az };
   }
 
+  // Current reveal amount, exposed for deterministic headless motion checks.
+  reveal(i: number): number | undefined {
+    return this.cards[i]?.reveal.value;
+  }
+
   // Draw every card bent to its current reveal.
   draw(target: RenderTarget, vp: Mat4, az: number, back: Texture): void {
     for (let i = 0; i < this.cards.length; i++) drawPeekCard(target, vp, this.peekPose(i, az), this.cards[i].card, back);
@@ -116,19 +121,30 @@ export class HandPeek {
   click(cam: OrbitCamera, ndcX: number, ndcY: number, aspect: number): boolean {
     const h = this.pick(cam, ndcX, ndcY, aspect);
     if (h < 0) return false;
-    this.cards[h].up = !this.cards[h].up;
+    this.toggleCard(h);
     return true;
   }
   // Keyboard / headless equivalents.
   flipCard(i: number): boolean {
-    const c = this.cards[i];
-    if (!c) return false;
-    c.up = !c.up;
-    return true;
+    return this.toggleCard(i);
   }
   setHovered(i: number): boolean {
     if (i === this.hovered) return false;
     this.hovered = i;
+    return true;
+  }
+
+  private toggleCard(i: number): boolean {
+    const c = this.cards[i];
+    if (!c) return false;
+    c.up = !c.up;
+    const target = this.revealTarget(i);
+    // An interruptible spring normally preserves momentum. For a direct click
+    // reversal that can produce one or more frames moving away from the new target
+    // (most visible when lowering a card before its lift has fully settled), which
+    // reads as a sporadic hitch rather than a physical bounce.
+    if ((target - c.reveal.value) * c.reveal.velocity < 0) c.reveal.velocity = 0;
+    c.reveal.setTarget(target);
     return true;
   }
 

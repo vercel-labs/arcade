@@ -5,6 +5,7 @@
 
 import {
   BufferGeometry,
+  clamp01,
   coverMaterial,
   type Mat4,
   mat4Identity,
@@ -124,7 +125,12 @@ export interface PeekPose {
 // The reveal → (curl, stand-up, lift) breakdown, shared by the renderer and the
 // pick helper so the picked center always matches where the card is drawn.
 function peekParams(pose: PeekPose): { phi: number; kappa: number; yaw: number; liftY: number; liftZ: number } {
-  const liftF = smoothstep((pose.reveal - pose.peek) / (1 - pose.peek)); // 0 through the peek, ramps 0→1 as it lifts
+  // `reveal` is already spring-driven, so keep the peek↔upright pose blend linear.
+  // Applying another smoothstep here made the card almost pause at the peek, surge
+  // through the middle of the lift, then brake sharply; lowering it repeated the
+  // same speed spike in reverse. The spring supplies the easing while this mapping
+  // only describes the card's continuous shape.
+  const liftF = clamp01((pose.reveal - pose.peek) / (1 - pose.peek)); // 0 through the peek, ramps 0→1 as it lifts
   const peekF = smoothstep(pose.reveal / pose.peek); // 0→1 across the peek
   return {
     phi: (Math.PI / 2) * liftF, // uniform stand-up: 0 flat → 90° upright
