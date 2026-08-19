@@ -126,6 +126,7 @@ export { CellDiffer } from './diff.ts';
 export {
   halfBlockToSurface,
   halfBlockLayerToSurface,
+  ShapeGlyphSurfaceCache,
   shapeGlyphToSurface,
   shapeGlyphLayerToSurface,
   luminanceToSurface,

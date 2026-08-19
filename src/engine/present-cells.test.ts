@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { RenderTarget } from './framebuffer.ts';
-import { halfBlockLayerToSurface, shapeGlyphLayerToSurface, shapeGlyphToSurface } from './present-cells.ts';
+import { halfBlockLayerToSurface, ShapeGlyphSurfaceCache, shapeGlyphLayerToSurface, shapeGlyphToSurface } from './present-cells.ts';
 import { toShapeGlyph } from './present.ts';
 import { Surface } from './surface.ts';
 
@@ -131,5 +131,41 @@ test('native 3x6 shape-glyph fast path matches the generic resampler exactly', (
 
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) assert.deepEqual(fast.getCell(x, y), generic.getCell(x, y), `${x},${y}`);
+  }
+});
+
+test('bounded shape-glyph presentation preserves a dark empty backdrop exactly', () => {
+  const cols = 6;
+  const rows = 4;
+  const target = new RenderTarget(cols * 3, rows * 6);
+  target.clear(14, 16, 22);
+  for (let y = 6; y < 18; y++) {
+    for (let x = 6; x < 12; x++) target.plot(x, y, 0.2, { r: 80 + x, g: 120 + y, b: 170, a: 1 }, 'opaque');
+  }
+  const full = new Surface(cols, rows);
+  const bounded = new Surface(cols, rows);
+  shapeGlyphToSurface(full, target, cols, rows, { coloredBackground: true });
+  shapeGlyphToSurface(bounded, target, cols, rows, { coloredBackground: true, blankOutsideDepthBounds: true });
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) assert.deepEqual(bounded.getCell(x, y), full.getCell(x, y));
+  }
+});
+
+test('retained shape-glyph cells match a fresh presentation across animated changes', () => {
+  const cols = 5;
+  const rows = 3;
+  const target = solidTarget(cols * 3, rows * 6, { r: 90, g: 130, b: 170 });
+  const cache = new ShapeGlyphSurfaceCache();
+  shapeGlyphToSurface(new Surface(cols, rows), target, cols, rows, {}, 0, 0, cache);
+
+  for (let y = 6; y < 12; y++) {
+    for (let x = 6; x < 9; x++) target.plot(x, y, 0.1, { r: 220, g: 130, b: 70, a: 1 }, 'opaque');
+  }
+  const retained = new Surface(cols, rows);
+  const fresh = new Surface(cols, rows);
+  shapeGlyphToSurface(retained, target, cols, rows, {}, 0, 0, cache);
+  shapeGlyphToSurface(fresh, target, cols, rows);
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) assert.deepEqual(retained.getCell(x, y), fresh.getCell(x, y));
   }
 });

@@ -294,32 +294,31 @@ export class Surface {
   // full emit, so the first frame after a reset repaints everything.
   diff(prev: Surface): string {
     let out = '';
-    let lastSeq = '';
     for (let y = 0; y < this.rows; y++) {
       let runActive = false;
+      let lastStyledCell = -1;
       for (let x = 0; x < this.cols; x++) {
         const i = y * this.cols + x;
         if (this.cellEq(prev, i)) {
           runActive = false; // an unchanged cell breaks the cursor run
+          lastStyledCell = -1;
           continue;
         }
         if (!runActive) {
           out += `\x1b[${y + 1};${x + 1}H`;
           runActive = true;
-          lastSeq = '';
+          lastStyledCell = -1;
         }
         // The tail emits nothing, so the cursor never advanced over it. Keeping the run open
         // would write the next cell a column early and shift the rest of the line.
         if (this.ch[i] === CONTINUATION) {
           runActive = false;
+          lastStyledCell = -1;
           continue;
         }
-        const seq = this.sgr(i);
-        if (seq !== lastSeq) {
-          out += seq;
-          lastSeq = seq;
-        }
+        out += lastStyledCell < 0 ? this.sgr(i) : this.sgrTransition(lastStyledCell, i);
         out += this.ch[i];
+        lastStyledCell = i;
       }
     }
     if (out) out += '\x1b[0m';
@@ -361,5 +360,30 @@ export class Surface {
     s += `;38;2;${this.fg[i * 3]};${this.fg[i * 3 + 1]};${this.fg[i * 3 + 2]}`;
     s += `;48;2;${this.bg[i * 3]};${this.bg[i * 3 + 1]};${this.bg[i * 3 + 2]}m`;
     return s;
+  }
+
+  // Within one contiguous cursor run the terminal already holds the preceding cell's style.
+  // Emit only the color side that changed; a style-bit change still needs a reset because SGR
+  // has no compact way to clear an arbitrary combination of bold/dim/underline/reverse bits.
+  private sgrTransition(from: number, to: number): string {
+    if (this.style[from] !== this.style[to]) return this.sgr(to);
+    const parts: string[] = [];
+    const fromColor = from * 3;
+    const toColor = to * 3;
+    if (
+      this.fg[fromColor] !== this.fg[toColor] ||
+      this.fg[fromColor + 1] !== this.fg[toColor + 1] ||
+      this.fg[fromColor + 2] !== this.fg[toColor + 2]
+    ) {
+      parts.push(`38;2;${this.fg[toColor]};${this.fg[toColor + 1]};${this.fg[toColor + 2]}`);
+    }
+    if (
+      this.bg[fromColor] !== this.bg[toColor] ||
+      this.bg[fromColor + 1] !== this.bg[toColor + 1] ||
+      this.bg[fromColor + 2] !== this.bg[toColor + 2]
+    ) {
+      parts.push(`48;2;${this.bg[toColor]};${this.bg[toColor + 1]};${this.bg[toColor + 2]}`);
+    }
+    return parts.length ? `\x1b[${parts.join(';')}m` : '';
   }
 }

@@ -3,7 +3,24 @@ import { RenderTarget } from './framebuffer.ts';
 // sRGB ⇄ linear (gamma ≈ 2.2). Values are 0..255 floats but may exceed 255 from
 // additive blending; the power curve handles >1 fine and round-trips it back.
 const GAMMA = 2.2;
-const toLinear = (v: number): number => Math.pow(v / 255, GAMMA);
+const LINEAR_LUT_SCALE = 64;
+const LINEAR_LUT_MAX = 1024;
+const LINEAR_LUT = Float64Array.from(
+  { length: LINEAR_LUT_MAX * LINEAR_LUT_SCALE + 1 },
+  (_, i) => Math.pow(i / LINEAR_LUT_SCALE / 255, GAMMA),
+);
+
+// Downsampling calls this once per source channel—millions of times on a large terminal.
+// A finely sampled 1D transfer table with linear interpolation retains sub-byte framebuffer
+// precision while avoiding the much more expensive power function in the inner pixel loop.
+const toLinear = (v: number): number => {
+  if (v <= 0) return 0;
+  const sample = v * LINEAR_LUT_SCALE;
+  if (sample >= LINEAR_LUT.length - 1) return Math.pow(v / 255, GAMMA);
+  const index = sample | 0;
+  const mix = sample - index;
+  return LINEAR_LUT[index] + (LINEAR_LUT[index + 1] - LINEAR_LUT[index]) * mix;
+};
 const toSrgb = (v: number): number => Math.pow(v, 1 / GAMMA) * 255;
 
 // Box-downsamples a high-resolution render target by an integer factor — SSAA.

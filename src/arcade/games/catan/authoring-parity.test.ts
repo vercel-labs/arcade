@@ -58,3 +58,60 @@ test('large Catan water layer remains attached across repeated renders', () => {
   scene.renderScene(second, 0.7);
   assert.equal(frameHash(second), frameHash(first));
 });
+
+function settledBoard(): TileScene {
+  const scene = new TileScene();
+  scene.setMode('board');
+  scene.seedDemo();
+  scene.settle();
+  return scene;
+}
+
+test('cached Catan island invalidates for camera movement and target resizing', () => {
+  const cached = settledBoard();
+  cached.renderScene(new RenderTarget(180, 120), 0.7); // populate the original cache
+  cached.orbit(7, -3);
+  cached.renderScene(new RenderTarget(180, 120), 0.8); // rebuild for the camera
+  const resized = new RenderTarget(240, 160);
+  cached.renderScene(resized, 0.9); // rebuild for the target size
+
+  const fresh = settledBoard();
+  fresh.orbit(7, -3);
+  const expected = new RenderTarget(240, 160);
+  fresh.renderScene(expected, 0.9);
+  assert.equal(frameHash(resized), frameHash(expected));
+});
+
+test('cached Catan island invalidates when the baked robber moves', () => {
+  const cached = settledBoard();
+  cached.renderScene(new RenderTarget(180, 120), 0.7);
+  const destination = (cached.currentRobberHex() + 1) % 19;
+  cached.syncRobberHex(destination);
+  const moved = new RenderTarget(180, 120);
+  cached.renderScene(moved, 0.8);
+
+  const fresh = settledBoard();
+  fresh.syncRobberHex(destination);
+  const expected = new RenderTarget(180, 120);
+  fresh.renderScene(expected, 0.8);
+  assert.equal(frameHash(moved), frameHash(expected));
+});
+
+test('high-resolution camera interaction resolves to a crisp full frame on release', () => {
+  const scene = settledBoard();
+  scene.setCameraInteracting(true);
+  scene.orbit(7, -3);
+  const moving = new RenderTarget(780, 480);
+  scene.renderScene(moving, 0.7);
+
+  scene.setCameraInteracting(false);
+  const released = new RenderTarget(780, 480);
+  scene.renderScene(released, 0.8);
+
+  const fresh = settledBoard();
+  fresh.orbit(7, -3);
+  const expected = new RenderTarget(780, 480);
+  fresh.renderScene(expected, 0.8);
+  assert.notEqual(frameHash(moving), frameHash(released), 'drag frame should use temporary dynamic resolution');
+  assert.equal(frameHash(released), frameHash(expected));
+});

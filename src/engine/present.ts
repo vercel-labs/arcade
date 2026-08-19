@@ -57,6 +57,9 @@ export interface ShapeGlyphOptions {
   // Blank glyph cells remain black, so this adds color blocks without filling
   // the untouched backdrop.
   coloredBackground?: boolean;
+  // Treat pixels outside the finite-depth scene bounds as an intentionally blank
+  // backdrop. This avoids shape matching large empty margins for bounded scenes.
+  blankOutsideDepthBounds?: boolean;
 }
 
 // Cells dimmer than this are matched deterministically even when jitter is on.

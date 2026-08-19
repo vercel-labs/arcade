@@ -6,15 +6,19 @@
 // Examples:
 //   pnpm bench all 140 50 60 all
 //   pnpm bench catan 200 60 100 pixels
+//   pnpm bench catan-dice 700 210 35 pixels
 
 import {
   applyTerminalColorMode,
   CellDiffer,
   downsample,
+  halfBlockLayerToSurface,
   halfBlockToSurface,
   mulberry32,
   RenderTarget,
   shapeGlyphToSurface,
+  shapeGlyphLayerToSurface,
+  ShapeGlyphSurfaceCache,
   Surface,
 } from '../engine/index.ts';
 import { PrismScene } from '../prism/index.ts';
@@ -22,14 +26,15 @@ import { ChessGameScene } from '../arcade/games/chess/scene.ts';
 import { PokerGameScene, type PokerSeatView } from '../arcade/games/poker/poker-scene.ts';
 import { TileScene } from '../arcade/games/catan/tile-scene.ts';
 import { LogosScene } from '../arcade/scenes/logos-scene.ts';
-import { supersampleForMode } from '../arcade/render-quality.ts';
+import { supersampleForViewport } from '../arcade/render-quality.ts';
 import { HoldemState } from '../rules/poker/holdem.ts';
 
 type BenchMode = 'ascii' | 'pixels' | 'hybrid';
-type BenchScene = 'prism' | 'logos' | 'chess' | 'poker-idle' | 'poker-hand' | 'catan';
+type BenchScene = 'prism' | 'logos' | 'chess' | 'poker-idle' | 'poker-hand' | 'catan' | 'catan-dice';
 
 interface SceneDriver {
   render(target: RenderTarget, t: number): void;
+  hasForeground?(): boolean;
 }
 
 interface Stat {
@@ -37,6 +42,7 @@ interface Stat {
 }
 
 const ALL_SCENES: BenchScene[] = ['prism', 'logos', 'chess', 'poker-idle', 'poker-hand', 'catan'];
+const BENCH_SCENES: BenchScene[] = [...ALL_SCENES, 'catan-dice'];
 const ALL_MODES: BenchMode[] = ['ascii', 'pixels', 'hybrid'];
 const sceneArg = process.argv[2] ?? 'all';
 const cols = positiveInt(process.argv[3], 140);
@@ -44,7 +50,7 @@ const rows = positiveInt(process.argv[4], 50);
 const frames = positiveInt(process.argv[5], 60);
 const modeArg = process.argv[6] ?? 'all';
 
-const scenes = sceneArg === 'all' ? ALL_SCENES : [parseChoice(sceneArg, ALL_SCENES, 'scene')];
+const scenes = sceneArg === 'all' ? ALL_SCENES : [parseChoice(sceneArg, BENCH_SCENES, 'scene')];
 const modes = modeArg === 'all' ? ALL_MODES : [parseChoice(modeArg, ALL_MODES, 'mode')];
 
 function positiveInt(value: string | undefined, fallback: number): number {
@@ -125,15 +131,21 @@ function createScene(name: BenchScene): SceneDriver {
   scene.setMode('board');
   scene.seedDemo();
   scene.settle();
-  return { render: (target, t) => scene.renderScene(target, t) };
+  if (name === 'catan-dice') scene.rollDice();
+  return {
+    render: (target, t) => scene.renderScene(target, t),
+    hasForeground: name === 'catan-dice' ? () => scene.hasForegroundSceneLayer() : undefined,
+  };
 }
 
 function run(name: BenchScene, mode: BenchMode): void {
-  const ss = supersampleForMode(mode);
+  const ss = supersampleForViewport(mode, cols, rows);
   const target = new RenderTarget(cols * ss, rows * 2 * ss);
   const scene = createScene(name);
   const surface = new Surface(cols, rows);
   const differ = new CellDiffer();
+  const catanScene = name === 'catan' || name === 'catan-dice';
+  const glyphCache = catanScene ? new ShapeGlyphSurfaceCache() : undefined;
   const render = stat();
   const present = stat();
   const diff = stat();
@@ -155,15 +167,63 @@ function run(name: BenchScene, mode: BenchMode): void {
         if (mode === 'pixels') {
           display = downsample(target, ss, display);
           halfBlockToSurface(surface, display);
+          if (scene.hasForeground?.() && display) {
+            halfBlockLayerToSurface(surface, display);
+          }
         } else {
-          shapeGlyphToSurface(surface, target, cols, rows, { coloredBackground: mode === 'hybrid' });
+          shapeGlyphToSurface(
+            surface,
+            target,
+            cols,
+            rows,
+            {
+              coloredBackground: mode === 'hybrid',
+              blankOutsideDepthBounds: catanScene && !scene.hasForeground?.(),
+            },
+            0,
+            0,
+            glyphCache,
+          );
+          if (scene.hasForeground?.()) {
+            shapeGlyphLayerToSurface(
+              surface,
+              target,
+              cols,
+              rows,
+              { coloredBackground: mode === 'hybrid' },
+            );
+          }
         }
       });
     } else if (mode === 'pixels') {
       display = downsample(target, ss, display);
       halfBlockToSurface(surface, display);
+      if (scene.hasForeground?.() && display) {
+        halfBlockLayerToSurface(surface, display);
+      }
     } else {
-      shapeGlyphToSurface(surface, target, cols, rows, { coloredBackground: mode === 'hybrid' });
+      shapeGlyphToSurface(
+        surface,
+        target,
+        cols,
+        rows,
+        {
+          coloredBackground: mode === 'hybrid',
+          blankOutsideDepthBounds: catanScene && !scene.hasForeground?.(),
+        },
+        0,
+        0,
+        glyphCache,
+      );
+      if (scene.hasForeground?.()) {
+        shapeGlyphLayerToSurface(
+          surface,
+          target,
+          cols,
+          rows,
+          { coloredBackground: mode === 'hybrid' },
+        );
+      }
     }
 
     const output = measured ? timed(diff, () => differ.diff(surface)) : differ.diff(surface);

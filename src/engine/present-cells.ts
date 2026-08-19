@@ -22,6 +22,88 @@ interface PixelBounds {
   maxY: number;
 }
 
+interface CellBounds {
+  firstCol: number;
+  firstRow: number;
+  lastCol: number;
+  lastRow: number;
+}
+
+// Retained native-grid shape matches. Bounded scenes such as Catan repaint animated water
+// around a large amount of unchanged terrain; comparing the 3x6 source samples is much cheaper
+// than running the full glyph search again for those stable cells.
+export class ShapeGlyphSurfaceCache {
+  private signature = '';
+  private colors = new Float32Array(0);
+  private valid = new Uint8Array(0);
+  private ch: string[] = [];
+  private fg = new Float32Array(0);
+  private bg = new Float32Array(0);
+
+  prepare(target: RenderTarget, cols: number, rows: number, options: ShapeGlyphOptions): boolean {
+    const { color = true, contrast = 2, jitterTemp = 0, hybrid = false, coloredBackground = false } = options;
+    if (jitterTemp > 0) return false;
+    const signature = `${target.width}/${target.height}/${cols}/${rows}/${color}/${contrast}/${hybrid}/${coloredBackground}`;
+    if (signature !== this.signature) {
+      this.signature = signature;
+      this.colors = new Float32Array(target.color.length);
+      this.valid = new Uint8Array(cols * rows);
+      this.ch = new Array(cols * rows).fill(' ');
+      this.fg = new Float32Array(cols * rows * 3);
+      this.bg = new Float32Array(cols * rows * 3);
+    }
+    return true;
+  }
+
+  matches(cell: number, source: Float32Array, width: number, firstX: number, firstY: number): boolean {
+    if (!this.valid[cell]) return false;
+    for (let gy = 0; gy < GH; gy++) {
+      let pixel = ((firstY + gy) * width + firstX) * 3;
+      const end = pixel + GW * 3;
+      for (; pixel < end; pixel++) if (source[pixel] !== this.colors[pixel]) return false;
+    }
+    return true;
+  }
+
+  paint(surf: Surface, cell: number, x: number, y: number): void {
+    const color = cell * 3;
+    surf.setCell(
+      x,
+      y,
+      this.ch[cell],
+      [this.fg[color], this.fg[color + 1], this.fg[color + 2]],
+      [this.bg[color], this.bg[color + 1], this.bg[color + 2]],
+      0,
+    );
+  }
+
+  store(
+    cell: number,
+    source: Float32Array,
+    width: number,
+    firstX: number,
+    firstY: number,
+    ch: string,
+    fg: RGB,
+    bg: RGB,
+  ): void {
+    for (let gy = 0; gy < GH; gy++) {
+      let pixel = ((firstY + gy) * width + firstX) * 3;
+      const end = pixel + GW * 3;
+      for (; pixel < end; pixel++) this.colors[pixel] = source[pixel];
+    }
+    const color = cell * 3;
+    this.ch[cell] = ch;
+    this.fg[color] = fg[0];
+    this.fg[color + 1] = fg[1];
+    this.fg[color + 2] = fg[2];
+    this.bg[color] = bg[0];
+    this.bg[color + 1] = bg[1];
+    this.bg[color + 2] = bg[2];
+    this.valid[cell] = 1;
+  }
+}
+
 function finiteDepthBounds(target: RenderTarget): PixelBounds | null {
   const { width: W, height: H, depth } = target;
   let minX = W;
@@ -30,15 +112,56 @@ function finiteDepthBounds(target: RenderTarget): PixelBounds | null {
   let maxY = -1;
   for (let y = 0; y < H; y++) {
     const row = y * W;
+    let first = -1;
     for (let x = 0; x < W; x++) {
-      if (!Number.isFinite(depth[row + x])) continue;
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
+      if (Number.isFinite(depth[row + x])) {
+        first = x;
+        break;
+      }
     }
+    if (first < 0) continue;
+    let last = W - 1;
+    for (; last > first; last--) {
+      if (Number.isFinite(depth[row + last])) break;
+    }
+    if (first < minX) minX = first;
+    if (last > maxX) maxX = last;
+    if (y < minY) minY = y;
+    maxY = y;
   }
   return maxX < 0 ? null : { minX, minY, maxX, maxY };
+}
+
+function finiteDepthCellBounds(target: RenderTarget, cols: number, rows: number): CellBounds | null {
+  const bounds = finiteDepthBounds(target);
+  if (!bounds) return null;
+  const fw = target.width / cols;
+  const fh = target.height / rows;
+  return {
+    firstCol: Math.max(0, Math.floor(bounds.minX / fw)),
+    firstRow: Math.max(0, Math.floor(bounds.minY / fh)),
+    lastCol: Math.min(cols - 1, Math.floor(bounds.maxX / fw)),
+    lastRow: Math.min(rows - 1, Math.floor(bounds.maxY / fh)),
+  };
+}
+
+function blankOutsideCellBounds(
+  surf: Surface,
+  bounds: CellBounds | null,
+  cols: number,
+  rows: number,
+  x0: number,
+  y0: number,
+): void {
+  if (!bounds) {
+    surf.fillRect(x0, y0, cols, rows, BLACK);
+    return;
+  }
+  surf.fillRect(x0, y0, cols, bounds.firstRow, BLACK);
+  surf.fillRect(x0, y0 + bounds.lastRow + 1, cols, rows - bounds.lastRow - 1, BLACK);
+  const middleRows = bounds.lastRow - bounds.firstRow + 1;
+  surf.fillRect(x0, y0 + bounds.firstRow, bounds.firstCol, middleRows, BLACK);
+  surf.fillRect(x0 + bounds.lastCol + 1, y0 + bounds.firstRow, cols - bounds.lastCol - 1, middleRows, BLACK);
 }
 
 // Half-block: each cell is '▀' with fg = top pixel, bg = bottom pixel. `target`
@@ -113,14 +236,18 @@ export function shapeGlyphToSurface(
   options: ShapeGlyphOptions = {},
   x0 = 0,
   y0 = 0,
+  cache?: ShapeGlyphSurfaceCache,
 ): void {
-  const { color = true, contrast = 2, jitterTemp = 0, hybrid = false, coloredBackground = false } = options;
+  const { color = true, contrast = 2, jitterTemp = 0, hybrid = false, coloredBackground = false, blankOutsideDepthBounds = false } = options;
   const rampMax = LUMINANCE_RAMP.length - 1;
   const W = target.width;
   const H = target.height;
   const c = target.color;
+  const cellBounds = blankOutsideDepthBounds ? finiteDepthCellBounds(target, cols, rows) : null;
+  if (blankOutsideDepthBounds) blankOutsideCellBounds(surf, cellBounds, cols, rows, x0, y0);
+  if (blankOutsideDepthBounds && !cellBounds) return;
   if (W === cols * GW && H === rows * GH) {
-    shapeGlyphGridToSurface(surf, c, W, cols, rows, options, x0, y0);
+    shapeGlyphGridToSurface(surf, target, cols, rows, options, x0, y0, cellBounds, cache);
     return;
   }
   const fw = W / cols;
@@ -132,10 +259,14 @@ export function shapeGlyphToSurface(
   const fg: RGB = [0, 0, 0];
   const bg: RGB = [0, 0, 0];
 
-  for (let cy = 0; cy < rows; cy++) {
+  const firstRow = cellBounds?.firstRow ?? 0;
+  const lastRow = cellBounds?.lastRow ?? rows - 1;
+  const firstCol = cellBounds?.firstCol ?? 0;
+  const lastCol = cellBounds?.lastCol ?? cols - 1;
+  for (let cy = firstRow; cy <= lastRow; cy++) {
     const yy0 = Math.floor(cy * fh);
     const yy1 = Math.max(yy0 + 1, Math.floor((cy + 1) * fh));
-    for (let cx = 0; cx < cols; cx++) {
+    for (let cx = firstCol; cx <= lastCol; cx++) {
       const x1a = Math.floor(cx * fw);
       const x1b = Math.max(x1a + 1, Math.floor((cx + 1) * fw));
       const rw = x1b - x1a;
@@ -200,25 +331,38 @@ export function shapeGlyphToSurface(
 // resampler above for snapshots and unusual target sizes.
 function shapeGlyphGridToSurface(
   surf: Surface,
-  c: Float32Array,
-  width: number,
+  target: RenderTarget,
   cols: number,
   rows: number,
   options: ShapeGlyphOptions,
   x0: number,
   y0: number,
+  cellBounds: CellBounds | null,
+  cache?: ShapeGlyphSurfaceCache,
 ): void {
   const { color = true, contrast = 2, jitterTemp = 0, hybrid = false, coloredBackground = false } = options;
   const rampMax = LUMINANCE_RAMP.length - 1;
   const dim = GW * GH;
+  const c = target.color;
+  const width = target.width;
   const vec = new Array<number>(dim);
   const fg: RGB = [0, 0, 0];
   const bg: RGB = [0, 0, 0];
 
-  for (let cy = 0; cy < rows; cy++) {
+  const firstRow = cellBounds?.firstRow ?? 0;
+  const lastRow = cellBounds?.lastRow ?? rows - 1;
+  const firstCol = cellBounds?.firstCol ?? 0;
+  const lastCol = cellBounds?.lastCol ?? cols - 1;
+  const useCache = cache?.prepare(target, cols, rows, options) ?? false;
+  for (let cy = firstRow; cy <= lastRow; cy++) {
     const firstY = cy * GH;
-    for (let cx = 0; cx < cols; cx++) {
+    for (let cx = firstCol; cx <= lastCol; cx++) {
       const firstX = cx * GW;
+      const cell = cy * cols + cx;
+      if (useCache && cache!.matches(cell, c, width, firstX, firstY)) {
+        cache!.paint(surf, cell, x0 + cx, y0 + cy);
+        continue;
+      }
       let cr = 0;
       let cg = 0;
       let cb = 0;
@@ -248,6 +392,7 @@ function shapeGlyphGridToSurface(
       }
       if (ch === ' ' || !color) {
         surf.setCell(x0 + cx, y0 + cy, ' ', BLACK, BLACK, 0);
+        if (useCache) cache!.store(cell, c, width, firstX, firstY, ' ', BLACK, BLACK);
         continue;
       }
       fg[0] = cr / dim;
@@ -258,7 +403,9 @@ function shapeGlyphGridToSurface(
         bg[1] = fg[1] * SHAPE_GLYPH_BACKGROUND_SCALE;
         bg[2] = fg[2] * SHAPE_GLYPH_BACKGROUND_SCALE;
       }
-      surf.setCell(x0 + cx, y0 + cy, ch, fg, coloredBackground ? bg : BLACK, 0);
+      const cellBg = coloredBackground ? bg : BLACK;
+      surf.setCell(x0 + cx, y0 + cy, ch, fg, cellBg, 0);
+      if (useCache) cache!.store(cell, c, width, firstX, firstY, ch, fg, cellBg);
     }
   }
 }

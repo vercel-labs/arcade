@@ -65,10 +65,51 @@ import { CATAN_WATER_RADIUS_X, CATAN_WATER_RADIUS_Z, catanWaterMesh } from './wa
 const FOVY = (44 * Math.PI) / 180;
 const WATER_BUILD_LAYER_SCALE = 2 / 3;
 const WATER_SETTLED_LAYER_SCALE = 1 / 2;
+const WATER_SETTLED_LARGE_LAYER_SCALE = 1 / 3;
+const WATER_SETTLED_LARGE_TARGET_PIXELS = 4_000_000;
 const WATER_LAYER_MIN_WIDTH = 180;
 const WATER_LAYER_MIN_HEIGHT = 120;
+const SETTLED_WATER_COLOR_STEP = 8;
+const CAMERA_MOTION_SCALE = 2 / 3;
+const CAMERA_MOTION_MIN_WIDTH = 700;
+const CAMERA_MOTION_MIN_HEIGHT = 420;
 
-function blitNearest(source: RenderTarget, target: RenderTarget): void {
+function blitNearest(source: RenderTarget, target: RenderTarget, colorStep = 1): void {
+  // Settled water renders at an exact integer fraction of the scene. Expand each source pixel
+  // directly instead of visiting the full destination and repeatedly flooring coordinates.
+  // This is byte-for-byte equivalent to the generic nearest sampler.
+  const integerScale = target.width / source.width;
+  if (
+    integerScale >= 2 &&
+    Number.isInteger(integerScale) &&
+    target.height === source.height * integerScale
+  ) {
+    for (let sy = 0; sy < source.height; sy++) {
+      const sourceRow = sy * source.width;
+      const targetRow = sy * integerScale * target.width;
+      for (let sx = 0; sx < source.width; sx++) {
+        const sourcePixel = sourceRow + sx;
+        const depth = source.depth[sourcePixel];
+        if (!Number.isFinite(depth)) continue;
+        const sourceColor = sourcePixel * 3;
+        const r = colorStep > 1 ? Math.round(source.color[sourceColor] / colorStep) * colorStep : source.color[sourceColor];
+        const g = colorStep > 1 ? Math.round(source.color[sourceColor + 1] / colorStep) * colorStep : source.color[sourceColor + 1];
+        const b = colorStep > 1 ? Math.round(source.color[sourceColor + 2] / colorStep) * colorStep : source.color[sourceColor + 2];
+        const left = sx * integerScale;
+        for (let dy = 0; dy < integerScale; dy++) {
+          let targetPixel = targetRow + dy * target.width + left;
+          for (let dx = 0; dx < integerScale; dx++, targetPixel++) {
+            const targetColor = targetPixel * 3;
+            target.color[targetColor] = r;
+            target.color[targetColor + 1] = g;
+            target.color[targetColor + 2] = b;
+            target.depth[targetPixel] = depth;
+          }
+        }
+      }
+    }
+    return;
+  }
   const xScale = source.width / target.width;
   const yScale = source.height / target.height;
   for (let y = 0; y < target.height; y++) {
@@ -84,11 +125,30 @@ function blitNearest(source: RenderTarget, target: RenderTarget): void {
       const targetPixel = targetRow + x;
       const sourceColor = sourcePixel * 3;
       const targetColor = targetPixel * 3;
-      target.color[targetColor] = source.color[sourceColor];
-      target.color[targetColor + 1] = source.color[sourceColor + 1];
-      target.color[targetColor + 2] = source.color[sourceColor + 2];
+      target.color[targetColor] = colorStep > 1 ? Math.round(source.color[sourceColor] / colorStep) * colorStep : source.color[sourceColor];
+      target.color[targetColor + 1] = colorStep > 1 ? Math.round(source.color[sourceColor + 1] / colorStep) * colorStep : source.color[sourceColor + 1];
+      target.color[targetColor + 2] = colorStep > 1 ? Math.round(source.color[sourceColor + 2] / colorStep) * colorStep : source.color[sourceColor + 2];
       target.depth[targetPixel] = depth;
     }
+  }
+}
+
+function finitePixels(target: RenderTarget): Uint32Array {
+  const pixels: number[] = [];
+  for (let i = 0; i < target.depth.length; i++) {
+    if (Number.isFinite(target.depth[i])) pixels.push(i);
+  }
+  return Uint32Array.from(pixels);
+}
+
+function blitPixels(source: RenderTarget, target: RenderTarget, pixels: Uint32Array): void {
+  for (let p = 0; p < pixels.length; p++) {
+    const pixel = pixels[p];
+    const color = pixel * 3;
+    target.color[color] = source.color[color];
+    target.color[color + 1] = source.color[color + 1];
+    target.color[color + 2] = source.color[color + 2];
+    target.depth[pixel] = source.depth[pixel];
   }
 }
 // A warm key from the upper front-right so tops read bright and the raised content casts its
@@ -354,8 +414,14 @@ export class TileScene {
   private dirty = true;
   private readonly authoredScene = new Scene();
   private readonly waterScene = new Scene();
+  private readonly staticBoardScene = new Scene();
   private readonly sceneRenderer = new SceneRenderer();
   private waterTarget: RenderTarget | null = null;
+  private staticBoardTarget: RenderTarget | null = null;
+  private staticBoardPixels = new Uint32Array(0);
+  private staticBoardDirty = true;
+  private cameraInteracting = false;
+  private cameraMotionTarget: RenderTarget | null = null;
   private renderSequence = 0;
   private readonly waterPool = new ObjectPool(() => new MeshObject(
     EMPTY_MESH,
@@ -372,6 +438,14 @@ export class TileScene {
     }),
   ));
   private readonly authoredPool = new ObjectPool(() => new MeshObject(
+    EMPTY_MESH,
+    new WorldMaterialInstance<LambertUniforms>(lambertMaterial, {
+      lightDir: LIGHT,
+      ambient: AMBIENT,
+      wrap: WRAP,
+    }),
+  ));
+  private readonly animatedPool = new ObjectPool(() => new MeshObject(
     EMPTY_MESH,
     new WorldMaterialInstance<LambertUniforms>(lambertMaterial, {
       lightDir: LIGHT,
@@ -400,6 +474,7 @@ export class TileScene {
     this.camPort = new OrbitCamera({ azimuth: 0.72, elevation: 0.36, distance: 3.5, target: { x: 0, y: 0.5, z: 0 } }, 1.5, 12);
     this.authoredScene.add(this.waterPool);
     this.authoredScene.add(this.authoredPool);
+    this.authoredScene.add(this.animatedPool);
     this.authoredScene.add(this.piecePool);
   }
   private cam(): OrbitCamera {
@@ -484,6 +559,7 @@ export class TileScene {
     this.robberGate = null;
     this.hoverHex = null;
     this.tokensDirty = true;
+    this.staticBoardDirty = true;
     this.dirty = true;
     return true;
   }
@@ -497,6 +573,7 @@ export class TileScene {
     this.robberGate = null;
     this.hoverHex = null;
     this.tokensDirty = true;
+    this.staticBoardDirty = true;
     this.dirty = true;
   }
   private gateAllows(target: BoardPickTarget | null): boolean {
@@ -767,10 +844,12 @@ export class TileScene {
 
   setMode(m: CatanMode): void {
     this.modeName = m;
+    this.cameraInteracting = false;
     this.hoverNode = null; // hover is board-only
     this.hoverEdge = null;
     if (!isBoardMode(m)) this.cancelRobberMove();
     if (isBoardMode(m) && !this.board) this.regenerate(true); // startup uses the full board-build sequence
+    this.staticBoardDirty = true;
     this.dirty = true;
   }
   currentMode(): CatanMode {
@@ -808,11 +887,13 @@ export class TileScene {
     this.roads.clear();
     this.hoverNode = null;
     this.hoverEdge = null;
+    this.staticBoardDirty = true;
     this.dirty = true;
   }
   // Snap any in-progress placement to done (used for static snapshots).
   settle(): void {
     this.placing = false;
+    this.staticBoardDirty = true;
     this.dirty = true;
   }
 
@@ -867,21 +948,38 @@ export class TileScene {
   // ── camera ──
   resetView(): void {
     this.cam().reset();
+    this.staticBoardDirty = true;
     this.dirty = true;
   }
   orbit(dx: number, dy: number): void {
     const c = this.cam();
     c.orbit(dx, dy);
     c.elevation = Math.max(-0.2, c.elevation); // don't drop under the board
+    this.staticBoardDirty = true;
     this.dirty = true;
   }
   pan(dx: number, dy: number): void {
     this.cam().pan(dx, dy);
+    this.staticBoardDirty = true;
     this.dirty = true;
   }
   zoomBy(f: number): void {
     this.cam().zoomBy(f);
+    this.staticBoardDirty = true;
     this.dirty = true;
+  }
+
+  // High-resolution glyph modes can make camera drag frames substantially more
+  // expensive than settled environmental frames. The app brackets pointer drags
+  // with this state so motion can use a temporary lower-resolution target, then
+  // requests one crisp full-resolution rebuild as soon as the pointer is released.
+  setCameraInteracting(active: boolean): void {
+    if (active === this.cameraInteracting) return;
+    this.cameraInteracting = active;
+    if (!active) {
+      this.staticBoardDirty = true;
+      this.dirty = true;
+    }
   }
 
   // On-demand: re-render after a camera/scene change, while an animation runs, and once more
@@ -992,6 +1090,17 @@ export class TileScene {
     object.setMatrix(model);
   }
 
+  private queueAnimatedLambert(mesh: Mesh, model: Mat4, lightDir = LIGHT, wrap = WRAP, ambient = AMBIENT): void {
+    const object = this.animatedPool.acquire();
+    object.geometry = mesh;
+    object.renderOrder = this.renderSequence++;
+    const material = object.material as WorldMaterialInstance<LambertUniforms>;
+    material.values.lightDir = lightDir;
+    material.values.ambient = ambient;
+    material.values.wrap = wrap;
+    object.setMatrix(model);
+  }
+
   private queuePiece(mesh: Mesh, model: Mat4): void {
     const object = this.piecePool.acquire();
     object.geometry = mesh;
@@ -1034,12 +1143,34 @@ export class TileScene {
   }
 
   renderScene(target: RenderTarget, t = 0): void {
+    const dynamicResolution =
+      this.cameraInteracting &&
+      isBoardMode(this.modeName) &&
+      target.width >= CAMERA_MOTION_MIN_WIDTH &&
+      target.height >= CAMERA_MOTION_MIN_HEIGHT;
+    if (!dynamicResolution) {
+      this.renderSceneAtResolution(target, t);
+      return;
+    }
+
+    const width = Math.max(1, Math.round(target.width * CAMERA_MOTION_SCALE));
+    const height = Math.max(1, Math.round(target.height * CAMERA_MOTION_SCALE));
+    if (!this.cameraMotionTarget || this.cameraMotionTarget.width !== width || this.cameraMotionTarget.height !== height) {
+      this.cameraMotionTarget = new RenderTarget(width, height);
+    }
+    this.renderSceneAtResolution(this.cameraMotionTarget, t);
+    target.clear(14, 16, 22);
+    blitNearest(this.cameraMotionTarget, target);
+  }
+
+  private renderSceneAtResolution(target: RenderTarget, t: number): void {
     this.tokensDirty = false; // consume the previous frame's one-shot
     this.lastAspect = target.width / target.height; // remember for hit-test projection
     target.clear(14, 16, 22);
     this.renderSequence = 0;
     this.waterPool.begin();
     this.authoredPool.begin();
+    this.animatedPool.begin();
     this.piecePool.begin();
     const cam = this.cam();
     // Board generation uses the settled board camera from its first frame to its last. Tiles
@@ -1065,9 +1196,9 @@ export class TileScene {
     this.dirty = false;
   }
 
-  // Water's fragment shader is the board's most expensive material. At normal
-  // terminal sizes render that background at SS2-equivalent detail, expand its
-  // color/depth layer, then rasterize the crisp island and pieces at full SS3.
+  // Water's fragment shader is the board's most expensive material. Render that background at
+  // a reduced resolution (with one additional LOD for exceptionally large settled boards),
+  // expand its color/depth layer, then rasterize the crisp island and pieces at full resolution.
   // Tiny authoring targets keep the original single-pass path.
   private renderBoardLayers(target: RenderTarget, camera: Camera): void {
     if (target.width < WATER_LAYER_MIN_WIDTH || target.height < WATER_LAYER_MIN_HEIGHT) {
@@ -1075,7 +1206,11 @@ export class TileScene {
       return;
     }
 
-    const scale = this.placing ? WATER_BUILD_LAYER_SCALE : WATER_SETTLED_LAYER_SCALE;
+    const scale = this.placing
+      ? WATER_BUILD_LAYER_SCALE
+      : target.width * target.height > WATER_SETTLED_LARGE_TARGET_PIXELS
+        ? WATER_SETTLED_LARGE_LAYER_SCALE
+        : WATER_SETTLED_LAYER_SCALE;
     const width = Math.max(1, Math.round(target.width * scale));
     const height = Math.max(1, Math.round(target.height * scale));
     if (!this.waterTarget || this.waterTarget.width !== width || this.waterTarget.height !== height) {
@@ -1087,8 +1222,39 @@ export class TileScene {
     this.waterScene.add(this.waterPool);
     try {
       this.sceneRenderer.render(this.waterTarget, this.waterScene, camera);
-      blitNearest(this.waterTarget, target);
-      this.sceneRenderer.render(target, this.authoredScene, camera);
+      blitNearest(this.waterTarget, target, this.placing ? 1 : SETTLED_WATER_COLOR_STEP);
+      // During construction every tile moves, so preserve the original live scene.
+      // Once settled, cache the immutable coast, tile bodies, piers, and ports as a
+      // sparse full-resolution depth/color layer. Environmental meshes and pieces
+      // stay in the live scene and depth-test against that cached island.
+      if (this.placing) {
+        this.sceneRenderer.render(target, this.authoredScene, camera);
+      } else {
+        const resized =
+          !this.staticBoardTarget ||
+          this.staticBoardTarget.width !== target.width ||
+          this.staticBoardTarget.height !== target.height;
+        if (resized) {
+          this.staticBoardTarget = new RenderTarget(target.width, target.height);
+          this.staticBoardDirty = true;
+        }
+
+        this.authoredScene.remove(this.authoredPool);
+        this.staticBoardScene.add(this.authoredPool);
+        try {
+          if (this.staticBoardDirty) {
+            this.staticBoardTarget!.clear();
+            this.sceneRenderer.render(this.staticBoardTarget!, this.staticBoardScene, camera);
+            this.staticBoardPixels = finitePixels(this.staticBoardTarget!);
+            this.staticBoardDirty = false;
+          }
+          blitPixels(this.staticBoardTarget!, target, this.staticBoardPixels);
+          this.sceneRenderer.render(target, this.authoredScene, camera);
+        } finally {
+          this.staticBoardScene.remove(this.authoredPool);
+          this.authoredScene.add(this.authoredPool);
+        }
+      }
     } finally {
       this.waterScene.remove(this.waterPool);
       this.authoredScene.add(this.waterPool);
@@ -1107,6 +1273,7 @@ export class TileScene {
         this.placing = false;
         this.revealing = true; // hand off to the number-token slot-settle
         this.revealClock.reset();
+        this.staticBoardDirty = true;
       }
     }
     this.queueWater(optimizeWater && !this.placing ? SETTLED_WATER_MESH : WATER_MESH, t, eye);
@@ -1121,7 +1288,7 @@ export class TileScene {
     // island is deliberately bare water, without a premature foam outline revealing its shape.
     if (coastProgress >= 1) {
       this.queueWater(swashMesh(t), t, eye);
-      this.queueLambert(surfMesh(t), MODEL, LIGHT, 1, 0.82);
+      this.queueAnimatedLambert(surfMesh(t), MODEL, LIGHT, 1, 0.82);
     }
     if (this.revealing) {
       this.revealClock.tick(t);
@@ -1156,7 +1323,7 @@ export class TileScene {
       this.queueLambert(mesh, model);
       if (faceUp) {
         const animated = animatedTileMesh(terrain, seed, t, dest);
-        if (animated) this.queueLambert(animated, model);
+        if (animated) this.queueAnimatedLambert(animated, model);
       }
     }
     // Once the coast has emerged, the nine boats enter from the water perimeter in coastal
@@ -1201,7 +1368,7 @@ export class TileScene {
       const center = hexWorld(q, r);
       const terrain = this.board.hexes[this.hoverHex].terrain;
       const seed = this.boardSeed * NUM_HEXES + this.hoverHex;
-      this.queueLambert(robberMarkerMesh(terrain, seed), mat4Translate(center.x, 0, center.z));
+      this.queueAnimatedLambert(robberMarkerMesh(terrain, seed), mat4Translate(center.x, 0, center.z));
     }
     // Ghosts only preview a *legal* placement (distance rule for a settlement, connectivity for
     // a road), so hovering an illegal spot shows nothing.

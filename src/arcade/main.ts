@@ -6,6 +6,7 @@ import {
   halfBlockToSurface,
   RenderTarget,
   shapeGlyphToSurface,
+  ShapeGlyphSurfaceCache,
   shapeGlyphLayerToSurface,
   STYLE_BOLD,
   STYLE_DIM,
@@ -57,7 +58,7 @@ import { availableTeams, ensureGatewayKey, isLoggedIn, loadEnv, signOut as signO
 import { AiMatch, type Seat } from './match/driver.ts';
 import { disambiguateLabels } from './match/labels.ts';
 import { flushTelemetry, initTelemetry, isTelemetryEnabled, setTelemetryEnabled, telemetryStatus, trackSessionStart, type RecordEndReason } from '../telemetry/index.ts';
-import { supersampleForMode } from './render-quality.ts';
+import { supersampleForMode, supersampleForViewport } from './render-quality.ts';
 
 // Populate process.env from .env.local before anything reads AI_GATEWAY_API_KEY.
 loadEnv();
@@ -96,6 +97,8 @@ let target = new RenderTarget(
   rows * SCENE_CELL_PIXEL_ASPECT * supersampleForMode('ascii'),
 );
 let display: RenderTarget | undefined;
+let pixelDisplayPrepared = false;
+let pixelDisplayBloom = false;
 const prism = new PrismScene();
 const coverflow = new CoverFlowScene();
 const splash = new SplashScene();
@@ -109,6 +112,7 @@ const pokerScene = new PokerGameScene();
 pokerScene.setEventSink((text) => pushPokerChat({ text, model: '', event: true }));
 // The 2D UI overlay (button bar). Lays out + paints over the scene each frame.
 const ui = new Screen(cols, rows, ARCADE_THEME);
+const catanGlyphCache = new ShapeGlyphSurfaceCache();
 // Render-on-demand loop. Animating screens hold a live lease; static screens
 // (chess turntable) render only when an interaction requests it.
 const r = new Renderer({ targetFps: FPS });
@@ -361,7 +365,7 @@ function activeSceneViewport(): LayoutBox {
 // Reallocate only when a rail or terminal resize changes the available geometry.
 function ensureSceneTarget(): void {
   const viewport = activeSceneViewport();
-  const supersample = supersampleForMode(renderMode);
+  const supersample = supersampleForViewport(renderMode, cols, rows);
   const width = viewport.w * supersample;
   const height = viewport.h * SCENE_CELL_PIXEL_ASPECT * supersample;
   if (target.width === width && target.height === height) return;
@@ -2013,7 +2017,11 @@ function syncBar(): void {
 // white. Give only the menu a lower exposure and a restrained highlight bloom.
 // ASCII bypasses this path entirely, preserving its existing contrast.
 function preparePixelDisplay(withBloom: boolean): RenderTarget {
-  display = downsample(target, supersampleForMode(renderMode), display);
+  // Catan's dice are composited twice from the same rendered target: once as part of the full
+  // scene, then as a sparse foreground layer above projected HUD labels. Reuse the prepared
+  // pixel frame for that second pass instead of repeating the full gamma-correct downsample.
+  if (pixelDisplayPrepared && pixelDisplayBloom === withBloom && display) return display;
+  display = downsample(target, supersampleForViewport(renderMode, cols, rows), display);
   if (mode === 'menu') {
     const colors = display.color;
     for (let i = 0; i < colors.length; i++) colors[i] *= 0.86;
@@ -2023,6 +2031,8 @@ function preparePixelDisplay(withBloom: boolean): RenderTarget {
   } else if (withBloom) {
     bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
   }
+  pixelDisplayPrepared = true;
+  pixelDisplayBloom = withBloom;
   return display;
 }
 
@@ -2045,6 +2055,9 @@ function presentScene(withBloom = true, hybridShadow = false): string {
 // `surf` (the bottom layer) instead of returning a string. Same display logic.
 function presentSceneInto(surf: Surface, withBloom = true, hybridShadow = false): void {
   const viewport = activeSceneViewport();
+  const catanForegroundActive =
+    (mode === 'catan-tiles' && catan.scene.hasForegroundSceneLayer()) ||
+    (mode === 'catan' && catanGameScene.scene.hasForegroundSceneLayer());
   const reservedX = viewport.x + viewport.w;
   if (reservedX < surf.cols) {
     // The UI rail is translucent. Paint its reserved area black so opening it
@@ -2061,9 +2074,13 @@ function presentSceneInto(surf: Surface, withBloom = true, hybridShadow = false)
         color: true,
         hybrid: hybridShadow,
         coloredBackground: renderMode === 'hybrid',
+        // Dice deliberately replace depth with a sparse foreground mask. During that phase the
+        // color buffer still contains the board, but depth bounds describe only the dice.
+        blankOutsideDepthBounds: (mode === 'catan' || mode === 'catan-tiles') && !catanForegroundActive,
       },
       viewport.x,
       viewport.y,
+      mode === 'catan' || mode === 'catan-tiles' ? catanGlyphCache : undefined,
     );
     return;
   }
@@ -2249,6 +2266,8 @@ function onMouseImpl(e: MouseEvent): void {
       // a click). The button goes along so an onMouse can tell left from right.
       if (!ui.pointerDown(e.x, e.y, e.button)) {
         draggingCamera = true;
+        if (mode === 'catan-tiles') catan.scene.setCameraInteracting(true);
+        else if (mode === 'catan') catanGameScene.scene.setCameraInteracting(true);
         lastMouseX = downX = e.x;
         lastMouseY = downY = e.y;
       }
@@ -2314,6 +2333,8 @@ function onMouseImpl(e: MouseEvent): void {
         catanGameScene.clickAt(ndcX, ndcY);
       }
       draggingCamera = false;
+      if (mode === 'catan-tiles') catan.scene.setCameraInteracting(false);
+      else if (mode === 'catan') catanGameScene.scene.setCameraInteracting(false);
       return;
     }
     return;
@@ -2341,6 +2362,9 @@ const parse = createInputParser({
 });
 
 function tick(dt: number): void {
+  // Prepared pixel output may be reused by multiple compositor phases within this tick, never
+  // across rendered frames whose source target may have changed.
+  pixelDisplayPrepared = false;
   const step = Math.min(dt, MAX_STEP); // real seconds since the last rendered frame, clamped
   t += step;
   ensureSceneTarget();
@@ -2577,8 +2601,9 @@ function tick(dt: number): void {
 process.stdout.on('resize', () => {
   cols = process.stdout.columns ?? 80;
   rows = process.stdout.rows ?? 24;
-  const supersample = supersampleForMode(renderMode);
-  target = new RenderTarget(cols * supersample, rows * SCENE_CELL_PIXEL_ASPECT * supersample);
+  const viewport = activeSceneViewport();
+  const supersample = supersampleForViewport(renderMode, cols, rows);
+  target = new RenderTarget(viewport.w * supersample, viewport.h * SCENE_CELL_PIXEL_ASPECT * supersample);
   ui.resize(cols, rows);
   display = undefined;
   // The scene repaints every cell it owns each frame, but the reserved button
