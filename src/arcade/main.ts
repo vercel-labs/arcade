@@ -17,6 +17,7 @@ import {
 } from '../engine/index.ts';
 import { PrismScene, SplashScene } from '../prism/index.ts';
 import { CoverFlowScene, LAUNCH_TOTAL } from './shell/coverflow.ts';
+import { CoverFlowWheelInput } from './shell/coverflow-input.ts';
 import { MENU_ITEMS } from './shell/menu.ts';
 import { ChessGameScene } from './games/chess/scene.ts';
 import { CardsScene } from './games/poker/cards-scene.ts';
@@ -101,6 +102,7 @@ let pixelDisplayPrepared = false;
 let pixelDisplayBloom = false;
 const prism = new PrismScene();
 const coverflow = new CoverFlowScene();
+const coverFlowWheelInput = new CoverFlowWheelInput();
 const splash = new SplashScene();
 const chessGame = new ChessGameScene();
 const logosScene = new LogosScene();
@@ -1343,6 +1345,7 @@ function enterMenu(): void {
   menuSel = 0;
   coverPos = 0;
   menuHover = false;
+  coverFlowWheelInput.reset();
   launching = false;
   ui.setRoot(null);
   fullRepaint();
@@ -1376,6 +1379,10 @@ function enterGame(id: string): void {
 function menuNav(step: number): void {
   if (launching) return; // input is locked while the launch splash plays
   menuSel = Math.max(0, Math.min(MENU_ITEMS.length - 1, menuSel + step));
+}
+
+function menuWheelNav(e: MouseEvent): void {
+  menuNav(coverFlowWheelInput.step(e));
 }
 
 // The Cover Flow chrome over the 3D covers: the focused game's title centred below
@@ -2192,7 +2199,8 @@ function onMouseImpl(e: MouseEvent): void {
       if (e.type === 'move') ui.hover(e.x, e.y);
       else if (e.type === 'down') ui.pointerDown(e.x, e.y);
       else if (e.type === 'drag') ui.drag(e.x, e.y);
-      else if (e.type === 'wheel') ui.wheel(e.x, e.y, e.wheel === -1 ? -1 : 1);
+      else if (e.type === 'wheel' && e.wheelAxis !== 'horizontal')
+        ui.wheel(e.x, e.y, e.wheel === -1 ? -1 : 1);
       else if (e.type === 'up') ui.pointerUp();
       return;
     }
@@ -2204,7 +2212,9 @@ function onMouseImpl(e: MouseEvent): void {
       ui.hover(e.x, e.y); // light the menu pill when the cursor is over it
       menuHover = inside;
     } else if (e.type === 'wheel') {
-      menuNav(e.wheel === -1 ? -1 : 1);
+      // Cover Flow follows the gesture's visual direction on either axis. Horizontal reports are
+      // normalized for the lower event cadence most terminals produce from side-to-side swipes.
+      menuWheelNav(e);
     } else if (e.type === 'down') {
       // A hit on the menu pill opens the popup; a miss falls through to carousel
       // navigation.
@@ -2226,13 +2236,17 @@ function onMouseImpl(e: MouseEvent): void {
     if (e.type === 'move') ui.hover(e.x, e.y);
     else if (e.type === 'down') ui.pointerDown(e.x, e.y);
     else if (e.type === 'drag') ui.drag(e.x, e.y); // e.g. dragging a dropdown's scrollbar
-    else if (e.type === 'wheel') ui.wheel(e.x, e.y, e.wheel === -1 ? -1 : 1); // scroll an open dropdown
+    else if (e.type === 'wheel' && e.wheelAxis !== 'horizontal')
+      ui.wheel(e.x, e.y, e.wheel === -1 ? -1 : 1); // scroll an open dropdown
     else if (e.type === 'up') ui.pointerUp();
     return;
   }
   const orbit = activeOrbit();
   if (orbit) {
     if (e.type === 'wheel') {
+      // Horizontal trackpad gestures are reserved for explicitly horizontal experiences such as
+      // Cover Flow. They must not unexpectedly scroll a vertical panel or zoom an orbit scene.
+      if (e.wheelAxis === 'horizontal') return;
       // A wheel over a scrollable component (ScrollBox/Select/Slider) scrolls it;
       // otherwise it zooms the scene.
       if (ui.wheel(e.x, e.y, e.wheel === -1 ? -1 : 1)) return;

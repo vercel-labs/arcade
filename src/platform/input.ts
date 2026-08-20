@@ -23,8 +23,10 @@ export interface MouseEvent {
   button: number;
   x: number;
   y: number;
-  /** -1 = wheel up, +1 = wheel down. Only set for `wheel` events. */
+  /** -1 = up/left, +1 = down/right. Only set for `wheel` events. */
   wheel?: -1 | 1;
+  /** SGR wheel buttons 64/65 are vertical; 66/67 are horizontal. */
+  wheelAxis?: 'vertical' | 'horizontal';
   /** Modifier keys held during the event (SGR mouse encoding). */
   shift: boolean;
   /** Meta/Alt (Option on macOS; some terminals also map ⌘ here). */
@@ -147,7 +149,15 @@ function decodeMouse(cb: number, x: number, y: number, terminator: string): Mous
   const mods = { shift: (cb & 4) !== 0, meta: (cb & 8) !== 0, ctrl: (cb & 16) !== 0 };
 
   if (isWheel) {
-    return { type: 'wheel', button, x, y, wheel: button === 0 ? -1 : 1, ...mods };
+    return {
+      type: 'wheel',
+      button,
+      x,
+      y,
+      wheel: button % 2 === 0 ? -1 : 1,
+      wheelAxis: button < 2 ? 'vertical' : 'horizontal',
+      ...mods,
+    };
   }
   if (isMotion) {
     // button === 3 means no button is held, so it's a bare move, not a drag.
