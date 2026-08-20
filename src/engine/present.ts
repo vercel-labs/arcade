@@ -64,7 +64,18 @@ export interface ShapeGlyphOptions {
 
 // Cells dimmer than this are matched deterministically even when jitter is on.
 const JITTER_MIN_BRIGHTNESS = 0.25;
-export const SHAPE_GLYPH_BACKGROUND_SCALE = 0.28;
+const SHAPE_GLYPH_BACKGROUND_SCALE = 0.28;
+// Hybrid backgrounds occupy a deliberately dark, compressed color range. Snap
+// nearby shades together so animated gradients reuse terminal background state
+// without changing the full-fidelity foreground glyph color.
+const SHAPE_GLYPH_BACKGROUND_QUANTUM = 8;
+
+export function shapeGlyphBackgroundChannel(channel: number): number {
+  return byte(
+    Math.round((channel * SHAPE_GLYPH_BACKGROUND_SCALE) / SHAPE_GLYPH_BACKGROUND_QUANTUM)
+      * SHAPE_GLYPH_BACKGROUND_QUANTUM,
+  );
+}
 
 export function toShapeGlyph(
   target: RenderTarget,
@@ -153,7 +164,7 @@ export function toShapeGlyph(
         const fg = cg / cc;
         const fb = cb / cc;
         const seq = coloredBackground
-          ? `\x1b[38;2;${byte(fr)};${byte(fg)};${byte(fb)};48;2;${byte(fr * SHAPE_GLYPH_BACKGROUND_SCALE)};${byte(fg * SHAPE_GLYPH_BACKGROUND_SCALE)};${byte(fb * SHAPE_GLYPH_BACKGROUND_SCALE)}m`
+          ? `\x1b[38;2;${byte(fr)};${byte(fg)};${byte(fb)};48;2;${shapeGlyphBackgroundChannel(fr)};${shapeGlyphBackgroundChannel(fg)};${shapeGlyphBackgroundChannel(fb)}m`
           : `\x1b[38;2;${byte(fr)};${byte(fg)};${byte(fb)}m`;
         if (seq !== last) {
           out += seq;

@@ -25,7 +25,7 @@ test('colored shape-glyph backgrounds preserve ASCII output and darken only pain
   assert.notEqual(ascii.getCell(0, 0)?.ch, ' ');
   assert.equal(hybrid.getCell(0, 0)?.ch, ascii.getCell(0, 0)?.ch, 'hybrid keeps the exact ASCII glyph');
   assert.deepEqual(hybrid.getCell(0, 0)?.fg, ascii.getCell(0, 0)?.fg, 'hybrid keeps the exact foreground color');
-  assert.deepEqual(hybrid.getCell(0, 0)?.bg, [67, 34, 17], 'hybrid adds a darker version of the scene color');
+  assert.deepEqual(hybrid.getCell(0, 0)?.bg, [64, 32, 16], 'hybrid adds a darker quantized version of the scene color');
 
   const empty = new RenderTarget(16, 16);
   empty.clear();
@@ -44,7 +44,7 @@ test('ANSI shape-glyph output resets the colored background for blank cells', ()
 
   const output = toShapeGlyph(target, 2, 1, { coloredBackground: true });
 
-  assert.match(output, /;48;2;67;34;17m/);
+  assert.match(output, /;48;2;64;32;16m/);
   assert.ok(output.includes('\x1b[48;2;0;0;0m'), 'blank cells explicitly restore the black backdrop');
 });
 
@@ -72,7 +72,7 @@ test('shape glyph foreground layer can paint its dimmed scene background', () =>
 
   shapeGlyphLayerToSurface(surface, target, 1, 1, { coloredBackground: true });
 
-  assert.deepEqual(surface.getCell(0, 0)?.bg, [56, 28, 14]);
+  assert.deepEqual(surface.getCell(0, 0)?.bg, [56, 32, 16]);
 });
 
 test('half-block foreground layer replaces covered cells and preserves untouched UI', () => {

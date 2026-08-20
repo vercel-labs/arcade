@@ -7,7 +7,7 @@
 
 import type { RenderTarget } from './framebuffer.ts';
 import { GH, GW, matchGlyph } from './glyph.ts';
-import { SHAPE_GLYPH_BACKGROUND_SCALE, type ShapeGlyphOptions, type LuminanceOptions } from './present.ts';
+import { shapeGlyphBackgroundChannel, type ShapeGlyphOptions, type LuminanceOptions } from './present.ts';
 import type { Surface } from './surface.ts';
 import type { RGB } from './color.ts';
 
@@ -315,9 +315,9 @@ export function shapeGlyphToSurface(
         fg[1] = cg / cc;
         fg[2] = cb / cc;
         if (coloredBackground) {
-          bg[0] = fg[0] * SHAPE_GLYPH_BACKGROUND_SCALE;
-          bg[1] = fg[1] * SHAPE_GLYPH_BACKGROUND_SCALE;
-          bg[2] = fg[2] * SHAPE_GLYPH_BACKGROUND_SCALE;
+          bg[0] = shapeGlyphBackgroundChannel(fg[0]);
+          bg[1] = shapeGlyphBackgroundChannel(fg[1]);
+          bg[2] = shapeGlyphBackgroundChannel(fg[2]);
         }
         surf.setCell(x0 + cx, y0 + cy, ch, fg, coloredBackground ? bg : BLACK, 0);
       }
@@ -399,9 +399,9 @@ function shapeGlyphGridToSurface(
       fg[1] = cg / dim;
       fg[2] = cb / dim;
       if (coloredBackground) {
-        bg[0] = fg[0] * SHAPE_GLYPH_BACKGROUND_SCALE;
-        bg[1] = fg[1] * SHAPE_GLYPH_BACKGROUND_SCALE;
-        bg[2] = fg[2] * SHAPE_GLYPH_BACKGROUND_SCALE;
+        bg[0] = shapeGlyphBackgroundChannel(fg[0]);
+        bg[1] = shapeGlyphBackgroundChannel(fg[1]);
+        bg[2] = shapeGlyphBackgroundChannel(fg[2]);
       }
       const cellBg = coloredBackground ? bg : BLACK;
       surf.setCell(x0 + cx, y0 + cy, ch, fg, cellBg, 0);
@@ -497,9 +497,9 @@ export function shapeGlyphLayerToSurface(
       fg[2] = cb / cc;
       let bg = surf.getCell(x0 + cx, y0 + cy)?.bg ?? BLACK;
       if (coloredBackground) {
-        coloredBg[0] = fg[0] * SHAPE_GLYPH_BACKGROUND_SCALE;
-        coloredBg[1] = fg[1] * SHAPE_GLYPH_BACKGROUND_SCALE;
-        coloredBg[2] = fg[2] * SHAPE_GLYPH_BACKGROUND_SCALE;
+        coloredBg[0] = shapeGlyphBackgroundChannel(fg[0]);
+        coloredBg[1] = shapeGlyphBackgroundChannel(fg[1]);
+        coloredBg[2] = shapeGlyphBackgroundChannel(fg[2]);
         bg = coloredBg;
       }
       surf.setCell(x0 + cx, y0 + cy, ch, fg, bg, 0);
