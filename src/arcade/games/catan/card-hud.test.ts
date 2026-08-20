@@ -5,14 +5,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mulberry32, RenderTarget } from '../../../engine/index.ts';
-import { Screen } from '../../../tui/index.ts';
+import { type Node, Screen } from '../../../tui/index.ts';
 import { maritimePortTradeRates, maritimeTradeRates } from '../../../rules/catan/maritime-trade.ts';
 import { generateBoard } from '../../../rules/catan/setup.ts';
 import { DEV_CARD_COUNTS } from '../../../rules/catan/types.ts';
 import {
+  adjustCatanWorkbenchDev,
   adjustCatanWorkbenchHand,
   adjustCatanWorkbenchTradeStaging,
   bankCatanResource,
+  beginCatanWorkbenchDevelopmentPlay,
   beginCatanWorkbenchDevPurchase,
   beginStagedCatanWorkbenchBankTrade,
   buildCatanCardsOverlay,
@@ -23,11 +25,16 @@ import {
   catanDevDeckDepartureCell,
   catanDevHandLandingCell,
   catanHandLandingCell,
+  catanWorkbenchDevelopmentPlay,
   catanWorkbenchView,
+  chooseCatanWorkbenchDevelopmentResource,
+  completeCatanWorkbenchDevelopmentStep,
   completeCatanWorkbenchPlayerTrade,
   createCatanWorkbenchPlayerTrade,
   departCatanWorkbenchBankResource,
+  departCatanWorkbenchHandResource,
   departCatanWorkbenchDevCard,
+  landCatanWorkbenchBankResource,
   landCatanWorkbenchDevCard,
   logCatanWorkbenchDevPurchase,
   logCatanWorkbenchMaritimeTrade,
@@ -40,8 +47,18 @@ import {
   setCatanTradeEditorOpen,
 } from './card-hud.ts';
 import { stagedCatanBankTrade, stagedCatanPortTrade } from './card-workbench.ts';
+import { CatanController } from './catan-controller.ts';
 import { CATAN_CARD, DEV_HAND_LOOK } from './palette.ts';
 import { TileScene } from './tile-scene.ts';
+
+function findNode(node: Node, id: string): Node | undefined {
+  if (node.id === id) return node;
+  for (const child of node.children ?? []) {
+    const found = findNode(child, id);
+    if (found) return found;
+  }
+  return undefined;
+}
 
 test('Board + cards remains a full board scene with projected number tokens', () => {
   const scene = new TileScene();
@@ -66,7 +83,7 @@ test('trade flights leave the visible bank card or the hidden right edge at the 
 test('development flights leave the dev pile and land on a responsive dev-hand slot', () => {
   const region = { x: 0, y: 0, w: 140, h: 50 };
   const view = catanWorkbenchView();
-  view.pendingDevelopmentCard = 'knight';
+  view.pendingDevelopmentCards = ['knight'];
   assert.deepEqual(catanDevDeckDepartureCell(region, 4, true), { col: 134, row: 34 });
   assert.deepEqual(catanDevDeckDepartureCell(region, 4, false), { col: 143, row: 33 });
   assert.deepEqual(catanDevHandLandingCell(region, 'knight', true, view), { col: 49, row: 44 });
@@ -79,7 +96,7 @@ test('a development landing slot stays disabled until the card arrives', () => {
   const region = { x: 0, y: 0, w: 100, h: 50 };
   const view = catanWorkbenchView();
   view.developmentPurchaseBusy = true;
-  view.pendingDevelopmentCard = 'knight';
+  view.pendingDevelopmentCards = ['knight'];
   const landing = catanDevHandLandingCell(region, 'knight', false, view);
   const screen = new Screen(region.w, region.h);
 
@@ -89,10 +106,59 @@ test('a development landing slot stays disabled until the card arrives', () => {
 
   view.devHand.knight = 1;
   view.developmentPurchaseBusy = false;
-  delete view.pendingDevelopmentCard;
+  delete view.pendingDevelopmentCards;
   screen.setRoot(buildCatanCardsOverlay(region, () => {}, view), region);
   const landed = screen.snapshot(() => {});
   assert.deepEqual(landed.getCell(landing.col, landing.row)?.bg, DEV_HAND_LOOK.knight.fill);
+  resetCatanWorkbenchCards();
+});
+
+test('left-clicking a held development card plays it instead of adding another copy', () => {
+  resetCatanWorkbenchCards();
+  const region = { x: 0, y: 0, w: 140, h: 50 };
+  adjustCatanWorkbenchDev('knight', 1);
+  const view = catanWorkbenchView();
+  const knight = catanDevHandLandingCell(region, 'knight', false, view);
+  const screen = new Screen(region.w, region.h);
+  screen.setRoot(buildCatanCardsOverlay(region, () => {}, view), region);
+
+  screen.pointerDown(knight.col + 1, knight.row + 1);
+
+  assert.equal(catanWorkbenchView().devHand.knight, 0);
+  assert.deepEqual(catanWorkbenchDevelopmentPlay(), { type: 'knight', remaining: 1, resources: [] });
+  resetCatanWorkbenchCards();
+});
+
+test('the workbench controller turns a played knight into robber-targeting mode', () => {
+  resetCatanWorkbenchCards();
+  adjustCatanWorkbenchDev('knight', 1);
+  const region = { x: 0, y: 0, w: 140, h: 50 };
+  const screen = new Screen(region.w, region.h);
+  const controller = new CatanController({
+    ui: screen,
+    requestRender: () => {},
+    requestFrame: () => {},
+    shell: {
+      renderMode: () => 'ascii',
+      colorMode: () => 'truecolor',
+      onHome: () => {},
+      onCycleDisplay: () => {},
+      onCycleColor: () => {},
+      onControls: () => {},
+      onQuit: () => {},
+      menuValueColW: 10,
+    },
+  });
+  controller.scene.setMode('boardCards');
+  controller.scene.settle();
+  const knight = catanDevHandLandingCell(region, 'knight', false, catanWorkbenchView());
+  screen.setRoot(controller.buildRoot(region.w, region.h), region);
+
+  screen.pointerDown(knight.col + 1, knight.row + 1);
+
+  assert.equal(controller.scene.isMovingRobber(), true);
+  assert.equal(catanWorkbenchView().devHand.knight, 0);
+  controller.reset();
   resetCatanWorkbenchCards();
 });
 
@@ -115,7 +181,7 @@ test('workbench bank trade exchanges four matching cards for one bank card', () 
   resetCatanWorkbenchCards();
 });
 
-test('animated maritime settlement debits each bank card at departure and credits it at landing', () => {
+test('animated maritime settlement moves offered and received cards at their own departure and landing boundaries', () => {
   resetCatanWorkbenchCards();
   for (let i = 0; i < 8; i++) {
     adjustCatanWorkbenchHand('brick', 1);
@@ -126,10 +192,25 @@ test('animated maritime settlement debits each bank card at departure and credit
   const trade = beginStagedCatanWorkbenchBankTrade();
   assert.deepEqual(trade, { give: 'brick', gets: ['ore', 'ore'], rate: 4 });
   let view = catanWorkbenchView();
-  assert.equal(view.hand.brick, 0, 'payment commits when the trade begins');
-  assert.equal(view.bank.brick, 26);
+  assert.equal(view.hand.brick, 8, 'offered cards remain in hand until their individual departures');
+  assert.equal(view.bank.brick, 18, 'offered cards do not reach the bank before landing');
   assert.equal(view.bank.ore, 17, 'incoming bank cards remain until their individual departures');
   assert.equal(view.hand.ore, 0, 'incoming cards are not credited before landing');
+
+  assert.equal(departCatanWorkbenchHandResource('brick'), true);
+  view = catanWorkbenchView();
+  assert.equal(view.hand.brick, 7);
+  assert.equal(view.bank.brick, 18);
+  landCatanWorkbenchBankResource('brick');
+  assert.equal(catanWorkbenchView().bank.brick, 19);
+
+  for (let i = 0; i < 7; i++) {
+    assert.equal(departCatanWorkbenchHandResource('brick'), true);
+    landCatanWorkbenchBankResource('brick');
+  }
+  view = catanWorkbenchView();
+  assert.equal(view.hand.brick, 0);
+  assert.equal(view.bank.brick, 26);
 
   assert.equal(departCatanWorkbenchBankResource('ore'), true);
   view = catanWorkbenchView();
@@ -483,6 +564,123 @@ test('animated development purchase debits the deck at departure and reveals the
   view = catanWorkbenchView();
   assert.equal(view.devHand[drawn!], 1);
   assert.match(view.history.at(-1)?.message ?? '', /bought a development card/);
+  resetCatanWorkbenchCards();
+});
+
+test('development purchases reserve distinct deck cards while earlier cards are still flying', () => {
+  resetCatanWorkbenchCards();
+  for (let purchase = 0; purchase < 2; purchase++) {
+    adjustCatanWorkbenchHand('ore', 1);
+    adjustCatanWorkbenchHand('wool', 1);
+    adjustCatanWorkbenchHand('grain', 1);
+  }
+
+  const first = beginCatanWorkbenchDevPurchase();
+  const second = beginCatanWorkbenchDevPurchase();
+  assert.notEqual(first, null);
+  assert.notEqual(second, null);
+  assert.equal(catanWorkbenchView().developmentDeck, 25, 'reserved cards remain visible on the pile until launch');
+
+  assert.equal(departCatanWorkbenchDevCard(first!), true);
+  assert.equal(catanWorkbenchView().developmentDeck, 24);
+  assert.equal(departCatanWorkbenchDevCard(second!), true);
+  assert.equal(catanWorkbenchView().developmentDeck, 23);
+  landCatanWorkbenchDevCard(first!);
+  landCatanWorkbenchDevCard(second!);
+  assert.equal(Object.values(catanWorkbenchView().devHand).reduce((sum, count) => sum + count, 0), 2);
+  resetCatanWorkbenchCards();
+});
+
+test('an in-flight development purchase leaves trade and another purchase enabled', () => {
+  resetCatanWorkbenchCards();
+  for (let purchase = 0; purchase < 2; purchase++) {
+    adjustCatanWorkbenchHand('ore', 1);
+    adjustCatanWorkbenchHand('wool', 1);
+    adjustCatanWorkbenchHand('grain', 1);
+  }
+  adjustCatanWorkbenchHand('brick', 4);
+  const region = { x: 0, y: 0, w: 180, h: 60 };
+  const screen = new Screen(region.w, region.h);
+  const controller = new CatanController({
+    ui: screen,
+    requestRender: () => {},
+    requestFrame: () => {},
+    shell: {
+      renderMode: () => 'ascii',
+      colorMode: () => 'truecolor',
+      onHome: () => {},
+      onCycleDisplay: () => {},
+      onCycleColor: () => {},
+      onControls: () => {},
+      onQuit: () => {},
+      menuValueColW: 10,
+    },
+  });
+  controller.scene.setMode('boardCards');
+  controller.scene.settle();
+
+  let root = controller.buildRoot(region.w, region.h);
+  const firstBuy = findNode(root, 'catan-buy-dev');
+  assert.equal(firstBuy?.disabled, false);
+  firstBuy?.onClick?.();
+
+  root = controller.buildRoot(region.w, region.h);
+  const trade = findNode(root, 'catan-trade-open');
+  const secondBuy = findNode(root, 'catan-buy-dev');
+  assert.equal(trade?.disabled, false, 'trade remains available during the card flight');
+  assert.equal(secondBuy?.disabled, false, 'another purchase remains available during the card flight');
+  secondBuy?.onClick?.();
+  assert.equal(catanWorkbenchView().hand.ore, 0, 'both queued purchases commit their costs');
+
+  controller.reset();
+  resetCatanWorkbenchCards();
+});
+
+test('workbench development cards play from the paid hand while victory points remain passive', () => {
+  resetCatanWorkbenchCards();
+  adjustCatanWorkbenchDev('knight', 1);
+  adjustCatanWorkbenchDev('roadBuilding', 1);
+  adjustCatanWorkbenchDev('victoryPoint', 1);
+
+  assert.equal(beginCatanWorkbenchDevelopmentPlay('victoryPoint'), false);
+  assert.equal(catanWorkbenchView().devHand.victoryPoint, 1);
+
+  assert.equal(beginCatanWorkbenchDevelopmentPlay('knight'), true);
+  assert.deepEqual(catanWorkbenchDevelopmentPlay(), { type: 'knight', remaining: 1, resources: [] });
+  assert.equal(catanWorkbenchView().devHand.knight, 0);
+  assert.equal(catanWorkbenchView().localPlayer.knights, 3);
+  assert.equal(completeCatanWorkbenchDevelopmentStep('knight'), true);
+  assert.equal(catanWorkbenchDevelopmentPlay(), null);
+
+  assert.equal(beginCatanWorkbenchDevelopmentPlay('roadBuilding'), true);
+  assert.equal(completeCatanWorkbenchDevelopmentStep('roadBuilding'), true);
+  assert.deepEqual(catanWorkbenchDevelopmentPlay(), { type: 'roadBuilding', remaining: 1, resources: [] });
+  assert.equal(completeCatanWorkbenchDevelopmentStep('roadBuilding'), true);
+  assert.equal(catanWorkbenchDevelopmentPlay(), null);
+  assert.match(catanWorkbenchView().history.at(-1)?.message ?? '', /played road building/);
+  resetCatanWorkbenchCards();
+});
+
+test('workbench year of plenty draws from the bank and monopoly records its named resource', () => {
+  resetCatanWorkbenchCards();
+  adjustCatanWorkbenchDev('yearOfPlenty', 1);
+  adjustCatanWorkbenchDev('monopoly', 1);
+
+  const oreBefore = catanWorkbenchView().bank.ore;
+  assert.equal(beginCatanWorkbenchDevelopmentPlay('yearOfPlenty'), true);
+  assert.equal(chooseCatanWorkbenchDevelopmentResource('ore'), true);
+  assert.equal(chooseCatanWorkbenchDevelopmentResource('ore'), true);
+  let view = catanWorkbenchView();
+  assert.equal(view.hand.ore, 2);
+  assert.equal(view.bank.ore, oreBefore - 2);
+  assert.equal(view.developmentPlay, undefined);
+  assert.deepEqual(view.history.at(-1)?.resources, ['ore', 'ore']);
+
+  assert.equal(beginCatanWorkbenchDevelopmentPlay('monopoly'), true);
+  assert.equal(chooseCatanWorkbenchDevelopmentResource('grain'), true);
+  view = catanWorkbenchView();
+  assert.equal(view.developmentPlay, undefined);
+  assert.match(view.history.at(-1)?.message ?? '', /named wheat for monopoly/);
   resetCatanWorkbenchCards();
 });
 

@@ -42,7 +42,7 @@ import {
   type WaterUniforms,
   WorldMaterialInstance,
 } from '../../../engine/index.ts';
-import { HEX_COORDS, NUM_HEXES } from '../../../rules/catan/board-topology.ts';
+import { HEX_COORDS, NUM_EDGES, NUM_HEXES } from '../../../rules/catan/board-topology.ts';
 import { type BoardOccupancy, canPlaceRoad, canPlaceSettlement } from '../../../rules/catan/placement.ts';
 import { type BoardSetup, generateBoard } from '../../../rules/catan/setup.ts';
 import {
@@ -743,6 +743,16 @@ export class TileScene {
   // same-color road or settlement/city and can't route through an opponent's building.
   private roadPlaceable(e: number): boolean {
     return canPlaceRoad(e, this.placeColor, this.occ());
+  }
+  // The workbench Road Building card uses the same placement rule as ordinary roads, but asks
+  // for the complete legal edge gate up front so hover and click expose only valid choices.
+  legalRoadEdges(color: PlayerColor): number[] {
+    const occupancy = this.occ();
+    const edges: number[] = [];
+    for (let edge = 0; edge < NUM_EDGES; edge++) {
+      if (canPlaceRoad(edge, color, occupancy)) edges.push(edge);
+    }
+    return edges;
   }
   buildingInfo(node: number): { city: boolean; color: PlayerColor } | undefined {
     return this.buildings.get(node);

@@ -130,3 +130,19 @@ test('draining preserves whether each staggered card has left its source', () =>
   ]);
   assert.equal(flights.busy(), false);
 });
+
+test('a reverse trade flight stays visible while rising from the hand toward the bank', () => {
+  const flights = new ResourceFlights();
+  const run = stepper(flights);
+  flights.spawn('brick', 1, TO, FROM, 0, 7, false);
+  flights.advance(0);
+  assert.deepEqual(flights.active(), [{ resource: 'brick', col: TO.col, row: TO.row, sinking: false }]);
+
+  run(FLIGHT_DUR / 2);
+  const [mid] = flights.active();
+  assert.ok(mid, 'the reverse flight should remain visible while approaching from below');
+  assert.equal(mid.sinking, false);
+
+  assert.deepEqual(run(FLIGHT_DUR + 0.05), ['brick']);
+  assert.deepEqual(flights.active(), []);
+});

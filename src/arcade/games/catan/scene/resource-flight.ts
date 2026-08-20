@@ -31,6 +31,7 @@ interface Flight<Card extends string> {
   toRow: number;
   launchAt: number; // clock time this card leaves the tile
   arc: number; // peak lift above the straight line, in rows
+  sinkAtTarget: boolean;
   departed: boolean;
   banked: boolean;
 }
@@ -77,6 +78,7 @@ export class ResourceFlights<Card extends string = Resource> {
     to: { col: number; row: number },
     order: number,
     maxArc = ARC_MAX,
+    sinkAtTarget = true,
   ): void {
     const span = Math.hypot(to.col - from.col, (to.row - from.row) * 2);
     const arc = Math.max(ARC_MIN, Math.min(maxArc, span * ARC_PER_COL));
@@ -89,6 +91,7 @@ export class ResourceFlights<Card extends string = Resource> {
         toRow: to.row,
         launchAt: this.clock.elapsed + (order + i) * STAGGER,
         arc,
+        sinkAtTarget,
         departed: false,
         banked: false,
       });
@@ -166,6 +169,14 @@ export class ResourceFlights<Card extends string = Resource> {
       const lift = flight.arc * 4 * progress * (1 - progress);
       const row = flight.fromRow + (flight.toRow - flight.fromRow) * progress - lift;
       const col = Math.round(flight.fromCol + (flight.toCol - flight.fromCol) * smoothstep(Math.min(1, p / COL_SETTLE)));
+      // Incoming cards descend behind the hand's top edge, so they use the clipped half-cell
+      // finish below. A trade payment approaches its bank pile in the opposite direction; keep
+      // that chip whole until it reaches the pile rather than applying the hand-only clipping
+      // rule, which would hide it for most of an upward flight.
+      if (!flight.sinkAtTarget) {
+        out.push({ resource: flight.resource, col, row: Math.round(row), sinking: false });
+        continue;
+      }
       // How much of the chip's one row is still clear of the card. It occupies [row, row + 1) and
       // everything from `toRow` down is the card face, so this shrinks to zero as it arrives.
       // Half cells are the finest vertical step a glyph has, so the sink is two states: whole

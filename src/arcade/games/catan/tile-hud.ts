@@ -131,6 +131,8 @@ export interface CatanTileHandlers {
   onToggleSidebar(): void;
   onMaritimeTrade(via: 'bank' | 'port'): boolean;
   onBuyDevelopmentCard(): boolean;
+  onPlayDevelopmentCard(type: DevCardType): boolean;
+  onChooseDevelopmentResource(resource: Resource): boolean;
 }
 let H: CatanTileHandlers | null = null;
 let robberOn = false; // whether the robber is currently shown (toggled from the panel)
@@ -240,6 +242,8 @@ export function buildCatanTileRoot(region: LayoutBox, onOpenMenu: () => void, to
           () => H?.onToggleSidebar(),
           H?.onMaritimeTrade,
           H?.onBuyDevelopmentCard,
+          H?.onPlayDevelopmentCard,
+          H?.onChooseDevelopmentResource,
         )]
       : []),
     // Cards in flight paint OVER the hand panel, not under it: they have to cross the panel's top

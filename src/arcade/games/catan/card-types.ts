@@ -25,6 +25,12 @@ export interface CatanActionHistoryView {
   chat?: boolean;
 }
 
+export interface CatanDevelopmentPlayView {
+  type: Exclude<DevCardType, 'victoryPoint'>;
+  remaining: number;
+  resources: Resource[];
+}
+
 export interface CatanCardsView {
   localPlayer: CatanCardsPlayerView;
   hand: Record<Resource, number>;
@@ -33,13 +39,21 @@ export interface CatanCardsView {
   maritimeRates: MaritimeTradeRates;
   maritimePortRates: MaritimePortTradeRates;
   developmentDeck: number;
+  // May be lower than the visible pile while cards are reserved for flights that have not yet
+  // departed. Action gating uses this without making the displayed pile count jump early.
+  developmentDeckAvailable?: number;
   opponents: CatanCardsPlayerView[];
   history: CatanActionHistoryView[];
   // A maritime exchange is between acceptance and its final animated arrival. The workbench
   // keeps another trade from opening while those bank cards are reserved in flight.
   maritimeTradeBusy?: boolean;
+  // Purchase flights may overlap. Pending types reserve disabled landing slots without exposing
+  // the card in the held count before its own flight arrives.
   developmentPurchaseBusy?: boolean;
-  pendingDevelopmentCard?: DevCardType;
+  pendingDevelopmentCards?: DevCardType[];
+  // A workbench card has been committed and is waiting for its board/resource choices.
+  // The live rules engine represents the same state through legal actions instead.
+  developmentPlay?: CatanDevelopmentPlayView;
   // Test-bed views opt into direct card manipulation; live-game adapters leave this unset.
   editable?: boolean;
 }

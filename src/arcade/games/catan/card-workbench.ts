@@ -8,7 +8,7 @@ import {
   type MaritimeTradeRates,
 } from '../../../rules/catan/maritime-trade.ts';
 import { COSTS, DEV_CARD_TYPES, type DevCardType, type PlayerColor, type Resource, resourceIndex, type Terrain } from '../../../rules/catan/types.ts';
-import type { CatanActionHistoryView, CatanCardsPlayerView, CatanCardsView } from './card-types.ts';
+import type { CatanActionHistoryView, CatanCardsPlayerView, CatanCardsView, CatanDevelopmentPlayView } from './card-types.ts';
 import { type CatanRgb as Rgb, RESOURCE_LOOK, RESOURCE_ORDER, ROAD_ICON, SETTLEMENT_ICON } from './palette.ts';
 
 export const CATAN_LOCAL_COLOR: PlayerColor = 'red';
@@ -22,6 +22,12 @@ const WORKBENCH_BANK_START: Record<Resource, number> = { lumber: 16, brick: 18, 
 const liveBank: Record<Resource, number> = { ...WORKBENCH_BANK_START };
 const WORKBENCH_DEV_SEED = 0xc47a_2026;
 let liveDevelopmentDeck = buildDevelopmentDeck(mulberry32(WORKBENCH_DEV_SEED));
+// Purchases reserve cards in deck order immediately, while the visible pile is decremented only
+// when each flight launches. This lets another purchase be queued before the first card lands
+// without drawing the same top card twice.
+const reservedDevelopmentCards: DevCardType[] = [];
+let developmentPlay: CatanDevelopmentPlayView | null = null;
+let livePlayedKnights = 0;
 let tradeOpen = false;
 let nextPlayerTradeId = 1;
 
@@ -68,6 +74,69 @@ export function adjustCatanWorkbenchDev(type: DevCardType, delta: number): boole
   const next = liveDevHand[type] + delta;
   if (next < 0) return false;
   liveDevHand[type] = next;
+  return true;
+}
+
+function developmentPlaySteps(type: Exclude<DevCardType, 'victoryPoint'>): number {
+  if (type === 'roadBuilding' || type === 'yearOfPlenty') return 2;
+  return 1;
+}
+
+export function beginCatanWorkbenchDevelopmentPlay(type: DevCardType): boolean {
+  if (type === 'victoryPoint' || developmentPlay || liveDevHand[type] <= 0) return false;
+  if (type === 'yearOfPlenty' && RESOURCE_ORDER.every((resource) => liveBank[resource] === 0)) return false;
+  liveDevHand[type]--;
+  developmentPlay = { type, remaining: developmentPlaySteps(type), resources: [] };
+  liveHistory.push({
+    actor: 'You',
+    color: CATAN_LOCAL_COLOR,
+    message: type === 'knight'
+      ? 'played a knight'
+      : type === 'roadBuilding'
+        ? 'played road building'
+        : type === 'yearOfPlenty'
+          ? 'played year of plenty'
+          : 'played monopoly',
+  });
+  if (type === 'knight') livePlayedKnights++;
+  return true;
+}
+
+export function catanWorkbenchDevelopmentPlay(): CatanDevelopmentPlayView | null {
+  return developmentPlay ? { ...developmentPlay, resources: [...developmentPlay.resources] } : null;
+}
+
+export function completeCatanWorkbenchDevelopmentStep(type: 'knight' | 'roadBuilding'): boolean {
+  if (developmentPlay?.type !== type) return false;
+  developmentPlay.remaining--;
+  if (developmentPlay.remaining <= 0) developmentPlay = null;
+  return true;
+}
+
+export function finishCatanWorkbenchDevelopmentPlay(type: Exclude<DevCardType, 'victoryPoint'>): boolean {
+  if (developmentPlay?.type !== type) return false;
+  developmentPlay = null;
+  return true;
+}
+
+export function chooseCatanWorkbenchDevelopmentResource(resource: Resource): boolean {
+  const play = developmentPlay;
+  if (!play || (play.type !== 'yearOfPlenty' && play.type !== 'monopoly')) return false;
+  if (play.type === 'monopoly') {
+    liveHistory.push({ actor: 'You', color: CATAN_LOCAL_COLOR, message: `named ${RESOURCE_LOOK[resource].name} for monopoly` });
+    developmentPlay = null;
+    return true;
+  }
+  if (liveBank[resource] <= 0) return false;
+  liveBank[resource]--;
+  liveHand[resource]++;
+  play.resources.push(resource);
+  play.remaining--;
+  if (play.remaining <= 0 || RESOURCE_ORDER.every((candidate) => liveBank[candidate] === 0)) {
+    const received = [...play.resources];
+    developmentPlay = null;
+    logCatanReceived(received);
+  }
   return true;
 }
 
@@ -221,16 +290,31 @@ export function completeCatanWorkbenchPlayerTrade(id: number, playerName: string
   return cancelCatanWorkbenchPlayerTrade(id);
 }
 
-function commitCatanWorkbenchMaritimePayment(trade: CatanWorkbenchMaritimeTrade): boolean {
+function canCommitCatanWorkbenchMaritimeTrade(trade: CatanWorkbenchMaritimeTrade): boolean {
   const giveCount = trade.rate * trade.gets.length;
   if (trade.gets.length === 0 || liveHand[trade.give] < giveCount || trade.gets.some((get) => get === trade.give)) return false;
   const received = emptyResourceCounts();
   for (const get of trade.gets) received[get]++;
   if (RESOURCE_ORDER.some((resource) => received[resource] > liveBank[resource])) return false;
+  return true;
+}
 
+function commitCatanWorkbenchMaritimePayment(trade: CatanWorkbenchMaritimeTrade): boolean {
+  if (!canCommitCatanWorkbenchMaritimeTrade(trade)) return false;
+  const giveCount = trade.rate * trade.gets.length;
   liveHand[trade.give] -= giveCount;
   liveBank[trade.give] += giveCount;
   return true;
+}
+
+export function departCatanWorkbenchHandResource(resource: Resource): boolean {
+  if (liveHand[resource] <= 0) return false;
+  liveHand[resource] -= 1;
+  return true;
+}
+
+export function landCatanWorkbenchBankResource(resource: Resource): void {
+  liveBank[resource] += 1;
 }
 
 export function departCatanWorkbenchBankResource(resource: Resource): boolean {
@@ -254,7 +338,9 @@ export function logCatanWorkbenchMaritimeTrade(
 }
 
 function beginStagedCatanWorkbenchMaritimeTrade(trade: CatanWorkbenchMaritimeTrade | null): CatanWorkbenchMaritimeTrade | null {
-  if (!trade || !commitCatanWorkbenchMaritimePayment(trade)) return null;
+  // Animated trades settle both sides card by card. Validate and close the editor here, but leave
+  // the counts untouched until each offered card departs the hand and lands in the bank.
+  if (!trade || !canCommitCatanWorkbenchMaritimeTrade(trade)) return null;
   setCatanTradeEditorOpen(false);
   return trade;
 }
@@ -311,7 +397,7 @@ export function performStagedCatanWorkbenchPortTrade(rates: MaritimePortTradeRat
 }
 
 export function beginCatanWorkbenchDevPurchase(): DevCardType | null {
-  const drawn = liveDevelopmentDeck.at(-1);
+  const drawn = liveDevelopmentDeck.at(-1 - reservedDevelopmentCards.length);
   if (!drawn) return null;
   for (const resource of RESOURCE_ORDER) {
     if (liveHand[resource] < COSTS.devCard[resourceIndex(resource)]) return null;
@@ -321,11 +407,13 @@ export function beginCatanWorkbenchDevPurchase(): DevCardType | null {
     liveHand[resource] -= amount;
     liveBank[resource] += amount;
   }
+  reservedDevelopmentCards.push(drawn);
   return drawn;
 }
 
 export function departCatanWorkbenchDevCard(expected: DevCardType): boolean {
-  if (liveDevelopmentDeck.at(-1) !== expected) return false;
+  if (reservedDevelopmentCards[0] !== expected || liveDevelopmentDeck.at(-1) !== expected) return false;
+  reservedDevelopmentCards.shift();
   liveDevelopmentDeck.pop();
   return true;
 }
@@ -353,6 +441,9 @@ export function resetCatanWorkbenchCards(): void {
   }
   for (const type of DEV_CARD_TYPES) liveDevHand[type] = 0;
   liveDevelopmentDeck = buildDevelopmentDeck(mulberry32(WORKBENCH_DEV_SEED));
+  reservedDevelopmentCards.length = 0;
+  developmentPlay = null;
+  livePlayedKnights = 0;
   liveHistory.length = 0;
   for (const timer of playerTradeTimers.values()) clearTimeout(timer);
   playerTradeTimers.clear();
@@ -399,6 +490,9 @@ export function catanWorkbenchView(
   const seeded = CATAN_CARD_WORKBENCH_VIEW;
   const held = RESOURCE_ORDER.reduce((sum, resource) => sum + liveHand[resource], 0);
   const dev = DEV_CARD_TYPES.reduce((sum, type) => sum + liveDevHand[type], 0);
+  const knights = seeded.localPlayer.knights + livePlayedKnights;
+  const opposingArmy = Math.max(...seeded.opponents.map((player) => player.knights));
+  const hasLargestArmy = knights >= 3 && knights > opposingArmy;
   return {
     ...seeded,
     hand: { ...liveHand },
@@ -407,8 +501,20 @@ export function catanWorkbenchView(
     maritimeRates: { ...rates },
     maritimePortRates: Object.fromEntries(RESOURCE_ORDER.map((resource) => [resource, [...portRates[resource]]])) as MaritimePortTradeRates,
     developmentDeck: liveDevelopmentDeck.length,
+    developmentDeckAvailable: liveDevelopmentDeck.length - reservedDevelopmentCards.length,
+    ...(developmentPlay ? { developmentPlay: { ...developmentPlay, resources: [...developmentPlay.resources] } } : {}),
     editable: true,
-    localPlayer: { ...seeded.localPlayer, resourceCards: held, developmentCards: dev },
+    localPlayer: {
+      ...seeded.localPlayer,
+      resourceCards: held,
+      developmentCards: dev,
+      knights,
+      publicVp: seeded.localPlayer.publicVp + (hasLargestArmy ? 2 : 0),
+      ...(hasLargestArmy ? { hasLargestArmy: true } : {}),
+    },
+    opponents: seeded.opponents.map((player) => hasLargestArmy && player.hasLargestArmy
+      ? { ...player, hasLargestArmy: false }
+      : player),
     history: [...seeded.history, ...liveHistory],
   };
 }

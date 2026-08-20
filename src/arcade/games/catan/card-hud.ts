@@ -45,21 +45,24 @@ import {
 } from './palette.ts';
 import type { CatanActionHistoryView, CatanCardsPlayerView, CatanCardsView } from './card-types.ts';
 import {
-  adjustCatanWorkbenchDev,
   adjustCatanWorkbenchHand,
   adjustCatanWorkbenchTradeStaging,
+  beginCatanWorkbenchDevelopmentPlay,
   beginCatanWorkbenchDevPurchase,
   beginStagedCatanWorkbenchBankTrade,
   beginStagedCatanWorkbenchPortTrade,
   buyCatanWorkbenchDevCard,
   cancelCatanWorkbenchPlayerTrade,
   catanTradeEditorOpen,
+  chooseCatanWorkbenchDevelopmentResource,
   catanWorkbenchPlayerTradeOffers,
   catanWorkbenchView,
   completeCatanWorkbenchPlayerTrade,
   createCatanWorkbenchPlayerTrade,
   departCatanWorkbenchBankResource,
+  departCatanWorkbenchHandResource,
   departCatanWorkbenchDevCard,
+  landCatanWorkbenchBankResource,
   landCatanWorkbenchDevCard,
   logCatanWorkbenchDevPurchase,
   logCatanWorkbenchMaritimeTrade,
@@ -80,6 +83,7 @@ export {
   adjustCatanWorkbenchHand,
   adjustCatanWorkbenchTradeStaging,
   bankCatanResource,
+  beginCatanWorkbenchDevelopmentPlay,
   beginCatanWorkbenchDevPurchase,
   beginStagedCatanWorkbenchBankTrade,
   beginStagedCatanWorkbenchPortTrade,
@@ -89,12 +93,16 @@ export {
   CATAN_LOCAL_COLOR,
   catanResourceFace,
   catanTradeEditorOpen,
+  catanWorkbenchDevelopmentPlay,
   catanWorkbenchPlayerTradeOffers,
   catanWorkbenchView,
   completeCatanWorkbenchPlayerTrade,
+  completeCatanWorkbenchDevelopmentStep,
   createCatanWorkbenchPlayerTrade,
   departCatanWorkbenchBankResource,
+  departCatanWorkbenchHandResource,
   departCatanWorkbenchDevCard,
+  landCatanWorkbenchBankResource,
   landCatanWorkbenchDevCard,
   logCatanReceived,
   logCatanRobberMove,
@@ -105,6 +113,8 @@ export {
   performCatanWorkbenchPortTrade,
   performStagedCatanWorkbenchBankTrade,
   performStagedCatanWorkbenchPortTrade,
+  chooseCatanWorkbenchDevelopmentResource,
+  finishCatanWorkbenchDevelopmentPlay,
   resetCatanWorkbenchCards,
   resolveCatanWorkbenchPlayerTradeOffer,
   setCatanTradeEditorOpen,
@@ -494,11 +504,15 @@ function adjustHand(resource: Resource, ev: PointerHit): boolean {
   return adjustCatanWorkbenchHand(resource, ev.button === 2 ? -1 : 1);
 }
 
-// Same click contract as the resource hand: left draws one of that development card, right
-// discards one.
-function adjustDevHand(type: DevCardType, ev: PointerHit): boolean {
-  if (ev.type !== 'down') return false;
-  return adjustCatanWorkbenchDev(type, ev.button === 2 ? -1 : 1);
+// Development cards are acquired only through the paid deck action. A held playable card commits
+// on left-click and then waits for its board/resource choices; victory points remain passive.
+function playDevHand(
+  type: DevCardType,
+  ev: PointerHit,
+  onPlayDevelopmentCard?: CatanDevelopmentPlayRequest,
+): boolean {
+  if (ev.type !== 'down' || ev.button === 2 || type === 'victoryPoint') return false;
+  return onPlayDevelopmentCard?.(type) ?? beginCatanWorkbenchDevelopmentPlay(type);
 }
 
 interface WorkbenchActionColors {
@@ -550,17 +564,20 @@ function workbenchActionButton(
 }
 
 function canBuyWorkbenchDev(view: CatanCardsView): boolean {
-  return view.developmentPurchaseBusy !== true
-    && view.developmentDeck > 0
+  return view.maritimeTradeBusy !== true
+    && (view.developmentDeckAvailable ?? view.developmentDeck) > 0
     && RESOURCE_ORDER.every((resource) => view.hand[resource] >= COSTS.devCard[resourceIndex(resource)]);
 }
 
 function canOpenWorkbenchTrade(view: CatanCardsView): boolean {
-  return view.maritimeTradeBusy !== true && RESOURCE_ORDER.some((resource) => view.hand[resource] > 0);
+  return view.maritimeTradeBusy !== true
+    && RESOURCE_ORDER.some((resource) => view.hand[resource] > 0);
 }
 
 function visibleDevelopmentCardTypes(view: CatanCardsView, avail: number, showActions: boolean): readonly DevCardType[] {
-  const held = DEV_CARD_TYPES.filter((type) => view.devHand[type] > 0 || view.pendingDevelopmentCard === type);
+  const held = DEV_CARD_TYPES.filter((type) => view.devHand[type] > 0
+    || view.pendingDevelopmentCards?.includes(type)
+    || view.developmentPlay?.type === type);
   const allWorkbenchTypesFit = avail >= RESOURCE_HAND_W + devHandWidth(DEV_CARD_TYPES.length)
     + (showActions ? HAND_ACTION_GAP + ACTIONS_W : 0);
   return view.editable && allWorkbenchTypesFit ? DEV_CARD_TYPES : held;
@@ -871,6 +888,8 @@ function playerTradeOffers(right: number, onChange: () => void): Node | null {
 // resources are spendable, dev cards are played. Only dev cards actually held are drawn, so the
 // panel grows and shrinks with the hand instead of showing five mostly-empty purple slots.
 type CatanDevelopmentPurchaseRequest = () => boolean;
+type CatanDevelopmentPlayRequest = (type: DevCardType) => boolean;
+type CatanDevelopmentResourceRequest = (resource: Resource) => boolean;
 
 function handPanel(
   view: CatanCardsView,
@@ -878,6 +897,8 @@ function handPanel(
   avail: number,
   onChange: () => void,
   onBuyDevelopmentCard?: CatanDevelopmentPurchaseRequest,
+  onPlayDevelopmentCard?: CatanDevelopmentPlayRequest,
+  onChooseDevelopmentResource?: CatanDevelopmentResourceRequest,
 ): Node {
   const height = layout.compact ? CARD_H_COMPACT : CARD_H;
   const showActions = view.editable === true && avail >= RESOURCE_HAND_W + HAND_ACTION_GAP + ACTIONS_W;
@@ -891,8 +912,8 @@ function handPanel(
   // A card is wrapped in its own click target only on an editable (workbench) view. In the game
   // the wrapper is skipped entirely, so the hit-test finds nothing interactive over the hand and
   // a click falls through to the board exactly as it did before the cards existed.
-  const clickable = (face: Node, onMouse: (ev: PointerHit) => boolean): Node => {
-    if (!view.editable) return face;
+  const clickable = (face: Node, onMouse: (ev: PointerHit) => boolean, enabled = true): Node => {
+    if (!view.editable || !enabled) return face;
     // The wrapper carries the handler so `card` stays presentational. The hit-test takes the
     // innermost INTERACTIVE node and the face has none, so it never competes; `Box` has no
     // handler slot, hence attaching it to the node.
@@ -914,13 +935,31 @@ function handPanel(
           ],
           maxWidth: 46,
         }, clickable(
-          card(DEV_HAND_LOOK[type], view.devHand[type], height, view.devHand[type] === 0),
-          (ev) => adjustDevHand(type, ev),
+          card(
+            DEV_HAND_LOOK[type],
+            view.devHand[type],
+            height,
+            view.devHand[type] === 0 && view.developmentPlay?.type !== type,
+            view.developmentPlay?.type === type,
+          ),
+          (ev) => playDevHand(type, ev, onPlayDevelopmentCard),
+          view.devHand[type] > 0
+            && type !== 'victoryPoint'
+            && view.maritimeTradeBusy !== true
+            && view.developmentPlay === undefined,
         ));
       });
-  const cards = RESOURCE_ORDER.map((resource) =>
-    clickable(card(RESOURCE_LOOK[resource], view.hand[resource], height, view.hand[resource] === 0), (ev) => adjustHand(resource, ev)),
-  );
+  const cards = RESOURCE_ORDER.map((resource) => clickable(
+    card(RESOURCE_LOOK[resource], view.hand[resource], height, view.hand[resource] === 0),
+    (ev) => {
+      if (view.developmentPlay?.type === 'yearOfPlenty' || view.developmentPlay?.type === 'monopoly') {
+        if (ev.type !== 'down' || ev.button === 2) return false;
+        return onChooseDevelopmentResource?.(resource) ?? chooseCatanWorkbenchDevelopmentResource(resource);
+      }
+      return adjustHand(resource, ev);
+    },
+    view.maritimeTradeBusy !== true,
+  ));
   const actions = !showActions
     ? []
     : [
@@ -963,6 +1002,30 @@ function handPanel(
   return Box({ position: 'absolute', left: HAND_PANEL_LEFT, bottom: 1, height: layout.handHeight, gap: HAND_ACTION_GAP }, [
     tray,
     ...(actions.length === 0 ? [] : [Box({ height: layout.handHeight, gap: ACTION_BUTTON_GAP, alignItems: 'center' }, actions)]),
+  ]);
+}
+
+function developmentPrompt(view: CatanCardsView, layout: CatanCardsLayout): Node | null {
+  const play = view.developmentPlay;
+  if (!play) return null;
+  const instruction = play.type === 'knight'
+    ? 'choose a robber tile'
+    : play.type === 'roadBuilding'
+      ? `place ${play.remaining} road${play.remaining === 1 ? '' : 's'}`
+      : play.type === 'yearOfPlenty'
+        ? `choose ${play.remaining} resource${play.remaining === 1 ? '' : 's'} from your hand row`
+        : 'choose a resource from your hand row';
+  return Box({
+    position: 'absolute',
+    left: HAND_PANEL_LEFT,
+    bottom: layout.handHeight + 2,
+    padding: [0, 1],
+    gap: 1,
+    background: uiChromeBg(0.9),
+    pointerEvents: 'none',
+  }, [
+    Text({ text: DEV_CARD_HELP[play.type].title, style: { color: DEV_HAND_LOOK[play.type].fill, bold: true } }),
+    Text({ text: instruction, style: { color: ARCADE_CHROME_TEXT.body } }),
   ]);
 }
 
@@ -1063,6 +1126,8 @@ export function buildCatanCardsOverlay(
   onWorkbenchChange: () => void = () => {},
   onMaritimeTrade?: CatanMaritimeTradeRequest,
   onBuyDevelopmentCard?: CatanDevelopmentPurchaseRequest,
+  onPlayDevelopmentCard?: CatanDevelopmentPlayRequest,
+  onChooseDevelopmentResource?: CatanDevelopmentResourceRequest,
 ): Node {
   const layout = catanCardsLayout(region);
   const showSidebar = sidebarOpen && layout.showPublicRail;
@@ -1089,7 +1154,10 @@ export function buildCatanCardsOverlay(
           region.w - (showSidebar ? RAIL_W : 0) - 2,
           onWorkbenchChange,
           onBuyDevelopmentCard,
+          onPlayDevelopmentCard,
+          onChooseDevelopmentResource,
         )]),
+    ...(view.editable ? [developmentPrompt(view, layout)].filter((node): node is Node => node !== null) : []),
     ...(offers ? [offers] : []),
   ]);
 }

@@ -13,6 +13,7 @@ import { buildGameMenu, type MenuItem } from '../../shell/bars.ts';
 import { type DevCardType, type Resource } from '../../../rules/catan/types.ts';
 import {
   bankCatanResource,
+  beginCatanWorkbenchDevelopmentPlay,
   beginCatanWorkbenchDevPurchase,
   beginStagedCatanWorkbenchBankTrade,
   beginStagedCatanWorkbenchPortTrade,
@@ -22,15 +23,21 @@ import {
   catanDevHandLandingCell,
   catanHandLandingCell,
   catanRailVisible,
+  catanWorkbenchDevelopmentPlay,
   catanWorkbenchView,
+  chooseCatanWorkbenchDevelopmentResource,
+  completeCatanWorkbenchDevelopmentStep,
   departCatanWorkbenchBankResource,
+  departCatanWorkbenchHandResource,
   departCatanWorkbenchDevCard,
+  landCatanWorkbenchBankResource,
   landCatanWorkbenchDevCard,
   logCatanReceived,
   logCatanRobberMove,
   logCatanRoll,
   logCatanWorkbenchDevPurchase,
   logCatanWorkbenchMaritimeTrade,
+  finishCatanWorkbenchDevelopmentPlay,
   resetCatanWorkbenchCards,
 } from './card-hud.ts';
 import { type CatanWorkbenchMaritimeTrade, type CatanWorkbenchMaritimeTradeVia } from './card-workbench.ts';
@@ -72,9 +79,10 @@ export class CatanController {
   private animationTimer: ReturnType<typeof setInterval> | null = null;
   private readonly flights = new ResourceFlights();
   private readonly tradeFlights = new ResourceFlights();
+  private readonly tradeOfferFlights = new ResourceFlights();
   private readonly developmentFlights = new ResourceFlights<DevCardType>();
   private pendingMaritimeTrade: { trade: CatanWorkbenchMaritimeTrade; via: CatanWorkbenchMaritimeTradeVia } | null = null;
-  private pendingDevelopmentCard: DevCardType | null = null;
+  private readonly pendingDevelopmentCards: DevCardType[] = [];
   // Cards banked since the current roll's first arrival, held so the log can report the whole
   // haul in one entry once the last one is down.
   private arrived: Resource[] = [];
@@ -101,6 +109,8 @@ export class CatanController {
       onPort: (k) => this.change(() => this.scene.setPortKind(k)),
       onMaritimeTrade: (via) => this.beginMaritimeTrade(via),
       onBuyDevelopmentCard: () => this.beginDevelopmentPurchase(),
+      onPlayDevelopmentCard: (type) => this.beginDevelopmentPlay(type),
+      onChooseDevelopmentResource: (resource) => this.chooseDevelopmentResource(resource),
     });
     // Production. The scene reports the sum once the dice rest; what that pays out depends on
     // whose pieces sit on the matching hexes, so the seat is applied here rather than in the
@@ -128,7 +138,7 @@ export class CatanController {
   }
 
   private beginMaritimeTrade(via: CatanWorkbenchMaritimeTradeVia): boolean {
-    if (this.tradeFlights.busy()) return false;
+    if (this.tradeFlights.busy() || this.tradeOfferFlights.busy()) return false;
     const trade = via === 'bank'
       ? beginStagedCatanWorkbenchBankTrade()
       : beginStagedCatanWorkbenchPortTrade(this.scene.maritimePortTradeRates(CATAN_LOCAL_COLOR));
@@ -138,6 +148,15 @@ export class CatanController {
     const region = this.region(this.lastCols, this.lastRows);
     const railVisible = catanRailVisible(this.lastCols, this.lastRows);
     const playerCount = catanWorkbenchView().opponents.length + 1;
+    this.tradeOfferFlights.spawn(
+      trade.give,
+      trade.rate * trade.gets.length,
+      catanHandLandingCell(region, trade.give),
+      catanBankDepartureCell(region, trade.give, playerCount, railVisible),
+      0,
+      TRADE_ARC_MAX,
+      false,
+    );
     for (let order = 0; order < trade.gets.length; order++) {
       const resource = trade.gets[order];
       this.tradeFlights.spawn(
@@ -159,11 +178,11 @@ export class CatanController {
   }
 
   private beginDevelopmentPurchase(): boolean {
-    if (this.developmentFlights.busy()) return false;
+    if (this.tradeFlights.busy() || this.tradeOfferFlights.busy()) return false;
     const card = beginCatanWorkbenchDevPurchase();
     if (!card) return false;
 
-    this.pendingDevelopmentCard = card;
+    this.pendingDevelopmentCards.push(card);
     const region = this.region(this.lastCols, this.lastRows);
     const railVisible = catanRailVisible(this.lastCols, this.lastRows);
     const view = catanWorkbenchView(
@@ -171,25 +190,83 @@ export class CatanController {
       this.scene.maritimePortTradeRates(CATAN_LOCAL_COLOR),
     );
     view.developmentPurchaseBusy = true;
-    view.pendingDevelopmentCard = card;
+    view.pendingDevelopmentCards = [...this.pendingDevelopmentCards];
     this.developmentFlights.spawn(
       card,
       1,
       catanDevDeckDepartureCell(region, view.opponents.length + 1, railVisible),
       catanDevHandLandingCell(region, card, railVisible, view),
-      0,
+      this.pendingDevelopmentCards.length - 1,
       DEV_ARC_MAX,
     );
     return true;
   }
 
-  private finishPendingDevelopmentPurchase(): void {
-    if (!this.pendingDevelopmentCard) return;
+  private beginDevelopmentPlay(type: DevCardType): boolean {
+    if (this.tradeFlights.busy() || this.tradeOfferFlights.busy() || this.scene.isMovingRobber()) return false;
+    if (type === 'roadBuilding' && this.scene.legalRoadEdges(CATAN_LOCAL_COLOR).length === 0) return false;
+    if (!beginCatanWorkbenchDevelopmentPlay(type)) return false;
+    if (type === 'knight') {
+      this.scene.setPlacementGate({ nodes: [], edges: [] });
+      this.scene.beginRobberMove();
+    } else if (type === 'roadBuilding') {
+      this.scene.setActiveColor(CATAN_LOCAL_COLOR);
+      this.refreshRoadBuildingGate();
+    }
+    this.requestFrame();
+    return true;
+  }
+
+  private chooseDevelopmentResource(resource: Resource): boolean {
+    if (!chooseCatanWorkbenchDevelopmentResource(resource)) return false;
+    this.requestFrame();
+    return true;
+  }
+
+  private refreshRoadBuildingGate(): void {
+    const play = catanWorkbenchDevelopmentPlay();
+    if (play?.type !== 'roadBuilding') {
+      this.scene.setPlacementGate(null);
+      return;
+    }
+    const edges = this.scene.legalRoadEdges(CATAN_LOCAL_COLOR);
+    if (edges.length === 0) {
+      finishCatanWorkbenchDevelopmentPlay('roadBuilding');
+      this.scene.setPlacementGate(null);
+      return;
+    }
+    this.scene.setPlacementGate({ nodes: [], edges });
+  }
+
+  private suspendDevelopmentInteraction(): void {
+    this.scene.setPlacementGate(null);
+    this.scene.cancelRobberMove();
+  }
+
+  private restoreDevelopmentInteraction(): void {
+    const play = catanWorkbenchDevelopmentPlay();
+    if (play?.type === 'knight') {
+      this.scene.setPlacementGate({ nodes: [], edges: [] });
+      this.scene.beginRobberMove();
+    } else if (play?.type === 'roadBuilding') {
+      this.refreshRoadBuildingGate();
+    }
+  }
+
+  private finishPendingDevelopmentPurchase(card: DevCardType): void {
+    const pending = this.pendingDevelopmentCards.indexOf(card);
+    if (pending < 0) return;
+    this.pendingDevelopmentCards.splice(pending, 1);
     logCatanWorkbenchDevPurchase();
-    this.pendingDevelopmentCard = null;
   }
 
   private settleTradeFlights(): void {
+    for (const flight of this.tradeOfferFlights.drainPending()) {
+      if (!flight.departed && !departCatanWorkbenchHandResource(flight.resource)) {
+        throw new Error(`Catan hand ran out of ${flight.resource} during a reserved maritime trade`);
+      }
+      landCatanWorkbenchBankResource(flight.resource);
+    }
     for (const flight of this.tradeFlights.drainPending()) {
       if (!flight.departed && !departCatanWorkbenchBankResource(flight.resource)) {
         throw new Error(`Catan bank ran out of ${flight.resource} during a reserved maritime trade`);
@@ -205,8 +282,8 @@ export class CatanController {
         throw new Error('Catan development deck changed during a reserved purchase');
       }
       landCatanWorkbenchDevCard(flight.resource);
+      this.finishPendingDevelopmentPurchase(flight.resource);
     }
-    this.finishPendingDevelopmentPurchase();
   }
 
   private regenerateWorkbench(): void {
@@ -223,10 +300,13 @@ export class CatanController {
     // intentionally discarded here because resetCatanWorkbenchCards restores the whole bank.
     this.flights.drain();
     this.tradeFlights.drain();
+    this.tradeOfferFlights.drain();
     this.developmentFlights.drain();
     this.pendingMaritimeTrade = null;
-    this.pendingDevelopmentCard = null;
+    this.pendingDevelopmentCards.length = 0;
     this.arrived = [];
+    this.scene.setPlacementGate(null);
+    this.scene.cancelRobberMove();
     resetCatanWorkbenchCards();
     this.scene.reroll();
   }
@@ -236,9 +316,12 @@ export class CatanController {
   enter(): void {
     mountCatanTileHud(this.ui);
     this.scene.setTerrain(catanTileTerrain()); // match the scene to the HUD's committed tile
+    this.scene.setPlacementGate(null);
+    this.scene.cancelRobberMove();
     this.scene.setMode('boardCards'); // temporary: card-UI workbench is the default while it is being built
     setCatanTileMode('boardCards'); // sync the Mode dropdown to match
     this.scene.reroll(); // play the tile-placement + number reveal on entry
+    this.restoreDevelopmentInteraction();
     this.startEnvironmentAnimation();
   }
 
@@ -246,6 +329,7 @@ export class CatanController {
   reset(): void {
     this.menuOpen = false;
     this.pieceEdit = null;
+    this.suspendDevelopmentInteraction();
     // Settle any roll still in the air. Left in place they would ride a clock that keeps running
     // while the screen is closed, so re-entering banks the whole lot on the first frame and logs
     // a receipt for a roll from minutes ago.
@@ -300,11 +384,26 @@ export class CatanController {
     if (this.scene.needsRender()) this.requestRender();
   }
   clickAt(ndcX: number, ndcY: number): void {
+    const development = catanWorkbenchDevelopmentPlay();
     if (this.scene.isMovingRobber()) {
       const hex = this.scene.pickRobberHexAt(ndcX, ndcY);
       if (hex !== null && this.scene.moveRobberTo(hex)) {
         const terrain = this.scene.terrainAtHex(hex);
         if (terrain) logCatanRobberMove(terrain);
+        if (development?.type === 'knight') {
+          completeCatanWorkbenchDevelopmentStep('knight');
+          this.scene.setPlacementGate(null);
+        }
+      }
+      this.requestFrame();
+      return;
+    }
+    if (development?.type === 'roadBuilding') {
+      const target = this.scene.pickBoardAt(ndcX, ndcY);
+      if (target?.kind === 'edge') {
+        this.scene.placePiece('road', target.id, CATAN_LOCAL_COLOR);
+        completeCatanWorkbenchDevelopmentStep('roadBuilding');
+        this.refreshRoadBuildingGate();
       }
       this.requestFrame();
       return;
@@ -316,7 +415,11 @@ export class CatanController {
 
   // ── render / dirty ───────────────────────────────────────────────────────────
   needsRender(): boolean {
-    return this.scene.needsRender() || this.flights.busy() || this.tradeFlights.busy() || this.developmentFlights.busy();
+    return this.scene.needsRender()
+      || this.flights.busy()
+      || this.tradeFlights.busy()
+      || this.tradeOfferFlights.busy()
+      || this.developmentFlights.busy();
   }
   renderScene(target: RenderTarget, t: number): void {
     this.scene.renderScene(target, t);
@@ -337,15 +440,26 @@ export class CatanController {
   }
 
   private advanceTradeFlights(t: number): void {
-    const { departed, landed } = this.tradeFlights.advanceWithDepartures(t);
-    for (const resource of departed) {
+    const incoming = this.tradeFlights.advanceWithDepartures(t);
+    const offered = this.tradeOfferFlights.advanceWithDepartures(t);
+    for (const resource of incoming.departed) {
       if (!departCatanWorkbenchBankResource(resource)) {
         throw new Error(`Catan bank ran out of ${resource} during a reserved maritime trade`);
       }
     }
-    for (const resource of landed) bankCatanResource(resource);
-    if (this.pendingMaritimeTrade && !this.tradeFlights.busy()) this.finishPendingMaritimeTrade();
-    if (departed.length || landed.length) this.requestFrame();
+    for (const resource of incoming.landed) bankCatanResource(resource);
+    for (const resource of offered.departed) {
+      if (!departCatanWorkbenchHandResource(resource)) {
+        throw new Error(`Catan hand ran out of ${resource} during a reserved maritime trade`);
+      }
+    }
+    for (const resource of offered.landed) landCatanWorkbenchBankResource(resource);
+    if (this.pendingMaritimeTrade && !this.tradeFlights.busy() && !this.tradeOfferFlights.busy()) {
+      this.finishPendingMaritimeTrade();
+    }
+    if (incoming.departed.length || incoming.landed.length || offered.departed.length || offered.landed.length) {
+      this.requestFrame();
+    }
   }
 
   private advanceDevelopmentFlights(t: number): void {
@@ -355,8 +469,10 @@ export class CatanController {
         throw new Error('Catan development deck changed during a reserved purchase');
       }
     }
-    for (const card of landed) landCatanWorkbenchDevCard(card);
-    if (this.pendingDevelopmentCard && !this.developmentFlights.busy()) this.finishPendingDevelopmentPurchase();
+    for (const card of landed) {
+      landCatanWorkbenchDevCard(card);
+      this.finishPendingDevelopmentPurchase(card);
+    }
     if (departed.length || landed.length) this.requestFrame();
   }
 
@@ -379,10 +495,10 @@ export class CatanController {
           this.scene.maritimePortTradeRates(CATAN_LOCAL_COLOR),
         )
       : undefined;
-    if (cardsView) cardsView.maritimeTradeBusy = this.tradeFlights.busy();
+    if (cardsView) cardsView.maritimeTradeBusy = this.tradeFlights.busy() || this.tradeOfferFlights.busy();
     if (cardsView) {
       cardsView.developmentPurchaseBusy = this.developmentFlights.busy();
-      if (this.pendingDevelopmentCard) cardsView.pendingDevelopmentCard = this.pendingDevelopmentCard;
+      if (this.pendingDevelopmentCards.length) cardsView.pendingDevelopmentCards = [...this.pendingDevelopmentCards];
     }
     return buildCatanTileRoot(
       this.region(cols, rows),
@@ -390,7 +506,12 @@ export class CatanController {
       this.scene.boardTokens(sceneCols, rows),
       this.scene.currentMode(),
       sailLabels,
-      [...this.flights.active(), ...this.tradeFlights.active(), ...this.developmentFlights.active()],
+      [
+        ...this.flights.active(),
+        ...this.tradeOfferFlights.active(),
+        ...this.tradeFlights.active(),
+        ...this.developmentFlights.active(),
+      ],
       this.scene.isMovingRobber(),
       cardsView,
     );

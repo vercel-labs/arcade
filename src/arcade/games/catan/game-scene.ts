@@ -87,6 +87,9 @@ export class CatanGameScene {
     state.applyAction(action);
     if (action.type === 'initialSettlement') this.scene.placePiece('building', action.node, this.colorOf(seat));
     else if (action.type === 'initialRoad') this.scene.placePiece('road', action.edge, this.colorOf(seat));
+    else if (action.type === 'playRoadBuilding') {
+      for (const edge of action.edges) this.scene.placePiece('road', edge, this.colorOf(seat));
+    }
     else if (action.type === 'moveRobber' || action.type === 'playKnight') this.scene.syncRobberHex(action.hex);
     this.refreshGate();
     this.onChange();
