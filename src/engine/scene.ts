@@ -151,7 +151,14 @@ export class WorldMaterialInstance<U extends WorldUniforms> extends MaterialInst
 }
 
 abstract class RenderableObject extends Object3D {
-  abstract draw(context: RenderContext): void;
+  abstract forEachDraw(context: RenderContext, visit: (draw: SceneDraw) => void): void;
+}
+
+/** One resolved draw call, independent of whether a CPU or GPU backend consumes it. */
+export interface SceneDraw {
+  geometry: Mesh;
+  material: Material<unknown>;
+  uniforms: unknown;
 }
 
 export class MeshObject<U> extends RenderableObject {
@@ -176,8 +183,12 @@ export class MeshObject<U> extends RenderableObject {
       : new MaterialInstance(material, uniforms as UniformSource<U>);
   }
 
-  draw(context: RenderContext): void {
-    rasterize(context.target, this.geometry, this.material.definition, this.material.resolve(context));
+  forEachDraw(context: RenderContext, visit: (draw: SceneDraw) => void): void {
+    visit({
+      geometry: this.geometry,
+      material: this.material.definition as Material<unknown>,
+      uniforms: this.material.resolve(context),
+    });
   }
 }
 
@@ -259,7 +270,7 @@ export class InstancedMesh<U> extends RenderableObject {
     return color ? { ...color } : undefined;
   }
 
-  draw(context: RenderContext): void {
+  forEachDraw(context: RenderContext, visit: (draw: SceneDraw) => void): void {
     const objectWorld = context.worldMatrix;
     for (let index = 0; index < this._count; index++) {
       const instanceMatrix = this.instanceMatrices[index];
@@ -268,7 +279,11 @@ export class InstancedMesh<U> extends RenderableObject {
       context.worldMatrix = instanceWorld;
       context.instanceIndex = index;
       context.instanceColor = this.instanceColors[index];
-      rasterize(context.target, this.geometry, this.material.definition, this.material.resolve(context));
+      visit({
+        geometry: this.geometry,
+        material: this.material.definition as Material<unknown>,
+        uniforms: this.material.resolve(context),
+      });
     }
     context.worldMatrix = objectWorld;
     context.instanceIndex = undefined;
@@ -348,6 +363,13 @@ export class SceneRenderer {
   private readonly items: RenderItem[] = [];
 
   render(target: RenderTarget, scene: Scene, camera: Camera): void {
+    this.forEachDraw(target, scene, camera, ({ geometry, material, uniforms }) => {
+      rasterize(target, geometry, material, uniforms);
+    });
+  }
+
+  /** Resolve the retained scene into backend-neutral draw calls in stable render order. */
+  forEachDraw(target: RenderTarget, scene: Scene, camera: Camera, visitDraw: (draw: SceneDraw) => void): void {
     scene.updateWorldMatrix();
     const matrices = cameraMatrices(camera, target.width / target.height);
     const items = this.items;
@@ -369,7 +391,7 @@ export class SceneRenderer {
     const context: RenderContext = { target, camera, cameraMatrices: matrices, worldMatrix: scene.worldMatrix };
     for (const { object } of items) {
       context.worldMatrix = object.worldMatrix;
-      object.draw(context);
+      object.forEachDraw(context, visitDraw);
     }
   }
 }

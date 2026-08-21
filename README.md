@@ -2,7 +2,7 @@
 
 **3D games rendered as ASCII in your terminal, played by humans _and_ frontier AI models.**
 
-Arcade is the first build-out of **Vercel Arcade**: play classic games against frontier models through the [Vercel AI Gateway](https://vercel.com/ai-gateway), or sit back and watch two models play each other. It all runs inside a terminal, drawn with truecolor half-blocks. Everything here is pure TypeScript with **zero native dependencies**: the 3D renderer, the UI layer, and the game rules are all written from scratch.
+Arcade is the first build-out of **Vercel Arcade**: play classic games against frontier models through the [Vercel AI Gateway](https://vercel.com/ai-gateway), or sit back and watch two models play each other. It all runs inside a terminal, drawn with truecolor half-blocks. The canonical 3D renderer, UI layer, and game rules are pure TypeScript and work CPU-only. Catan additionally has an optional local WebGPU/Dawn acceleration path with automatic CPU fallback.
 
 **Chess and poker are playable today.** Real 3D pieces (and a felt table with chips for poker) are lit and rasterized in software, then presented as ASCII/half-blocks. Play a model yourself, or watch two models play. Either side's model can be swapped mid-match.
 
@@ -52,8 +52,8 @@ A few standalone libraries plus the app that composes them. Imports flow one way
 
 ```
 src/
-  engine/     3D software renderer (no GPU): math, meshes, rasterizer, materials,
-              ASCII/half-block presenters, bloom, supersampling
+  engine/     3D renderer: canonical CPU rasterizer plus optional WebGPU backend,
+              materials, ASCII/half-block presenters, bloom, supersampling
   tui/        retained-mode TUI: flexbox layout + Box/Text/Button, hover/focus/press,
               hit-testing, paints to a Surface
   platform/   terminal control (alt-screen, raw mode, SGR mouse) + input parsing
@@ -70,6 +70,8 @@ src/
 ### `engine/`: the 3D ASCII rendering engine
 
 A from-scratch software rasterizer. Column-major `Mat4` math → perspective camera → near-plane clipping → edge-function rasterization → perspective-correct interpolation → z-buffer. The single style hook is the **`Material`** (a vertex + fragment program pair), so the whole arcade shares one controllable look; current materials include a two-light flat-shaded piece material and a glassy refraction material. Meshes come from a built-in cube/tetrahedron or the **OBJ loader** (`parseObj` + `flatShade`).
+
+Catan materials may also provide a WGSL implementation. The optional Node backend uses the `webgpu` Dawn binding, renders offscreen at terminal resolution, and overlaps GPU work with a reusable two-slot readback ring. Select `auto`, `cpu`, or `gpu` from Catan's menu; a missing package or adapter leaves the CPU renderer active. No browser or rendering service is involved. `pnpm bench:gpu 140 50 30` measures CPU rendering against GPU submission plus readback on the current machine.
 
 The render target is handed to one of three **presenters**:
 
@@ -110,6 +112,7 @@ The **chess rules engine** is written from scratch (0x88 board, full legal move 
 | `pnpm watch`                           | Run with auto-reload                          |
 | `pnpm type-check`                      | Type-check with `tsc`                         |
 | `pnpm test`                            | Run the unit suite (`src/**/*.test.ts`)       |
+| `pnpm bench:gpu [cols] [rows] [frames]` | Compare Catan CPU/GPU rendering and readback  |
 | `pnpm models:audit` / `models:report` | Audit / render model compatibility            |
 | `pnpm exec tsx src/tools/perft.ts`     | Verify the chess move generator               |
 

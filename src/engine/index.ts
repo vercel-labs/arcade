@@ -86,12 +86,26 @@ export {
   Scene,
   SceneRenderer,
   type RenderContext,
+  type SceneDraw,
   type UniformSource,
   type WorldUniforms,
   WorldMaterialInstance,
   type WorldMaterialValues,
   worldUniforms,
 } from './scene.ts';
+export {
+  cycleRenderBackendPreference,
+  disposeWebGpuRenderer,
+  ensureWebGpuRenderer,
+  onRenderBackendChange,
+  renderBackendInfo,
+  renderBackendPreference,
+  setRenderBackendPreference,
+  tryRenderSceneWithWebGpu,
+  type RenderBackendInfo,
+  type RenderBackendPreference,
+  type WebGpuBackendState,
+} from './webgpu/backend.ts';
 export {
   lambertMaterial,
   type LambertUniforms,

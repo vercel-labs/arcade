@@ -30,6 +30,9 @@ importers:
       '@types/ws':
         specifier: 8.18.1
         version: 8.18.1
+      '@webgpu/types':
+        specifier: 0.1.69
+        version: 0.1.69
       typescript:
         specifier: 5.7.3
         version: 5.7.3
@@ -37,6 +40,9 @@ importers:
       speaker:
         specifier: 0.5.5
         version: 0.5.5
+      webgpu:
+        specifier: 0.4.0
+        version: 0.4.0
 
 packages:
 
@@ -233,6 +239,9 @@ packages:
     resolution: {integrity: sha512-UycprH3T6n3jH0k44NHMa7pnFHGu/N05MjojYr+Mc6I7obkoLIJujSWwin1pCvdy/eOxrI/l3uDLQsmcrOb4ug==}
     engines: {node: '>= 20'}
 
+  '@webgpu/types@0.1.69':
+    resolution: {integrity: sha512-RPmm6kgRbI8e98zSD3RVACvnuktIja5+yLgDAkTmxLr90BEwdTXRQWNLF3ETTTyH/8mKhznZuN5AveXYFEsMGQ==}
+
   '@workflow/serde@4.1.0':
     resolution: {integrity: sha512-pav4F2BoirECWR7Nf1TKt+2eETcBj7jj4cBefQ8VXQCA6NPkaKeLfj/zMgi+3zYV5ZIBT4GuUiphsj0/b9hPQQ==}
 
@@ -308,6 +317,9 @@ packages:
 
   undici-types@6.20.0:
     resolution: {integrity: sha512-Ny6QZ2Nju20vw1SRHe3d9jVu6gJ+4e3+MMpqu7pqE5HT6WsTSlce++GQmK5UXS8mzV8DSYHrQH+Xrf2jVcuKNg==}
+
+  webgpu@0.4.0:
+    resolution: {integrity: sha512-F5pimn3Aoi0zWjuRdiVs5TnrUwSzD2lESBohsIUsqyitWkGRQlXU2fhV6ycXlQTa1bvAf3sjqiUpBEpmSQ5ptA==}
 
   ws@8.21.0:
     resolution: {integrity: sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==}
@@ -449,6 +461,8 @@ snapshots:
 
   '@vercel/oidc@3.2.0': {}
 
+  '@webgpu/types@0.1.69': {}
+
   '@workflow/serde@4.1.0': {}
 
   ai@6.0.208(zod@4.4.3):
@@ -546,6 +560,14 @@ snapshots:
   typescript@5.7.3: {}
 
   undici-types@6.20.0: {}
+
+  webgpu@0.4.0:
+    dependencies:
+      '@webgpu/types': 0.1.69
+      debug: 4.4.3
+    transitivePeerDependencies:
+      - supports-color
+    optional: true
 
   ws@8.21.0: {}
 

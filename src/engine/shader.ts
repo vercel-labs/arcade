@@ -36,6 +36,13 @@ export interface Varying {
 export type BlendMode = 'opaque' | 'add' | 'alpha';
 export type CullMode = 'back' | 'front' | 'none';
 
+/** GPU implementation of one material. Kept data-only so the CPU engine has no native dependency. */
+export interface WebGpuMaterial<U> {
+  readonly wgsl: string;
+  /** Write this draw's uniforms into the shared 256-byte dynamic-uniform slot. */
+  writeUniforms(target: Float32Array, uniforms: U): void;
+}
+
 /**
  * A material is a programmable shader pair plus pipeline state. This is the
  * single extension point for every visual style in the engine.
@@ -46,4 +53,6 @@ export interface Material<U = unknown> {
   fragment(uniforms: U, varying: Varying): RGBA8 | null;
   blend?: BlendMode;
   cull?: CullMode;
+  /** Optional WGSL implementation used by the opt-in Node WebGPU backend. */
+  webgpu?: WebGpuMaterial<U>;
 }

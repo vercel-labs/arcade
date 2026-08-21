@@ -37,6 +37,7 @@ import {
   Scene,
   SceneRenderer,
   smoothstep,
+  tryRenderSceneWithWebGpu,
   type Vec3,
   waterMaterial,
   type WaterUniforms,
@@ -1200,7 +1201,14 @@ export class TileScene {
       const animated = animatedTileMesh(this.terrain, this.variant, t);
       if (animated) this.queueLambert(animated, MODEL);
     }
-    if (isBoardMode(this.modeName)) this.renderBoardLayers(target, camera);
+    const gpuFrame =
+      isBoardMode(this.modeName) &&
+      this.dicePhase === 'idle' &&
+      tryRenderSceneWithWebGpu(target, this.authoredScene, camera, this.sceneRenderer);
+    if (gpuFrame) {
+      // The GPU target contains the complete retained scene. Its alpha channel was converted
+      // back into finite/empty depth markers for the existing terminal presenters.
+    } else if (isBoardMode(this.modeName)) this.renderBoardLayers(target, camera);
     else this.sceneRenderer.render(target, this.authoredScene, camera);
     if (isBoardMode(this.modeName)) this.renderDice(target, t);
     this.dirty = false;

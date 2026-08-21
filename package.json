@@ -12,6 +12,7 @@
     "snapshot": "ARCADE_DEV=1 tsx src/tools/snapshot.ts",
     "snapshot:png": "sh scripts/snapshot-png.sh",
     "bench": "node --import tsx src/tools/bench.ts",
+    "bench:gpu": "node --import tsx src/tools/gpu-bench.ts",
     "catan:check": "ARCADE_DEV=1 tsx src/tools/catan-render-check.ts",
     "models:audit": "tsx src/tools/model-compat-report.ts",
     "models:report": "tsx src/tools/model-compat-view.ts",
@@ -23,6 +24,7 @@
   "devDependencies": {
     "@types/node": "22.10.5",
     "@types/ws": "8.18.1",
+    "@webgpu/types": "0.1.69",
     "typescript": "5.7.3"
   },
   "dependencies": {
@@ -33,12 +35,14 @@
     "zod": "4.4.3"
   },
   "optionalDependencies": {
-    "speaker": "0.5.5"
+    "speaker": "0.5.5",
+    "webgpu": "0.4.0"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild",
-      "speaker"
+      "speaker",
+      "webgpu"
     ]
   },
   "bin": {

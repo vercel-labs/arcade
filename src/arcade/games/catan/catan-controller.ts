@@ -54,9 +54,12 @@ const DEV_ARC_MAX = 7;
 export interface CatanShell {
   renderMode: () => string; // current display mode, shown on the menu row
   colorMode: () => string; // current color mode, shown on the menu row
+  rendererMode: () => string; // CPU/GPU preference and availability
+  rendererPerf: () => string; // most recent backend timing
   onHome: () => void;
   onCycleDisplay: () => void;
   onCycleColor: () => void;
+  onCycleRenderer: () => void;
   onControls: () => void;
   onQuit: () => void;
   menuValueColW: number;
@@ -525,6 +528,8 @@ export class CatanController {
         { id: 'catan-menu-reset', label: 'reset camera', onClick: () => { this.scene.resetView(); this.closeMenu(); } },
         { id: 'catan-menu-mode', label: 'display', value: this.shell.renderMode(), onClick: this.shell.onCycleDisplay },
         { id: 'catan-menu-color', label: 'color', value: this.shell.colorMode(), onClick: this.shell.onCycleColor },
+        { id: 'catan-menu-renderer', label: 'renderer', value: this.shell.rendererMode(), onClick: this.shell.onCycleRenderer },
+        { id: 'catan-menu-render-perf', label: 'render time', value: this.shell.rendererPerf(), onClick: () => {} },
       ],
       [
         { id: 'catan-menu-shortcuts', label: 'controls', onClick: this.shell.onControls },

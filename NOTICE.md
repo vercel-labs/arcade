@@ -11,6 +11,11 @@ technique described in Alex Harri's article
 ["ASCII rendering"](https://alexharri.com/blog/ascii-rendering) — per-character
 coverage shape vectors matched by nearest neighbor.
 
+The optional WebGPU terminal readback ring was informed by the two-slot staging-buffer
+pipeline in Vercel Labs' [`experiments-vgpu` terminal ocean](https://github.com/vercel-labs/experiments-vgpu/tree/main/apps/terminal-ocean)
+(MIT License): render the next frame while mapping the previous frame, reuse buffers, and
+remove WebGPU's padded row stride while copying into terminal-ready RGBA bytes.
+
 `src/engine/font8x8.ts` is generated (via `src/tools/gen-font.ts`) from the
 **font8x8** bitmap font by Daniel Hepper / Marcel Sondaar / IBM (Public Domain).
 

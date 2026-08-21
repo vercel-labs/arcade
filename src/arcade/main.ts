@@ -4,6 +4,9 @@ import {
   downsample,
   halfBlockLayerToSurface,
   halfBlockToSurface,
+  cycleRenderBackendPreference,
+  onRenderBackendChange,
+  renderBackendInfo,
   RenderTarget,
   shapeGlyphToSurface,
   ShapeGlyphSurfaceCache,
@@ -78,6 +81,7 @@ const COLOR_ORDER: TerminalColorMode[] = ['truecolor', '256-color'];
 const MENU_VALUE_W = Math.max(
   ...MODE_ORDER.map((m) => m.length),
   ...COLOR_ORDER.map((m) => m.length),
+  18,
 );
 
 // Unified compositing (OpenTUI keystone): the scene paints into the same Surface
@@ -118,6 +122,33 @@ const catanGlyphCache = new ShapeGlyphSurfaceCache();
 // Render-on-demand loop. Animating screens hold a live lease; static screens
 // (chess turntable) render only when an interaction requests it.
 const r = new Renderer({ targetFps: FPS });
+let lastCatanRenderMs = 0;
+
+function catanRendererLabel(): string {
+  const info = renderBackendInfo();
+  if (info.state === 'loading') return `${info.preference} (loading)`;
+  if (info.preference === 'gpu' && info.state === 'unavailable') return 'gpu unavailable';
+  return info.preference === 'auto' ? `auto (${info.active})` : info.preference;
+}
+
+function catanRendererPerf(): string {
+  const info = renderBackendInfo();
+  if (info.active === 'gpu' && info.stats) {
+    return `${info.stats.submitMs.toFixed(1)} + ${info.stats.readbackMs.toFixed(1)} ms`;
+  }
+  return `${lastCatanRenderMs.toFixed(1)} ms`;
+}
+
+function cycleCatanRenderer(): void {
+  cycleRenderBackendPreference();
+  forceFrame = true;
+  r.requestRender();
+}
+
+onRenderBackendChange(() => {
+  forceFrame = true;
+  r.requestRender();
+});
 
 // The Catan test-bed facade: owns its scene, menu/modal state, HUD wiring, UI roots, pointer,
 // and render/dirty. main.ts only wires it into the shared mode/render/mouse plumbing below.
@@ -132,9 +163,12 @@ const catan = new CatanController({
   shell: {
     renderMode: () => renderMode,
     colorMode: () => colorMode,
+    rendererMode: catanRendererLabel,
+    rendererPerf: catanRendererPerf,
     onHome: () => enterMenu(),
     onCycleDisplay: () => cycleMode(),
     onCycleColor: () => cycleColor(),
+    onCycleRenderer: cycleCatanRenderer,
     onControls: () => openShortcuts(),
     onQuit: () => quit(),
     menuValueColW: MENU_VALUE_W,
@@ -1264,6 +1298,8 @@ function buildCatanGameMenu(): Node {
       { id: 'catan-game-menu-reset', label: 'reset camera', onClick: () => { catanGameScene.scene.resetView(); closeMenu(); } },
       { id: 'catan-game-menu-mode', label: 'display', value: renderMode, onClick: () => cycleMode() },
       { id: 'catan-game-menu-color', label: 'color', value: colorMode, onClick: () => cycleColor() },
+      { id: 'catan-game-menu-renderer', label: 'renderer', value: catanRendererLabel(), onClick: cycleCatanRenderer },
+      { id: 'catan-game-menu-render-perf', label: 'render time', value: catanRendererPerf(), onClick: () => {} },
     ],
     [
       { id: 'catan-game-menu-shortcuts', label: 'controls', onClick: () => openShortcuts() },
@@ -2507,7 +2543,11 @@ function tick(dt: number): void {
     // camera moves or the tile changes, then the loop idles.
     syncBar();
     const sceneDirty = forceFrame || catan.needsRender();
-    if (sceneDirty) catan.renderScene(target, t);
+    if (sceneDirty) {
+      const started = performance.now();
+      catan.renderScene(target, t);
+      lastCatanRenderMs = performance.now() - started;
+    }
     // Hybrid shading off for the board: it replaces the shape matcher's "empty cell" verdict with
     // a luminance-ramp glyph, which speckles the space around the island with faint dots. Catan
     // wants that space plain black so the board and the rail both have a clean edge against it.
@@ -2537,7 +2577,11 @@ function tick(dt: number): void {
     // edge against it.
     syncBar();
     const sceneDirty = forceFrame || catanGameScene.needsRender();
-    if (sceneDirty) catanGameScene.renderScene(target, t);
+    if (sceneDirty) {
+      const started = performance.now();
+      catanGameScene.renderScene(target, t);
+      lastCatanRenderMs = performance.now() - started;
+    }
     if (UNIFIED) {
       if (sceneDirty || ui.dirty()) {
         writeFrame(
