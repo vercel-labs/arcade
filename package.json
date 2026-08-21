@@ -2,7 +2,7 @@
   "name": "@vercel/arcade",
   "version": "0.1.3",
   "type": "module",
-  "description": "Terminal-rendered ASCII arcade \u2014 3D games in the terminal, powered by Vercel AI Gateway",
+  "description": "Terminal-rendered ASCII arcade — 3D games in the terminal, powered by Vercel AI Gateway",
   "engines": {
     "node": ">=20"
   },
@@ -15,7 +15,8 @@
     "build:vercel": "node scripts/build-vercel-output.mjs",
     "watch": "ARCADE_DEV=1 tsx watch src/arcade/main.ts",
     "type-check": "tsc --noEmit",
-    "test": "node --import tsx --test '{src,apps}/**/*.test.ts'"
+    "test": "node --import tsx --test '{src,apps}/**/*.test.ts'",
+    "postinstall": "node scripts/postinstall.mjs"
   },
   "devDependencies": {
     "@types/node": "22.10.5",
@@ -43,6 +44,7 @@
   },
   "files": [
     "bin",
+    "scripts/postinstall.mjs",
     "assets",
     "src",
     "!src/tools",

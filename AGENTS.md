@@ -120,6 +120,21 @@ the build script, `vercel.json`) — so arcade-only commits don't redeploy the p
 Test the exact handler locally: `pnpm exec tsx src/tools/serve-prism.ts` then
 `curl -sN localhost:8080`.
 
+## Install surfaces (site + banner)
+
+Three separate Vercel projects live in this repo: `ascii-prisms` (the curl prism, root
+`vercel.json`), `arcade-telemetry` (`apps/telemetry-proxy`), and the landing page +
+`curl … | sh` installer (`apps/site`, root directory `apps/site`, static output). See
+[apps/site/README.md](apps/site/README.md).
+
+After a **global** npm install the package prints a banner with the run command
+([src/arcade/install-banner.ts](src/arcade/install-banner.ts), entered from
+`scripts/postinstall.mjs`). Two constraints to respect when touching it: package
+managers capture and discard lifecycle-script stdout, so it writes to `/dev/tty`; and a
+postinstall that throws fails the install, so nothing in that path may throw. It stays
+silent for `npx`, a dev checkout, CI, and quiet log levels — and never runs under
+`pnpm add -g`, which blocks a package's lifecycle scripts.
+
 ## Conventions
 
 - Pin dependency versions (no `^`/`~`); prefer zero/few deps.
