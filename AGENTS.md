@@ -122,9 +122,12 @@ Test the exact handler locally: `pnpm exec tsx src/tools/serve-prism.ts` then
 
 ## Install surfaces (site + banner)
 
-Three separate Vercel projects live in this repo: `ascii-prisms` (the curl prism, root
-`vercel.json`), `arcade-telemetry` (`apps/telemetry-proxy`), and the landing page +
-`curl … | sh` installer (`apps/site`, root directory `apps/site`, static output). See
+Three separate Vercel projects live in this repo, all in **vercel-labs**: `ascii-prisms`
+(the curl prism, root `vercel.json`), `arcade-telemetry` (`apps/telemetry-proxy`), and
+`vercel-arcade` — the landing page + `curl … | sh` installer at
+[vercel-arcade.vercel.app](https://vercel-arcade.vercel.app) (`apps/site`, root directory
+`apps/site`, static output, deploys on push to `main`). Deploy notes, including why
+`--prebuilt` is the wrong tool for that one, are in
 [apps/site/README.md](apps/site/README.md).
 
 After a **global** npm install the package prints a banner with the run command

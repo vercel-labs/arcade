@@ -33,21 +33,29 @@ open apps/site/index.html
 
 ## Deploy
 
-Its own Vercel project, separate from `ascii-prisms` (the curl prism) and
-`arcade-telemetry` (the telemetry proxy):
+Live at **https://vercel-arcade.vercel.app** (also `vercel-arcade.labs.vercel.dev`, the
+team's deployment suffix). Its own Vercel project — `vercel-arcade` in **vercel-labs**,
+separate from `ascii-prisms` (the curl prism) and the telemetry proxy.
 
-- **Root Directory:** `apps/site` — nothing outside it is read, so
-  "Include source files outside of the Root Directory" can stay off.
-- **Build:** `vercel.json` points at `build.mjs` with install skipped (zero deps). Its
-  `ignoreCommand` skips deploys unless something under `apps/site` changed.
+- **Root Directory:** `apps/site`. Nothing outside it is read, so "Include source files
+  outside of the Root Directory" stays off.
+- **Build:** this directory's `vercel.json` runs `build.mjs` with install skipped (zero
+  deps). Its `ignoreCommand` skips the build unless something under `apps/site` changed.
+- **Git:** connected to `vercel-labs/arcade`, so a push to `main` deploys.
 - **Domain:** `arcade.vercel.app` is taken by an unrelated project, so the project is
-  named for the host it should claim: `vercel-arcade` → `vercel-arcade.vercel.app`. A
-  custom domain can be added later; the URL appears in `index.html` and in the
-  installer's header comment.
+  named for the host it claims. The URL is written in `index.html` and in `install.sh`'s
+  header comment — change both if the domain ever moves.
 
-Manual deploy from this directory:
+For a manual deploy, run from the **repo root** (not this directory) and let Vercel build:
 
 ```bash
-node build.mjs
-vercel deploy --prebuilt --prod --scope <team>
+VERCEL_ORG_ID=team_nO2mCG4W8IxPIeKoSsqwAxxB \
+VERCEL_PROJECT_ID=prj_18Xs1G6aSWGBVtCEb3x3zi53gwTQ \
+  vercel deploy --prod --scope vercel-labs
 ```
+
+The env vars aim the repo-root checkout (linked to `ascii-prisms`) at this project. Two
+traps make `--prebuilt` the wrong tool here: the CLI resolves the Root Directory relative
+to the working directory, so running it from `apps/site` looks for `apps/site/apps/site`;
+and running it from the repo root uploads the root `.vercel/output` — the prism's build —
+instead of this one.
