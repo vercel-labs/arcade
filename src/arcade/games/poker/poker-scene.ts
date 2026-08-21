@@ -26,11 +26,13 @@ import {
   normalize3,
   OrbitCamera,
   Raycaster,
+  renderBackendPreference,
   RenderTarget,
   Scene,
   SceneRenderer,
   smoothstep,
   type Texture,
+  tryRenderSceneWithWebGpu,
   type Vec3,
   WorldMaterialInstance,
 } from '../../../engine/index.ts';
@@ -1089,11 +1091,13 @@ export class PokerGameScene {
         this.idleBase.height !== target.height ||
         this.idleBaseChairCount !== chairCount;
       if (cacheChanged) this.idleBase = new RenderTarget(target.width, target.height);
-      if (cacheChanged || this.dirty || viewportChanged) {
+      if (cacheChanged || this.dirty || viewportChanged || renderBackendPreference() !== 'cpu') {
         this.idleBase!.clear(6, 10, 8);
         this.queueTable();
         this.queueChairRing(chairCount);
-        this.sceneRenderer.render(this.idleBase!, this.authoredScene, camera);
+        const gpuFrame = tryRenderSceneWithWebGpu(this.idleBase!, this.authoredScene, camera, this.sceneRenderer);
+        if (!gpuFrame) this.sceneRenderer.render(this.idleBase!, this.authoredScene, camera);
+        else this.idleBase!.depth.fill(Infinity);
         this.drawIdleFurniture(this.idleBase!, vp, chairCount);
         this.idleBaseChairCount = chairCount;
       }
@@ -1105,7 +1109,9 @@ export class PokerGameScene {
       target.clear(6, 10, 8);
       this.queueTable();
       this.queueChairRing(chairCount);
-      this.sceneRenderer.render(target, this.authoredScene, camera);
+      const gpuFrame = tryRenderSceneWithWebGpu(target, this.authoredScene, camera, this.sceneRenderer);
+      if (!gpuFrame) this.sceneRenderer.render(target, this.authoredScene, camera);
+      else target.depth.fill(Infinity);
     }
 
     const hand = this.hand;

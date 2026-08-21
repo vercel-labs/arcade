@@ -1,4 +1,4 @@
-import type { LambertUniforms, WaterUniforms } from '../materials.ts';
+import type { FeltUniforms, LambertUniforms, PieceUniforms, WaterUniforms } from '../materials.ts';
 import type { WebGpuMaterial } from '../shader.ts';
 
 const VERTEX_IO = /* wgsl */ `
@@ -60,6 +60,110 @@ export const lambertWebGpuMaterial: WebGpuMaterial<LambertUniforms> = {
     out.set(uniforms.model, 16);
     out.set([uniforms.lightDir.x, uniforms.lightDir.y, uniforms.lightDir.z, uniforms.ambient], 32);
     out[36] = uniforms.wrap ?? 0;
+  },
+};
+
+const FELT_WGSL = /* wgsl */ `
+${VERTEX_IO}
+
+struct Uniforms {
+  mvp: mat4x4f,
+  model: mat4x4f,
+  lightAmbient: vec4f,
+  stippleColorFrequency: vec4f,
+  stippleShape: vec4f,
+};
+@group(0) @binding(0) var<uniform> u: Uniforms;
+
+fn feltHash(ix: i32, iz: i32) -> f32 {
+  var h = bitcast<u32>(ix * 374761393 + iz * 668265263);
+  h = bitcast<u32>(bitcast<i32>(h ^ (h >> 13u)) * 1274126177);
+  h = h ^ (h >> 16u);
+  return f32(h) / 4294967296.0;
+}
+
+@vertex fn vertexMain(input: VertexIn) -> VertexOut {
+  var out: VertexOut;
+  out.clip = webgpuClip(u.mvp * vec4f(input.position, 1.0));
+  out.world = input.position;
+  out.normal = (u.model * vec4f(input.normal, 0.0)).xyz;
+  out.uv = input.uv;
+  out.color = input.color / 255.0;
+  return out;
+}
+
+@fragment fn fragmentMain(input: VertexOut) -> @location(0) vec4f {
+  let intensity = max(u.lightAmbient.w, dot(normalize(input.normal), u.lightAmbient.xyz));
+  var color = input.color * intensity;
+  let lattice = input.world.xz * u.stippleColorFrequency.w;
+  let cell = vec2i(floor(lattice));
+  if (feltHash(cell.x, cell.y) < u.stippleShape.x) {
+    let delta = fract(lattice) - vec2f(0.5);
+    let radiusSquared = u.stippleShape.z * u.stippleShape.z;
+    let distanceSquared = dot(delta, delta);
+    if (distanceSquared < radiusSquared) {
+      let gain = (1.0 - distanceSquared / radiusSquared) * u.stippleShape.y;
+      color += (u.stippleColorFrequency.xyz / 255.0) * gain;
+    }
+  }
+  return vec4f(color, 1.0);
+}
+`;
+
+export const feltWebGpuMaterial: WebGpuMaterial<FeltUniforms> = {
+  wgsl: FELT_WGSL,
+  writeUniforms(out, uniforms) {
+    out.set(uniforms.mvp, 0);
+    out.set(uniforms.model, 16);
+    out.set([uniforms.lightDir.x, uniforms.lightDir.y, uniforms.lightDir.z, uniforms.ambient], 32);
+    out.set([uniforms.stipple.x, uniforms.stipple.y, uniforms.stipple.z, uniforms.stippleFreq], 36);
+    out.set([uniforms.stippleDensity, uniforms.stippleGain, uniforms.stippleRadius, 0], 40);
+  },
+};
+
+const PIECE_WGSL = /* wgsl */ `
+${VERTEX_IO}
+
+struct Uniforms {
+  mvp: mat4x4f,
+  model: mat4x4f,
+  cameraAmbient: vec4f,
+  keyStrength: vec4f,
+  fillStrength: vec4f,
+  tint: vec4f,
+};
+@group(0) @binding(0) var<uniform> u: Uniforms;
+
+@vertex fn vertexMain(input: VertexIn) -> VertexOut {
+  let world = u.model * vec4f(input.position, 1.0);
+  var out: VertexOut;
+  out.clip = webgpuClip(u.mvp * vec4f(input.position, 1.0));
+  out.world = world.xyz;
+  out.normal = (u.model * vec4f(input.normal, 0.0)).xyz;
+  out.uv = input.uv;
+  out.color = u.tint.xyz / 255.0;
+  return out;
+}
+
+@fragment fn fragmentMain(input: VertexOut) -> @location(0) vec4f {
+  var n = normalize(input.normal);
+  if (dot(n, u.cameraAmbient.xyz - input.world) < 0.0) { n = -n; }
+  let key = u.keyStrength.w * max(0.0, dot(n, u.keyStrength.xyz));
+  let fill = u.fillStrength.w * max(0.0, dot(n, u.fillStrength.xyz));
+  let intensity = min(1.0, u.cameraAmbient.w + key + fill);
+  return vec4f(input.color * intensity, 1.0);
+}
+`;
+
+export const pieceWebGpuMaterial: WebGpuMaterial<PieceUniforms> = {
+  wgsl: PIECE_WGSL,
+  writeUniforms(out, uniforms) {
+    out.set(uniforms.mvp, 0);
+    out.set(uniforms.model, 16);
+    out.set([uniforms.cameraPos.x, uniforms.cameraPos.y, uniforms.cameraPos.z, uniforms.ambient], 32);
+    out.set([uniforms.keyDir.x, uniforms.keyDir.y, uniforms.keyDir.z, uniforms.keyStrength], 36);
+    out.set([uniforms.fillDir.x, uniforms.fillDir.y, uniforms.fillDir.z, uniforms.fillStrength], 40);
+    out.set([uniforms.tint.x, uniforms.tint.y, uniforms.tint.z, 0], 44);
   },
 };
 

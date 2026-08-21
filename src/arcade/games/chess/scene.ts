@@ -24,6 +24,7 @@ import {
   SceneRenderer,
   smoothstep,
   travelPoint,
+  tryRenderSceneWithWebGpu,
   type PieceUniforms,
   type Vec3,
   type VertexIn,
@@ -783,7 +784,11 @@ export class ChessGameScene {
     // The authored scene traversal emits the same ordered raster calls queued by
     // draw() above. Wisps remain a custom post-pass until their particle renderer
     // becomes a scene object; keeping that boundary preserves their blend order.
-    this.sceneRenderer.render(target, this.authoredScene, camera);
+    const gpuFrame = tryRenderSceneWithWebGpu(target, this.authoredScene, camera, this.sceneRenderer);
+    if (!gpuFrame) this.sceneRenderer.render(target, this.authoredScene, camera);
+    // GPU readback currently returns color plus an occupancy mask, not full depth. The remaining
+    // CPU wisp pass is deliberately an overlay, so give it a clean depth buffer after the base.
+    else target.depth.fill(Infinity);
 
     // Match HUD: each side's creator wisp floats in 3D just above that side's
     // king, tracking it as it moves and scaling with the camera. The side to move

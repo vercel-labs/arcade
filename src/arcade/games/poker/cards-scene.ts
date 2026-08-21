@@ -33,6 +33,7 @@ import {
   SceneRenderer,
   smoothstep,
   type Texture,
+  tryRenderSceneWithWebGpu,
   WorldMaterialInstance,
 } from '../../../engine/index.ts';
 import type { OrbitState } from '../../../engine/index.ts';
@@ -294,7 +295,10 @@ export class CardsScene {
       const model = chairModel(a);
       this.chairInstances.setMatrixAt(k, model);
     }
-    this.sceneRenderer.render(target, this.authoredScene, camera);
+    const gpuFrame = tryRenderSceneWithWebGpu(target, this.authoredScene, camera, this.sceneRenderer);
+    if (!gpuFrame) this.sceneRenderer.render(target, this.authoredScene, camera);
+    // Cards remain the textured CPU overlay; they always sit on top of the accelerated table.
+    else target.depth.fill(Infinity);
   }
 
   renderScene(target: RenderTarget, t = 0): void {

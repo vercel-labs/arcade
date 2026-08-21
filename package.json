@@ -13,6 +13,7 @@
     "snapshot:png": "sh scripts/snapshot-png.sh",
     "bench": "node --import tsx src/tools/bench.ts",
     "bench:gpu": "node --import tsx src/tools/gpu-bench.ts",
+    "smoke:gpu": "node --import tsx src/tools/gpu-smoke.ts",
     "catan:check": "ARCADE_DEV=1 tsx src/tools/catan-render-check.ts",
     "models:audit": "tsx src/tools/model-compat-report.ts",
     "models:report": "tsx src/tools/model-compat-view.ts",

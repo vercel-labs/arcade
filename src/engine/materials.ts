@@ -2,7 +2,7 @@ import { hslToRgb } from './color.ts';
 import { dot3, mat4MulDir, mat4MulVec4, normalize3, sub3, type Mat4, type Vec3 } from './math.ts';
 import type { Material } from './shader.ts';
 import { sampleTexture, type Texture } from './texture.ts';
-import { lambertWebGpuMaterial, waterWebGpuMaterial } from './webgpu/materials.ts';
+import { feltWebGpuMaterial, lambertWebGpuMaterial, pieceWebGpuMaterial, waterWebGpuMaterial } from './webgpu/materials.ts';
 
 export interface LambertUniforms {
   mvp: Mat4;
@@ -66,6 +66,7 @@ export interface FeltUniforms {
 const FELT_RGBA = { r: 0, g: 0, b: 0, a: 1 };
 export const feltMaterial: Material<FeltUniforms> = {
   cull: 'none',
+  webgpu: feltWebGpuMaterial,
   vertex(u, vin) {
     const clip = mat4MulVec4(u.mvp, { x: vin.position.x, y: vin.position.y, z: vin.position.z, w: 1 });
     const normal = mat4MulDir(u.model, vin.normal);
@@ -355,6 +356,7 @@ export const pieceMaterial: Material<PieceUniforms> = {
   // are mirrored), so back-face culling drops faces from one side. The z-buffer
   // handles occlusion regardless, and culling saved little here anyway.
   cull: 'none',
+  webgpu: pieceWebGpuMaterial,
   vertex(u, vin) {
     const clip = mat4MulVec4(u.mvp, { x: vin.position.x, y: vin.position.y, z: vin.position.z, w: 1 });
     const w = mat4MulVec4(u.model, { x: vin.position.x, y: vin.position.y, z: vin.position.z, w: 1 });

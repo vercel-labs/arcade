@@ -1201,16 +1201,18 @@ export class TileScene {
       const animated = animatedTileMesh(this.terrain, this.variant, t);
       if (animated) this.queueLambert(animated, MODEL);
     }
-    const gpuFrame =
-      isBoardMode(this.modeName) &&
-      this.dicePhase === 'idle' &&
-      tryRenderSceneWithWebGpu(target, this.authoredScene, camera, this.sceneRenderer);
+    const gpuFrame = tryRenderSceneWithWebGpu(target, this.authoredScene, camera, this.sceneRenderer);
     if (gpuFrame) {
       // The GPU target contains the complete retained scene. Its alpha channel was converted
       // back into finite/empty depth markers for the existing terminal presenters.
     } else if (isBoardMode(this.modeName)) this.renderBoardLayers(target, camera);
     else this.sceneRenderer.render(target, this.authoredScene, camera);
-    if (isBoardMode(this.modeName)) this.renderDice(target, t);
+    if (isBoardMode(this.modeName)) {
+      // Dice remain a small CPU overlay. GPU readback exposes only occupancy, so clear depth and
+      // composite them after the accelerated base; their authored poses are always above it.
+      if (gpuFrame) target.depth.fill(Infinity);
+      this.renderDice(target, t);
+    }
     this.dirty = false;
   }
 

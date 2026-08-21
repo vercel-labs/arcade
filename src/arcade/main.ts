@@ -122,24 +122,24 @@ const catanGlyphCache = new ShapeGlyphSurfaceCache();
 // Render-on-demand loop. Animating screens hold a live lease; static screens
 // (chess turntable) render only when an interaction requests it.
 const r = new Renderer({ targetFps: FPS });
-let lastCatanRenderMs = 0;
+let lastSceneRenderMs = 0;
 
-function catanRendererLabel(): string {
+function rendererLabel(): string {
   const info = renderBackendInfo();
   if (info.state === 'loading') return `${info.preference} (loading)`;
   if (info.preference === 'gpu' && info.state === 'unavailable') return 'gpu unavailable';
   return info.preference === 'auto' ? `auto (${info.active})` : info.preference;
 }
 
-function catanRendererPerf(): string {
+function rendererPerf(): string {
   const info = renderBackendInfo();
   if (info.active === 'gpu' && info.stats) {
     return `${info.stats.submitMs.toFixed(1)} + ${info.stats.readbackMs.toFixed(1)} ms`;
   }
-  return `${lastCatanRenderMs.toFixed(1)} ms`;
+  return `${lastSceneRenderMs.toFixed(1)} ms`;
 }
 
-function cycleCatanRenderer(): void {
+function cycleRenderer(): void {
   cycleRenderBackendPreference();
   forceFrame = true;
   r.requestRender();
@@ -163,12 +163,12 @@ const catan = new CatanController({
   shell: {
     renderMode: () => renderMode,
     colorMode: () => colorMode,
-    rendererMode: catanRendererLabel,
-    rendererPerf: catanRendererPerf,
+    rendererMode: rendererLabel,
+    rendererPerf,
     onHome: () => enterMenu(),
     onCycleDisplay: () => cycleMode(),
     onCycleColor: () => cycleColor(),
-    onCycleRenderer: cycleCatanRenderer,
+    onCycleRenderer: cycleRenderer,
     onControls: () => openShortcuts(),
     onQuit: () => quit(),
     menuValueColW: MENU_VALUE_W,
@@ -1298,8 +1298,8 @@ function buildCatanGameMenu(): Node {
       { id: 'catan-game-menu-reset', label: 'reset camera', onClick: () => { catanGameScene.scene.resetView(); closeMenu(); } },
       { id: 'catan-game-menu-mode', label: 'display', value: renderMode, onClick: () => cycleMode() },
       { id: 'catan-game-menu-color', label: 'color', value: colorMode, onClick: () => cycleColor() },
-      { id: 'catan-game-menu-renderer', label: 'renderer', value: catanRendererLabel(), onClick: cycleCatanRenderer },
-      { id: 'catan-game-menu-render-perf', label: 'render time', value: catanRendererPerf(), onClick: () => {} },
+      { id: 'catan-game-menu-renderer', label: 'renderer', value: rendererLabel(), onClick: cycleRenderer },
+      { id: 'catan-game-menu-render-perf', label: 'render time', value: rendererPerf(), onClick: () => {} },
     ],
     [
       { id: 'catan-game-menu-shortcuts', label: 'controls', onClick: () => openShortcuts() },
@@ -1825,6 +1825,8 @@ function syncBar(): void {
         { id: 'chess-menu-reset', label: 'reset camera', onClick: () => { actions.reset(); closeChessMenu(); } },
         { id: 'chess-menu-mode', label: 'display', value: renderMode, onClick: cycleMode },
         { id: 'chess-menu-color', label: 'color', value: colorMode, onClick: cycleColor },
+        { id: 'chess-menu-renderer', label: 'renderer', value: rendererLabel(), onClick: cycleRenderer },
+        { id: 'chess-menu-render-perf', label: 'render time', value: rendererPerf(), onClick: () => {} },
         { id: 'chess-menu-eval', label: 'eval bar', value: evalBarVisible ? 'on' : 'off', onClick: toggleEvalBar },
         { id: 'chess-menu-illegal', label: 'illegal', value: illegalAllowed ? 'on' : 'off', onClick: toggleIllegal },
       ],
@@ -1983,6 +1985,8 @@ function syncBar(): void {
         { id: 'poker-menu-reset', label: 'reset camera', onClick: () => { actions.reset(); closePokerMenu(); } },
         { id: 'poker-menu-mode', label: 'display', value: renderMode, onClick: cycleMode },
         { id: 'poker-menu-color', label: 'color', value: colorMode, onClick: cycleColor },
+        { id: 'poker-menu-renderer', label: 'renderer', value: rendererLabel(), onClick: cycleRenderer },
+        { id: 'poker-menu-render-perf', label: 'render time', value: rendererPerf(), onClick: () => {} },
       ],
       [
         { id: 'poker-menu-shortcuts', label: 'controls', onClick: openShortcuts },
@@ -2525,7 +2529,11 @@ function tick(dt: number): void {
     // scene dirty and re-arm the loop until they settle.
     syncBar();
     const sceneDirty = forceFrame || cardsScene.needsRender();
-    if (sceneDirty) cardsScene.renderScene(target, t);
+    if (sceneDirty) {
+      const started = performance.now();
+      cardsScene.renderScene(target, t);
+      lastSceneRenderMs = performance.now() - started;
+    }
     if (UNIFIED) {
       if (sceneDirty || ui.dirty()) writeFrame(ui.frameComposited((s) => presentSceneInto(s, false, true), sceneDirty));
     } else if (sceneDirty) {
@@ -2546,7 +2554,7 @@ function tick(dt: number): void {
     if (sceneDirty) {
       const started = performance.now();
       catan.renderScene(target, t);
-      lastCatanRenderMs = performance.now() - started;
+      lastSceneRenderMs = performance.now() - started;
     }
     // Hybrid shading off for the board: it replaces the shape matcher's "empty cell" verdict with
     // a luminance-ramp glyph, which speckles the space around the island with faint dots. Catan
@@ -2580,7 +2588,7 @@ function tick(dt: number): void {
     if (sceneDirty) {
       const started = performance.now();
       catanGameScene.renderScene(target, t);
-      lastCatanRenderMs = performance.now() - started;
+      lastSceneRenderMs = performance.now() - started;
     }
     if (UNIFIED) {
       if (sceneDirty || ui.dirty()) {
@@ -2609,7 +2617,11 @@ function tick(dt: number): void {
     // the TUI HUD overlay (poker-hud.ts), so the felt itself carries no labels.
     syncBar();
     const sceneDirty = forceFrame || pokerScene.needsRender();
-    if (sceneDirty) pokerScene.renderScene(target, t);
+    if (sceneDirty) {
+      const started = performance.now();
+      pokerScene.renderScene(target, t);
+      lastSceneRenderMs = performance.now() - started;
+    }
     if (UNIFIED) {
       if (sceneDirty || ui.dirty()) {
         writeFrame(
@@ -2634,7 +2646,11 @@ function tick(dt: number): void {
     // skip the (expensive) re-render + full-screen write when nothing changed.
     syncBar();
     const sceneDirty = forceFrame || orbit.needsRender();
-    if (sceneDirty) orbit.renderScene(target, t);
+    if (sceneDirty) {
+      const started = performance.now();
+      orbit.renderScene(target, t);
+      lastSceneRenderMs = performance.now() - started;
+    }
     if (UNIFIED) {
       // Composite scene + UI into one diffed buffer; skip when nothing changed.
       // Pass sceneDirty so a hover-only frame reuses the cached scene layer

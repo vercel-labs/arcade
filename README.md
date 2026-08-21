@@ -2,7 +2,7 @@
 
 **3D games rendered as ASCII in your terminal, played by humans _and_ frontier AI models.**
 
-Arcade is the first build-out of **Vercel Arcade**: play classic games against frontier models through the [Vercel AI Gateway](https://vercel.com/ai-gateway), or sit back and watch two models play each other. It all runs inside a terminal, drawn with truecolor half-blocks. The canonical 3D renderer, UI layer, and game rules are pure TypeScript and work CPU-only. Catan additionally has an optional local WebGPU/Dawn acceleration path with automatic CPU fallback.
+Arcade is the first build-out of **Vercel Arcade**: play classic games against frontier models through the [Vercel AI Gateway](https://vercel.com/ai-gateway), or sit back and watch two models play each other. It all runs inside a terminal, drawn with truecolor half-blocks. The canonical 3D renderer, UI layer, and game rules are pure TypeScript and work CPU-only. Opaque 3D layers also have an optional local WebGPU/Dawn acceleration path with automatic CPU fallback.
 
 **Chess and poker are playable today.** Real 3D pieces (and a felt table with chips for poker) are lit and rasterized in software, then presented as ASCII/half-blocks. Play a model yourself, or watch two models play. Either side's model can be swapped mid-match.
 
@@ -71,7 +71,7 @@ src/
 
 A from-scratch software rasterizer. Column-major `Mat4` math → perspective camera → near-plane clipping → edge-function rasterization → perspective-correct interpolation → z-buffer. The single style hook is the **`Material`** (a vertex + fragment program pair), so the whole arcade shares one controllable look; current materials include a two-light flat-shaded piece material and a glassy refraction material. Meshes come from a built-in cube/tetrahedron or the **OBJ loader** (`parseObj` + `flatShade`).
 
-Catan materials may also provide a WGSL implementation. The optional Node backend uses the `webgpu` Dawn binding, renders offscreen at terminal resolution, and overlaps GPU work with a reusable two-slot readback ring. Select `auto`, `cpu`, or `gpu` from Catan's menu; a missing package or adapter leaves the CPU renderer active. No browser or rendering service is involved. `pnpm bench:gpu 140 50 30` measures CPU rendering against GPU submission plus readback on the current machine.
+Materials may also provide a WGSL implementation. The optional Node backend uses the `webgpu` Dawn binding, renders offscreen at terminal resolution, and overlaps GPU work with a reusable two-slot readback ring. Select `auto`, `cpu`, or `gpu` from the Catan, chess, or poker menu; a missing package or adapter leaves the CPU renderer active. Chess pieces and boards, poker/card tables, and Catan geometry use the GPU base. Textured cards, poker chips, Catan dice, wisps, and TUI remain CPU overlays. No browser or rendering service is involved. `pnpm bench:gpu 140 50 30` compares Catan CPU rendering against GPU submission plus readback; `pnpm smoke:gpu 140 50` validates representative mixed-render frames across every game.
 
 The render target is handed to one of three **presenters**:
 
@@ -113,6 +113,7 @@ The **chess rules engine** is written from scratch (0x88 board, full legal move 
 | `pnpm type-check`                      | Type-check with `tsc`                         |
 | `pnpm test`                            | Run the unit suite (`src/**/*.test.ts`)       |
 | `pnpm bench:gpu [cols] [rows] [frames]` | Compare Catan CPU/GPU rendering and readback  |
+| `pnpm smoke:gpu [cols] [rows]` | Validate GPU bases and CPU overlays across Catan, chess, poker, and cards |
 | `pnpm models:audit` / `models:report` | Audit / render model compatibility            |
 | `pnpm exec tsx src/tools/perft.ts`     | Verify the chess move generator               |
 
