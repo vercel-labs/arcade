@@ -152,15 +152,16 @@ function gameComposite(opts: { plies?: number; setup?: boolean } = {}): (cols: n
     const gameScene = new CatanGameScene();
     const driver = new CatanDriver({ scene: gameScene, syncLive: () => {} });
     if (!opts.setup) {
-      const colors: PlayerColor[] = ['red', 'blue', 'purple'];
+      const colors: PlayerColor[] = ['red', 'blue', 'purple', 'orange'];
       const specs: CatanSeatSpec[] = colors.map((color, i) => (i === 0 ? { kind: 'human', color } : { kind: 'ai', color, model: 'openai/gpt-5.4-nano' }));
       const state = driver.start(specs, { autoRun: false, rng: mulberry32(0xca7a4) });
-      gameScene.beginSession(state, colors);
-      for (let i = 0; i < (opts.plies ?? 5) && !state.initialPlacementComplete(); i++) {
+      gameScene.setResourceFlightLayout({ x: 0, y: 0, w: cols, h: rows }, colors.length, catanSidebarOpen());
+      for (let i = 0; i < (opts.plies ?? 5) && !state.isTerminal(); i++) {
         const action = state.legalActions()[0];
         if (!action) break;
         void gameScene.playMove(action);
       }
+      if (state.currentPlayer() === 0) void gameScene.requestHumanMove();
     }
     gameScene.scene.settle();
     return composite(
@@ -170,7 +171,17 @@ function gameComposite(opts: { plies?: number; setup?: boolean } = {}): (cols: n
       (screen) => {
         mountCatanGameHud(screen);
         const region = { x: 0, y: 0, w: cols, h: rows };
-        screen.setRoot(buildCatanGameRoot(region, { driver, onOpenMenu: () => {}, onStart: () => {}, onNewGame: () => {} }), region);
+        screen.setRoot(buildCatanGameRoot(region, {
+          driver,
+          scene: gameScene,
+          tokens: gameScene.scene.boardTokens(cols, rows),
+          sails: gameScene.scene.boardPortLabels(cols, rows),
+          resourceFlights: gameScene.activeResourceFlights(),
+          resourceAdjustments: gameScene.resourceViewAdjustments(),
+          onOpenMenu: () => {},
+          onStart: () => {},
+          onNewGame: () => {},
+        }), region);
       },
     );
   };

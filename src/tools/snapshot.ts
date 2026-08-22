@@ -647,13 +647,13 @@ function catanSnapshot(): void {
 // rather than models, so the still is reproducible and needs no network. The board is seeded
 // (`seed=N` to pick another one), so re-rendering the same arguments lands the same hexes — a
 // visual change is then the only thing that can move the pixels.
-//   pnpm exec tsx src/tools/snapshot.ts catan-game [setup] [sidebar] [seats=N] [plies=N] [seed=N] [cols] [rows] [out.ppm]
+//   pnpm exec tsx src/tools/snapshot.ts catan-game [setup|counter] [sidebar] [seats=N] [plies=N] [seed=N] [cols] [rows] [out.ppm]
 function catanGameSnapshot(): void {
   const args = process.argv.slice(3);
   const nums = args.filter((a) => /^\d+$/.test(a)).map(Number);
   const cols = nums[0] ?? 170;
   const rows = nums[1] ?? 52;
-  const seats = Number(args.find((a) => a.startsWith('seats='))?.slice(6) ?? 3);
+  const seats = Number(args.find((a) => a.startsWith('seats='))?.slice(6) ?? 4);
   const plies = Number(args.find((a) => a.startsWith('plies='))?.slice(6) ?? 5);
   const seed = Number(args.find((a) => a.startsWith('seed='))?.slice(5) ?? 0xca7a4);
   const out = args.find((a) => a.endsWith('.ppm')) ?? `.snapshots/catan-game.ppm`;
@@ -665,15 +665,29 @@ function catanGameSnapshot(): void {
   if (!args.includes('setup')) {
     if (args.includes('sidebar') && !catanSidebarOpen()) toggleCatanSidebar();
     const colors: PlayerColor[] = ['red', 'blue', 'purple', 'orange'].slice(0, seats) as PlayerColor[];
-    const specs: CatanSeatSpec[] = colors.map((color, i) => (i === 0 ? { kind: 'human', color } : { kind: 'ai', color, model: `openai/gpt-5.4-nano` }));
+    const counter = args.includes('counter');
+    const humanSeat = counter ? 1 : 0;
+    const specs: CatanSeatSpec[] = colors.map((color, i) => (i === humanSeat ? { kind: 'human', color } : { kind: 'ai', color, model: `openai/gpt-5.4-nano` }));
     const state = driver.start(specs, { autoRun: false, rng: mulberry32(seed) });
-    gameScene.beginSession(state, colors);
-    // Walk the snake order by taking each prompt's first legal option — enough placed pieces to
-    // show the board mid-setup without asking a model anything.
-    for (let i = 0; i < plies && !state.initialPlacementComplete(); i++) {
-      const action = state.legalActions()[0];
-      if (!action) break;
-      void gameScene.playMove(action);
+    gameScene.setResourceFlightLayout(region, seats, catanRailVisible(cols, rows));
+    if (counter) {
+      while (!state.initialPlacementComplete()) void gameScene.playMove(state.legalActions()[0]);
+      void gameScene.playMove({ type: 'roll' });
+      const hands = (state as unknown as { hands: number[][] }).hands;
+      hands[0] = [2, 0, 0, 0, 0];
+      hands[1] = [0, 2, 0, 0, 0];
+      void gameScene.playMove({ type: 'offerTrade', give: [1, 0, 0, 0, 0], receive: [0, 1, 0, 0, 0] });
+      void gameScene.requestHumanMove();
+      gameScene.beginHumanMenu('tradeCounter');
+    } else {
+      // Walk deterministic first-legal actions without asking a model. Sixteen plies finish setup;
+      // larger values exercise the live turn HUD as well.
+      for (let i = 0; i < plies && !state.isTerminal(); i++) {
+        const action = state.legalActions()[0];
+        if (!action) break;
+        void gameScene.playMove(action);
+      }
+      if (state.currentPlayer() === 0) void gameScene.requestHumanMove();
     }
   }
   gameScene.scene.settle();
@@ -682,7 +696,17 @@ function catanGameSnapshot(): void {
   gameScene.renderScene(target, 0.7);
   const screen = new Screen(cols, rows);
   mountCatanGameHud(screen);
-  screen.setRoot(buildCatanGameRoot(region, { driver, onOpenMenu: noop, onStart: noop, onNewGame: noop }), region);
+  screen.setRoot(buildCatanGameRoot(region, {
+    driver,
+    scene: gameScene,
+    tokens: gameScene.scene.boardTokens(cols, rows),
+    sails: gameScene.scene.boardPortLabels(cols, rows),
+    resourceFlights: gameScene.activeResourceFlights(),
+    resourceAdjustments: gameScene.resourceViewAdjustments(),
+    onOpenMenu: noop,
+    onStart: noop,
+    onNewGame: noop,
+  }), region);
   const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: false }));
   surfaceToPpm(surf, cols, rows, out);
 }

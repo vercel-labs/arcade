@@ -60,6 +60,32 @@ function findNode(node: Node, id: string): Node | undefined {
   return undefined;
 }
 
+test('a playable live development card submits through its hand card while VP remains passive', () => {
+  const view = catanWorkbenchView();
+  view.source = 'live';
+  view.devHand.knight = 1;
+  view.devHand.victoryPoint = 1;
+  view.playableDevelopmentCards = ['knight'];
+  let played = '';
+  const root = buildCatanCardsOverlay(
+    { x: 0, y: 0, w: 140, h: 45 },
+    () => {},
+    view,
+    () => {},
+    undefined,
+    undefined,
+    (type) => {
+      played = type;
+      return true;
+    },
+  );
+  const knight = findNode(root, 'catan-dev-knight');
+  assert.ok(knight?.onMouse);
+  assert.equal(knight.onMouse({ type: 'down', x: 0, y: 0, w: 7, h: 6, button: 0 }), true);
+  assert.equal(played, 'knight');
+  assert.equal(findNode(root, 'catan-dev-victoryPoint')?.onMouse, undefined);
+});
+
 test('Board + cards remains a full board scene with projected number tokens', () => {
   const scene = new TileScene();
   scene.setMode('boardCards');
@@ -83,6 +109,7 @@ test('trade flights leave the visible bank card or the hidden right edge at the 
 test('development flights leave the dev pile and land on a responsive dev-hand slot', () => {
   const region = { x: 0, y: 0, w: 140, h: 50 };
   const view = catanWorkbenchView();
+  assert.equal(view.source, 'workbench');
   view.pendingDevelopmentCards = ['knight'];
   assert.deepEqual(catanDevDeckDepartureCell(region, 4, true), { col: 134, row: 34 });
   assert.deepEqual(catanDevDeckDepartureCell(region, 4, false), { col: 143, row: 33 });

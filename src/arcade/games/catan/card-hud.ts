@@ -580,7 +580,7 @@ function visibleDevelopmentCardTypes(view: CatanCardsView, avail: number, showAc
     || view.developmentPlay?.type === type);
   const allWorkbenchTypesFit = avail >= RESOURCE_HAND_W + devHandWidth(DEV_CARD_TYPES.length)
     + (showActions ? HAND_ACTION_GAP + ACTIONS_W : 0);
-  return view.editable && allWorkbenchTypesFit ? DEV_CARD_TYPES : held;
+  return view.source === 'workbench' && allWorkbenchTypesFit ? DEV_CARD_TYPES : held;
 }
 
 function tradeCardButton(
@@ -901,7 +901,7 @@ function handPanel(
   onChooseDevelopmentResource?: CatanDevelopmentResourceRequest,
 ): Node {
   const height = layout.compact ? CARD_H_COMPACT : CARD_H;
-  const showActions = view.editable === true && avail >= RESOURCE_HAND_W + HAND_ACTION_GAP + ACTIONS_W;
+  const showActions = view.source === 'workbench' && avail >= RESOURCE_HAND_W + HAND_ACTION_GAP + ACTIONS_W;
   // Wide workbench views retain all five authored placeholders. When the sidebar narrows the
   // hand, keep only cards actually held (plus the in-flight destination), so a purchased card
   // remains visible instead of losing its landing slot to empty test-bed placeholders.
@@ -909,11 +909,11 @@ function handPanel(
   const visibleDevWidth = devHandWidth(visibleDevTypes.length);
   const showDev = visibleDevTypes.length > 0
     && avail >= RESOURCE_HAND_W + visibleDevWidth + (showActions ? HAND_ACTION_GAP + ACTIONS_W : 0);
-  // A card is wrapped in its own click target only on an editable (workbench) view. In the game
+  // A card is wrapped in its own click target only in the workbench view. In the live game
   // the wrapper is skipped entirely, so the hit-test finds nothing interactive over the hand and
   // a click falls through to the board exactly as it did before the cards existed.
-  const clickable = (face: Node, onMouse: (ev: PointerHit) => boolean, enabled = true): Node => {
-    if (!view.editable || !enabled) return face;
+  const clickable = (face: Node, onMouse: (ev: PointerHit) => boolean, enabled = true, allowLive = false): Node => {
+    if ((view.source !== 'workbench' && !allowLive) || !enabled) return face;
     // The wrapper carries the handler so `card` stays presentational. The hit-test takes the
     // innermost INTERACTIVE node and the face has none, so it never competes; `Box` has no
     // handler slot, hence attaching it to the node.
@@ -946,7 +946,9 @@ function handPanel(
           view.devHand[type] > 0
             && type !== 'victoryPoint'
             && view.maritimeTradeBusy !== true
-            && view.developmentPlay === undefined,
+            && view.developmentPlay === undefined
+            && (view.source === 'workbench' || view.playableDevelopmentCards?.includes(type as Exclude<DevCardType, 'victoryPoint'>) === true),
+          onPlayDevelopmentCard !== undefined,
         ));
       });
   const cards = RESOURCE_ORDER.map((resource) => clickable(
@@ -1111,8 +1113,17 @@ export function catanDevHandLandingCell(
 ): { col: number; row: number } {
   const layout = catanCardsLayout(region);
   const avail = region.w - (railVisible ? RAIL_W : 0) - 2;
-  const showActions = view.editable === true && avail >= RESOURCE_HAND_W + HAND_ACTION_GAP + ACTIONS_W;
+  const showActions = view.source === 'workbench' && avail >= RESOURCE_HAND_W + HAND_ACTION_GAP + ACTIONS_W;
   const visibleTypes = visibleDevelopmentCardTypes(view, avail, showActions);
+  return catanDevHandLandingCellForTypes(region, type, visibleTypes);
+}
+
+export function catanDevHandLandingCellForTypes(
+  region: LayoutBox,
+  type: DevCardType,
+  visibleTypes: readonly DevCardType[],
+): { col: number; row: number } {
+  const layout = catanCardsLayout(region);
   const index = Math.max(0, visibleTypes.indexOf(type));
   const panelTop = region.h - 1 - layout.handHeight;
   const left = HAND_PANEL_LEFT + HAND_PAD_X + TRADE_ROW_W + HAND_SPLIT_GAP + index * (CARD_W + 1);
@@ -1141,12 +1152,13 @@ export function buildCatanCardsOverlay(
     const maxScroll = Math.max(0, rows.length - historyH);
     catanHistoryScroll.scroll = atBottom ? maxScroll : Math.min(catanHistoryScroll.scroll, maxScroll);
   }
-  const offers = view.editable ? playerTradeOffers((showSidebar ? RAIL_W : 0) + 2, onWorkbenchChange) : null;
+  const workbench = view.source === 'workbench';
+  const offers = workbench ? playerTradeOffers((showSidebar ? RAIL_W : 0) + 2, onWorkbenchChange) : null;
   return Box({ position: 'absolute', top: 0, left: 0, width: region.w, height: region.h }, [
     ...(showSidebar ? [sidebar(view, onCloseSidebar)] : []),
     // The hand shares the bottom row with the board, and the rail eats into it. Hand it the
     // width actually left over so it can drop its optional half instead of sliding under the rail.
-    ...(view.editable && catanTradeEditorOpen()
+    ...(workbench && catanTradeEditorOpen()
       ? [tradeEditor(view, onWorkbenchChange, onMaritimeTrade)]
       : [handPanel(
           view,
@@ -1157,7 +1169,7 @@ export function buildCatanCardsOverlay(
           onPlayDevelopmentCard,
           onChooseDevelopmentResource,
         )]),
-    ...(view.editable ? [developmentPrompt(view, layout)].filter((node): node is Node => node !== null) : []),
+    ...(workbench ? [developmentPrompt(view, layout)].filter((node): node is Node => node !== null) : []),
     ...(offers ? [offers] : []),
   ]);
 }

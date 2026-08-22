@@ -17,6 +17,7 @@ import { PLAYER_COLORS, type PlayerColor } from '../../rules/catan/types.ts';
 import type { CatanSeatSpec } from './catan-driver.ts';
 import { ARCADE_CHROME_TEXT } from '../theme.ts';
 import { createModelSeatPicker, hiddenModelSeat, modelSeatControls, mountModelSeat, type ModelCreator, type ModelSeatPicker } from './model-seat-picker.ts';
+import { CATAN_DEFAULT_AI_SEATS } from './catan-defaults.ts';
 
 const TEXT_CREATORS: ModelCreator[] = pickerCreators();
 const MAX_SEATS = 4; // the base game's ceiling; the rules engine allows 2 for heads-up
@@ -37,21 +38,21 @@ const changed = (): void => {
 // One config per AI seat the table can hold. Index 0 is only used when spectating (where
 // seat 1 is a model too); playing, you are seat 1 and indices 1.. are your opponents.
 // Spanning four creators keeps the default 4-seat spectate table from repeating one.
-const DEFAULT_MODELS = [
-  ['xai', 'xai/grok-4.1-fast-non-reasoning'],
-  ['anthropic', 'anthropic/claude-haiku-4.5'],
-  ['openai', 'openai/gpt-5.4-nano'],
-  ['google', 'google/gemini-2.5-flash'],
-] as const;
-const sides: ModelSeatPicker[] = DEFAULT_MODELS.map(([prov, model], i) => createModelSeatPicker({ idPrefix: `catan-seat${i}`, creators: TEXT_CREATORS, defaultCreator: prov, defaultModelId: model, onChange: changed }));
+const sides: ModelSeatPicker[] = CATAN_DEFAULT_AI_SEATS.map(({ creator, model }, i) => createModelSeatPicker({
+  idPrefix: `catan-seat${i}`,
+  creators: TEXT_CREATORS,
+  defaultCreator: creator,
+  defaultModelId: model,
+  onChange: changed,
+}));
 
-// How many players sit at the board, you included when playing: 2..4. Defaults to 3, the
-// smallest count the physical base game ships for.
+// How many players sit at the board, you included when playing: 2..4. Default to the full
+// four-seat table so both play and spectate start with Arcade's intended model lineup.
 export const seatsDropdown = new Dropdown({
   id: 'catan-seats',
   items: Array.from({ length: MAX_SEATS - MIN_SEATS + 1 }, (_, i) => String(i + MIN_SEATS)),
   width: 6,
-  index: 1,
+  index: 2,
   onSelect: () => changed(),
 });
 function seatCount(): number {

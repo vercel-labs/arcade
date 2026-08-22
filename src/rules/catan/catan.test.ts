@@ -510,6 +510,20 @@ test('maritime trades derive exact 4:1, generic 3:1, and matching 2:1 rates for 
   assert.deepEqual(channels.actionFromString('port-trade 2:1 brick->ore'), brickChoices[0]);
   assert.deepEqual(channels.actionFromString('port-trade 3:1 brick->ore'), brickChoices[1]);
 
+  setHand(channels, 0, { brick: 12 });
+  const bulkChoices: CatanAction[] = [
+    { type: 'maritimeBulkTrade', via: 'port', rate: 2, give: 'brick', gets: ['ore', 'wool'] },
+    { type: 'maritimeBulkTrade', via: 'port', rate: 3, give: 'brick', gets: ['ore', 'wool'] },
+    { type: 'maritimeBulkTrade', via: 'bank', give: 'brick', gets: ['ore', 'wool'] },
+  ];
+  for (const action of bulkChoices) assert.equal(channels.isLegalAction(action), true, channels.actionToString(action));
+  const bulk = channels.clone() as CatanState;
+  bulk.applyAction(bulkChoices[0]);
+  assert.equal(bulk.handOf(0)[resourceIndex('brick')], 8);
+  assert.equal(bulk.handOf(0)[resourceIndex('ore')], 1);
+  assert.equal(bulk.handOf(0)[resourceIndex('wool')], 1);
+  assert.equal(channels.isLegalAction({ type: 'maritimeBulkTrade', via: 'port', rate: 2, give: 'brick', gets: ['brick'] }), false);
+
   const rates = fresh();
   const internals = mutable(rates);
   internals.buildings.clear();
@@ -647,6 +661,60 @@ test('domestic trade is parameterized, sequentially accepted, and atomically con
   assert.equal(s.handOf(0)[resourceIndex('grain')], 1);
   assert.equal(s.handOf(1)[resourceIndex('brick')], 1);
   assert.equal(s.currentPrompt().kind, 'playTurn');
+});
+
+test('domestic trade responders can revise an offer and the proposer can confirm that counter', () => {
+  const s = new CatanState({ numPlayers: 4, rng: rng(), domesticTrade: true });
+  finishSetup(s);
+  s.applyAction({ type: 'roll' }, { dice: [1, 1] });
+  setHand(s, 0, { brick: 2 });
+  setHand(s, 1, { grain: 2 });
+  setHand(s, 2, { grain: 1 });
+  setHand(s, 3, {});
+
+  s.applyAction({ type: 'offerTrade', give: [1, 0, 0, 0, 0], receive: [0, 1, 0, 0, 0] });
+  assert.deepEqual(s.legalActionFamilies(), [{ type: 'counterTrade', player: 1, resourceOrder: RESOURCES }]);
+  assert.deepEqual(s.parameterizedActionExamples(), [
+    { type: 'counterTrade', give: [0, 1, 0, 0, 0], receive: [1, 0, 0, 0, 0] },
+  ]);
+  assert.match(s.decisionContextString(1), /Counteroffer \(parameterized\)/);
+  const counter = s.actionFromString('counter 0/2/0/0/0 for 1/0/0/0/0');
+  assert.deepEqual(counter, { type: 'counterTrade', give: [0, 2, 0, 0, 0], receive: [1, 0, 0, 0, 0] });
+  s.applyAction(counter!);
+  s.applyAction({ type: 'acceptTrade' });
+  s.applyAction({ type: 'rejectTrade' });
+
+  assert.deepEqual(s.currentPrompt(), { kind: 'decideAcceptees', player: 0 });
+  assert.deepEqual(s.activeTrade()?.counters, [
+    { from: 1, give: [0, 2, 0, 0, 0], receive: [1, 0, 0, 0, 0] },
+  ]);
+  assert.match(s.informationStateString(0), /Counter from P1: they give 2g, request 1b/);
+  assert.equal(s.legalActions().some((action) => action.type === 'confirmTrade' && action.with === 1), true);
+  assert.equal(s.legalActions().some((action) => action.type === 'confirmTrade' && action.with === 2), true);
+
+  s.applyAction({ type: 'confirmTrade', with: 1 });
+  assert.equal(s.handOf(0)[resourceIndex('brick')], 1);
+  assert.equal(s.handOf(0)[resourceIndex('grain')], 2);
+  assert.equal(s.handOf(1)[resourceIndex('brick')], 1);
+  assert.equal(s.handOf(1)[resourceIndex('grain')], 0);
+  assert.equal(s.currentPrompt().kind, 'playTurn');
+});
+
+test('an optional AI-table offer budget prevents unchanged domestic-trade loops and resets next turn', () => {
+  const s = new CatanState({ numPlayers: 2, rng: rng(), domesticTrade: true, domesticTradeOfferLimit: 1 });
+  finishSetup(s);
+  s.applyAction({ type: 'roll' }, { dice: [1, 1] });
+  setHand(s, 0, { brick: 1 });
+  setHand(s, 1, { grain: 1 });
+  const offer: CatanAction = { type: 'offerTrade', give: [1, 0, 0, 0, 0], receive: [0, 1, 0, 0, 0] };
+  s.applyAction(offer);
+  s.applyAction({ type: 'rejectTrade' });
+  s.applyAction({ type: 'cancelTrade' });
+  assert.equal(s.isLegalAction(offer), false);
+  assert.deepEqual(s.legalActionFamilies(), []);
+  s.applyAction({ type: 'endTurn' });
+  s.applyAction({ type: 'roll' }, { dice: [1, 1] });
+  assert.deepEqual(s.legalActionFamilies(), [{ type: 'offerTrade', player: 1, resourceOrder: RESOURCES }]);
 });
 
 test('domestic trading is disabled by default and regular parsing binds the final named action', () => {

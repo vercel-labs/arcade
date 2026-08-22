@@ -503,7 +503,7 @@ export function catanWorkbenchView(
     developmentDeck: liveDevelopmentDeck.length,
     developmentDeckAvailable: liveDevelopmentDeck.length - reservedDevelopmentCards.length,
     ...(developmentPlay ? { developmentPlay: { ...developmentPlay, resources: [...developmentPlay.resources] } } : {}),
-    editable: true,
+    source: 'workbench',
     localPlayer: {
       ...seeded.localPlayer,
       resourceCards: held,
@@ -520,6 +520,7 @@ export function catanWorkbenchView(
 }
 
 export const CATAN_CARD_WORKBENCH_VIEW: CatanCardsView = {
+  source: 'workbench',
   localPlayer: { name: 'You', color: CATAN_LOCAL_COLOR, publicVp: 3, resourceCards: 0, developmentCards: 0, knights: 2, longestRoad: 5, active: true },
   hand: { lumber: 0, brick: 0, wool: 0, grain: 0, ore: 0 },
   devHand: { knight: 0, victoryPoint: 0, roadBuilding: 0, yearOfPlenty: 0, monopoly: 0 },

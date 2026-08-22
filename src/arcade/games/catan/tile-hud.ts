@@ -64,6 +64,12 @@ function flyingCard(f: FlyingResource<CatanFlyingCard>): Node {
   ]);
 }
 
+export function catanFlyingCardNodes(
+  flights: readonly FlyingResource<Resource | DevCardType>[],
+): Node[] {
+  return flights.map(flyingCard);
+}
+
 function tokenChip(tk: BoardToken): Node {
   const label = `${tk.num}`;
   const pips = pipLabel(tk.pips);
@@ -96,6 +102,16 @@ function sailChip(s: SailLabel): Node {
   return ProjectedAnchor({ col: s.col, row: s.row, width, style: { background: CHIP_BG, padding: [0, 1] } }, [
     Text({ text: label, style: { color: CHIP_INK, bold: true } }),
   ]);
+}
+
+// Shared projected labels for both the experimental board and the actual game. These must be
+// composed above the 3D board (the labels are terminal UI) and below cards/chrome/foreground
+// dice. Keeping the node construction here guarantees the two Catan covers render identically.
+export function catanProjectedBoardLabels(
+  tokens: readonly BoardToken[],
+  sails: readonly SailLabel[] = [],
+): Node[] {
+  return [...tokens.map(tokenChip), ...sails.map(sailChip)];
 }
 
 // The six terrains, labeled by what they produce (desert produces nothing).
@@ -251,7 +267,7 @@ export function buildCatanTileRoot(region: LayoutBox, onOpenMenu: () => void, to
     // What keeps them off the card faces is the clip in ResourceFlights — a chip is culled the
     // moment it reaches the card's first row, so the face is never covered. Above the panel but
     // below the chrome, so the menu and roll button stay clickable-looking on top.
-    ...flights.map(flyingCard),
+    ...catanFlyingCardNodes(flights),
     ...(movingRobber
       ? [hudTopCenter(
           Box({ flexDirection: 'column', alignItems: 'center', padding: [0, 2], background: UI_CHROME_BG }, [
@@ -275,8 +291,7 @@ export function buildCatanTileRoot(region: LayoutBox, onOpenMenu: () => void, to
   ]);
   chrome.overlay = true;
   return Box({ width: region.w, height: region.h }, [
-    ...tokens.map(tokenChip), // ordinary projected UI: above the board, below foreground 3D
-    ...sails.map(sailChip),
+    ...catanProjectedBoardLabels(tokens, sails), // above the board, below foreground 3D
     chrome,
   ]);
 }

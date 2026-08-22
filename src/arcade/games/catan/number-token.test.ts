@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { RenderTarget } from '../../../engine/index.ts';
 import { TOKEN_DOTS } from '../../../rules/catan/types.ts';
+import { CatanState } from '../../../rules/catan/catan.ts';
 import { layout, type Node, Screen } from '../../../tui/index.ts';
-import { buildCatanTileRoot } from './tile-hud.ts';
+import { buildCatanTileRoot, catanProjectedBoardLabels } from './tile-hud.ts';
 import { TileScene } from './tile-scene.ts';
+import { CatanGameScene } from './game-scene.ts';
 
 function texts(node: Node): string[] {
   return [...(node.text ? [node.text] : []), ...(node.children ?? []).flatMap(texts)];
@@ -30,6 +32,26 @@ test('board number tokens expose the official production pips at readable zooms'
     assert.equal(token.pips, TOKEN_DOTS[token.num]);
     assert.equal(token.showPips, true);
   }
+});
+
+test('projected board labels preserve every production token for the real-game HUD', () => {
+  const scene = new TileScene();
+  scene.setMode('boardCards');
+  scene.settle();
+  const tokens = scene.boardTokens(160, 90);
+
+  assert.equal(tokens.length, 18);
+  assert.equal(catanProjectedBoardLabels(tokens).length, 18);
+});
+
+test('an active game exposes all production numbers before the first placement', () => {
+  const game = new CatanGameScene();
+  const state = new CatanState({ numPlayers: 4, rng: () => 0.5 });
+
+  game.beginSession(state, ['red', 'blue', 'purple', 'orange']);
+
+  assert.equal(state.currentPrompt().kind, 'initialSettlement');
+  assert.equal(game.scene.boardTokens(160, 90).length, 18);
 });
 
 test('number-token pips follow projected hex size rather than camera distance alone', () => {

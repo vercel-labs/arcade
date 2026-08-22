@@ -6,7 +6,7 @@
 // human seam; main owns the surrounding UI (setup modal, commentary, HUD).
 
 import { runMatch } from '../../ai/match.ts';
-import { FALLBACK_RATIONALE, isFallbackRationale, ModelPlayer, type MoveNotation } from '../../ai/model-player.ts';
+import { FALLBACK_RATIONALE, isFallbackRationale } from '../../ai/model-player.ts';
 import { HumanPlayer } from '../../ai/human-player.ts';
 import { isTelemetryEnabled, localPlayerKey, trackHandEnded, trackMatchRecord, trackMatchStarted, trackModelFallback, trackPokerHandRecord } from '../../telemetry/index.ts';
 import type { Player } from '../../ai/player.ts';
@@ -19,35 +19,18 @@ import { PokerVoice, pokerVoiceCapable } from './poker-voice.ts';
 import { normalizerModel } from './models.ts';
 import { PokerSessionRecorder, type RecorderController } from './game-recorders.ts';
 import type { RecordEndReason } from '../../telemetry/records.ts';
+import {
+  BIG_BLIND,
+  createPokerTextPlayer,
+  SMALL_BLIND,
+  STARTING_STACK,
+  type PokerSeatSpec,
+} from './poker-session.ts';
 
-// One seat in the session: the human hero or an AI model (a Gateway slug).
-export type PokerSeatSpec =
-  | { kind: 'human' }
-  | { kind: 'ai'; model: string; runtime: 'text' }
-  | { kind: 'ai'; model: string; runtime: 'realtime' };
-
-const STARTING_STACK = 1000;
-const SMALL_BLIND = 10;
-// Exported so the setup slider snaps the starting stack to a whole big blind (one source
-// of truth for the blind size).
-export const BIG_BLIND = 20;
+export { BIG_BLIND };
+export type { PokerSeatSpec };
 // Chip amounts read as money in the winner banner: a "$" prefix + thousands separators.
 const money = (n: number): string => `$${n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
-
-// How poker moves are written, for the model prompt/schema (see ModelPlayer).
-const POKER_NOTATION: MoveNotation = {
-  description: 'a poker action — one of "fold", "check", "call", "bet <amount>", "raise <amount>", or "allin" (amounts are TOTAL chips to put in this street)',
-  examples: '"call", "raise 120", "fold", "allin"',
-};
-
-// System prompt for the AI seats. Kept minimal on purpose: state the setup and the one
-// hard rule (the spoken rationale is heard by everyone, so cards stay secret unless
-// bluffing) without prescribing a playing style, so the model's own behaviour comes
-// through. Lives in `system` (see ModelPlayer.persona) so it outranks the per-turn board.
-const POKER_PERSONA =
-  "You are playing live no-limit Texas Hold'em against the other players at the table. " +
-  'Everything you say out loud is heard by everyone, so bluff and mislead freely but never ' +
-  'honestly reveal the cards you are holding.';
 
 const creatorOf = (slug: string): string => slug.split('/')[0] ?? slug;
 
@@ -215,24 +198,9 @@ export class PokerMatch {
       if (!this.voice) throw new Error('Realtime poker seat started without a voice session.');
       return this.voice.player();
     }
-    return new ModelPlayer<PokerAction>({
+    return createPokerTextPlayer({
       model: seat.model,
-      gameName: "no-limit Texas Hold'em poker",
-      moveNotation: POKER_NOTATION,
-      // Identity + card-secrecy rule (system prompt).
-      persona: POKER_PERSONA,
-      // Split the output so move analysis goes to a private "thinking" field and only the
-      // public "say" line reaches the chat. This is what stops a model from leaking its
-      // hand while justifying a move (a bare "rationale" field invites "8-4 is junk"). The
-      // guide steers `say` toward lively social talk so the chat has character, not a flat
-      // announcement of the action.
-      speech:
-        'a line or two of live table talk in your own voice: banter, needle, read the board, rattle an opponent. Talk to the table, do not just announce your move. Bluff and lie about your hand freely, but never honestly reveal the cards you are holding.',
-      // Per-turn context: chip standings + this seat's private opponent notes, read live.
       contextProvider: () => this.moveContext(index),
-      // Fallback normalization rung (AIG-183). Safe under poker's private-info boundary:
-      // in split (speech) mode ModelPlayer only ever surfaces the public `say` line, so a
-      // normalized action never leaks the private "thinking"/hole cards.
       normalizer: normalizerModel(),
     });
   }

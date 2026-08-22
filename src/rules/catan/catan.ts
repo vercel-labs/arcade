@@ -61,6 +61,8 @@ export interface CatanOpts {
   seatNames?: readonly string[];
   /** Player-to-player offers are complete but opt-in for model experiments. */
   domesticTrade?: boolean;
+  /** Optional controller policy used by AI-only tables to prevent unchanged offer loops. */
+  domesticTradeOfferLimit?: number;
 }
 
 export interface CatanActionOutcome {
@@ -79,6 +81,7 @@ export interface CatanTranscript {
   numPlayers: number;
   seatNames?: string[];
   domesticTrade: boolean;
+  domesticTradeOfferLimit?: number;
   board: BoardSetup;
   initialDevelopmentDeck: DevCardType[];
   /** Random values already sampled by setup and recorded chance actions. */
@@ -93,6 +96,7 @@ interface TradeState {
   receive: FreqDeck;
   responders: number[];
   accepted: number[];
+  counters: { from: number; give: FreqDeck; receive: FreqDeck }[];
   responseIndex: number;
 }
 
@@ -110,7 +114,8 @@ export interface CatanPortfolio {
 
 export type CatanActionFamily =
   | { type: 'discard'; player: number; count: number; available: FreqDeck }
-  | { type: 'offerTrade'; player: number; resourceOrder: readonly Resource[] };
+  | { type: 'offerTrade'; player: number; resourceOrder: readonly Resource[] }
+  | { type: 'counterTrade'; player: number; resourceOrder: readonly Resource[] };
 
 interface Building {
   player: number;
@@ -216,6 +221,8 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
   private discardRemaining: number[];
   private trade: TradeState | null = null;
   private domesticTradeEnabled: boolean;
+  private domesticTradeOfferLimit: number;
+  private domesticOffersThisTurn = 0;
   private lastDice: [number, number] | null = null;
   private records: CatanActionRecord[] = [];
   private winnerSeat = -1;
@@ -230,6 +237,10 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
     this.rng = opts.rng ?? Math.random;
     this.seatNames = opts.seatNames;
     this.domesticTradeEnabled = opts.domesticTrade ?? false;
+    this.domesticTradeOfferLimit = opts.domesticTradeOfferLimit ?? Number.POSITIVE_INFINITY;
+    if (this.domesticTradeOfferLimit < 0 || (!Number.isInteger(this.domesticTradeOfferLimit) && this.domesticTradeOfferLimit !== Number.POSITIVE_INFINITY)) {
+      throw new RangeError(`domesticTradeOfferLimit must be a nonnegative integer; received ${this.domesticTradeOfferLimit}`);
+    }
 
     this.board = generateBoard(() => this.random());
     this.productionByNode = nodeProduction(this.board);
@@ -316,9 +327,16 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
           receive: this.trade.receive.slice(),
           responders: this.trade.responders.slice(),
           accepted: this.trade.accepted.slice(),
+          counters: this.trade.counters.map((counter) => ({
+            from: counter.from,
+            give: counter.give.slice(),
+            receive: counter.receive.slice(),
+          })),
         }
       : null;
     s.domesticTradeEnabled = this.domesticTradeEnabled;
+    s.domesticTradeOfferLimit = this.domesticTradeOfferLimit;
+    s.domesticOffersThisTurn = this.domesticOffersThisTurn;
     s.lastDice = this.lastDice ? [...this.lastDice] : null;
     s.records = this.records.map((record) => ({
       player: record.player,
@@ -361,7 +379,14 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
         const actions: CatanAction[] = [{ type: 'cancelTrade' }];
         if (!this.trade) return actions;
         for (const seat of this.trade.accepted) {
-          if (hasCards(this.hands[seat], this.trade.receive)) actions.unshift({ type: 'confirmTrade', with: seat });
+          if (hasCards(this.hands[this.trade.from], this.trade.give) && hasCards(this.hands[seat], this.trade.receive)) {
+            actions.unshift({ type: 'confirmTrade', with: seat });
+          }
+        }
+        for (const counter of this.trade.counters) {
+          if (hasCards(this.hands[counter.from], counter.give) && hasCards(this.hands[this.trade.from], counter.receive)) {
+            actions.unshift({ type: 'confirmTrade', with: counter.from });
+          }
         }
         return actions;
       }
@@ -507,17 +532,36 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
       this.record(actor, action);
       return;
     }
+    if (action.type === 'maritimeBulkTrade' && this.prompt.kind === 'playTurn') {
+      const rate = action.via === 'bank' ? 4 : action.rate;
+      this.transferResource(actor, -1, action.give, rate * action.gets.length);
+      for (const resource of action.gets) this.transferResource(-1, actor, resource, 1);
+      this.record(actor, action);
+      return;
+    }
 
     if (action.type === 'offerTrade' && this.prompt.kind === 'playTurn') {
       const responders = Array.from({ length: this.n - 1 }, (_, i) => (actor + i + 1) % this.n);
-      this.trade = { from: actor, give: action.give.slice(), receive: action.receive.slice(), responders, accepted: [], responseIndex: 0 };
+      this.trade = {
+        from: actor,
+        give: action.give.slice(),
+        receive: action.receive.slice(),
+        responders,
+        accepted: [],
+        counters: [],
+        responseIndex: 0,
+      };
+      this.domesticOffersThisTurn++;
       this.prompt = { kind: 'respondTrade', player: responders[0] };
       this.record(actor, action);
       return;
     }
-    if ((action.type === 'acceptTrade' || action.type === 'rejectTrade') && this.prompt.kind === 'respondTrade') {
+    if ((action.type === 'acceptTrade' || action.type === 'counterTrade' || action.type === 'rejectTrade') && this.prompt.kind === 'respondTrade') {
       if (!this.trade) throw new Error('Missing active trade');
       if (action.type === 'acceptTrade') this.trade.accepted.push(actor);
+      if (action.type === 'counterTrade') {
+        this.trade.counters.push({ from: actor, give: action.give.slice(), receive: action.receive.slice() });
+      }
       this.trade.responseIndex++;
       if (this.trade.responseIndex < this.trade.responders.length) {
         this.prompt = { kind: 'respondTrade', player: this.trade.responders[this.trade.responseIndex] };
@@ -529,8 +573,14 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
     }
     if (action.type === 'confirmTrade' && this.prompt.kind === 'decideAcceptees') {
       if (!this.trade) throw new Error('Missing active trade');
-      transferDeck(this.hands[this.trade.from], this.hands[action.with], this.trade.give);
-      transferDeck(this.hands[action.with], this.hands[this.trade.from], this.trade.receive);
+      const counter = this.trade.counters.find((candidate) => candidate.from === action.with);
+      if (counter) {
+        transferDeck(this.hands[counter.from], this.hands[this.trade.from], counter.give);
+        transferDeck(this.hands[this.trade.from], this.hands[counter.from], counter.receive);
+      } else {
+        transferDeck(this.hands[this.trade.from], this.hands[action.with], this.trade.give);
+        transferDeck(this.hands[action.with], this.hands[this.trade.from], this.trade.receive);
+      }
       this.trade = null;
       this.prompt = { kind: 'playTurn', player: this.turnOwner };
       this.record(actor, action);
@@ -547,6 +597,7 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
       this.record(actor, action);
       this.turnOwner = (this.turnOwner + 1) % this.n;
       this.playedDevCardThisTurn = false;
+      this.domesticOffersThisTurn = 0;
       this.boughtDevThisTurn[actor].fill(0);
       this.prompt = { kind: 'roll', player: this.turnOwner };
       this.maybeFinish(this.turnOwner);
@@ -566,6 +617,7 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
       numPlayers: this.n,
       seatNames: this.seatNames ? [...this.seatNames] : undefined,
       domesticTrade: this.domesticTradeEnabled,
+      ...(Number.isFinite(this.domesticTradeOfferLimit) ? { domesticTradeOfferLimit: this.domesticTradeOfferLimit } : {}),
       board: cloneBoard(this.board),
       initialDevelopmentDeck: this.initialDevDeck.slice(),
       randomTape: this.randomTape.slice(),
@@ -579,6 +631,7 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
       numPlayers: transcript.numPlayers,
       seatNames: transcript.seatNames,
       domesticTrade: transcript.domesticTrade,
+      domesticTradeOfferLimit: transcript.domesticTradeOfferLimit,
       rng,
     });
     state.board = cloneBoard(transcript.board);
@@ -600,11 +653,19 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
    */
   isLegalAction(action: CatanAction): boolean {
     if (this.finished) return false;
+    if (this.prompt.kind === 'playTurn' && action.type === 'maritimeBulkTrade') {
+      return this.validMaritimeBulkTrade(this.prompt.player, action);
+    }
     if (
       this.prompt.kind === 'playTurn' &&
       action.type === 'offerTrade' &&
-      this.domesticTradeEnabled
+      this.domesticTradeEnabled &&
+      this.domesticOffersThisTurn < this.domesticTradeOfferLimit
     ) return this.validTradeOffer(this.prompt.player, action.give, action.receive);
+    if (this.prompt.kind === 'respondTrade' && action.type === 'counterTrade' && this.trade) {
+      return this.validTradeOffer(this.prompt.player, action.give, action.receive)
+        && hasCards(this.hands[this.trade.from], action.receive);
+    }
     if (this.prompt.kind === 'discard' && action.type === 'discard') {
       return action.resources.length === this.discardRemaining[this.prompt.player] &&
         action.resources.every((resource) => RESOURCES.includes(resource)) &&
@@ -624,14 +685,25 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
         available: this.hands[this.prompt.player].slice(),
       }];
     }
-    if (this.prompt.kind === 'playTurn' && this.domesticTradeEnabled) {
+    if (this.prompt.kind === 'playTurn' && this.domesticTradeEnabled && this.domesticOffersThisTurn < this.domesticTradeOfferLimit) {
       return [{ type: 'offerTrade', player: this.prompt.player, resourceOrder: RESOURCES }];
+    }
+    if (this.prompt.kind === 'respondTrade' && this.trade) {
+      return [{ type: 'counterTrade', player: this.prompt.player, resourceOrder: RESOURCES }];
     }
     return [];
   }
 
   parameterizedActionExamples(): CatanAction[] {
-    if (this.prompt.kind !== 'playTurn' || !this.domesticTradeEnabled) return [];
+    if (this.prompt.kind === 'respondTrade' && this.trade) {
+      const action: CatanAction = {
+        type: 'counterTrade',
+        give: this.trade.receive.slice(),
+        receive: this.trade.give.slice(),
+      };
+      return this.isLegalAction(action) ? [action] : [];
+    }
+    if (this.prompt.kind !== 'playTurn' || !this.domesticTradeEnabled || this.domesticOffersThisTurn >= this.domesticTradeOfferLimit) return [];
     const giveIndex = this.hands[this.prompt.player].findIndex((count) => count > 0);
     if (giveIndex < 0) return [];
     const receiveIndex = RESOURCES.findIndex((_, index) => index !== giveIndex);
@@ -677,10 +749,16 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
         return a.via === 'bank'
           ? `bank-trade ${a.give}->${a.get}`
           : `port-trade ${a.rate}:1 ${a.give}->${a.get}`;
+      case 'maritimeBulkTrade':
+        return a.via === 'bank'
+          ? `bank-trade ${a.give}->${a.gets.join(',')}`
+          : `port-trade ${a.rate}:1 ${a.give}->${a.gets.join(',')}`;
       case 'offerTrade':
         return `offer ${a.give.join('/')} for ${a.receive.join('/')}`;
       case 'acceptTrade':
         return 'accept';
+      case 'counterTrade':
+        return `counter ${a.give.join('/')} for ${a.receive.join('/')}`;
       case 'rejectTrade':
         return 'reject';
       case 'confirmTrade':
@@ -745,6 +823,9 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
     else if (/^offer/.test(t)) {
       const match = t.match(/^offer\s+([\d/]+)\s+for\s+([\d/]+)$/);
       if (match) parsed = { type: 'offerTrade', give: match[1].split('/').map(Number), receive: match[2].split('/').map(Number) };
+    } else if (/^counter/.test(t)) {
+      const match = t.match(/^counter\s+([\d/]+)\s+for\s+([\d/]+)$/);
+      if (match) parsed = { type: 'counterTrade', give: match[1].split('/').map(Number), receive: match[2].split('/').map(Number) };
     } else if (trade) {
       const give = trade[3] as Resource;
       const get = trade[4] as Resource;
@@ -807,7 +888,13 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
     lines.push(`Buildings: ${this.publicBuildings()}. Roads: ${this.publicRoads()}.`);
     lines.push(`Awards: Longest Road=${this.longestRoadHolder < 0 ? 'none' : this.seatName(this.longestRoadHolder)}; Largest Army=${this.largestArmyHolder < 0 ? 'none' : this.seatName(this.largestArmyHolder)}.`);
     lines.push(`Your portfolio: production pips ${this.productionStr(portfolio.production)}; numbers [${portfolio.numberCoverage.join(',')}]; ports ${this.portsStr(portfolio.ports)}; pieces left roads=${portfolio.roadsLeft}, settlements=${portfolio.settlementsLeft}, cities=${portfolio.citiesLeft}.`);
-    if (this.trade) lines.push(`Active offer from ${this.seatName(this.trade.from)}: gives ${this.deckStr(this.trade.give)}, requests ${this.deckStr(this.trade.receive)}.`);
+    if (this.trade) {
+      lines.push(`Active offer from ${this.seatName(this.trade.from)}: gives ${this.deckStr(this.trade.give)}, requests ${this.deckStr(this.trade.receive)}.`);
+      if (this.trade.accepted.length) lines.push(`Accepted by: ${this.trade.accepted.map((seat) => this.seatName(seat)).join(', ')}.`);
+      for (const counter of this.trade.counters) {
+        lines.push(`Counter from ${this.seatName(counter.from)}: they give ${this.deckStr(counter.give)}, request ${this.deckStr(counter.receive)}.`);
+      }
+    }
     return lines.join('\n');
   }
 
@@ -847,9 +934,13 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
     } else {
       for (const action of legal) lines.push(`- ${this.actionToString(action)}`);
     }
-    if (this.prompt.kind === 'playTurn' && this.domesticTradeEnabled) {
+    if (this.prompt.kind === 'playTurn' && this.domesticTradeEnabled && this.domesticOffersThisTurn < this.domesticTradeOfferLimit) {
       lines.push('- Domestic offer (parameterized): offer b/g/l/o/w for b/g/l/o/w, using five nonnegative counts in brick/grain/lumber/ore/wool order.');
       lines.push('  Example: offer 1/0/0/0/0 for 0/1/0/0/0. Offers are validated against your hand and cannot request the same resource they give.');
+    }
+    if (this.prompt.kind === 'respondTrade' && this.trade) {
+      lines.push('- Counteroffer (parameterized): counter b/g/l/o/w for b/g/l/o/w, from your perspective: what you give, then what you receive.');
+      lines.push(`  The posted offer reversed into your perspective is: counter ${this.trade.receive.join('/')} for ${this.trade.give.join('/')}. You may revise either side.`);
     }
     return lines.join('\n');
   }
@@ -896,6 +987,27 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
   }
   dice(): readonly [number, number] | null {
     return this.lastDice;
+  }
+  activeTrade(): {
+    from: number;
+    give: readonly number[];
+    receive: readonly number[];
+    accepted: readonly number[];
+    counters: readonly { from: number; give: readonly number[]; receive: readonly number[] }[];
+  } | null {
+    return this.trade
+      ? {
+          from: this.trade.from,
+          give: this.trade.give.slice(),
+          receive: this.trade.receive.slice(),
+          accepted: this.trade.accepted.slice(),
+          counters: this.trade.counters.map((counter) => ({
+            from: counter.from,
+            give: counter.give.slice(),
+            receive: counter.receive.slice(),
+          })),
+        }
+      : null;
   }
   developmentCardCount(seat: number, type: DevCardType): number {
     return this.devHand[seat][DEV_CARD_TYPES.indexOf(type)] ?? 0;
@@ -1125,6 +1237,17 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
     if (!validDeck(give) || !validDeck(receive) || !hasCards(this.hands[player], give)) return false;
     if (freqTotal(give) === 0 || freqTotal(receive) === 0) return false;
     return RESOURCES.every((_, i) => !(give[i] > 0 && receive[i] > 0));
+  }
+
+  private validMaritimeBulkTrade(
+    player: number,
+    action: Extract<CatanAction, { type: 'maritimeBulkTrade' }>,
+  ): boolean {
+    if (!action.gets.length || action.gets.some((resource) => !RESOURCES.includes(resource) || resource === action.give)) return false;
+    const rate = action.via === 'bank' ? 4 : action.rate;
+    if (action.via === 'port' && !this.maritimePortTradeRates(player)[action.give].includes(action.rate)) return false;
+    if (this.hands[player][resourceIndex(action.give)] < rate * action.gets.length) return false;
+    return hasCards(this.bank, resourcesToDeck(action.gets));
   }
 
   private playableDevCount(player: number, type: DevCardType): number {

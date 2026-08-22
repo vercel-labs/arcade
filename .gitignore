@@ -11,6 +11,7 @@ reference/
 
 # render snapshots (local only)
 .snapshots/
+.runs/
 
 # Heavy chess assets: only chess_blender/ is loaded at runtime. The raw Blender
 # model sources and any superseded sliced/decimated sets stay local (not shipped).

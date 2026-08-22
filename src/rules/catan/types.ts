@@ -156,8 +156,11 @@ export type CatanAction =
   // Trade.
   | { type: 'maritimeTrade'; via: 'bank'; give: Resource; get: Resource }
   | { type: 'maritimeTrade'; via: 'port'; rate: 2 | 3; give: Resource; get: Resource }
+  | { type: 'maritimeBulkTrade'; via: 'bank'; give: Resource; gets: Resource[] }
+  | { type: 'maritimeBulkTrade'; via: 'port'; rate: 2 | 3; give: Resource; gets: Resource[] }
   | { type: 'offerTrade'; give: FreqDeck; receive: FreqDeck }
   | { type: 'acceptTrade' }
+  | { type: 'counterTrade'; give: FreqDeck; receive: FreqDeck }
   | { type: 'rejectTrade' }
   | { type: 'confirmTrade'; with: number }
   | { type: 'cancelTrade' };

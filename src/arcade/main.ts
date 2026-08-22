@@ -1217,8 +1217,8 @@ function enterCatanTiles(): void {
 
 // The Catan game screen: the played board. Entering shows the setup panel (mode / players /
 // your color / a model per AI seat) over an idle island; "start game" builds the state and
-// runs the initial-placement phase. Distinct from catan-tiles, which stays a free-placement
-// graphics bed with no rules attached.
+// runs the complete rules-authoritative match. Distinct from catan-tiles, which stays a
+// free-placement graphics bed with no rules attached.
 function enterCatanGame(): void {
   stopAiMatch();
   audioScene.deactivate();
@@ -1239,15 +1239,13 @@ function enterCatanGame(): void {
 function startCatanGame(): void {
   const seats = catanSetupSelection();
   if (!seats) return;
-  const state = catanDriver.start(seats);
-  catanGameScene.beginSession(state, seats.map((s) => s.color));
+  catanDriver.start(seats);
   fullRepaint();
 }
 
 // Tear the session down and return to the setup panel.
 function newCatanGame(): void {
   catanDriver.reset();
-  catanGameScene.endSession();
   fullRepaint();
 }
 
@@ -1276,7 +1274,6 @@ function buildCatanGameMenu(): Node {
 // Leaving the Catan game screen entirely.
 function leaveCatanGame(): void {
   catanDriver.reset();
-  catanGameScene.endSession();
   if (catanGameTimer !== null) {
     clearInterval(catanGameTimer);
     catanGameTimer = null;
@@ -1885,11 +1882,24 @@ function syncBar(): void {
     // Re-mount the setup dropdowns + history scrollbox (a prior modal root may have dropped
     // their Slots), then build whichever face the session state calls for.
     mountCatanGameHud(ui);
+    const catanRegion = { x: 0, y: 0, w: cols, h: rows };
+    if (catanDriver.state()) {
+      catanGameScene.setResourceFlightLayout(
+        catanRegion,
+        catanDriver.seatCount(),
+        catanRailVisible(cols, rows),
+      );
+    }
     ui.setRoot(
       buildCatanGameRoot(
-        { x: 0, y: 0, w: cols, h: rows },
+        catanRegion,
         {
           driver: catanDriver,
+          scene: catanGameScene,
+          tokens: catanGameScene.scene.boardTokens(activeSceneViewport().w, rows),
+          sails: catanGameScene.scene.boardPortLabels(activeSceneViewport().w, rows),
+          resourceFlights: catanGameScene.activeResourceFlights(),
+          resourceAdjustments: catanGameScene.resourceViewAdjustments(),
           onOpenMenu: () => {
             catanGameMenuOpen = true;
             fullRepaint();

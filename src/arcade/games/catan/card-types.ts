@@ -32,6 +32,9 @@ export interface CatanDevelopmentPlayView {
 }
 
 export interface CatanCardsView {
+  // The shared HUD renders both the real game and the experimental Catan-Test cover. Keep the
+  // source explicit so test-only controls and dummy data cannot leak into a live game view.
+  source: 'live' | 'workbench';
   localPlayer: CatanCardsPlayerView;
   hand: Record<Resource, number>;
   devHand: Record<DevCardType, number>;
@@ -51,9 +54,9 @@ export interface CatanCardsView {
   // the card in the held count before its own flight arrives.
   developmentPurchaseBusy?: boolean;
   pendingDevelopmentCards?: DevCardType[];
+  /** Playable now for the local live seat; purchased-this-turn and post-play cards are absent. */
+  playableDevelopmentCards?: Exclude<DevCardType, 'victoryPoint'>[];
   // A workbench card has been committed and is waiting for its board/resource choices.
   // The live rules engine represents the same state through legal actions instead.
   developmentPlay?: CatanDevelopmentPlayView;
-  // Test-bed views opt into direct card manipulation; live-game adapters leave this unset.
-  editable?: boolean;
 }

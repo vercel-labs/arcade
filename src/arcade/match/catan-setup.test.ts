@@ -196,3 +196,29 @@ test('full-game ModelPlayer fallback can discover a parameterized domestic-trade
   assert.equal(choice.action.type, 'offerTrade');
   assert.equal(state.isLegalAction(choice.action), true);
 });
+
+test('the full-game model harness exposes and parses responder counteroffers', async () => {
+  const state = new CatanState({ numPlayers: 2, rng: rng(), domesticTrade: true });
+  while (!state.initialPlacementComplete()) state.applyAction(state.legalActions()[0]);
+  state.applyAction({ type: 'roll' }, { dice: [1, 1] });
+  const hands = (state as unknown as { hands: number[][] }).hands;
+  hands[0] = [2, 0, 0, 0, 0];
+  hands[1] = [0, 2, 0, 0, 0];
+  state.applyAction({ type: 'offerTrade', give: [1, 0, 0, 0, 0], receive: [0, 1, 0, 0, 0] });
+  let request = '';
+  const model = new MockLanguageModelV3({
+    doGenerate: async (options) => {
+      request = JSON.stringify(options.prompt);
+      return ({
+        content: [{ type: 'text', text: JSON.stringify({ move: 'counter 0/2/0/0/0 for 1/0/0/0/0', rationale: 'I want two grain for the brick.' }) }],
+        finishReason: { unified: 'stop', raw: undefined },
+        usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+        warnings: [],
+      }) as unknown as Awaited<ReturnType<MockLanguageModelV3['doGenerate']>>;
+    },
+  });
+  const choice = await createCatanModelPlayer({ model, name: 'counter-model' }).chooseAction(state);
+  assert.match(request, /Counteroffer \(parameterized\)/);
+  assert.match(request, /counter 0\/1\/0\/0\/0 for 1\/0\/0\/0\/0/);
+  assert.deepEqual(choice.action, { type: 'counterTrade', give: [0, 2, 0, 0, 0], receive: [1, 0, 0, 0, 0] });
+});

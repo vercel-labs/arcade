@@ -19,7 +19,7 @@ export const CATAN_SETUP_RATIONALE_GUIDE =
 export const CATAN_MOVE_NOTATION: MoveNotation = {
   description:
     'Use exactly one canonical Catan action from the legal-action context (setup, roll, build, robber, development card, trade, discard, or end).',
-  examples: '"roll", "road 37", "settlement 12", "trade brick->ore", "end"',
+  examples: '"roll", "road 37", "offer 1/0/0/0/0 for 0/1/0/0/0", "counter 0/2/0/0/0 for 1/0/0/0/0", "end"',
 };
 
 export const CATAN_RATIONALE_GUIDE =
