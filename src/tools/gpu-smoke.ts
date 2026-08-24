@@ -7,14 +7,25 @@ import { CardsScene } from '../arcade/games/poker/cards-scene.ts';
 import { PokerGameScene, type PokerSeatView } from '../arcade/games/poker/poker-scene.ts';
 import { TileScene } from '../arcade/games/catan/tile-scene.ts';
 import { ChessGameScene } from '../arcade/games/chess/scene.ts';
+import { AudioScene } from '../arcade/scenes/audio-scene.ts';
+import { LogosScene } from '../arcade/scenes/logos-scene.ts';
+import { CoverFlowScene } from '../arcade/shell/coverflow.ts';
+import { PLACE_Y, PrismScene, TILT } from '../prism/prism.ts';
 import {
   disposeWebGpuRenderer,
   ensureWebGpuRenderer,
   mulberry32,
   onRenderBackendChange,
   RenderTarget,
+  mat4Multiply,
+  mat4RotX,
+  mat4RotY,
+  mat4Scale,
+  mat4Translate,
   renderBackendInfo,
+  renderBackendPreference,
   setRenderBackendPreference,
+  tryRenderDrawListWithWebGpu,
 } from '../engine/index.ts';
 import { HoldemState } from '../rules/poker/holdem.ts';
 
@@ -53,6 +64,14 @@ try {
 
 function smokeCases(): Case[] {
   const chess = new ChessGameScene();
+  const chessWisps = new ChessGameScene();
+  chessWisps.setPreview({ white: 'anthropic', black: 'openai' });
+  const logos = new LogosScene();
+  const audio = new AudioScene();
+  const coverFlow = new CoverFlowScene();
+  const prismGpu = { enabled: () => renderBackendPreference() !== 'cpu', render: tryRenderDrawListWithWebGpu };
+  const prism = new PrismScene(prismGpu);
+  const splashPrism = new PrismScene(prismGpu);
 
   const cardsHand = new CardsScene();
   cardsHand.setMode('hand');
@@ -81,7 +100,12 @@ function smokeCases(): Case[] {
   catanBoard.setMode('board');
   catanBoard.seedDemo();
   catanBoard.settle();
-  catanBoard.rollDice([3, 4]);
+
+  const catanDice = new TileScene();
+  catanDice.setMode('board');
+  catanDice.seedDemo();
+  catanDice.settle();
+  catanDice.rollDice([3, 4]);
   let catanDicePrimed = false;
 
   const catanPieces = new TileScene();
@@ -91,20 +115,40 @@ function smokeCases(): Case[] {
   catanPort.setMode('port');
 
   return [
+    { name: 'prism', render: (target, time) => prism.renderScene(target, 0.8 + time) },
+    {
+      name: 'splash-prism',
+      render: (target, time) => splashPrism.renderScene(target, time, {
+        model: mat4Multiply(
+          mat4Translate(0, PLACE_Y, 0),
+          mat4Multiply(mat4RotY(0.55), mat4Multiply(mat4RotX(TILT), mat4Scale(0.9, 0.9, 0.9))),
+        ),
+        white: 0.2,
+        beam: 0.8,
+        disp: 0.75,
+        rainbow: 0.7,
+      }),
+    },
+    { name: 'cover-flow', render: (target, time) => coverFlow.renderScene(target, 1.25 + time * 0.1, 1) },
+    { name: 'cover-launch', render: (target, time) => coverFlow.renderLaunch(target, 1, 0.65 + time) },
+    { name: 'logos-wisps', render: (target, time) => logos.renderScene(target, time) },
+    { name: 'audio-wisp', render: (target, time) => audio.renderScene(target, time) },
     { name: 'chess-board', render: (target, time) => chess.renderScene(target, time) },
+    { name: 'chess-wisps', render: (target, time) => chessWisps.renderScene(target, time) },
     { name: 'cards-hand', render: (target, time) => cardsHand.renderScene(target, time) },
     { name: 'cards-deck', render: (target, time) => cardsDeck.renderScene(target, time) },
     { name: 'poker-hand', render: (target, time) => poker.renderScene(target, time) },
+    { name: 'catan-board', render: (target, time) => catanBoard.renderScene(target, time) },
     {
       name: 'catan-dice',
       render: (target, time) => {
         // Advance the animation clock into the visible tumble before validating the completed
         // GPU board readback plus the CPU dice overlay.
         if (!catanDicePrimed) {
-          for (let frame = 1; frame <= 39; frame++) catanBoard.renderScene(target, frame / 60);
+          for (let frame = 1; frame <= 39; frame++) catanDice.renderScene(target, frame / 60);
           catanDicePrimed = true;
         }
-        catanBoard.renderScene(target, 0.65 + time);
+        catanDice.renderScene(target, 0.65 + time);
       },
     },
     { name: 'catan-pieces', render: (target, time) => catanPieces.renderScene(target, time) },
@@ -143,6 +187,7 @@ function nextBackendFrame(): Promise<void> {
 
 function assertVisible(target: RenderTarget, name: string): void {
   let nonBackground = 0;
+  let occupied = 0;
   const r0 = target.color[0] ?? 0;
   const g0 = target.color[1] ?? 0;
   const b0 = target.color[2] ?? 0;
@@ -153,8 +198,12 @@ function assertVisible(target: RenderTarget, name: string): void {
       Math.abs((target.color[offset + 1] ?? 0) - g0) > 2 ||
       Math.abs((target.color[offset + 2] ?? 0) - b0) > 2
     ) nonBackground++;
+    if (Number.isFinite(target.depth[pixel])) occupied++;
   }
   if (nonBackground < target.depth.length * 0.01) throw new Error(`${name}: rendered frame is blank`);
+  if (name === 'catan-board' && occupied < target.depth.length * 0.01) {
+    throw new Error(`${name}: GPU colors are present but the terminal occupancy mask is blank`);
+  }
 }
 
 function writePpm(target: RenderTarget, path: string): void {

@@ -1,4 +1,4 @@
-import { cameraMatrices, type Mat4, mat4MulVec4, mulberry32, type RenderTarget, type Vec3 } from '../../engine/index.ts';
+import { cameraMatrices, DrawList, type Mat4, mat4MulVec4, mulberry32, type RenderTarget, tryRenderDrawListWithWebGpu, type Vec3 } from '../../engine/index.ts';
 import { OrbitCamera } from '../orbit.ts';
 import { loadCreatorWisp, type Wisp, WISP_SIZE } from './wisp.ts';
 
@@ -20,6 +20,7 @@ export class LogosScene {
   // Cached from the last render so click picking projects against the live camera.
   private lastVp: Mat4 | null = null;
   private lastUp: Vec3 = { x: 0, y: 1, z: 0 };
+  private readonly drawList = new DrawList();
 
   constructor(creators: readonly string[] = CREATORS) {
     const rng = mulberry32(0x10905c); // fixed seed → reproducible snapshots
@@ -92,8 +93,11 @@ export class LogosScene {
     this.lastVp = vp;
     this.lastUp = up;
 
-    for (const { wisp, x } of this.wisps) {
-      wisp.renderWorld(target, vp, right, up, { x, y: 0, z: 0 }, W, H, t, dt);
+    this.drawList.clear();
+    const cpuFallbacks = this.wisps.map(({ wisp, x }) =>
+      wisp.queueWorldGpu(this.drawList, target, vp, right, up, { x, y: 0, z: 0 }, W, H, t, dt));
+    if (!tryRenderDrawListWithWebGpu(target, this.drawList.draws, this)) {
+      for (const fallback of cpuFallbacks) fallback();
     }
   }
 }

@@ -35,7 +35,7 @@
 // comb). Every card's (x, y, curl, edgeDepth, depth) is continuous across each phase boundary, so
 // the loop never pops.
 
-import { type Mat4, mat4Multiply, mat4RotY, mat4Translate, type RenderTarget, smoothstep, type Texture } from '../../../engine/index.ts';
+import { type DrawTarget, type Mat4, mat4Multiply, mat4RotY, mat4Translate, smoothstep, type Texture } from '../../../engine/index.ts';
 import type { Card } from '../../../rules/poker/cards.ts';
 import { type ArchPlace, drawArchCard, drawCard, flatDown } from './card-render.ts';
 
@@ -243,7 +243,7 @@ export class DeckShuffle {
   // Draw the whole deck. `yawOverride` is only for the caller's post-shuffle turn after
   // the rest pose has settled; the riffle/bridge choreography always uses each card's
   // native yaw. A card uses the strip path while bent or depth-fanned.
-  draw(target: RenderTarget, vp: Mat4, yawOverride?: number): void {
+  draw(target: DrawTarget, vp: Mat4, yawOverride?: number): void {
     for (let i = 0; i < N; i++) {
       const native = this.place(i);
       const pl = yawOverride === undefined ? native : { ...native, yaw: yawOverride };

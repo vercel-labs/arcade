@@ -4,6 +4,6 @@
 // depends only on src/engine; nothing app-specific leaks in, which is what lets the
 // Vercel function bundle it without dragging in the arcade. Consumers import from
 // this barrel; the modules below import each other directly.
-export { PrismScene, type PrismIntro, ROT_SPEED, TILT, PLACE_Y } from './prism.ts';
+export { PrismScene, type PrismGpuRenderer, type PrismIntro, ROT_SPEED, TILT, PLACE_Y } from './prism.ts';
 export { SplashScene, SPLASH_END } from './splash.ts';
 export { streamPrism } from './prism-stream.ts';

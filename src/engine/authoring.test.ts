@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   AnimationScheduler,
   BufferGeometry,
+  DrawList,
   FrameClock,
   GeometryBuilder,
   Group,
@@ -147,6 +148,42 @@ test('BufferGeometry exposes mutable attributes, versions, dirty ranges, and bou
   color.setXYZ(0, 10, 20, 30);
   assert.deepEqual(geometry.vertices[0].color, { x: 10, y: 20, z: 30 });
   assert.equal(geometry.version, 2);
+});
+
+test('DrawList snapshots mutable geometry without reallocating its frame slots', () => {
+  const source = new GeometryBuilder().triangle(
+    { x: -1, y: 0, z: 0 },
+    { x: 1, y: 0, z: 0 },
+    { x: 0, y: 1, z: 0 },
+  ).mesh();
+  const geometry = BufferGeometry.fromMesh(source, true);
+  const draws = new DrawList();
+  const uniforms = {
+    mvp: mat4Identity(),
+    model: mat4Identity(),
+    lightDir: { x: 0, y: 0, z: 1 },
+    ambient: 0.4,
+  };
+  draws.draw(geometry, lambertMaterial, uniforms);
+  const snapshot = draws.draws[0]!.geometry;
+  const vertices = snapshot.vertices;
+  const firstVertex = vertices[0];
+  const indices = snapshot.indices;
+  const version = snapshot.version;
+
+  draws.clear();
+  draws.draw(geometry, lambertMaterial, uniforms);
+  assert.equal(draws.draws[0]!.geometry.version, version, 'unchanged source geometry should not trigger an upload');
+
+  geometry.getAttribute('position').setXYZ(0, -2, 3, 4);
+  draws.clear();
+  draws.draw(geometry, lambertMaterial, uniforms);
+
+  assert.equal(draws.draws[0]!.geometry, snapshot);
+  assert.equal(snapshot.vertices, vertices);
+  assert.equal(snapshot.vertices[0], firstVertex);
+  assert.equal(snapshot.indices, indices);
+  assert.deepEqual(snapshot.vertices[0]!.position, { x: -2, y: 3, z: 4 });
 });
 
 test('InstancedMesh matches separately authored objects and retains instance state', () => {

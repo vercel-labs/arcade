@@ -10,11 +10,11 @@
 // oscillates as it arches.
 
 import {
+  type DrawTarget,
   type Mat4,
   nearestHit,
   type OrbitCamera,
   Raycaster,
-  type RenderTarget,
   SpringValue,
   type Texture,
 } from '../../../engine/index.ts';
@@ -105,7 +105,7 @@ export class HandPeek {
   }
 
   // Draw every card bent to its current reveal.
-  draw(target: RenderTarget, vp: Mat4, az: number, back: Texture): void {
+  draw(target: DrawTarget, vp: Mat4, az: number, back: Texture): void {
     for (let i = 0; i < this.cards.length; i++) drawPeekCard(target, vp, this.peekPose(i, az), this.cards[i].card, back);
   }
 

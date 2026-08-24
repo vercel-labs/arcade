@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import {
   cameraMatrices,
+  DrawList,
   flatShade,
   mat4Identity,
   mat4Multiply,
@@ -18,13 +19,14 @@ import {
   parseObj,
   pieceMaterial,
   Raycaster,
+  renderBackendPreference,
   type RenderTarget,
   ResourceCache,
   Scene,
   SceneRenderer,
   smoothstep,
   travelPoint,
-  tryRenderSceneWithWebGpu,
+  tryRenderDrawListWithWebGpu,
   type PieceUniforms,
   type Vec3,
   type VertexIn,
@@ -138,6 +140,7 @@ export class ChessGameScene {
   private readonly raycaster = new Raycaster();
   private readonly authoredScene = new Scene();
   private readonly sceneRenderer = new SceneRenderer();
+  private readonly drawList = new DrawList();
   private readonly authoredPool = new ObjectPool(() => new MeshObject(
     EMPTY_MESH,
     new WorldMaterialInstance(pieceMaterial, {
@@ -781,19 +784,15 @@ export class ChessGameScene {
       }
     }
 
-    // The authored scene traversal emits the same ordered raster calls queued by
-    // draw() above. Wisps remain a custom post-pass until their particle renderer
-    // becomes a scene object; keeping that boundary preserves their blend order.
-    const gpuFrame = tryRenderSceneWithWebGpu(target, this.authoredScene, camera, this.sceneRenderer);
-    if (!gpuFrame) this.sceneRenderer.render(target, this.authoredScene, camera);
-    // GPU readback currently returns color plus an occupancy mask, not full depth. The remaining
-    // CPU wisp pass is deliberately an overlay, so give it a clean depth buffer after the base.
-    else target.depth.fill(Infinity);
-
-    // Match HUD: each side's creator wisp floats in 3D just above that side's
-    // king, tracking it as it moves and scaling with the camera. The side to move
-    // pulses (neither once the game is over). Drawn after the board so the flame
-    // glows over it.
+    // Match HUD: each side's creator wisp floats in 3D just above that side's king. In GPU
+    // mode its complete procedural flame/logo/ember field joins the same draw list as the board;
+    // CPU mode retains the original post-pass exactly.
+    const wispFallbacks: (() => void)[] = [];
+    const gpuComposite = renderBackendPreference() !== 'cpu';
+    if (gpuComposite) {
+      this.drawList.clear();
+      this.drawList.appendScene(target, this.authoredScene, camera, this.sceneRenderer);
+    } else this.sceneRenderer.render(target, this.authoredScene, camera);
     if ((this.matchActive || this.previewActive) && (this.whiteWisp || this.blackWisp)) {
       const W = target.width;
       const H = target.height;
@@ -807,10 +806,21 @@ export class ChessGameScene {
         const c = this.kingWorldPos(color);
         if (!c) return;
         wisp.setSpeaking(turn === color);
-        wisp.renderWorld(target, viewProjection, right, up, { x: c.x, y: WISP_FLOAT, z: c.z }, W, H, t, dt, WISP_SCALE);
+        const position = { x: c.x, y: WISP_FLOAT, z: c.z };
+        if (gpuComposite) {
+          wispFallbacks.push(wisp.queueWorldGpu(this.drawList, target, viewProjection, right, up, position, W, H, t, dt, WISP_SCALE));
+        } else {
+          wisp.renderWorld(target, viewProjection, right, up, position, W, H, t, dt, WISP_SCALE);
+        }
       };
       drawKingWisp(this.whiteWisp, WHITE);
       drawKingWisp(this.blackWisp, BLACK);
+    }
+    if (gpuComposite) {
+      if (!tryRenderDrawListWithWebGpu(target, this.drawList.draws, this)) {
+        this.sceneRenderer.render(target, this.authoredScene, camera);
+        for (const fallback of wispFallbacks) fallback();
+      }
     }
 
     // Stay dirty while a move animates. The frame that *finishes* a move still

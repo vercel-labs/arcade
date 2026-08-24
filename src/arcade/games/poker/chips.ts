@@ -6,7 +6,7 @@
 // blinds and $1000 starts, and player stacks are spread across denominations (not one fat
 // tower) so a table of stacks reads as a lively mix of colors.
 
-import { type Mat4, mat4Multiply, mat4RotY, mat4Translate, type Mesh, rasterize, type RenderTarget, lambertMaterial, ResourceCache, type VertexIn, type Vec3 } from '../../../engine/index.ts';
+import { drawGeometry, type DrawTarget, type Mat4, mat4Multiply, mat4RotY, mat4Translate, type Mesh, lambertMaterial, ResourceCache, type VertexIn, type Vec3 } from '../../../engine/index.ts';
 
 // Classic casino colors, dialed a touch darker than neon so they sit into the felt. `base`
 // is the chip body; `spot` is the edge/face marking (the ring line + the six rim spots).
@@ -384,7 +384,7 @@ export function arrangeChipColumns(cols: readonly ChipColumn[], seed = 0): ChipC
 // hand. Lit with the scene's table light so chips match the chairs / frame. `vp` is the camera
 // view-projection; `seed` keys the stable jitter and `lift` raises a pile in flight.
 export function drawChipStack(
-  target: RenderTarget,
+  target: DrawTarget,
   vp: Mat4,
   center: { x: number; z: number },
   axis: { x: number; z: number },
@@ -410,7 +410,7 @@ export function drawChipStack(
       const cx = bx + Math.cos(jitterA) * jitterR;
       const cz = bz + Math.sin(jitterA) * jitterR;
       const model: Mat4 = mat4Multiply(mat4Translate(cx, BASE_Y + lift + CHIP_H * (k + 0.5), cz), mat4RotY(frac(seed, i, k, 5) * Math.PI * 2));
-      rasterize(target, mesh, lambertMaterial, { mvp: mat4Multiply(vp, model), model, lightDir: light, ambient });
+      drawGeometry(target, mesh, lambertMaterial, { mvp: mat4Multiply(vp, model), model, lightDir: light, ambient });
     }
   }
 }

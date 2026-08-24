@@ -14,6 +14,9 @@ import {
   type Camera,
   coverMaterial,
   decodePng,
+  DrawList,
+  type DrawTarget,
+  drawGeometry,
   FONT,
   type Mat4,
   mat4Multiply,
@@ -23,9 +26,12 @@ import {
   mat4Translate,
   normalize3,
   quad,
-  rasterize,
+  renderBackendPreference,
+  resetWebGpuStream,
   type RenderTarget,
+  type Material,
   type Texture,
+  tryRenderDrawListWithWebGpu,
   type Vec3,
 } from '../../engine/index.ts';
 import { MENU_ITEMS } from './menu.ts';
@@ -64,6 +70,39 @@ const FRAME_HOT: Vec3 = { x: 245, y: 248, z: 255 }; // bezel when hovered: brigh
 const LIGHT: Vec3 = normalize3({ x: 0.18, y: 0.32, z: 1 }); // key: front + a little above
 
 const CARD_MESH = quad(0.5);
+const BACKDROP_MESH = quad(1);
+const backdropMaterial: Material<Record<string, never>> = {
+  cull: 'none',
+  webgpu: {
+    wgsl: /* wgsl */ `
+struct VertexIn {
+  @location(0) position: vec3f,
+  @location(1) normal: vec3f,
+  @location(2) uv: vec2f,
+  @location(3) color: vec3f,
+};
+struct VertexOut {
+  @builtin(position) clip: vec4f,
+  @location(0) uv: vec2f,
+};
+@vertex fn vertexMain(input: VertexIn) -> VertexOut {
+  var out: VertexOut;
+  out.clip = vec4f(input.position.xy, 0.999, 1.0);
+  out.uv = input.uv;
+  return out;
+}
+@fragment fn fragmentMain(input: VertexOut) -> @location(0) vec4f {
+  let ny = input.uv.y;
+  let glow = max(0.0, 1.0 - abs(ny - 0.6) / 0.5);
+  let base = 9.0 + 18.0 * glow * glow;
+  return vec4f(vec3f(base * 0.9, base * 0.95, base * 1.3) / 255.0, 1.0);
+}
+`,
+    writeUniforms() {},
+  },
+  vertex() { throw new Error('backdropMaterial is WebGPU-only'); },
+  fragment() { return null; },
+};
 // Local-space corners of CARD_MESH (a unit quad, ±0.5), for projecting a cover's
 // on-screen rectangle in coverScreenRect.
 const CORNERS: [number, number][] = [
@@ -198,11 +237,11 @@ function bezelWidth(mvp: Mat4, W: number, H: number): number {
   return Math.min(MAX_FRAME_UV, Math.max(BASE_FRAME_UV, MIN_FRAME_PX / hpx));
 }
 
-function drawCover(target: RenderTarget, vp: Mat4, model: Mat4, tex: Texture, brightness: number, reflect: boolean, hot: boolean): void {
+function drawCover(target: DrawTarget, width: number, height: number, vp: Mat4, model: Mat4, tex: Texture, brightness: number, reflect: boolean, hot: boolean): void {
   // The reflection is the cover mirrored through the floor plane (y=0).
   const m = reflect ? mat4Multiply(mat4Scale(1, -1, 1), model) : model;
   const mvp = mat4Multiply(vp, m);
-  rasterize(target, CARD_MESH, coverMaterial, {
+  drawGeometry(target, CARD_MESH, coverMaterial, {
     mvp,
     model: m,
     tex,
@@ -210,7 +249,7 @@ function drawCover(target: RenderTarget, vp: Mat4, model: Mat4, tex: Texture, br
     lightDir: LIGHT,
     ambient: 0.38,
     brightness,
-    frameWidth: bezelWidth(mvp, target.width, target.height),
+    frameWidth: bezelWidth(mvp, width, height),
     frameColor: hot ? FRAME_HOT : FRAME,
     pad: PAD,
     fade: reflect ? 1 : 0,
@@ -220,10 +259,24 @@ function drawCover(target: RenderTarget, vp: Mat4, model: Mat4, tex: Texture, br
 }
 
 export class CoverFlowScene {
+  private readonly drawList = new DrawList();
+  private readonly launchStream = {};
+  private lastLaunchIndex = -1;
+  private lastLaunchTime = Infinity;
   // `hoverIndex` (a cover index, or -1) is brightened to give moused-over feedback.
   renderScene(target: RenderTarget, pos: number, hoverIndex = -1): void {
+    if (renderBackendPreference() !== 'cpu') {
+      this.drawList.clear();
+      this.drawList.draw(BACKDROP_MESH, backdropMaterial, {});
+      this.queueCovers(this.drawList, target.width, target.height, pos, hoverIndex);
+      if (tryRenderDrawListWithWebGpu(target, this.drawList.draws, this)) return;
+    }
     drawBackdrop(target);
-    const { viewProjection } = cameraMatrices(camera, target.width / target.height);
+    this.queueCovers(target, target.width, target.height, pos, hoverIndex);
+  }
+
+  private queueCovers(target: DrawTarget, width: number, height: number, pos: number, hoverIndex: number): void {
+    const { viewProjection } = cameraMatrices(camera, width / height);
 
     const n = MENU_ITEMS.length;
     const lo = Math.max(0, Math.ceil(pos - VISIBLE));
@@ -242,8 +295,8 @@ export class CoverFlowScene {
       const hot = i === hoverIndex;
       // Hover changes only the bezel (grey → bright white); the cover's content
       // keeps its normal lit brightness.
-      drawCover(target, viewProjection, model, tex, REFLECT, true, false);
-      drawCover(target, viewProjection, model, tex, COVER_BRIGHT, false, hot);
+      drawCover(target, width, height, viewProjection, model, tex, REFLECT, true, false);
+      drawCover(target, width, height, viewProjection, model, tex, COVER_BRIGHT, false, hot);
     }
   }
 
@@ -252,11 +305,24 @@ export class CoverFlowScene {
   // bezel leaves frame and the full-screen title holds. `t` is seconds since the
   // click; frame 0 (t=0) matches the menu's focused cover for a seamless hand-off.
   renderLaunch(target: RenderTarget, index: number, t: number): void {
+    if (index !== this.lastLaunchIndex || t < this.lastLaunchTime) resetWebGpuStream(this.launchStream);
+    this.lastLaunchIndex = index;
+    this.lastLaunchTime = t;
+    if (renderBackendPreference() !== 'cpu') {
+      this.drawList.clear();
+      this.drawList.draw(BACKDROP_MESH, backdropMaterial, {});
+      this.queueLaunch(this.drawList, target.width, target.height, index, t);
+      if (tryRenderDrawListWithWebGpu(target, this.drawList.draws, this.launchStream)) return;
+    }
     drawBackdrop(target);
+    this.queueLaunch(target, target.width, target.height, index, t);
+  }
+
+  private queueLaunch(target: DrawTarget, width: number, height: number, index: number, t: number): void {
     const item = MENU_ITEMS[index];
     const art = coverTex(item.id);
     if (!art) return;
-    const { viewProjection } = cameraMatrices(camera, target.width / target.height);
+    const { viewProjection } = cameraMatrices(camera, width / height);
 
     const p = smoothstep(Math.min(1, t / LAUNCH_FLIP)); // 0→1 over the flip, then held at 1
     const angle = Math.PI * p; // flip about Y (left-to-right from the front)
@@ -266,7 +332,7 @@ export class CoverFlowScene {
 
     // Past 90° the back faces us: show the title instead of the art.
     const tex = Math.abs(angle) > Math.PI / 2 ? titleTexture(item.title) : art;
-    rasterize(target, CARD_MESH, coverMaterial, {
+    drawGeometry(target, CARD_MESH, coverMaterial, {
       mvp,
       model,
       tex,
@@ -274,7 +340,7 @@ export class CoverFlowScene {
       lightDir: LIGHT,
       ambient: 0.85, // keep both faces readable through the flip (less orientation shading)
       brightness: 1,
-      frameWidth: bezelWidth(mvp, target.width, target.height),
+      frameWidth: bezelWidth(mvp, width, height),
       frameColor: FRAME,
       pad: PAD,
       fade: 0,

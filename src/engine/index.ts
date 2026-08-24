@@ -78,6 +78,8 @@ export {
 } from './buffer-geometry.ts';
 export {
   Group,
+  DrawList,
+  drawGeometry,
   InstancedMesh,
   MaterialInstance,
   MeshObject,
@@ -86,6 +88,7 @@ export {
   Scene,
   SceneRenderer,
   type RenderContext,
+  type DrawTarget,
   type SceneDraw,
   type UniformSource,
   type WorldUniforms,
@@ -100,7 +103,10 @@ export {
   onRenderBackendChange,
   renderBackendInfo,
   renderBackendPreference,
+  resetWebGpuFrames,
+  resetWebGpuStream,
   setRenderBackendPreference,
+  tryRenderDrawListWithWebGpu,
   tryRenderSceneWithWebGpu,
   type RenderBackendInfo,
   type RenderBackendPreference,

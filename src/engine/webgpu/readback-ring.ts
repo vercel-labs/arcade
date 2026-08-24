@@ -22,21 +22,23 @@ export class TextureReadbackRing {
   readonly #bytesPerRow: number;
   readonly #slots: Slot[];
   #sequence = 0;
+  #discardThrough = 0;
 
   constructor(
     private readonly device: GPUDevice,
     readonly width: number,
     readonly height: number,
+    private readonly bytesPerPixel = 4,
     depth = 2,
   ) {
-    this.#bytesPerRow = align(width * 4, 256);
+    this.#bytesPerRow = align(width * bytesPerPixel, 256);
     this.#slots = Array.from({ length: depth }, (_, index) => ({
       buffer: device.createBuffer({
         label: `arcade-webgpu-readback-${index}`,
         size: this.#bytesPerRow * height,
         usage: MAP_READ | COPY_DST,
       }),
-      pixels: new Uint8Array(width * height * 4),
+      pixels: new Uint8Array(width * height * bytesPerPixel),
       state: 'free',
       sequence: 0,
       submittedAt: 0,
@@ -58,6 +60,13 @@ export class TextureReadbackRing {
     return () => {
       slot.mapping = this.#map(slot)
         .then(() => {
+          if (slot.sequence <= this.#discardThrough) {
+            slot.state = 'free';
+            // A static scene may have no other reason to render again. Wake it once so it can
+            // submit a fresh post-invalidation frame now that a staging slot is available.
+            onReady();
+            return;
+          }
           slot.completedAt = performance.now();
           slot.state = 'ready';
           onReady();
@@ -82,6 +91,14 @@ export class TextureReadbackRing {
     return frame;
   }
 
+  /** Drop completed frames and mark in-flight captures as obsolete without reallocating buffers. */
+  discardPending(): void {
+    this.#discardThrough = this.#sequence;
+    for (const slot of this.#slots) {
+      if (slot.state === 'ready') slot.state = 'free';
+    }
+  }
+
   async dispose(): Promise<void> {
     await Promise.all(this.#slots.map((slot) => slot.mapping));
     for (const slot of this.#slots) slot.buffer.destroy();
@@ -91,7 +108,7 @@ export class TextureReadbackRing {
     await slot.buffer.mapAsync(MAP_MODE_READ);
     try {
       const padded = new Uint8Array(slot.buffer.getMappedRange());
-      const tightRow = this.width * 4;
+      const tightRow = this.width * this.bytesPerPixel;
       for (let y = 0; y < this.height; y++) {
         slot.pixels.set(padded.subarray(y * this.#bytesPerRow, y * this.#bytesPerRow + tightRow), y * tightRow);
       }

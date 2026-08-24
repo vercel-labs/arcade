@@ -1,5 +1,5 @@
 import { mat4Multiply, mat4RotX, mat4RotY, mat4Scale, mat4Translate, type RenderTarget } from '../engine/index.ts';
-import { PLACE_Y, type PrismIntro, PrismScene, ROT_SPEED, TILT } from './prism.ts';
+import { PLACE_Y, type PrismGpuRenderer, type PrismIntro, PrismScene, ROT_SPEED, TILT } from './prism.ts';
 
 // The boot splash: a small white Vercel triangle that grows, extrudes into the
 // glass pyramid, spins clean, then is struck by the beam — dispersion + rainbow
@@ -36,7 +36,11 @@ function smooth(x: number): number {
 }
 
 export class SplashScene {
-  private prism = new PrismScene();
+  private prism: PrismScene;
+
+  constructor(gpu?: PrismGpuRenderer) {
+    this.prism = new PrismScene(gpu);
+  }
 
   renderScene(target: RenderTarget, t: number): void {
     this.prism.renderScene(target, t, this.buildIntro(t));

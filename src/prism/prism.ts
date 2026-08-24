@@ -3,6 +3,8 @@ import {
   type Camera,
   cross3,
   dot3,
+  DrawList,
+  drawGeometry,
   glassMaterial,
   hslToRgb,
   type Mat4,
@@ -13,8 +15,11 @@ import {
   mat4RotY,
   mat4Translate,
   normalize3,
+  quad,
   rasterize,
+  type Material,
   type RenderTarget,
+  type SceneDraw,
   sub3,
   TETRA_FACES,
   tetrahedron,
@@ -32,6 +37,109 @@ const camera: Camera = {
 };
 
 const mesh = tetrahedron();
+const lightFieldMesh = quad(1);
+
+interface PrismLightFieldUniforms {
+  resolution: P2;
+  origin: P2;
+  rainbowDir: P2;
+  rainbowLength: number;
+  rainbowStart: number;
+  rainbowEnd: number;
+  rainbowIntensity: number;
+  beamStart: P2;
+  beamEnd: P2;
+  beamIntensity: number;
+}
+
+const prismLightFieldMaterial: Material<PrismLightFieldUniforms> = {
+  cull: 'none',
+  blend: 'add',
+  vertex(_uniforms, vin) {
+    return { clip: { x: vin.position.x, y: vin.position.y, z: 0.999, w: 1 }, world: vin.position, normal: vin.normal, uv: vin.uv, color: vin.color, bary: { x: 0, y: 0, z: 0 } };
+  },
+  fragment() {
+    return { r: 0, g: 0, b: 0, a: 0 };
+  },
+  webgpu: {
+    wgsl: /* wgsl */ `
+struct Uniforms {
+  resolutionOrigin: vec4f,
+  rainbowDirLengthStart: vec4f,
+  rainbowEndIntensity: vec4f,
+  beamStartEnd: vec4f,
+  beamIntensity: vec4f,
+};
+@group(0) @binding(0) var<uniform> u: Uniforms;
+@group(0) @binding(1) var materialTexture: texture_2d<f32>;
+@group(0) @binding(2) var materialSampler: sampler;
+struct VertexIn {
+  @location(0) position: vec3f,
+  @location(1) normal: vec3f,
+  @location(2) uv: vec2f,
+  @location(3) color: vec3f,
+};
+struct VertexOut {
+  @builtin(position) clip: vec4f,
+  @location(0) uv: vec2f,
+};
+@vertex fn vertexMain(input: VertexIn) -> VertexOut {
+  var out: VertexOut;
+  out.clip = vec4f(input.position.xy, 0.999, 1.0);
+  out.uv = input.uv;
+  return out;
+}
+fn hueRgb(hue: f32) -> vec3f {
+  let h = fract(hue / 360.0) * 6.0;
+  let x = 1.0 - abs(fract(h * 0.5) * 2.0 - 1.0);
+  if (h < 1.0) { return vec3f(1.0, x, 0.0); }
+  if (h < 2.0) { return vec3f(x, 1.0, 0.0); }
+  if (h < 3.0) { return vec3f(0.0, 1.0, x); }
+  if (h < 4.0) { return vec3f(0.0, x, 1.0); }
+  if (h < 5.0) { return vec3f(x, 0.0, 1.0); }
+  return vec3f(1.0, 0.0, x);
+}
+@fragment fn fragmentMain(input: VertexOut) -> @location(0) vec4f {
+  let p = input.uv * u.resolutionOrigin.xy;
+  let origin = u.resolutionOrigin.zw;
+  let dir = normalize(u.rainbowDirLengthStart.xy);
+  let perp = vec2f(-dir.y, dir.x);
+  let rel = p - origin;
+  let along = dot(rel, dir);
+  let length = max(0.001, u.rainbowDirLengthStart.z);
+  let halfWidth = mix(u.rainbowDirLengthStart.w, u.rainbowEndIntensity.x, clamp(along / length, 0.0, 1.0));
+  let edge = dot(rel, perp) / max(0.001, halfWidth);
+  var rainbow = vec3f(0.0);
+  if (along >= 0.0 && along <= length && abs(edge) <= 1.0) {
+    let across = (edge + 1.0) * 0.5;
+    let base = 1.0 - across;
+    let eased = base * base * (3.0 - 2.0 * base);
+    let warped = mix(base, eased, 0.5);
+    let coverage = select(max(0.0, (1.0 - abs(edge)) / 0.22), 1.0, abs(edge) < 0.78);
+    rainbow = hueRgb(warped * 250.0) * u.rainbowEndIntensity.y * coverage * (1.0 - 0.12 * along / length);
+  }
+  let beamStart = u.beamStartEnd.xy;
+  let beamVector = u.beamStartEnd.zw - beamStart;
+  let beamLength2 = max(0.001, dot(beamVector, beamVector));
+  let beamT = clamp(dot(p - beamStart, beamVector) / beamLength2, 0.0, 1.0);
+  let beamDistance = distance(p, beamStart + beamVector * beamT);
+  let beam = exp(-(beamDistance * beamDistance) / 1.45) * u.beamIntensity.x * (1.0 - 0.45 * beamT);
+  let color = rainbow + vec3f(beam);
+  if (max(color.r, max(color.g, color.b)) < 0.001) { discard; }
+  return vec4f(color, 1.0);
+}
+`,
+    writeUniforms(out, uniforms) {
+      out.set([
+        uniforms.resolution.x, uniforms.resolution.y, uniforms.origin.x, uniforms.origin.y,
+        uniforms.rainbowDir.x, uniforms.rainbowDir.y, uniforms.rainbowLength, uniforms.rainbowStart,
+        uniforms.rainbowEnd, uniforms.rainbowIntensity, 0, 0,
+        uniforms.beamStart.x, uniforms.beamStart.y, uniforms.beamEnd.x, uniforms.beamEnd.y,
+        uniforms.beamIntensity, 0, 0, 0,
+      ]);
+    },
+  },
+};
 // Exported so the splash intro can build models that converge on the live one.
 export const ROT_SPEED = 0.45;
 export const TILT = -0.28;
@@ -40,6 +148,11 @@ export const PLACE_Y = 0; // prism centered on screen
 interface P2 {
   x: number;
   y: number;
+}
+
+export interface PrismGpuRenderer {
+  enabled(): boolean;
+  render(target: RenderTarget, draws: readonly SceneDraw[], streamKey: object): boolean;
 }
 
 // Drives the splash intro: the prism's look is ramped from a flat white triangle
@@ -59,6 +172,8 @@ function lerp(a: number, b: number, k: number): number {
 }
 
 export class PrismScene {
+  private readonly drawList = new DrawList();
+  constructor(private readonly gpu?: PrismGpuRenderer) {}
   // Draws the prism + beam + rainbow into the (supersampled) render target.
   // `intro` (splash only) ramps the look up from a flat white triangle; omitting
   // it renders the live steady prism.
@@ -156,19 +271,16 @@ export class PrismScene {
 
     // Rainbow grows out of the prism: both its length and brightness ramp with
     // `rainbowF` (1 = the live fan).
-    if (rainbowF > 0.001) {
-      drawRainbow(target, center, angle, W * rainbowF, radius * 0.12, Math.min(H * 0.5, W * Math.tan(spread)), 0.85 * rainbowF);
-    }
+    const rainbowLength = W * rainbowF;
+    const rainbowStart = radius * 0.12;
+    const rainbowEnd = Math.min(H * 0.5, W * Math.tan(spread));
     // Beam slides in from the left: its leading edge advances from the screen
     // edge toward the prism as `beamF` rises, and it brightens with it.
-    if (beamF > 0.001) {
-      const bStart: P2 = { x: 0, y: entry.y - H * 0.08 };
-      const reach = Math.min(1, beamF * 1.4);
-      const bEnd: P2 = { x: bStart.x + (beamEnd.x - bStart.x) * reach, y: bStart.y + (beamEnd.y - bStart.y) * reach };
-      drawBeam(target, bStart, bEnd, 1.2 * Math.min(1, beamF));
-    }
+    const bStart: P2 = { x: 0, y: entry.y - H * 0.08 };
+    const reach = Math.min(1, beamF * 1.4);
+    const bEnd: P2 = { x: bStart.x + (beamEnd.x - bStart.x) * reach, y: bStart.y + (beamEnd.y - bStart.y) * reach };
 
-    rasterize(target, mesh, glassMaterial, {
+    const glassUniforms = {
       mvp,
       model,
       cameraPos: camera.eye,
@@ -181,7 +293,27 @@ export class PrismScene {
       ambient: lerp(0.42, 1, white),
       fresnelPower: 2,
       dispersion: 0.16 * dispF * (1 - white),
-    });
+    };
+    if (this.gpu?.enabled()) {
+      this.drawList.clear();
+      drawGeometry(this.drawList, lightFieldMesh, prismLightFieldMaterial, {
+        resolution: { x: W, y: H },
+        origin: center,
+        rainbowDir: { x: Math.cos(angle), y: Math.sin(angle) },
+        rainbowLength: rainbowF > 0.001 ? rainbowLength : 0,
+        rainbowStart,
+        rainbowEnd,
+        rainbowIntensity: 0.85 * rainbowF,
+        beamStart: bStart,
+        beamEnd: bEnd,
+        beamIntensity: beamF > 0.001 ? 1.2 * Math.min(1, beamF) : 0,
+      });
+      drawGeometry(this.drawList, mesh, glassMaterial, glassUniforms);
+      if (this.gpu.render(target, this.drawList.draws, this)) return;
+    }
+    if (rainbowF > 0.001) drawRainbow(target, center, angle, rainbowLength, rainbowStart, rainbowEnd, 0.85 * rainbowF);
+    if (beamF > 0.001) drawBeam(target, bStart, bEnd, 1.2 * Math.min(1, beamF));
+    rasterize(target, mesh, glassMaterial, glassUniforms);
   }
 }
 

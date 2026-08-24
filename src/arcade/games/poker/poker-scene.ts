@@ -12,6 +12,8 @@
 
 import {
   cameraMatrices,
+  DrawList,
+  type DrawTarget,
   feltMaterial,
   InstancedMesh,
   lambertMaterial,
@@ -32,7 +34,7 @@ import {
   SceneRenderer,
   smoothstep,
   type Texture,
-  tryRenderSceneWithWebGpu,
+  tryRenderDrawListWithWebGpu,
   type Vec3,
   WorldMaterialInstance,
 } from '../../../engine/index.ts';
@@ -319,6 +321,7 @@ export class PokerGameScene {
   private lastAspect = 1.6; // width/height of the last render target — for the bird's-eye fit math
   private readonly authoredScene = new Scene();
   private readonly sceneRenderer = new SceneRenderer();
+  private readonly drawList = new DrawList();
   private readonly chairGeometry = chairMesh();
   private readonly frameObject = new MeshObject(
     frameMesh(),
@@ -1082,7 +1085,20 @@ export class PokerGameScene {
     // Frame (rail/apron/legs) is plain matte; the felt gets the stipple material.
     const idle = this.isIdle();
     const chairCount = idle ? this.seats.length || IDLE_SEATS : this.seats.length;
-    if (idle) {
+    const unifiedGpuFrame = renderBackendPreference() !== 'cpu';
+    const drawTarget: DrawTarget = unifiedGpuFrame ? this.drawList : target;
+    if (unifiedGpuFrame) {
+      this.drawList.clear();
+      target.clear(6, 10, 8);
+      this.queueTable();
+      this.queueChairRing(chairCount);
+      this.drawList.appendScene(target, this.authoredScene, camera, this.sceneRenderer);
+      if (idle) {
+        this.drawIdleFurniture(drawTarget, vp, chairCount);
+        this.idleDeck.step(dt);
+        this.idleDeck.draw(drawTarget, vp);
+      }
+    } else if (idle) {
       // Idle state: a ring of chairs around a centre deck shuffling on a loop. With
       // the setup preview up, the ring follows the chosen player count instead.
       const cacheChanged =
@@ -1091,13 +1107,11 @@ export class PokerGameScene {
         this.idleBase.height !== target.height ||
         this.idleBaseChairCount !== chairCount;
       if (cacheChanged) this.idleBase = new RenderTarget(target.width, target.height);
-      if (cacheChanged || this.dirty || viewportChanged || renderBackendPreference() !== 'cpu') {
+      if (cacheChanged || this.dirty || viewportChanged) {
         this.idleBase!.clear(6, 10, 8);
         this.queueTable();
         this.queueChairRing(chairCount);
-        const gpuFrame = tryRenderSceneWithWebGpu(this.idleBase!, this.authoredScene, camera, this.sceneRenderer);
-        if (!gpuFrame) this.sceneRenderer.render(this.idleBase!, this.authoredScene, camera);
-        else this.idleBase!.depth.fill(Infinity);
+        this.sceneRenderer.render(this.idleBase!, this.authoredScene, camera);
         this.drawIdleFurniture(this.idleBase!, vp, chairCount);
         this.idleBaseChairCount = chairCount;
       }
@@ -1109,9 +1123,7 @@ export class PokerGameScene {
       target.clear(6, 10, 8);
       this.queueTable();
       this.queueChairRing(chairCount);
-      const gpuFrame = tryRenderSceneWithWebGpu(target, this.authoredScene, camera, this.sceneRenderer);
-      if (!gpuFrame) this.sceneRenderer.render(target, this.authoredScene, camera);
-      else target.depth.fill(Infinity);
+      this.sceneRenderer.render(target, this.authoredScene, camera);
     }
 
     const hand = this.hand;
@@ -1120,18 +1132,18 @@ export class PokerGameScene {
         // Between hands: award the pot, gather the felt's cards, then shuffle twice.
         // drawInterlude holds the cards in place during the award before moving them.
         this.advanceInterlude(dt);
-        this.drawInterlude(target, vp);
+        this.drawInterlude(drawTarget, vp);
       } else {
         this.advanceDeals(dt, hand);
         if (this.heroPeekable()) this.heroPeek.step(dt); // settle the hero's peek/lift spring
-        this.drawDeck(target, vp); // the stock stays on the felt all hand
-        this.drawCommunity(target, vp, hand); // board cards that have landed + the one flipping out
+        this.drawDeck(drawTarget, vp); // the stock stays on the felt all hand
+        this.drawCommunity(drawTarget, vp, hand); // board cards that have landed + the one flipping out
         // While the opening deal plays, hole cards fly from the deck to each seat; once
         // they've all landed the hand renders at rest (hero peekable).
-        if (this.dealing) this.drawOpeningFlights(target, vp);
-        else this.drawHoleCards(target, vp, hand);
+        if (this.dealing) this.drawOpeningFlights(drawTarget, vp);
+        else this.drawHoleCards(drawTarget, vp, hand);
         this.advanceMuck(dt);
-        if (this.muck.length) this.drawMuck(target, vp); // folded cards resting in the burn pile
+        if (this.muck.length) this.drawMuck(drawTarget, vp); // folded cards resting in the burn pile
       }
       // Chips (stacks + bets + pot) render in every hand state, including the interlude.
       // Two staged beats: placement (stack→front) finishes, then any pending sweep (front→pot)
@@ -1159,12 +1171,24 @@ export class PokerGameScene {
           this.chipCollect = null;
         }
       }
-      this.drawChips(target, vp, hand);
+      this.drawChips(drawTarget, vp, hand);
+    }
+
+    const cpuDrawCount = this.drawList.draws.length;
+    const wispFallbacks = unifiedGpuFrame && this.wisps.length > 0
+      ? this.queueWispsGpu(target, vp, t, dt)
+      : [];
+    if (unifiedGpuFrame) {
+      const gpuFrame = tryRenderDrawListWithWebGpu(target, this.drawList.draws, this);
+      if (!gpuFrame) {
+        this.drawList.renderCpu(target, cpuDrawCount);
+        for (const fallback of wispFallbacks) fallback();
+      }
     }
 
     // Wisps above each AI seat, pulsing the seat to act (idle when paused/over).
     // Drawn whenever seats carry wisps — a live session or the setup preview.
-    if (this.wisps.length > 0) this.drawWisps(target, vp, t, dt);
+    if (!unifiedGpuFrame && this.wisps.length > 0) this.drawWisps(target, vp, t, dt);
 
     // Tick the played-action beat (seconds); when it lapses, wake playMove's awaiter.
     if (this.beat > 0) {
@@ -1265,7 +1289,7 @@ export class PokerGameScene {
   }
 
   // ── Chips: per-seat carried stacks + this-street bets + the pot pile ────────────
-  private drawChips(target: RenderTarget, vp: Mat4, _hand: HoldemState): void {
+  private drawChips(target: DrawTarget, vp: Mat4, _hand: HoldemState): void {
     const light = TABLE_LIGHT;
     const ambient = TABLE_AMBIENT;
     const tangentOf = (s: number): { x: number; z: number } => {
@@ -1360,7 +1384,7 @@ export class PokerGameScene {
   // its own raw-angle geometry (seatPos/seatAngle assume a live seat list, empty when idle),
   // mirroring drawHoleCards + stackCenter. Stack sizes vary and run through the same
   // playerColumns / drawChipStack path as a real game, so the piles are naturally non-uniform.
-  private drawIdleFurniture(target: RenderTarget, vp: Mat4, n: number): void {
+  private drawIdleFurniture(target: DrawTarget, vp: Mat4, n: number): void {
     for (let k = 0; k < n; k++) {
       const a = (k / n) * Math.PI * 2;
       const cx = Math.sin(a) * HOLE_R;
@@ -1392,7 +1416,7 @@ export class PokerGameScene {
   // occluded interior of the lower backs instead of shading them — the stock is a tall
   // stack of near-coincident quads, almost all overdraw. Opaque + depth-tested, so the
   // draw order doesn't change the final image (nearest wins regardless).
-  private drawDeck(target: RenderTarget, vp: Mat4): void {
+  private drawDeck(target: DrawTarget, vp: Mat4): void {
     const rem = this.deckRemaining();
     for (let i = rem - 1; i >= 0; i--) {
       const M = mat4Multiply(mat4Translate(DECK_POS.x, i * DECK_THICK + CARD_LIFT, DECK_POS.z), flatDown());
@@ -1408,7 +1432,7 @@ export class PokerGameScene {
 
   // Community cards that have landed (face-up) plus the one currently flying out of the
   // deck and flipping face-up as it goes.
-  private drawCommunity(target: RenderTarget, vp: Mat4, hand: HoldemState): void {
+  private drawCommunity(target: DrawTarget, vp: Mat4, hand: HoldemState): void {
     const board = hand.boardCards();
     for (let i = 0; i < this.boardShown && i < board.length; i++) {
       const M = mat4Multiply(mat4Translate(this.boardSlotX(i), CARD_LIFT, BOARD_Z), flatUp());
@@ -1429,7 +1453,7 @@ export class PokerGameScene {
 
   // The opening hole-card deal: cards already at rest at their seats (face-down) plus
   // the one currently arcing out of the deck.
-  private drawOpeningFlights(target: RenderTarget, vp: Mat4): void {
+  private drawOpeningFlights(target: DrawTarget, vp: Mat4): void {
     for (let i = 0; i < this.dealDone; i++) {
       const d = this.deals[i];
       const M = mat4Multiply(mat4Translate(d.toX, CARD_LIFT, d.toZ), mat4Multiply(mat4RotY(d.yaw), flatDown()));
@@ -1446,7 +1470,7 @@ export class PokerGameScene {
     }
   }
 
-  private drawHoleCards(target: RenderTarget, vp: Mat4, hand: HoldemState): void {
+  private drawHoleCards(target: DrawTarget, vp: Mat4, hand: HoldemState): void {
     const reveal = hand.showdownSeats(); // small array (≤ seats) — membership via includes, no per-frame Set
     // The human hero peeks its own cards (shared HandPeek) during play; at showdown they
     // flip up flat like everyone else's. An AI seat 0 stays hidden until showdown.
@@ -1506,7 +1530,7 @@ export class PokerGameScene {
 
   // Draw the burn pile: each card slides (with a small hop) from its seat pose to its
   // jittered resting spot, face-down the whole way.
-  private drawMuck(target: RenderTarget, vp: Mat4): void {
+  private drawMuck(target: DrawTarget, vp: Mat4): void {
     for (const m of this.muck) {
       const p = smoothstep(m.t);
       const x = m.fromX + (m.toX - m.fromX) * p;
@@ -1678,7 +1702,7 @@ export class PokerGameScene {
 
   // Draw the interlude: the gather sweep (cards flying into a growing deck), then the
   // bounded shuffle at the deck position.
-  private drawInterlude(target: RenderTarget, vp: Mat4): void {
+  private drawInterlude(target: DrawTarget, vp: Mat4): void {
     if (this.gather !== null) {
       this.drawDeck(target, vp); // the leftover stock is the base the cards land on
       const baseTopY = this.deckTopY();
@@ -1720,6 +1744,33 @@ export class PokerGameScene {
       wisp.setSpeaking(turn === s);
       wisp.renderWorld(target, vp, right, up, { x: c.x, y: WISP_FLOAT, z: c.z }, W, H, t, dt, WISP_SCALE);
     }
+  }
+
+  private queueWispsGpu(target: RenderTarget, vp: Mat4, t: number, dt: number): (() => void)[] {
+    const hand = this.hand;
+    const turn = this.paused || !hand ? -1 : hand.toActSeat();
+    const { right, up } = this.cam.basis();
+    const fallbacks: (() => void)[] = [];
+    for (let s = 0; s < this.wisps.length; s++) {
+      const wisp = this.wisps[s];
+      if (!wisp) continue;
+      const c = this.seatPos(s, TABLE_RADIUS + 0.4);
+      wisp.setSpeaking(turn === s);
+      fallbacks.push(wisp.queueWorldGpu(
+        this.drawList,
+        target,
+        vp,
+        right,
+        up,
+        { x: c.x, y: WISP_FLOAT, z: c.z },
+        target.width,
+        target.height,
+        t,
+        dt,
+        WISP_SCALE,
+      ));
+    }
+    return fallbacks;
   }
 
   // ── Wisp picking (click an AI seat's wisp to swap its model) ───────────────────

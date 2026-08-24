@@ -1,10 +1,12 @@
 import {
   cameraMatrices,
+  DrawList,
   mulberry32,
   type RenderTarget,
   type RGB,
   STYLE_BOLD,
   type Surface,
+  tryRenderDrawListWithWebGpu,
 } from '../../engine/index.ts';
 import { OrbitCamera } from '../orbit.ts';
 import { includeEarlyAccessModels } from '../match/models.ts';
@@ -46,6 +48,7 @@ export class AudioScene {
   private wisp: Wisp;
   private wispCreator = '';
   private lastT = -1;
+  private readonly drawList = new DrawList();
 
   private active = false;
   private session: RealtimeSession | null = null;
@@ -337,7 +340,9 @@ export class AudioScene {
     const camera = this.cam.toCamera({ fovy: FOVY, near: 0.05, far: 200 });
     const { viewProjection: vp } = cameraMatrices(camera, W / H);
     const { right, up } = this.cam.basis();
-    this.wisp.renderWorld(target, vp, right, up, { x: 0, y: 0, z: 0 }, W, H, t, dt);
+    this.drawList.clear();
+    const cpuFallback = this.wisp.queueWorldGpu(this.drawList, target, vp, right, up, { x: 0, y: 0, z: 0 }, W, H, t, dt);
+    if (!tryRenderDrawListWithWebGpu(target, this.drawList.draws, this)) cpuFallback();
   }
 
   // Conversation overlay, drawn over the composited frame (like the menu shelf).

@@ -161,6 +161,101 @@ export interface SceneDraw {
   uniforms: unknown;
 }
 
+/** A backend-neutral frame-local draw list for scenes that mix retained and immediate geometry. */
+export class DrawList {
+  readonly draws: SceneDraw[] = [];
+  private readonly mutableSnapshots: MutableMeshSnapshot[] = [];
+  private mutableSnapshotCursor = 0;
+
+  clear(): void {
+    this.draws.length = 0;
+    this.mutableSnapshotCursor = 0;
+  }
+
+  draw<U>(geometry: Mesh, material: Material<U>, uniforms: U): void {
+    this.draws.push({ geometry: this.snapshotGeometry(geometry), material: material as Material<unknown>, uniforms });
+  }
+
+  appendScene(target: RenderTarget, scene: Scene, camera: Camera, renderer: SceneRenderer): void {
+    renderer.forEachDraw(target, scene, camera, (draw) => {
+      this.draws.push({ ...draw, geometry: this.snapshotGeometry(draw.geometry), uniforms: snapshotUniforms(draw.uniforms) });
+    });
+  }
+
+  renderCpu(target: RenderTarget, count = this.draws.length): void {
+    for (let index = 0; index < count; index++) {
+      const { geometry, material, uniforms } = this.draws[index]!;
+      rasterize(target, geometry, material, uniforms);
+    }
+  }
+
+  private snapshotGeometry(geometry: Mesh): Mesh {
+    if (geometry.version === undefined) return geometry;
+    const slot = this.mutableSnapshotCursor++;
+    const snapshot = this.mutableSnapshots[slot] ?? createMutableSnapshot();
+    this.mutableSnapshots[slot] = snapshot;
+    if (snapshot.source === geometry && snapshot.sourceVersion === geometry.version) return snapshot;
+    for (let index = 0; index < geometry.vertices.length; index++) {
+      const source = geometry.vertices[index]!;
+      const target = snapshot.vertices[index] ?? {
+        position: { x: 0, y: 0, z: 0 },
+        normal: { x: 0, y: 0, z: 0 },
+        uv: [0, 0],
+        color: { x: 0, y: 0, z: 0 },
+      };
+      target.position.x = source.position.x;
+      target.position.y = source.position.y;
+      target.position.z = source.position.z;
+      target.normal.x = source.normal.x;
+      target.normal.y = source.normal.y;
+      target.normal.z = source.normal.z;
+      target.uv[0] = source.uv[0];
+      target.uv[1] = source.uv[1];
+      target.color.x = source.color.x;
+      target.color.y = source.color.y;
+      target.color.z = source.color.z;
+      snapshot.vertices[index] = target;
+    }
+    snapshot.vertices.length = geometry.vertices.length;
+    for (let index = 0; index < geometry.indices.length; index++) snapshot.indices[index] = geometry.indices[index]!;
+    snapshot.indices.length = geometry.indices.length;
+    snapshot.source = geometry;
+    snapshot.sourceVersion = geometry.version;
+    snapshot.version++;
+    return snapshot;
+  }
+}
+
+interface MutableMeshSnapshot extends Mesh {
+  version: number;
+  source?: Mesh;
+  sourceVersion?: number;
+}
+
+function createMutableSnapshot(): MutableMeshSnapshot {
+  return { vertices: [], indices: [], version: 0 };
+}
+
+export type DrawTarget = RenderTarget | DrawList;
+
+/** Submit one immediate draw to either the CPU framebuffer or a frame-local backend list. */
+export function drawGeometry<U>(target: DrawTarget, geometry: Mesh, material: Material<U>, uniforms: U): void {
+  if (target instanceof DrawList) target.draw(geometry, material, uniforms);
+  else rasterize(target, geometry, material, uniforms);
+}
+
+function snapshotUniforms(value: unknown): unknown {
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map(snapshotUniforms);
+  if (ArrayBuffer.isView(value)) return value;
+  const record = value as Record<string, unknown>;
+  // Textures are immutable frame resources and must retain identity for the GPU texture cache.
+  if (typeof record.width === 'number' && typeof record.height === 'number' && record.data instanceof Uint8Array) return value;
+  const copy: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(record)) copy[key] = snapshotUniforms(entry);
+  return copy;
+}
+
 export class MeshObject<U> extends RenderableObject {
   geometry: Mesh;
   material: MaterialInstance<U>;

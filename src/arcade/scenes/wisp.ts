@@ -11,8 +11,10 @@ import {
   analyzeLogo,
   bakeMarkAlpha,
   decodePng,
+  type DrawList,
   FONT,
   type Mat4,
+  type Material,
   mat4MulVec4,
   hash2,
   mulberry32,
@@ -31,6 +33,15 @@ export const WISP_SIZE = 0.85;
 
 const VY = 0.62; // vertical compression: 2 stacked pixels/char row → keep orbs round
 const WISP_CAP = 1.15; // flame stays brand-hued (capped below white)
+const bakedWispTextureCache = new WeakMap<Texture, Texture>();
+
+function bakedWispTexture(texture: Texture): Texture {
+  const cached = bakedWispTextureCache.get(texture);
+  if (cached) return cached;
+  const baked = bakeMarkAlpha(texture);
+  bakedWispTextureCache.set(texture, baked);
+  return baked;
+}
 const EMBERS_PER = 24; // spark pool size; how many are alight scales with energy
 const EMBER_RATE = 9; // respawn attempts/sec at full energy
 // Vertical hover drift: the whole orb (flame, mark, embers) bobs on a slow,
@@ -66,6 +77,146 @@ interface Frame {
 type Project = (x: number, y: number, z: number) => { x: number; y: number };
 
 const MARK_TINT: Vec3 = { x: 0, y: 0, z: 0 }; // reused scratch (single-threaded)
+const WISP_FIELD_MESH = quad(1);
+
+interface WispFieldUniforms {
+  center: [number, number, number, number];
+  radiusTime: [number, number, number, number];
+  tintGlow: [number, number, number, number];
+  shape: [number, number, number, number];
+  markTint: [number, number, number, number];
+  logo: Texture;
+}
+
+const wispFieldMaterial: Material<WispFieldUniforms> = {
+  cull: 'none',
+  blend: 'add',
+  webgpu: {
+    wgsl: /* wgsl */ `
+struct VertexIn {
+  @location(0) position: vec3f,
+  @location(1) normal: vec3f,
+  @location(2) uv: vec2f,
+  @location(3) color: vec3f,
+};
+struct VertexOut {
+  @builtin(position) clip: vec4f,
+  @location(0) field: vec2f,
+};
+struct Uniforms {
+  center: vec4f,
+  radiusTime: vec4f,
+  tintGlow: vec4f,
+  shape: vec4f,
+  markTint: vec4f,
+};
+@group(0) @binding(0) var<uniform> u: Uniforms;
+@group(0) @binding(1) var logo: texture_2d<f32>;
+@group(0) @binding(2) var logoSampler: sampler;
+
+fn hash2(cell: vec2i) -> f32 {
+  var h = (bitcast<u32>(cell.x) * 0x1f123bb5u) ^ (bitcast<u32>(cell.y) * 0x5f356495u);
+  h = (h ^ (h >> 15u)) * 0x2c1b3c6du;
+  h = h ^ (h >> 12u);
+  return f32(h) / 4294967296.0;
+}
+fn noise(p: vec2f) -> f32 {
+  let cell = vec2i(floor(p));
+  let f = fract(p);
+  let s = f * f * (vec2f(3.0) - 2.0 * f);
+  let a = hash2(cell);
+  let b = hash2(cell + vec2i(1, 0));
+  let c = hash2(cell + vec2i(0, 1));
+  let d = hash2(cell + vec2i(1, 1));
+  return mix(mix(a, b, s.x), mix(c, d, s.x), s.y);
+}
+fn fbm(p: vec2f) -> f32 {
+  return noise(p) * 0.6 + noise(p * 2.1 + vec2f(5.2, 1.3)) * 0.3 + noise(p * 4.3 + vec2f(9.1, 0.0)) * 0.15;
+}
+
+@vertex fn vertexMain(input: VertexIn) -> VertexOut {
+  let field = vec2f(input.position.x * 2.2, mix(-1.7, 3.7, input.position.y * 0.5 + 0.5));
+  var out: VertexOut;
+  out.clip = vec4f(u.center.xy + field * u.radiusTime.xy, u.center.z, 1.0);
+  out.field = field;
+  return out;
+}
+
+@fragment fn fragmentMain(input: VertexOut) -> @location(0) vec4f {
+  let p = input.field;
+  let time = u.radiusTime.z;
+  let phase = u.radiusTime.w;
+  let energy = u.shape.x;
+  let emphasis = u.shape.y;
+  let topHeight = 1.7 + 1.6 * min(1.2, energy);
+  let bodyWidth = 1.45 + 0.5 * emphasis;
+  var climb = 0.0;
+  var halfWidth: f32;
+  var vertical: f32;
+  if (p.y >= 0.0) {
+    climb = p.y / topHeight;
+    halfWidth = bodyWidth * pow(max(0.0, 1.0 - climb), 0.82 + 0.18 * sin(phase * 2.7));
+    vertical = pow(max(0.0, 1.0 - climb), 1.15);
+  } else {
+    let down = -p.y / 1.7;
+    halfWidth = bodyWidth * sqrt(max(0.0, 1.0 - down * down));
+    vertical = pow(max(0.0, 1.0 - down), 0.7);
+  }
+  let sway = (sin(climb * 3.0 + time * 2.6 + phase) * 0.6 + sin(climb * 6.0 - time * 1.8 + phase * 2.1) * 0.4) * 0.5 * climb;
+  let weave = sin(climb * 7.0 + time * 3.0 + phase * 4.0) * 0.3 * climb;
+  let du = (p.x - sway) / max(0.001, halfWidth) - weave;
+  var flame = 0.0;
+  if (abs(du) <= 1.0 && climb <= 1.0 && p.y >= -1.7) {
+    var tip = 1.0;
+    if (climb > 0.0) {
+      let lick = fbm(vec2f(du * 2.6 + phase * 6.0 + time * 1.3, phase * 2.0));
+      let localTop = 0.64 + 0.42 * lick;
+      tip = 1.0 - smoothstep(localTop - 0.18, localTop + 0.04, climb);
+    }
+    let n = fbm(vec2f(du * 2.0 + phase * 3.0 + time * 0.25, climb * 3.0 - time * 2.0 + phase));
+    flame = vertical * (1.0 - du * du) * (0.3 + 0.85 * n) * tip * (0.9 + 0.12 * sin(time * 5.0 + phase)) * u.tintGlow.w;
+  }
+
+  var ember = 0.0;
+  for (var i = 0; i < 12; i++) {
+    let fi = f32(i);
+    let cycle = fract(time * (0.11 + hash2(vec2i(i, 7)) * 0.12) + hash2(vec2i(i, 19)) + phase);
+    let ex = (hash2(vec2i(i, 31)) - 0.5) * (0.5 + cycle) + sin(time * 2.0 + fi) * 0.08;
+    let ey = cycle * 3.5 - 0.2;
+    let delta = (p - vec2f(ex, ey)) / vec2f(0.08, 0.14);
+    ember += exp(-dot(delta, delta) * 2.0) * (1.0 - cycle) * u.tintGlow.w;
+  }
+
+  let markUv = vec2f((p.x + 1.0) * 0.5, (1.0 - p.y) * 0.5);
+  var mark = 0.0;
+  if (all(markUv >= vec2f(0.0)) && all(markUv <= vec2f(1.0))) {
+    let dimensions = vec2f(textureDimensions(logo));
+    let texel = vec2i(clamp(markUv * dimensions, vec2f(0.0), dimensions - vec2f(1.0)));
+    mark = textureLoad(logo, texel, 0).a * u.shape.z * u.shape.w;
+  }
+  let flameStrength = (min(1.15, flame * 1.2) + ember) * 0.68;
+  if (flameStrength + mark <= 0.003) { discard; }
+  let color = (u.tintGlow.xyz / 255.0) * flameStrength + (u.markTint.xyz / 255.0) * mark;
+  let alpha = min(1.0, max(flameStrength, mark));
+  return vec4f(color / max(alpha, 0.001), alpha);
+}
+`,
+    writeUniforms(out, uniforms) {
+      out.set(uniforms.center, 0);
+      out.set(uniforms.radiusTime, 4);
+      out.set(uniforms.tintGlow, 8);
+      out.set(uniforms.shape, 12);
+      out.set(uniforms.markTint, 16);
+    },
+    texture: (uniforms) => uniforms.logo,
+  },
+  vertex() {
+    throw new Error('wispFieldMaterial is WebGPU-only');
+  },
+  fragment() {
+    return null;
+  },
+};
 
 export class Wisp {
   readonly tex: Texture;
@@ -81,7 +232,7 @@ export class Wisp {
     // Bake the mark mask into the texture's alpha once, up front: the material
     // then just tints by coverage (no per-frame, per-pixel bg comparison), and
     // multi-color marks keep every region regardless of the brand tint.
-    this.tex = bakeMarkAlpha(opts.tex);
+    this.tex = bakedWispTexture(opts.tex);
     this.tint = opts.tint;
     this.phase = opts.phase;
     this.rng = opts.rng;
@@ -117,6 +268,36 @@ export class Wisp {
   // perspective. `scale` shrinks/grows it relative to the default WISP_SIZE.
   renderWorld(target: RenderTarget, vp: Mat4, right: Vec3, up: Vec3, P: Vec3, W: number, H: number, t: number, dt: number, scale = 1): void {
     const f = this.frame(t, dt);
+    this.renderWorldFrame(target, vp, right, up, P, W, H, t, dt, scale, f);
+  }
+
+  /** Queue the complete flame, logo, and ember field for one WebGPU frame. Returns CPU fallback. */
+  queueWorldGpu(draws: DrawList, fallbackTarget: RenderTarget, vp: Mat4, right: Vec3, up: Vec3, P: Vec3, W: number, H: number, t: number, dt: number, scale = 1): () => void {
+    const f = this.frame(t, dt);
+    const size = WISP_SIZE * scale;
+    const bob = (Math.sin(t * 0.9 + this.phase) * 0.6 + Math.sin(t * 1.53 + this.phase * 2.1) * 0.4) * size * BOB_AMP;
+    const Pb: Vec3 = { x: P.x, y: P.y + bob, z: P.z };
+    const centerClip = mat4MulVec4(vp, { x: Pb.x, y: Pb.y, z: Pb.z, w: 1 });
+    const edgeClip = mat4MulVec4(vp, { x: Pb.x + up.x * size, y: Pb.y + up.y * size, z: Pb.z + up.z * size, w: 1 });
+    const cw = centerClip.w || 1e-4;
+    const ew = edgeClip.w || 1e-4;
+    const cx = centerClip.x / cw;
+    const cy = centerClip.y / cw;
+    const radiusY = Math.hypot(edgeClip.x / ew - cx, edgeClip.y / ew - cy);
+    const radiusX = radiusY * (H / W);
+    whiten(this.tint, 0.65 * f.accent, MARK_TINT);
+    draws.draw(WISP_FIELD_MESH, wispFieldMaterial, {
+      center: [cx, cy, centerClip.z / cw, 1],
+      radiusTime: [radiusX, radiusY, t, this.phase],
+      tintGlow: [this.tint.x, this.tint.y, this.tint.z, f.glow],
+      shape: [f.flameEnergy, f.accent, f.markGain, f.markFlicker],
+      markTint: [MARK_TINT.x, MARK_TINT.y, MARK_TINT.z, 0],
+      logo: this.tex,
+    });
+    return () => this.renderWorldFrame(fallbackTarget, vp, right, up, P, W, H, t, dt, scale, f);
+  }
+
+  private renderWorldFrame(target: RenderTarget, vp: Mat4, right: Vec3, up: Vec3, P: Vec3, W: number, H: number, t: number, dt: number, scale: number, f: Frame): void {
     const size = WISP_SIZE * scale;
     // Slow, irregular vertical bob (two detuned sines, ~7s and ~4s, desynced by
     // phase) applied to the orb's anchor so flame, mark, and embers all hover as
@@ -175,8 +356,15 @@ export class Wisp {
 
 // Load a wisp from a logo PNG with a given brand tint, desync phase, and shared rng.
 export function loadWisp(pngPath: string, tint: Vec3, phase: number, rng: () => number): Wisp {
-  return new Wisp({ tex: decodePng(readFileSync(pngPath)), tint, phase, rng });
+  let texture = wispSourceTextureCache.get(pngPath);
+  if (!texture) {
+    texture = decodePng(readFileSync(pngPath));
+    wispSourceTextureCache.set(pngPath, texture);
+  }
+  return new Wisp({ tex: texture, tint, phase, rng });
 }
+
+const wispSourceTextureCache = new Map<string, Texture>();
 
 // Missing-logo fallback, matching Thinking Machines' neutral grey (#ACA4A5).
 // The mark is generated in memory from the creator's first letter, so a newly

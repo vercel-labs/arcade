@@ -1,9 +1,9 @@
 # Arcade — agent guide
 
 A terminal-rendered ASCII arcade: 3D games and an animated prism screen drawn with
-truecolor half-blocks in the terminal. The canonical renderer is pure TypeScript and CPU-only;
-opaque 3D layers also have an optional local WebGPU/Dawn backend with automatic CPU fallback. Run with
-`tsx`/Node and plain `pnpm`.
+truecolor half-blocks in the terminal. The canonical renderer is pure TypeScript; framebuffer
+visuals also have an optional local WebGPU/Dawn backend with automatic CPU fallback. TUI layout,
+terminal-cell compositing, and ANSI output stay on the CPU. Run with `tsx`/Node and plain `pnpm`.
 
 ## Seeing your own output (read this before judging visuals)
 
@@ -58,7 +58,7 @@ game). Inside a library, modules import each other directly, not through the bar
 - `pnpm type-check` — `tsc --noEmit`
 - `pnpm test` — unit tests via `node:test` under `tsx` (auto-discovers `src/**/*.test.ts`; no extra deps)
 - `pnpm bench:gpu [cols] [rows] [frames]` — compare Catan CPU and GPU rendering, including readback
-- `pnpm smoke:gpu [cols] [rows]` — validate GPU bases and CPU overlays across every game
+- `pnpm smoke:gpu [cols] [rows]` — validate real GPU readback across every framebuffer visual mode
 - `pnpm catan:check capture` then `pnpm catan:check` — fingerprint 24 Catan views before a refactor
   and compare after, to prove a move of mesh or scene code doesn't change what's drawn. A pass means
   the `.ppm` snapshots are byte-identical too. The baseline is local (gitignored), not a committed

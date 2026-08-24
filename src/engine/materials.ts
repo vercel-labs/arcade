@@ -2,7 +2,7 @@ import { hslToRgb } from './color.ts';
 import { dot3, mat4MulDir, mat4MulVec4, normalize3, sub3, type Mat4, type Vec3 } from './math.ts';
 import type { Material } from './shader.ts';
 import { sampleTexture, type Texture } from './texture.ts';
-import { feltWebGpuMaterial, lambertWebGpuMaterial, pieceWebGpuMaterial, waterWebGpuMaterial } from './webgpu/materials.ts';
+import { coverWebGpuMaterial, feltWebGpuMaterial, glassWebGpuMaterial, lambertWebGpuMaterial, pieceWebGpuMaterial, waterWebGpuMaterial, wispWebGpuMaterial } from './webgpu/materials.ts';
 
 export interface LambertUniforms {
   mvp: Mat4;
@@ -409,6 +409,7 @@ export interface GlassUniforms {
 export const glassMaterial: Material<GlassUniforms> = {
   cull: 'none',
   blend: 'add',
+  webgpu: glassWebGpuMaterial,
   vertex(u, vin) {
     const clip = mat4MulVec4(u.mvp, { x: vin.position.x, y: vin.position.y, z: vin.position.z, w: 1 });
     const w = mat4MulVec4(u.model, { x: vin.position.x, y: vin.position.y, z: vin.position.z, w: 1 });
@@ -464,6 +465,7 @@ const WISP_RGBA = { r: 0, g: 0, b: 0, a: 0 };
 export const wispMaterial: Material<WispUniforms> = {
   cull: 'none',
   blend: 'add',
+  webgpu: wispWebGpuMaterial,
   vertex(u, vin) {
     const clip = mat4MulVec4(u.mvp, { x: vin.position.x, y: vin.position.y, z: vin.position.z, w: 1 });
     return { clip, world: vin.position, normal: vin.normal, uv: vin.uv, color: vin.color, bary: { x: 0, y: 0, z: 0 } };
@@ -507,6 +509,7 @@ export interface CoverUniforms {
 const COVER_RGBA = { r: 0, g: 0, b: 0, a: 1 };
 export const coverMaterial: Material<CoverUniforms> = {
   cull: 'none', // the reflection mirrors winding; depth handles occlusion regardless
+  webgpu: coverWebGpuMaterial,
   vertex(u, vin) {
     const clip = mat4MulVec4(u.mvp, { x: vin.position.x, y: vin.position.y, z: vin.position.z, w: 1 });
     const w = mat4MulVec4(u.model, { x: vin.position.x, y: vin.position.y, z: vin.position.z, w: 1 });

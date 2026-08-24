@@ -17,6 +17,8 @@
 import {
   type Camera,
   cameraMatrices,
+  DrawList,
+  type DrawTarget,
   feltMaterial,
   InstancedMesh,
   lambertMaterial,
@@ -33,7 +35,7 @@ import {
   SceneRenderer,
   smoothstep,
   type Texture,
-  tryRenderSceneWithWebGpu,
+  tryRenderDrawListWithWebGpu,
   WorldMaterialInstance,
 } from '../../../engine/index.ts';
 import type { OrbitState } from '../../../engine/index.ts';
@@ -86,6 +88,7 @@ export class CardsScene {
   private back: Texture;
   private readonly authoredScene = new Scene();
   private readonly sceneRenderer = new SceneRenderer();
+  private readonly drawList = new DrawList();
   private readonly chairGeometry = chairMesh();
   private readonly frameObject = new MeshObject(
     frameMesh(),
@@ -282,7 +285,7 @@ export class CardsScene {
 
   // Draw a double-sided card at model matrix M (already scaled to the card quad),
   // via the shared card renderer (passing this scene's back texture).
-  private drawCard(target: RenderTarget, vp: Mat4, M: Mat4, card: Card, bright = 1): void {
+  private drawCard(target: DrawTarget, vp: Mat4, M: Mat4, card: Card, bright = 1): void {
     drawCard(target, vp, M, card, this.back, bright);
   }
 
@@ -295,25 +298,24 @@ export class CardsScene {
       const model = chairModel(a);
       this.chairInstances.setMatrixAt(k, model);
     }
-    const gpuFrame = tryRenderSceneWithWebGpu(target, this.authoredScene, camera, this.sceneRenderer);
-    if (!gpuFrame) this.sceneRenderer.render(target, this.authoredScene, camera);
-    // Cards remain the textured CPU overlay; they always sit on top of the accelerated table.
-    else target.depth.fill(Infinity);
+    this.drawList.appendScene(target, this.authoredScene, camera, this.sceneRenderer);
   }
 
   renderScene(target: RenderTarget, t = 0): void {
     const dt = Math.min(0.05, Math.max(0, t - this.lastT));
     this.lastT = t;
+    this.drawList.clear();
     if (this.curMode === 'single') this.renderSingle(target);
     else if (this.curMode === 'hand') this.renderHand(target, dt);
     else this.renderDeck(target, dt);
+    if (!tryRenderDrawListWithWebGpu(target, this.drawList.draws, this)) this.drawList.renderCpu(target);
     this.dirty = false;
   }
 
   private renderSingle(target: RenderTarget): void {
     target.clear(12, 13, 17);
     const { vp } = this.viewProj(target);
-    this.drawCard(target, vp, CARD_SCALE, this.single);
+    this.drawCard(this.drawList, vp, CARD_SCALE, this.single);
   }
 
   private renderHand(target: RenderTarget, dt: number): void {
@@ -322,7 +324,7 @@ export class CardsScene {
     this.drawTable(target, camera, [0]); // one chair: the hero seat at +z (front)
     // Advance the peek/lift springs, then draw both cards bent to their reveal.
     this.handPeek.step(dt);
-    this.handPeek.draw(target, vp, this.cam.azimuth, this.back);
+    this.handPeek.draw(this.drawList, vp, this.cam.azimuth, this.back);
   }
 
   private renderDeck(target: RenderTarget, dt: number): void {
@@ -362,11 +364,11 @@ export class CardsScene {
         dx = side * 0.5 * s;
         dz = -0.25 * s * Math.sin((i / remaining) * Math.PI);
       }
-      this.drawCard(target, vp, mat4Multiply(mat4Translate(DECK_POS.x + dx, y, DECK_POS.z + dz), flatDown()), this.topBack(i));
+      this.drawCard(this.drawList, vp, mat4Multiply(mat4Translate(DECK_POS.x + dx, y, DECK_POS.z + dz), flatDown()), this.topBack(i));
     }
 
     // Cards at rest at their seats.
-    for (let i = 0; i < this.dealDone; i++) this.drawDealt(target, vp, this.deals[i], 1);
+    for (let i = 0; i < this.dealDone; i++) this.drawDealt(this.drawList, vp, this.deals[i], 1);
 
     // The in-flight card arcs from the deck top to its slot.
     if (this.dealing && this.dealDone < this.deals.length) {
@@ -376,7 +378,7 @@ export class CardsScene {
       const z = DECK_POS.z + (d.toZ - DECK_POS.z) * p;
       const y = deckTopY + Math.sin(p * Math.PI) * 0.9 + 0.02; // parabolic hop
       const yaw = d.yaw * p;
-      this.drawCard(target, vp, mat4Multiply(mat4Translate(x, y, z), mat4Multiply(mat4RotY(yaw), flatDown())), d.card);
+      this.drawCard(this.drawList, vp, mat4Multiply(mat4Translate(x, y, z), mat4Multiply(mat4RotY(yaw), flatDown())), d.card);
     }
   }
 
@@ -385,7 +387,7 @@ export class CardsScene {
     return this.deck[i] ?? { rank: 0, suit: 0 };
   }
 
-  private drawDealt(target: RenderTarget, vp: Mat4, d: DealCard, bright: number): void {
+  private drawDealt(target: DrawTarget, vp: Mat4, d: DealCard, bright: number): void {
     const M = mat4Multiply(mat4Translate(d.toX, 0.02, d.toZ), mat4Multiply(mat4RotY(d.yaw), flatDown()));
     this.drawCard(target, vp, M, d.card, bright);
   }

@@ -1,4 +1,5 @@
 import type { Vec3, Vec4 } from './math.ts';
+import type { Texture } from './texture.ts';
 
 // A fragment-shader color: object form, rgb 0..255, alpha 0..1. Distinct from
 // color.ts's tuple `RGBA` (the public surface/texture color type) — named RGBA8
@@ -41,6 +42,8 @@ export interface WebGpuMaterial<U> {
   readonly wgsl: string;
   /** Write this draw's uniforms into the shared 256-byte dynamic-uniform slot. */
   writeUniforms(target: Float32Array, uniforms: U): void;
+  /** Optional sampled texture. The backend binds a white fallback for untextured materials. */
+  texture?(uniforms: U): Texture;
 }
 
 /**

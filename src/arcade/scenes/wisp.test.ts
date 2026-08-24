@@ -49,6 +49,12 @@ test('every selectable creator yields a non-empty wisp mark (logo or fallback in
   }
 });
 
+test('repeated creator wisps share one baked texture identity', () => {
+  const first = loadCreatorWisp('openai', 0, mulberry32(1));
+  const second = loadCreatorWisp('openai', 1, mulberry32(2));
+  assert.equal(second.tex, first.tex);
+});
+
 test('Anthropic wisps use the iconic Claude mark instead of the company AI mark', () => {
   const wisp = loadCreatorWisp('anthropic', 0, mulberry32(1));
   const claude = bakeMarkAlpha(logo('claude'));

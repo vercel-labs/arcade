@@ -1,6 +1,6 @@
 import type { Camera } from '../camera.ts';
 import type { RenderTarget } from '../framebuffer.ts';
-import { SceneRenderer, type Scene } from '../scene.ts';
+import { DrawList, SceneRenderer, type Scene, type SceneDraw } from '../scene.ts';
 import { WebGpuSceneRenderer, type WebGpuDraw, type WebGpuFrameStats } from './scene-renderer.ts';
 
 export type RenderBackendPreference = 'auto' | 'cpu' | 'gpu';
@@ -22,6 +22,7 @@ let loading: Promise<void> | undefined;
 let active: 'cpu' | 'gpu' = 'cpu';
 const listeners = new Set<() => void>();
 const draws: WebGpuDraw[] = [];
+const retainedDraws = new DrawList();
 
 export function renderBackendPreference(): RenderBackendPreference {
   return preference;
@@ -67,23 +68,28 @@ export function tryRenderSceneWithWebGpu(
   camera: Camera,
   sceneRenderer: SceneRenderer,
 ): boolean {
-  if (preference === 'cpu') {
-    active = 'cpu';
-    return false;
-  }
-  if (!renderer) {
-    void ensureWebGpuRenderer();
-    active = 'cpu';
-    return false;
-  }
+  if (!canAttemptWebGpu()) return false;
+  retainedDraws.clear();
+  retainedDraws.appendScene(target, scene, camera, sceneRenderer);
+  return tryRenderDrawListWithWebGpu(target, retainedDraws.draws, scene);
+}
+
+/** Submit a frame-local list of resolved draws, used by scenes with immediate overlays. */
+export function tryRenderDrawListWithWebGpu(
+  target: RenderTarget,
+  resolved: readonly SceneDraw[],
+  streamKey: object,
+): boolean {
+  if (!canAttemptWebGpu()) return false;
+  const currentRenderer = renderer!;
   let drawCount = 0;
   let unsupported = false;
-  sceneRenderer.forEachDraw(target, scene, camera, (draw) => {
-    if (draw.geometry.indices.length === 0) return;
+  for (const draw of resolved) {
+    if (draw.geometry.indices.length === 0) continue;
     const webgpu = draw.material.webgpu;
-    if (!webgpu || draw.material.blend === 'alpha') {
+    if (!webgpu) {
       unsupported = true;
-      return;
+      continue;
     }
     const prepared = draws[drawCount] ?? {
       geometry: draw.geometry,
@@ -94,25 +100,52 @@ export function tryRenderSceneWithWebGpu(
     prepared.material = draw.material;
     prepared.uniforms.fill(0);
     webgpu.writeUniforms(prepared.uniforms, draw.uniforms);
+    prepared.texture = webgpu.texture?.(draw.uniforms);
     draws[drawCount++] = prepared;
-  });
+  }
   draws.length = drawCount;
-  if (unsupported || !renderer.supports(draws)) {
+  if (unsupported || !currentRenderer.supports(draws)) {
     detail = 'scene contains a material without a WebGPU implementation';
     active = 'cpu';
     return false;
   }
   try {
-    const rendered = renderer.render(target, draws, scene);
+    const rendered = currentRenderer.render(target, draws, streamKey);
     active = rendered ? 'gpu' : 'cpu';
     return rendered;
   } catch (error) {
+    const failed = currentRenderer;
+    if (renderer === failed) renderer = undefined;
     state = 'unavailable';
     detail = errorMessage(error);
     active = 'cpu';
+    void failed.dispose();
     notify();
     return false;
   }
+}
+
+/** Drop completed and in-flight frames for a transient layer before its next animation. */
+export function resetWebGpuStream(streamKey: object): void {
+  renderer?.resetStream(streamKey);
+}
+
+/** Drop every completed/in-flight scene frame after a terminal clear or screen transition. */
+export function resetWebGpuFrames(): void {
+  renderer?.invalidateFrames();
+}
+
+function canAttemptWebGpu(): boolean {
+  if (preference === 'cpu' || state === 'unavailable') {
+    active = 'cpu';
+    return false;
+  }
+  if (!renderer) {
+    void ensureWebGpuRenderer();
+    active = 'cpu';
+    return false;
+  }
+  return true;
 }
 
 export async function ensureWebGpuRenderer(): Promise<void> {

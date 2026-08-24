@@ -9,6 +9,9 @@ import {
   bounceOut,
   type Camera,
   cameraMatrices,
+  DrawList,
+  type DrawTarget,
+  drawGeometry,
   FrameClock,
   hysteresisThreshold,
   lambertMaterial,
@@ -31,12 +34,14 @@ import {
   projectedPolygonFootprint,
   projectedPointToViewport,
   Raycaster,
-  rasterize,
+  renderBackendPreference,
+  resetWebGpuStream,
   resolveStickyHover,
   RenderTarget,
   Scene,
   SceneRenderer,
   smoothstep,
+  tryRenderDrawListWithWebGpu,
   tryRenderSceneWithWebGpu,
   type Vec3,
   waterMaterial,
@@ -417,6 +422,9 @@ export class TileScene {
   private readonly waterScene = new Scene();
   private readonly staticBoardScene = new Scene();
   private readonly sceneRenderer = new SceneRenderer();
+  private readonly diceDrawList = new DrawList();
+  private readonly diceStream = {};
+  private diceGpuTarget: RenderTarget | null = null;
   private waterTarget: RenderTarget | null = null;
   private staticBoardTarget: RenderTarget | null = null;
   private staticBoardPixels = new Uint32Array(0);
@@ -912,6 +920,7 @@ export class TileScene {
   // chips, then vanish. Picks results + tumble spins and starts the sequence.
   rollDice(values?: readonly [number, number]): void {
     if (!isBoardMode(this.modeName) || this.dicePhase !== 'idle' || this.robberGate) return;
+    resetWebGpuStream(this.diceStream);
     for (let index = 0; index < this.dice.length; index++) {
       const d = this.dice[index];
       d.val = values?.[index] ?? 1 + Math.floor(Math.random() * 6);
@@ -1208,10 +1217,22 @@ export class TileScene {
     } else if (isBoardMode(this.modeName)) this.renderBoardLayers(target, camera);
     else this.sceneRenderer.render(target, this.authoredScene, camera);
     if (isBoardMode(this.modeName)) {
-      // Dice remain a small CPU overlay. GPU readback exposes only occupancy, so clear depth and
-      // composite them after the accelerated base; their authored poses are always above it.
-      if (gpuFrame) target.depth.fill(Infinity);
-      this.renderDice(target, t);
+      this.diceDrawList.clear();
+      if (this.queueDice(this.diceDrawList, t, target.width, target.height)) {
+        if (renderBackendPreference() === 'cpu') {
+          target.depth.fill(Infinity);
+          this.diceDrawList.renderCpu(target);
+        } else {
+          if (!this.diceGpuTarget || this.diceGpuTarget.width !== target.width || this.diceGpuTarget.height !== target.height) {
+            this.diceGpuTarget = new RenderTarget(target.width, target.height);
+          }
+          this.diceGpuTarget.clear(0, 0, 0);
+          if (!tryRenderDrawListWithWebGpu(this.diceGpuTarget, this.diceDrawList.draws, this.diceStream)) {
+            this.diceDrawList.renderCpu(this.diceGpuTarget);
+          }
+          compositeDiceLayer(target, this.diceGpuTarget);
+        }
+      }
     }
     this.dirty = false;
   }
@@ -1407,7 +1428,7 @@ export class TileScene {
 
   // Advance the roll sequence, then (unless idle) draw the BIG dice on top of the board. The
   // depth buffer is cleared first so the dice always sit over the scene, never occluded.
-  private renderDice(target: RenderTarget, t: number): void {
+  private queueDice(target: DrawTarget, t: number, width: number, height: number): boolean {
     // The clock outlives the dice: the lit chips linger past their exit, and noticing that
     // deadline needs a tick. Hence the second condition — 'idle' alone would stop the clock
     // while a highlight is still up, and it would never clear.
@@ -1431,10 +1452,9 @@ export class TileScene {
         this.tokensDirty = true; // drop the chips back to black on the next composite
       }
     }
-    if (this.dicePhase === 'idle') return;
+    if (this.dicePhase === 'idle') return false;
 
-    target.depth.fill(Infinity); // draw the dice over everything already rendered
-    const aspect = (DICE_BOX.sx / DICE_BOX.sy) * (target.width / target.height); // keep the dice undistorted in the box
+    const aspect = (DICE_BOX.sx / DICE_BOX.sy) * (width / height); // keep the dice undistorted in the box
     // Shift the eye left so the right die's outer edge maps to the box's right edge (~flush) —
     // computed from the frame's half-width at the dice plane, so it holds at any aspect.
     const dist = Math.hypot(DICE_EYE.y - DICE_TARGET.y, DICE_EYE.z - DICE_TARGET.z);
@@ -1477,7 +1497,20 @@ export class TileScene {
         mat4Translate(px, DICE_POS[i].y + upY * drop, pz + upZ * drop),
         mat4Multiply(mat4RotX(tilt), mat4Multiply(mat4RotY(yaw), mat4Multiply(mat4RotZ(az), mat4RotX(ax)))),
       );
-      rasterize(target, dieMesh(), lambertMaterial, { mvp: mat4Multiply(vp, model), model, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
+      drawGeometry(target, dieMesh(), lambertMaterial, { mvp: mat4Multiply(vp, model), model, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
     }
+    return true;
+  }
+}
+
+function compositeDiceLayer(target: RenderTarget, dice: RenderTarget): void {
+  target.depth.fill(Infinity);
+  for (let pixel = 0; pixel < dice.depth.length; pixel++) {
+    if (!Number.isFinite(dice.depth[pixel])) continue;
+    const color = pixel * 3;
+    target.color[color] = dice.color[color];
+    target.color[color + 1] = dice.color[color + 1];
+    target.color[color + 2] = dice.color[color + 2];
+    target.depth[pixel] = 0;
   }
 }

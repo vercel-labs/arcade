@@ -7,6 +7,8 @@ import {
   cycleRenderBackendPreference,
   onRenderBackendChange,
   renderBackendInfo,
+  renderBackendPreference,
+  resetWebGpuFrames,
   RenderTarget,
   shapeGlyphToSurface,
   ShapeGlyphSurfaceCache,
@@ -17,6 +19,7 @@ import {
   type TerminalColorMode,
   toHalfBlock,
   toShapeGlyph,
+  tryRenderDrawListWithWebGpu,
 } from '../engine/index.ts';
 import { PrismScene, SplashScene } from '../prism/index.ts';
 import { CoverFlowScene, LAUNCH_TOTAL } from './shell/coverflow.ts';
@@ -104,10 +107,14 @@ let target = new RenderTarget(
 let display: RenderTarget | undefined;
 let pixelDisplayPrepared = false;
 let pixelDisplayBloom = false;
-const prism = new PrismScene();
+const prismGpu = {
+  enabled: () => renderBackendPreference() !== 'cpu',
+  render: tryRenderDrawListWithWebGpu,
+};
+const prism = new PrismScene(prismGpu);
 const coverflow = new CoverFlowScene();
 const coverFlowWheelInput = new CoverFlowWheelInput();
-const splash = new SplashScene();
+const splash = new SplashScene(prismGpu);
 const chessGame = new ChessGameScene();
 const logosScene = new LogosScene();
 const audioScene = new AudioScene();
@@ -132,11 +139,7 @@ function rendererLabel(): string {
 }
 
 function rendererPerf(): string {
-  const info = renderBackendInfo();
-  if (info.active === 'gpu' && info.stats) {
-    return `${info.stats.submitMs.toFixed(1)} + ${info.stats.readbackMs.toFixed(1)} ms`;
-  }
-  return `${lastSceneRenderMs.toFixed(1)} ms`;
+  return `${lastSceneRenderMs.toFixed(1)} ms frame`;
 }
 
 function cycleRenderer(): void {
@@ -479,6 +482,10 @@ const CLEAR = '\x1b[2J';
 // requests the (single) repaint that follows the clear.
 function fullRepaint(): void {
   process.stdout.write(CLEAR);
+  // Persistent scene objects are reused across modes. Drop their asynchronous readbacks when
+  // the screen is cleared so returning to a game cannot present a frame completed while it was
+  // inactive; the new mode submits a fresh frame and keeps the normal one-frame animation overlap.
+  resetWebGpuFrames();
   forceFrame = true;
   if (UNIFIED) ui.resetDiff(); // the screen was cleared — next composite emits in full
   syncLive();
@@ -1780,6 +1787,8 @@ function syncBar(): void {
         [
           { id: 'home-menu-display', label: 'display', value: renderMode, onClick: cycleMode },
           { id: 'home-menu-color', label: 'color', value: colorMode, onClick: cycleColor },
+          { id: 'home-menu-renderer', label: 'renderer', value: rendererLabel(), onClick: cycleRenderer },
+          { id: 'home-menu-render-perf', label: 'render time', value: rendererPerf(), onClick: () => {} },
         ],
         [
           { id: 'home-menu-shortcuts', label: 'controls', onClick: openShortcuts },
@@ -2456,7 +2465,9 @@ function tick(dt: number): void {
     // Launch splash: flip the clicked cover to its title, then open the game.
     if (launching) {
       launchT += step;
+      const started = performance.now();
       coverflow.renderLaunch(target, launchSel, launchT);
+      lastSceneRenderMs = performance.now() - started;
       writeFrame(UNIFIED ? ui.frameComposited((s) => presentSceneInto(s)) : presentScene());
       if (launchT >= LAUNCH_TOTAL) {
         launching = false;
@@ -2470,7 +2481,9 @@ function tick(dt: number): void {
     // frameComposited paints it above the chrome.
     coverPos += (menuSel - coverPos) * (1 - Math.exp(-MENU_EASE_RATE * step));
     if (Math.abs(menuSel - coverPos) < 0.0015) coverPos = menuSel;
+    const started = performance.now();
     coverflow.renderScene(target, coverPos, menuHover ? menuSel : -1);
+    lastSceneRenderMs = performance.now() - started;
     syncBar();
     writeFrame(
       UNIFIED

@@ -7,6 +7,8 @@ import {
   BufferGeometry,
   clamp01,
   coverMaterial,
+  drawGeometry,
+  type DrawTarget,
   type Mat4,
   mat4Identity,
   mat4Multiply,
@@ -17,9 +19,7 @@ import {
   type Mesh,
   normalize3,
   quad,
-  rasterize,
   smoothstep,
-  type RenderTarget,
   type Texture,
   type Vec3,
   type VertexIn,
@@ -45,9 +45,9 @@ const IDENTITY: Mat4 = mat4Identity();
 
 // Draw a double-sided card at model matrix `M` (already scaled to the card quad).
 // `back` is the shared card-back texture. `bright` dims/brightens both faces.
-export function drawCard(target: RenderTarget, vp: Mat4, M: Mat4, card: Card, back: Texture, bright = 1): void {
+export function drawCard(target: DrawTarget, vp: Mat4, M: Mat4, card: Card, back: Texture, bright = 1): void {
   const faceModel = mat4Multiply(M, FACE_OFFSET);
-  rasterize(target, CARD_MESH, coverMaterial, {
+  drawGeometry(target, CARD_MESH, coverMaterial, {
     mvp: mat4Multiply(vp, faceModel),
     model: faceModel,
     tex: cardFaceTexture(card),
@@ -65,7 +65,7 @@ export function drawCard(target: RenderTarget, vp: Mat4, M: Mat4, card: Card, ba
     fadeY1: 0,
   });
   const backModel = mat4Multiply(M, BACK_OFFSET);
-  rasterize(target, CARD_MESH, coverMaterial, {
+  drawGeometry(target, CARD_MESH, coverMaterial, {
     mvp: mat4Multiply(vp, backModel),
     model: backModel,
     tex: back,
@@ -232,10 +232,10 @@ function bentSheet(pose: PeekPose, side: 1 | -1): Mesh {
 
 // Draw a hand card as a bent, double-sided strip for the whole peek→lift range. At
 // rest (reveal 0) the strip is simply flat and face-down, matching the resting card.
-export function drawPeekCard(target: RenderTarget, vp: Mat4, pose: PeekPose, card: Card, back: Texture, bright = 1): void {
+export function drawPeekCard(target: DrawTarget, vp: Mat4, pose: PeekPose, card: Card, back: Texture, bright = 1): void {
   const id = IDENTITY;
   const face = bentSheet(pose, 1);
-  rasterize(target, face, coverMaterial, {
+  drawGeometry(target, face, coverMaterial, {
     mvp: vp,
     model: id,
     tex: cardFaceTexture(card),
@@ -251,7 +251,7 @@ export function drawPeekCard(target: RenderTarget, vp: Mat4, pose: PeekPose, car
     fadeY1: 0,
   });
   const backSheet = bentSheet(pose, -1);
-  rasterize(target, backSheet, coverMaterial, {
+  drawGeometry(target, backSheet, coverMaterial, {
     mvp: vp,
     model: id,
     tex: back,
@@ -411,9 +411,9 @@ function archSheet(place: ArchPlace, side: 1 | -1): Mesh {
 
 // Draw a double-sided card bent per `place` (curl/dome/depth), centered at (x,y,z) and
 // yawed about Y. At curl = 0 this is a flat, face-down card lifted by `depth` in Y.
-export function drawArchCard(target: RenderTarget, vp: Mat4, place: ArchPlace, card: Card, back: Texture, bright = 1): void {
+export function drawArchCard(target: DrawTarget, vp: Mat4, place: ArchPlace, card: Card, back: Texture, bright = 1): void {
   const id = IDENTITY;
-  rasterize(target, archSheet(place, 1), coverMaterial, {
+  drawGeometry(target, archSheet(place, 1), coverMaterial, {
     mvp: vp,
     model: id,
     tex: cardFaceTexture(card),
@@ -428,7 +428,7 @@ export function drawArchCard(target: RenderTarget, vp: Mat4, place: ArchPlace, c
     fadeY0: 0,
     fadeY1: 0,
   });
-  rasterize(target, archSheet(place, -1), coverMaterial, {
+  drawGeometry(target, archSheet(place, -1), coverMaterial, {
     mvp: vp,
     model: id,
     tex: back,

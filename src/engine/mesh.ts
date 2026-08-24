@@ -4,6 +4,8 @@ import type { VertexIn } from './shader.ts';
 export interface Mesh {
   vertices: VertexIn[];
   indices: number[];
+  /** Incremented when mutable geometry changes so backends can refresh cached buffers. */
+  readonly version?: number;
 }
 
 export interface AABB {

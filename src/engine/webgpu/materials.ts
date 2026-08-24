@@ -1,4 +1,4 @@
-import type { FeltUniforms, LambertUniforms, PieceUniforms, WaterUniforms } from '../materials.ts';
+import type { CoverUniforms, FeltUniforms, GlassUniforms, LambertUniforms, PieceUniforms, WaterUniforms, WispUniforms } from '../materials.ts';
 import type { WebGpuMaterial } from '../shader.ts';
 
 const VERTEX_IO = /* wgsl */ `
@@ -165,6 +165,162 @@ export const pieceWebGpuMaterial: WebGpuMaterial<PieceUniforms> = {
     out.set([uniforms.fillDir.x, uniforms.fillDir.y, uniforms.fillDir.z, uniforms.fillStrength], 40);
     out.set([uniforms.tint.x, uniforms.tint.y, uniforms.tint.z, 0], 44);
   },
+};
+
+const GLASS_WGSL = /* wgsl */ `
+${VERTEX_IO}
+
+struct Uniforms {
+  mvp: mat4x4f,
+  model: mat4x4f,
+  cameraEdgeWidth: vec4f,
+  edgeBody: vec4f,
+  glassAmbient: vec4f,
+  optical: vec4f,
+};
+@group(0) @binding(0) var<uniform> u: Uniforms;
+
+@vertex fn vertexMain(input: VertexIn) -> VertexOut {
+  let world = u.model * vec4f(input.position, 1.0);
+  var out: VertexOut;
+  out.clip = webgpuClip(u.mvp * vec4f(input.position, 1.0));
+  out.world = world.xyz;
+  out.normal = (u.model * vec4f(input.normal, 0.0)).xyz;
+  out.uv = input.uv;
+  out.color = input.color / 255.0;
+  return out;
+}
+
+fn hueToRgb(h: f32) -> vec3f {
+  let k = vec3f(0.0, 4.0, 2.0);
+  return clamp(abs(fract(h + k / 6.0) * 6.0 - 3.0) - 1.0, vec3f(0.0), vec3f(1.0));
+}
+
+@fragment fn fragmentMain(input: VertexOut) -> @location(0) vec4f {
+  let bary = vec3f(1.0 - input.uv.x - input.uv.y * 0.5, input.uv.x - input.uv.y * 0.5, input.uv.y);
+  let edge = 1.0 - smoothstep(0.0, u.cameraEdgeWidth.w, min(bary.x, min(bary.y, bary.z)));
+  let view = normalize(u.cameraEdgeWidth.xyz - input.world);
+  let facing = abs(dot(normalize(input.normal), view));
+  let fresnel = pow(1.0 - facing, u.optical.x);
+  let body = u.edgeBody.w * (u.glassAmbient.w + (1.0 - u.glassAmbient.w) * fresnel);
+  let hue = fract((input.world.y * 120.0 + input.world.x * 70.0 + 200.0) / 360.0);
+  let dispersion = hueToRgb(hue) * 255.0 * u.optical.y * (0.35 + 0.65 * fresnel);
+  let color = u.edgeBody.xyz * edge + u.glassAmbient.xyz * body + dispersion;
+  return vec4f(color / 255.0, 1.0);
+}
+`;
+
+export const glassWebGpuMaterial: WebGpuMaterial<GlassUniforms> = {
+  wgsl: GLASS_WGSL,
+  writeUniforms(out, uniforms) {
+    out.set(uniforms.mvp, 0);
+    out.set(uniforms.model, 16);
+    out.set([uniforms.cameraPos.x, uniforms.cameraPos.y, uniforms.cameraPos.z, uniforms.edgeWidth], 32);
+    out.set([uniforms.edgeColor.x, uniforms.edgeColor.y, uniforms.edgeColor.z, uniforms.bodyStrength], 36);
+    out.set([uniforms.glassColor.x, uniforms.glassColor.y, uniforms.glassColor.z, uniforms.ambient], 40);
+    out.set([uniforms.fresnelPower, uniforms.dispersion, 0, 0], 44);
+  },
+};
+
+const WISP_WGSL = /* wgsl */ `
+${VERTEX_IO}
+
+struct Uniforms {
+  mvp: mat4x4f,
+  tintGain: vec4f,
+  flicker: vec4f,
+};
+@group(0) @binding(0) var<uniform> u: Uniforms;
+@group(0) @binding(1) var logo: texture_2d<f32>;
+@group(0) @binding(2) var logoSampler: sampler;
+
+@vertex fn vertexMain(input: VertexIn) -> VertexOut {
+  var out: VertexOut;
+  out.clip = webgpuClip(u.mvp * vec4f(input.position, 1.0));
+  out.world = input.position;
+  out.normal = input.normal;
+  out.uv = input.uv;
+  out.color = input.color / 255.0;
+  return out;
+}
+
+@fragment fn fragmentMain(input: VertexOut) -> @location(0) vec4f {
+  let mask = textureSample(logo, logoSampler, input.uv).a;
+  if (mask <= 0.002) { discard; }
+  return vec4f((u.tintGain.xyz / 255.0) * u.tintGain.w, min(1.0, mask * u.flicker.x));
+}
+`;
+
+export const wispWebGpuMaterial: WebGpuMaterial<WispUniforms> = {
+  wgsl: WISP_WGSL,
+  writeUniforms(out, uniforms) {
+    out.set(uniforms.mvp, 0);
+    out.set([uniforms.tint.x, uniforms.tint.y, uniforms.tint.z, uniforms.gain], 16);
+    out[20] = uniforms.flicker;
+  },
+  texture: (uniforms) => uniforms.logo,
+};
+
+const COVER_WGSL = /* wgsl */ `
+${VERTEX_IO}
+
+struct Uniforms {
+  mvp: mat4x4f,
+  model: mat4x4f,
+  paperAmbient: vec4f,
+  lightBrightness: vec4f,
+  frameWidth: vec4f,
+  fade: vec4f,
+};
+@group(0) @binding(0) var<uniform> u: Uniforms;
+@group(0) @binding(1) var art: texture_2d<f32>;
+@group(0) @binding(2) var artSampler: sampler;
+
+@vertex fn vertexMain(input: VertexIn) -> VertexOut {
+  let world = u.model * vec4f(input.position, 1.0);
+  var out: VertexOut;
+  out.clip = webgpuClip(u.mvp * vec4f(input.position, 1.0));
+  out.world = world.xyz;
+  out.normal = (u.model * vec4f(input.normal, 0.0)).xyz;
+  out.uv = input.uv;
+  out.color = input.color / 255.0;
+  return out;
+}
+
+@fragment fn fragmentMain(input: VertexOut) -> @location(0) vec4f {
+  let border = min(min(input.uv.x, 1.0 - input.uv.x), min(input.uv.y, 1.0 - input.uv.y));
+  var color: vec3f;
+  if (border < u.frameWidth.w) {
+    color = u.frameWidth.xyz;
+  } else {
+    let inset = (input.uv - vec2f(u.fade.x)) / (1.0 - 2.0 * u.fade.x);
+    if (any(inset < vec2f(0.0)) || any(inset > vec2f(1.0))) {
+      color = u.paperAmbient.xyz;
+    } else {
+      let pixel = textureSampleLevel(art, artSampler, inset, 0.0);
+      color = mix(u.paperAmbient.xyz / 255.0, pixel.rgb, pixel.a) * 255.0;
+    }
+  }
+  let ndl = max(0.0, dot(normalize(input.normal), u.lightBrightness.xyz));
+  var brightness = u.lightBrightness.w * (u.paperAmbient.w + (1.0 - u.paperAmbient.w) * ndl);
+  if (u.fade.y != 0.0) {
+    brightness *= clamp((input.world.y - u.fade.z) / (u.fade.w - u.fade.z), 0.0, 1.0);
+  }
+  return vec4f((color / 255.0) * brightness, 1.0);
+}
+`;
+
+export const coverWebGpuMaterial: WebGpuMaterial<CoverUniforms> = {
+  wgsl: COVER_WGSL,
+  writeUniforms(out, uniforms) {
+    out.set(uniforms.mvp, 0);
+    out.set(uniforms.model, 16);
+    out.set([uniforms.paper.x, uniforms.paper.y, uniforms.paper.z, uniforms.ambient], 32);
+    out.set([uniforms.lightDir.x, uniforms.lightDir.y, uniforms.lightDir.z, uniforms.brightness], 36);
+    out.set([uniforms.frameColor.x, uniforms.frameColor.y, uniforms.frameColor.z, uniforms.frameWidth], 40);
+    out.set([uniforms.pad, uniforms.fade, uniforms.fadeY0, uniforms.fadeY1], 44);
+  },
+  texture: (uniforms) => uniforms.tex,
 };
 
 const WATER_WGSL = /* wgsl */ `
