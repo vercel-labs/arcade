@@ -688,7 +688,9 @@ export class HoldemState implements ImperfectInfoState<PokerAction> {
     lines.push(`No-Limit Texas Hold'em, ${this.n} players. You are ${this.seatName(player)}${player === this.button ? ' (dealer button)' : ''}.`);
     lines.push(`Your hole cards: ${this.hole[player].map(cardLabel).join(' ')}`);
     lines.push(`Community: ${this.community.map(cardLabel).join(' ') || '(none yet)'}  —  ${STREET_NAMES[this.streetNo]}`);
-    lines.push(`Pot: ${this.potTotal()}. Your stack: ${this.stacks[player]}. To call: ${toCall}. Min raise to: ${Math.min(this.committedRound[player] + this.stacks[player], this.currentBet === 0 ? this.bb : this.currentBet + this.minRaise)}. All-in to: ${this.committedRound[player] + this.stacks[player]}.`);
+    const stackInBigBlinds = this.stacks[player] / this.bb;
+    const stackBbLabel = Number.isInteger(stackInBigBlinds) ? String(stackInBigBlinds) : stackInBigBlinds.toFixed(1);
+    lines.push(`Blinds: ${this.sb}/${this.bb}. Pot: ${this.potTotal()}. Your stack: ${this.stacks[player]} chips (${stackBbLabel} big blinds). To call: ${toCall}. Min raise to: ${Math.min(this.committedRound[player] + this.stacks[player], this.currentBet === 0 ? this.bb : this.currentBet + this.minRaise)}. All-in to: ${this.committedRound[player] + this.stacks[player]}.`);
     const seats = [];
     for (let s = 0; s < this.n; s++) {
       const st = this.folded[s] ? 'folded' : this.allIn[s] ? 'all-in' : `${this.stacks[s]} behind`;

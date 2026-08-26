@@ -392,6 +392,7 @@ export class TileScene {
   private dicePhase: DicePhase = 'idle';
   private readonly rollClock = new FrameClock();
   private rolledSum: number | null = null; // the last landed roll (lights matching chips); null until first roll
+  private rollCompletion: (() => void) | null = null;
   // Fired once per roll, the moment the dice come to rest and the sum is final. The controller
   // uses it to pay out production; the scene itself does not care who is collecting.
   onRollLanded: ((sum: number) => void) | null = null;
@@ -409,6 +410,7 @@ export class TileScene {
   // The piece currently playing its build-drop (elevated → seated), or null.
   private dropping: { kind: 'building' | 'road'; id: number } | null = null;
   private readonly dropClock = new FrameClock();
+  private dropCompletion: (() => void) | null = null;
   private lastAspect = 1.6; // target aspect from the last render, for hit-test projection
   private tokenPipDetailVisible: boolean | null = null;
   private dirty = true;
@@ -590,14 +592,16 @@ export class TileScene {
 
   // Put a piece down without a click — the path an AI seat's move takes. Plays the same drop
   // the editor's own placement does, so a model's move and yours look identical.
-  placePiece(kind: 'building' | 'road', id: number, color: PlayerColor, city = false): void {
+  placePiece(kind: 'building' | 'road', id: number, color: PlayerColor, city = false): Promise<void> {
     if (kind === 'building') this.buildings.set(id, { city, color });
     else this.roads.set(id, color);
-    this.startDrop(kind, id);
+    const completion = this.startDrop(kind, id);
     this.dirty = true;
+    return completion;
   }
   // Drop every placed piece (a new game on the same board).
   clearPieces(): void {
+    this.finishDrop();
     this.buildings.clear();
     this.roads.clear();
     this.hoverNode = null;
@@ -734,10 +738,18 @@ export class TileScene {
     return null;
   }
   // Begin the build-drop for a just-placed/upgraded piece: it renders elevated, then eases down.
-  private startDrop(kind: 'building' | 'road', id: number): void {
+  private startDrop(kind: 'building' | 'road', id: number): Promise<void> {
+    this.finishDrop();
     this.dropping = { kind, id };
     this.dropClock.reset();
     this.dirty = true;
+    return new Promise<void>((resolve) => { this.dropCompletion = resolve; });
+  }
+  private finishDrop(): void {
+    this.dropping = null;
+    const resolve = this.dropCompletion;
+    this.dropCompletion = null;
+    resolve?.();
   }
   // A road is placeable for the active color per the Catan connectivity rules: it must extend a
   // same-color road or settlement/city and can't route through an opponent's building.
@@ -803,12 +815,13 @@ export class TileScene {
   roadInfo(edge: number): PlayerColor | undefined {
     return this.roads.get(edge);
   }
-  upgradeBuilding(node: number): void {
+  upgradeBuilding(node: number): Promise<void> {
     const b = this.buildings.get(node);
     if (b && !b.city) {
       b.city = true;
-      this.startDrop('building', node); // the city drops in like a fresh build
+      return this.startDrop('building', node); // the city drops in like a fresh build
     }
+    return Promise.resolve();
   }
   removeBuilding(node: number): void {
     if (this.buildings.delete(node)) this.dirty = true;
@@ -909,8 +922,11 @@ export class TileScene {
 
   // Roll the pair of dice (board mode): big dice appear, tumble, land, light the matching
   // chips, then vanish. Picks results + tumble spins and starts the sequence.
-  rollDice(values?: readonly [number, number]): void {
-    if (!isBoardMode(this.modeName) || this.dicePhase !== 'idle' || this.robberGate) return;
+  rollDice(values?: readonly [number, number]): Promise<void> {
+    // Once the previous pair has landed, the rules turn may finish before its decorative hold
+    // expires (especially when the viewed seat received no cards). Let the next legal roll replace
+    // that hold; only an actually tumbling pair is protected from overlap.
+    if (!isBoardMode(this.modeName) || this.dicePhase === 'rolling' || this.robberGate) return Promise.resolve();
     for (let index = 0; index < this.dice.length; index++) {
       const d = this.dice[index];
       d.val = values?.[index] ?? 1 + Math.floor(Math.random() * 6);
@@ -929,6 +945,20 @@ export class TileScene {
     this.dicePhase = 'rolling';
     this.rollClock.reset();
     this.rolledSum = null; // clear the previous highlight while the new roll tumbles
+    this.dirty = true;
+    return new Promise<void>((resolve) => { this.rollCompletion = resolve; });
+  }
+
+  // A new/closed session cannot keep the match loop waiting on a render sequence that no longer
+  // exists. Snap presentation-only motion away and release its one-shot completion promises.
+  cancelActionAnimations(): void {
+    const finishRoll = this.rollCompletion;
+    this.rollCompletion = null;
+    finishRoll?.();
+    this.finishDrop();
+    this.dicePhase = 'idle';
+    this.rolledSum = null;
+    this.tokensDirty = true;
     this.dirty = true;
   }
 
@@ -1367,7 +1397,7 @@ export class TileScene {
       this.dropClock.tick(t);
       const p = Math.min(1, this.dropClock.elapsed / BUILD_DROP_DUR);
       dropLift = BUILD_DROP_H * (1 - bounceOut(p));
-      if (p >= 1) this.dropping = null;
+      if (p >= 1) this.finishDrop();
     }
     const dropB = this.dropping?.kind === 'building' ? this.dropping.id : -1;
     const dropR = this.dropping?.kind === 'road' ? this.dropping.id : -1;
@@ -1410,6 +1440,9 @@ export class TileScene {
         this.rolledSum = this.dice[0].val + this.dice[1].val;
         this.tokensDirty = true; // light the matching chips on the next composite
         this.onRollLanded?.(this.rolledSum); // the result is final here — pay out production
+        const finishRoll = this.rollCompletion;
+        this.rollCompletion = null;
+        finishRoll?.();
       }
       if (this.dicePhase === 'hold' && this.rollClock.elapsed >= allLanded + DICE_HOLD) {
         this.dicePhase = 'idle'; // dice vanish; the lit chips remain a moment longer

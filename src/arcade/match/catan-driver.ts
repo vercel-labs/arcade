@@ -9,7 +9,8 @@
 import { HumanPlayer } from '../../ai/human-player.ts';
 import type { Player } from '../../ai/player.ts';
 import { CatanState } from '../../rules/catan/catan.ts';
-import type { CatanAction, PlayerColor } from '../../rules/catan/types.ts';
+import { RESOURCES, resourceIndex, type CatanAction, type PlayerColor, type Resource } from '../../rules/catan/types.ts';
+import { DEV_CARD_ICON, KNIGHT_ICON, RESOURCE_LOOK, ROAD_ICON, SETTLEMENT_ICON } from '../games/catan/palette.ts';
 import { createCatanModelPlayer, runCatanMatch } from './catan-setup.ts';
 import { disambiguateLabels } from './labels.ts';
 import { shortModel } from './model-label.ts';
@@ -23,7 +24,7 @@ export type CatanSeatSpec = { kind: 'human'; color: PlayerColor } | { kind: 'ai'
 // human seam. Deliberately the same shape as `MatchScene` plus `requestHumanMove`, so the
 // scene stays swappable and the driver never reaches into rendering.
 export interface CatanBoardScene {
-  beginSession(state: CatanState, colors: PlayerColor[], viewerSeat: number): void;
+  beginSession(state: CatanState, colors: PlayerColor[], viewerSeat: number, humanSeat?: number): void;
   endSession(): void;
   state(): CatanState;
   playMove(action: CatanAction): Promise<void>;
@@ -44,7 +45,13 @@ export interface CatanLogEntry {
   color: PlayerColor;
   actor: string;
   message: string;
+  resourceCounts?: Partial<Record<Resource, number>>;
   chat?: boolean;
+}
+
+interface CatanPreActionView {
+  hands: number[][];
+  trade: ReturnType<CatanState['activeTrade']>;
 }
 
 export class CatanDriver {
@@ -56,7 +63,9 @@ export class CatanDriver {
   private running = false;
   private complete = false;
   private log: CatanLogEntry[] = [];
+  private lastActionEntry: CatanLogEntry | null = null;
   private failure: string | null = null;
+  private preAction: CatanPreActionView | null = null;
 
   constructor(private readonly deps: CatanDriverDeps) {}
 
@@ -75,6 +84,9 @@ export class CatanDriver {
   }
   history(): readonly CatanLogEntry[] {
     return this.log;
+  }
+  latestAction(): CatanLogEntry | null {
+    return this.lastActionEntry;
   }
   // Set when the session ended on an error rather than on completion, so the HUD can say so
   // instead of silently looking idle.
@@ -112,14 +124,26 @@ export class CatanDriver {
         seat.kind === 'human'
           ? { key: `human:${index}`, label: 'You' }
           : { key: seat.model, label: shortModel(seat.model) },
+        ),
+    );
+    const modelContextLabels = disambiguateLabels(
+      seats.map((seat) =>
+        seat.kind === 'human'
+          ? { key: 'human', label: 'the human player' }
+          : { key: seat.model, label: shortModel(seat.model) },
       ),
     );
     this.log = [];
+    this.lastActionEntry = null;
+    this.preAction = null;
     this.failure = null;
     this.complete = false;
     const state = new CatanState({
       numPlayers: seats.length,
-      seatNames: this.labels,
+      // UI copy uses `this.labels` so the local seat remains "You". The rules state's
+      // names are model-facing: calling another seat "You" inside a model prompt would
+      // conflict with the prompt's own second-person instructions.
+      seatNames: modelContextLabels,
       domesticTrade: true,
       ...(seats.every((seat) => seat.kind === 'ai') ? { domesticTradeOfferLimit: 3 } : {}),
       rng: opts?.rng,
@@ -130,7 +154,7 @@ export class CatanDriver {
     // Install the authoritative state in the scene before the runner can synchronously read it.
     // Keeping this inside the driver makes session creation atomic for the app and tools alike.
     const humanSeat = seats.findIndex((seat) => seat.kind === 'human');
-    this.deps.scene.beginSession(state, seats.map((seat) => seat.color), humanSeat >= 0 ? humanSeat : 0);
+    this.deps.scene.beginSession(state, seats.map((seat) => seat.color), humanSeat >= 0 ? humanSeat : 0, humanSeat);
     this.running = opts?.autoRun !== false;
     if (this.running) void this.run(opts?.maxActions);
     return state;
@@ -168,8 +192,15 @@ export class CatanDriver {
           });
           this.deps.syncLive();
         },
+        onActionChosen: () => {
+          this.preAction = this.live ? {
+            hands: Array.from({ length: this.live.n }, (_, seat) => this.live!.handOf(seat).slice()),
+            trade: this.live.activeTrade(),
+          } : null;
+        },
         onActionApplied: (info) => {
-          this.record(info.playerIndex, info.choice.action);
+          this.record(info.playerIndex, info.choice.action, this.preAction);
+          this.preAction = null;
           this.deps.syncLive();
         },
       });
@@ -187,16 +218,86 @@ export class CatanDriver {
     }
   }
 
-  private record(seat: number, action: CatanAction): void {
-    const message =
-      action.type === 'initialSettlement'
-        ? `placed a settlement on node ${action.node}`
-        : action.type === 'initialRoad'
-          ? `placed a road on edge ${action.edge}`
-          : action.type === 'roll'
-            ? `rolled ${this.live?.dice()?.join(' + ') ?? ''}`.trim()
-          : this.live?.actionToString(action) ?? action.type;
-    this.log.push({ seat, color: this.colorOf(seat), actor: this.labelOf(seat), message });
+  private record(seat: number, action: CatanAction, before: CatanPreActionView | null): void {
+    const trade = before?.trade;
+    const other = (target: number): string => this.labelOf(target);
+    const object = (target: number): string => this.seats[target]?.kind === 'human' ? 'you' : other(target);
+    const possessive = (target: number): string => {
+      if (this.seats[target]?.kind === 'human') return 'your';
+      const label = other(target);
+      return `${label}${label.endsWith('s') ? "'" : "'s"}`;
+    };
+    const deck = (counts: readonly number[]): string => RESOURCES
+      .flatMap((resource, index) => counts[index] > 0 ? [`${RESOURCE_LOOK[resource].emoji} x${counts[index]}`] : [])
+      .join(' ');
+    const victim = 'victim' in action && action.victim !== null ? other(action.victim) : null;
+    const outcome = this.live?.actionRecords().at(-1)?.outcome;
+    const message = action.type === 'initialSettlement'
+      ? `${SETTLEMENT_ICON} placed a settlement on node ${action.node}`
+      : action.type === 'initialRoad'
+        ? `${ROAD_ICON} placed a road on edge ${action.edge}`
+        : action.type === 'buildRoad'
+          ? `${ROAD_ICON} placed a road on edge ${action.edge}`
+          : action.type === 'buildSettlement'
+            ? `${SETTLEMENT_ICON} placed a settlement on node ${action.node}`
+            : action.type === 'buildCity'
+              ? `${SETTLEMENT_ICON} upgraded the settlement on node ${action.node} to a city`
+              : action.type === 'roll'
+                ? `rolled ${(outcome?.dice ?? this.live?.dice() ?? []).join(' + ')} = ${(outcome?.dice ?? this.live?.dice() ?? []).reduce((sum, die) => sum + die, 0)}`
+                : action.type === 'endTurn'
+                  ? `ended the turn; ${other(this.live?.currentPlayer() ?? seat)} is next`
+                  : action.type === 'buyDevCard'
+                    ? `${DEV_CARD_ICON} bought a development card`
+                    : action.type === 'playKnight'
+                      ? `${KNIGHT_ICON} played a knight, moved the robber to hex ${action.hex}${victim ? `, and stole 1 card from ${victim}` : ''}`
+                      : action.type === 'moveRobber'
+                        ? `${KNIGHT_ICON} moved the robber to hex ${action.hex}${victim ? ` and stole 1 card from ${victim}` : ''}`
+                        : action.type === 'playRoadBuilding'
+                          ? `${ROAD_ICON} played road building on edges ${action.edges.join(' and ')}`
+                          : action.type === 'playYearOfPlenty'
+                            ? `${DEV_CARD_ICON} played year of plenty and took ${action.resources.map((resource) => RESOURCE_LOOK[resource].emoji).join(' ')}`
+                            : action.type === 'playMonopoly'
+                              ? `${DEV_CARD_ICON} played monopoly on ${RESOURCE_LOOK[action.resource].emoji} ${action.resource}`
+                              : action.type === 'discard'
+                                ? `discarded ${action.resources.length} cards after a 7`
+                                : action.type === 'maritimeTrade'
+                                  ? `traded ${action.via === 'bank' ? '4:1 with the bank' : `${action.rate}:1 at a port`}: ${RESOURCE_LOOK[action.give].emoji} → ${RESOURCE_LOOK[action.get].emoji}`
+                                  : action.type === 'maritimeBulkTrade'
+                                    ? `traded ${action.via === 'bank' ? 'with the bank' : `at a ${action.rate}:1 port`}: ${RESOURCE_LOOK[action.give].emoji} x${(action.via === 'bank' ? 4 : action.rate) * action.gets.length} → ${action.gets.map((resource) => RESOURCE_LOOK[resource].emoji).join(' ')}`
+                                    : action.type === 'offerTrade'
+                                      ? `offered ${deck(action.give)} for ${deck(action.receive)}`
+                                      : action.type === 'acceptTrade'
+                                        ? `accepted ${trade ? `${possessive(trade.from)} trade offer` : 'the trade offer'}`
+                                        : action.type === 'counterTrade'
+                                          ? `countered ${trade ? object(trade.from) : 'the offerer'} with ${deck(action.give)} for ${deck(action.receive)}`
+                                          : action.type === 'rejectTrade'
+                                            ? `rejected ${trade ? `${possessive(trade.from)} trade offer` : 'the trade offer'}`
+                                            : action.type === 'confirmTrade'
+                                              ? `completed a trade with ${object(action.with)}`
+                                              : action.type === 'cancelTrade'
+                                                ? `cancelled the trade after no agreement`
+                                                : 'performed an action';
+    const entry = { seat, color: this.colorOf(seat), actor: this.labelOf(seat), message };
+    this.log.push(entry);
+    this.lastActionEntry = entry;
+    if (!before || !this.live || (action.type !== 'roll' && action.type !== 'initialSettlement')) return;
+    for (let player = 0; player < this.live.n; player++) {
+      const resourceCounts: Partial<Record<Resource, number>> = {};
+      let total = 0;
+      for (const resource of RESOURCES) {
+        const gain = (this.live.handOf(player)[resourceIndex(resource)] ?? 0) - (before.hands[player]?.[resourceIndex(resource)] ?? 0);
+        if (gain <= 0) continue;
+        resourceCounts[resource] = gain;
+        total += gain;
+      }
+      if (total > 0) this.log.push({
+        seat: player,
+        color: this.colorOf(player),
+        actor: this.labelOf(player),
+        message: `received ${total} resource${total === 1 ? '' : 's'}`,
+        resourceCounts,
+      });
+    }
   }
 
   // Abort the session loop. Safe to call when nothing is running.
@@ -205,6 +306,7 @@ export class CatanDriver {
     this.abort = null;
     this.running = false;
     this.players = [];
+    this.preAction = null;
   }
 
   // Leaving the screen entirely: stop and clear, so re-entering shows setup again.
@@ -215,6 +317,7 @@ export class CatanDriver {
     this.seats = [];
     this.labels = [];
     this.log = [];
+    this.lastActionEntry = null;
     this.complete = false;
     this.failure = null;
   }

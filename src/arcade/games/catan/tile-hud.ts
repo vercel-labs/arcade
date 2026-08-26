@@ -8,7 +8,7 @@ import { type DevCardType, type PlayerColor, type Resource, type Terrain } from 
 import { type BoardToken, type CatanMode, type SailLabel } from './tile-scene.ts';
 import { type PortKind } from './mesh/index.ts';
 import { UI_CHROME_BG, UI_CHROME_PILL, uiChromeBg } from '../../theme.ts';
-import { buildCatanCardsOverlay, CATAN_RAIL_W, catanResourceFace, catanSidebarOpen, mountCatanCardsHud, toggleCatanSidebar, type CatanCardsView } from './card-hud.ts';
+import { buildCatanCardsOverlay, CATAN_RAIL_W, catanResourceFace, catanSidebarOpen, catanWorkbenchDiscardOpen, mountCatanCardsHud, toggleCatanSidebar, type CatanCardsView } from './card-hud.ts';
 import { hudBottomRight, hudTopCenter, hudTopRight } from '../../shell/hud-chrome.ts';
 import { type FlyingResource } from './scene/resource-flight.ts';
 import { CATAN_NUMBER_TOKEN, DEV_CARD_ICON, DEV_LOOK, RESOURCE_ORDER } from './palette.ts';
@@ -149,6 +149,7 @@ export interface CatanTileHandlers {
   onBuyDevelopmentCard(): boolean;
   onPlayDevelopmentCard(type: DevCardType): boolean;
   onChooseDevelopmentResource(resource: Resource): boolean;
+  onDiscard(): boolean;
 }
 let H: CatanTileHandlers | null = null;
 let robberOn = false; // whether the robber is currently shown (toggled from the panel)
@@ -260,6 +261,9 @@ export function buildCatanTileRoot(region: LayoutBox, onOpenMenu: () => void, to
           H?.onBuyDevelopmentCard,
           H?.onPlayDevelopmentCard,
           H?.onChooseDevelopmentResource,
+          undefined,
+          undefined,
+          H?.onDiscard,
         )]
       : []),
     // Cards in flight paint OVER the hand panel, not under it: they have to cross the panel's top
@@ -285,7 +289,7 @@ export function buildCatanTileRoot(region: LayoutBox, onOpenMenu: () => void, to
     // margin from the right as the ☰ menu button, same from the bottom as the bottom bar, and it
     // steps left by the rail's width alongside that chrome so it stays over the visible scene.
     // The hand panel hugs the bottom-LEFT corner, so the two never meet.
-    ...(boardMode && !movingRobber
+    ...(boardMode && !movingRobber && !catanWorkbenchDiscardOpen()
       ? [hudBottomRight(FilledButton({ id: 'catan-roll', label: 'roll dice', onClick: () => H?.onRollDice() }), { railWidth: railOpen ? CATAN_RAIL_W : 0 })]
       : []),
   ]);

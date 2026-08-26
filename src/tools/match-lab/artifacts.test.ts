@@ -29,6 +29,10 @@ test('summary attributes wins to the model occupying each seat', () => {
     baseSeed: 1,
     swapSeats: true,
     setupOnly: false,
+    startingChips: 1_000,
+    smallBlind: 10,
+    bigBlind: 20,
+    handsPerLevel: 15,
     limits: { timeoutMs: 1_000, maxActions: 10, maxPlies: 10, maxHands: 10 },
     telemetry: 'disabled',
   };

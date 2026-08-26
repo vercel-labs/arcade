@@ -13,8 +13,8 @@ export const CATAN_SETUP_MOVE_NOTATION: MoveNotation = {
   examples: '"init-settlement 12", "init-road 37"',
 };
 
-export const CATAN_SETUP_RATIONALE_GUIDE =
-  'one concise public sentence about the production, complementary portfolio, number coverage, starting cards, port, or expansion value of your setup choice.';
+export const CATAN_SETUP_SPEECH_GUIDE =
+  'one natural first-person sentence of live Catan table talk that names the visible placement and gives one useful public reason for it, such as production balance, number coverage, a port, or expansion room. Aim for a watchable explanation rather than a bare action caption, but do not recite the full private evaluation or longer-term plan. When the chosen action has a supplied public spot or route label, copy that label verbatim, such as 9🪨–5🐑–10🌾. Never use raw node, edge, or hex IDs or pip totals. Use "I" and "my" for your own position.';
 
 export const CATAN_MOVE_NOTATION: MoveNotation = {
   description:
@@ -22,10 +22,10 @@ export const CATAN_MOVE_NOTATION: MoveNotation = {
   examples: '"roll", "road 37", "offer 1/0/0/0/0 for 0/1/0/0/0", "counter 0/2/0/0/0 for 1/0/0/0/0", "end"',
 };
 
-export const CATAN_RATIONALE_GUIDE =
-  'one concise public sentence grounded in the board, hand, production portfolio, opponents public state, timing, or legal action chosen.';
+export const CATAN_SPEECH_GUIDE =
+  'one or two natural first-person sentences of live Catan table talk. State the visible action and, when it is strategically meaningful, give one concise public-facing reason based only on information everyone can see—for example that a player is leading, a tile is productive, a route is contested, a trade improves flexibility, or the timing is important. This should be watchable table talk, not merely an action caption, but keep detailed calculations, exact inventory logic, hidden information, and the longer-term plan in private thinking. Never reveal exact cards in your hand, development-card identities, hidden victory points, or private analysis. Use the public UI names wood, brick, sheep, wheat, and ore. When the chosen action has a supplied public spot, route, hex, trade, or player label, copy the relevant label verbatim instead of using raw N, E, H, node, edge, hex, seat, or P-number IDs. Name an affected opponent rather than saying a bare "you" or "your". For a trade, plainly say what I give and what I receive, with at most one public reason. Before a roll, do not claim a result; routine roll, pass, reject, and end-turn lines may stay under eight words. Use "I" and "my" for your own position.';
 
-export type CatanSetupModelPlayerOpts = Omit<ModelPlayerOpts, 'gameName' | 'moveNotation' | 'rationaleGuide'>;
+export type CatanSetupModelPlayerOpts = Omit<ModelPlayerOpts, 'gameName' | 'moveNotation' | 'rationaleGuide' | 'speech'>;
 
 export function createCatanSetupModelPlayer(opts: CatanSetupModelPlayerOpts): ModelPlayer<CatanAction> {
   return new ModelPlayer<CatanAction>({
@@ -36,7 +36,7 @@ export function createCatanSetupModelPlayer(opts: CatanSetupModelPlayerOpts): Mo
     fallbackRng: opts.fallbackRng ?? (() => 0),
     gameName: 'Catan',
     moveNotation: CATAN_SETUP_MOVE_NOTATION,
-    rationaleGuide: CATAN_SETUP_RATIONALE_GUIDE,
+    speech: CATAN_SETUP_SPEECH_GUIDE,
   });
 }
 
@@ -47,7 +47,7 @@ export function createCatanModelPlayer(opts: CatanModelPlayerOpts): ModelPlayer<
     ...opts,
     gameName: 'Catan',
     moveNotation: CATAN_MOVE_NOTATION,
-    rationaleGuide: CATAN_RATIONALE_GUIDE,
+    speech: CATAN_SPEECH_GUIDE,
   });
 }
 

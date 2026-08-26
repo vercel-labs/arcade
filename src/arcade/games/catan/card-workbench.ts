@@ -7,7 +7,7 @@ import {
   type MaritimePortTradeRates,
   type MaritimeTradeRates,
 } from '../../../rules/catan/maritime-trade.ts';
-import { COSTS, DEV_CARD_TYPES, type DevCardType, type PlayerColor, type Resource, resourceIndex, type Terrain } from '../../../rules/catan/types.ts';
+import { COSTS, DEV_CARD_TYPES, DISCARD_LIMIT, type DevCardType, type PlayerColor, type Resource, resourceIndex, type Terrain } from '../../../rules/catan/types.ts';
 import type { CatanActionHistoryView, CatanCardsPlayerView, CatanCardsView, CatanDevelopmentPlayView } from './card-types.ts';
 import { type CatanRgb as Rgb, RESOURCE_LOOK, RESOURCE_ORDER, ROAD_ICON, SETTLEMENT_ICON } from './palette.ts';
 
@@ -29,13 +29,16 @@ const reservedDevelopmentCards: DevCardType[] = [];
 let developmentPlay: CatanDevelopmentPlayView | null = null;
 let livePlayedKnights = 0;
 let tradeOpen = false;
+let discardRequired = 0;
 let nextPlayerTradeId = 1;
 
-export type CatanPlayerTradeReactionStatus = 'pending' | 'accepted' | 'rejected';
+export type CatanPlayerTradeReactionStatus = 'pending' | 'accepted' | 'countered' | 'rejected';
 
 export interface CatanPlayerTradeReaction {
   player: CatanCardsPlayerView;
   status: CatanPlayerTradeReactionStatus;
+  counterGive?: Record<Resource, number>;
+  counterGet?: Record<Resource, number>;
 }
 
 export interface CatanPlayerTradeOffer {
@@ -52,6 +55,7 @@ function emptyResourceCounts(): Record<Resource, number> {
 
 export const workbenchTradeGive = emptyResourceCounts();
 export const workbenchTradeGet = emptyResourceCounts();
+export const workbenchDiscardSelection = emptyResourceCounts();
 const liveHistory: CatanActionHistoryView[] = [];
 const livePlayerTradeOffers: CatanPlayerTradeOffer[] = [];
 const playerTradeTimers = new Map<number, ReturnType<typeof setTimeout>>();
@@ -61,6 +65,56 @@ function clearTradeStaging(): void {
     workbenchTradeGive[resource] = 0;
     workbenchTradeGet[resource] = 0;
   }
+}
+
+function clearDiscardStaging(): void {
+  for (const resource of RESOURCE_ORDER) workbenchDiscardSelection[resource] = 0;
+}
+
+export function beginCatanWorkbenchDiscard(): boolean {
+  const total = RESOURCE_ORDER.reduce((sum, resource) => sum + liveHand[resource], 0);
+  if (total <= DISCARD_LIMIT) return false;
+  discardRequired = Math.floor(total / 2);
+  clearDiscardStaging();
+  setCatanTradeEditorOpen(false);
+  return true;
+}
+
+export function catanWorkbenchDiscardRequired(): number {
+  return discardRequired;
+}
+
+export function catanWorkbenchDiscardOpen(): boolean {
+  return discardRequired > 0;
+}
+
+export function adjustCatanWorkbenchDiscard(resource: Resource, delta: -1 | 1): boolean {
+  if (!catanWorkbenchDiscardOpen()) return false;
+  const next = workbenchDiscardSelection[resource] + delta;
+  if (next < 0 || next > liveHand[resource]) return false;
+  const selected = RESOURCE_ORDER.reduce((sum, item) => sum + workbenchDiscardSelection[item], 0);
+  if (delta > 0 && selected >= discardRequired) return false;
+  workbenchDiscardSelection[resource] = next;
+  return true;
+}
+
+export function canSubmitCatanWorkbenchDiscard(): boolean {
+  return catanWorkbenchDiscardOpen()
+    && RESOURCE_ORDER.reduce((sum, resource) => sum + workbenchDiscardSelection[resource], 0) === discardRequired;
+}
+
+export function submitCatanWorkbenchDiscard(): boolean {
+  if (!canSubmitCatanWorkbenchDiscard()) return false;
+  const total = discardRequired;
+  for (const resource of RESOURCE_ORDER) {
+    const count = workbenchDiscardSelection[resource];
+    liveHand[resource] -= count;
+    liveBank[resource] += count;
+  }
+  discardRequired = 0;
+  clearDiscardStaging();
+  liveHistory.push({ actor: 'You', color: CATAN_LOCAL_COLOR, message: `discarded ${total} cards` });
+  return true;
 }
 
 export function adjustCatanWorkbenchHand(resource: Resource, delta: number): boolean {
@@ -449,6 +503,8 @@ export function resetCatanWorkbenchCards(): void {
   playerTradeTimers.clear();
   livePlayerTradeOffers.length = 0;
   nextPlayerTradeId = 1;
+  discardRequired = 0;
+  clearDiscardStaging();
   setCatanTradeEditorOpen(false);
 }
 

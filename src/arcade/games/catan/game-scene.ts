@@ -36,14 +36,72 @@ export interface CatanResourceViewAdjustments {
   pendingDevelopmentCards?: DevCardType[];
 }
 
+export interface CatanActionPreview {
+  seat: number;
+  action: CatanAction;
+  phase: 'opening' | 'editing' | 'ready' | 'pressing';
+  trade?: {
+    mode: 'standard' | 'counter';
+    give: number[];
+    receive: number[];
+    via?: 'bank' | 'port' | 'player' | 'counter';
+  };
+}
+
+function copyTradePreview(trade: NonNullable<CatanActionPreview['trade']>): NonNullable<CatanActionPreview['trade']> {
+  return { ...trade, give: [...trade.give], receive: [...trade.receive] };
+}
+
+function completeTradePreview(action: CatanAction): NonNullable<CatanActionPreview['trade']> | null {
+  if (action.type === 'offerTrade' || action.type === 'counterTrade') return {
+    mode: action.type === 'counterTrade' ? 'counter' : 'standard',
+    give: [...action.give],
+    receive: [...action.receive],
+    via: action.type === 'counterTrade' ? 'counter' : 'player',
+  };
+  if (action.type !== 'maritimeTrade' && action.type !== 'maritimeBulkTrade') return null;
+  const gets = action.type === 'maritimeTrade' ? [action.get] : action.gets;
+  const give = RESOURCES.map(() => 0);
+  const receive = RESOURCES.map(() => 0);
+  give[resourceIndex(action.give)] = (action.via === 'bank' ? 4 : action.rate) * gets.length;
+  for (const resource of gets) receive[resourceIndex(resource)]++;
+  return { mode: 'standard', give, receive, via: action.via };
+}
+
+// Models still choose one complete rules action. These frames are only a readable UI rendition
+// of that intent: open the editor, add cards one at a time, let the result settle, then press.
+export function catanActionPlaybackFrames(seat: number, action: CatanAction): CatanActionPreview[] {
+  const complete = completeTradePreview(action);
+  if (!complete) return [{ seat, action, phase: 'pressing' }];
+  const staged: NonNullable<CatanActionPreview['trade']> = {
+    mode: complete.mode,
+    give: RESOURCES.map(() => 0),
+    receive: RESOURCES.map(() => 0),
+  };
+  const frames: CatanActionPreview[] = [{ seat, action, phase: 'opening', trade: copyTradePreview(staged) }];
+  for (const side of ['give', 'receive'] as const) {
+    for (let index = 0; index < RESOURCES.length; index++) {
+      for (let count = 0; count < complete[side][index]; count++) {
+        staged[side][index]++;
+        frames.push({ seat, action, phase: 'editing', trade: copyTradePreview(staged) });
+      }
+    }
+  }
+  frames.push({ seat, action, phase: 'ready', trade: copyTradePreview(staged) });
+  staged.via = complete.via;
+  frames.push({ seat, action, phase: 'pressing', trade: copyTradePreview(staged) });
+  return frames;
+}
+
 interface PendingResourceGain {
   resource: Resource;
   count: number;
   fromBank: boolean;
+  resolve: () => void;
 }
 
 type BoardChoiceType = 'buildRoad' | 'buildSettlement' | 'buildCity' | 'playKnight' | 'playRoadBuilding';
-export type CatanHumanMenuKind = 'discard' | 'yearOfPlenty' | 'monopoly' | 'bankTrade' | 'portTrade' | 'playerTrade' | 'tradeCounter';
+export type CatanHumanMenuKind = 'discard' | 'yearOfPlenty' | 'monopoly' | 'bankTrade' | 'portTrade' | 'playerTrade' | 'tradeEditor' | 'tradeCounter';
 
 interface BoardChoice {
   type: BoardChoiceType;
@@ -115,6 +173,10 @@ export class CatanGameScene {
   private boardChoice: BoardChoice | null = null;
   private robberVictims: Extract<CatanAction, { type: 'moveRobber' | 'playKnight' }>[] = [];
   private humanMenu: HumanMenu | null = null;
+  private preview: CatanActionPreview | null = null;
+  private previewDurationMs = 0;
+  private synchronizeActionAnimations = false;
+  private humanSeat = -1;
   private onChange: () => void = () => {};
 
   constructor() {
@@ -128,12 +190,14 @@ export class CatanGameScene {
 
   // Take over the board for a new session: adopt the engine's arrangement, drop any pieces
   // from a previous game, and remember each seat's color.
-  beginSession(state: CatanState, colors: PlayerColor[], viewerSeat = 0): void {
+  beginSession(state: CatanState, colors: PlayerColor[], viewerSeat = 0, humanSeat = -1): void {
     this.cancelPending('A new game started');
+    this.scene.cancelActionAnimations();
     this.clearResourceFlights();
     this.live = state;
     this.colors = colors.slice();
     this.viewerSeat = viewerSeat;
+    this.humanSeat = humanSeat;
     this.clearHumanChoice();
     this.scene.setMode('boardCards');
     this.scene.clearPieces();
@@ -148,9 +212,11 @@ export class CatanGameScene {
   // later editor visit is not left with a stale legal set.
   endSession(): void {
     this.cancelPending('The game ended');
+    this.scene.cancelActionAnimations();
     this.clearResourceFlights();
     this.live = null;
     this.colors = [];
+    this.humanSeat = -1;
     this.clearHumanChoice();
     this.scene.setPlacementGate(null);
   }
@@ -165,43 +231,107 @@ export class CatanGameScene {
   colorOf(seat: number): PlayerColor {
     return this.colors[seat] ?? 'red';
   }
+  viewedSeat(): number {
+    return this.viewerSeat;
+  }
+  setViewedSeat(seat: number): boolean {
+    if (!this.live || !Number.isInteger(seat) || seat < 0 || seat >= this.live.n || seat === this.viewerSeat) return false;
+    const layout = this.resourceFlightLayout;
+    this.clearResourceFlights();
+    this.resourceFlightLayout = layout;
+    this.viewerSeat = seat;
+    this.onChange();
+    return true;
+  }
+  setActionPreviewDuration(ms: number): void {
+    this.previewDurationMs = Math.max(0, Math.floor(ms));
+  }
+  setActionAnimationSynchronization(enabled: boolean): void {
+    this.synchronizeActionAnimations = enabled;
+  }
+  actionPreview(): CatanActionPreview | null {
+    return this.preview
+      ? { ...this.preview, ...(this.preview.trade ? { trade: copyTradePreview(this.preview.trade) } : {}) }
+      : null;
+  }
+
+  private playbackFrameDuration(frame: CatanActionPreview): number {
+    if (!frame.trade) return this.previewDurationMs;
+    const scale = frame.phase === 'opening' ? 0.55
+      : frame.phase === 'editing' ? 0.35
+        : frame.phase === 'ready' ? 1.1
+          : 0.65;
+    return Math.max(1, Math.round(this.previewDurationMs * scale));
+  }
 
   // ── the match seam ────────────────────────────────────────────────────────────
   // Apply an action and show it. The state is authoritative: it validates and transitions,
   // and only then does the board place the piece, so an illegal action can never leave a
-  // piece behind. Resolves once the drop has been queued — the scene animates it from there.
+  // piece behind. Live Arcade sessions can opt into presentation synchronization; headless
+  // match-lab scenes leave it disabled and therefore never depend on a render loop.
   async playMove(action: CatanAction): Promise<void> {
     const state = this.state();
     const seat = state.currentPlayer();
+    if (this.previewDurationMs > 0 && seat !== this.humanSeat) {
+      for (const frame of catanActionPlaybackFrames(seat, action)) {
+        this.preview = frame;
+        this.onChange();
+        await new Promise<void>((resolve) => setTimeout(resolve, this.playbackFrameDuration(frame)));
+        // Reset/new-game can happen while a presentation beat is showing. The old action must
+        // never leak into the replacement session.
+        if (this.live !== state) return;
+      }
+    }
     const handBefore = state.handOf(this.viewerSeat).slice();
     state.applyAction(action);
+    const keepPreviewThroughAnimation = this.synchronizeActionAnimations && action.type !== 'buyDevCard';
+    if (keepPreviewThroughAnimation && !this.preview) this.preview = { seat, action, phase: 'pressing' };
+    else if (!keepPreviewThroughAnimation) this.preview = null;
     const handAfter = state.handOf(this.viewerSeat);
     const fromBank = resourceGainComesFromBank(action);
+    const deferRollProduction = this.synchronizeActionAnimations && action.type === 'roll';
+    const resourceCompletions: Promise<void>[] = [];
     for (const resource of RESOURCES) {
       const gain = (handAfter[resourceIndex(resource)] ?? 0) - (handBefore[resourceIndex(resource)] ?? 0);
-      if (gain > 0) this.queueResourceGain(resource, gain, fromBank);
-      else if (gain < 0) this.queueResourceLoss(resource, -gain, resourceLossGoesToBank(action));
+      if (gain > 0) resourceCompletions.push(this.queueResourceGain(resource, gain, fromBank, deferRollProduction));
+      else if (gain < 0) resourceCompletions.push(this.queueResourceLoss(resource, -gain, resourceLossGoesToBank(action)));
     }
     if (action.type === 'buyDevCard' && seat === this.viewerSeat) {
       const card = state.actionRecords().at(-1)?.outcome?.developmentCard;
       if (card) this.queueDevelopmentPurchase(card);
     }
+    const presentationCompletions: Promise<void>[] = [];
+    let rollCompletion: Promise<void> | null = null;
     if (action.type === 'initialSettlement' || action.type === 'buildSettlement') {
-      this.scene.placePiece('building', action.node, this.colorOf(seat));
+      presentationCompletions.push(this.scene.placePiece('building', action.node, this.colorOf(seat)));
     }
     else if (action.type === 'initialRoad' || action.type === 'buildRoad') {
-      this.scene.placePiece('road', action.edge, this.colorOf(seat));
+      presentationCompletions.push(this.scene.placePiece('road', action.edge, this.colorOf(seat)));
     }
-    else if (action.type === 'buildCity') this.scene.upgradeBuilding(action.node);
+    else if (action.type === 'buildCity') presentationCompletions.push(this.scene.upgradeBuilding(action.node));
     else if (action.type === 'roll') {
       const dice = state.dice();
-      if (dice) this.scene.rollDice(dice);
+      if (dice) rollCompletion = this.scene.rollDice(dice);
     }
     else if (action.type === 'playRoadBuilding') {
-      for (const edge of action.edges) this.scene.placePiece('road', edge, this.colorOf(seat));
+      for (const edge of action.edges) presentationCompletions.push(this.scene.placePiece('road', edge, this.colorOf(seat)));
     }
     else if (action.type === 'moveRobber' || action.type === 'playKnight') this.scene.syncRobberHex(action.hex);
-    this.refreshGate();
+    const refreshAfterAnimation = this.synchronizeActionAnimations && action.type === 'roll';
+    if (!refreshAfterAnimation) this.refreshGate();
+    this.onChange();
+    if (!this.synchronizeActionAnimations || action.type === 'buyDevCard') return;
+    if (rollCompletion) {
+      await rollCompletion;
+      if (this.live !== state) return;
+      this.flushPendingResourceGains();
+      this.flushPendingResourceLosses();
+      this.onChange();
+    }
+    await Promise.all([...presentationCompletions, ...resourceCompletions]);
+    if (this.live !== state) return;
+    this.preview = null;
+    if (refreshAfterAnimation) this.refreshGate();
     this.onChange();
   }
 
@@ -219,6 +349,7 @@ export class CatanGameScene {
         detach: () => signal?.removeEventListener('abort', onAbort),
       };
       if (signal?.aborted) this.cancelPending('The turn was aborted');
+      else if (this.live?.currentPrompt().kind === 'discard') this.beginHumanMenu('discard');
       else this.refreshGate();
     });
   }
@@ -315,7 +446,10 @@ export class CatanGameScene {
               ? legal.some((action) => action.type === 'maritimeTrade' && action.via === 'port')
               : kind === 'playerTrade'
                 ? this.live.legalActionFamilies().some((family) => family.type === 'offerTrade')
-                : this.live.legalActionFamilies().some((family) => family.type === 'counterTrade');
+                : kind === 'tradeEditor'
+                  ? legal.some((action) => action.type === 'maritimeTrade')
+                    || this.live.legalActionFamilies().some((family) => family.type === 'offerTrade')
+                  : this.live.legalActionFamilies().some((family) => family.type === 'counterTrade');
     if (!available) return false;
     this.boardChoice = null;
     this.robberVictims = [];
@@ -349,7 +483,9 @@ export class CatanGameScene {
       this.onChange();
       return true;
     }
-    if (menu.kind === 'playerTrade' || menu.kind === 'tradeCounter') return this.adjustHumanTradeResource(resource, side, 1);
+    if (menu.kind === 'playerTrade' || menu.kind === 'tradeEditor' || menu.kind === 'tradeCounter') {
+      return this.adjustHumanTradeResource(resource, side, 1);
+    }
     const limit = menu.kind === 'discard'
       ? state.legalActionFamilies().find((family) => family.type === 'discard')?.count ?? 0
       : 2;
@@ -366,10 +502,21 @@ export class CatanGameScene {
     return true;
   }
 
+  removeHumanDiscardResource(resource: Resource): boolean {
+    const menu = this.humanMenu;
+    if (!menu || menu.kind !== 'discard' || !this.pending) return false;
+    const index = menu.resources.lastIndexOf(resource);
+    if (index < 0) return false;
+    menu.resources.splice(index, 1);
+    this.onChange();
+    return true;
+  }
+
   adjustHumanTradeResource(resource: Resource, side: 'give' | 'receive', delta: -1 | 1): boolean {
     const menu = this.humanMenu;
     const state = this.live;
-    if (!menu || !state || !this.pending || (menu.kind !== 'playerTrade' && menu.kind !== 'tradeCounter')) return false;
+    if (!menu || !state || !this.pending
+      || (menu.kind !== 'playerTrade' && menu.kind !== 'tradeEditor' && menu.kind !== 'tradeCounter')) return false;
     const index = resourceIndex(resource);
     const target = side === 'give' ? menu.give : menu.receive;
     const other = side === 'give' ? menu.receive : menu.give;
@@ -379,6 +526,7 @@ export class CatanGameScene {
     } else {
       if (other[index] > 0) return false;
       if (side === 'give' && target[index] >= (state.handOf(state.currentPlayer())[index] ?? 0)) return false;
+      if (side === 'receive' && target[index] >= (state.bankDeck()[index] ?? 0)) return false;
       target[index]++;
     }
     this.onChange();
@@ -415,6 +563,7 @@ export class CatanGameScene {
     if (menu.kind === 'discard') return this.submitHumanAction({ type: 'discard', resources: [...menu.resources] });
     if (menu.kind === 'yearOfPlenty') return this.submitHumanAction({ type: 'playYearOfPlenty', resources: [...menu.resources] });
     if (menu.kind === 'playerTrade') return this.submitHumanAction({ type: 'offerTrade', give: [...menu.give], receive: [...menu.receive] });
+    if (menu.kind === 'tradeEditor') return this.submitHumanTrade('player');
     if (menu.kind === 'tradeCounter') return this.submitHumanAction({ type: 'counterTrade', give: [...menu.give], receive: [...menu.receive] });
     if ((menu.kind === 'bankTrade' || menu.kind === 'portTrade') && menu.maritimeGive) {
       return this.submitHumanAction(menu.kind === 'bankTrade'
@@ -430,6 +579,9 @@ export class CatanGameScene {
     if (menu.kind === 'discard') return this.live.isLegalAction({ type: 'discard', resources: [...menu.resources] });
     if (menu.kind === 'yearOfPlenty') return this.live.isLegalAction({ type: 'playYearOfPlenty', resources: [...menu.resources] });
     if (menu.kind === 'playerTrade') return this.live.isLegalAction({ type: 'offerTrade', give: [...menu.give], receive: [...menu.receive] });
+    if (menu.kind === 'tradeEditor') {
+      return this.humanTradeCanSubmit('bank') || this.humanTradeCanSubmit('port') || this.humanTradeCanSubmit('player');
+    }
     if (menu.kind === 'tradeCounter') return this.live.isLegalAction({ type: 'counterTrade', give: [...menu.give], receive: [...menu.receive] });
     if ((menu.kind === 'bankTrade' || menu.kind === 'portTrade') && menu.maritimeGive) {
       return this.live.isLegalAction(menu.kind === 'bankTrade'
@@ -439,10 +591,48 @@ export class CatanGameScene {
     return false;
   }
 
+  humanTradeCanSubmit(via: 'bank' | 'port' | 'player' | 'counter'): boolean {
+    return this.humanTradeAction(via) !== null;
+  }
+
+  submitHumanTrade(via: 'bank' | 'port' | 'player' | 'counter'): boolean {
+    const action = this.humanTradeAction(via);
+    return action ? this.submitHumanAction(action) : false;
+  }
+
+  private humanTradeAction(via: 'bank' | 'port' | 'player' | 'counter'): CatanAction | null {
+    const menu = this.humanMenu;
+    const state = this.live;
+    if (!menu || !state) return null;
+    if (via === 'player') {
+      if (menu.kind !== 'tradeEditor' && menu.kind !== 'playerTrade') return null;
+      const action: CatanAction = { type: 'offerTrade', give: [...menu.give], receive: [...menu.receive] };
+      return state.isLegalAction(action) ? action : null;
+    }
+    if (via === 'counter') {
+      if (menu.kind !== 'tradeCounter') return null;
+      const action: CatanAction = { type: 'counterTrade', give: [...menu.give], receive: [...menu.receive] };
+      return state.isLegalAction(action) ? action : null;
+    }
+    if (menu.kind !== 'tradeEditor' && menu.kind !== 'bankTrade' && menu.kind !== 'portTrade') return null;
+    const giveIndexes = menu.give.flatMap((count, index) => count > 0 ? [index] : []);
+    if (giveIndexes.length !== 1) return null;
+    const giveIndex = giveIndexes[0];
+    const give = RESOURCES[giveIndex];
+    const gets = RESOURCES.flatMap((resource, index) => Array.from({ length: menu.receive[index] ?? 0 }, () => resource));
+    if (gets.length === 0) return null;
+    const rate = (menu.give[giveIndex] ?? 0) / gets.length;
+    const action: CatanAction | null = via === 'bank'
+      ? rate === 4 ? { type: 'maritimeBulkTrade', via: 'bank', give, gets } : null
+      : rate === 2 || rate === 3 ? { type: 'maritimeBulkTrade', via: 'port', rate, give, gets } : null;
+    return action && state.isLegalAction(action) ? action : null;
+  }
+
   private clearHumanChoice(): void {
     this.boardChoice = null;
     this.robberVictims = [];
     this.humanMenu = null;
+    this.preview = null;
   }
 
   // ── legal-target gate ─────────────────────────────────────────────────────────
@@ -620,11 +810,14 @@ export class CatanGameScene {
     };
   }
 
-  private queueResourceGain(resource: Resource, count: number, fromBank: boolean): void {
+  private queueResourceGain(resource: Resource, count: number, fromBank: boolean, defer = false): Promise<void> {
+    let resolveCompletion: () => void = () => {};
+    const completion = new Promise<void>((resolve) => { resolveCompletion = resolve; });
     this.handPending[resource] += count;
     if (fromBank) this.bankPendingDeparture[resource] += count;
-    this.pendingResourceGains.push({ resource, count, fromBank });
-    this.flushPendingResourceGains();
+    this.pendingResourceGains.push({ resource, count, fromBank, resolve: resolveCompletion });
+    if (!defer) this.flushPendingResourceGains();
+    return completion;
   }
 
   private flushPendingResourceGains(): void {
@@ -640,17 +833,20 @@ export class CatanGameScene {
       );
       const to = catanHandLandingCell(layout.region, gain.resource);
       const flights = gain.fromBank ? this.bankResourceFlights : this.externalResourceFlights;
-      flights.spawn(gain.resource, gain.count, from, to, order);
+      void flights.spawn(gain.resource, gain.count, from, to, order).then(gain.resolve);
       order += gain.count;
     }
     this.pendingResourceGains = [];
   }
 
-  private queueResourceLoss(resource: Resource, count: number, toBank: boolean): void {
+  private queueResourceLoss(resource: Resource, count: number, toBank: boolean): Promise<void> {
+    let resolveCompletion: () => void = () => {};
+    const completion = new Promise<void>((resolve) => { resolveCompletion = resolve; });
     this.handPendingDeparture[resource] += count;
     if (toBank) this.bankPendingArrival[resource] += count;
-    this.pendingResourceLosses.push({ resource, count, fromBank: toBank });
+    this.pendingResourceLosses.push({ resource, count, fromBank: toBank, resolve: resolveCompletion });
     this.flushPendingResourceLosses();
+    return completion;
   }
 
   private flushPendingResourceLosses(): void {
@@ -661,7 +857,7 @@ export class CatanGameScene {
       const from = catanHandLandingCell(layout.region, loss.resource);
       const to = catanBankDepartureCell(layout.region, loss.resource, layout.playerCount, loss.fromBank && layout.railVisible);
       const flights = loss.fromBank ? this.bankBoundResourceFlights : this.externalBoundResourceFlights;
-      flights.spawn(loss.resource, loss.count, from, to, order);
+      void flights.spawn(loss.resource, loss.count, from, to, order).then(loss.resolve);
       order += loss.count;
     }
     this.pendingResourceLosses = [];
@@ -699,6 +895,8 @@ export class CatanGameScene {
     this.bankBoundResourceFlights.drain();
     this.externalBoundResourceFlights.drain();
     this.developmentFlights.drain();
+    for (const pending of this.pendingResourceGains) pending.resolve();
+    for (const pending of this.pendingResourceLosses) pending.resolve();
     this.pendingResourceGains = [];
     this.pendingResourceLosses = [];
     this.pendingDevelopmentSpawns = [];

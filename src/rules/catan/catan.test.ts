@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadGame, registeredGames } from '../registry.ts';
-import { edgeNodes, nodeEdges, nodeHexes, NUM_EDGES, NUM_NODES } from './board-topology.ts';
+import { edgeNodes, nodeEdges, nodeHexes, NUM_EDGES, NUM_HEXES, NUM_NODES } from './board-topology.ts';
 import {
   BANK_PER_RESOURCE,
   COSTS,
@@ -126,9 +126,34 @@ test('initial settlement choices expose typed production metadata and a separate
 
   const decision = s.decisionContextString(0);
   assert.match(decision, /Legal actions/);
-  assert.match(decision, new RegExp(`init-settlement ${choice.node}:`));
+  assert.match(decision, new RegExp(`init-settlement ${choice.node} \\[public spot:`));
   assert.match(decision, /total=\d+ pips; diversity=\d/);
+  assert.match(decision, /brick \/ wheat \(grain\) \/ wood \(lumber\) \/ ore \/ sheep \(wool\)/);
+  assert.match(decision, /public hex:/);
   assert.doesNotMatch(decision, /best|recommended/i);
+});
+
+test('public Catan labels are stable, human-readable, and keep canonical IDs separate', () => {
+  const s = fresh();
+  const nodeLabel = s.publicNodeLabel(0);
+  const hexLabel = s.publicHexLabel(0);
+  assert.match(nodeLabel, /(?:\d+|desert)(?:🧱|🌾|🪵|🪨|🐑|–|desert)/u);
+  assert.match(hexLabel, /^(?:\d+(?:🧱|🌾|🪵|🪨|🐑)|desert)(?: (?:north|northeast|east|southeast|south|southwest|west|northwest)(?: \d+)?)?$/u);
+  assert.doesNotMatch(nodeLabel, /\bN\d+\b|\bH\d+\b/);
+  assert.equal(s.publicNodeLabel(0), nodeLabel);
+  assert.equal(s.publicHexLabel(0), hexLabel);
+  assert.equal(new Set(Array.from({ length: NUM_NODES }, (_, node) => s.publicNodeLabel(node))).size, NUM_NODES);
+  assert.equal(new Set(Array.from({ length: NUM_HEXES }, (_, hex) => s.publicHexLabel(hex))).size, NUM_HEXES);
+});
+
+test('roll decisions distinguish the previous result from the unresolved current roll', () => {
+  const s = fresh();
+  finishSetup(s);
+  const observation = s.informationStateString(0);
+  const decision = s.decisionContextString(0);
+  assert.match(observation, /Previous resolved dice roll: none/);
+  assert.match(observation, /dice have not been rolled for this turn yet/i);
+  assert.match(decision, /This roll has no result yet/);
 });
 
 test('second-settlement options expose neutral two-settlement portfolio diagnostics', () => {

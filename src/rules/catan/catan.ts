@@ -16,7 +16,7 @@
 
 import { type Game, type GameState, type ImperfectInfoState, TERMINAL } from '../game.ts';
 import { registerGame } from '../registry.ts';
-import { edgeNodes, nodeEdges, nodeHexes, NUM_EDGES, NUM_HEXES, NUM_NODES } from './board-topology.ts';
+import { edgeNodes, HEX_COORDS, hexNodes, nodeEdges, nodeHexes, NUM_EDGES, NUM_HEXES, NUM_NODES } from './board-topology.ts';
 import { canPlaceRoad, canPlaceSettlement, canUpgradeCity, type BoardOccupancy } from './placement.ts';
 import { type BoardSetup, generateBoard, nodeProduction } from './setup.ts';
 import { buildDevelopmentDeck } from './development.ts';
@@ -52,6 +52,39 @@ import {
   TOKEN_DOTS,
   VP_TO_WIN,
 } from './types.ts';
+
+const PUBLIC_RESOURCE: Record<Resource, { name: string; emoji: string }> = {
+  brick: { name: 'brick', emoji: '🧱' },
+  grain: { name: 'wheat', emoji: '🌾' },
+  lumber: { name: 'wood', emoji: '🪵' },
+  ore: { name: 'ore', emoji: '🪨' },
+  wool: { name: 'sheep', emoji: '🐑' },
+};
+
+const PUBLIC_RESOURCE_ORDER = 'brick / wheat (grain) / wood (lumber) / ore / sheep (wool)';
+
+function publicResource(resource: Resource): string {
+  return PUBLIC_RESOURCE[resource].name;
+}
+
+function compassDirection(x: number, y: number): string {
+  const angle = Math.atan2(y, x);
+  const sectors = ['east', 'southeast', 'south', 'southwest', 'west', 'northwest', 'north', 'northeast'] as const;
+  return sectors[Math.round(angle / (Math.PI / 4) + 8) % 8];
+}
+
+function hexPosition(hex: number): { x: number; y: number } {
+  const { q, r } = HEX_COORDS[hex];
+  return { x: Math.sqrt(3) * (q + r / 2), y: 1.5 * r };
+}
+
+function nodePosition(node: number): { x: number; y: number } {
+  const hex = nodeHexes[node][0];
+  const corner = hexNodes[hex].indexOf(node);
+  const center = hexPosition(hex);
+  const angle = (-30 - corner * 60) * Math.PI / 180;
+  return { x: center.x + Math.cos(angle), y: center.y + Math.sin(angle) };
+}
 
 export interface CatanOpts {
   numPlayers: number; // base game is 3–4; 2 is allowed for testing
@@ -872,7 +905,8 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
     const ownDev = DEV_CARD_TYPES.map((type, i) => (this.devHand[player][i] ? `${this.devHand[player][i]} ${type}` : '')).filter(Boolean).join(', ') || '(none)';
     const portfolio = this.portfolio(player);
     lines.push(`Your hand: ${this.deckStr(this.hands[player])}. Your development cards: ${ownDev}. Your actual VP: ${this.victoryPoints(player, true)} (public ${this.victoryPoints(player, false)}).`);
-    lines.push(`Turn owner: ${this.seatName(this.turnOwner)}. Last dice: ${this.lastDice ? `${this.lastDice.join('+')}=${this.lastDice[0] + this.lastDice[1]}` : 'none'}. Robber on hex ${this.robberHex}. Bank: ${this.deckStr(this.bank)}.`);
+    lines.push(`Turn owner: ${this.seatName(this.turnOwner)}. Previous resolved dice roll: ${this.lastDice ? `${this.lastDice.join('+')}=${this.lastDice[0] + this.lastDice[1]}` : 'none'}. Robber on H${this.robberHex} [public hex: ${this.publicHexLabel(this.robberHex)}]. Bank: ${this.deckStr(this.bank)}.`);
+    if (this.prompt.kind === 'roll') lines.push('The dice have not been rolled for this turn yet; choosing roll will create a new result.');
     const others = [];
     for (let s = 0; s < this.n; s++) {
       if (s === player) continue;
@@ -882,14 +916,18 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
     lines.push(`Setup settlements placed: ${this.initialSettlements.map((count, seat) => `${this.seatName(seat)}=${count}/2`).join(', ')}.`);
     lines.push(
       `Board hexes: ${this.board.hexes
-        .map((hex, id) => `H${id}=${hex.terrain}/${hex.token ?? 'none'}${id === this.robberHex ? '/robber' : ''}`)
+        .map((hex, id) => `H${id} [public hex: ${this.publicHexLabel(id)}]=${hex.terrain}/${hex.token ?? 'none'}${id === this.robberHex ? '/robber' : ''}`)
         .join(', ')}.`,
     );
     lines.push(`Buildings: ${this.publicBuildings()}. Roads: ${this.publicRoads()}.`);
     lines.push(`Awards: Longest Road=${this.longestRoadHolder < 0 ? 'none' : this.seatName(this.longestRoadHolder)}; Largest Army=${this.largestArmyHolder < 0 ? 'none' : this.seatName(this.largestArmyHolder)}.`);
     lines.push(`Your portfolio: production pips ${this.productionStr(portfolio.production)}; numbers [${portfolio.numberCoverage.join(',')}]; ports ${this.portsStr(portfolio.ports)}; pieces left roads=${portfolio.roadsLeft}, settlements=${portfolio.settlementsLeft}, cities=${portfolio.citiesLeft}.`);
+    lines.push(`Private rules vocabulary maps to public table talk as follows: ${PUBLIC_RESOURCE_ORDER}. Keep canonical IDs and pip calculations in private thinking; public speech uses the supplied public labels and player names.`);
     if (this.trade) {
       lines.push(`Active offer from ${this.seatName(this.trade.from)}: gives ${this.deckStr(this.trade.give)}, requests ${this.deckStr(this.trade.receive)}.`);
+      if (player !== this.trade.from) {
+        lines.push(`If you accept, you give ${this.publicDeckPhrase(this.trade.receive)} and receive ${this.publicDeckPhrase(this.trade.give)}.`);
+      }
       if (this.trade.accepted.length) lines.push(`Accepted by: ${this.trade.accepted.map((seat) => this.seatName(seat)).join(', ')}.`);
       for (const counter of this.trade.counters) {
         lines.push(`Counter from ${this.seatName(counter.from)}: they give ${this.deckStr(counter.give)}, request ${this.deckStr(counter.receive)}.`);
@@ -910,7 +948,9 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
     const lines = [
       'Legal actions (choose exactly one canonical action shown below).',
       'Facts are descriptive, not recommendations; decide how to value production, diversity, ports, and expansion.',
+      `Canonical five-slot resource vectors are always brick/grain/lumber/ore/wool. In public speech these mean ${PUBLIC_RESOURCE_ORDER}. Domestic offers and counteroffers are player-to-player trades, never bank or port trades.`,
     ];
+    if (this.prompt.kind === 'roll') lines.push('The previous dice value is historical. This roll has no result yet, so do not describe what was rolled or produced.');
     if (this.prompt.kind === 'initialSettlement') {
       for (const option of this.initialSettlementOptions()) lines.push(`- ${this.settlementOptionString(option)}`);
       return lines.join('\n');
@@ -918,9 +958,9 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
     if (this.prompt.kind === 'initialRoad') {
       for (const option of this.initialRoadOptions()) {
         const expansion = option.expansionSites.length
-          ? option.expansionSites.map((site) => `N${site.node} (${this.siteYieldString(site)})`).join(' | ')
+          ? option.expansionSites.map((site) => `N${site.node} [public spot: ${this.publicNodeLabel(site.node)}] (${this.siteYieldString(site)})`).join(' | ')
           : '(no currently legal frontier settlement)';
-        lines.push(`- init-road ${option.edge}: N${option.fromNode} → N${option.towardNode}; future settlement frontiers: ${expansion}`);
+        lines.push(`- init-road ${option.edge} [public route: ${this.publicRoadLabel(option.edge)}]: N${option.fromNode} → N${option.towardNode}; future settlement frontiers: ${expansion}`);
       }
       return lines.join('\n');
     }
@@ -932,15 +972,18 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
       if (combinations <= 80) for (const action of legal) lines.push(`- ${this.actionToString(action)}`);
       else lines.push(`The enumerable API exposes ${legal.length} representative combinations; any valid combination in the format above is accepted.`);
     } else {
-      for (const action of legal) lines.push(`- ${this.actionToString(action)}`);
+      for (const action of legal) {
+        const hint = this.publicActionHint(action);
+        lines.push(`- ${this.actionToString(action)}${hint ? ` [${hint}]` : ''}`);
+      }
     }
     if (this.prompt.kind === 'playTurn' && this.domesticTradeEnabled && this.domesticOffersThisTurn < this.domesticTradeOfferLimit) {
       lines.push('- Domestic offer (parameterized): offer b/g/l/o/w for b/g/l/o/w, using five nonnegative counts in brick/grain/lumber/ore/wool order.');
-      lines.push('  Example: offer 1/0/0/0/0 for 0/1/0/0/0. Offers are validated against your hand and cannot request the same resource they give.');
+      lines.push('  Example: offer 1/0/0/0/0 for 0/1/0/0/0 means I give 1 brick and receive 1 wheat from another player. Offers are validated against your hand and cannot request the same resource they give.');
     }
     if (this.prompt.kind === 'respondTrade' && this.trade) {
       lines.push('- Counteroffer (parameterized): counter b/g/l/o/w for b/g/l/o/w, from your perspective: what you give, then what you receive.');
-      lines.push(`  The posted offer reversed into your perspective is: counter ${this.trade.receive.join('/')} for ${this.trade.give.join('/')}. You may revise either side.`);
+      lines.push(`  The posted offer reversed into your perspective is: counter ${this.trade.receive.join('/')} for ${this.trade.give.join('/')}. That means you give ${this.publicDeckPhrase(this.trade.receive)} and receive ${this.publicDeckPhrase(this.trade.give)}. You may revise either side.`);
     }
     return lines.join('\n');
   }
@@ -992,6 +1035,8 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
     from: number;
     give: readonly number[];
     receive: readonly number[];
+    responders: readonly number[];
+    responseIndex: number;
     accepted: readonly number[];
     counters: readonly { from: number; give: readonly number[]; receive: readonly number[] }[];
   } | null {
@@ -1000,6 +1045,8 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
           from: this.trade.from,
           give: this.trade.give.slice(),
           receive: this.trade.receive.slice(),
+          responders: this.trade.responders.slice(),
+          responseIndex: this.trade.responseIndex,
           accepted: this.trade.accepted.slice(),
           counters: this.trade.counters.map((counter) => ({
             from: counter.from,
@@ -1419,6 +1466,22 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
     return parts.join(' ') || '(none)';
   }
 
+  private deckPhrase(d: FreqDeck): string {
+    const parts = RESOURCES.map((resource, index) => {
+      const count = d[index] ?? 0;
+      return count > 0 ? `${count} ${resource}` : '';
+    }).filter(Boolean);
+    return parts.join(', ') || 'nothing';
+  }
+
+  private publicDeckPhrase(d: FreqDeck): string {
+    const parts = RESOURCES.map((resource, index) => {
+      const count = d[index] ?? 0;
+      return count > 0 ? `${count} ${publicResource(resource)}` : '';
+    }).filter(Boolean);
+    return parts.join(', ') || 'nothing';
+  }
+
   private productionStr(production: Partial<Record<Resource, number>>): string {
     return RESOURCES.filter((resource) => (production[resource] ?? 0) > 0)
       .map((resource) => `${resource}=${production[resource]}`)
@@ -1538,20 +1601,108 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
   private publicBuildings(): string {
     const parts = [...this.buildings.entries()]
       .sort(([a], [b]) => a - b)
-      .map(([node, building]) => `N${node}=${this.seatName(building.player)}-${building.type}`);
+      .map(([node, building]) => `N${node} [public spot: ${this.publicNodeLabel(node)}]=${this.seatName(building.player)}-${building.type}`);
     return parts.join(', ') || '(none)';
   }
 
   private publicRoads(): string {
     const parts = [...this.roads.entries()]
       .sort(([a], [b]) => a - b)
-      .map(([edge, player]) => `E${edge}=${this.seatName(player)}`);
+      .map(([edge, player]) => `E${edge} [public route: ${this.publicRoadLabel(edge)}]=${this.seatName(player)}`);
     return parts.join(', ') || '(none)';
+  }
+
+  /** Human table-talk label; canonical node IDs remain the action/parser contract. */
+  publicNodeLabel(node: number): string {
+    if (!Number.isInteger(node) || node < 0 || node >= NUM_NODES) throw new RangeError(`invalid Catan node ${node}`);
+    const base = this.publicNodeLabelBase(node);
+    const duplicates = Array.from({ length: NUM_NODES }, (_, candidate) => candidate)
+      .filter((candidate) => this.publicNodeLabelBase(candidate) === base);
+    if (duplicates.length === 1) return base;
+    return this.disambiguatedLabel(base, node, duplicates, nodePosition);
+  }
+
+  /** Human table-talk label; canonical hex IDs remain the robber/parser contract. */
+  publicHexLabel(hex: number): string {
+    if (!Number.isInteger(hex) || hex < 0 || hex >= NUM_HEXES) throw new RangeError(`invalid Catan hex ${hex}`);
+    const base = this.publicHexLabelBase(hex);
+    const duplicates = Array.from({ length: NUM_HEXES }, (_, candidate) => candidate)
+      .filter((candidate) => this.publicHexLabelBase(candidate) === base);
+    if (duplicates.length === 1) return base;
+    return this.disambiguatedLabel(base, hex, duplicates, hexPosition);
+  }
+
+  private publicNodeLabelBase(node: number): string {
+    return nodeHexes[node]
+      .map((hex) => this.publicHexLabelBase(hex))
+      .join('–');
+  }
+
+  private publicHexLabelBase(hex: number): string {
+    const tile = this.board.hexes[hex];
+    const resource = TERRAIN_RESOURCE[tile.terrain];
+    if (resource === null || tile.token === null) return 'desert';
+    return `${tile.token}${PUBLIC_RESOURCE[resource].emoji}`;
+  }
+
+  private publicRoadLabel(edge: number): string {
+    const [a, b] = edgeNodes[edge];
+    return `${this.publicNodeLabel(a)} toward ${this.publicNodeLabel(b)}`;
+  }
+
+  private disambiguatedLabel(
+    base: string,
+    id: number,
+    duplicates: readonly number[],
+    position: (candidate: number) => { x: number; y: number },
+  ): string {
+    const direction = compassDirection(position(id).x, position(id).y);
+    const sameDirection = duplicates
+      .filter((candidate) => {
+        const point = position(candidate);
+        return compassDirection(point.x, point.y) === direction;
+      })
+      .sort((a, b) => {
+        const pa = position(a);
+        const pb = position(b);
+        return pa.y - pb.y || pa.x - pb.x;
+      });
+    const qualifier = sameDirection.length > 1 ? `${direction} ${sameDirection.indexOf(id) + 1}` : direction;
+    return `${base} ${qualifier}`;
+  }
+
+  private publicActionHint(action: CatanAction): string {
+    switch (action.type) {
+      case 'initialSettlement':
+      case 'buildSettlement':
+      case 'buildCity':
+        return `public spot: ${this.publicNodeLabel(action.node)}`;
+      case 'initialRoad':
+      case 'buildRoad':
+        return `public route: ${this.publicRoadLabel(action.edge)}`;
+      case 'playRoadBuilding':
+        return `public routes: ${action.edges.map((edge) => this.publicRoadLabel(edge)).join(' | ')}`;
+      case 'moveRobber':
+      case 'playKnight':
+        return `public target: ${this.publicHexLabel(action.hex)}${action.victim === null ? '' : `; player: ${this.seatName(action.victim)}`}`;
+      case 'maritimeTrade':
+        return `public trade: give ${publicResource(action.give)}, receive ${publicResource(action.get)}`;
+      case 'maritimeBulkTrade':
+        return `public trade: give ${publicResource(action.give)}, receive ${action.gets.map(publicResource).join(', ')}`;
+      case 'playYearOfPlenty':
+        return `resources: ${action.resources.map(publicResource).join(', ')}`;
+      case 'playMonopoly':
+        return `resource: ${publicResource(action.resource)}`;
+      case 'confirmTrade':
+        return `player: ${this.seatName(action.with)}`;
+      default:
+        return '';
+    }
   }
 
   private settlementOptionString(option: InitialSettlementOption): string {
     const local = this.siteYieldString(option);
-    if (option.portfolio.settlementNodes.length === 1) return `init-settlement ${option.node}: ${local}`;
+    if (option.portfolio.settlementNodes.length === 1) return `init-settlement ${option.node} [public spot: ${this.publicNodeLabel(option.node)}]: ${local}`;
     const portfolio = option.portfolio;
     const production = RESOURCES
       .filter((resource) => (portfolio.production[resource] ?? 0) > 0)
@@ -1567,7 +1718,7 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
           .join(', ')
       : 'none';
     return (
-      `init-settlement ${option.node}: ${local}; ` +
+      `init-settlement ${option.node} [public spot: ${this.publicNodeLabel(option.node)}]: ${local}; ` +
       `two-settlement portfolio: production={${production}}, total=${portfolio.totalPips} pips, ` +
       `resources=${portfolio.resourceDiversity}, numbers=[${portfolio.numberCoverage.join(',')}], ` +
       `repeated-numbers=[${portfolio.repeatedNumbers.join(',') || 'none'}], ` +
@@ -1578,7 +1729,7 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
 
   private siteYieldString(site: SettlementSite): string {
     const hexes = site.adjacentHexes
-      .map((hex) => `H${hex.hex} ${hex.resource ?? 'desert'} ${hex.token ?? '-'} (${hex.pips} pips)`)
+      .map((hex) => `H${hex.hex} [public hex: ${this.publicHexLabel(hex.hex)}] ${hex.resource ?? 'desert'} ${hex.token ?? '-'} (${hex.pips} pips)`)
       .join(', ');
     const port = site.port ? `; port=${site.port.resource ?? 'any'} ${site.port.ratio}:1` : '';
     return `${hexes}; total=${site.totalPips} pips; diversity=${site.resourceDiversity}${port}`;

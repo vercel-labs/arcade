@@ -20,6 +20,10 @@ import {
   type CatanActionHistoryView,
   type CatanCardsPlayerView,
   type CatanCardsView,
+  type CatanDiscardEditorController,
+  type CatanHandActionController,
+  type CatanPlayerTradeOffersController,
+  type CatanTradeEditorController,
   catanCardsLayout,
   catanRailVisible,
   mountCatanCardsHud,
@@ -27,12 +31,12 @@ import {
 } from './card-hud.ts';
 import { CatanState } from '../../../rules/catan/catan.ts';
 import { DEV_CARD_TYPES, type CatanAction, type DevCardType, RESOURCES, type Resource, resourceIndex } from '../../../rules/catan/types.ts';
-import { CATAN_STATUS, PLAYER_LOOK, RESOURCE_LOOK } from './palette.ts';
-import { hudBottomRight, hudTopCenter, hudTopRight } from '../../shell/hud-chrome.ts';
+import { CATAN_CARD, CATAN_STATUS, DEV_CARD_ICON, KNIGHT_ICON, PLAYER_LOOK, RESOURCE_LOOK, ROAD_ICON, SETTLEMENT_ICON } from './palette.ts';
+import { hudTopCenter, hudTopRight } from '../../shell/hud-chrome.ts';
 import type { BoardToken, SailLabel } from './tile-scene.ts';
 import { catanFlyingCardNodes, catanProjectedBoardLabels } from './tile-hud.ts';
 import type { FlyingResource } from './scene/resource-flight.ts';
-import type { CatanGameScene, CatanResourceViewAdjustments } from './game-scene.ts';
+import type { CatanActionPreview, CatanGameScene, CatanResourceViewAdjustments } from './game-scene.ts';
 
 const STATUS_FG = CATAN_STATUS.foreground;
 const STATUS_MUTED = CATAN_STATUS.muted;
@@ -58,8 +62,9 @@ function devTotal(state: CatanState, seat: number): number {
   return DEV_CARD_TYPES.reduce((sum, type) => sum + state.developmentCardCount(seat, type), 0);
 }
 
-function playerView(state: CatanState, driver: CatanDriver, seat: number): CatanCardsPlayerView {
+function playerView(state: CatanState, driver: CatanDriver, seat: number, viewer?: number): CatanCardsPlayerView {
   return {
+    seat,
     name: driver.labelOf(seat),
     color: driver.colorOf(seat),
     publicVp: state.victoryPoints(seat, false),
@@ -70,6 +75,7 @@ function playerView(state: CatanState, driver: CatanDriver, seat: number): Catan
     active: state.currentPlayer() === seat,
     hasLargestArmy: state.largestArmy() === seat,
     hasLongestRoad: state.longestRoad() === seat,
+    viewing: viewer === seat,
   };
 }
 
@@ -77,8 +83,9 @@ export function catanLiveView(
   state: CatanState,
   driver: CatanDriver,
   adjustments?: CatanResourceViewAdjustments,
+  viewerSeat?: number,
 ): CatanCardsView {
-  const viewer = driver.humanSeat() >= 0 ? driver.humanSeat() : 0;
+  const viewer = driver.humanSeat() >= 0 ? driver.humanSeat() : viewerSeat ?? 0;
   const bank = {} as Record<Resource, number>;
   for (const r of RESOURCES) {
     bank[r] = (state.bankDeck()[resourceIndex(r)] ?? 0)
@@ -87,12 +94,13 @@ export function catanLiveView(
   }
   const opponents: CatanCardsPlayerView[] = [];
   for (let seat = 0; seat < driver.seatCount(); seat++) {
-    if (seat !== viewer) opponents.push(playerView(state, driver, seat));
+    if (seat !== viewer) opponents.push(playerView(state, driver, seat, viewer));
   }
   const history: CatanActionHistoryView[] = driver.history().map((entry) => ({
     actor: entry.actor,
     color: entry.color,
     message: entry.message,
+    resourceCounts: entry.resourceCounts,
     chat: entry.chat,
   }));
   // Only the viewer's own dev cards are broken out by type; every other seat contributes a
@@ -107,7 +115,7 @@ export function catanLiveView(
       - (adjustments?.handPending[resource] ?? 0)
       + (adjustments?.handPendingDeparture?.[resource] ?? 0));
   }
-  const localPlayer = playerView(state, driver, viewer);
+  const localPlayer = playerView(state, driver, viewer, viewer);
   localPlayer.resourceCards = RESOURCES.reduce((sum, resource) => sum + hand[resource], 0);
   localPlayer.developmentCards = DEV_CARD_TYPES.reduce((sum, type) => sum + devHand[type], 0);
   const legalTypes = driver.humanSeat() === viewer && state.currentPlayer() === viewer
@@ -139,14 +147,65 @@ export function catanLiveView(
 // One loud line: whose turn it is and what they are being asked for. The doc's Part II calls
 // this out as the thing digital Catan gets wrong most often, so it is a first-class element
 // rather than a note in a corner.
-export function catanStatusLine(driver: CatanDriver): { text: string; color: [number, number, number]; hint: string } | null {
+function previewActionText(driver: CatanDriver, preview: CatanActionPreview): string {
+  const actor = driver.labelOf(preview.seat);
+  const action = preview.action;
+  const deck = (counts: readonly number[]): string => RESOURCES
+    .flatMap((resource, index) => counts[index] > 0 ? [`${RESOURCE_LOOK[resource].emoji} x${counts[index]}`] : [])
+    .join(' ');
+  if (preview.trade) {
+    if (preview.phase === 'opening') return `${actor} is opening the trade panel…`;
+    if (preview.phase === 'editing') return `${actor} is adding cards to a trade…`;
+    const offer = `${deck(preview.trade.give)} for ${deck(preview.trade.receive)}`;
+    if (preview.phase === 'ready') return `${actor} is reviewing ${offer}…`;
+    if (action.type === 'counterTrade') return `${actor} submitted a counteroffer: ${offer}`;
+    if (action.type === 'maritimeTrade' || action.type === 'maritimeBulkTrade') {
+      return `${actor} submitted a ${action.via} trade: ${offer}`;
+    }
+    return `${actor} offered ${offer}`;
+  }
+  return action.type === 'roll' ? `${actor} is rolling the dice…`
+    : action.type === 'initialSettlement' || action.type === 'buildSettlement' ? `${actor} is placing a settlement…`
+      : action.type === 'initialRoad' || action.type === 'buildRoad' ? `${actor} is placing a road…`
+        : action.type === 'buildCity' ? `${actor} is upgrading a city…`
+          : action.type === 'buyDevCard' ? `${actor} is buying a development card…`
+            : action.type === 'playKnight' ? `${actor} is playing a knight…`
+              : action.type === 'playRoadBuilding' ? `${actor} is playing road building…`
+                : action.type === 'playYearOfPlenty' ? `${actor} is choosing year-of-plenty resources…`
+                  : action.type === 'playMonopoly' ? `${actor} is declaring a monopoly…`
+                    : action.type === 'moveRobber' ? `${actor} is moving the robber…`
+                      : action.type === 'discard' ? `${actor} is discarding ${action.resources.length} cards…`
+                        : action.type === 'acceptTrade' ? `${actor} is accepting the trade…`
+                          : action.type === 'rejectTrade' ? `${actor} is rejecting the trade…`
+                            : action.type === 'confirmTrade' ? `${actor} is confirming the trade…`
+                              : action.type === 'cancelTrade' ? `${actor} is cancelling the trade…`
+                                : action.type === 'endTurn' ? `${actor} is ending the turn…`
+                                  : `${actor} is acting…`;
+}
+
+export function catanStatusLine(
+  driver: CatanDriver,
+  preview?: CatanActionPreview | null,
+): { text: string; color: [number, number, number]; hint: string; detail: string } | null {
   const state = driver.state();
   if (!state) return null;
-  if (driver.error()) return { text: 'the game stopped', color: STATUS_FG, hint: driver.error() ?? '' };
+  if (driver.error()) return { text: 'the game stopped', color: STATUS_FG, hint: driver.error() ?? '', detail: '' };
   if (driver.isComplete()) {
     const winner = driver.winner();
-    return { text: `${driver.labelOf(winner)} wins`, color: PLAYER_LOOK[driver.colorOf(winner)], hint: '10 victory points' };
+    const latest = driver.latestAction();
+    return {
+      text: `${driver.labelOf(winner)} wins`,
+      color: PLAYER_LOOK[driver.colorOf(winner)],
+      hint: '10 victory points',
+      detail: latest ? `last: ${latest.actor} ${latest.message}` : '',
+    };
   }
+  if (preview) return {
+    text: previewActionText(driver, preview),
+    color: PLAYER_LOOK[driver.colorOf(preview.seat)],
+    hint: preview.phase === 'ready' ? 'reviewing the completed action' : '',
+    detail: '',
+  };
   const prompt = state.currentPrompt();
   const seat = prompt.player;
   const yours = seat === driver.humanSeat();
@@ -175,13 +234,16 @@ export function catanStatusLine(driver: CatanDriver): { text: string; color: [nu
         ? 'click a highlighted spot on the board'
         : 'choose an action below'
       : '',
+    detail: driver.latestAction()
+      ? `last: ${driver.latestAction()!.actor} ${driver.latestAction()!.message}`
+      : '',
   };
 }
 
 // The status pill, centred along the top of the board so it reads before the eye reaches the
 // rail. Nothing is drawn before a game starts — the setup panel is the whole screen then.
-function statusPanel(driver: CatanDriver, region: LayoutBox): Node[] {
-  const status = catanStatusLine(driver);
+function statusPanel(driver: CatanDriver, region: LayoutBox, preview?: CatanActionPreview | null): Node[] {
+  const status = catanStatusLine(driver, preview);
   if (!status) return [];
   const rail = catanRailVisible(region.w, region.h) ? CATAN_RAIL_W : 0;
   return [
@@ -189,6 +251,7 @@ function statusPanel(driver: CatanDriver, region: LayoutBox): Node[] {
       Box({ flexDirection: 'column', alignItems: 'center', padding: [0, 2], background: UI_CHROME_BG }, [
         Text({ text: status.text, style: { color: status.color, bold: true } }),
         ...(status.hint ? [Text({ text: status.hint, style: { color: STATUS_MUTED } })] : []),
+        ...(status.detail ? [Text({ text: status.detail, style: { color: STATUS_MUTED } })] : []),
       ]), region.w, { railWidth: rail }),
   ];
 }
@@ -196,7 +259,12 @@ function statusPanel(driver: CatanDriver, region: LayoutBox): Node[] {
 // The sidebar carries full public player state, but color identity has to remain readable when it
 // is closed. Keep this deliberately minimal: one fixed Catan-color square and the seat's name in
 // that same color. Model branding belongs nowhere in this compact mapping.
-export function catanPlayerLegend(driver: CatanDriver, region: LayoutBox): Node {
+export function catanPlayerLegend(
+  driver: CatanDriver,
+  region: LayoutBox,
+  viewerSeat = driver.humanSeat() >= 0 ? driver.humanSeat() : 0,
+  onSelect?: (seat: number) => void,
+): Node {
   const width = Math.min(PLAYER_LEGEND_W, Math.max(1, region.w - 4));
   const textWidth = width;
   return Box({
@@ -208,12 +276,21 @@ export function catanPlayerLegend(driver: CatanDriver, region: LayoutBox): Node 
     gap: 0,
   }, [
     Text({ text: 'players', style: { width: textWidth, color: STATUS_MUTED, bold: true } }),
-    ...Array.from({ length: driver.seatCount() }, (_, seat) => Text({
-      text: `■ ${driver.labelOf(seat)}`,
+    ...Array.from({ length: driver.seatCount() }, (_, seat) => Button({
+      id: `catan-view-seat-${seat}`,
+      label: `${seat === viewerSeat ? '▸ ' : '  '}■ ${driver.labelOf(seat)}`,
+      disabled: onSelect === undefined,
+      onClick: () => onSelect?.(seat),
       style: {
         width: textWidth,
+        padding: 0,
         color: PLAYER_LOOK[driver.colorOf(seat)],
+        bold: seat === viewerSeat,
         textOverflow: 'ellipsis',
+        disabled: {
+          color: PLAYER_LOOK[driver.colorOf(seat)],
+          bold: seat === viewerSeat,
+        },
       },
     })),
   ]);
@@ -228,16 +305,22 @@ export interface CatanGameHudDeps {
   resourceAdjustments?: CatanResourceViewAdjustments;
   onOpenMenu: () => void;
   onStart: () => void;
-  onNewGame: () => void;
 }
 
-function liveActionButton(id: string, label: string, onClick: () => void, disabled = false): Node {
+function liveActionButton(id: string, label: string, onClick: () => void, disabled = false, active = false): Node {
   return Button({
     id: `catan-live-${id}`,
     label,
     onClick,
     disabled,
-    style: { ...UI_CHROME_PILL, padding: [0, 1] },
+    style: {
+      ...UI_CHROME_PILL,
+      padding: [0, 1],
+      ...(active ? { background: CATAN_CARD.actionPressed, color: CATAN_CARD.actionPressedInk, bold: true } : {}),
+      disabled: active
+        ? { background: CATAN_CARD.actionPressed, color: CATAN_CARD.actionPressedInk, bold: true }
+        : UI_CHROME_PILL.disabled,
+    },
   });
 }
 
@@ -346,6 +429,8 @@ function humanActionPanel(deps: CatanGameHudDeps, region: LayoutBox): Node | nul
   const { driver, scene } = deps;
   const state = driver.state();
   if (!state || !scene.awaitingHuman() || state.currentPlayer() !== driver.humanSeat()) return null;
+  if (scene.humanMenuKind() === 'discard' || scene.humanMenuKind() === 'tradeEditor' || scene.humanMenuKind() === 'tradeCounter') return null;
+  if (state.currentPrompt().kind === 'respondTrade' || state.currentPrompt().kind === 'decideAcceptees') return null;
   const layout = catanCardsLayout(region);
   const menu = humanMenuPanel(scene, state);
   const children: Node[] = menu ?? [];
@@ -368,7 +453,6 @@ function humanActionPanel(deps: CatanGameHudDeps, region: LayoutBox): Node | nul
       const types = actionTypes(state.legalActions());
       const activeTrade = state.activeTrade();
       if (prompt.kind === 'roll') children.push(liveActionButton('roll', '⚄ roll', () => scene.submitHumanAction({ type: 'roll' })));
-      if (prompt.kind === 'discard') children.push(liveActionButton('discard', 'choose discards', () => scene.beginHumanMenu('discard')));
       if (prompt.kind === 'moveRobber') children.push(Text({ text: 'choose a robber tile', style: { color: STATUS_FG, bold: true } }));
       if (prompt.kind === 'respondTrade') {
         if (activeTrade) children.push(Text({
@@ -405,10 +489,6 @@ function humanActionPanel(deps: CatanGameHudDeps, region: LayoutBox): Node | nul
         if (types.has('buildRoad')) children.push(liveActionButton('road', 'road', () => scene.beginBoardChoice('buildRoad')));
         if (types.has('buildSettlement')) children.push(liveActionButton('settlement', 'settlement', () => scene.beginBoardChoice('buildSettlement')));
         if (types.has('buildCity')) children.push(liveActionButton('city', 'city', () => scene.beginBoardChoice('buildCity')));
-        if (types.has('buyDevCard')) children.push(liveActionButton('buy-dev', '🃏 buy dev', () => scene.submitHumanAction({ type: 'buyDevCard' })));
-        if (state.legalActions().some((action) => action.type === 'maritimeTrade' && action.via === 'port')) children.push(liveActionButton('port', '⛵ port', () => scene.beginHumanMenu('portTrade')));
-        if (state.legalActions().some((action) => action.type === 'maritimeTrade' && action.via === 'bank')) children.push(liveActionButton('bank', '🏦 bank', () => scene.beginHumanMenu('bankTrade')));
-        if (state.parameterizedActionExamples().some((action) => action.type === 'offerTrade')) children.push(liveActionButton('player-trade', '👥 trade', () => scene.beginHumanMenu('playerTrade')));
         children.push(liveActionButton('end', 'end turn', () => scene.submitHumanAction({ type: 'endTurn' })));
       }
       if (types.has('playKnight')) children.push(liveActionButton('knight', '♞ knight', () => scene.beginBoardChoice('playKnight')));
@@ -428,6 +508,218 @@ function humanActionPanel(deps: CatanGameHudDeps, region: LayoutBox): Node | nul
     padding: [0, 1],
     background: UI_CHROME_BG,
   }, children);
+}
+
+function spectatorActionPanel(deps: CatanGameHudDeps, region: LayoutBox): Node | null {
+  if (deps.driver.humanSeat() >= 0) return null;
+  const action = deps.scene.actionPreview()?.action;
+  if (!action || action.type === 'offerTrade' || action.type === 'counterTrade'
+    || action.type === 'maritimeTrade' || action.type === 'maritimeBulkTrade' || action.type === 'buyDevCard'
+    || action.type === 'acceptTrade' || action.type === 'rejectTrade' || action.type === 'confirmTrade'
+    || action.type === 'cancelTrade') return null;
+  const label = action.type === 'roll' ? '⚄ roll'
+    : action.type === 'endTurn' ? 'end turn'
+      : action.type === 'buildRoad' || action.type === 'initialRoad' ? `${ROAD_ICON} road`
+        : action.type === 'buildSettlement' || action.type === 'initialSettlement' ? `${SETTLEMENT_ICON} settlement`
+          : action.type === 'buildCity' ? `${SETTLEMENT_ICON} city`
+            : action.type === 'playKnight' ? `${KNIGHT_ICON} knight`
+              : action.type === 'playRoadBuilding' ? `${ROAD_ICON} road building`
+                : action.type === 'playYearOfPlenty' ? `${DEV_CARD_ICON} year of plenty`
+                  : action.type === 'playMonopoly' ? `${DEV_CARD_ICON} monopoly`
+                    : action.type === 'discard' ? 'discard'
+                      : action.type === 'moveRobber' ? `${KNIGHT_ICON} move robber`
+                        : null;
+  if (!label) return null;
+  const layout = catanCardsLayout(region);
+  return Box({
+    position: 'absolute',
+    left: 2,
+    bottom: layout.handHeight + 2,
+    minHeight: 1,
+    padding: [0, 1],
+    background: UI_CHROME_BG,
+  }, [liveActionButton('spectator-preview', label, () => {}, true, true)]);
+}
+
+function liveDiscardController(scene: CatanGameScene, state: CatanState): CatanDiscardEditorController | undefined {
+  if (scene.humanMenuKind() !== 'discard') return undefined;
+  const required = state.legalActionFamilies().find((family) => family.type === 'discard')?.count ?? 0;
+  const selected = tradeCounts(RESOURCES.map((resource) =>
+    scene.humanMenuResources().filter((item) => item === resource).length));
+  return {
+    required,
+    selected,
+    canSubmit: scene.humanMenuCanSubmit(),
+    onAdjust: (resource, delta) => delta > 0
+      ? scene.pickHumanMenuResource(resource)
+      : scene.removeHumanDiscardResource(resource),
+    onSubmit: () => scene.submitHumanMenu(),
+  };
+}
+
+function liveHandActionController(deps: CatanGameHudDeps, state: CatanState): CatanHandActionController | undefined {
+  const { driver, scene } = deps;
+  const humanSeat = driver.humanSeat();
+  const presentation = scene.actionPreview();
+  const preview = presentation?.action;
+  const pressing = presentation?.phase === 'pressing';
+  if (humanSeat < 0) return {
+    canTrade: false,
+    canBuyDevelopmentCard: false,
+    activeAction: pressing && preview?.type === 'buyDevCard'
+      ? 'buyDev'
+      : pressing && (preview?.type === 'offerTrade' || preview?.type === 'maritimeTrade' || preview?.type === 'maritimeBulkTrade')
+        ? 'trade'
+        : undefined,
+    onTrade: () => false,
+    onBuyDevelopmentCard: () => false,
+  };
+  const activePlayTurn = scene.awaitingHuman()
+    && state.currentPlayer() === humanSeat
+    && state.currentPrompt().kind === 'playTurn'
+    && scene.humanMenuKind() === null
+    && scene.boardChoiceType() === null;
+  const legalTypes = activePlayTurn
+    ? new Set(state.legalActions().map((action) => action.type))
+    : new Set<CatanAction['type']>();
+  const canTrade = activePlayTurn && (
+    state.legalActions().some((action) => action.type === 'maritimeTrade')
+      || state.parameterizedActionExamples().some((action) => action.type === 'offerTrade')
+  );
+  return {
+    canTrade,
+    canBuyDevelopmentCard: activePlayTurn && legalTypes.has('buyDevCard'),
+    onTrade: () => canTrade && scene.beginHumanMenu('tradeEditor'),
+    onBuyDevelopmentCard: () => activePlayTurn
+      && legalTypes.has('buyDevCard')
+      && scene.submitHumanAction({ type: 'buyDevCard' }),
+  };
+}
+
+function tradeCounts(values: readonly number[]): Record<Resource, number> {
+  return Object.fromEntries(RESOURCES.map((resource, index) => [resource, values[index] ?? 0])) as Record<Resource, number>;
+}
+
+function liveTradeController(scene: CatanGameScene, state: CatanState): CatanTradeEditorController | undefined {
+  const kind = scene.humanMenuKind();
+  if (kind !== 'tradeEditor' && kind !== 'tradeCounter') return undefined;
+  const draft = scene.humanTradeDraft();
+  const portRates = state.maritimePortTradeRates(state.currentPlayer());
+  return {
+    mode: kind === 'tradeCounter' ? 'counter' : 'standard',
+    give: tradeCounts(draft.give),
+    receive: tradeCounts(draft.receive),
+    hasPort: Object.values(portRates).some((rates) => rates.length > 0),
+    canBank: kind === 'tradeEditor' && scene.humanTradeCanSubmit('bank'),
+    canPort: kind === 'tradeEditor' && scene.humanTradeCanSubmit('port'),
+    canPlayer: kind === 'tradeEditor' && scene.humanTradeCanSubmit('player'),
+    canCounter: kind === 'tradeCounter' && scene.humanTradeCanSubmit('counter'),
+    onAdjust: (side, resource, delta) => scene.adjustHumanTradeResource(resource, side, delta),
+    onBank: () => scene.submitHumanTrade('bank'),
+    onPort: () => scene.submitHumanTrade('port'),
+    onPlayer: () => scene.submitHumanTrade('player'),
+    onCounter: () => scene.submitHumanTrade('counter'),
+    onClose: () => { scene.cancelHumanChoice(); },
+  };
+}
+
+function previewTradeController(scene: CatanGameScene): CatanTradeEditorController | undefined {
+  const preview = scene.actionPreview();
+  const action = preview?.action;
+  const trade = preview?.trade;
+  if (!action || !trade) return undefined;
+  const give = tradeCounts(RESOURCES.map(() => 0));
+  const receive = tradeCounts(RESOURCES.map(() => 0));
+  let activeAction: CatanTradeEditorController['activeAction'];
+  for (const resource of RESOURCES) {
+    give[resource] = trade.give[resourceIndex(resource)] ?? 0;
+    receive[resource] = trade.receive[resourceIndex(resource)] ?? 0;
+  }
+  if (preview.phase === 'pressing') activeAction = trade.via;
+  return {
+    mode: trade.mode,
+    give,
+    receive,
+    hasPort: trade.via === 'port' || action.type === 'maritimeTrade' && action.via === 'port'
+      || action.type === 'maritimeBulkTrade' && action.via === 'port',
+    canBank: false,
+    canPort: false,
+    canPlayer: false,
+    canCounter: false,
+    activeAction,
+    readOnly: true,
+    onAdjust: () => false,
+    onBank: () => false,
+    onPort: () => false,
+    onPlayer: () => false,
+    onCounter: () => false,
+    onClose: () => {},
+  };
+}
+
+function livePlayerTradeController(
+  scene: CatanGameScene,
+  state: CatanState,
+  driver: CatanDriver,
+): CatanPlayerTradeOffersController | undefined {
+  const trade = state.activeTrade();
+  if (!trade) return undefined;
+  const humanSeat = driver.humanSeat();
+  const prompt = state.currentPrompt();
+  const preview = scene.actionPreview();
+  const observedSeat = preview?.seat;
+  const canMirrorPreview = humanSeat < 0 || observedSeat === humanSeat;
+  const controller: CatanPlayerTradeOffersController = {
+    offers: [{
+      id: state.actionRecords().length,
+      offerer: playerView(state, driver, trade.from),
+      give: tradeCounts(trade.give),
+      get: tradeCounts(trade.receive),
+      reactions: trade.responders.map((seat, index) => {
+        const counter = trade.counters.find((candidate) => candidate.from === seat);
+        return {
+          player: playerView(state, driver, seat),
+          status: counter
+            ? 'countered' as const
+            : trade.accepted.includes(seat)
+              ? 'accepted' as const
+              : index < trade.responseIndex
+                ? 'rejected' as const
+                : 'pending' as const,
+          ...(counter ? { counterGive: tradeCounts(counter.give), counterGet: tradeCounts(counter.receive) } : {}),
+        };
+      }),
+    }],
+  };
+  if (preview?.phase === 'pressing' && observedSeat !== undefined && canMirrorPreview) {
+    controller.responsePlayer = playerView(state, driver, observedSeat, humanSeat >= 0 ? humanSeat : undefined);
+    if (preview.action.type === 'acceptTrade') controller.activeResponse = 'accept';
+    else if (preview.action.type === 'counterTrade') controller.activeResponse = 'counter';
+    else if (preview.action.type === 'rejectTrade') controller.activeResponse = 'reject';
+    else if (preview.action.type === 'confirmTrade') controller.activeCompletePlayer = driver.labelOf(preview.action.with);
+    else if (preview.action.type === 'cancelTrade') controller.activeCancel = true;
+  }
+  // Spectator mode intentionally stops here: it renders the exact same popup, but the model
+  // decisions arrive through action previews rather than granting the viewer authority to act.
+  if (humanSeat < 0 || prompt.player !== humanSeat || !scene.awaitingHuman()) return controller;
+  if (prompt.kind === 'respondTrade') {
+    controller.responsePlayer = playerView(state, driver, humanSeat, humanSeat);
+    if (state.isLegalAction({ type: 'acceptTrade' })) {
+      controller.onAccept = () => scene.submitHumanAction({ type: 'acceptTrade' });
+    }
+    if (state.legalActionFamilies().some((family) => family.type === 'counterTrade')) {
+      controller.onCounter = () => scene.beginHumanMenu('tradeCounter');
+    }
+    controller.onReject = () => scene.submitHumanAction({ type: 'rejectTrade' });
+  } else if (prompt.kind === 'decideAcceptees') {
+    controller.onComplete = (_offerId, playerName) => {
+      const seat = Array.from({ length: driver.seatCount() }, (_, candidate) => candidate)
+        .find((candidate) => driver.labelOf(candidate) === playerName);
+      return seat !== undefined && scene.submitHumanAction({ type: 'confirmTrade', with: seat });
+    };
+    controller.onCancel = () => scene.submitHumanAction({ type: 'cancelTrade' });
+  }
+  return controller;
 }
 
 function beginLiveDevelopmentCard(scene: CatanGameScene, type: DevCardType): boolean {
@@ -471,22 +763,40 @@ export function buildCatanGameRoot(region: LayoutBox, deps: CatanGameHudDeps): N
     ]);
   }
 
+  const viewerSeat = driver.humanSeat() >= 0 ? driver.humanSeat() : deps.scene.viewedSeat();
+  const adjustments = deps.resourceAdjustments;
+  const cardsView = catanLiveView(state, deps.driver, adjustments, viewerSeat);
+  const previewSeat = deps.scene.actionPreview()?.seat;
+  const visibleTradePreview = driver.humanSeat() < 0 || previewSeat === driver.humanSeat()
+    ? previewTradeController(deps.scene)
+    : undefined;
   return Box({ width: region.w, height: region.h }, [
     ...catanProjectedBoardLabels(deps.tokens ?? [], deps.sails ?? []),
     buildCatanCardsOverlay(
       region,
       toggleCatanSidebar,
-      catanLiveView(state, deps.driver, deps.resourceAdjustments),
+      cardsView,
       () => {},
       undefined,
       undefined,
       (type) => beginLiveDevelopmentCard(deps.scene, type),
+      undefined,
+      liveTradeController(deps.scene, state) ?? visibleTradePreview,
+      liveHandActionController(deps, state),
+      undefined,
+      liveDiscardController(deps.scene, state),
+      livePlayerTradeController(deps.scene, state, driver),
     ),
     ...([humanActionPanel(deps, region)].filter((node): node is Node => node !== null)),
+    ...([spectatorActionPanel(deps, region)].filter((node): node is Node => node !== null)),
     ...catanFlyingCardNodes(deps.resourceFlights ?? []),
-    ...statusPanel(driver, region),
-    catanPlayerLegend(driver, region),
+    ...statusPanel(driver, region, deps.scene.actionPreview()),
+    catanPlayerLegend(
+      driver,
+      region,
+      viewerSeat,
+      driver.humanSeat() < 0 ? (seat) => { deps.scene.setViewedSeat(seat); } : undefined,
+    ),
     ...chrome,
-    hudBottomRight(Button({ id: 'catan-new-game', label: 'new game', onClick: deps.onNewGame, style: UI_CHROME_PILL }), { railWidth: rail }),
   ]);
 }

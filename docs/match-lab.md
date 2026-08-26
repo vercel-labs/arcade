@@ -14,7 +14,7 @@ pnpm match:run -- --game catan --games=2 --concurrency=2 --setup-only
 
 pnpm match:run -- --game poker \
   --models=xai/grok-4.1-fast-non-reasoning,anthropic/claude-haiku-4.5,openai/gpt-5.4-nano,google/gemini-2.5-flash \
-  --games=2 --concurrency=2 --max-hands=20
+  --games=2 --concurrency=2 --starting-chips=1000 --max-hands=20
 ```
 
 The command reuses Arcade's cached Vercel login and selected AI Gateway team. Run
@@ -47,6 +47,16 @@ responses are still external and are not guaranteed deterministic. `--swap-seats
 the model list each match to reduce seat bias. Parallelism is match-level only: turns in
 one game remain sequential.
 
+Catan accepts two through four models in the lab. Two-player tables are useful for
+testing even though the published base game is normally presented for three or four.
+
 Use `--timeout`, `--max-plies`, `--max-actions`, and `--max-hands` to bound costly runs.
 Start at concurrency 1–2 to avoid provider rate limits. `Ctrl-C` aborts in-flight model
 calls and leaves completed match artifacts intact.
+
+Poker starts each player with the live Arcade defaults of 1,000 chips and 10/20 blinds,
+which increase every 15 completed hands. Override these with `--starting-chips=N`,
+`--small-blind=N`, `--big-blind=N`, or `--hands-per-level=N`; the selected values are
+stored in the manifest. Set `--max-hands=1`
+for one hand, choose any larger N for a bounded session, or use generous hand/action/time
+bounds to let a tournament end naturally when only one player has chips.

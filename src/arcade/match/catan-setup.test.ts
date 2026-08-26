@@ -135,7 +135,11 @@ test('the generic ModelPlayer can select a typed legal Catan setup action', asyn
         content: [
           {
             type: 'text',
-            text: JSON.stringify({ move: `init-settlement ${choice.node}`, rationale: 'Strong production and useful diversity.' }),
+            text: JSON.stringify({
+              thinking: 'This is the strongest production choice.',
+              move: `init-settlement ${choice.node}`,
+              say: 'I like this mix of numbers.',
+            }),
           },
         ],
         finishReason: { unified: 'stop', raw: undefined },
@@ -151,9 +155,12 @@ test('the generic ModelPlayer can select a typed legal Catan setup action', asyn
 
   const picked = await player.chooseAction(state);
   assert.match(request, /Legal actions/);
-  assert.match(request, new RegExp(`init-settlement ${choice.node}:`));
+  assert.match(request, new RegExp(`init-settlement ${choice.node} \\[public spot:`));
   assert.match(request, /Facts are descriptive, not recommendations/);
+  assert.match(request, /gives one useful public reason/);
+  assert.match(request, /Never use raw node, edge, or hex IDs/);
   assert.deepEqual(picked.action, choice.action);
+  assert.equal(picked.rationale, 'I like this mix of numbers.', 'only the public say field is surfaced');
   state.applyAction(picked.action);
   assert.equal(state.currentPrompt().kind, 'initialRoad');
 });
@@ -165,7 +172,7 @@ test('Catan setup model fallback is deterministic unless a seeded RNG is supplie
     new MockLanguageModelV3({
       doGenerate: async () =>
         ({
-          content: [{ type: 'text', text: JSON.stringify({ move: 'not-a-node', rationale: 'No valid choice.' }) }],
+          content: [{ type: 'text', text: JSON.stringify({ thinking: 'No valid choice.', move: 'not-a-node', say: 'I am still deciding.' }) }],
           finishReason: { unified: 'stop', raw: undefined },
           usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
           warnings: [],
@@ -185,7 +192,7 @@ test('full-game ModelPlayer fallback can discover a parameterized domestic-trade
   const model = new MockLanguageModelV3({
     doGenerate: async () =>
       ({
-        content: [{ type: 'text', text: JSON.stringify({ move: 'invalid', rationale: 'No valid choice.' }) }],
+        content: [{ type: 'text', text: JSON.stringify({ thinking: 'No valid choice.', move: 'invalid', say: 'I am still deciding.' }) }],
         finishReason: { unified: 'stop', raw: undefined },
         usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
         warnings: [],
@@ -210,7 +217,14 @@ test('the full-game model harness exposes and parses responder counteroffers', a
     doGenerate: async (options) => {
       request = JSON.stringify(options.prompt);
       return ({
-        content: [{ type: 'text', text: JSON.stringify({ move: 'counter 0/2/0/0/0 for 1/0/0/0/0', rationale: 'I want two grain for the brick.' }) }],
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            thinking: 'Two wheat is worth the brick here.',
+            move: 'counter 0/2/0/0/0 for 1/0/0/0/0',
+            say: 'I will give two wheat for that brick.',
+          }),
+        }],
         finishReason: { unified: 'stop', raw: undefined },
         usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
         warnings: [],
@@ -218,7 +232,12 @@ test('the full-game model harness exposes and parses responder counteroffers', a
     },
   });
   const choice = await createCatanModelPlayer({ model, name: 'counter-model' }).chooseAction(state);
+  assert.match(request, /give one concise public-facing reason based only on information everyone can see/);
+  assert.match(request, /not merely an action caption/);
+  assert.match(request, /Never reveal exact cards in your hand/);
+  assert.match(request, /If you accept, you give 1 wheat and receive 1 brick\./);
   assert.match(request, /Counteroffer \(parameterized\)/);
   assert.match(request, /counter 0\/1\/0\/0\/0 for 1\/0\/0\/0\/0/);
+  assert.match(request, /That means you give 1 wheat and receive 1 brick/);
   assert.deepEqual(choice.action, { type: 'counterTrade', give: [0, 2, 0, 0, 0], receive: [1, 0, 0, 0, 0] });
 });

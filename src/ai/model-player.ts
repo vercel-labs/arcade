@@ -539,7 +539,7 @@ export class ModelPlayer<A> implements Player<A> {
         : `\n\nReply as JSON with a "move" field (${this.notation.description}, e.g. ${this.notation.examples}) and a one-sentence "rationale" field.`;
     } else {
       format = speechMode
-        ? `\n\nThink privately first if you like. That thinking is never shown to anyone. Then end your reply with exactly these two lines:\nSAY: <one line you say out loud to the table; never reveal your own cards or hand strength unless bluffing>\nMOVE: <your move in ${this.notation.description}, e.g. ${this.notation.examples}>`
+        ? `\n\nThink privately first if you like. That thinking is never shown to anyone. Then end your reply with exactly these two lines:\nSAY: <${this.speech}>\nMOVE: <your move in ${this.notation.description}, e.g. ${this.notation.examples}>`
         : `\n\nThink briefly if you wish, then end your reply with a line in exactly this form:\nMOVE: <your move in ${this.notation.description}, e.g. ${this.notation.examples}>`;
     }
     return [
@@ -557,7 +557,7 @@ export class ModelPlayer<A> implements Player<A> {
       // Split JSON mode: reinforce keeping analysis out of the spoken line. Single-field
       // mode: reinforce a custom rationale meaning. (Text mode bakes this into `format`.)
       speechMode && mode === 'json'
-        ? `\n\nPut all move analysis in "thinking" (that field is private). "say" is spoken out loud to the whole table, so make it lively and in your own voice, not a flat announcement of your move. Never reveal your own cards or hand strength in "say" unless you are bluffing.`
+        ? `\n\nPut all move analysis in "thinking" (that field is private). "say" is spoken out loud to the whole table. Follow its game-specific speech rule exactly; do not copy private analysis into it.`
         : !speechMode && this.rationaleGuide
           ? `\n\nYour "rationale" is not analysis. It is ${this.rationaleGuide}`
           : '',

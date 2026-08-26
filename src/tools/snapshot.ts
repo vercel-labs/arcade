@@ -28,11 +28,13 @@ import { TileScene } from '../arcade/games/catan/tile-scene.ts';
 import { buildCatanPieceModal, buildCatanTileRoot, mountCatanTileHud } from '../arcade/games/catan/tile-hud.ts';
 import {
   adjustCatanWorkbenchDev,
+  adjustCatanWorkbenchDiscard,
   adjustCatanWorkbenchHand,
   adjustCatanWorkbenchTradeStaging,
   bankCatanResource,
   beginCatanWorkbenchDevPurchase,
   beginCatanWorkbenchDevelopmentPlay,
+  beginCatanWorkbenchDiscard,
   beginStagedCatanWorkbenchBankTrade,
   CATAN_LOCAL_COLOR,
   catanBankDepartureCell,
@@ -59,7 +61,7 @@ import { CatanGameScene } from '../arcade/games/catan/game-scene.ts';
 import { buildCatanGameRoot, mountCatanGameHud } from '../arcade/games/catan/game-hud.ts';
 import { CatanDriver, type CatanSeatSpec } from '../arcade/match/catan-driver.ts';
 import { generateBoard } from '../rules/catan/setup.ts';
-import { type DevCardType, type PlayerColor, type Resource, type Terrain, TERRAINS } from '../rules/catan/types.ts';
+import { type CatanAction, type DevCardType, type PlayerColor, type Resource, resourceIndex, type Terrain, TERRAINS } from '../rules/catan/types.ts';
 import { PokerGameScene, type PokerSeatView } from '../arcade/games/poker/poker-scene.ts';
 import { betInput as pokerBetInput, buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, mountPokerGameHud, pushPokerChat } from '../arcade/games/poker/poker-hud.ts';
 import { buildPokerSetupPanel, modeDropdown as pokerModeDropdown, mountPokerSetup, playersDropdown as pokerPlayersDropdown, pokerPreviewSeats, pokerStartingStack } from '../arcade/match/poker-setup.ts';
@@ -361,14 +363,14 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot prism-prompt [cols] [rows] [t] [out]    prism loading screen + press-any-key marquee
   pnpm snapshot cards [single|hand|deck] [cols] [rows] [state] [out]   the cards screen
       (single: a code like Kh/10s/As · hand: peek|up · deck: shuffle|deal)
-  pnpm snapshot catan [sidebar] [trade|trade-port3|trade-port2|trade-empty|player-trade|player-trade-ready|player-trade-mixed] [play-knight|play-road|play-plenty|play-monopoly] [hover=<id>] [hybrid] [shadow-glyphs] [forest|hills|pasture|fields|mountains|desert] [cols] [rows] [<t>] [board|board-cards|pieces|port|edit] [robber|robber-moveN] [fly<roll>@<s>|trade-fly<N>@<s>|dev-fly@<s>] [hud|modal] [out]   a 3D Catan tile
+  pnpm snapshot catan [sidebar] [discard|trade|trade-port3|trade-port2|trade-empty|player-trade|player-trade-ready|player-trade-mixed] [play-knight|play-road|play-plenty|play-monopoly] [hover=<id>] [hybrid] [shadow-glyphs] [forest|hills|pasture|fields|mountains|desert] [cols] [rows] [<t>] [board|board-cards|pieces|port|edit] [robber|robber-moveN] [fly<roll>@<s>|trade-fly<N>@<s>|dev-fly@<s>] [hud|modal] [out]   a 3D Catan tile
       (fly5@0.4: freeze the resource cards mid-arc, 0.4s after a roll of 5 pays out — needs hud; the sample board pays on 2, 5 and 10, and a non-paying roll throws nothing)
       (trade-fly2@0.4: freeze both sides of a two-card bank trade mid-arc; add sidebar to use the visible bank row)
       (dev-fly@0.4: freeze a purchased development card mid-arc; add sidebar to launch it from the visible dev pile)
       (robber-move5: preview moving the robber to hex 5 while leaving the current robber in place)
       (<t> a decimal spins the turntable · azN/elN rotate in degrees · zoomN scales camera distance · hud composites the terrain dropdown panel)
       (board modes also take anim<s>|roll[<s>]|build[<s>] to freeze the fly-in, a dice roll, or a build-drop · water<N> sets the current time · varN rerolls the layout · top orbits overhead · modal shows the piece-edit popup)
-  pnpm snapshot catan-game [setup] [sidebar] [seats=N] [plies=N] [seed=N] [cols] [rows] [out]   the Catan game screen
+  pnpm snapshot catan-game [setup|actions|discard|trade|counter|ai-trade|posted-trade] [spectate] [pov=N] [sidebar] [seats=N] [plies=N] [seed=N] [cols] [rows] [out]   the Catan game screen
       (default: placement in progress, driven by the rules engine's own legal options — no model calls · setup: the pre-game seat panel)
       (the board is seeded, so the same arguments always render the same hexes; seed=N picks another)
   pnpm snapshot poker [cols] [rows] [preflop|flop|river|showdown] [players=N] [stack=N] [hud|setup|cine|result|menu|notes] [bet=N] [spectate] [longnames] [muck|gather|shuffle] [color] [out]   the poker table
@@ -478,6 +480,14 @@ function catanSnapshot(): void {
     scene.adoptBoard(board, false);
     const harbor = board.harbors.find(({ port }) => port.resource === (portTradeArg === 'generic' ? null : 'brick'))!;
     scene.placePiece('building', harbor.nodes[0], CATAN_LOCAL_COLOR);
+  }
+  if (args.includes('discard')) {
+    resetCatanWorkbenchCards();
+    for (let i = 0; i < 5; i++) adjustCatanWorkbenchHand('brick', 1);
+    for (let i = 0; i < 4; i++) adjustCatanWorkbenchHand('grain', 1);
+    beginCatanWorkbenchDiscard();
+    adjustCatanWorkbenchDiscard('brick', 1);
+    adjustCatanWorkbenchDiscard('grain', 1);
   }
   if (args.includes('top')) scene.orbit(0, 34);
   if (spinTo) scene.orbit(-spinTo * 120, 0);
@@ -647,7 +657,7 @@ function catanSnapshot(): void {
 // rather than models, so the still is reproducible and needs no network. The board is seeded
 // (`seed=N` to pick another one), so re-rendering the same arguments lands the same hexes — a
 // visual change is then the only thing that can move the pixels.
-//   pnpm exec tsx src/tools/snapshot.ts catan-game [setup|counter] [sidebar] [seats=N] [plies=N] [seed=N] [cols] [rows] [out.ppm]
+//   pnpm exec tsx src/tools/snapshot.ts catan-game [setup|actions|discard|trade|counter|ai-trade|posted-trade] [spectate] [longnames] [pov=N] [sidebar] [seats=N] [plies=N] [seed=N] [cols] [rows] [out.ppm]
 function catanGameSnapshot(): void {
   const args = process.argv.slice(3);
   const nums = args.filter((a) => /^\d+$/.test(a)).map(Number);
@@ -666,11 +676,35 @@ function catanGameSnapshot(): void {
     if (args.includes('sidebar') && !catanSidebarOpen()) toggleCatanSidebar();
     const colors: PlayerColor[] = ['red', 'blue', 'purple', 'orange'].slice(0, seats) as PlayerColor[];
     const counter = args.includes('counter');
+    const trade = args.includes('trade');
+    const aiTrade = args.includes('ai-trade');
+    const postedTrade = args.includes('posted-trade');
+    const spectate = args.includes('spectate') || aiTrade || postedTrade;
+    const actions = args.includes('actions');
+    const discard = args.includes('discard');
     const humanSeat = counter ? 1 : 0;
-    const specs: CatanSeatSpec[] = colors.map((color, i) => (i === humanSeat ? { kind: 'human', color } : { kind: 'ai', color, model: `openai/gpt-5.4-nano` }));
+    const snapshotModels = args.includes('longnames')
+      ? ['snapshot/grok-4.1-fast-non-reasoning', 'snapshot/claude-haiku-4.5', 'snapshot/gpt-5.4-nano', 'snapshot/gemini-2.5-flash']
+      : colors.map((_color, i) => `snapshot/model-${i}`);
+    const specs: CatanSeatSpec[] = colors.map((color, i) => (!spectate && i === humanSeat
+      ? { kind: 'human', color }
+      : { kind: 'ai', color, model: snapshotModels[i] }));
     const state = driver.start(specs, { autoRun: false, rng: mulberry32(seed) });
+    const pov = Number(args.find((arg) => arg.startsWith('pov='))?.slice(4) ?? 0);
+    if (spectate && pov > 0 && pov < seats) gameScene.setViewedSeat(pov);
     gameScene.setResourceFlightLayout(region, seats, catanRailVisible(cols, rows));
-    if (counter) {
+    if (aiTrade || postedTrade) {
+      while (!state.initialPlacementComplete()) void gameScene.playMove(state.legalActions()[0]);
+      void gameScene.playMove({ type: 'roll' });
+      const hands = (state as unknown as { hands: number[][] }).hands;
+      hands[0].fill(0);
+      hands[1].fill(0);
+      hands[0][resourceIndex('brick')] = 3;
+      hands[1][resourceIndex('grain')] = 3;
+      const offer: CatanAction = { type: 'offerTrade', give: [1, 0, 0, 0, 0], receive: [0, 2, 0, 0, 0] };
+      if (aiTrade) gameScene.setActionPreviewDuration(5);
+      void gameScene.playMove(offer);
+    } else if (counter) {
       while (!state.initialPlacementComplete()) void gameScene.playMove(state.legalActions()[0]);
       void gameScene.playMove({ type: 'roll' });
       const hands = (state as unknown as { hands: number[][] }).hands;
@@ -679,6 +713,35 @@ function catanGameSnapshot(): void {
       void gameScene.playMove({ type: 'offerTrade', give: [1, 0, 0, 0, 0], receive: [0, 1, 0, 0, 0] });
       void gameScene.requestHumanMove();
       gameScene.beginHumanMenu('tradeCounter');
+    } else if (discard) {
+      while (!state.initialPlacementComplete()) void gameScene.playMove(state.legalActions()[0]);
+      const hands = (state as unknown as { hands: number[][] }).hands;
+      hands[0].fill(0);
+      hands[0][resourceIndex('brick')] = 5;
+      hands[0][resourceIndex('grain')] = 4;
+      state.applyAction({ type: 'roll' }, { dice: [3, 4] });
+      void gameScene.requestHumanMove();
+      gameScene.pickHumanMenuResource('brick');
+      gameScene.pickHumanMenuResource('grain');
+    } else if (trade || actions) {
+      while (!state.initialPlacementComplete()) void gameScene.playMove(state.legalActions()[0]);
+      void gameScene.playMove({ type: 'roll' });
+      const hands = (state as unknown as { hands: number[][] }).hands;
+      hands[0].fill(0);
+      // Setup resource flights are intentionally still pending in the frozen frame. Seed enough
+      // authoritative cards that the viewer-adjusted hand remains positive while the editor is
+      // staged, rather than showing a fixture-only negative count.
+      hands[0][resourceIndex('brick')] = 9;
+      hands[0][resourceIndex('lumber')] = 3;
+      hands[0][resourceIndex('wool')] = 3;
+      hands[0][resourceIndex('grain')] = 3;
+      hands[0][resourceIndex('ore')] = 3;
+      void gameScene.requestHumanMove();
+      if (trade) {
+        gameScene.beginHumanMenu('tradeEditor');
+        for (let i = 0; i < 4; i++) gameScene.adjustHumanTradeResource('brick', 'give', 1);
+        gameScene.adjustHumanTradeResource('ore', 'receive', 1);
+      }
     } else {
       // Walk deterministic first-legal actions without asking a model. Sixteen plies finish setup;
       // larger values exercise the live turn HUD as well.
@@ -705,7 +768,6 @@ function catanGameSnapshot(): void {
     resourceAdjustments: gameScene.resourceViewAdjustments(),
     onOpenMenu: noop,
     onStart: noop,
-    onNewGame: noop,
   }), region);
   const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: false }));
   surfaceToPpm(surf, cols, rows, out);

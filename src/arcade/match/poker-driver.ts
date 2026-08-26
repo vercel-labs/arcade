@@ -11,6 +11,7 @@ import { HumanPlayer } from '../../ai/human-player.ts';
 import { isTelemetryEnabled, localPlayerKey, trackHandEnded, trackMatchRecord, trackMatchStarted, trackModelFallback, trackPokerHandRecord } from '../../telemetry/index.ts';
 import type { Player } from '../../ai/player.ts';
 import { type HandPublicRecord, HoldemState, type PokerAction } from '../../rules/poker/holdem.ts';
+import { pokerBlindState, pokerTournamentContext, type PokerBlindState, type PokerBlindStructure } from '../../rules/poker/blinds.ts';
 import type { PokerGameScene, PokerSeatView } from '../games/poker/poker-scene.ts';
 import { shortModel } from './model-label.ts';
 import { disambiguateLabels } from './labels.ts';
@@ -66,6 +67,9 @@ export class PokerMatch {
   private voice: PokerVoice | null = null;
   private recorder: PokerSessionRecorder | null = null;
   private recordingHandOpen = false;
+  private completedHands = 0;
+  private blindStructure: PokerBlindStructure = {};
+  private currentBlinds: PokerBlindState = pokerBlindState(0);
 
   constructor(private readonly deps: PokerMatchDeps) {}
 
@@ -89,6 +93,9 @@ export class PokerMatch {
   }
   seatSpecs(): readonly PokerSeatSpec[] {
     return this.seats;
+  }
+  tournamentState(): PokerBlindState {
+    return { ...this.currentBlinds };
   }
 
   // ── Opponent notes, for the HUD notes modal ────────────────────────────────────
@@ -114,11 +121,19 @@ export class PokerMatch {
   // stacks + button, seeds the scene, builds the players, and deals the first hand.
   // A realtime seat explicitly identifies the voice runtime and actual model.
   // `opts.stack` sets the per-player starting chips (from the setup slider); defaults to STARTING_STACK.
-  start(seats: PokerSeatSpec[], opts?: { stack?: number }): void {
+  start(seats: PokerSeatSpec[], opts?: { stack?: number; smallBlind?: number; bigBlind?: number; handsPerLevel?: number; blindLevels?: PokerBlindStructure['levels'] }): void {
     this.stop('user_stopped');
     this.seats = seats.slice();
     this.stacks = seats.map(() => opts?.stack ?? STARTING_STACK);
     this.button = 0;
+    this.completedHands = 0;
+    this.blindStructure = {
+      initialSmallBlind: opts?.smallBlind ?? SMALL_BLIND,
+      initialBigBlind: opts?.bigBlind ?? BIG_BLIND,
+      handsPerLevel: opts?.handsPerLevel,
+      levels: opts?.blindLevels,
+    };
+    this.currentBlinds = pokerBlindState(0, this.blindStructure);
     this.memory.reset();
     this.computeLabels();
     const views: PokerSeatView[] = seats.map((s, seat) =>
@@ -133,8 +148,8 @@ export class PokerMatch {
           mode,
           seats.map(controller),
           this.stacks,
-          SMALL_BLIND,
-          BIG_BLIND,
+          this.currentBlinds.smallBlind,
+          this.currentBlinds.bigBlind,
           localPlayerKey(),
         )
       : null;
@@ -178,6 +193,7 @@ export class PokerMatch {
       humanSeat,
       botModel: botSpec.model, // full slug → chat name colored by the seat's wisp/provider tint
       botLabel: this.labelOf(botSeat),
+      contextProvider: () => this.moveContext(botSeat),
       onChat: (text, speaker, opts) =>
         this.deps.onChat?.(
           text,
@@ -210,7 +226,7 @@ export class PokerMatch {
   // the last inter-hand hold are in play this hand.
   private moveContext(observer: number): string {
     const notes = this.memory.renderForPrompt(observer, this.otherLiveSeats(observer), (s) => this.labelOf(s));
-    return [this.standings(), notes].filter(Boolean).join('\n\n');
+    return [pokerTournamentContext(this.currentBlinds, this.stacks[observer] ?? 0), this.standings(), notes].filter(Boolean).join('\n\n');
   }
 
   // Session chip standings by player name, with the current leader called out. Uses the
@@ -267,16 +283,17 @@ export class PokerMatch {
       return;
     }
     if (this.stacks[this.button] <= 0) this.button = this.nextAlive(this.button);
+    this.currentBlinds = pokerBlindState(this.completedHands, this.blindStructure);
     // Pass the display labels ("the human" / model short-names) so the model observation
     // names seats instead of "P0/P1" — models then refer to each other by name.
     const state = new HoldemState({
       stacks: this.stacks.slice(),
       button: this.button,
-      smallBlind: SMALL_BLIND,
-      bigBlind: BIG_BLIND,
+      smallBlind: this.currentBlinds.smallBlind,
+      bigBlind: this.currentBlinds.bigBlind,
       seatNames: this.labels.length ? this.labels.slice() : undefined,
     });
-    this.recorder?.beginHand();
+    this.recorder?.beginHand(this.currentBlinds.smallBlind, this.currentBlinds.bigBlind);
     this.recordingHandOpen = true;
     this.deps.scene.beginHand(state);
     this.voice?.beginHand(state); // seed the bot with its own hole cards for this hand
@@ -355,6 +372,7 @@ export class PokerMatch {
           }
         });
         this.recordingHandOpen = false;
+        this.completedHands++;
         this.abort = null;
         this.deps.onHandOver();
         this.deps.requestRender();

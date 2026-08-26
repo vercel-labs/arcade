@@ -14,6 +14,10 @@ export interface MatchLabPlan {
   models: string[];
   seed: number;
   limits: MatchLabLimits;
+  startingChips: number;
+  smallBlind: number;
+  bigBlind: number;
+  handsPerLevel: number;
   setupOnly: boolean;
 }
 
@@ -51,6 +55,7 @@ export interface MatchLabEvent {
     | 'action_applied'
     | 'state_checkpoint'
     | 'hand_started'
+    | 'blind_level_changed'
     | 'hand_finished'
     | 'match_finished'
     | 'match_failed';
@@ -83,6 +88,10 @@ export interface MatchLabManifest {
   swapSeats: boolean;
   setupOnly: boolean;
   limits: MatchLabLimits;
+  startingChips: number;
+  smallBlind: number;
+  bigBlind: number;
+  handsPerLevel: number;
   gitCommit?: string;
   telemetry: 'disabled';
 }

@@ -10,23 +10,31 @@ import { maritimePortTradeRates, maritimeTradeRates } from '../../../rules/catan
 import { generateBoard } from '../../../rules/catan/setup.ts';
 import { DEV_CARD_COUNTS } from '../../../rules/catan/types.ts';
 import {
+  adjustCatanWorkbenchDiscard,
   adjustCatanWorkbenchDev,
   adjustCatanWorkbenchHand,
   adjustCatanWorkbenchTradeStaging,
   bankCatanResource,
+  beginCatanWorkbenchDiscard,
   beginCatanWorkbenchDevelopmentPlay,
   beginCatanWorkbenchDevPurchase,
   beginStagedCatanWorkbenchBankTrade,
   buildCatanCardsOverlay,
   buyCatanWorkbenchDevCard,
+  canSubmitCatanWorkbenchDiscard,
   cancelCatanWorkbenchPlayerTrade,
   catanWorkbenchPlayerTradeOffers,
   catanBankDepartureCell,
   catanDevDeckDepartureCell,
   catanDevHandLandingCell,
   catanHandLandingCell,
+  catanHistoryRows,
+  catanWorkbenchDiscardOpen,
+  catanWorkbenchDiscardRequired,
   catanWorkbenchDevelopmentPlay,
   catanWorkbenchView,
+  type CatanTradeEditorController,
+  type CatanPlayerTradeOffersController,
   chooseCatanWorkbenchDevelopmentResource,
   completeCatanWorkbenchDevelopmentStep,
   completeCatanWorkbenchPlayerTrade,
@@ -45,6 +53,7 @@ import {
   resetCatanWorkbenchCards,
   resolveCatanWorkbenchPlayerTradeOffer,
   setCatanTradeEditorOpen,
+  submitCatanWorkbenchDiscard,
 } from './card-hud.ts';
 import { stagedCatanBankTrade, stagedCatanPortTrade } from './card-workbench.ts';
 import { CatanController } from './catan-controller.ts';
@@ -59,6 +68,80 @@ function findNode(node: Node, id: string): Node | undefined {
   }
   return undefined;
 }
+
+test('Catan action history wraps complete model commentary onto physical continuation rows', () => {
+  const message = 'I am attempting to trade for ore because my production portfolio is weak there and the city timing matters.';
+  const rows = catanHistoryRows({ actor: 'grok-4.1-fast-non-reasoning', color: 'red', message, chat: true });
+  assert.ok(rows.length > 2);
+  const painted = rows.flatMap((row) => row.children?.map((child) => child.text ?? '') ?? [row.text ?? '']).join(' ');
+  for (const word of message.split(' ')) assert.ok(painted.includes(word), `missing wrapped word: ${word}`);
+});
+
+test('the workbench opens the shared discard row only above seven cards and returns selected cards to the bank', () => {
+  resetCatanWorkbenchCards();
+  for (let i = 0; i < 5; i++) adjustCatanWorkbenchHand('brick', 1);
+  for (let i = 0; i < 4; i++) adjustCatanWorkbenchHand('grain', 1);
+  const bankBefore = { ...catanWorkbenchView().bank };
+
+  assert.equal(beginCatanWorkbenchDiscard(), true);
+  assert.equal(catanWorkbenchDiscardOpen(), true);
+  assert.equal(catanWorkbenchDiscardRequired(), 4);
+  const root = buildCatanCardsOverlay({ x: 0, y: 0, w: 140, h: 50 }, () => {});
+  assert.equal(findNode(root, 'catan-discard-confirm')?.disabled, true);
+
+  for (let i = 0; i < 3; i++) assert.equal(adjustCatanWorkbenchDiscard('brick', 1), true);
+  assert.equal(adjustCatanWorkbenchDiscard('grain', 1), true);
+  assert.equal(canSubmitCatanWorkbenchDiscard(), true);
+  assert.equal(submitCatanWorkbenchDiscard(), true);
+  assert.equal(catanWorkbenchDiscardOpen(), false);
+  assert.equal(catanWorkbenchView().hand.brick, 2);
+  assert.equal(catanWorkbenchView().hand.grain, 3);
+  assert.equal(catanWorkbenchView().bank.brick, bankBefore.brick + 3);
+  assert.equal(catanWorkbenchView().bank.grain, bankBefore.grain + 1);
+
+  resetCatanWorkbenchCards();
+  for (let i = 0; i < 7; i++) adjustCatanWorkbenchHand('wool', 1);
+  assert.equal(beginCatanWorkbenchDiscard(), false);
+  resetCatanWorkbenchCards();
+});
+
+test('the full four-row trade editor is shared by live Catan rather than limited to the workbench', () => {
+  const view = catanWorkbenchView();
+  view.source = 'live';
+  const counts = { brick: 0, grain: 0, lumber: 0, ore: 0, wool: 0 };
+  const controller: CatanTradeEditorController = {
+    mode: 'standard',
+    give: { ...counts, brick: 4 },
+    receive: { ...counts, ore: 1 },
+    hasPort: true,
+    canBank: true,
+    canPort: false,
+    canPlayer: true,
+    canCounter: false,
+    onAdjust: () => true,
+    onBank: () => true,
+    onPort: () => false,
+    onPlayer: () => true,
+    onCounter: () => false,
+    onClose: () => {},
+  };
+  const root = buildCatanCardsOverlay(
+    { x: 0, y: 0, w: 140, h: 50 },
+    () => {},
+    view,
+    () => {},
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    controller,
+  );
+
+  assert.equal(findNode(root, 'catan-trade-confirm')?.disabled, false);
+  assert.equal(findNode(root, 'catan-port-trade-confirm')?.disabled, true);
+  assert.equal(findNode(root, 'catan-player-trade')?.disabled, false);
+  assert.ok(findNode(root, 'catan-trade-close'));
+});
 
 test('a playable live development card submits through its hand card while VP remains passive', () => {
   const view = catanWorkbenchView();
@@ -547,6 +630,44 @@ test('workbench player trade can be cancelled while reactions are pending', () =
   assert.equal(catanWorkbenchPlayerTradeOffers().length, 0);
   assert.equal(catanWorkbenchView().hand.grain, 1);
   resetCatanWorkbenchCards();
+});
+
+test('player trade popup constrains a long model name before the exchange tokens', () => {
+  const view = catanWorkbenchView();
+  const controller: CatanPlayerTradeOffersController = {
+    offers: [{
+      id: 99,
+      offerer: { ...view.localPlayer, name: 'grok-4.1-fast-non-reasoning' },
+      give: { lumber: 0, brick: 1, wool: 0, grain: 0, ore: 0 },
+      get: { lumber: 0, brick: 0, wool: 0, grain: 1, ore: 0 },
+      reactions: [],
+    }],
+  };
+  const root = buildCatanCardsOverlay(
+    { x: 0, y: 0, w: 140, h: 50 },
+    () => {},
+    view,
+    () => {},
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    controller,
+  );
+  const nodes: Node[] = [];
+  const visit = (node: Node): void => {
+    nodes.push(node);
+    for (const child of node.children ?? []) visit(child);
+  };
+  visit(root);
+  const name = nodes.find((node) => node.text === 'grok-4.1-fast-non-reasoning');
+  assert.ok(name);
+  assert.equal(name.style.textOverflow, 'ellipsis');
+  assert.equal(typeof name.style.width, 'number');
 });
 
 test('workbench development purchase spends the official cost and draws a card', () => {

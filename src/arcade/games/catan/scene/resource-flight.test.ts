@@ -131,6 +131,30 @@ test('draining preserves whether each staggered card has left its source', () =>
   assert.equal(flights.busy(), false);
 });
 
+test('a batch completion resolves only after its last staggered card lands', async () => {
+  const flights = new ResourceFlights();
+  const completion = flights.spawn('grain', 2, FROM, TO, 0);
+  let resolved = false;
+  void completion.then(() => { resolved = true; });
+
+  flights.advanceWithDepartures(0);
+  flights.advanceWithDepartures(FLIGHT_DUR + 0.01);
+  await Promise.resolve();
+  assert.equal(resolved, false, 'the first landing cannot release an action with another card in flight');
+
+  flights.advanceWithDepartures(FLIGHT_DUR + STAGGER + 0.02);
+  await completion;
+  assert.equal(resolved, true);
+});
+
+test('draining releases a pending batch completion', async () => {
+  const flights = new ResourceFlights();
+  const completion = flights.spawn('ore', 2, FROM, TO, 0);
+  flights.advanceWithDepartures(0);
+  flights.drainPending();
+  await completion;
+});
+
 test('a reverse trade flight stays visible while rising from the hand toward the bank', () => {
   const flights = new ResourceFlights();
   const run = stepper(flights);

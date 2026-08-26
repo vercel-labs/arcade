@@ -13,6 +13,7 @@ import { buildGameMenu, type MenuItem } from '../../shell/bars.ts';
 import { type DevCardType, type Resource } from '../../../rules/catan/types.ts';
 import {
   bankCatanResource,
+  beginCatanWorkbenchDiscard,
   beginCatanWorkbenchDevelopmentPlay,
   beginCatanWorkbenchDevPurchase,
   beginStagedCatanWorkbenchBankTrade,
@@ -23,6 +24,7 @@ import {
   catanDevHandLandingCell,
   catanHandLandingCell,
   catanRailVisible,
+  catanWorkbenchDiscardOpen,
   catanWorkbenchDevelopmentPlay,
   catanWorkbenchView,
   chooseCatanWorkbenchDevelopmentResource,
@@ -39,6 +41,7 @@ import {
   logCatanWorkbenchMaritimeTrade,
   finishCatanWorkbenchDevelopmentPlay,
   resetCatanWorkbenchCards,
+  submitCatanWorkbenchDiscard,
 } from './card-hud.ts';
 import { type CatanWorkbenchMaritimeTrade, type CatanWorkbenchMaritimeTradeVia } from './card-workbench.ts';
 import { ResourceFlights } from './scene/resource-flight.ts';
@@ -104,13 +107,16 @@ export class CatanController {
       onToggleRobber: (on) => this.change(() => this.scene.setRobber(on)),
       onMode: (m) => this.change(() => this.scene.setMode(m)),
       onToggleSidebar: () => this.change(() => {}), // card-hud owns the flag; just repaint
-      onRollDice: () => this.change(() => this.scene.rollDice()),
+      onRollDice: () => this.change(() => {
+        if (!catanWorkbenchDiscardOpen()) this.scene.rollDice();
+      }),
       onColor: (c) => this.change(() => this.scene.setActiveColor(c)),
       onPort: (k) => this.change(() => this.scene.setPortKind(k)),
       onMaritimeTrade: (via) => this.beginMaritimeTrade(via),
       onBuyDevelopmentCard: () => this.beginDevelopmentPurchase(),
       onPlayDevelopmentCard: (type) => this.beginDevelopmentPlay(type),
       onChooseDevelopmentResource: (resource) => this.chooseDevelopmentResource(resource),
+      onDiscard: () => this.finishWorkbenchDiscard(),
     });
     // Production. The scene reports the sum once the dice rest; what that pays out depends on
     // whose pieces sit on the matching hexes, so the seat is applied here rather than in the
@@ -121,7 +127,11 @@ export class CatanController {
     // right now, which is why they are read here rather than at spawn-time in the flight.
     this.scene.onRollLanded = (sum) => {
       logCatanRoll(sum);
-      if (sum === 7) this.scene.beginRobberMove();
+      if (sum === 7) {
+        if (!beginCatanWorkbenchDiscard()) this.scene.beginRobberMove();
+        this.requestFrame();
+        return;
+      }
       let thrown = 0;
       for (const source of this.scene.rollSources(CATAN_LOCAL_COLOR, sum, this.lastSceneCols, this.lastRows)) {
         const target = catanHandLandingCell(this.region(this.lastCols, this.lastRows), source.resource);
@@ -130,6 +140,13 @@ export class CatanController {
       }
       this.requestFrame();
     };
+  }
+
+  private finishWorkbenchDiscard(): boolean {
+    if (!submitCatanWorkbenchDiscard()) return false;
+    this.scene.beginRobberMove();
+    this.requestFrame();
+    return true;
   }
 
   private change(mutate: () => void): void {

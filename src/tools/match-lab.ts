@@ -39,6 +39,10 @@ Options:
   --max-plies=N          Chess ply bound (default 300)
   --max-actions=N        Catan/Poker action bound
   --max-hands=N          Poker hand bound (default 100)
+  --starting-chips=N     Poker chips per player (default 1000)
+  --small-blind=N        Poker initial small blind (default 10)
+  --big-blind=N          Poker initial big blind (default 20)
+  --hands-per-level=N    Completed hands per blind level (default 15)
   --setup-only           Stop Catan after initial placements
   --output=PATH          Artifact directory (default .runs/<timestamp>-<game>)
 
@@ -96,6 +100,10 @@ async function main(): Promise<void> {
     baseSeed: config.seed,
     swapSeats: config.swapSeats,
     setupOnly: config.setupOnly,
+    startingChips: config.startingChips,
+    smallBlind: config.smallBlind,
+    bigBlind: config.bigBlind,
+    handsPerLevel: config.handsPerLevel,
     limits: config.limits,
     ...(commit ? { gitCommit: commit } : {}),
     telemetry: 'disabled',

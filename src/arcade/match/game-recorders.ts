@@ -330,6 +330,7 @@ export class PokerSessionRecorder {
   private handActors: PokerActionActor[] = [];
   private eliminatedAt = new Map<number, number>();
   private emitted = false;
+  private readonly blindLevels: Array<{ level: number; startsAtHand: number; smallBlind: number; bigBlind: number }> = [];
 
   constructor(
     private readonly mode: 'ai_table' | 'human_table' | 'mixed',
@@ -343,8 +344,17 @@ export class PokerSessionRecorder {
     this.initialStacks = stacks.slice();
   }
 
-  beginHand(): void {
+  beginHand(smallBlind = this.smallBlind, bigBlind = this.bigBlind): void {
     this.handNumber++;
+    const previous = this.blindLevels.at(-1);
+    if (!previous || previous.smallBlind !== smallBlind || previous.bigBlind !== bigBlind) {
+      this.blindLevels.push({
+        level: this.blindLevels.length + 1,
+        startsAtHand: this.handNumber,
+        smallBlind,
+        bigBlind,
+      });
+    }
     this.handStartedAt = now();
     this.handId = id();
     this.handStartGlobalSeq = this.globalActionSeq;
@@ -515,6 +525,7 @@ export class PokerSessionRecorder {
         tableSize: this.initialStacks.length,
         smallBlind: this.smallBlind,
         bigBlind: this.bigBlind,
+        blindLevels: this.blindLevels.map((level) => ({ ...level })),
         startingStacks: this.initialStacks.slice(),
         finalStacks: finalStacks.slice(),
         handCount: this.completedHands,
@@ -546,6 +557,7 @@ export class PokerSessionRecorder {
         tableSize: this.initialStacks.length,
         smallBlind: this.smallBlind,
         bigBlind: this.bigBlind,
+        blindLevels: this.blindLevels.map((level) => ({ ...level })),
         startingStacks: this.initialStacks.slice(),
         finalStacks: currentStacks.slice(),
         handCount: this.completedHands,

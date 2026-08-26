@@ -2,6 +2,15 @@ import { runMatch, type MatchScene } from '../../ai/match.ts';
 import { ModelPlayer, type ModelPlayerOpts, type MoveNotation } from '../../ai/model-player.ts';
 import type { ActionChoice, Player } from '../../ai/player.ts';
 import { HoldemState, type PokerAction } from '../../rules/poker/holdem.ts';
+import {
+  DEFAULT_BIG_BLIND,
+  DEFAULT_HANDS_PER_LEVEL,
+  DEFAULT_SMALL_BLIND,
+  pokerBlindState,
+  pokerTournamentContext,
+  type PokerBlindState,
+  type PokerBlindStructure,
+} from '../../rules/poker/blinds.ts';
 import type { PokerHandRecord, PokerMatchRecord } from '../../telemetry/records.ts';
 import { PokerSessionRecorder } from './game-recorders.ts';
 import { disambiguateLabels } from './labels.ts';
@@ -13,8 +22,9 @@ export type PokerSeatSpec =
   | { kind: 'ai'; model: string; runtime: 'realtime' };
 
 export const STARTING_STACK = 1000;
-export const SMALL_BLIND = 10;
-export const BIG_BLIND = 20;
+export const SMALL_BLIND = DEFAULT_SMALL_BLIND;
+export const BIG_BLIND = DEFAULT_BIG_BLIND;
+export const HANDS_PER_BLIND_LEVEL = DEFAULT_HANDS_PER_LEVEL;
 
 export const POKER_NOTATION: MoveNotation = {
   description: 'a poker action — one of "fold", "check", "call", "bet <amount>", "raise <amount>", or "allin" (amounts are TOTAL chips to put in this street)',
@@ -47,13 +57,14 @@ export function createPokerTextPlayer(opts: PokerTextPlayerOpts): ModelPlayer<Po
 }
 
 export interface PokerSessionEvent {
-  type: 'hand_started' | 'decision_started' | 'commentary' | 'action_chosen' | 'action_applied' | 'hand_finished';
+  type: 'blind_level_changed' | 'hand_started' | 'decision_started' | 'commentary' | 'action_chosen' | 'action_applied' | 'hand_finished';
   hand: number;
   seat?: number;
   model?: string;
   action?: string;
   choice?: ActionChoice<PokerAction>;
   state?: unknown;
+  blinds?: PokerBlindState;
 }
 
 export interface HeadlessPokerSessionOpts {
@@ -63,6 +74,8 @@ export interface HeadlessPokerSessionOpts {
   startingStack?: number;
   smallBlind?: number;
   bigBlind?: number;
+  handsPerLevel?: number;
+  blindLevels?: PokerBlindStructure['levels'];
   maxHands?: number;
   maxActions?: number;
   rng?: () => number;
@@ -82,6 +95,7 @@ export interface HeadlessPokerSessionResult {
   winnerSeats: number[];
   handRecords: PokerHandRecord[];
   matchRecord: PokerMatchRecord;
+  blindProgression: PokerBlindState[];
 }
 
 class HeadlessPokerScene implements MatchScene<PokerAction> {
@@ -114,6 +128,12 @@ export async function runPokerSession(opts: HeadlessPokerSessionOpts): Promise<H
   const startingStack = opts.startingStack ?? STARTING_STACK;
   const smallBlind = opts.smallBlind ?? SMALL_BLIND;
   const bigBlind = opts.bigBlind ?? BIG_BLIND;
+  const blindStructure: PokerBlindStructure = {
+    initialSmallBlind: smallBlind,
+    initialBigBlind: bigBlind,
+    handsPerLevel: opts.handsPerLevel,
+    levels: opts.blindLevels,
+  };
   const maxHands = opts.maxHands ?? 100;
   const maxActions = opts.maxActions ?? 2_000;
   const rng = opts.rng ?? Math.random;
@@ -128,18 +148,22 @@ export async function runPokerSession(opts: HeadlessPokerSessionOpts): Promise<H
     bigBlind,
   );
   if (opts.players && opts.players.length !== opts.models.length) throw new RangeError('Poker needs one player implementation per model seat');
+  let currentBlinds = pokerBlindState(0, blindStructure);
   const players: Player<PokerAction>[] = opts.players ?? opts.models.map((model, seat) => createPokerTextPlayer({
       model,
       name: labels[seat],
       normalizer: opts.normalizer,
       fallbackRng,
-      contextProvider: () => standings(labels, stacks),
+      contextProvider: () => `${pokerTournamentContext(currentBlinds, stacks[seat])}\n\n${standings(labels, stacks)}`,
       onAttempt: (info) => opts.onAttempt?.(seat, info),
     }));
   const handRecords: PokerHandRecord[] = [];
   let button = 0;
   let handCount = 0;
   let actionCount = 0;
+  let completedHands = 0;
+  let lastBlindLevel = 0;
+  const blindProgression: PokerBlindState[] = [];
   let stopReason = 'max hands';
 
   while (stacks.filter((stack) => stack > 0).length > 1 && handCount < maxHands && actionCount < maxActions) {
@@ -148,18 +172,24 @@ export async function runPokerSession(opts: HeadlessPokerSessionOpts): Promise<H
       break;
     }
     if (stacks[button] <= 0) button = nextAlive(stacks, button);
+    currentBlinds = pokerBlindState(completedHands, blindStructure);
     handCount++;
+    if (currentBlinds.level !== lastBlindLevel) {
+      lastBlindLevel = currentBlinds.level;
+      blindProgression.push({ ...currentBlinds });
+      opts.onEvent?.({ type: 'blind_level_changed', hand: handCount, blinds: { ...currentBlinds }, state: { ...currentBlinds } });
+    }
     const state = new HoldemState({
       stacks: stacks.slice(),
       button,
-      smallBlind,
-      bigBlind,
+      smallBlind: currentBlinds.smallBlind,
+      bigBlind: currentBlinds.bigBlind,
       seatNames: labels,
       rng,
     });
     const scene = new HeadlessPokerScene(state);
-    recorder.beginHand();
-    opts.onEvent?.({ type: 'hand_started', hand: handCount, state: state.canonicalRecord() });
+    recorder.beginHand(currentBlinds.smallBlind, currentBlinds.bigBlind);
+    opts.onEvent?.({ type: 'hand_started', hand: handCount, blinds: { ...currentBlinds }, state: state.canonicalRecord() });
     let pendingAction = '';
     try {
       await runMatch(scene, players, {
@@ -189,6 +219,7 @@ export async function runPokerSession(opts: HeadlessPokerSessionOpts): Promise<H
     for (let seat = 0; seat < stacks.length; seat++) stacks[seat] += returns[seat];
     const handRecord = recorder.finishHand(state.canonicalRecord(), true);
     handRecords.push(handRecord);
+    completedHands++;
     opts.onEvent?.({ type: 'hand_finished', hand: handCount, state: handRecord });
     button = nextAlive(stacks, button);
   }
@@ -208,5 +239,6 @@ export async function runPokerSession(opts: HeadlessPokerSessionOpts): Promise<H
     winnerSeats: completed ? stacks.flatMap((stack, seat) => stack > 0 ? [seat] : []) : [],
     handRecords,
     matchRecord,
+    blindProgression,
   };
 }

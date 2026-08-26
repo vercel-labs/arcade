@@ -1,4 +1,6 @@
 import { resolve } from 'node:path';
+import { STARTING_STACK } from '../../arcade/match/poker-session.ts';
+import { DEFAULT_BIG_BLIND, DEFAULT_HANDS_PER_LEVEL, DEFAULT_SMALL_BLIND } from '../../rules/poker/blinds.ts';
 import { DEFAULT_CATAN_MODELS } from './adapters/catan.ts';
 import { deriveSeed } from './random.ts';
 import type { MatchLabGame, MatchLabLimits, MatchLabPlan } from './types.ts';
@@ -23,6 +25,10 @@ export interface MatchLabConfig {
   output?: string;
   swapSeats: boolean;
   setupOnly: boolean;
+  startingChips: number;
+  smallBlind: number;
+  bigBlind: number;
+  handsPerLevel: number;
   limits: MatchLabLimits;
 }
 
@@ -44,8 +50,8 @@ export function parseMatchLabConfig(args: readonly string[]): MatchLabConfig {
   const game = value(args, 'game') as MatchLabGame | undefined;
   if (!game || !['chess', 'catan', 'poker'].includes(game)) throw new Error('--game must be chess, catan, or poker');
   const models = value(args, 'models')?.split(',').map((model) => model.trim()).filter(Boolean) ?? DEFAULT_MODELS[game].slice();
-  const expected = game === 'chess' ? 'exactly 2' : game === 'catan' ? '3 or 4' : '2 through 6';
-  const valid = game === 'chess' ? models.length === 2 : game === 'catan' ? models.length >= 3 && models.length <= 4 : models.length >= 2 && models.length <= 6;
+  const expected = game === 'chess' ? 'exactly 2' : game === 'catan' ? '2 through 4' : '2 through 6';
+  const valid = game === 'chess' ? models.length === 2 : game === 'catan' ? models.length >= 2 && models.length <= 4 : models.length >= 2 && models.length <= 6;
   if (!valid) throw new RangeError(`${game} requires ${expected} models; received ${models.length}`);
   const output = value(args, 'output');
   return {
@@ -57,6 +63,10 @@ export function parseMatchLabConfig(args: readonly string[]): MatchLabConfig {
     ...(output ? { output: resolve(output) } : {}),
     swapSeats: args.includes('--swap-seats') || args.includes('--rotate-seats'),
     setupOnly: args.includes('--setup-only'),
+    startingChips: positiveInt(args, 'starting-chips', STARTING_STACK),
+    smallBlind: positiveInt(args, 'small-blind', DEFAULT_SMALL_BLIND),
+    bigBlind: positiveInt(args, 'big-blind', DEFAULT_BIG_BLIND),
+    handsPerLevel: positiveInt(args, 'hands-per-level', DEFAULT_HANDS_PER_LEVEL),
     limits: {
       timeoutMs: positiveInt(args, 'timeout', 600) * 1_000,
       maxActions: positiveInt(args, 'max-actions', game === 'catan' ? 500 : 2_000),
@@ -79,6 +89,10 @@ export function buildMatchPlans(config: MatchLabConfig): MatchLabPlan[] {
     models: config.swapSeats ? rotate(config.models, index) : config.models.slice(),
     seed: deriveSeed(config.seed, index),
     limits: { ...config.limits },
+    startingChips: config.startingChips,
+    smallBlind: config.smallBlind,
+    bigBlind: config.bigBlind,
+    handsPerLevel: config.handsPerLevel,
     setupOnly: config.setupOnly,
   }));
 }

@@ -145,6 +145,8 @@ const catan = new CatanController({
 // that runs the seats through the rules engine. The scene wraps the same TileScene the test
 // bed uses, so both screens share one renderer.
 const catanGameScene = new CatanGameScene();
+catanGameScene.setActionPreviewDuration(260);
+catanGameScene.setActionAnimationSynchronization(true);
 const catanDriver = new CatanDriver({
   scene: catanGameScene,
   syncLive: () => {
@@ -1905,7 +1907,6 @@ function syncBar(): void {
             fullRepaint();
           },
           onStart: startCatanGame,
-          onNewGame: newCatanGame,
         },
       ),
       { x: 0, y: 0, w: cols, h: rows },
@@ -1990,7 +1991,10 @@ function syncBar(): void {
     ui.setRoot(
       buildPokerGameRoot({ x: 0, y: 0, w: cols, h: rows }, buildBar('poker', renderMode, actions), {
         hero: pokerHero(),
-        blinds: '10/20',
+        blinds: (() => {
+          const level = pokerMatch.tournamentState();
+          return `${level.smallBlind}/${level.bigBlind} · L${level.level} · ${level.handsUntilNextLevel} left`;
+        })(),
         commentary,
         t,
         status: pokerStatus(),

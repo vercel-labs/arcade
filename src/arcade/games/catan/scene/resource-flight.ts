@@ -24,6 +24,7 @@ export interface FlyingResource<Card extends string = Resource> {
 }
 
 interface Flight<Card extends string> {
+  batch: number;
   resource: Card;
   fromCol: number;
   fromRow: number;
@@ -68,6 +69,8 @@ const COL_SETTLE = 0.86;
 export class ResourceFlights<Card extends string = Resource> {
   private flights: Flight<Card>[] = [];
   private readonly clock = new FrameClock();
+  private nextBatch = 1;
+  private readonly batches = new Map<number, { remaining: number; resolve: () => void }>();
 
   // Throw `count` cards from one hex, staggered. `order` offsets the whole group so several hexes
   // paying at once do not launch on top of each other.
@@ -79,11 +82,17 @@ export class ResourceFlights<Card extends string = Resource> {
     order: number,
     maxArc = ARC_MAX,
     sinkAtTarget = true,
-  ): void {
+  ): Promise<void> {
+    if (count <= 0) return Promise.resolve();
+    const batch = this.nextBatch++;
+    let resolveBatch: () => void = () => {};
+    const completion = new Promise<void>((resolve) => { resolveBatch = resolve; });
+    this.batches.set(batch, { remaining: count, resolve: resolveBatch });
     const span = Math.hypot(to.col - from.col, (to.row - from.row) * 2);
     const arc = Math.max(ARC_MIN, Math.min(maxArc, span * ARC_PER_COL));
     for (let i = 0; i < count; i++) {
       this.flights.push({
+        batch,
         resource,
         fromCol: from.col,
         fromRow: from.row,
@@ -96,6 +105,7 @@ export class ResourceFlights<Card extends string = Resource> {
         banked: false,
       });
     }
+    return completion;
   }
 
   busy(): boolean {
@@ -116,6 +126,8 @@ export class ResourceFlights<Card extends string = Resource> {
   drainPending(): DrainedResourceFlight<Card>[] {
     const owed = this.flights.map((f) => ({ resource: f.resource, departed: f.departed }));
     this.flights = [];
+    for (const pending of this.batches.values()) pending.resolve();
+    this.batches.clear();
     this.clock.reset();
     return owed;
   }
@@ -142,6 +154,14 @@ export class ResourceFlights<Card extends string = Resource> {
       if (!flight.banked && this.clock.elapsed >= flight.launchAt + FLIGHT_DUR) {
         flight.banked = true;
         landed.push(flight.resource);
+        const batch = this.batches.get(flight.batch);
+        if (batch) {
+          batch.remaining--;
+          if (batch.remaining <= 0) {
+            this.batches.delete(flight.batch);
+            batch.resolve();
+          }
+        }
       }
     }
     // The target row is the panel's first row, so a card is fully behind the hand at the instant

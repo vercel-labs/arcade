@@ -3,7 +3,7 @@ import test from 'node:test';
 import type { Player } from '../../ai/player.ts';
 import type { CatanState } from '../../rules/catan/catan.ts';
 import { RESOURCES, resourceIndex, type CatanAction, type PlayerColor } from '../../rules/catan/types.ts';
-import { catanLiveView, catanPlayerLegend } from '../games/catan/game-hud.ts';
+import { catanLiveView, catanPlayerLegend, catanStatusLine } from '../games/catan/game-hud.ts';
 import { PLAYER_LOOK } from '../games/catan/palette.ts';
 import { CatanDriver, type CatanBoardScene, type CatanSeatSpec } from './catan-driver.ts';
 
@@ -93,14 +93,18 @@ test('driver installs the scene before models run a complete rules-authoritative
   assert.equal(state.isTerminal(), true);
   assert.ok(driver.winner() >= 0);
   assert.ok(scene.actions.length > 16);
-  assert.equal(driver.history().length, scene.actions.length * 2);
+  assert.ok(driver.history().length >= scene.actions.length * 2);
   assert.equal(driver.history().filter((entry) => entry.chat).length, scene.actions.length);
+  assert.ok(driver.history().some((entry) => entry.message.includes('🏠 placed a settlement')));
+  assert.ok(driver.history().some((entry) => entry.message.startsWith('rolled ') && entry.message.includes(' = ')));
+  assert.ok(driver.latestAction());
+  assert.match(catanStatusLine(driver)?.detail ?? '', /^last: /);
   assert.ok(syncs >= scene.actions.length * 2 + 1, 'chat, actions, and completion should repaint the HUD');
 
   const view = catanLiveView(state, driver);
   assert.equal(view.source, 'live');
   const legendRows = catanPlayerLegend(driver, { x: 0, y: 0, w: 140, h: 50 }).children?.slice(1) ?? [];
-  assert.deepEqual(legendRows.map((row) => row.text), colors.map((_color, seat) => `■ model-${seat}`));
+  assert.deepEqual(legendRows.map((row) => row.text), colors.map((_color, seat) => `${seat === 0 ? '▸ ' : '  '}■ model-${seat}`));
   assert.deepEqual(legendRows.map((row) => row.style.color), colors.map((color) => PLAYER_LOOK[color]));
   const players = [view.localPlayer, ...view.opponents];
   assert.equal(players.length, 4);
@@ -119,6 +123,47 @@ test('driver installs the scene before models run a complete rules-authoritative
         .reduce((sum, count) => sum + count, 0);
     assert.equal(total, 19, `${resource} remains conserved after setup grants`);
   }
+});
+
+test('human UI labels stay conversational while model observations identify the human unambiguously', () => {
+  const scene = new DriverScene();
+  const driver = new CatanDriver({
+    scene,
+    syncLive: () => {},
+    createPlayer: (_spec, _seat, label) => progressingPlayer(label, rng(101)),
+  });
+  const state = driver.start([
+    { kind: 'human', color: 'red' },
+    { kind: 'ai', color: 'blue', model: 'anthropic/claude-haiku-4.5' },
+  ], { autoRun: false, rng: rng(7) });
+
+  assert.equal(driver.labelOf(0), 'You');
+  const modelView = state.informationStateString(1);
+  assert.match(modelView, /You are claude-haiku-4\.5\./);
+  assert.match(modelView, /Opponents: the human player:/);
+  assert.doesNotMatch(modelView, /Opponents: You:/);
+});
+
+test('human-facing trade history uses your and you instead of You possessives', () => {
+  const scene = new DriverScene();
+  const driver = new CatanDriver({
+    scene,
+    syncLive: () => {},
+    createPlayer: (_spec, _seat, label) => progressingPlayer(label, rng(102)),
+  });
+  const state = driver.start([
+    { kind: 'human', color: 'red' },
+    { kind: 'ai', color: 'blue', model: 'anthropic/claude-haiku-4.5' },
+  ], { autoRun: false, rng: rng(8) });
+  const before = { hands: [state.handOf(0).slice(), state.handOf(1).slice()], trade: { from: 0 } };
+  const record = (driver as unknown as {
+    record: (seat: number, action: CatanAction, before: unknown) => void;
+  }).record.bind(driver);
+
+  record(1, { type: 'rejectTrade' }, before);
+  assert.equal(driver.history().at(-1)?.message, 'rejected your trade offer');
+  record(1, { type: 'counterTrade', give: [1, 0, 0, 0, 0], receive: [0, 1, 0, 0, 0] }, before);
+  assert.match(driver.history().at(-1)?.message ?? '', /^countered you with /);
 });
 
 test('reset aborts and clears both driver and scene session state', () => {
@@ -141,4 +186,5 @@ test('reset aborts and clears both driver and scene session state', () => {
   assert.equal(driver.state(), null);
   assert.equal(scene.live, null);
   assert.deepEqual(driver.history(), []);
+  assert.equal(driver.latestAction(), null);
 });

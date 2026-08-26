@@ -104,6 +104,7 @@ export interface PokerVoiceDeps {
   humanSeat: number;
   botModel: string; // actual realtime slug; drives the session, chat identity, and wisp tint
   botLabel: string; // short display name, for event-line text ("<name> stalled…")
+  contextProvider?: () => string;
   // Push a line to the poker chat rail. `speaker` is a model slug (colored like the
   // text path) or "You" for the human; `event` lines render nameless/grey.
   onChat(text: string, speaker: string, opts?: { event?: boolean }): void;
@@ -212,7 +213,8 @@ export class PokerVoice {
     this.botSay = '';
     this.staged = null;
     this.deps.onStage(null, '');
-    this.session?.sendContext(`A new hand is dealt.\n${state.informationStateString(this.deps.botSeat)}`);
+    const context = this.deps.contextProvider?.();
+    this.session?.sendContext(`A new hand is dealt.\n${state.informationStateString(this.deps.botSeat)}${context ? `\n\n${context}` : ''}`);
   }
 
   // ── human voice-action confirm (bound to a key by main) ────────────────────────
@@ -284,7 +286,8 @@ export class PokerVoice {
       const talk = this.recentTalk.length
         ? `\n\nWhat your opponent has said recently (factor it into your read):\n${this.recentTalk.map((l) => `- "${l}"`).join('\n')}`
         : '';
-      this.session.sendContext(`It is your turn to act.\n${state.informationStateString(this.deps.botSeat)}${talk}`);
+      const context = this.deps.contextProvider?.();
+      this.session.sendContext(`It is your turn to act.\n${state.informationStateString(this.deps.botSeat)}${context ? `\n\n${context}` : ''}${talk}`);
       this.driveTurn(TURN_INSTRUCTIONS);
     });
   }

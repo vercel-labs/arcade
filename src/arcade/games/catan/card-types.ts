@@ -5,6 +5,7 @@ import type { MaritimePortTradeRates, MaritimeTradeRates } from '../../../rules/
 // presentation lets the eventual live-game adapter feed the same HUD without importing test
 // controls or terminal layout code.
 export interface CatanCardsPlayerView {
+  seat?: number;
   name: string;
   color: PlayerColor;
   publicVp: number;
@@ -15,6 +16,7 @@ export interface CatanCardsPlayerView {
   active?: boolean;
   hasLargestArmy?: boolean;
   hasLongestRoad?: boolean;
+  viewing?: boolean;
 }
 
 export interface CatanActionHistoryView {
@@ -22,6 +24,7 @@ export interface CatanActionHistoryView {
   color: PlayerColor;
   message: string;
   resources?: Resource[];
+  resourceCounts?: Partial<Record<Resource, number>>;
   chat?: boolean;
 }
 

@@ -53,7 +53,7 @@ function checkpoint(state: CatanState): unknown {
 }
 
 export const runCatanMatchLab: MatchLabAdapter = async ({ plan, signal, emit }) => {
-  if (plan.models.length < 3 || plan.models.length > 4) throw new RangeError('Catan needs three or four models');
+  if (plan.models.length < 2 || plan.models.length > 4) throw new RangeError('Catan needs two through four models');
   const startedAt = new Date().toISOString();
   const started = performance.now();
   const rng = mulberry32(plan.seed);

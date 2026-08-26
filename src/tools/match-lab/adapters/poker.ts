@@ -9,6 +9,10 @@ export const runPokerMatchLab: MatchLabAdapter = async ({ plan, signal, emit }) 
   const rng = mulberry32(plan.seed);
   const session = await runPokerSession({
     models: plan.models,
+    startingStack: plan.startingChips,
+    smallBlind: plan.smallBlind,
+    bigBlind: plan.bigBlind,
+    handsPerLevel: plan.handsPerLevel,
     maxHands: plan.limits.maxHands,
     maxActions: plan.limits.maxActions,
     rng,
@@ -26,7 +30,7 @@ export const runPokerMatchLab: MatchLabAdapter = async ({ plan, signal, emit }) 
         seat: event.seat,
         model: event.model,
         action: event.type === 'action_applied' ? undefined : event.hand,
-        data: { hand: event.hand, action: event.action, choice: event.choice, state: event.state },
+        data: { hand: event.hand, action: event.action, choice: event.choice, blinds: event.blinds, state: event.state },
       });
     },
   });
@@ -44,6 +48,6 @@ export const runPokerMatchLab: MatchLabAdapter = async ({ plan, signal, emit }) 
     winnerSeats: session.winnerSeats,
     stopReason: session.stopReason,
     canonical: { match: session.matchRecord, hands: session.handRecords },
-    finalState: { stacks: session.finalStacks, hands: session.handCount },
+    finalState: { stacks: session.finalStacks, hands: session.handCount, blindProgression: session.blindProgression },
   };
 };

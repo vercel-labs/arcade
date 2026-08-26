@@ -180,7 +180,6 @@ function gameComposite(opts: { plies?: number; setup?: boolean } = {}): (cols: n
           resourceAdjustments: gameScene.resourceViewAdjustments(),
           onOpenMenu: () => {},
           onStart: () => {},
-          onNewGame: () => {},
         }), region);
       },
     );
