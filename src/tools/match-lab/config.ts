@@ -4,6 +4,7 @@ import { DEFAULT_BIG_BLIND, DEFAULT_HANDS_PER_LEVEL, DEFAULT_SMALL_BLIND } from 
 import { DEFAULT_CATAN_MODELS } from './adapters/catan.ts';
 import { deriveSeed } from './random.ts';
 import type { MatchLabGame, MatchLabLimits, MatchLabPlan } from './types.ts';
+import type { CommunicationMode } from '../../ai/communication/types.ts';
 
 const DEFAULT_MODELS: Record<MatchLabGame, string[]> = {
   chess: ['anthropic/claude-haiku-4.5', 'openai/gpt-5.4-nano'],
@@ -25,6 +26,7 @@ export interface MatchLabConfig {
   output?: string;
   swapSeats: boolean;
   setupOnly: boolean;
+  communicationMode: CommunicationMode;
   startingChips: number;
   smallBlind: number;
   bigBlind: number;
@@ -54,6 +56,8 @@ export function parseMatchLabConfig(args: readonly string[]): MatchLabConfig {
   const valid = game === 'chess' ? models.length === 2 : game === 'catan' ? models.length >= 2 && models.length <= 4 : models.length >= 2 && models.length <= 6;
   if (!valid) throw new RangeError(`${game} requires ${expected} models; received ${models.length}`);
   const output = value(args, 'output');
+  const communicationMode = (value(args, 'communication') ?? 'autoreply') as CommunicationMode;
+  if (!['autoreply', 'ambient'].includes(communicationMode)) throw new Error('--communication must be autoreply or ambient');
   return {
     game,
     models,
@@ -63,6 +67,7 @@ export function parseMatchLabConfig(args: readonly string[]): MatchLabConfig {
     ...(output ? { output: resolve(output) } : {}),
     swapSeats: args.includes('--swap-seats') || args.includes('--rotate-seats'),
     setupOnly: args.includes('--setup-only'),
+    communicationMode,
     startingChips: positiveInt(args, 'starting-chips', STARTING_STACK),
     smallBlind: positiveInt(args, 'small-blind', DEFAULT_SMALL_BLIND),
     bigBlind: positiveInt(args, 'big-blind', DEFAULT_BIG_BLIND),
@@ -94,5 +99,6 @@ export function buildMatchPlans(config: MatchLabConfig): MatchLabPlan[] {
     bigBlind: config.bigBlind,
     handsPerLevel: config.handsPerLevel,
     setupOnly: config.setupOnly,
+    communicationMode: config.communicationMode,
   }));
 }

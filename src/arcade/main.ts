@@ -27,6 +27,7 @@ import { CATAN_RAIL_W, catanRailVisible } from './games/catan/card-hud.ts';
 import { CatanGameScene } from './games/catan/game-scene.ts';
 import { buildCatanGameRoot, mountCatanGameHud } from './games/catan/game-hud.ts';
 import { CatanDriver } from './match/catan-driver.ts';
+import type { CommunicationMode } from '../ai/communication/types.ts';
 import { catanSetupSelection, setCatanSetupChanged } from './match/catan-setup-panel.ts';
 import { buildPokerRoot, mountPokerHud, pokerMode, setPokerHandlers } from './games/poker/hud.ts';
 import { PokerGameScene } from './games/poker/poker-scene.ts';
@@ -163,6 +164,7 @@ let catanGameTimer: ReturnType<typeof setInterval> | null = null;
 // test bed runs at, and far cheaper than repainting the board at the full frame rate.
 const CATAN_ANIMATION_FRAME_MS = 90;
 let catanGameMenuOpen = false;
+let catanCommunicationMode: CommunicationMode = 'autoreply';
 
 // Bar geometry: a band of pills composited over the scene, lifted off the very
 // bottom edge by a margin so it doesn't hug it. BAR_HEIGHT must match the pill
@@ -1241,7 +1243,13 @@ function enterCatanGame(): void {
 function startCatanGame(): void {
   const seats = catanSetupSelection();
   if (!seats) return;
-  catanDriver.start(seats);
+  catanDriver.start(seats, { communicationMode: catanCommunicationMode });
+  fullRepaint();
+}
+
+function cycleCatanCommunicationMode(): void {
+  catanCommunicationMode = catanCommunicationMode === 'autoreply' ? 'ambient' : 'autoreply';
+  catanDriver.setCommunicationMode(catanCommunicationMode);
   fullRepaint();
 }
 
@@ -1264,6 +1272,7 @@ function buildCatanGameMenu(): Node {
       { id: 'catan-game-menu-reset', label: 'reset camera', onClick: () => { catanGameScene.scene.resetView(); closeMenu(); } },
       { id: 'catan-game-menu-mode', label: 'display', value: renderMode, onClick: () => cycleMode() },
       { id: 'catan-game-menu-color', label: 'color', value: colorMode, onClick: () => cycleColor() },
+      { id: 'catan-game-menu-communication', label: 'communication', value: catanCommunicationMode, onClick: cycleCatanCommunicationMode },
     ],
     [
       { id: 'catan-game-menu-shortcuts', label: 'controls', onClick: () => openShortcuts() },

@@ -188,3 +188,21 @@ test('reset aborts and clears both driver and scene session state', () => {
   assert.deepEqual(driver.history(), []);
   assert.equal(driver.latestAction(), null);
 });
+
+test('human chat is accepted only in human games and can directly address one model', () => {
+  const scene = new DriverScene();
+  const driver = new CatanDriver({ scene, syncLive: () => {} });
+  driver.start([
+    { kind: 'human', color: 'red' },
+    { kind: 'ai', color: 'blue', model: 'test/model' },
+  ], { autoRun: false, communicationMode: 'ambient', rng: rng(3) });
+  assert.equal(driver.sendHumanChat('Can you trade, Claude?', 1), true);
+  assert.equal(driver.history().at(-1)?.message, 'Can you trade, Claude?');
+  assert.equal(driver.history().at(-1)?.chat, true);
+  driver.reset();
+  driver.start([
+    { kind: 'ai', color: 'red', model: 'test/a' },
+    { kind: 'ai', color: 'blue', model: 'test/b' },
+  ], { autoRun: false, rng: rng(4) });
+  assert.equal(driver.sendHumanChat('invisible spectator speech'), false);
+});

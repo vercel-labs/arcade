@@ -7,6 +7,7 @@
 // authority; this layer merely connects seats to it and records presentation-friendly history.
 
 import { HumanPlayer } from '../../ai/human-player.ts';
+import type { CommunicationDecision, CommunicationMode } from '../../ai/communication/types.ts';
 import type { Player } from '../../ai/player.ts';
 import { CatanState } from '../../rules/catan/catan.ts';
 import { RESOURCES, resourceIndex, type CatanAction, type PlayerColor, type Resource } from '../../rules/catan/types.ts';
@@ -15,6 +16,7 @@ import { createCatanModelPlayer, runCatanMatch } from './catan-setup.ts';
 import { disambiguateLabels } from './labels.ts';
 import { shortModel } from './model-label.ts';
 import { normalizerModel } from './models.ts';
+import { CatanCommunicationCoordinator } from './catan-communication.ts';
 
 // One seat in the session: you, or an AI model (a Gateway slug). The color is the seat's
 // piece color — picked in setup and distinct per seat.
@@ -66,6 +68,8 @@ export class CatanDriver {
   private lastActionEntry: CatanLogEntry | null = null;
   private failure: string | null = null;
   private preAction: CatanPreActionView | null = null;
+  private communication: CatanCommunicationCoordinator | null = null;
+  private lastCommunicationDecision: CommunicationDecision | null = null;
 
   constructor(private readonly deps: CatanDriverDeps) {}
 
@@ -110,13 +114,41 @@ export class CatanDriver {
     return this.seats.findIndex((s) => s.kind === 'human');
   }
 
+  communicationMode(): CommunicationMode {
+    return this.communication?.currentMode() ?? 'autoreply';
+  }
+
+  setCommunicationMode(mode: CommunicationMode): void {
+    this.communication?.setMode(mode);
+  }
+
+  latestCommunicationDecision(): CommunicationDecision | null {
+    return this.lastCommunicationDecision;
+  }
+
+  sendHumanChat(text: string, targetSeat?: number): boolean {
+    const seat = this.humanSeat();
+    if (seat < 0 || !this.communication) return false;
+    const message = this.communication.addHuman(seat, text, targetSeat === undefined ? [] : [targetSeat]);
+    if (!message) return false;
+    this.log.push({
+      seat,
+      color: this.colorOf(seat),
+      actor: this.labelOf(seat),
+      message: message.text,
+      chat: true,
+    });
+    this.deps.syncLive();
+    return true;
+  }
+
   // Build the state + players and run the full match. Returns immediately; the loop
   // runs in the background and calls syncLive() as it progresses. `autoRun: false` sets the
   // session up without starting the loop — the snapshot tool drives placement itself so a
   // still needs no model call. `rng` makes the session reproducible — it seeds everything the
   // state draws from: the board layout, the dev-card deck, the dice, and the robber's steal.
   // Live sessions leave it unset and keep Math.random.
-  start(seats: CatanSeatSpec[], opts?: { autoRun?: boolean; rng?: () => number; maxActions?: number }): CatanState {
+  start(seats: CatanSeatSpec[], opts?: { autoRun?: boolean; rng?: () => number; maxActions?: number; communicationMode?: CommunicationMode }): CatanState {
     this.stop();
     this.seats = seats.slice();
     this.labels = disambiguateLabels(
@@ -138,6 +170,7 @@ export class CatanDriver {
     this.preAction = null;
     this.failure = null;
     this.complete = false;
+    this.lastCommunicationDecision = null;
     const state = new CatanState({
       numPlayers: seats.length,
       // UI copy uses `this.labels` so the local seat remains "You". The rules state's
@@ -149,6 +182,7 @@ export class CatanDriver {
       rng: opts?.rng,
     });
     this.live = state;
+    this.communication = new CatanCommunicationCoordinator(opts?.communicationMode ?? 'autoreply', modelContextLabels);
     this.players = seats.map((s, i) => this.makePlayer(s, i));
     this.abort = new AbortController();
     // Install the authoritative state in the scene before the runner can synchronously read it.
@@ -173,6 +207,8 @@ export class CatanDriver {
       model: spec.model,
       name: this.labels[seat],
       normalizer: normalizerModel(),
+      communication: this.communication?.modelConfig(),
+      contextProvider: (player) => this.communication?.contextFor(player) ?? '',
     });
   }
 
@@ -192,11 +228,30 @@ export class CatanDriver {
           });
           this.deps.syncLive();
         },
-        onActionChosen: () => {
+        onActionChosen: (info) => {
           this.preAction = this.live ? {
             hands: Array.from({ length: this.live.n }, (_, seat) => this.live!.handOf(seat).slice()),
             trade: this.live.activeTrade(),
           } : null;
+          if (this.seats[info.playerIndex]?.kind === 'ai' && this.communication) {
+            const decision = this.communication.decide(
+              info.playerIndex,
+              info.choice.action,
+              info.choice.communication,
+              (this.live?.actionRecords().length ?? 0) + 1,
+            );
+            this.lastCommunicationDecision = decision;
+            if (decision.communication.mode === 'speak') {
+              this.log.push({
+                seat: info.playerIndex,
+                color: this.colorOf(info.playerIndex),
+                actor: this.labelOf(info.playerIndex),
+                message: decision.communication.text,
+                chat: true,
+              });
+              this.deps.syncLive();
+            }
+          }
         },
         onActionApplied: (info) => {
           this.record(info.playerIndex, info.choice.action, this.preAction);
@@ -307,6 +362,8 @@ export class CatanDriver {
     this.running = false;
     this.players = [];
     this.preAction = null;
+    this.communication = null;
+    this.lastCommunicationDecision = null;
   }
 
   // Leaving the screen entirely: stop and clear, so re-entering shows setup again.

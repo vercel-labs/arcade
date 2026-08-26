@@ -2,6 +2,7 @@ import { generateText, type LanguageModel, Output } from 'ai';
 import { z } from 'zod';
 import type { GameState } from '../rules/game.ts';
 import { classifyModelError } from './model-errors.ts';
+import type { Communication, CommunicationMode } from './communication/types.ts';
 import type {
   ActionChoice,
   DecisionAttempt,
@@ -54,8 +55,27 @@ const DEFAULT_RATIONALE = 'One short sentence explaining the move, for spectator
 //    `say` is the only public line. Splitting them stops a model from leaking its hand
 //    while "explaining" a move: the analysis has a private home, so the spoken `say` stays
 //    a clean table-talk line. (Mirrors the reasoning/answer split in poker LLM harnesses.)
-const buildSchema = (notation: MoveNotation, opts: { rationale?: string; speech?: string }) => {
+const communicationSchema = z.discriminatedUnion('mode', [
+  z.object({ mode: z.literal('silent'), intent: z.literal('none'), privateReason: z.string().optional() }),
+  z.object({
+    mode: z.literal('speak'),
+    intent: z.enum(['reply', 'negotiate', 'explain_strategy', 'table_politics', 'react', 'banter', 'monologue']),
+    text: z.string(),
+    privateReason: z.string().optional(),
+    respondsTo: z.string().optional(),
+    addressedSeats: z.array(z.number().int().nonnegative()).optional(),
+  }),
+]);
+
+const buildSchema = (notation: MoveNotation, opts: { rationale?: string; speech?: string; communication?: boolean }) => {
   const move = z.string().describe(`Your chosen move in ${notation.description}, e.g. ${notation.examples}.`);
+  if (opts.communication) {
+    return z.object({
+      thinking: z.string().describe('Your private move reasoning. Never reveal this field.'),
+      move,
+      communication: communicationSchema,
+    });
+  }
   if (opts.speech !== undefined) {
     return z.object({
       thinking: z.string().describe('Your private reasoning for the move. This is never shown to anyone — think freely here.'),
@@ -138,6 +158,11 @@ export interface ModelPlayerOpts {
    * `say` can't leak cards while "explaining" the move. Omit for a single public field.
    */
   speech?: string;
+  /** Structured, host-policy-controlled table communication. Supersedes `speech`. */
+  communication?: {
+    mode: () => CommunicationMode;
+    guide: string;
+  };
   /**
    * Optional extra context woven into the move prompt for the seat to act, read
    * live per turn (a thunk, so it reflects the latest state). Poker uses it to inject
@@ -197,6 +222,7 @@ export class ModelPlayer<A> implements Player<A> {
   private banter: boolean;
   private rationaleGuide?: string;
   private speech?: string;
+  private communication?: ModelPlayerOpts['communication'];
   private contextProvider?: (player: number) => string;
   private onAttempt?: ModelPlayerOpts['onAttempt'];
   private allowIllegal?: () => boolean;
@@ -215,6 +241,7 @@ export class ModelPlayer<A> implements Player<A> {
     this.banter = opts.banter ?? false;
     this.rationaleGuide = opts.rationaleGuide;
     this.speech = opts.speech;
+    this.communication = opts.communication;
     this.contextProvider = opts.contextProvider;
     this.onAttempt = opts.onAttempt;
     this.allowIllegal = opts.allowIllegal;
@@ -222,7 +249,7 @@ export class ModelPlayer<A> implements Player<A> {
     this.normalizerName = opts.normalizerName ?? (typeof opts.normalizer === 'string' ? opts.normalizer : undefined);
     this.fallbackRng = opts.fallbackRng ?? Math.random;
     this.notation = opts.moveNotation ?? CHESS_NOTATION;
-    this.schema = buildSchema(this.notation, { rationale: opts.rationaleGuide, speech: opts.speech });
+    this.schema = buildSchema(this.notation, { rationale: opts.rationaleGuide, speech: opts.speech, communication: opts.communication !== undefined });
   }
 
   async chooseAction(state: GameState<A>, ctx?: TurnContext): Promise<ActionChoice<A>> {
@@ -249,9 +276,11 @@ export class ModelPlayer<A> implements Player<A> {
       rationale: string | undefined,
       resolution: DecisionResolution,
       extra: Partial<Pick<DecisionDiagnostics, 'fallbackReason' | 'normalizerModel'>> = {},
+      communication?: Communication,
     ): ActionChoice<A> => ({
       action,
       rationale,
+      ...(communication ? { communication } : {}),
       diagnostics: {
         resolution,
         durationMs: elapsedMs(decisionStarted),
@@ -281,6 +310,7 @@ export class ModelPlayer<A> implements Player<A> {
       const attemptStarted = performance.now();
       let move: string;
       let rationale: string | undefined;
+      let communication: Communication | undefined;
       let usage: unknown;
       try {
         const generated = await generateText({
@@ -292,9 +322,10 @@ export class ModelPlayer<A> implements Player<A> {
         });
         usage = generated.usage;
         // Split schema (speech) surfaces only `say`; `thinking` is private and dropped.
-        const out = generated.output as { move: string; rationale?: string; say?: string };
+        const out = generated.output as { move: string; rationale?: string; say?: string; communication?: Communication };
         move = out.move;
-        rationale = this.speech !== undefined ? out.say : out.rationale;
+        communication = out.communication;
+        rationale = this.communication ? undefined : this.speech !== undefined ? out.say : out.rationale;
       } catch (err) {
         if (signal?.aborted) throw err; // cancellation — let it propagate
         const failure = classifyModelError(err);
@@ -323,7 +354,7 @@ export class ModelPlayer<A> implements Player<A> {
         ...tokenUsage(usage),
       });
       this.onAttempt?.({ phase: 'structured', raw: move, result: action ? 'legal' : 'illegal' });
-      if (action !== null) return finish(action, rationale, 'structured');
+      if (action !== null) return finish(action, rationale, 'structured', {}, communication);
       lastRaw = move;
       lastRationale = rationale;
       feedback = this.retryNote(move, useLoose, legalSan);
@@ -373,7 +404,7 @@ export class ModelPlayer<A> implements Player<A> {
         this.onAttempt?.({ phase: 'text', raw: text.replace(/\s+/g, ' ').trim().slice(0, 120), result: parsed ? 'legal' : 'illegal' });
         if (parsed) return finish(parsed.action, parsed.rationale, 'text');
         lastRaw = text;
-        lastRationale = this.speech !== undefined ? this.sayFrom(text) : this.rationaleFrom(text);
+        lastRationale = this.communication ? undefined : this.speech !== undefined ? this.sayFrom(text) : this.rationaleFrom(text);
         feedback = this.retryNote(text.replace(/\s+/g, ' ').trim().slice(0, 60), useLoose, legalSan);
       }
     }
@@ -480,7 +511,10 @@ export class ModelPlayer<A> implements Player<A> {
       const action = parse(c);
       // Split mode: the broadcast line is ONLY the explicit SAY: line — never the free
       // prose, which is the model's (leaky) reasoning. No SAY: → no line, rather than leak.
-      if (action !== null) return { action, rationale: this.speech !== undefined ? this.sayFrom(text) : this.rationaleFrom(text) };
+      if (action !== null) return {
+        action,
+        rationale: this.communication ? undefined : this.speech !== undefined ? this.sayFrom(text) : this.rationaleFrom(text),
+      };
     }
     return null;
   }
@@ -531,14 +565,19 @@ export class ModelPlayer<A> implements Player<A> {
     // text fallback must ALSO separate reasoning from speech: reason freely, then a public
     // SAY: line and a MOVE: line — only SAY: is broadcast (parseText). Without this, the
     // fallback broadcasts the pre-MOVE prose, i.e. the reasoning, leaking the hand.
-    const speechMode = this.speech !== undefined;
+    const communicationMode = this.communication !== undefined;
+    const speechMode = this.speech !== undefined && !communicationMode;
     let format: string;
     if (mode === 'json') {
-      format = speechMode
+      format = communicationMode
+        ? `\n\nReply as JSON with three fields, in order: "thinking" (private), "move" (${this.notation.description}), and "communication". communication must be either {"mode":"silent","intent":"none","privateReason":"..."} or {"mode":"speak","intent":"reply|negotiate|explain_strategy|table_politics|react|banter|monologue","text":"...","privateReason":"..."}.`
+        : speechMode
         ? `\n\nReply as JSON with three fields, in order: "thinking" (your private reasoning about the best move, never shown to anyone), "move" (${this.notation.description}, e.g. ${this.notation.examples}), and "say" (${this.speech}).`
         : `\n\nReply as JSON with a "move" field (${this.notation.description}, e.g. ${this.notation.examples}) and a one-sentence "rationale" field.`;
     } else {
-      format = speechMode
+      format = communicationMode
+        ? `\n\nThink privately, then end with MOVE: <your move>. Structured communication is unavailable on this fallback, so Arcade will treat it as silent.`
+        : speechMode
         ? `\n\nThink privately first if you like. That thinking is never shown to anyone. Then end your reply with exactly these two lines:\nSAY: <${this.speech}>\nMOVE: <your move in ${this.notation.description}, e.g. ${this.notation.examples}>`
         : `\n\nThink briefly if you wish, then end your reply with a line in exactly this form:\nMOVE: <your move in ${this.notation.description}, e.g. ${this.notation.examples}>`;
     }
@@ -553,10 +592,15 @@ export class ModelPlayer<A> implements Player<A> {
         ? `\n\nYour opponent just said: "${opponentSaid}". You may react to it in what you say, but choose your move on the merits of the position.`
         : '',
       `\n\nChoose the strongest legal move.`,
+      communicationMode
+        ? `\n\nCommunication mode is ${this.communication!.mode()}. ${this.communication!.guide}\nIn autoreply mode choose speak for every legal action. In ambient mode silence is a successful, preferred result for routine actions; speak only when the moment benefits from public table talk. If directly addressed in the supplied conversation, respond. Never repeat hidden thinking in text.`
+        : '',
       format,
       // Split JSON mode: reinforce keeping analysis out of the spoken line. Single-field
       // mode: reinforce a custom rationale meaning. (Text mode bakes this into `format`.)
-      speechMode && mode === 'json'
+      communicationMode && mode === 'json'
+        ? `\n\nThe communication field is public and may be suppressed by Arcade's host policy. privateReason is local diagnostic context and is never public. Keep monologue rare, meaningful, and at most 3-5 short sentences.`
+        : speechMode && mode === 'json'
         ? `\n\nPut all move analysis in "thinking" (that field is private). "say" is spoken out loud to the whole table. Follow its game-specific speech rule exactly; do not copy private analysis into it.`
         : !speechMode && this.rationaleGuide
           ? `\n\nYour "rationale" is not analysis. It is ${this.rationaleGuide}`

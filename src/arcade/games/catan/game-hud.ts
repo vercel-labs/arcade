@@ -37,6 +37,7 @@ import type { BoardToken, SailLabel } from './tile-scene.ts';
 import { catanFlyingCardNodes, catanProjectedBoardLabels } from './tile-hud.ts';
 import type { FlyingResource } from './scene/resource-flight.ts';
 import type { CatanActionPreview, CatanGameScene, CatanResourceViewAdjustments } from './game-scene.ts';
+import { buildCatanChatComposer, configureCatanChatComposer, mountCatanChatComposer } from './chat-composer.ts';
 
 const STATUS_FG = CATAN_STATUS.foreground;
 const STATUS_MUTED = CATAN_STATUS.muted;
@@ -45,6 +46,7 @@ const PLAYER_LEGEND_W = 30;
 export function mountCatanGameHud(ui: Screen): void {
   mountCatanSetup(ui);
   mountCatanCardsHud(ui);
+  mountCatanChatComposer(ui);
 }
 
 // ── CatanState → the card overlay's view ────────────────────────────────────────────────────
@@ -770,6 +772,18 @@ export function buildCatanGameRoot(region: LayoutBox, deps: CatanGameHudDeps): N
   const visibleTradePreview = driver.humanSeat() < 0 || previewSeat === driver.humanSeat()
     ? previewTradeController(deps.scene)
     : undefined;
+  const humanSeat = driver.humanSeat();
+  const chatComposer = humanSeat >= 0 && railVisible
+    ? (() => {
+        configureCatanChatComposer({
+          targets: Array.from({ length: driver.seatCount() }, (_, seat) => seat)
+            .filter((seat) => seat !== humanSeat)
+            .map((seat) => ({ seat, label: driver.labelOf(seat) })),
+          onSubmit: (text, targetSeat) => driver.sendHumanChat(text, targetSeat),
+        });
+        return buildCatanChatComposer();
+      })()
+    : undefined;
   return Box({ width: region.w, height: region.h }, [
     ...catanProjectedBoardLabels(deps.tokens ?? [], deps.sails ?? []),
     buildCatanCardsOverlay(
@@ -786,6 +800,7 @@ export function buildCatanGameRoot(region: LayoutBox, deps: CatanGameHudDeps): N
       undefined,
       liveDiscardController(deps.scene, state),
       livePlayerTradeController(deps.scene, state, driver),
+      chatComposer,
     ),
     ...([humanActionPanel(deps, region)].filter((node): node is Node => node !== null)),
     ...([spectatorActionPanel(deps, region)].filter((node): node is Node => node !== null)),

@@ -1,3 +1,5 @@
+import type { CommunicationMode } from '../../ai/communication/types.ts';
+
 export type MatchLabGame = 'chess' | 'catan' | 'poker';
 
 export interface MatchLabLimits {
@@ -19,6 +21,7 @@ export interface MatchLabPlan {
   bigBlind: number;
   handsPerLevel: number;
   setupOnly: boolean;
+  communicationMode: CommunicationMode;
 }
 
 export type MatchLabStatus = 'completed' | 'bounded' | 'failed';
@@ -51,6 +54,7 @@ export interface MatchLabEvent {
     | 'decision_started'
     | 'model_attempt'
     | 'commentary'
+    | 'communication_decision'
     | 'action_chosen'
     | 'action_applied'
     | 'state_checkpoint'
@@ -87,6 +91,7 @@ export interface MatchLabManifest {
   baseSeed: number;
   swapSeats: boolean;
   setupOnly: boolean;
+  communicationMode: CommunicationMode;
   limits: MatchLabLimits;
   startingChips: number;
   smallBlind: number;

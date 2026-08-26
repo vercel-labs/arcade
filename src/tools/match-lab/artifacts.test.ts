@@ -29,6 +29,7 @@ test('summary attributes wins to the model occupying each seat', () => {
     baseSeed: 1,
     swapSeats: true,
     setupOnly: false,
+    communicationMode: 'autoreply',
     startingChips: 1_000,
     smallBlind: 10,
     bigBlind: 20,

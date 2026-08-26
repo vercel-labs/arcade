@@ -8,6 +8,7 @@ import {
   runHeadlessCatanMatch,
 } from '../../../arcade/match/catan-setup.ts';
 import { normalizerModel } from '../../../arcade/match/models.ts';
+import { CatanCommunicationCoordinator } from '../../../arcade/match/catan-communication.ts';
 import { NUM_EDGES, NUM_NODES } from '../../../rules/catan/board-topology.ts';
 import { CatanState } from '../../../rules/catan/catan.ts';
 import { DEV_CARD_TYPES, PLAYER_COLORS, RESOURCES, resourceIndex, type CatanAction, type Resource } from '../../../rules/catan/types.ts';
@@ -65,12 +66,15 @@ export const runCatanMatchLab: MatchLabAdapter = async ({ plan, signal, emit }) 
     domesticTradeOfferLimit: 3,
     rng,
   });
+  const communication = new CatanCommunicationCoordinator(plan.communicationMode, plan.models);
   const makePlayer = plan.setupOnly ? createCatanSetupModelPlayer : createCatanModelPlayer;
   const players: Player<CatanAction>[] = plan.models.map((model, seat) => makePlayer({
     model,
     name: model,
     normalizer,
     fallbackRng: rng,
+    communication: communication.modelConfig(),
+    contextProvider: (player) => communication.contextFor(player),
     onAttempt: (attempt) => emit({ type: 'model_attempt', game: 'catan', seat, model, data: attempt }),
   }));
   let stopReason = plan.setupOnly ? 'setup complete' : 'game complete';
@@ -81,7 +85,13 @@ export const runCatanMatchLab: MatchLabAdapter = async ({ plan, signal, emit }) 
     onCommentary: (text: string, _player: Player<CatanAction>, seat: number) => emit({ type: 'commentary' as const, game: 'catan' as const, seat, model: plan.models[seat], action: state.actionRecords().length + 1, data: { text } }),
     onActionChosen: ({ playerIndex, choice }: { playerIndex: number; choice: Awaited<ReturnType<Player<CatanAction>['chooseAction']>> }) => {
       pendingAction = state.actionToString(choice.action);
-      emit({ type: 'action_chosen', game: 'catan', seat: playerIndex, model: plan.models[playerIndex], action: state.actionRecords().length + 1, data: { move: pendingAction, rationale: choice.rationale, diagnostics: choice.diagnostics } });
+      const actionNumber = state.actionRecords().length + 1;
+      const decision = communication.decide(playerIndex, choice.action, choice.communication, actionNumber);
+      emit({ type: 'communication_decision', game: 'catan', seat: playerIndex, model: plan.models[playerIndex], action: actionNumber, data: decision });
+      if (decision.communication.mode === 'speak') {
+        emit({ type: 'commentary', game: 'catan', seat: playerIndex, model: plan.models[playerIndex], action: actionNumber, data: { text: decision.communication.text, intent: decision.communication.intent } });
+      }
+      emit({ type: 'action_chosen', game: 'catan', seat: playerIndex, model: plan.models[playerIndex], action: actionNumber, data: { move: pendingAction, communication: choice.communication, diagnostics: choice.diagnostics } });
     },
     onActionApplied: ({ playerIndex }: { playerIndex: number }) => emit({ type: 'action_applied', game: 'catan', seat: playerIndex, model: plan.models[playerIndex], action: state.actionRecords().length, data: { move: pendingAction, outcome: state.actionRecords().at(-1)?.outcome, checkpoint: checkpoint(state) } }),
   };

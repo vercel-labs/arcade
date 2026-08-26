@@ -40,6 +40,11 @@ Raw model attempts and commentary are diagnostic local data. Do not upload `.run
 feed it to production telemetry. A future benchmark pipeline should add explicit origin
 metadata and separate leaderboard filtering first.
 
+Catan supports `--communication=autoreply` (the compatibility default: a public line
+after every model action) and `--communication=ambient` (host-policy gating with explicit
+silence). The mode and local communication decisions are persisted in the run trace;
+production telemetry still receives no chat, prompts, or private reasoning.
+
 ## Reproduction and bounds
 
 Rules randomness derives from `--seed`; each match gets a stable derived seed. Model

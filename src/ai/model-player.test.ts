@@ -231,6 +231,36 @@ test('private-context safety: a normalized split-mode move never surfaces privat
   assert.ok(!/monstrous|pocket kings|crush|THINKING/i.test(rationale ?? ''), 'no private reasoning leaked');
 });
 
+test('structured communication stays separate from rationale for host-policy gating', async () => {
+  const state = new ChessState();
+  const { model } = jsonModel([JSON.stringify({
+    thinking: 'private calculation',
+    move: 'e4',
+    communication: { mode: 'speak', intent: 'banter', text: 'Your move.' },
+  })]);
+  const choice = await new ModelPlayer<Move>({
+    model,
+    gameName: 'table chess',
+    communication: { mode: () => 'ambient', guide: 'Speak only when useful.' },
+  }).chooseAction(state);
+  assert.equal(state.actionToString(choice.action), 'e4');
+  assert.equal(choice.rationale, undefined);
+  assert.deepEqual(choice.communication, { mode: 'speak', intent: 'banter', text: 'Your move.' });
+});
+
+test('communication-mode text fallback never broadcasts private fallback prose', async () => {
+  const state = new ChessState();
+  const { model } = proseModel('My private calculation is complicated.\nMOVE: e4');
+  const choice = await new ModelPlayer<Move>({
+    model,
+    gameName: 'table chess',
+    communication: { mode: () => 'ambient', guide: 'Speak selectively.' },
+  }).chooseAction(state);
+  assert.equal(state.actionToString(choice.action), 'e4');
+  assert.equal(choice.rationale, undefined);
+  assert.equal(choice.communication, undefined);
+});
+
 test('structured success returns sanitized timing and token diagnostics', async () => {
   const state = new ChessState();
   const { model } = jsonModel(['{"move":"e4","rationale":"private-to-the-record-layer"}']);

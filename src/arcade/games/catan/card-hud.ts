@@ -290,14 +290,14 @@ const HISTORY_MIN_H = 4;
 
 // Every row of the sidebar that is not the history viewport: the panel's insets and header, the
 // two section labels, the bank row, the players table, and the gap under each of those.
-function sidebarFixedH(playerCount: number): number {
+function sidebarFixedH(playerCount: number, hasFooter = false): number {
   const rows = 1 /* history label */ + 1 /* bank label */ + CARD_H /* bank row */ + 1 /* players header */ + playerCount;
   const gaps = 4 + playerCount; // one under every body child except the last
-  return SIDEBAR_PAD_V * 2 + SIDEBAR_HEADER_H + rows + gaps;
+  return SIDEBAR_PAD_V * 2 + SIDEBAR_HEADER_H + rows + gaps + (hasFooter ? 3 : 0);
 }
 
-function catanHistoryHeight(region: LayoutBox, playerCount: number): number {
-  const spare = region.h - sidebarFixedH(playerCount);
+function catanHistoryHeight(region: LayoutBox, playerCount: number, hasFooter = false): number {
+  const spare = region.h - sidebarFixedH(playerCount, hasFooter);
   return Math.max(HISTORY_MIN_H, Math.min(Math.floor(region.h * HISTORY_SHARE), spare));
 }
 
@@ -509,7 +509,7 @@ function playersTable(players: CatanCardsPlayerView[]): Node {
 // One continuous dark panel owning the full right strip — the same width the scene viewport is
 // inset by, so the rail sits beside the board rather than over it. Its ✕ collapses it back to the
 // reopen pill, mirroring the poker chat rail.
-function sidebar(view: CatanCardsView, onClose: () => void): Node {
+function sidebar(view: CatanCardsView, onClose: () => void, footer?: Node): Node {
   const players = [...view.opponents, view.localPlayer];
   // Only the ScrollBox reaches the panel edge; the rest is inset so it clears the scrollbar column.
   const inset = (child: Node): Node => Box({ width: { pct: 100 }, padding: [0, BODY_PAD_R, 0, 0] }, [child]);
@@ -519,6 +519,7 @@ function sidebar(view: CatanCardsView, onClose: () => void): Node {
     inset(sectionTitle('bank')),
     inset(bankRow(view)),
     inset(playersTable(players)),
+    ...(footer ? [inset(footer)] : []),
   ]);
   return Box({ position: 'absolute', top: 0, right: 0, bottom: 0, width: RAIL_W, overflow: 'hidden' }, [
     Sidebar({ width: RAIL_W, height: { pct: 100 }, title: 'sidebar', closeId: 'catan-sidebar-close', onClose, background: uiChromeBg(0.9), titleColor: ARCADE_CHROME_TEXT.title }, [body]),
@@ -1417,12 +1418,13 @@ export function buildCatanCardsOverlay(
   onWorkbenchDiscard?: () => boolean,
   liveDiscardController?: CatanDiscardEditorController,
   livePlayerTradeController?: CatanPlayerTradeOffersController,
+  sidebarFooter?: Node,
 ): Node {
   const layout = catanCardsLayout(region);
   const showSidebar = sidebarOpen && layout.showPublicRail;
   if (showSidebar) {
     // Follow-to-bottom: stay pinned to the newest entry unless the reader has scrolled up.
-    const historyH = catanHistoryHeight(region, view.opponents.length + 1);
+    const historyH = catanHistoryHeight(region, view.opponents.length + 1, sidebarFooter !== undefined);
     const rows: Row[] = view.history.flatMap(catanHistoryRows);
     const atBottom = catanHistoryScroll.scroll >= Math.max(0, catanHistoryScroll.rows.length - historyH);
     catanHistoryScroll.setHeight(historyH);
@@ -1443,7 +1445,7 @@ export function buildCatanCardsOverlay(
   const discardController = liveDiscardController
     ?? (workbench ? workbenchDiscardController(onWorkbenchChange, onWorkbenchDiscard) : undefined);
   return Box({ position: 'absolute', top: 0, left: 0, width: region.w, height: region.h }, [
-    ...(showSidebar ? [sidebar(view, onCloseSidebar)] : []),
+    ...(showSidebar ? [sidebar(view, onCloseSidebar, sidebarFooter)] : []),
     // The hand shares the bottom row with the board, and the rail eats into it. Hand it the
     // width actually left over so it can drop its optional half instead of sliding under the rail.
     ...(discardController
