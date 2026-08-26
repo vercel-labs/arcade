@@ -506,11 +506,17 @@ function playersTable(players: CatanCardsPlayerView[]): Node {
   ]);
 }
 
+// POV changes only choose which private hand is projected into `localPlayer`. They must not
+// reorder the public player list: both the top-left legend and this sidebar stay in seat order.
+export function catanSidebarPlayers(view: CatanCardsView): CatanCardsPlayerView[] {
+  return [...view.opponents, view.localPlayer].sort((a, b) => (a.seat ?? 0) - (b.seat ?? 0));
+}
+
 // One continuous dark panel owning the full right strip — the same width the scene viewport is
 // inset by, so the rail sits beside the board rather than over it. Its ✕ collapses it back to the
 // reopen pill, mirroring the poker chat rail.
 function sidebar(view: CatanCardsView, onClose: () => void, footer?: Node): Node {
-  const players = [...view.opponents, view.localPlayer];
+  const players = catanSidebarPlayers(view);
   // Only the ScrollBox reaches the panel edge; the rest is inset so it clears the scrollbar column.
   const inset = (child: Node): Node => Box({ width: { pct: 100 }, padding: [0, BODY_PAD_R, 0, 0] }, [child]);
   const body = Box({ flexDirection: 'column', gap: 1, overflow: 'hidden' }, [

@@ -5,6 +5,7 @@ import { DEV_CARD_TYPES, RESOURCES, resourceIndex, type CatanAction } from '../.
 import type { Node } from '../../../tui/index.ts';
 import { CatanDriver, type CatanSeatSpec } from '../../match/catan-driver.ts';
 import { buildCatanGameRoot, catanLiveView, catanStatusLine } from './game-hud.ts';
+import { catanSidebarPlayers } from './card-hud.ts';
 import { CatanGameScene, catanActionPlaybackFrames } from './game-scene.ts';
 
 function findNode(node: Node, id: string): Node | undefined {
@@ -85,6 +86,24 @@ test('spectators can click a player to inspect that seat hand and development ca
   const view = catanLiveView(state, driver, undefined, 1);
   assert.equal(view.hand.ore, 3);
   assert.equal(view.devHand.knight, 2);
+  assert.deepEqual(catanSidebarPlayers(view).map((player) => player.seat), [0, 1]);
+});
+
+test('spectator POV changes never reorder the sidebar player rows', () => {
+  const scene = new CatanGameScene();
+  const driver = new CatanDriver({ scene, syncLive: () => {} });
+  const state = driver.start([
+    { kind: 'ai', color: 'red', model: 'test/red' },
+    { kind: 'ai', color: 'blue', model: 'test/blue' },
+    { kind: 'ai', color: 'orange', model: 'test/orange' },
+    { kind: 'ai', color: 'purple', model: 'test/purple' },
+  ], { autoRun: false, rng: () => 0.5 });
+
+  for (const viewer of [0, 2, 3, 1]) {
+    const view = catanLiveView(state, driver, undefined, viewer);
+    assert.equal(view.localPlayer.seat, viewer);
+    assert.deepEqual(catanSidebarPlayers(view).map((player) => player.seat), [0, 1, 2, 3]);
+  }
 });
 
 test('an AI trade visibly stages in the shared editor before becoming a posted trade popup', async () => {
