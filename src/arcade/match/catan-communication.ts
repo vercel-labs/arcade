@@ -44,6 +44,15 @@ export function catanActionSalience(action: CatanAction): number {
 export class CatanCommunicationCoordinator {
   private readonly conversation = new PublicConversation();
   private readonly policy = new CommunicationPolicy();
+  private decisions = 0;
+  private spoken = 0;
+  private required = 0;
+  private requiredSpoken = 0;
+  private routine = 0;
+  private routineSpoken = 0;
+  private trade = 0;
+  private tradeSpoken = 0;
+  private words = 0;
 
   constructor(
     private mode: CommunicationMode,
@@ -53,6 +62,8 @@ export class CatanCommunicationCoordinator {
   reset(): void {
     this.conversation.reset();
     this.policy.reset();
+    this.decisions = this.spoken = this.required = this.requiredSpoken = 0;
+    this.routine = this.routineSpoken = this.trade = this.tradeSpoken = this.words = 0;
   }
 
   setMode(mode: CommunicationMode): void {
@@ -75,6 +86,19 @@ export class CatanCommunicationCoordinator {
     return this.conversation.all();
   }
 
+  summary(): Record<string, number> {
+    return {
+      decisions: this.decisions,
+      spoken: this.spoken,
+      speechRate: this.decisions ? this.spoken / this.decisions : 0,
+      directResponses: this.requiredSpoken,
+      directResponseRate: this.required ? this.requiredSpoken / this.required : 1,
+      domesticTradeSpeechRate: this.trade ? this.tradeSpoken / this.trade : 0,
+      routineSpeechRate: this.routine ? this.routineSpoken / this.routine : 0,
+      averageWords: this.spoken ? this.words / this.spoken : 0,
+    };
+  }
+
   addHuman(seat: number, text: string, addressedSeats: readonly number[] = []): PublicConversationMessage | null {
     return this.conversation.appendHuman(seat, this.labels[seat] ?? 'the human player', text, addressedSeats);
   }
@@ -90,7 +114,18 @@ export class CatanCommunicationCoordinator {
       actionSalience: catanActionSalience(action),
       requiredResponse,
     });
+    this.decisions++;
+    if (requiredResponse) this.required++;
+    const routine = action.type === 'roll' || action.type === 'endTurn';
+    const trade = action.type === 'offerTrade' || action.type === 'counterTrade' || action.type === 'acceptTrade' || action.type === 'rejectTrade' || action.type === 'confirmTrade' || action.type === 'cancelTrade';
+    if (routine) this.routine++;
+    if (trade) this.trade++;
     if (decision.communication.mode === 'speak') {
+      this.spoken++;
+      this.words += decision.communication.text.trim().split(/\s+/).filter(Boolean).length;
+      if (requiredResponse) this.requiredSpoken++;
+      if (routine) this.routineSpoken++;
+      if (trade) this.tradeSpoken++;
       this.conversation.appendModel(seat, this.labels[seat] ?? `P${seat + 1}`, decision.communication.text, decision.communication.addressedSeats);
       if (requiredResponse) this.conversation.consumeResponseFor(seat);
     }

@@ -20,3 +20,12 @@ test('ambient always admits a proposed direct response and rate-limits monologue
   const monologue = { mode: 'speak', intent: 'monologue', text: 'A dramatic little speech.' } as const;
   assert.equal(policy.decide({ mode: 'ambient', proposal: monologue, seat: 1, actionNumber: 3, actionSalience: 0.8, requiredResponse: false }).communication.mode, 'silent');
 });
+
+test('ambient suppresses repeated speech from the same seat', () => {
+  const policy = new CommunicationPolicy();
+  const first = policy.decide({ mode: 'ambient', proposal: speak, seat: 0, actionNumber: 10, actionSalience: 0.8, requiredResponse: false });
+  assert.equal(first.communication.mode, 'speak');
+  const repeated = policy.decide({ mode: 'ambient', proposal: speak, seat: 0, actionNumber: 20, actionSalience: 0.8, requiredResponse: false });
+  assert.equal(repeated.communication.mode, 'silent');
+  assert.equal(repeated.components?.duplicatePenalty, 0.55);
+});

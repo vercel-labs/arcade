@@ -352,7 +352,10 @@ export function mouseControlsFor(mode: Mode): { keys: string; label: string }[] 
   // Poker: hover a hole card to peek (bends it up), click to lift it fully face-on.
   if (mode === 'poker') rows.push({ keys: 'hover', label: 'peek at card' }, { keys: 'click', label: 'lift card' });
   // Catan: only legal spots highlight, so a click is always a legal placement.
-  if (mode === 'catan') rows.push({ keys: 'click', label: 'place on a highlighted spot' });
+  if (mode === 'catan') rows.push(
+    { keys: 'click', label: 'place on a highlighted spot' },
+    { keys: 'sidebar', label: 'type public table talk as the human player' },
+  );
   return rows;
 }
 

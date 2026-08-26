@@ -40,4 +40,5 @@ export interface CommunicationDecision {
   threshold: number;
   requiredResponse: boolean;
   reason: string;
+  components?: Record<string, number>;
 }

@@ -43,7 +43,9 @@ metadata and separate leaderboard filtering first.
 Catan supports `--communication=autoreply` (the compatibility default: a public line
 after every model action) and `--communication=ambient` (host-policy gating with explicit
 silence). The mode and local communication decisions are persisted in the run trace;
-production telemetry still receives no chat, prompts, or private reasoning.
+the final Catan checkpoint summarizes overall, direct-response, domestic-trade, and
+routine roll/end speech rates plus average message length. Production telemetry still
+receives no chat, prompts, or private reasoning.
 
 ## Reproduction and bounds
 

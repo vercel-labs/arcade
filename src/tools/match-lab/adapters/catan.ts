@@ -112,7 +112,7 @@ export const runCatanMatchLab: MatchLabAdapter = async ({ plan, signal, emit }) 
   const best = Math.max(...utilities);
   const winnerSeats = state.isTerminal() ? utilities.flatMap((value, seat) => value === best ? [seat] : []) : [];
   const endedAt = new Date().toISOString();
-  const finalState = checkpoint(state);
+  const finalState = { ...(checkpoint(state) as Record<string, unknown>), communication: communication.summary() };
   return {
     id: plan.id,
     game: 'catan',
