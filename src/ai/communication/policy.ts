@@ -9,17 +9,52 @@ export interface CommunicationPolicyInput {
   requiredResponse: boolean;
 }
 
+interface RecentSpeech {
+  actionNumber: number;
+  normalizedText: string;
+  signature: Set<string>;
+}
+
+const REPETITION_WINDOW = 20;
+const MAX_RECENT_SPEECH = 8;
+const SIMILARITY_THRESHOLD = 0.72;
+const REPETITION_STOP_WORDS = new Set([
+  'about', 'after', 'again', 'alright', 'also', 'anyone', 'because', 'before', 'could', 'from', 'give', 'have', 'here',
+  'how', 'into', 'just', 'keep', 'like', 'make', 'need', 'now', 'offer', 'offering', 'okay', 'right', 'some', 'still',
+  'take', 'that', 'then', 'there', 'they', 'this', 'those', 'want', 'what', 'when', 'will', 'with', 'would', 'your',
+]);
+
+function normalizeText(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function wordSignature(normalizedText: string): Set<string> {
+  return new Set(normalizedText.split(/\s+/).flatMap((word) => {
+    if (!word || word.length < 3 || REPETITION_STOP_WORDS.has(word)) return [];
+    const singular = word.length > 4 && word.endsWith('s') ? word.slice(0, -1) : word;
+    return [singular];
+  }));
+}
+
+function containmentSimilarity(a: Set<string>, b: Set<string>): number {
+  const denominator = Math.min(a.size, b.size);
+  if (denominator < 3) return 0;
+  let shared = 0;
+  for (const word of a) if (b.has(word)) shared++;
+  return shared / denominator;
+}
+
 export class CommunicationPolicy {
   private lastTableSpeechAction = -100;
   private lastSpeechBySeat = new Map<number, number>();
   private monologuesBySeat = new Map<number, number>();
-  private lastTextBySeat = new Map<number, string>();
+  private recentSpeechBySeat = new Map<number, RecentSpeech[]>();
 
   reset(): void {
     this.lastTableSpeechAction = -100;
     this.lastSpeechBySeat.clear();
     this.monologuesBySeat.clear();
-    this.lastTextBySeat.clear();
+    this.recentSpeechBySeat.clear();
   }
 
   decide(input: CommunicationPolicyInput): CommunicationDecision {
@@ -44,8 +79,12 @@ export class CommunicationPolicy {
     const repetitionPenalty = tableGap <= 1 ? 0.2 : 0;
     const monologueCount = this.monologuesBySeat.get(input.seat) ?? 0;
     const monologuePenalty = proposal.intent === 'monologue' ? (monologueCount >= 2 || seatGap < 25 ? 0.75 : 0.2) : 0;
-    const normalizedText = proposal.text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-    const duplicatePenalty = normalizedText && this.lastTextBySeat.get(input.seat) === normalizedText ? 0.55 : 0;
+    const normalizedText = normalizeText(proposal.text);
+    const signature = wordSignature(normalizedText);
+    const duplicate = (this.recentSpeechBySeat.get(input.seat) ?? []).some((recent) =>
+      input.actionNumber - recent.actionNumber <= REPETITION_WINDOW
+      && (recent.normalizedText === normalizedText || containmentSimilarity(recent.signature, signature) >= SIMILARITY_THRESHOLD));
+    const duplicatePenalty = duplicate ? 0.55 : 0;
     const score = direct ? 1 : Math.max(0, Math.min(1, input.actionSalience + intentBonus + silenceBonus - repetitionPenalty - monologuePenalty - duplicatePenalty));
     const components = { actionSalience: input.actionSalience, intentBonus, silenceBonus, repetitionPenalty, monologuePenalty, duplicatePenalty };
     if (score < threshold) {
@@ -60,7 +99,10 @@ export class CommunicationPolicy {
     if (proposal.mode === 'speak') {
       this.lastTableSpeechAction = input.actionNumber;
       this.lastSpeechBySeat.set(input.seat, input.actionNumber);
-      this.lastTextBySeat.set(input.seat, proposal.text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim());
+      const normalizedText = normalizeText(proposal.text);
+      const recent = this.recentSpeechBySeat.get(input.seat) ?? [];
+      recent.push({ actionNumber: input.actionNumber, normalizedText, signature: wordSignature(normalizedText) });
+      this.recentSpeechBySeat.set(input.seat, recent.slice(-MAX_RECENT_SPEECH));
       if (proposal.intent === 'monologue') this.monologuesBySeat.set(input.seat, (this.monologuesBySeat.get(input.seat) ?? 0) + 1);
     }
     return { communication: proposal, proposed: proposal, score, threshold, requiredResponse: input.requiredResponse, reason, ...(components ? { components } : {}) };

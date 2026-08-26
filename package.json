@@ -15,6 +15,7 @@
     "catan:check": "ARCADE_DEV=1 tsx src/tools/catan-render-check.ts",
     "catan:self-play": "node --import tsx src/tools/catan-self-play.ts",
     "match:run": "ARCADE_TELEMETRY=0 node --import tsx src/tools/match-lab.ts",
+    "match:comms": "node --import tsx src/tools/match-lab/communication-report.ts",
     "models:audit": "tsx src/tools/model-compat-report.ts",
     "models:report": "tsx src/tools/model-compat-view.ts",
     "build:vercel": "node scripts/build-vercel-output.mjs",

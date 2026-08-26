@@ -36,6 +36,14 @@ The files are written while matches run, so a second terminal can inspect progre
 `tail -f .runs/<run>/events.jsonl` or a single match with
 `tail -f .runs/<run>/matches/0001/trace.jsonl`.
 
+For Catan communication runs, print every speech proposal alongside Arcade's surfaced or
+suppressed decision with:
+
+```bash
+pnpm match:comms -- .runs/<run>
+pnpm match:comms -- --all .runs/<run> # include explicit model-chosen silence
+```
+
 Raw model attempts and commentary are diagnostic local data. Do not upload `.runs/` or
 feed it to production telemetry. A future benchmark pipeline should add explicit origin
 metadata and separate leaderboard filtering first.

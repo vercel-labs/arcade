@@ -55,17 +55,41 @@ const DEFAULT_RATIONALE = 'One short sentence explaining the move, for spectator
 //    `say` is the only public line. Splitting them stops a model from leaking its hand
 //    while "explaining" a move: the analysis has a private home, so the spoken `say` stays
 //    a clean table-talk line. (Mirrors the reasoning/answer split in poker LLM harnesses.)
-const communicationSchema = z.discriminatedUnion('mode', [
-  z.object({ mode: z.literal('silent'), intent: z.literal('none'), privateReason: z.string().optional() }),
-  z.object({
-    mode: z.literal('speak'),
-    intent: z.enum(['reply', 'negotiate', 'explain_strategy', 'table_politics', 'react', 'banter', 'monologue']),
-    text: z.string(),
-    privateReason: z.string().optional(),
-    respondsTo: z.string().optional(),
-    addressedSeats: z.array(z.number().int().nonnegative()).optional(),
-  }),
-]);
+const COMMUNICATION_INTENTS = ['reply', 'negotiate', 'explain_strategy', 'table_politics', 'react', 'banter', 'monologue'] as const;
+
+// Keep this response object deliberately flat. z.discriminatedUnion emits JSON
+// Schema `oneOf`, which some otherwise structured-output-capable providers reject.
+// All fields are required so strict JSON-schema providers can use the exact same
+// shape; empty strings / arrays represent fields that do not apply in silent mode.
+export const communicationResponseSchema = z.object({
+  mode: z.enum(['silent', 'speak']),
+  intent: z.enum(['none', ...COMMUNICATION_INTENTS]),
+  text: z.string(),
+  privateReason: z.string(),
+  respondsTo: z.string(),
+  addressedSeats: z.array(z.number().int().nonnegative()),
+});
+
+type CommunicationResponse = z.infer<typeof communicationResponseSchema>;
+
+export function communicationFromResponse(value: CommunicationResponse | undefined): Communication | undefined {
+  if (!value) return undefined;
+  const privateReason = value.privateReason.trim() || undefined;
+  if (value.mode === 'silent') {
+    return { mode: 'silent', intent: 'none', ...(privateReason ? { privateReason } : {}) };
+  }
+  const text = value.text.trim();
+  if (!text || value.intent === 'none') return undefined;
+  const respondsTo = value.respondsTo.trim() || undefined;
+  return {
+    mode: 'speak',
+    intent: value.intent,
+    text,
+    ...(privateReason ? { privateReason } : {}),
+    ...(respondsTo ? { respondsTo } : {}),
+    ...(value.addressedSeats.length ? { addressedSeats: value.addressedSeats } : {}),
+  };
+}
 
 const buildSchema = (notation: MoveNotation, opts: { rationale?: string; speech?: string; communication?: boolean }) => {
   const move = z.string().describe(`Your chosen move in ${notation.description}, e.g. ${notation.examples}.`);
@@ -73,7 +97,7 @@ const buildSchema = (notation: MoveNotation, opts: { rationale?: string; speech?
     return z.object({
       thinking: z.string().describe('Your private move reasoning. Never reveal this field.'),
       move,
-      communication: communicationSchema,
+      communication: communicationResponseSchema,
     });
   }
   if (opts.speech !== undefined) {
@@ -322,9 +346,9 @@ export class ModelPlayer<A> implements Player<A> {
         });
         usage = generated.usage;
         // Split schema (speech) surfaces only `say`; `thinking` is private and dropped.
-        const out = generated.output as { move: string; rationale?: string; say?: string; communication?: Communication };
+        const out = generated.output as { move: string; rationale?: string; say?: string; communication?: CommunicationResponse };
         move = out.move;
-        communication = out.communication;
+        communication = communicationFromResponse(out.communication);
         rationale = this.communication ? undefined : this.speech !== undefined ? out.say : out.rationale;
       } catch (err) {
         if (signal?.aborted) throw err; // cancellation — let it propagate
@@ -570,7 +594,7 @@ export class ModelPlayer<A> implements Player<A> {
     let format: string;
     if (mode === 'json') {
       format = communicationMode
-        ? `\n\nReply as JSON with three fields, in order: "thinking" (private), "move" (${this.notation.description}), and "communication". communication must be either {"mode":"silent","intent":"none","privateReason":"..."} or {"mode":"speak","intent":"reply|negotiate|explain_strategy|table_politics|react|banter|monologue","text":"...","privateReason":"..."}.`
+        ? `\n\nReply as JSON with three fields, in order: "thinking" (private), "move" (${this.notation.description}), and "communication". communication always has exactly these fields: "mode", "intent", "text", "privateReason", "respondsTo", and "addressedSeats". For silence use {"mode":"silent","intent":"none","text":"","privateReason":"...","respondsTo":"","addressedSeats":[]}. For speech use {"mode":"speak","intent":"reply|negotiate|explain_strategy|table_politics|react|banter|monologue","text":"...","privateReason":"...","respondsTo":"message id or empty string","addressedSeats":[...]}.`
         : speechMode
         ? `\n\nReply as JSON with three fields, in order: "thinking" (your private reasoning about the best move, never shown to anyone), "move" (${this.notation.description}, e.g. ${this.notation.examples}), and "say" (${this.speech}).`
         : `\n\nReply as JSON with a "move" field (${this.notation.description}, e.g. ${this.notation.examples}) and a one-sentence "rationale" field.`;

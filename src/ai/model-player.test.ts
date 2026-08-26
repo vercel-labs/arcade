@@ -1,8 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { MockLanguageModelV3 } from 'ai/test';
+import { z } from 'zod';
 import { ChessState } from '../rules/chess/chess.ts';
-import { FALLBACK_RATIONALE, isFallbackRationale, ModelPlayer } from './model-player.ts';
+import {
+  communicationFromResponse,
+  communicationResponseSchema,
+  FALLBACK_RATIONALE,
+  isFallbackRationale,
+  ModelPlayer,
+} from './model-player.ts';
 import type { Move } from '../rules/chess/types.ts';
 
 type GenResult = Awaited<ReturnType<MockLanguageModelV3['doGenerate']>>;
@@ -68,6 +75,24 @@ function accessError(): unknown {
 
 const legalMove = (state: ChessState, action: Move): boolean =>
   state.legalActions().some((m) => m.from === action.from && m.to === action.to && m.promotion === action.promotion);
+
+test('communication response schema stays flat for strict structured-output providers', () => {
+  const schema = z.toJSONSchema(communicationResponseSchema);
+  assert.equal(JSON.stringify(schema).includes('oneOf'), false);
+  assert.deepEqual(schema.required, ['mode', 'intent', 'text', 'privateReason', 'respondsTo', 'addressedSeats']);
+});
+
+test('flat communication responses normalize into the public discriminated union', () => {
+  assert.deepEqual(communicationFromResponse({
+    mode: 'silent', intent: 'reply', text: 'ignored', privateReason: 'routine', respondsTo: 'ignored', addressedSeats: [1],
+  }), { mode: 'silent', intent: 'none', privateReason: 'routine' });
+  assert.deepEqual(communicationFromResponse({
+    mode: 'speak', intent: 'negotiate', text: ' Trade? ', privateReason: '', respondsTo: ' message-1 ', addressedSeats: [1],
+  }), { mode: 'speak', intent: 'negotiate', text: 'Trade?', respondsTo: 'message-1', addressedSeats: [1] });
+  assert.equal(communicationFromResponse({
+    mode: 'speak', intent: 'none', text: '', privateReason: '', respondsTo: '', addressedSeats: [],
+  }), undefined);
+});
 
 test('access error: skips the futile text retry and returns the "unavailable" diagnosis', async () => {
   const state = new ChessState();
@@ -236,7 +261,14 @@ test('structured communication stays separate from rationale for host-policy gat
   const { model } = jsonModel([JSON.stringify({
     thinking: 'private calculation',
     move: 'e4',
-    communication: { mode: 'speak', intent: 'banter', text: 'Your move.' },
+    communication: {
+      mode: 'speak',
+      intent: 'banter',
+      text: 'Your move.',
+      privateReason: 'friendly table talk',
+      respondsTo: '',
+      addressedSeats: [],
+    },
   })]);
   const choice = await new ModelPlayer<Move>({
     model,
@@ -245,7 +277,9 @@ test('structured communication stays separate from rationale for host-policy gat
   }).chooseAction(state);
   assert.equal(state.actionToString(choice.action), 'e4');
   assert.equal(choice.rationale, undefined);
-  assert.deepEqual(choice.communication, { mode: 'speak', intent: 'banter', text: 'Your move.' });
+  assert.deepEqual(choice.communication, {
+    mode: 'speak', intent: 'banter', text: 'Your move.', privateReason: 'friendly table talk',
+  });
 });
 
 test('communication-mode text fallback never broadcasts private fallback prose', async () => {
