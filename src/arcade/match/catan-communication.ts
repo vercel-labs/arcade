@@ -1,6 +1,7 @@
 import { PublicConversation } from '../../ai/communication/conversation.ts';
 import { CommunicationPolicy } from '../../ai/communication/policy.ts';
 import type { Communication, CommunicationDecision, CommunicationMode, PublicConversationMessage } from '../../ai/communication/types.ts';
+import type { CommunicationOpportunity } from '../../ai/communication/moments.ts';
 import type { CatanAction } from '../../rules/catan/types.ts';
 
 const CATAN_COMMUNICATION_GUIDE =
@@ -75,7 +76,13 @@ export class CatanCommunicationCoordinator {
   }
 
   modelConfig(): { mode: () => CommunicationMode; guide: string } {
-    return { mode: () => this.mode, guide: CATAN_COMMUNICATION_GUIDE };
+    const seatMap = this.labels.map((label, seat) => `${seat}=${label}`).join(', ');
+    return {
+      mode: () => this.mode,
+      guide: this.mode === 'ambient'
+        ? `${CATAN_COMMUNICATION_GUIDE} When naturally speaking to specific players, name them in the text and put their numeric seats in addressedSeats. Current public seat map: ${seatMap}. Leave addressedSeats empty for table-wide speech.`
+        : CATAN_COMMUNICATION_GUIDE,
+    };
   }
 
   contextFor(seat: number): string {
@@ -84,6 +91,10 @@ export class CatanCommunicationCoordinator {
 
   messages(): readonly PublicConversationMessage[] {
     return this.conversation.all();
+  }
+
+  latestMessage(): PublicConversationMessage | undefined {
+    return this.conversation.all().at(-1);
   }
 
   summary(): Record<string, number> {
@@ -100,7 +111,7 @@ export class CatanCommunicationCoordinator {
   }
 
   addHuman(seat: number, text: string, addressedSeats: readonly number[] = []): PublicConversationMessage | null {
-    return this.conversation.appendHuman(seat, this.labels[seat] ?? 'the human player', text, addressedSeats);
+    return this.conversation.appendHuman(seat, this.labels[seat] ?? 'the human player', text, this.validTargets(seat, addressedSeats));
   }
 
   decide(seat: number, action: CatanAction, proposal: Communication | undefined, actionNumber: number): CommunicationDecision {
@@ -126,9 +137,67 @@ export class CatanCommunicationCoordinator {
       if (requiredResponse) this.requiredSpoken++;
       if (routine) this.routineSpoken++;
       if (trade) this.tradeSpoken++;
-      this.conversation.appendModel(seat, this.labels[seat] ?? `P${seat + 1}`, decision.communication.text, decision.communication.addressedSeats);
+      this.conversation.appendModel(seat, this.labels[seat] ?? `P${seat + 1}`, decision.communication.text, this.validTargets(seat, decision.communication.addressedSeats));
       if (requiredResponse) this.conversation.consumeResponseFor(seat);
     }
     return decision;
+  }
+
+  decideOpportunity(opportunity: CommunicationOpportunity, proposal: Communication | undefined, actionNumber: number): CommunicationDecision {
+    const requiredResponse = opportunity.expectation === 'required' || this.conversation.requiredResponseFor(opportunity.seat) !== undefined;
+    const proposed = proposal ?? { mode: 'silent', intent: 'none', privateReason: 'no structured reaction returned' };
+    const decision = this.policy.decide({
+      mode: this.mode,
+      proposal: proposed,
+      seat: opportunity.seat,
+      actionNumber,
+      actionSalience: opportunity.moment.importance,
+      requiredResponse,
+    });
+    this.decisions++;
+    if (requiredResponse) this.required++;
+    if (decision.communication.mode === 'speak') {
+      this.spoken++;
+      this.words += decision.communication.text.trim().split(/\s+/).filter(Boolean).length;
+      if (requiredResponse) this.requiredSpoken++;
+      this.conversation.appendModel(opportunity.seat, this.labels[opportunity.seat] ?? `P${opportunity.seat + 1}`, decision.communication.text, this.validTargets(opportunity.seat, decision.communication.addressedSeats));
+      if (requiredResponse) this.conversation.consumeResponseFor(opportunity.seat);
+    }
+    return decision;
+  }
+
+  decideDirectedReply(opportunity: CommunicationOpportunity, proposal: Communication | undefined, actionNumber: number): CommunicationDecision {
+    const proposed = proposal ?? { mode: 'silent', intent: 'none', privateReason: 'declined the directed reply opportunity' };
+    const decision = this.policy.decide({
+      mode: this.mode,
+      proposal: proposed,
+      seat: opportunity.seat,
+      actionNumber,
+      actionSalience: 1,
+      requiredResponse: true,
+    });
+    this.decisions++;
+    this.required++;
+    if (decision.communication.mode === 'speak') {
+      this.spoken++;
+      this.requiredSpoken++;
+      this.words += decision.communication.text.trim().split(/\s+/).filter(Boolean).length;
+      // A directed response is deliberately terminal: it may name somebody, but it
+      // cannot create another forced reply and turn one address into an endless loop.
+      this.conversation.appendModel(
+        opportunity.seat,
+        this.labels[opportunity.seat] ?? `P${opportunity.seat + 1}`,
+        decision.communication.text,
+        this.validTargets(opportunity.seat, decision.communication.addressedSeats),
+        false,
+      );
+    }
+    this.conversation.consumeResponseFor(opportunity.seat);
+    return decision;
+  }
+
+  private validTargets(speakerSeat: number, addressedSeats: readonly number[] | undefined): number[] {
+    return [...new Set((addressedSeats ?? []).filter((seat) =>
+      Number.isInteger(seat) && seat >= 0 && seat < this.labels.length && seat !== speakerSeat))];
   }
 }

@@ -44,7 +44,7 @@ Options:
   --big-blind=N          Poker initial big blind (default 20)
   --hands-per-level=N    Completed hands per blind level (default 15)
   --setup-only           Stop Catan after initial placements
-  --communication=MODE   Catan autoreply or ambient (default autoreply)
+  --communication=MODE   Autoreply or ambient communication (default autoreply)
   --output=PATH          Artifact directory (default .runs/<timestamp>-<game>)
 
 Telemetry is always disabled. Results are local files only.`);

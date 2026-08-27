@@ -10,16 +10,16 @@
 
 import { Box, Dropdown, Field, Slot, Text, type Node, type Screen } from '../../tui/index.ts';
 import type { RGB } from '../../engine/index.ts';
-import { pickerCreators, type ModelInfo } from './models.ts';
+import { pickerCreators } from './models.ts';
 import { shortModel } from './model-label.ts';
 import { PLAYER_LOOK } from '../games/catan/palette.ts';
 import { PLAYER_COLORS, type PlayerColor } from '../../rules/catan/types.ts';
 import type { CatanSeatSpec } from './catan-driver.ts';
 import { ARCADE_CHROME_TEXT } from '../theme.ts';
-import { createModelSeatPicker, hiddenModelSeat, modelSeatControls, mountModelSeat, type ModelCreator, type ModelSeatPicker } from './model-seat-picker.ts';
+import { createModelSeatPicker, hiddenModelSeat, modelSeatControls, mountModelSeat, setModelSeatCreators, type ModelCreator, type ModelSeatPicker } from './model-seat-picker.ts';
 import { CATAN_DEFAULT_AI_SEATS } from './catan-defaults.ts';
 
-const TEXT_CREATORS: ModelCreator[] = pickerCreators();
+let TEXT_CREATORS: ModelCreator[] = pickerCreators();
 const MAX_SEATS = 4; // the base game's ceiling; the rules engine allows 2 for heads-up
 const MIN_SEATS = 2;
 const SEAT_LABEL_W = 10; // wide enough for "your color"; keeps every control aligned
@@ -45,6 +45,12 @@ const sides: ModelSeatPicker[] = CATAN_DEFAULT_AI_SEATS.map(({ creator, model },
   defaultModelId: model,
   onChange: changed,
 }));
+
+export function setCatanSetupModelCatalog(textCreators: readonly ModelCreator[]): void {
+  TEXT_CREATORS = [...textCreators];
+  for (const side of sides) setModelSeatCreators(side, TEXT_CREATORS);
+  changed();
+}
 
 // How many players sit at the board, you included when playing: 2..4. Default to the full
 // four-seat table so both play and spectate start with Arcade's intended model lineup.

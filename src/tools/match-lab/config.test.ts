@@ -21,8 +21,9 @@ test('Catan match lab accepts two through four models and rejects other table si
   assert.throws(() => parseMatchLabConfig(['--game=catan', '--models=a,b,c,d,e']), /2 through 4 models/);
 });
 
-test('Catan communication mode defaults to autoreply and accepts ambient', () => {
-  assert.equal(parseMatchLabConfig(['--game=catan', '--models=a,b']).communicationMode, 'autoreply');
+test('all match-lab games default to autoreply and accept ambient', () => {
+  assert.equal(parseMatchLabConfig(['--game=chess', '--models=a,b']).communicationMode, 'autoreply');
+  assert.equal(parseMatchLabConfig(['--game=poker', '--models=a,b', '--communication=ambient']).communicationMode, 'ambient');
   assert.equal(parseMatchLabConfig(['--game=catan', '--models=a,b', '--communication=ambient']).communicationMode, 'ambient');
   assert.throws(() => parseMatchLabConfig(['--game=catan', '--models=a,b', '--communication=noisy']), /autoreply or ambient/);
 });

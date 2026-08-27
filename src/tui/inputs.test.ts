@@ -37,6 +37,36 @@ test('Input: typing, editing, onChange/onEnter', () => {
   ok(input.onKey(key('tab')) === false, 'Tab is not consumed (falls through to focus cycling)');
 });
 
+test('Input: a specialized key handler can consume autocomplete keys before editing', () => {
+  const consumed: string[] = [];
+  const input = new Input({
+    id: 'autocomplete-input',
+    onKeyDown: (event) => {
+      if (event.name !== 'tab') return false;
+      consumed.push(event.name);
+      return true;
+    },
+  });
+  assert.equal(input.onKey(key('tab')), true);
+  assert.deepEqual(consumed, ['tab']);
+  assert.equal(input.onKey(ch('a')), true);
+  assert.equal(input.value, 'a');
+});
+
+test('Input: multiline fields grow with wrapped text and Enter submits the full value', () => {
+  let entered = '';
+  const input = new Input({ id: 'multiline-input', width: 4, maxRows: 3, onEnter: (value) => { entered = value; } });
+  assert.equal(input.build().style.height, 1);
+  for (const c of 'abcde') input.onKey(ch(c));
+  assert.equal(input.build().style.height, 2);
+  for (const c of 'fghij') input.onKey(ch(c));
+  assert.equal(input.build().style.height, 3);
+  for (const c of 'klmnop') input.onKey(ch(c));
+  assert.equal(input.build().style.height, 3, 'height caps at maxRows while content keeps growing');
+  input.onKey(key('enter'));
+  assert.equal(entered, 'abcdefghijklmnop');
+});
+
 test('Select: navigation, clamping, onSelect', () => {
   let chosen = -1;
   const sel = new Select({ id: 's', items: ['a', 'b', 'c'], onSelect: (i) => (chosen = i) });

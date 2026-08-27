@@ -9,17 +9,17 @@
 
 import { Box, Dropdown, Field, Slider, Slot, Text, type Node, type Screen } from '../../tui/index.ts';
 import type { RGB } from '../../engine/index.ts';
-import { includeEarlyAccessModels, pickerCreators, type ModelInfo } from './models.ts';
+import { includeEarlyAccessModels, pickerCreators } from './models.ts';
 import { availableRealtimeModels, DEFAULT_REALTIME_MODEL_ID } from '../../voice/index.ts';
 import { shortModel } from './model-label.ts';
 import { BIG_BLIND, type PokerSeatSpec } from './poker-driver.ts';
 import { pokerVoiceCapable } from './poker-voice.ts';
 import type { PokerSeatView } from '../games/poker/poker-scene.ts';
 import { ARCADE_CHROME_TEXT } from '../theme.ts';
-import { createModelSeatPicker, hiddenModelSeat, modelSeatControls, modelSeatTint, mountModelSeat, type ModelCreator, type ModelSeatPicker } from './model-seat-picker.ts';
+import { createModelSeatPicker, hiddenModelSeat, modelSeatControls, modelSeatTint, mountModelSeat, setModelSeatCreators, type ModelCreator, type ModelSeatPicker } from './model-seat-picker.ts';
 
-const TEXT_CREATORS: ModelCreator[] = pickerCreators();
-const REALTIME_CREATORS: ModelCreator[] = [];
+let TEXT_CREATORS: ModelCreator[] = pickerCreators();
+let REALTIME_CREATORS: ModelCreator[] = [];
 for (const model of availableRealtimeModels(includeEarlyAccessModels())) {
   let creator = REALTIME_CREATORS.find((candidate) => candidate.slug === model.creator);
   if (!creator) {
@@ -62,6 +62,17 @@ const sides: ModelSeatPicker[] = DEFAULT_MODELS.map(([prov, model], i) =>
   createModelSeatPicker({ idPrefix: `poker-opp${i}`, creators: TEXT_CREATORS, defaultCreator: prov, defaultModelId: model, onChange: changed }),
 );
 const realtimeSide = createModelSeatPicker({ idPrefix: 'poker-realtime-opp', creators: REALTIME_CREATORS, defaultCreator: 'openai', defaultModelId: DEFAULT_REALTIME_MODEL_ID, onChange: changed });
+
+export function setPokerSetupModelCatalog(
+  textCreators: readonly ModelCreator[],
+  realtimeCreators: readonly ModelCreator[],
+): void {
+  TEXT_CREATORS = [...textCreators];
+  REALTIME_CREATORS = [...realtimeCreators];
+  for (const side of sides) setModelSeatCreators(side, TEXT_CREATORS);
+  setModelSeatCreators(realtimeSide, REALTIME_CREATORS);
+  changed();
+}
 
 // How many players sit at the table (you included in HERO mode): 2..6. Defaults to a
 // 4-handed table. Index i → i+2 players → i+1 AI opponent configs. Exported (like the

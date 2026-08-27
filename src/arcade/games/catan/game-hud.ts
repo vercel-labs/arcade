@@ -779,7 +779,7 @@ export function buildCatanGameRoot(region: LayoutBox, deps: CatanGameHudDeps): N
           targets: Array.from({ length: driver.seatCount() }, (_, seat) => seat)
             .filter((seat) => seat !== humanSeat)
             .map((seat) => ({ seat, label: driver.labelOf(seat) })),
-          onSubmit: (text, targetSeat) => driver.sendHumanChat(text, targetSeat),
+          onSubmit: (text, targetSeats) => driver.sendHumanChat(text, targetSeats),
         });
         return buildCatanChatComposer();
       })()

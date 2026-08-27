@@ -55,6 +55,8 @@ export interface MatchLabEvent {
     | 'model_attempt'
     | 'commentary'
     | 'communication_decision'
+    | 'moment_detected'
+    | 'communication_opportunity'
     | 'action_chosen'
     | 'action_applied'
     | 'state_checkpoint'

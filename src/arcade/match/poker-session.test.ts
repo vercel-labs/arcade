@@ -14,6 +14,18 @@ class FirstLegalPlayer implements Player<PokerAction> {
   }
 }
 
+class CommunicatingFirstLegalPlayer implements Player<PokerAction> {
+  constructor(readonly name: string) {}
+  async chooseAction(state: GameState<PokerAction>) {
+    const action = state.legalActions()[0];
+    if (!action) throw new Error('expected a legal poker action');
+    return {
+      action,
+      communication: { mode: 'speak', intent: 'negotiate', text: 'Let us make this interesting.' } as const,
+    };
+  }
+}
+
 test('headless poker session carries a real hand into local canonical records', async () => {
   const result = await runPokerSession({
     models: ['model-a', 'model-b'],
@@ -56,4 +68,19 @@ test('headless poker uses the shared blind level before dealing hand 16', async 
     { level: 1, startsAtHand: 1, smallBlind: 10, bigBlind: 20 },
     { level: 2, startsAtHand: 16, smallBlind: 15, bigBlind: 30 },
   ]);
+});
+
+test('headless poker ambient mode records host-gated communication decisions', async () => {
+  const events: string[] = [];
+  const result = await runPokerSession({
+    models: ['model-a', 'model-b'],
+    players: [new CommunicatingFirstLegalPlayer('a'), new CommunicatingFirstLegalPlayer('b')],
+    communicationMode: 'ambient',
+    maxHands: 1,
+    maxActions: 20,
+    rng: () => 0.5,
+    onEvent: (event) => events.push(event.type),
+  });
+  assert.ok(events.includes('communication_decision'));
+  assert.ok((result.communication?.decisions ?? 0) > 0);
 });

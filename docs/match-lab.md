@@ -36,7 +36,7 @@ The files are written while matches run, so a second terminal can inspect progre
 `tail -f .runs/<run>/events.jsonl` or a single match with
 `tail -f .runs/<run>/matches/0001/trace.jsonl`.
 
-For Catan communication runs, print every speech proposal alongside Arcade's surfaced or
+For ambient communication runs, print every speech proposal alongside Arcade's surfaced or
 suppressed decision with:
 
 ```bash
@@ -48,12 +48,13 @@ Raw model attempts and commentary are diagnostic local data. Do not upload `.run
 feed it to production telemetry. A future benchmark pipeline should add explicit origin
 metadata and separate leaderboard filtering first.
 
-Catan supports `--communication=autoreply` (the compatibility default: a public line
-after every model action) and `--communication=ambient` (host-policy gating with explicit
-silence). The mode and local communication decisions are persisted in the run trace;
-the final Catan checkpoint summarizes overall, direct-response, domestic-trade, and
-routine roll/end speech rates plus average message length. Production telemetry still
-receives no chat, prompts, or private reasoning.
+All three games accept `--communication=autoreply` or `--communication=ambient`.
+Autoreply is the compatibility default and preserves each game's previous public-line
+behavior. Ambient uses structured speech proposals plus Arcade host-policy gating and
+explicit silence. Catan additionally detects notable game moments and may invite one
+affected player to react. The mode and local decisions are persisted in the run trace;
+final checkpoints include communication rates where ambient coordination is active.
+Production telemetry still receives no chat, prompts, or private reasoning.
 
 ## Reproduction and bounds
 
@@ -75,3 +76,33 @@ which increase every 15 completed hands. Override these with `--starting-chips=N
 stored in the manifest. Set `--max-hands=1`
 for one hand, choose any larger N for a bounded session, or use generous hand/action/time
 bounds to let a tournament end naturally when only one player has chips.
+
+## Team-wide model game audit
+
+`pnpm models:game-audit` combines the live, team-aware model catalog with the match-lab
+adapters. Each target model sits in seat 1 against one stable opponent and must produce
+an attributable legal action through Arcade's real `ModelPlayer` ladder:
+
+- Chess: White's first move, followed by one opponent reply.
+- Poker: one complete heads-up hand.
+- Catan: the target's first settlement and road during initial placement.
+
+```bash
+# Inspect the size first; makes no model calls.
+pnpm models:game-audit -- --dry-run
+
+# Audit every team-visible text model across all three games.
+pnpm models:game-audit -- --concurrency=3
+
+# Cheaper targeted passes while developing.
+pnpm models:game-audit -- --games=chess,poker --creator=anthropic
+pnpm models:game-audit -- --models=openai/gpt-5.4-nano,anthropic/claude-haiku-4.5
+```
+
+The command retries only soft failures serially and classifies the target as
+`STRUCTURED`, `TEXT`, `NORMALIZED`, `FALLBACK`, `ACCESS`, `TIMEOUT`, `ERROR`, or
+`NO_ACTION`. A completed scenario does not count as compatible if Arcade advanced it
+through a random fallback. Results live under `.runs/` with the normal match traces plus
+per-scenario `audit.json`, an aggregate `summary.json`, and `report.md`. The live run
+requires Gateway availability annotations by default; `--allow-fallback-catalog` must be
+explicit when intentionally auditing the baked catalog.

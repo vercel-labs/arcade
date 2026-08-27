@@ -23,7 +23,7 @@ export interface MatchHooks<A> {
    */
   onActionChosen?(info: MatchActionEvent<A>): void;
   /** Fired after playMove settles and the authoritative state contains the action. */
-  onActionApplied?(info: MatchActionEvent<A>): void;
+  onActionApplied?(info: MatchActionEvent<A>): void | Promise<void>;
   /** Cancels the match between/within turns. */
   signal?: AbortSignal;
   /**
@@ -81,7 +81,7 @@ export async function runMatch<A>(
     if (!emitted && rationale) hooks.onCommentary?.(rationale, player, idx);
     if (rationale) lastSaid = rationale;
     await scene.playMove(action);
-    hooks.onActionApplied?.({ player, playerIndex: idx, choice, state: scene.state() });
+    await hooks.onActionApplied?.({ player, playerIndex: idx, choice, state: scene.state() });
   }
   return scene.state().returns();
 }

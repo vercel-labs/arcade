@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { GameState } from '../rules/game.ts';
 import { classifyModelError } from './model-errors.ts';
 import type { Communication, CommunicationMode } from './communication/types.ts';
+import type { CommunicationOpportunity } from './communication/moments.ts';
 import type {
   ActionChoice,
   DecisionAttempt,
@@ -88,6 +89,28 @@ export function communicationFromResponse(value: CommunicationResponse | undefin
     ...(privateReason ? { privateReason } : {}),
     ...(respondsTo ? { respondsTo } : {}),
     ...(value.addressedSeats.length ? { addressedSeats: value.addressedSeats } : {}),
+  };
+}
+
+/** Strict marker-based fallback for providers that cannot honor JSON Schema. */
+export function communicationFromText(text: string): Communication | undefined {
+  const intent = text.match(/^INTENT:\s*(\w+)\s*$/im)?.[1]?.toLowerCase();
+  const privateReason = text.match(/^PRIVATE(?: REASON)?:\s*([^\n]*)$/im)?.[1]?.trim() || undefined;
+  if (intent === 'none') return { mode: 'silent', intent: 'none', ...(privateReason ? { privateReason } : {}) };
+  if (!intent || !COMMUNICATION_INTENTS.includes(intent as (typeof COMMUNICATION_INTENTS)[number])) return undefined;
+  const publicText = text.match(/^SAY:\s*([^\n]+)$/im)?.[1]?.replace(/\s+/g, ' ').trim();
+  if (!publicText) return undefined;
+  const respondsTo = text.match(/^RESPONDS TO:\s*([^\n]*)$/im)?.[1]?.trim() || undefined;
+  const addressedSeats = (text.match(/^ADDRESS:\s*([^\n]*)$/im)?.[1]?.match(/\d+/g) ?? [])
+    .map(Number)
+    .filter((seat, index, seats) => Number.isInteger(seat) && seats.indexOf(seat) === index);
+  return {
+    mode: 'speak',
+    intent: intent as (typeof COMMUNICATION_INTENTS)[number],
+    text: publicText.slice(0, 500),
+    ...(privateReason ? { privateReason } : {}),
+    ...(respondsTo ? { respondsTo } : {}),
+    ...(addressedSeats.length ? { addressedSeats } : {}),
   };
 }
 
@@ -276,6 +299,52 @@ export class ModelPlayer<A> implements Player<A> {
     this.schema = buildSchema(this.notation, { rationale: opts.rationaleGuide, speech: opts.speech, communication: opts.communication !== undefined });
   }
 
+  async chooseCommunication(input: {
+    opportunity: CommunicationOpportunity;
+    gameView: string;
+    conversation: string;
+    signal?: AbortSignal;
+  }): Promise<Communication | undefined> {
+    if (!this.communication || this.communication.mode() !== 'ambient') return undefined;
+    const moment = input.opportunity.moment;
+    const prompt = [
+      `You are a strong ${this.gameName} player reacting at a live public table.`,
+      `A ${moment.strength} public moment just occurred: ${moment.publicSummary}`,
+      moment.publicFacts.length ? `Public facts:\n- ${moment.publicFacts.join('\n- ')}` : '',
+      `You are receiving this opportunity because you are ${input.opportunity.reason}.`,
+      `Response expectation: ${input.opportunity.expectation}. You may still choose silence unless directly addressed.`,
+      `Useful intents here: ${moment.suggestedIntents.join(', ') || 'react'}.`,
+      input.gameView ? `Your current game view:\n${input.gameView}` : '',
+      input.conversation,
+      this.communication.guide,
+    ].filter(Boolean).join('\n\n');
+    try {
+      const generated = await generateText({
+        model: this.model,
+        ...(this.persona ? { system: this.persona } : {}),
+        abortSignal: input.signal,
+        output: Output.object({ schema: communicationResponseSchema }),
+        prompt: `${prompt}\n\nReturn exactly the flat communication object. Do not choose a move. Keep public text to one or two natural sentences and never reveal hidden information.`,
+      });
+      return communicationFromResponse(generated.output as CommunicationResponse);
+    } catch (error) {
+      if (input.signal?.aborted) throw error;
+      if (classifyModelError(error).kind === 'access') return undefined;
+      try {
+        const generated = await generateText({
+          model: this.model,
+          ...(this.persona ? { system: this.persona } : {}),
+          abortSignal: input.signal,
+          prompt: `${prompt}\n\nStructured output is unavailable. Think privately, then end with exactly these lines:\nINTENT: <none|reply|negotiate|explain_strategy|table_politics|react|banter|monologue>\nSAY: <one or two public sentences, blank for none>\nADDRESS: <comma-separated numeric seats, blank for table-wide speech>\nRESPONDS TO: <source message id, blank if none>\nPRIVATE: <short private reason>`,
+        });
+        return communicationFromText(generated.text);
+      } catch (fallbackError) {
+        if (input.signal?.aborted) throw fallbackError;
+        return undefined;
+      }
+    }
+  }
+
   async chooseAction(state: GameState<A>, ctx?: TurnContext): Promise<ActionChoice<A>> {
     const decisionStarted = performance.now();
     const attempts: DecisionAttempt[] = [];
@@ -426,7 +495,7 @@ export class ModelPlayer<A> implements Player<A> {
           ...tokenUsage(usage),
         });
         this.onAttempt?.({ phase: 'text', raw: text.replace(/\s+/g, ' ').trim().slice(0, 120), result: parsed ? 'legal' : 'illegal' });
-        if (parsed) return finish(parsed.action, parsed.rationale, 'text');
+        if (parsed) return finish(parsed.action, parsed.rationale, 'text', {}, parsed.communication);
         lastRaw = text;
         lastRationale = this.communication ? undefined : this.speech !== undefined ? this.sayFrom(text) : this.rationaleFrom(text);
         feedback = this.retryNote(text.replace(/\s+/g, ' ').trim().slice(0, 60), useLoose, legalSan);
@@ -525,7 +594,7 @@ export class ModelPlayer<A> implements Player<A> {
   // Extract a move from free text: prefer an explicit `MOVE: <san>` line, then the
   // whole reply, then the first move-like token. `parse` only matches valid moves
   // (legal, or any parseable move in illegal mode), so prose words don't match.
-  private parseText(state: GameState<A>, text: string, parse: (s: string) => A | null): { action: A; rationale?: string } | null {
+  private parseText(state: GameState<A>, text: string, parse: (s: string) => A | null): { action: A; rationale?: string; communication?: Communication } | null {
     const candidates: string[] = [];
     const marked = text.match(/MOVE:\s*([^\n]+)/i);
     if (marked) candidates.push(marked[1].trim());
@@ -538,6 +607,7 @@ export class ModelPlayer<A> implements Player<A> {
       if (action !== null) return {
         action,
         rationale: this.communication ? undefined : this.speech !== undefined ? this.sayFrom(text) : this.rationaleFrom(text),
+        ...(this.communication ? { communication: communicationFromText(text) } : {}),
       };
     }
     return null;
@@ -600,7 +670,7 @@ export class ModelPlayer<A> implements Player<A> {
         : `\n\nReply as JSON with a "move" field (${this.notation.description}, e.g. ${this.notation.examples}) and a one-sentence "rationale" field.`;
     } else {
       format = communicationMode
-        ? `\n\nThink privately, then end with MOVE: <your move>. Structured communication is unavailable on this fallback, so Arcade will treat it as silent.`
+        ? `\n\nThink privately, then end with exactly these lines:\nINTENT: <none|reply|negotiate|explain_strategy|table_politics|react|banter|monologue>\nSAY: <public table talk, blank for none>\nADDRESS: <comma-separated numeric seats, blank for table-wide speech>\nRESPONDS TO: <source message id, blank if none>\nPRIVATE: <short private reason>\nMOVE: <your move in ${this.notation.description}, e.g. ${this.notation.examples}>`
         : speechMode
         ? `\n\nThink privately first if you like. That thinking is never shown to anyone. Then end your reply with exactly these two lines:\nSAY: <${this.speech}>\nMOVE: <your move in ${this.notation.description}, e.g. ${this.notation.examples}>`
         : `\n\nThink briefly if you wish, then end your reply with a line in exactly this form:\nMOVE: <your move in ${this.notation.description}, e.g. ${this.notation.examples}>`;

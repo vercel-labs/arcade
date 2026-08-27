@@ -10,8 +10,16 @@ test('public conversation is bounded, sanitized, and creates direct-response obl
   conversation.appendModel(2, 'Gemini', 'First');
   conversation.appendModel(1, 'Claude', 'I hear you.');
   assert.equal(conversation.all().length, 2);
+  assert.match(conversation.promptFor(1), /\[talk-\d+\] Claude: I hear you\./);
   assert.match(conversation.promptFor(1), /directly addressed/);
   conversation.consumeResponseFor(1);
   assert.equal(conversation.requiredResponseFor(1), undefined);
   assert.equal(sanitizeTableTalk('\u0007a   b'), 'a b');
+});
+
+test('a terminal model reply cannot create another response obligation', () => {
+  const conversation = new PublicConversation();
+  conversation.appendHuman(0, 'Human', 'Claude, what do you think?', [1]);
+  conversation.appendModel(1, 'Claude', 'I disagree, Gemini.', [2], false);
+  assert.equal(conversation.requiredResponseFor(2), undefined);
 });

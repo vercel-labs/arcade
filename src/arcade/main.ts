@@ -28,12 +28,12 @@ import { CatanGameScene } from './games/catan/game-scene.ts';
 import { buildCatanGameRoot, mountCatanGameHud } from './games/catan/game-hud.ts';
 import { CatanDriver } from './match/catan-driver.ts';
 import type { CommunicationMode } from '../ai/communication/types.ts';
-import { catanSetupSelection, setCatanSetupChanged } from './match/catan-setup-panel.ts';
+import { catanSetupSelection, setCatanSetupChanged, setCatanSetupModelCatalog } from './match/catan-setup-panel.ts';
 import { buildPokerRoot, mountPokerHud, pokerMode, setPokerHandlers } from './games/poker/hud.ts';
 import { PokerGameScene } from './games/poker/poker-scene.ts';
 import { buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, type HeroContext, mountPokerGameHud, nudgePokerBet, pushPokerChat, setNotesObserverPick, setPokerGameHandlers, setPokerVoiceStage } from './games/poker/poker-hud.ts';
 import { PokerMatch } from './match/poker-driver.ts';
-import { buildPokerSetupPanel, mountPokerSetup, pokerPreviewSeats, pokerSetupReady, pokerSetupSelection, pokerStartingStack, setPokerSetupChanged } from './match/poker-setup.ts';
+import { buildPokerSetupPanel, mountPokerSetup, pokerPreviewSeats, pokerSetupReady, pokerSetupSelection, pokerStartingStack, setPokerSetupChanged, setPokerSetupModelCatalog } from './match/poker-setup.ts';
 import { LogosScene } from './scenes/logos-scene.ts';
 import { AudioScene } from './scenes/audio-scene.ts';
 import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/input.ts';
@@ -44,7 +44,8 @@ import { buildChessGameRoot, chessMoveChat, type Commentary, type MatchSide, mou
 import { CHESS_PALETTE } from './games/chess/palette.ts';
 import { creatorTint } from './scenes/wisp.ts';
 import { CHAT_WIDTH, clearChat, pushChatMessage } from './match/chat.ts';
-import { buildMatchSetup, buildSwapSetup, chessPreviewSides, matchSetupSelection, mountMatchSetup, mountSwapSetup, openSwapSetup, setMatchSetupChanged, swapSetupSelection } from './match/setup.ts';
+import { buildMatchSetup, buildSwapSetup, chessPreviewSides, matchSetupSelection, mountMatchSetup, mountSwapSetup, openSwapSetup, setMatchSetupChanged, setMatchSetupModelCatalog, swapSetupSelection } from './match/setup.ts';
+import { fallbackArcadeModelCatalog, fetchTeamModelCatalog } from './match/team-model-catalog.ts';
 import { copyToClipboard } from '../platform/clipboard.ts';
 import { checkForUpdate, refreshLatestInBackground, type UpdateInfo } from './update.ts';
 import { BLACK, type Color, WHITE } from '../rules/chess/types.ts';
@@ -56,7 +57,7 @@ import { ARCADE_THEME, UI_CHROME_PILL } from './theme.ts';
 import { installKeymap } from './shell/keybindings.ts';
 import { buildTeamSwitch, markSwitchSucceeded, mountTeamSwitch, setTeamSwitchHandlers, setTeamSwitchTeams, type TeamSwitchView } from './shell/team-switch.ts';
 import * as term from '../platform/terminal.ts';
-import { availableTeams, ensureGatewayKey, isLoggedIn, loadEnv, signOut as signOutVercel, switchTeam, type Team, useTeam } from '../auth/index.ts';
+import { availableTeams, ensureGatewayKey, isLoggedIn, loadEnv, signOut as signOutVercel, switchTeam, type EnsureResult, type Team, useTeam } from '../auth/index.ts';
 import { AiMatch, type Seat } from './match/driver.ts';
 import { disambiguateLabels } from './match/labels.ts';
 import { flushTelemetry, initTelemetry, isTelemetryEnabled, setTelemetryEnabled, telemetryStatus, trackSessionStart, type RecordEndReason } from '../telemetry/index.ts';
@@ -494,11 +495,21 @@ async function withSuspendedTui(fn: () => Promise<void>): Promise<void> {
   }
 }
 
+async function refreshTeamModelCatalog(auth: EnsureResult | null): Promise<void> {
+  const catalog = auth
+    ? await fetchTeamModelCatalog(auth.key)
+    : fallbackArcadeModelCatalog('not signed in');
+  setMatchSetupModelCatalog(catalog.textCreators, catalog.realtimeCreators);
+  setPokerSetupModelCatalog(catalog.textCreators, catalog.realtimeCreators);
+  setCatanSetupModelCatalog(catalog.textCreators);
+}
+
 // In-app "switch team": re-pick the billing team (logging in first if needed)
 // and re-mint the key. Suspends the TUI for the plain-text picker.
 function accountSwitchTeam(): void {
   void withSuspendedTui(async () => {
-    await switchTeam();
+    const auth = await switchTeam();
+    if (auth) await refreshTeamModelCatalog(auth);
   });
 }
 
@@ -555,7 +566,8 @@ function pickTeamChoice(team: Team): void {
   r.requestRender();
   void (async () => {
     try {
-      await useTeam(team);
+      const auth = await useTeam(team);
+      await refreshTeamModelCatalog(auth);
       markSwitchSucceeded(team);
       teamView = { kind: 'loaded' }; // current account is now shown in the closed field
     } catch (err) {
@@ -2685,10 +2697,11 @@ process.stdout.write(`\x1b[38;2;135;135;175m  \u2713 ${colorStatus}\x1b[0m\n`);
 if (update) updateModalOpen = true;
 refreshLatestInBackground();
 
-await ensureGatewayKey({
+const gatewayAuth = await ensureGatewayKey({
   forceLogin: argv.includes('--login'),
   forceTeamPick: argv.includes('--switch-team'),
 });
+await refreshTeamModelCatalog(gatewayAuth);
 
 // Resolve the anonymous install id + (once) print the opt-out notice while still in
 // plain text, then record the launch. Both are no-ops when telemetry is off (opt-out

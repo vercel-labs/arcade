@@ -25,7 +25,8 @@ export function buildCommunicationReport(events: readonly MatchLabEvent[]): Comm
   const moves = new Map<number, string>();
   for (const event of events) {
     if (event.type !== 'action_chosen' || event.action === undefined || !event.data || typeof event.data !== 'object') continue;
-    const move = (event.data as { move?: unknown }).move;
+    const data = event.data as { move?: unknown; san?: unknown; action?: unknown };
+    const move = data.move ?? data.san ?? data.action;
     if (typeof move === 'string') moves.set(event.action, move);
   }
   const rows: CommunicationReportRow[] = [];
@@ -35,7 +36,7 @@ export function buildCommunicationReport(events: readonly MatchLabEvent[]): Comm
       action: event.action,
       model: event.model,
       ...(moves.has(event.action) ? { move: moves.get(event.action)! } : {}),
-      decision: event.data as CommunicationDecision,
+      decision: ((event.data as { decision?: CommunicationDecision })?.decision ?? event.data) as CommunicationDecision,
     });
   }
   const byModel: CommunicationReport['byModel'] = {};

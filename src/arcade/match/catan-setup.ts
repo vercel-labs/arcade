@@ -55,7 +55,10 @@ export interface CatanSetupScene extends MatchScene<CatanAction> {
   state(): CatanState;
 }
 
-export type CatanSetupHooks = Omit<MatchHooks<CatanAction>, 'shouldStop'>;
+export type CatanSetupHooks = Omit<MatchHooks<CatanAction>, 'shouldStop'> & {
+  /** Optional short smoke-test bound; normal setup runs through all placements. */
+  maxActions?: number;
+};
 
 export type CatanMatchHooks = MatchHooks<CatanAction> & {
   /** Safety bound for evaluations whose players may legally roll/end forever. */
@@ -81,9 +84,9 @@ export async function runCatanMatch(
   let hitLimit = false;
   await runMatch(scene, players, {
     ...baseHooks,
-    onActionApplied: (info) => {
+    onActionApplied: async (info) => {
       applied++;
-      onActionApplied?.(info);
+      await onActionApplied?.(info);
     },
     shouldStop: (state) => {
       if (shouldStop?.(state)) return true;
@@ -117,10 +120,26 @@ export async function runCatanInitialPlacement(
   hooks: CatanSetupHooks = {},
 ): Promise<CatanState> {
   assertSeatCount(scene.state(), players);
+  const { maxActions, onActionApplied, ...baseHooks } = hooks;
+  if (maxActions !== undefined && (!Number.isInteger(maxActions) || maxActions <= 0)) {
+    throw new RangeError(`maxActions must be a positive integer; received ${maxActions}`);
+  }
+  let applied = 0;
+  let hitLimit = false;
   await runMatch(scene, players, {
-    ...hooks,
-    shouldStop: () => scene.state().initialPlacementComplete(),
+    ...baseHooks,
+    onActionApplied: async (info) => {
+      applied++;
+      await onActionApplied?.(info);
+    },
+    shouldStop: () => {
+      if (scene.state().initialPlacementComplete()) return true;
+      if (maxActions === undefined || applied < maxActions) return false;
+      hitLimit = true;
+      return true;
+    },
   });
+  if (hitLimit && !scene.state().initialPlacementComplete()) throw new CatanMatchActionLimitError(maxActions!);
   return scene.state();
 }
 

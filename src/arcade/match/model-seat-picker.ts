@@ -100,8 +100,34 @@ export function createModelSeatPicker(opts: ModelSeatPickerOpts): ModelSeatPicke
 }
 
 export function setModelSeatCreators(picker: ModelSeatPicker, creators: readonly ModelCreator[]): void {
+  const previousCreator = picker.creator;
+  const previousModelId = picker.modelId;
   picker.creators = creators;
-  picker.creatorDropdown.setItems(creators.map((creator) => creator.name));
+  if (creators.length === 0) {
+    picker.creator = null;
+    picker.models = [];
+    picker.modelId = null;
+    picker.creatorDropdown.setItems([]);
+    picker.modelDropdown.setItems([]);
+    return;
+  }
+
+  let creatorIndex = previousModelId
+    ? creators.findIndex((creator) => creator.models.some((model) => model.id === previousModelId))
+    : -1;
+  if (creatorIndex < 0 && previousCreator) creatorIndex = creators.findIndex((creator) => creator.slug === previousCreator);
+  if (creatorIndex < 0) creatorIndex = 0;
+
+  const creator = creators[creatorIndex];
+  picker.creator = creator.slug;
+  picker.models = creator.models;
+  const modelIndex = previousModelId
+    ? creator.models.findIndex((model) => model.id === previousModelId)
+    : -1;
+  const selectedModelIndex = modelIndex >= 0 ? modelIndex : (creator.models.length > 0 ? 0 : -1);
+  picker.modelId = selectedModelIndex >= 0 ? creator.models[selectedModelIndex].id : null;
+  picker.creatorDropdown.setItems(creators.map((candidate) => candidate.name), creatorIndex);
+  picker.modelDropdown.setItems(creator.models.map((model) => model.name), selectedModelIndex);
 }
 
 export function selectModelSeat(picker: ModelSeatPicker, creatorSlug: string, modelId?: string): void {

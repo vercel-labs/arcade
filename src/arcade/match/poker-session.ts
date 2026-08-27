@@ -1,6 +1,8 @@
 import { runMatch, type MatchScene } from '../../ai/match.ts';
+import { TableCommunicationCoordinator } from '../../ai/communication/coordinator.ts';
 import { ModelPlayer, type ModelPlayerOpts, type MoveNotation } from '../../ai/model-player.ts';
 import type { ActionChoice, Player } from '../../ai/player.ts';
+import type { CommunicationDecision, CommunicationMode } from '../../ai/communication/types.ts';
 import { HoldemState, type PokerAction } from '../../rules/poker/holdem.ts';
 import {
   DEFAULT_BIG_BLIND,
@@ -41,28 +43,34 @@ export type PokerTextPlayerOpts = Pick<
   'model' | 'name' | 'normalizer' | 'normalizerName' | 'fallbackRng' | 'onAttempt'
 > & {
   contextProvider?: () => string;
+  communication?: ModelPlayerOpts['communication'];
 };
 
 /** The production text-poker prompt and action parser, shared by the TUI and headless lab. */
 export function createPokerTextPlayer(opts: PokerTextPlayerOpts): ModelPlayer<PokerAction> {
+  const { communication, ...base } = opts;
   return new ModelPlayer<PokerAction>({
-    ...opts,
+    ...base,
     gameName: "no-limit Texas Hold'em poker",
     moveNotation: POKER_NOTATION,
     persona: POKER_PERSONA,
-    speech:
-      'a line or two of live table talk in your own voice: banter, needle, read the board, rattle an opponent. Talk to the table, do not just announce your move. Bluff and lie about your hand freely, but never honestly reveal the cards you are holding.',
+    ...(communication ? { communication } : {
+      speech:
+        'a line or two of live table talk in your own voice: banter, needle, read the board, rattle an opponent. Talk to the table, do not just announce your move. Bluff and lie about your hand freely, but never honestly reveal the cards you are holding.',
+    }),
     contextProvider: opts.contextProvider ? () => opts.contextProvider?.() ?? '' : undefined,
   });
 }
 
 export interface PokerSessionEvent {
-  type: 'blind_level_changed' | 'hand_started' | 'decision_started' | 'commentary' | 'action_chosen' | 'action_applied' | 'hand_finished';
+  type: 'blind_level_changed' | 'hand_started' | 'decision_started' | 'commentary' | 'communication_decision' | 'action_chosen' | 'action_applied' | 'hand_finished';
   hand: number;
+  actionNumber?: number;
   seat?: number;
   model?: string;
   action?: string;
   choice?: ActionChoice<PokerAction>;
+  decision?: CommunicationDecision;
   state?: unknown;
   blinds?: PokerBlindState;
 }
@@ -84,6 +92,7 @@ export interface HeadlessPokerSessionOpts {
   fallbackRng?: () => number;
   onAttempt?: (seat: number, info: { phase: 'structured' | 'text' | 'normalize'; raw: string; result: 'legal' | 'illegal' | 'error' }) => void;
   onEvent?: (event: PokerSessionEvent) => void;
+  communicationMode?: CommunicationMode;
 }
 
 export interface HeadlessPokerSessionResult {
@@ -96,6 +105,21 @@ export interface HeadlessPokerSessionResult {
   handRecords: PokerHandRecord[];
   matchRecord: PokerMatchRecord;
   blindProgression: PokerBlindState[];
+  communication?: Record<string, number>;
+}
+
+const POKER_AMBIENT_GUIDE =
+  'Public speech should sound like optional live poker table talk, not an action log. Useful speech includes replying to another player, a concise bluff or needle, reacting to a large visible bet, or commenting on public table dynamics. Never honestly reveal hole cards, exact private hand strength, or private calculations. Do not announce every check, call, or fold. Usually choose silence.';
+
+function pokerActionSalience(action: PokerAction): number {
+  switch (action.type) {
+    case 'allin': return 0.94;
+    case 'raise': return 0.68;
+    case 'bet': return 0.58;
+    case 'call':
+    case 'fold': return 0.24;
+    case 'check': return 0.08;
+  }
 }
 
 class HeadlessPokerScene implements MatchScene<PokerAction> {
@@ -139,6 +163,9 @@ export async function runPokerSession(opts: HeadlessPokerSessionOpts): Promise<H
   const rng = opts.rng ?? Math.random;
   const fallbackRng = opts.fallbackRng ?? rng;
   const labels = disambiguateLabels(opts.models.map((model) => ({ key: model, label: shortModel(model) })));
+  const communication = opts.communicationMode === 'ambient'
+    ? new TableCommunicationCoordinator('ambient', labels, POKER_AMBIENT_GUIDE)
+    : null;
   const stacks = opts.models.map(() => startingStack);
   const recorder = new PokerSessionRecorder(
     'ai_table',
@@ -154,7 +181,12 @@ export async function runPokerSession(opts: HeadlessPokerSessionOpts): Promise<H
       name: labels[seat],
       normalizer: opts.normalizer,
       fallbackRng,
-      contextProvider: () => `${pokerTournamentContext(currentBlinds, stacks[seat])}\n\n${standings(labels, stacks)}`,
+      ...(communication ? { communication: communication.modelConfig() } : {}),
+      contextProvider: () => [
+        pokerTournamentContext(currentBlinds, stacks[seat]),
+        standings(labels, stacks),
+        communication?.contextFor(seat) ?? '',
+      ].filter(Boolean).join('\n\n'),
       onAttempt: (info) => opts.onAttempt?.(seat, info),
     }));
   const handRecords: PokerHandRecord[] = [];
@@ -200,12 +232,17 @@ export async function runPokerSession(opts: HeadlessPokerSessionOpts): Promise<H
         onActionChosen: ({ player, playerIndex, choice }) => {
           pendingAction = state.actionToString(choice.action);
           recorder.actionChosen(playerIndex, player, choice, false, 'text', opts.models[playerIndex]);
-          opts.onEvent?.({ type: 'action_chosen', hand: handCount, seat: playerIndex, model: opts.models[playerIndex], action: pendingAction, choice });
+          if (communication) {
+            const decision = communication.decide(playerIndex, choice.communication, actionCount + 1, pokerActionSalience(choice.action));
+            opts.onEvent?.({ type: 'communication_decision', hand: handCount, actionNumber: actionCount + 1, seat: playerIndex, model: opts.models[playerIndex], action: pendingAction, choice, decision });
+            if (decision.communication.mode === 'speak') opts.onEvent?.({ type: 'commentary', hand: handCount, seat: playerIndex, model: opts.models[playerIndex], state: decision.communication.text });
+          }
+          opts.onEvent?.({ type: 'action_chosen', hand: handCount, actionNumber: actionCount + 1, seat: playerIndex, model: opts.models[playerIndex], action: pendingAction, choice });
         },
         onActionApplied: ({ playerIndex }) => {
           actionCount++;
           recorder.actionApplied();
-          opts.onEvent?.({ type: 'action_applied', hand: handCount, seat: playerIndex, model: opts.models[playerIndex], action: pendingAction, state: state.canonicalRecord() });
+          opts.onEvent?.({ type: 'action_applied', hand: handCount, actionNumber: actionCount, seat: playerIndex, model: opts.models[playerIndex], action: pendingAction, state: state.canonicalRecord() });
         },
       });
     } catch (error) {
@@ -240,5 +277,6 @@ export async function runPokerSession(opts: HeadlessPokerSessionOpts): Promise<H
     handRecords,
     matchRecord,
     blindProgression,
+    ...(communication ? { communication: communication.summary() } : {}),
   };
 }

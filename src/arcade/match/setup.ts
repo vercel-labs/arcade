@@ -1,6 +1,6 @@
 // The AI match setup modal: pick a creator → model for White and for Black, then
 // Start. Each side is two collapsing Dropdowns (creator above model) over the
-// baked Gateway catalog (models.ts) — closed, they show just the current choice,
+// selected team's Gateway catalog (with the baked catalog as fallback) — closed, they show just the current choice,
 // so the modal stays compact instead of spilling two long lists per side. The
 // dropdown state lives on module-level instances + `Side` records so it survives
 // the per-frame rebuild (mounted via Slot like the move panel). Start is enabled
@@ -16,8 +16,8 @@ import { ARCADE_OUTLINE_CONTROL, UI_CHROME_BG } from '../theme.ts';
 import { CHESS_PALETTE } from '../games/chess/palette.ts';
 import { createModelSeatPicker, hiddenModelSeat, modelSeatControls, modelSeatSlowBadge, modelSeatTint, mountModelSeat, selectModelSeat, setModelSeatCreators, type ModelCreator, type ModelSeatPicker } from './model-seat-picker.ts';
 
-const TEXT_CREATORS: ModelCreator[] = pickerCreators();
-const REALTIME_CREATORS: ModelCreator[] = [];
+let TEXT_CREATORS: ModelCreator[] = pickerCreators();
+let REALTIME_CREATORS: ModelCreator[] = [];
 for (const model of availableRealtimeModels(includeEarlyAccessModels())) {
   let creator = REALTIME_CREATORS.find((candidate) => candidate.slug === model.creator);
   if (!creator) {
@@ -206,6 +206,18 @@ export function buildMatchSetup(region: LayoutBox, opts: { onStart: () => void; 
 // was clicked and seeded with that side's current model. Distinct dropdown ids
 // (`setup-swap-*`) keep it from colliding with the two start-modal sides.
 const swap = makeSide('white', 'setup-swap', 'anthropic', 'anthropic/claude-haiku-4.5');
+let swapRuntime: 'text' | 'realtime' = 'text';
+
+export function setMatchSetupModelCatalog(
+  textCreators: readonly ModelCreator[],
+  realtimeCreators: readonly ModelCreator[],
+): void {
+  TEXT_CREATORS = [...textCreators];
+  REALTIME_CREATORS = [...realtimeCreators];
+  for (const side of [white, black]) setModelSeatCreators(side, TEXT_CREATORS);
+  setModelSeatCreators(swap, swapRuntime === 'realtime' ? REALTIME_CREATORS : TEXT_CREATORS);
+  changed();
+}
 
 export function mountSwapSetup(ui: Screen): void {
   mountModelSeat(ui, swap);
@@ -221,6 +233,7 @@ export function openSwapSetup(
   slug: string,
   runtime: 'text' | 'realtime' = 'text',
 ): void {
+  swapRuntime = runtime;
   const creators = runtime === 'realtime' ? REALTIME_CREATORS : TEXT_CREATORS;
   setModelSeatCreators(swap, creators);
   swap.key = color;

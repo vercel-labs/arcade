@@ -61,3 +61,35 @@ test('model seat picker can replace its catalog before restoring a selection', (
   assert.equal(picker.modelId, 'beta/three');
   assert.deepEqual(picker.models.map((model) => model.id), ['beta/three']);
 });
+
+test('model seat picker preserves an available selection across catalog refreshes', () => {
+  const picker = createModelSeatPicker({
+    idPrefix: 'preserve-seat',
+    creators,
+    defaultCreator: 'alpha',
+    defaultModelId: 'alpha/two',
+  });
+
+  setModelSeatCreators(picker, [creators[1], creators[0]]);
+
+  assert.equal(picker.creator, 'alpha');
+  assert.equal(picker.modelId, 'alpha/two');
+  assert.equal(picker.creatorDropdown.value, 'Alpha');
+  assert.equal(picker.modelDropdown.value, 'Two');
+});
+
+test('model seat picker chooses a valid replacement when a model becomes unavailable', () => {
+  const picker = createModelSeatPicker({
+    idPrefix: 'fallback-seat',
+    creators,
+    defaultCreator: 'alpha',
+    defaultModelId: 'alpha/two',
+  });
+
+  setModelSeatCreators(picker, creators.slice(1));
+
+  assert.equal(picker.creator, 'beta');
+  assert.equal(picker.modelId, 'beta/three');
+  assert.equal(picker.creatorDropdown.value, 'Beta');
+  assert.equal(picker.modelDropdown.value, 'Three');
+});

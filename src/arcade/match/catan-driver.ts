@@ -7,7 +7,7 @@
 // authority; this layer merely connects seats to it and records presentation-friendly history.
 
 import { HumanPlayer } from '../../ai/human-player.ts';
-import type { CommunicationDecision, CommunicationMode } from '../../ai/communication/types.ts';
+import type { CommunicationDecision, CommunicationMode, PublicConversationMessage } from '../../ai/communication/types.ts';
 import type { Player } from '../../ai/player.ts';
 import { CatanState } from '../../rules/catan/catan.ts';
 import { RESOURCES, resourceIndex, type CatanAction, type PlayerColor, type Resource } from '../../rules/catan/types.ts';
@@ -17,6 +17,8 @@ import { disambiguateLabels } from './labels.ts';
 import { shortModel } from './model-label.ts';
 import { normalizerModel } from './models.ts';
 import { CatanCommunicationCoordinator } from './catan-communication.ts';
+import { detectCatanMoments } from './catan-moments.ts';
+import { directedReplyOpportunities, primaryMoment, reactionOpportunities } from '../../ai/communication/moments.ts';
 
 // One seat in the session: you, or an AI model (a Gateway slug). The color is the seat's
 // piece color — picked in setup and distinct per seat.
@@ -54,6 +56,9 @@ export interface CatanLogEntry {
 interface CatanPreActionView {
   hands: number[][];
   trade: ReturnType<CatanState['activeTrade']>;
+  state: CatanState;
+  communicationDecision?: CommunicationDecision;
+  communicationMessage?: PublicConversationMessage;
 }
 
 export class CatanDriver {
@@ -70,6 +75,7 @@ export class CatanDriver {
   private preAction: CatanPreActionView | null = null;
   private communication: CatanCommunicationCoordinator | null = null;
   private lastCommunicationDecision: CommunicationDecision | null = null;
+  private directedReplyQueue: Promise<void> = Promise.resolve();
 
   constructor(private readonly deps: CatanDriverDeps) {}
 
@@ -126,10 +132,10 @@ export class CatanDriver {
     return this.lastCommunicationDecision;
   }
 
-  sendHumanChat(text: string, targetSeat?: number): boolean {
+  sendHumanChat(text: string, targetSeats: readonly number[] = []): boolean {
     const seat = this.humanSeat();
     if (seat < 0 || !this.communication) return false;
-    const message = this.communication.addHuman(seat, text, targetSeat === undefined ? [] : [targetSeat]);
+    const message = this.communication.addHuman(seat, text, targetSeats);
     if (!message) return false;
     this.log.push({
       seat,
@@ -139,6 +145,9 @@ export class CatanDriver {
       chat: true,
     });
     this.deps.syncLive();
+    if (this.communication.currentMode() === 'ambient' && message.addressedSeats.length) {
+      void this.enqueueDirectedReplies(message, this.live?.actionRecords().length ?? 0);
+    }
     return true;
   }
 
@@ -171,6 +180,7 @@ export class CatanDriver {
     this.failure = null;
     this.complete = false;
     this.lastCommunicationDecision = null;
+    this.directedReplyQueue = Promise.resolve();
     const state = new CatanState({
       numPlayers: seats.length,
       // UI copy uses `this.labels` so the local seat remains "You". The rules state's
@@ -232,6 +242,7 @@ export class CatanDriver {
           this.preAction = this.live ? {
             hands: Array.from({ length: this.live.n }, (_, seat) => this.live!.handOf(seat).slice()),
             trade: this.live.activeTrade(),
+            state: this.live.clone(),
           } : null;
           if (this.seats[info.playerIndex]?.kind === 'ai' && this.communication) {
             const decision = this.communication.decide(
@@ -241,6 +252,10 @@ export class CatanDriver {
               (this.live?.actionRecords().length ?? 0) + 1,
             );
             this.lastCommunicationDecision = decision;
+            if (this.preAction) {
+              this.preAction.communicationDecision = decision;
+              if (decision.communication.mode === 'speak') this.preAction.communicationMessage = this.communication.latestMessage();
+            }
             if (decision.communication.mode === 'speak') {
               this.log.push({
                 seat: info.playerIndex,
@@ -253,8 +268,35 @@ export class CatanDriver {
             }
           }
         },
-        onActionApplied: (info) => {
+        onActionApplied: async (info) => {
           this.record(info.playerIndex, info.choice.action, this.preAction);
+          if (this.communication?.currentMode() === 'ambient' && this.preAction && this.live) {
+            const actionNumber = this.live.actionRecords().length;
+            if (
+              this.preAction.communicationDecision?.communication.mode === 'speak'
+              && this.preAction.communicationMessage?.addressedSeats.length
+            ) {
+              await this.enqueueDirectedReplies(this.preAction.communicationMessage, actionNumber);
+            }
+            const moments = detectCatanMoments(this.preAction.state, info.choice.action, this.live, info.playerIndex, actionNumber, this.labels);
+            const moment = primaryMoment(moments);
+            for (const opportunity of moment ? reactionOpportunities(moment, 1) : []) {
+              if (this.seats[opportunity.seat]?.kind !== 'ai') continue;
+              const reaction = await this.players[opportunity.seat]?.chooseCommunication?.({
+                opportunity,
+                gameView: this.live.informationStateString(opportunity.seat),
+                conversation: this.communication.contextFor(opportunity.seat),
+                signal,
+              });
+              if (signal?.aborted) break;
+              const decision = this.communication.decideOpportunity(opportunity, reaction, actionNumber);
+              this.lastCommunicationDecision = decision;
+              if (decision.communication.mode === 'speak') {
+                this.log.push({ seat: opportunity.seat, color: this.colorOf(opportunity.seat), actor: this.labelOf(opportunity.seat), message: decision.communication.text, chat: true });
+                this.deps.syncLive();
+              }
+            }
+          }
           this.preAction = null;
           this.deps.syncLive();
         },
@@ -271,6 +313,38 @@ export class CatanDriver {
         this.deps.syncLive();
       }
     }
+  }
+
+  private enqueueDirectedReplies(message: PublicConversationMessage, actionNumber: number): Promise<void> {
+    const run = async (): Promise<void> => {
+      if (!this.communication || !this.live) return;
+      const signal = this.abort?.signal;
+      for (const opportunity of directedReplyOpportunities(message, 'catan', this.seats.length)) {
+        if (signal?.aborted) break;
+        if (this.seats[opportunity.seat]?.kind !== 'ai') continue;
+        const proposal = await this.players[opportunity.seat]?.chooseCommunication?.({
+          opportunity,
+          gameView: this.live.informationStateString(opportunity.seat),
+          conversation: this.communication.contextFor(opportunity.seat),
+          signal,
+        });
+        if (signal?.aborted) break;
+        const decision = this.communication.decideDirectedReply(opportunity, proposal, actionNumber);
+        this.lastCommunicationDecision = decision;
+        if (decision.communication.mode === 'speak') {
+          this.log.push({
+            seat: opportunity.seat,
+            color: this.colorOf(opportunity.seat),
+            actor: this.labelOf(opportunity.seat),
+            message: decision.communication.text,
+            chat: true,
+          });
+          this.deps.syncLive();
+        }
+      }
+    };
+    this.directedReplyQueue = this.directedReplyQueue.then(run, run);
+    return this.directedReplyQueue;
   }
 
   private record(seat: number, action: CatanAction, before: CatanPreActionView | null): void {

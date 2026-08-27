@@ -19,6 +19,7 @@ export const runPokerMatchLab: MatchLabAdapter = async ({ plan, signal, emit }) 
     fallbackRng: rng,
     normalizer: normalizerModel(),
     signal,
+    communicationMode: plan.communicationMode,
     onAttempt: (seat, attempt) => emit({ type: 'model_attempt', game: 'poker', seat, model: plan.models[seat], data: attempt }),
     onEvent: (event) => {
       const type = event.type === 'hand_started' ? 'hand_started'
@@ -29,8 +30,8 @@ export const runPokerMatchLab: MatchLabAdapter = async ({ plan, signal, emit }) 
         game: 'poker',
         seat: event.seat,
         model: event.model,
-        action: event.type === 'action_applied' ? undefined : event.hand,
-        data: { hand: event.hand, action: event.action, choice: event.choice, blinds: event.blinds, state: event.state },
+        action: event.actionNumber ?? event.hand,
+        data: { hand: event.hand, action: event.action, choice: event.choice, decision: event.decision, blinds: event.blinds, state: event.state },
       });
     },
   });
@@ -48,6 +49,6 @@ export const runPokerMatchLab: MatchLabAdapter = async ({ plan, signal, emit }) 
     winnerSeats: session.winnerSeats,
     stopReason: session.stopReason,
     canonical: { match: session.matchRecord, hands: session.handRecords },
-    finalState: { stacks: session.finalStacks, hands: session.handCount, blindProgression: session.blindProgression },
+    finalState: { stacks: session.finalStacks, hands: session.handCount, blindProgression: session.blindProgression, ...(session.communication ? { communication: session.communication } : {}) },
   };
 };

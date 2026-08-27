@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { ChessState } from '../rules/chess/chess.ts';
 import {
   communicationFromResponse,
+  communicationFromText,
   communicationResponseSchema,
   FALLBACK_RATIONALE,
   isFallbackRationale,
@@ -92,6 +93,19 @@ test('flat communication responses normalize into the public discriminated union
   assert.equal(communicationFromResponse({
     mode: 'speak', intent: 'none', text: '', privateReason: '', respondsTo: '', addressedSeats: [],
   }), undefined);
+});
+
+test('marker-based communication fallback never treats unmarked private prose as public speech', () => {
+  assert.equal(communicationFromText('I should hide my plan and complain about that road.'), undefined);
+  assert.deepEqual(communicationFromText('INTENT: none\nSAY:\nPRIVATE: routine'), {
+    mode: 'silent', intent: 'none', privateReason: 'routine',
+  });
+  assert.deepEqual(communicationFromText('thinking privately\nINTENT: react\nSAY: That road cuts me off.\nPRIVATE: directly affected'), {
+    mode: 'speak', intent: 'react', text: 'That road cuts me off.', privateReason: 'directly affected',
+  });
+  assert.deepEqual(communicationFromText('INTENT: reply\nSAY: I can make that trade.\nADDRESS: 0, 2\nRESPONDS TO: talk-7\nPRIVATE: useful deal'), {
+    mode: 'speak', intent: 'reply', text: 'I can make that trade.', privateReason: 'useful deal', respondsTo: 'talk-7', addressedSeats: [0, 2],
+  });
 });
 
 test('access error: skips the futile text retry and returns the "unavailable" diagnosis', async () => {
@@ -293,6 +307,49 @@ test('communication-mode text fallback never broadcasts private fallback prose',
   assert.equal(state.actionToString(choice.action), 'e4');
   assert.equal(choice.rationale, undefined);
   assert.equal(choice.communication, undefined);
+});
+
+test('communication-mode text fallback preserves explicit public speech for schema-incompatible models', async () => {
+  const state = new ChessState();
+  const { model, calls } = proseModel('Private calculation stays here.\nINTENT: banter\nSAY: Your center is looking shaky.\nPRIVATE: worthwhile table talk\nMOVE: e4');
+  const choice = await new ModelPlayer<Move>({
+    model,
+    gameName: 'table chess',
+    communication: { mode: () => 'ambient', guide: 'Speak selectively.' },
+  }).chooseAction(state);
+  assert.equal(calls(), 2, 'structured failure falls back to one plain-text generation');
+  assert.equal(state.actionToString(choice.action), 'e4');
+  assert.deepEqual(choice.communication, {
+    mode: 'speak', intent: 'banter', text: 'Your center is looking shaky.', privateReason: 'worthwhile table talk',
+  });
+});
+
+test('reaction-only communication falls back to explicit markers when structured output is unsupported', async () => {
+  const { model, calls } = proseModel('INTENT: react\nSAY: You just boxed in my road.\nPRIVATE: directly affected');
+  const player = new ModelPlayer<Move>({
+    model,
+    gameName: 'Catan',
+    communication: { mode: () => 'ambient', guide: 'Speak selectively.' },
+  });
+  const communication = await player.chooseCommunication({
+    opportunity: {
+      seat: 1,
+      expectation: 'encouraged',
+      reason: 'directly affected by the moment',
+      moment: {
+        id: 'catan-1-1', game: 'catan', type: 'contested_route', actorSeat: 0,
+        affectedSeats: [1], relevantSeats: [1], strength: 'notable', importance: 0.82,
+        publicSummary: 'Red built into Blue’s route.', publicFacts: [],
+        suggestedIntents: ['react', 'banter'], responseExpectation: 'encouraged',
+      },
+    },
+    gameView: 'Your public position and private hand.',
+    conversation: 'No recent speech.',
+  });
+  assert.equal(calls(), 2, 'structured failure falls back to one plain-text generation');
+  assert.deepEqual(communication, {
+    mode: 'speak', intent: 'react', text: 'You just boxed in my road.', privateReason: 'directly affected',
+  });
 });
 
 test('structured success returns sanitized timing and token diagnostics', async () => {

@@ -62,6 +62,18 @@ function progressingPlayer(name: string, random: () => number): Player<CatanActi
   };
 }
 
+function reactingPlayer(name: string, random: () => number): Player<CatanAction> {
+  return {
+    ...progressingPlayer(name, random),
+    chooseCommunication: async ({ opportunity }) => ({
+      mode: 'speak',
+      intent: 'react',
+      text: `${name} reacts to ${opportunity.moment.type}`,
+      privateReason: 'deterministic ambient reaction test',
+    }),
+  };
+}
+
 async function waitForIdle(driver: CatanDriver): Promise<void> {
   for (let i = 0; i < 100 && driver.isRunning(); i++) {
     await new Promise<void>((resolve) => setImmediate(resolve));
@@ -123,6 +135,29 @@ test('driver installs the scene before models run a complete rules-authoritative
         .reduce((sum, count) => sum + count, 0);
     assert.equal(total, 19, `${resource} remains conserved after setup grants`);
   }
+});
+
+test('ambient live games offer affected models reaction-only turns while autoreply stays actor-only', async () => {
+  const make = (mode: 'ambient' | 'autoreply') => {
+    const scene = new DriverScene();
+    const driver = new CatanDriver({
+      scene,
+      syncLive: () => {},
+      createPlayer: (_spec, seat, label) => reactingPlayer(label, rng(300 + seat)),
+    });
+    driver.start([
+      { kind: 'ai', color: 'red', model: 'test/a' },
+      { kind: 'ai', color: 'blue', model: 'test/b' },
+    ], { rng: rng(12), communicationMode: mode, maxActions: 5_000 });
+    return driver;
+  };
+  const ambient = make('ambient');
+  await waitForIdle(ambient);
+  assert.ok(ambient.history().some((entry) => entry.chat && entry.message.includes('reacts to')));
+
+  const autoreply = make('autoreply');
+  await waitForIdle(autoreply);
+  assert.equal(autoreply.history().some((entry) => entry.chat && entry.message.includes('reacts to')), false);
 });
 
 test('human UI labels stay conversational while model observations identify the human unambiguously', () => {
@@ -196,7 +231,7 @@ test('human chat is accepted only in human games and can directly address one mo
     { kind: 'human', color: 'red' },
     { kind: 'ai', color: 'blue', model: 'test/model' },
   ], { autoRun: false, communicationMode: 'ambient', rng: rng(3) });
-  assert.equal(driver.sendHumanChat('Can you trade, Claude?', 1), true);
+  assert.equal(driver.sendHumanChat('Can you trade, Claude?', [1]), true);
   assert.equal(driver.history().at(-1)?.message, 'Can you trade, Claude?');
   assert.equal(driver.history().at(-1)?.chat, true);
   driver.reset();
@@ -205,4 +240,36 @@ test('human chat is accepted only in human games and can directly address one mo
     { kind: 'ai', color: 'blue', model: 'test/b' },
   ], { autoRun: false, rng: rng(4) });
   assert.equal(driver.sendHumanChat('invisible spectator speech'), false);
+});
+
+test('an @-addressed human message prompts one immediate model reply in ambient mode', async () => {
+  const scene = new DriverScene();
+  const driver = new CatanDriver({
+    scene,
+    syncLive: () => {},
+    createPlayer: (_spec, seat, label) => ({
+      ...progressingPlayer(label, rng(500 + seat)),
+      chooseCommunication: async ({ opportunity }) => ({
+        mode: 'speak',
+        intent: 'reply',
+        text: `Replying once to ${opportunity.moment.publicSummary}`,
+        addressedSeats: [0],
+        privateReason: 'directly addressed by the human',
+      }),
+    }),
+  });
+  driver.start([
+    { kind: 'human', color: 'red' },
+    { kind: 'ai', color: 'blue', model: 'anthropic/claude-haiku-4.5' },
+  ], { autoRun: false, communicationMode: 'ambient', rng: rng(9) });
+
+  assert.equal(driver.sendHumanChat('@claude-haiku-4.5 why block me?', [1]), true);
+  for (let i = 0; i < 20 && driver.history().filter((entry) => entry.chat).length < 2; i++) {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  const chat = driver.history().filter((entry) => entry.chat);
+  assert.equal(chat.length, 2);
+  assert.equal(chat[0]?.seat, 0);
+  assert.equal(chat[1]?.seat, 1);
+  assert.match(chat[1]?.message ?? '', /^Replying once to /);
 });
