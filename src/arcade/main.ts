@@ -47,7 +47,7 @@ import { CHAT_WIDTH, clearChat, pushChatMessage } from './match/chat.ts';
 import { buildMatchSetup, buildSwapSetup, chessPreviewSides, matchSetupSelection, mountMatchSetup, mountSwapSetup, openSwapSetup, setMatchSetupChanged, setMatchSetupModelCatalog, swapSetupSelection } from './match/setup.ts';
 import { fallbackArcadeModelCatalog, fetchTeamModelCatalog } from './match/team-model-catalog.ts';
 import { copyToClipboard } from '../platform/clipboard.ts';
-import { checkForUpdate, refreshLatestInBackground, type UpdateInfo } from './update.ts';
+import { checkForUpdate, packageInfo, refreshLatestInBackground, type UpdateInfo } from './update.ts';
 import { BLACK, type Color, WHITE } from '../rules/chess/types.ts';
 import { evaluate } from '../rules/chess/eval.ts';
 import type { ChessResult } from '../rules/chess/chess.ts';
@@ -2668,6 +2668,32 @@ process.stdout.on('resize', () => {
 // flow runs BEFORE term.enter(); once resolved, model/voice calls read the
 // process-local AI_GATEWAY_API_KEY minted for Arcade.
 const argv = process.argv.slice(2);
+// `--version` / `--help` run before any side effect (no auth, network, or alt-screen)
+// and exit, so they stay fast and scriptable — the standard CLI convention.
+if (argv.includes('--version') || argv.includes('-v')) {
+  console.log(packageInfo().version);
+  process.exit(0);
+}
+if (argv.includes('--help') || argv.includes('-h')) {
+  const { name, version, description } = packageInfo();
+  console.log(
+    [
+      `${name} ${version}`,
+      description,
+      '',
+      'Usage: arcade [options]',
+      '       arcade telemetry [status|enable|disable]',
+      '',
+      'Options:',
+      '  --login          re-run the Vercel sign-in device flow',
+      '  --switch-team    pick a different team for the AI Gateway key',
+      '  --logout         sign out of Vercel',
+      '  -v, --version    print the version and exit',
+      '  -h, --help       print this help and exit',
+    ].join('\n'),
+  );
+  process.exit(0);
+}
 if (argv.includes('--logout')) {
   const was = signOutVercel();
   console.log(was ? 'Signed out of Vercel.' : 'Not signed in.');

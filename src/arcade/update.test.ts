@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { sep } from 'node:path';
-import { isNewer, detectInstall, checkForUpdate } from './update.ts';
+import { isNewer, detectInstall, checkForUpdate, packageInfo } from './update.ts';
 
 test('isNewer compares core versions', () => {
   assert.equal(isNewer('0.1.2', '0.1.3'), true, 'patch bump');
@@ -92,4 +92,13 @@ test('checkForUpdate: suppressed in a dev checkout (no override)', () => {
   withEnv({ ARCADE_DEV: '1' }, () => {
     assert.equal(checkForUpdate(), null, 'dev checkout never notifies without the test override');
   });
+});
+
+// The identity behind `--version` / `--help`: real values from package.json, not the
+// hard-coded fallbacks (which would signal the file couldn't be read).
+test('packageInfo reads name, version, and description from package.json', () => {
+  const { name, version, description } = packageInfo();
+  assert.equal(name, '@vercel/arcade');
+  assert.match(version, /^\d+\.\d+\.\d+/, 'a semver-ish version');
+  assert.ok(description.length > 0, 'a non-empty description');
 });

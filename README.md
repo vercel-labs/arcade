@@ -13,11 +13,23 @@ Arcade is the first build-out of **Vercel Arcade**: play classic games against f
 Arcade is published as a **private, Vercel-internal** npm package. With `@vercel` npm access you can run it on demand, or install it once and just type `arcade`:
 
 ```bash
-npx @vercel/arcade@latest        # run the latest without installing
+curl -fsSL vercel-arcade.vercel.app/install | sh   # install globally (checks Node, then npm)
 
-npm i -g @vercel/arcade          # or install globally (pnpm add -g / yarn global add also work)
+npx @vercel/arcade@latest        # or run the latest without installing
+
+npm i -g @vercel/arcade          # or install globally yourself (pnpm add -g / yarn global add also work)
 arcade                           # …then launch it from anywhere
 ```
+
+A global `npm` install ends with a banner showing the command to run and where the docs are
+(`src/arcade/install-banner.ts`). It writes to the terminal device rather than stdout, because
+package managers capture and discard lifecycle-script output — and it prints only for a global
+install, so `npx` and a dev checkout stay quiet. `pnpm add -g` shows nothing: pnpm blocks a
+package's lifecycle scripts unless the user allows them.
+
+The landing page and that installer live in [apps/site](apps/site) and are deployed at
+[vercel-arcade.vercel.app](https://vercel-arcade.vercel.app) — its own Vercel project,
+separate from the curl prism and the telemetry proxy.
 
 Arcade checks for a newer published version at launch and, if one exists, surfaces the exact upgrade command two ways: a line among the startup output, and a popup over the opening prism (with a copy button). `npx @vercel/arcade@latest` always pulls the newest build; a global install stays put until you run the upgrade command.
 
