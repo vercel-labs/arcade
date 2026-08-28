@@ -24,7 +24,7 @@ export const metadata: Metadata = {
     siteName: 'Arcade',
     title: 'Arcade — 3D games in your terminal',
     description: 'Build and play CPU-rendered 3D ASCII games in terminals and browsers.',
-    images: [{ url: '/opengraph-image', width: 1200, height: 630, alt: 'Arcade — build worlds inside text' }],
+    images: [{ url: '/opengraph-image', width: 1200, height: 630, alt: 'Arcade — 3D games in your terminal' }],
   },
 };
 

@@ -9,19 +9,19 @@ site while preserving the terminal product and the one-way library import graph.
 
 ## Architecture
 
-- Browser-native `Surface` host; no hosted PTY.
-- Real Arcade rules and CPU renderer are imported through `@vercel/arcade/web`.
+- Hosted PTY runs the actual packaged Arcade CLI; xterm.js is only its display/input device.
+- Focused renderer and TUI examples still import browser-safe `@vercel/arcade` subpaths.
 - Site-specific React, CSS, docs navigation, and marketing copy stay under `apps/site`.
-- No browser bundle may import terminal, filesystem, auth, telemetry, or model credentials.
-- AI play is intentionally deferred until there is a credential-safe server contract.
+- The browser and visitor shell never receive the real model credential; Sandbox network policy performs a request-scoped replacement.
+- Hosted sessions are temporary, telemetry-disabled, and network-denied except for matching Gateway calls.
 
-See [ADR 0001](../architecture/0001-browser-native-arcade-host.md).
+See [ADR 0001](../architecture/0001-hosted-arcade-terminal.md).
 
 ## Delivery phases
 
 - [x] Reconcile the merged Catan branch and existing Geistdocs site work.
 - [x] Research VGPU/skills.sh patterns and existing Linear package/docs work.
-- [x] Ship launcher + complete local Chess browser vertical slice.
+- [x] Ship an initial local Chess browser vertical slice, then replace the homepage clone with the actual CLI.
 - [x] Add live renderer/TUI examples backed by public package imports.
 - [x] Publish detailed engine, pipeline, TUI, component, harness, tools, browser-host,
   and example documentation.
@@ -50,8 +50,8 @@ Credential-safe AI sessions and browser expansion beyond local Chess are tracked
 ## Delivered browser surface
 
 - Arcade-native hero and installation affordance.
-- Real launcher and complete local two-player Chess with legal moves, terminal states,
-  resize, pointer picking, camera orbit/zoom, restart, and ASCII/pixel/hybrid modes.
+- Actual packaged launcher and games through a temporary Linux PTY, plus a miniature
+  navigable docs/examples filesystem.
 - Live mesh/material and retained-TUI specimens in `/examples`.
 - Static, crawlable docs and machine-readable agent indexes.
 - Browser-safe exports for `engine`, `tui`, `rules/chess`, and `web` proven from the packed
@@ -59,10 +59,10 @@ Credential-safe AI sessions and browser expansion beyond local Chess are tracked
 
 ## Deliberately deferred
 
-- Poker and actual Catan browser adapters. They should migrate scene/rule dependencies one
-  game at a time instead of importing the terminal orchestrator into the site.
-- AI/model play in the browser. The client must never hold a Gateway credential; see
-  `AIG-706` and [ADR 0001](../architecture/0001-browser-native-arcade-host.md).
+- Additional browser-native game specimens. The complete application already runs through
+  the hosted CLI, so browser adapters should exist only when they teach a reusable package API.
+- Production capacity, abuse controls, and credential provisioning for the hosted terminal;
+  see `AIG-706` and [ADR 0001](../architecture/0001-hosted-arcade-terminal.md).
 - Public npm claims. The package remains restricted until the source, asset, license, and
   packed-consumer release audits are complete.
 

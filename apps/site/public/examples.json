@@ -2,7 +2,7 @@
   "$schema": "https://vercel-arcade.vercel.app/schemas/examples-v1.json",
   "version": 1,
   "examples": [
-    { "id": "browser-chess", "title": "Playable browser Chess", "url": "/#play", "docs": "/docs/browser-host", "source": "src/web/browser-chess.ts", "imports": ["@vercel/arcade/web"], "capabilities": ["rules", "cpu-3d", "surface", "picking", "canvas-host"] },
+    { "id": "hosted-arcade-cli", "title": "Hosted Arcade CLI", "url": "/#play", "docs": "/docs/browser-host", "source": "apps/site/app/api/terminal/session/route.ts", "imports": ["@vercel/sandbox", "@xterm/xterm", "@vercel/arcade"], "capabilities": ["actual-cli", "pty", "shell", "games", "temporary-filesystem"] },
     { "id": "render-scene", "title": "Render a CPU 3D scene", "url": "/examples#renderer", "docs": "/docs/renderer-pipeline", "source": "src/web/browser-showcase.ts", "imports": ["@vercel/arcade/engine", "@vercel/arcade/web"], "capabilities": ["mesh", "material", "camera", "rasterizer", "ascii", "pixel", "hybrid"] },
     { "id": "retained-hud", "title": "Compose a retained terminal HUD", "url": "/examples#tui", "docs": "/docs/components", "source": "src/web/browser-showcase.ts", "imports": ["@vercel/arcade/tui", "@vercel/arcade/web"], "capabilities": ["layout", "components", "surface", "theme", "canvas-host"] },
     { "id": "match-lab", "title": "Run a persistent self-play match", "docs": "/docs/game-harness", "imports": [], "capabilities": ["models", "legal-actions", "traces", "telemetry-off"] }

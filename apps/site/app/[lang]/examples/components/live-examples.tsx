@@ -6,10 +6,16 @@ import {
   CanvasSurfaceHost,
   type CanvasLike,
 } from '@vercel/arcade/web';
+import dynamic from 'next/dynamic';
 import { useEffect, useRef, useState } from 'react';
 
 const COLS = 64;
 const ROWS = 34;
+
+const PrismTerminal = dynamic(
+  () => import('../../(home)/components/prism-terminal').then((module) => module.PrismTerminal),
+  { ssr: false },
+);
 
 export function RenderExample() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -165,6 +171,16 @@ export function TuiExample() {
     source="src/web/browser-showcase.ts"
     title="Retained HUD"
   ><canvas aria-label="Interactive retained Arcade TUI example" className="live-example__canvas" ref={canvasRef} tabIndex={0} /></ExampleShell>;
+}
+
+export function PrismExample() {
+  return <ExampleShell
+    controls={<span>curl ascii-prisms.vercel.app</span>}
+    description="A read-only ANSI stream rendered by the standalone prism deployment and displayed with terminal cell semantics in xterm.js."
+    imports="@xterm/xterm · /api/prism-stream"
+    source="src/prism/prism-stream.ts"
+    title="Prism stream"
+  ><PrismTerminal className="live-example__terminal" /></ExampleShell>;
 }
 
 function ExampleShell({ children, controls, description, imports, source, title }: {

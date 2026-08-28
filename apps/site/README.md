@@ -10,13 +10,16 @@ curl -fsSL vercel-arcade.vercel.app/install | sh
 A Next.js app built on **[`@vercel/geistdocs`](https://github.com/vercel/geistdocs)** —
 the shared package behind vgpu.sh, skills.sh, and other Vercel OSS sites — for the
 "▲ OSS / product ▾" nav, docs shell, and Vercel-wide footer. The hero embeds a
-browser-native Arcade host: the same CPU renderer, cell `Surface`, presentation
-modes, and Chess rules used by the CLI, drawn by a canvas adapter instead of ANSI.
+real terminal session: xterm.js connects to an isolated Vercel Sandbox PTY that
+runs the actual packaged Arcade CLI. The browser does not recreate the launcher
+or games.
 
 It's its own [pnpm workspace root](pnpm-workspace.yaml) (own lockfile,
 own `node_modules`) nested inside the arcade repo, fully decoupled from the CLI's
-own dependency graph. It consumes the root package through a workspace link and
-public subpath exports rather than copying game or renderer code.
+own dependency graph. Focused examples consume the root package through a workspace
+link and public subpath exports rather than copying game or renderer code. The hosted
+terminal build packs the current root workspace into a deployment artifact, installs that
+exact artifact into a reusable base snapshot, and forks a temporary session for each visitor.
 
 ## Layout
 
@@ -26,11 +29,11 @@ public subpath exports rather than copying game or renderer code.
 | `lib/geistdocs/config.tsx` | `defineConfig(...)` wiring the above into geistdocs |
 | `app/[lang]/layout.tsx` | root layout — `Navbar` + `Footer` from `@vercel/geistdocs` |
 | `app/[lang]/(home)/page.tsx` | product overview, capabilities, install, and privacy sections |
-| `app/[lang]/(home)/components/hero.tsx` | wordmark, playable browser Arcade, prism strip, install CTA |
-| `app/[lang]/(home)/components/arcade-playground.tsx` | thin React adapter around `@vercel/arcade/web` |
+| `app/[lang]/(home)/components/hero.tsx` | product introduction, install CTA, and hosted terminal |
+| `app/[lang]/(home)/components/arcade-terminal.tsx` | xterm.js client connected to the isolated Arcade PTY |
+| `app/api/terminal/session` | packages the current CLI, provisions the reusable Sandbox base, and opens temporary PTY sessions |
+| `scripts/prepare-terminal-package.mjs` | packs the current root workspace for the hosted terminal build |
 | `app/[lang]/docs/[[...slug]]` | renderer, TUI, harness, browser-host, and examples documentation |
-| `app/[lang]/(home)/components/prism-terminal.tsx` | client component: `xterm.js` rendering the streamed prism |
-| `app/api/prism-stream/route.ts` | proxies `ascii-prisms.vercel.app`'s stream same-origin (avoids a CORS change to that shared, three-consumer handler) |
 | `app/install/route.ts` | serves `install.sh` verbatim at `/install` (and `/install.sh` via a rewrite) |
 | `public/llms.txt`, `public/llms-full.txt`, `public/agents.md` | agent-readable entry points |
 | `public/examples.json`, `public/schemas/examples-v1.json` | machine-readable example catalog and schema |

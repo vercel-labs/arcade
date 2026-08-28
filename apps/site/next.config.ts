@@ -11,6 +11,9 @@ const root = dirname(dirname(siteRoot));
 const config: NextConfig = {
   turbopack: { root },
   transpilePackages: ['@vercel/arcade'],
+  outputFileTracingIncludes: {
+    '/api/terminal/session': ['./app/api/terminal/session/arcade-package.tgz'],
+  },
   async headers() {
     return [{
       source: '/:path*',

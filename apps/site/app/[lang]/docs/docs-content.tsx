@@ -14,7 +14,7 @@ export const DOCS: DocPage[] = [
     slug: '',
     eyebrow: 'Arcade developer kit',
     title: 'A terminal is a canvas.',
-    summary: 'Use the CPU renderer, retained TUI, game contracts, browser host, and self-play tooling independently—or compose them into a complete agent-playable game.',
+    summary: 'Use the CPU renderer, retained TUI, game contracts, hosted CLI, and self-play tooling independently—or compose them into a complete agent-playable game.',
     sections: [
       {
         heading: 'Choose a layer',
@@ -22,7 +22,7 @@ export const DOCS: DocPage[] = [
           <a href="/docs/engine"><strong>Engine</strong><span>Geometry, camera, materials, rasterization</span></a>
           <a href="/docs/tui"><strong>TUI</strong><span>Layout, components, input, Surface</span></a>
           <a href="/docs/game-harness"><strong>Game harness</strong><span>Rules, models, communication, traces</span></a>
-          <a href="/examples"><strong>Live examples</strong><span>Real imports running in browser canvases</span></a>
+          <a href="/examples"><strong>Live examples</strong><span>Focused renderer and interface specimens</span></a>
         </div>,
       },
       {
@@ -36,10 +36,10 @@ import { BrowserArcade, CanvasSurfaceHost } from '@vercel/arcade/web'`}</Code><N
       },
       {
         heading: 'One-way architecture',
-        body: <><p><code>engine</code> is the reusable CPU graphics layer. <code>tui</code> consumes engine cells and normalized platform input. Rules and AI contracts remain presentation-agnostic. <code>arcade</code> composes those libraries into games. Browser modules import only browser-safe subpaths and never terminal, filesystem, auth, telemetry, or credential code.</p><Code>{`engine ----> tui ---------> terminal host -> ANSI
+        body: <><p><code>engine</code> is the reusable CPU graphics layer. <code>tui</code> consumes engine cells and normalized platform input. Rules and AI contracts remain presentation-agnostic. <code>arcade</code> composes those libraries into games. Browser examples import only browser-safe subpaths, while the homepage connects to the actual packaged CLI in an isolated PTY.</p><Code>{`engine ----> tui ---------> terminal host -> ANSI
    |          |
-   |          +-----------> browser host -> Canvas
-   +----> arcade <---- rules + ai`}</Code><p>Read the <Source path="docs/architecture/0001-browser-native-arcade-host.md">browser-host decision record</Source> before introducing a new host or dependency direction.</p></>,
+   |          +-----------> focused browser examples -> Canvas
+   +----> arcade <---- rules + ai ----> hosted PTY`}</Code><p>Read the <Source path="docs/architecture/0001-hosted-arcade-terminal.md">hosted-terminal decision record</Source> before introducing a new host or credential path.</p></>,
       },
       {
         heading: 'When Arcade fits',
@@ -133,7 +133,7 @@ rasterize(target, flatShade(cube()), lambertMaterial, {
       },
       {
         heading: '5. Composite and flush',
-        body: <><p><code>Surface</code> draws text, wide glyphs, rectangles, clips, alpha backgrounds, and overlays. <code>Screen.frameComposited</code> caches an unchanged scene layer, paints retained UI, and asks <code>CellDiffer</code> for only changed cells. An idle frame writes nothing.</p><p>The canvas host skips ANSI and paints the same cells into browser pixels. This is the portable host boundary, not a second renderer.</p><Source path="src/engine/present-cells.ts" /><Source path="src/engine/surface.ts" /><Source path="src/engine/diff.ts" /></>,
+        body: <><p><code>Surface</code> draws text, wide glyphs, rectangles, clips, alpha backgrounds, and overlays. <code>Screen.frameComposited</code> caches an unchanged scene layer, paints retained UI, and asks <code>CellDiffer</code> for only changed cells. An idle frame writes nothing.</p><p>The native terminal host serializes those changed cells to ANSI. The homepage preserves that entire path by running the actual CLI in a PTY; xterm.js displays the emitted bytes without recreating Arcade’s cells in React.</p><Source path="src/engine/present-cells.ts" /><Source path="src/engine/surface.ts" /><Source path="src/engine/diff.ts" /></>,
       },
       {
         heading: 'Performance checklist',
@@ -302,32 +302,31 @@ pnpm match:run -- --game catan --players=4 --communication=ambient`}</Code><p>Th
   {
     slug: 'browser-host',
     eyebrow: '04 / Host adapter',
-    title: 'Run Arcade without pretending the browser is a terminal.',
-    summary: 'The browser host renders Surface cells into canvas and maps DOM input into Arcade coordinates. No hosted PTY is required.',
+    title: 'Run the actual CLI in the browser.',
+    summary: 'The homepage connects xterm.js to an isolated PTY containing the package; focused examples continue to use browser-safe imports.',
     sections: [
       {
-        heading: 'Use the host',
-        body: <Code>{`import { BrowserArcade, CanvasSurfaceHost } from '@vercel/arcade/web'
+        heading: 'Use the hosted shell',
+        body: <Code>{`$ ls
+README.md  docs  examples
 
-const runtime = new BrowserArcade()
-const host = new CanvasSurfaceHost(canvas, {
-  devicePixelRatio: window.devicePixelRatio
-})
-const frame = runtime.frame(92, 52)
-host.resize(canvas.clientWidth, canvas.clientHeight, 92, 52)
-host.draw(frame.surface)`}</Code>,
+$ cd docs
+$ cat README.md
+
+$ arcade
+# launches the packaged CLI in the same PTY`}</Code>,
       },
       {
         heading: 'What is shared',
-        body: <p>The demo imports real Chess rules, meshes, rasterizer, Lambert material, OrbitCamera, Raycaster, presenters, Surface, and canvas host. The site owns only React lifecycle, DOM events, responsive sizing, labels, and prose. The renderer and rules are not duplicated.</p>,
+        body: <p>The homepage shares the complete CLI: launcher, games, renderer, TUI, key and mouse parsing, model harness, and ANSI output. The site owns only Sandbox lifecycle, xterm sizing, the WebSocket bridge, and surrounding prose. The examples page separately demonstrates browser-safe engine and TUI imports.</p>,
       },
       {
         heading: 'Security boundary',
         body: <p>The public demo is local two-player Chess. It does not embed an AI Gateway key or simulate model responses. Browser AI play needs an authenticated, rate-limited server contract plus explicit telemetry and abuse policy before it can be enabled. Until that exists, the honest blocker is product architecture—not a fake client-side agent.</p>,
       },
       {
-        heading: 'Why not a hosted PTY',
-        body: <><p>A hosted PTY adds durable process lifecycle, WebSocket tenancy, abuse controls, and server compute for work that can happen locally. It also hides the reusable boundary from developers and makes docs examples depend on remote state.</p><Source path="docs/architecture/0001-browser-native-arcade-host.md">ADR 0001</Source></>,
+        heading: 'Isolation and credentials',
+        body: <><p>Each visitor receives a temporary Sandbox fork. The shell and Arcade process use separate unprivileged users. The real Gateway credential stays in the Sandbox network policy; the process sees only a random placeholder, and telemetry is disabled. General shell egress is denied.</p><Source path="docs/architecture/0001-hosted-arcade-terminal.md">ADR 0001</Source></>,
       },
     ],
   },
@@ -339,7 +338,7 @@ host.draw(frame.surface)`}</Code>,
     sections: [
       {
         heading: 'Run the live gallery',
-        body: <><p><a href="/examples">Open interactive examples</a> for a rotating CPU-rendered scene and retained TUI specimen. Both import <code>@vercel/arcade</code> subpaths; neither redraws Arcade visuals as CSS or React.</p><div className="example-grid"><Example glyph="◢" title="Mesh + material" text="Camera, geometry, Lambert shading, rasterization, and all three presenters." /><Example glyph="▦" title="Retained HUD" text="Theme, layout, table, buttons, state, and Surface compositing." /><Example glyph="♟" title="Playable Chess" text="Rules, picking, camera, board state, restart, resize, and terminal states." /><Example glyph="⌁" title="Prism stream" text="A separate curl-able deploy built from the same engine closure." /></div></>,
+        body: <><p><a href="/examples">Open interactive examples</a> for a rotating CPU-rendered scene, retained TUI specimen, and the prism stream. They import <code>@vercel/arcade</code> subpaths without pretending to be the complete app; the live shell on the homepage is the complete app.</p><div className="example-grid"><Example glyph="◢" title="Mesh + material" text="Camera, geometry, Lambert shading, rasterization, and all three presenters." /><Example glyph="▦" title="Retained HUD" text="Theme, layout, table, buttons, state, and Surface compositing." /><Example glyph="⌁" title="Prism stream" text="A separate curl-able deploy built from the same engine closure." /><Example glyph="$" title="Hosted CLI" text="Actual package, Linux shell, docs filesystem, and temporary PTY session." /></div></>,
       },
       {
         heading: 'Production systems to study',

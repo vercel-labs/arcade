@@ -177,7 +177,6 @@ export class BrowserArcade {
     surface.fillRect(0, 0, this.cols, this.rows, BLACK_RGB);
     const center = Math.floor(this.cols / 2);
     drawCentered(surface, 4, 'ARCADE', [242, 244, 250], STYLE_BOLD);
-    drawCentered(surface, 6, 'the terminal is the canvas', MUTED);
     const cardW = Math.min(34, this.cols - 8);
     const cardH = Math.min(14, this.rows - 16);
     const x = center - Math.floor(cardW / 2);
@@ -186,9 +185,9 @@ export class BrowserArcade {
     surface.fillRect(x, y, cardW, 1, [73, 81, 105]);
     surface.fillRect(x, y + cardH - 1, cardW, 1, [40, 45, 60]);
     drawCentered(surface, y + 4, 'CHESS', [235, 223, 198], STYLE_BOLD);
-    drawCentered(surface, y + 7, 'local two-player', MUTED);
-    drawCentered(surface, y + cardH - 3, '[ click or press enter ]', CYAN, STYLE_BOLD);
-    drawCentered(surface, this.rows - 4, 'real rules · CPU 3D · no credentials', MUTED, STYLE_DIM);
+    drawCentered(surface, y + 7, 'two-player preview', MUTED);
+    drawCentered(surface, y + cardH - 3, '[ press enter ]', CYAN, STYLE_BOLD);
+    drawCentered(surface, this.rows - 4, 'enter select · d display · r reset', MUTED, STYLE_DIM);
     return { surface, screen: this.screen, displayMode: this.displayMode, status: 'Choose Chess' };
   }
 
