@@ -1,61 +1,60 @@
 # Arcade site
 
-The front door for the `@vercel/arcade` CLI: a one-page landing/docs page and the
+The front door for the `@vercel/arcade` CLI: the hero page and the
 `curl … | sh` installer it points at.
 
 ```
 curl -fsSL vercel-arcade.vercel.app/install | sh
 ```
 
+A Next.js app built on **[`@vercel/geistdocs`](https://github.com/vercel/geistdocs)** —
+the shared package behind vgpu.sh, skills.sh, and other Vercel OSS sites — for the
+"▲ OSS / product ▾" nav (with the cross-product flyout) and the Vercel-wide footer.
+Only the minimal shell is adopted: `Navbar` + `Footer` + a hero page, none of
+geistdocs' MDX docs/i18n-content/AI-chat machinery, since there's no docs corpus to
+manage yet. A real `/docs` section can adopt that later.
+
+It's its own [pnpm workspace root](pnpm-workspace.yaml) (own lockfile,
+own `node_modules`) nested inside the arcade repo, fully decoupled from the CLI's
+own dependency graph — `pnpm install`/`pnpm build` here never touches the root
+`@vercel/arcade` package or its published `files`.
+
 ## Layout
 
-| File | What it is |
+| Path | What it is |
 | -- | -- |
-| `index.html` | the whole page — inline CSS/JS, no external requests, no images |
-| `install.sh` | the installer, served verbatim at `/install` (and `/install.sh`) |
-| `build.mjs` | writes the static `.vercel/output` tree (Build Output API v3) |
+| `geistdocs.tsx` | product config: logo, nav links, GitHub repo, title |
+| `lib/geistdocs/config.tsx` | `defineConfig(...)` wiring the above into geistdocs |
+| `app/[lang]/layout.tsx` | root layout — `Navbar` + `Footer` from `@vercel/geistdocs` |
+| `app/[lang]/(home)/page.tsx` | the hero page + the old README-style content sections |
+| `app/[lang]/(home)/components/hero.tsx` | wordmark, tagline, the streamed prism, install CTA |
+| `app/[lang]/(home)/components/prism-terminal.tsx` | client component: `xterm.js` rendering the streamed prism |
+| `app/api/prism-stream/route.ts` | proxies `ascii-prisms.vercel.app`'s stream same-origin (avoids a CORS change to that shared, three-consumer handler) |
+| `app/install/route.ts` | serves `install.sh` verbatim at `/install` (and `/install.sh` via a rewrite) |
+| `install.sh` | the installer itself — unchanged, still checks Node 20+ then runs `npm i -g @vercel/arcade` |
 
-The installer is deliberately thin: it checks for Node 20+, then runs
-`npm i -g @vercel/arcade@latest`. The "here's how to run it" banner comes from the
-package's own postinstall ([src/arcade/install-banner.ts](../../src/arcade/install-banner.ts)),
-so install-time output lives in exactly one place.
+The `[lang]` segment is geistdocs' routing convention; only `en` is configured
+(`translations` in `geistdocs.tsx`) — there's no real i18n content here.
 
-Because Arcade is a private `@vercel` package, the installer cannot supply registry
-auth — it detects npm's 401/403/404 and points at `npm login --scope=@vercel`.
-
-## Preview
-
-`index.html` is self-contained, so opening the file is the preview:
+## Dev
 
 ```bash
-open apps/site/index.html
+cd apps/site
+pnpm install
+pnpm dev      # http://localhost:3000
+pnpm build && pnpm start   # production build
 ```
 
 ## Deploy
 
-Live at **https://vercel-arcade.vercel.app** (also `vercel-arcade.labs.vercel.dev`, the
-team's deployment suffix). Its own Vercel project — `vercel-arcade` in **vercel-labs**,
-separate from `ascii-prisms` (the curl prism) and the telemetry proxy.
+Live at **https://vercel-arcade.vercel.app** (also `vercel-arcade.labs.vercel.dev`).
+Project `vercel-arcade` in **vercel-labs**, Root Directory `apps/site`, framework
+auto-detected as Next.js — no custom build/install command needed anymore.
+`vercel.json`'s `ignoreCommand` still skips the build unless something under
+`apps/site` changed. Git-connected to `vercel-labs/arcade`, so a push to `main`
+deploys.
 
-- **Root Directory:** `apps/site`. Nothing outside it is read, so "Include source files
-  outside of the Root Directory" stays off.
-- **Build:** this directory's `vercel.json` runs `build.mjs` with install skipped (zero
-  deps). Its `ignoreCommand` skips the build unless something under `apps/site` changed.
-- **Git:** connected to `vercel-labs/arcade`, so a push to `main` deploys.
-- **Domain:** `arcade.vercel.app` is taken by an unrelated project, so the project is
-  named for the host it claims. The URL is written in `index.html` and in `install.sh`'s
-  header comment — change both if the domain ever moves.
-
-For a manual deploy, run from the **repo root** (not this directory) and let Vercel build:
-
-```bash
-VERCEL_ORG_ID=team_nO2mCG4W8IxPIeKoSsqwAxxB \
-VERCEL_PROJECT_ID=prj_18Xs1G6aSWGBVtCEb3x3zi53gwTQ \
-  vercel deploy --prod --scope vercel-labs
-```
-
-The env vars aim the repo-root checkout (linked to `ascii-prisms`) at this project. Two
-traps make `--prebuilt` the wrong tool here: the CLI resolves the Root Directory relative
-to the working directory, so running it from `apps/site` looks for `apps/site/apps/site`;
-and running it from the repo root uploads the root `.vercel/output` — the prism's build —
-instead of this one.
+`turbopack.root` in `next.config.ts` pins the project root explicitly: Next's
+root-detection walks up looking for lockfiles, finds the outer arcade repo's too,
+and Turbopack then resolves paths against the wrong root and panics on a symlink
+that only makes sense from there. Don't remove it.

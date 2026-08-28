@@ -1,0 +1,15 @@
+@import "tailwindcss";
+@import "fumadocs-ui/css/shadcn.css";
+@import "fumadocs-ui/css/preset.css";
+@import "tw-animate-css";
+@import "@vercel/geistdocs/theme.css";
+
+@layer base {
+  body {
+    @apply bg-background-200 text-gray-1000;
+  }
+
+  :root {
+    --font-sans: var(--font-geist-sans);
+  }
+}
