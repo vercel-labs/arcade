@@ -128,10 +128,15 @@ Test the exact handler locally: `pnpm exec tsx src/tools/serve-prism.ts` then
 
 Three separate Vercel projects live in this repo, all in **vercel-labs**: `ascii-prisms`
 (the curl prism, root `vercel.json`), `arcade-telemetry` (`apps/telemetry-proxy`), and
-`vercel-arcade` — the landing page + `curl … | sh` installer at
+`vercel-arcade` — the hero page + `curl … | sh` installer at
 [vercel-arcade.vercel.app](https://vercel-arcade.vercel.app) (`apps/site`, root directory
-`apps/site`, static output, deploys on push to `main`). Deploy notes, including why
-`--prebuilt` is the wrong tool for that one, are in
+`apps/site`, Next.js on [`@vercel/geistdocs`](https://github.com/vercel/geistdocs) —
+the shared nav/footer package behind vgpu.sh and skills.sh — deploys on push to `main`).
+It's its own nested pnpm workspace (own lockfile, own `node_modules`, `pnpm install`
+run from inside `apps/site`) so its dependency graph never touches the CLI's own
+published package. The hero's centerpiece streams the same rendered prism as
+`ascii-prisms.vercel.app` through a same-origin proxy route into `xterm.js`, rather
+than duplicating any `engine/`-driven rendering inside the site. Deploy notes are in
 [apps/site/README.md](apps/site/README.md).
 
 After a **global** npm install the package prints a banner with the run command
