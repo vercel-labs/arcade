@@ -5,9 +5,8 @@ export interface RealtimeModelInfo {
   name: string;
   creator: string;
   creatorName: string;
-  // Only routable on early-access teams. On other teams the gateway rejects the realtime
-  // WebSocket upgrade with HTTP 400, so these are hidden from the picker unless early
-  // access is unlocked (see availableRealtimeModels).
+  // Only routable on early-access teams. This flag governs the offline fallback;
+  // signed-in Arcade setup uses Gateway's team-aware model eligibility instead.
   earlyAccess?: boolean;
 }
 
@@ -20,9 +19,8 @@ export const REALTIME_MODELS: readonly RealtimeModelInfo[] = [
 
 export const DEFAULT_REALTIME_MODEL_ID = REALTIME_MODELS[0].id;
 
-// The realtime models to OFFER in a picker. Early-access-only models 400 at the WebSocket
-// handshake on teams without access, so they're excluded unless early access is unlocked.
-// Interim gate until a per-team availability signal (a /v1/models access check) exists.
+// The realtime models to offer when a live team-aware catalog cannot be loaded.
+// Early-access-only models stay out of that fallback unless explicitly unlocked.
 export function availableRealtimeModels(includeEarlyAccess: boolean): readonly RealtimeModelInfo[] {
   return includeEarlyAccess ? REALTIME_MODELS : REALTIME_MODELS.filter((m) => !m.earlyAccess);
 }

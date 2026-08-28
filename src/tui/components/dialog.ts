@@ -13,17 +13,17 @@ import type { Dimension, Node, Style } from '../types.ts';
 
 const CLOSE_GLYPH = '✕';
 const BACK_GLYPH = '←';
-const TITLE_FG: ColorToken = [222, 224, 234];
-const CARD_BG: ColorToken = [22, 24, 32];
+const TITLE_FG: ColorToken = 'textStrong';
+const CARD_BG: ColorToken = 'surfaceChrome';
 
 // The understated close ✕: a muted glyph that just brightens to white on
 // hover/focus/press — no background fill. One definition, shared everywhere.
 const CLOSE_STYLE: Style = {
   padding: [0, 1],
-  color: [150, 154, 166],
-  hover: { color: [255, 255, 255] },
-  focus: { color: [255, 255, 255] },
-  pressed: { color: [255, 255, 255] },
+  color: 'tooltipMuted',
+  hover: { color: 'controlPressedBg' },
+  focus: { color: 'controlPressedBg' },
+  pressed: { color: 'controlPressedBg' },
 };
 
 // A close button. `style` shallow-overrides the default (e.g. to add a margin).

@@ -1,4 +1,6 @@
 import type { GameState } from '../rules/game.ts';
+import type { Communication } from './communication/types.ts';
+import type { CommunicationOpportunity } from './communication/moments.ts';
 
 // Privacy-safe diagnostics for one model-generation attempt. Deliberately no raw
 // reply, prompt, rationale, or error message lives here: callers may persist this
@@ -37,6 +39,8 @@ export interface DecisionDiagnostics {
 export interface ActionChoice<A> {
   action: A;
   rationale?: string;
+  /** Structured public-speech proposal. Hosts may suppress it before display. */
+  communication?: Communication;
   /** Optional so simple/search/realtime Player implementations remain lightweight. */
   diagnostics?: DecisionDiagnostics;
 }
@@ -76,4 +80,11 @@ export interface Player<A> {
    * ignore it; `ctx.signal` aborts an in-flight decision.
    */
   chooseAction(state: GameState<A>, ctx?: TurnContext): Promise<ActionChoice<A>>;
+  /** Optional communication-only reaction; it never selects or applies a game action. */
+  chooseCommunication?(input: {
+    opportunity: CommunicationOpportunity;
+    gameView: string;
+    conversation: string;
+    signal?: AbortSignal;
+  }): Promise<Communication | undefined>;
 }

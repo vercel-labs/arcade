@@ -4,6 +4,8 @@
 // faces don't z-fight, so a card reads as double-sided as it turns.
 
 import {
+  BufferGeometry,
+  clamp01,
   coverMaterial,
   type Mat4,
   mat4Identity,
@@ -16,6 +18,7 @@ import {
   normalize3,
   quad,
   rasterize,
+  smoothstep,
   type RenderTarget,
   type Texture,
   type Vec3,
@@ -119,16 +122,16 @@ export interface PeekPose {
   az: number; // camera azimuth, so a lifted card yaws to keep its face to the hero
 }
 
-const ease = (x: number): number => {
-  const t = x < 0 ? 0 : x > 1 ? 1 : x;
-  return t * t * (3 - 2 * t);
-};
-
 // The reveal → (curl, stand-up, lift) breakdown, shared by the renderer and the
 // pick helper so the picked center always matches where the card is drawn.
 function peekParams(pose: PeekPose): { phi: number; kappa: number; yaw: number; liftY: number; liftZ: number } {
-  const liftF = ease((pose.reveal - pose.peek) / (1 - pose.peek)); // 0 through the peek, ramps 0→1 as it lifts
-  const peekF = ease(pose.reveal / pose.peek); // 0→1 across the peek
+  // `reveal` is already spring-driven, so keep the peek↔upright pose blend linear.
+  // Applying another smoothstep here made the card almost pause at the peek, surge
+  // through the middle of the lift, then brake sharply; lowering it repeated the
+  // same speed spike in reverse. The spring supplies the easing while this mapping
+  // only describes the card's continuous shape.
+  const liftF = clamp01((pose.reveal - pose.peek) / (1 - pose.peek)); // 0 through the peek, ramps 0→1 as it lifts
+  const peekF = smoothstep(pose.reveal / pose.peek); // 0→1 across the peek
   return {
     phi: (Math.PI / 2) * liftF, // uniform stand-up: 0 flat → 90° upright
     kappa: BEND_MAX * peekF * (1 - liftF), // curl peaks at the peek, relaxes as the card stands up
@@ -146,7 +149,7 @@ function peekParams(pose: PeekPose): { phi: number; kappa: number; yaw: number; 
 // synchronously and never retains it, so a single scratch per topology is safe to reuse
 // across every card in a frame. `zC`/`yC` are the reused centerline-march scratch.
 interface StripScratch {
-  mesh: Mesh;
+  mesh: BufferGeometry;
   zC: number[];
   yC: number[];
 }
@@ -162,7 +165,7 @@ function makeStrip(segs: number): StripScratch {
     const a = i * 2;
     indices.push(a, a + 1, a + 3, a, a + 3, a + 2);
   }
-  return { mesh: { vertices, indices }, zC: new Array(segs + 1), yC: new Array(segs + 1) };
+  return { mesh: new BufferGeometry(vertices, indices), zC: new Array(segs + 1), yC: new Array(segs + 1) };
 }
 
 // Build the bent card as a strip of `BEND_SEGS` quads in world space (positions and
@@ -224,7 +227,7 @@ function bentSheet(pose: PeekPose, side: 1 | -1): Mesh {
       vtx.uv[1] = v;
     }
   }
-  return bendScratch.mesh;
+  return bendScratch.mesh.markNeedsUpdate();
 }
 
 // Draw a hand card as a bent, double-sided strip for the whole peek→lift range. At
@@ -403,7 +406,7 @@ function archSheet(place: ArchPlace, side: 1 | -1): Mesh {
       vtx.uv[1] = v;
     }
   }
-  return archScratch.mesh;
+  return archScratch.mesh.markNeedsUpdate();
 }
 
 // Draw a double-sided card bent per `place` (curl/dome/depth), centered at (x,y,z) and

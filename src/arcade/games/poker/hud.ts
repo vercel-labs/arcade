@@ -4,7 +4,7 @@
 // Shuffle / Deal (deck). Mirrors the chess HUD's shape: persistent component
 // instances mounted via Slot, rebuilt into a full-screen tree each frame.
 
-import { Box, Button, Dropdown, type LayoutBox, type Node, type Screen, Slot, type Style, Text } from '../../../tui/index.ts';
+import { Box, Dropdown, Field, FilledButton, type LayoutBox, type Node, type Screen, Slot } from '../../../tui/index.ts';
 import { type Card, RANK_LABELS, type Suit, SUIT_NAMES } from '../../../rules/poker/cards.ts';
 import type { CardsMode } from './cards-scene.ts';
 
@@ -49,31 +49,17 @@ export function pokerMode(): CardsMode {
   return MODES[modeDropdown.index < 0 ? 0 : modeDropdown.index];
 }
 
-const BTN: Style = {
-  padding: [0, 2],
-  background: [44, 46, 56],
-  color: [212, 214, 224],
-  bold: true,
-  hover: { background: [238, 240, 248], color: [16, 16, 24] },
-  focus: { background: [86, 90, 108], color: [248, 248, 252] },
-  pressed: { background: [255, 255, 255], color: [12, 12, 18] },
-};
-
-function labeled(label: string, node: Node): Node {
-  return Box({ flexDirection: 'column', gap: 0 }, [Text({ text: label, style: { color: 'muted' } }), node]);
-}
-
 // The mode-specific control cluster inside the panel.
 function controls(mode: CardsMode): Node[] {
   if (mode === 'single') {
-    return [labeled('Suit', Slot('poker-suit')), labeled('Rank', Slot('poker-rank'))];
+    return [Field({ label: 'Suit', child: Slot('poker-suit') }), Field({ label: 'Rank', child: Slot('poker-rank') })];
   }
   if (mode === 'deck') {
     return [
-      labeled('Players', Slot('poker-players')),
+      Field({ label: 'Players', child: Slot('poker-players') }),
       Box({ flexDirection: 'row', gap: 2 }, [
-        Button({ id: 'poker-shuffle', label: 'shuffle', onClick: () => H?.onShuffle(), style: BTN }),
-        Button({ id: 'poker-deal', label: 'deal', onClick: () => H?.onDeal(), style: BTN }),
+        FilledButton({ id: 'poker-shuffle', label: 'shuffle', onClick: () => H?.onShuffle() }),
+        FilledButton({ id: 'poker-deal', label: 'deal', onClick: () => H?.onDeal() }),
       ]),
     ];
   }
@@ -86,7 +72,7 @@ export function buildPokerRoot(region: LayoutBox, bar: Node): Node {
   const mode = pokerMode();
   const panel = Box(
     { flexDirection: 'column', gap: 1, padding: [1, 2], background: [16, 18, 26, 0.9] },
-    [labeled('Mode', Slot('poker-mode')), ...controls(mode)],
+    [Field({ label: 'Mode', child: Slot('poker-mode') }), ...controls(mode)],
   );
   return Box({ width: region.w, height: region.h, flexDirection: 'column' }, [
     Box({ flexDirection: 'row', padding: [1, 0, 0, 2] }, [panel]),

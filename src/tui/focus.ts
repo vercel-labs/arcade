@@ -6,7 +6,8 @@ import type { Node } from './types.ts';
 export function focusOrder(root: Node): Node[] {
   const out: Node[] = [];
   const walk = (n: Node): void => {
-    if (n.focusable && n.id) out.push(n);
+    // Disabled controls are skipped, like DOM tab order.
+    if (n.focusable && n.id && !n.disabled) out.push(n);
     for (const c of n.children ?? []) walk(c);
   };
   walk(root);

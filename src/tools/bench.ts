@@ -1,98 +1,253 @@
-// Headless per-stage benchmark for the chess scene. Drives the real render +
-// present pipeline (no TTY) and reports where per-frame time actually goes, so
-// optimization targets the dominant layer instead of guessing.
+// Headless benchmark for the real Arcade render -> Surface -> diff pipeline.
+// It intentionally avoids a TTY, making mode/scene comparisons reproducible:
 //
-//   pnpm exec tsx src/tools/bench.ts [cols] [rows] [frames]
-import { downsample, RenderTarget, toHalfBlock, toLuminance, toShapeGlyph } from '../engine/index.ts';
+//   pnpm bench [scene|all] [cols] [rows] [frames] [mode|all]
+//
+// Examples:
+//   pnpm bench all 140 50 60 all
+//   pnpm bench catan 200 60 100 pixels
+//   pnpm bench catan-dice 700 210 35 pixels
+
+import {
+  applyTerminalColorMode,
+  CellDiffer,
+  downsample,
+  halfBlockLayerToSurface,
+  halfBlockToSurface,
+  mulberry32,
+  RenderTarget,
+  shapeGlyphToSurface,
+  shapeGlyphLayerToSurface,
+  ShapeGlyphSurfaceCache,
+  Surface,
+} from '../engine/index.ts';
+import { PrismScene } from '../prism/index.ts';
 import { ChessGameScene } from '../arcade/games/chess/scene.ts';
+import { PokerGameScene, type PokerSeatView } from '../arcade/games/poker/poker-scene.ts';
+import { TileScene } from '../arcade/games/catan/tile-scene.ts';
+import { LogosScene } from '../arcade/scenes/logos-scene.ts';
+import { supersampleForViewport } from '../arcade/render-quality.ts';
+import { HoldemState } from '../rules/poker/holdem.ts';
 
-const cols = Number(process.argv[2]) || 140;
-const rows = Number(process.argv[3]) || 50;
-const FRAMES = Number(process.argv[4]) || 200;
-const SS = Number(process.argv[5]) || 3;
-const presentRows = rows - 2; // mirrors PRISM_RESERVE in main.ts
+type BenchMode = 'ascii' | 'pixels' | 'hybrid';
+type BenchScene = 'prism' | 'logos' | 'chess' | 'poker-idle' | 'poker-hand' | 'catan' | 'catan-dice';
 
-const target = new RenderTarget(cols * SS, presentRows * 2 * SS);
-const scene = new ChessGameScene();
+interface SceneDriver {
+  render(target: RenderTarget, t: number): void;
+  hasForeground?(): boolean;
+}
 
-// ── timing helper ────────────────────────────────────────────────────────────
 interface Stat {
-  label: string;
   samples: number[];
 }
-function stat(label: string): Stat {
-  return { label, samples: [] };
-}
-function time(s: Stat, fn: () => void): void {
-  const t0 = performance.now();
-  fn();
-  s.samples.push(performance.now() - t0);
-}
-function report(s: Stat, extra = ''): void {
-  const xs = [...s.samples].sort((a, b) => a - b);
-  const med = xs[xs.length >> 1];
-  const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
-  const p95 = xs[Math.floor(xs.length * 0.95)];
-  console.log(
-    `${s.label.padEnd(22)} med ${med.toFixed(3)}ms  mean ${mean.toFixed(3)}ms  p95 ${p95.toFixed(3)}ms${extra}`,
-  );
-}
 
-// ── stages ───────────────────────────────────────────────────────────────────
-const sRender = stat('render (rasterize)');
-const sAscii = stat('present ascii(glyph)');
-const sLum = stat('present luminance');
-const sDown = stat('downsample (SS=3)');
-const sHalf = stat('present halfblock');
+const ALL_SCENES: BenchScene[] = ['prism', 'logos', 'chess', 'poker-idle', 'poker-hand', 'catan'];
+const BENCH_SCENES: BenchScene[] = [...ALL_SCENES, 'catan-dice'];
+const ALL_MODES: BenchMode[] = ['ascii', 'pixels', 'hybrid'];
+const sceneArg = process.argv[2] ?? 'all';
+const cols = positiveInt(process.argv[3], 140);
+const rows = positiveInt(process.argv[4], 50);
+const frames = positiveInt(process.argv[5], 60);
+const modeArg = process.argv[6] ?? 'all';
 
-let sink = 0; // defeat dead-code elimination
-let asciiBytes = 0;
-let halfBytes = 0;
-let display: ReturnType<typeof downsample> | undefined;
+const scenes = sceneArg === 'all' ? ALL_SCENES : [parseChoice(sceneArg, BENCH_SCENES, 'scene')];
+const modes = modeArg === 'all' ? ALL_MODES : [parseChoice(modeArg, ALL_MODES, 'mode')];
 
-// warmup (JIT)
-for (let i = 0; i < 20; i++) {
-  scene.renderScene(target);
-  sink += toShapeGlyph(target, cols, presentRows, { color: true }).length;
+function positiveInt(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-for (let i = 0; i < FRAMES; i++) {
-  time(sRender, () => scene.renderScene(target));
-
-  time(sAscii, () => {
-    const out = toShapeGlyph(target, cols, presentRows, { color: true });
-    asciiBytes = out.length;
-    sink += out.length;
-  });
-
-  time(sLum, () => {
-    const out = toLuminance(target, cols, presentRows, { color: true });
-    sink += out.length;
-  });
-
-  time(sDown, () => {
-    display = downsample(target, SS, display);
-  });
-  time(sHalf, () => {
-    const out = toHalfBlock(display!);
-    halfBytes = out.length;
-    sink += out.length;
-  });
+function parseChoice<T extends string>(value: string, choices: readonly T[], label: string): T {
+  if ((choices as readonly string[]).includes(value)) return value as T;
+  throw new Error(`unknown ${label} "${value}"; expected ${choices.join(', ')}, or all`);
 }
 
-// ── triangle / fill stats ──────────────────────────────────────────────────
-console.log(`\nchess scene @ ${cols}x${rows}  (RT ${target.width}x${target.height} px, SS=${SS})  ${FRAMES} frames`);
-console.log('─'.repeat(72));
-report(sRender);
-console.log('  ── present, per mode (pick ONE per frame) ──');
-report(sAscii, `   out ${(asciiBytes / 1024).toFixed(1)}KB/frame`);
-report(sLum);
-report(sDown);
-report(sHalf, `   out ${(halfBytes / 1024).toFixed(1)}KB/frame (after downsample)`);
-console.log('─'.repeat(72));
-const medRender = [...sRender.samples].sort((a, b) => a - b)[sRender.samples.length >> 1];
-const medAscii = [...sAscii.samples].sort((a, b) => a - b)[sAscii.samples.length >> 1];
-const frameAscii = medRender + medAscii;
-console.log(`ASCII frame total (render+present): ${frameAscii.toFixed(3)}ms  →  ${(1000 / frameAscii).toFixed(0)} fps headroom`);
-console.log(`budget @30fps = 33.3ms;  @60fps = 16.7ms`);
-console.log(`sink=${sink}`); // keep
+function stat(): Stat {
+  return { samples: [] };
+}
+
+function timed<T>(s: Stat, fn: () => T): T {
+  const start = performance.now();
+  const result = fn();
+  s.samples.push(performance.now() - start);
+  return result;
+}
+
+function percentile(s: Stat, p: number): number {
+  const sorted = [...s.samples].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] ?? 0;
+}
+
+function median(s: Stat): number {
+  return percentile(s, 0.5);
+}
+
+function formatStat(label: string, s: Stat): string {
+  const mean = s.samples.reduce((sum, sample) => sum + sample, 0) / Math.max(1, s.samples.length);
+  return `${label.padEnd(12)} ${median(s).toFixed(2)}ms med  ${mean.toFixed(2)}ms mean  ${percentile(s, 0.95).toFixed(2)}ms p95`;
+}
+
+function pokerSeats(): PokerSeatView[] {
+  return [
+    { kind: 'human', label: 'You' },
+    { kind: 'ai', label: 'AI 2' },
+    { kind: 'ai', label: 'AI 3' },
+    { kind: 'ai', label: 'AI 4' },
+  ];
+}
+
+function createScene(name: BenchScene): SceneDriver {
+  if (name === 'prism') {
+    const scene = new PrismScene();
+    return { render: (target, t) => scene.renderScene(target, t) };
+  }
+  if (name === 'logos') {
+    const scene = new LogosScene();
+    return { render: (target, t) => scene.renderScene(target, t) };
+  }
+  if (name === 'chess') {
+    const scene = new ChessGameScene();
+    return { render: (target, t) => scene.renderScene(target, t) };
+  }
+  if (name === 'poker-idle') {
+    const scene = new PokerGameScene();
+    return { render: (target, t) => scene.renderScene(target, t) };
+  }
+  if (name === 'poker-hand') {
+    const scene = new PokerGameScene();
+    const seats = pokerSeats();
+    scene.beginSession(seats);
+    scene.beginHand(new HoldemState({
+      stacks: seats.map(() => 1_000),
+      button: 0,
+      smallBlind: 10,
+      bigBlind: 20,
+      rng: mulberry32(0x90ce7),
+    }));
+    return { render: (target, t) => scene.renderScene(target, t) };
+  }
+  const scene = new TileScene();
+  scene.setMode('board');
+  scene.seedDemo();
+  scene.settle();
+  if (name === 'catan-dice') scene.rollDice();
+  return {
+    render: (target, t) => scene.renderScene(target, t),
+    hasForeground: name === 'catan-dice' ? () => scene.hasForegroundSceneLayer() : undefined,
+  };
+}
+
+function run(name: BenchScene, mode: BenchMode): void {
+  const ss = supersampleForViewport(mode, cols, rows);
+  const target = new RenderTarget(cols * ss, rows * 2 * ss);
+  const scene = createScene(name);
+  const surface = new Surface(cols, rows);
+  const differ = new CellDiffer();
+  const catanScene = name === 'catan' || name === 'catan-dice';
+  const glyphCache = catanScene ? new ShapeGlyphSurfaceCache() : undefined;
+  const render = stat();
+  const present = stat();
+  const diff = stat();
+  const ansi256 = stat();
+  const total = stat();
+  let display: RenderTarget | undefined;
+  let bytes = 0;
+  let sink = 0;
+
+  const frame = (index: number, measured: boolean): void => {
+    const start = performance.now();
+    const t = index / 30;
+    if (measured) timed(render, () => scene.render(target, t));
+    else scene.render(target, t);
+
+    surface.clear();
+    if (measured) {
+      timed(present, () => {
+        if (mode === 'pixels') {
+          display = downsample(target, ss, display);
+          halfBlockToSurface(surface, display);
+          if (scene.hasForeground?.() && display) {
+            halfBlockLayerToSurface(surface, display);
+          }
+        } else {
+          shapeGlyphToSurface(
+            surface,
+            target,
+            cols,
+            rows,
+            {
+              coloredBackground: mode === 'hybrid',
+              blankOutsideDepthBounds: catanScene && !scene.hasForeground?.(),
+            },
+            0,
+            0,
+            glyphCache,
+          );
+          if (scene.hasForeground?.()) {
+            shapeGlyphLayerToSurface(
+              surface,
+              target,
+              cols,
+              rows,
+              { coloredBackground: mode === 'hybrid' },
+            );
+          }
+        }
+      });
+    } else if (mode === 'pixels') {
+      display = downsample(target, ss, display);
+      halfBlockToSurface(surface, display);
+      if (scene.hasForeground?.() && display) {
+        halfBlockLayerToSurface(surface, display);
+      }
+    } else {
+      shapeGlyphToSurface(
+        surface,
+        target,
+        cols,
+        rows,
+        {
+          coloredBackground: mode === 'hybrid',
+          blankOutsideDepthBounds: catanScene && !scene.hasForeground?.(),
+        },
+        0,
+        0,
+        glyphCache,
+      );
+      if (scene.hasForeground?.()) {
+        shapeGlyphLayerToSurface(
+          surface,
+          target,
+          cols,
+          rows,
+          { coloredBackground: mode === 'hybrid' },
+        );
+      }
+    }
+
+    const output = measured ? timed(diff, () => differ.diff(surface)) : differ.diff(surface);
+    if (measured) {
+      const converted = timed(ansi256, () => applyTerminalColorMode(output, '256-color'));
+      bytes = output.length;
+      sink += converted.length;
+      total.samples.push(performance.now() - start);
+    }
+  };
+
+  for (let i = 0; i < 10; i++) frame(i, false);
+  differ.reset();
+  for (let i = 0; i < frames; i++) frame(i + 10, true);
+
+  const med = median(total);
+  console.log(`\n${name} / ${mode} @ ${cols}x${rows}  RT ${target.width}x${target.height}  SS${ss}`);
+  console.log(formatStat('render', render));
+  console.log(formatStat('present', present));
+  console.log(formatStat('diff', diff));
+  console.log(formatStat('256-color', ansi256));
+  console.log(`${formatStat('frame', total)}  ${(1000 / med).toFixed(0)} fps headroom  ${(bytes / 1024).toFixed(1)} KiB last diff`);
+  if (sink < 0) console.log(sink);
+}
+
+console.log(`Arcade render benchmark: ${frames} measured frames after 10 warmup frames`);
+for (const scene of scenes) for (const mode of modes) run(scene, mode);

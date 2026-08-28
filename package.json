@@ -2,6 +2,7 @@
   "name": "@vercel/arcade",
   "version": "0.1.3",
   "type": "module",
+  "packageManager": "pnpm@10.34.5",
   "description": "Terminal-rendered ASCII arcade \u2014 3D games in the terminal, powered by Vercel AI Gateway",
   "engines": {
     "node": ">=20"
@@ -10,12 +11,19 @@
     "dev": "ARCADE_DEV=1 tsx src/arcade/main.ts",
     "snapshot": "ARCADE_DEV=1 tsx src/tools/snapshot.ts",
     "snapshot:png": "sh scripts/snapshot-png.sh",
+    "bench": "node --import tsx src/tools/bench.ts",
+    "catan:check": "ARCADE_DEV=1 tsx src/tools/catan-render-check.ts",
+    "catan:self-play": "node --import tsx src/tools/catan-self-play.ts",
+    "match:run": "ARCADE_TELEMETRY=0 node --import tsx src/tools/match-lab.ts",
+    "match:comms": "node --import tsx src/tools/match-lab/communication-report.ts",
     "models:audit": "tsx src/tools/model-compat-report.ts",
+    "models:game-audit": "ARCADE_TELEMETRY=0 node --import tsx src/tools/model-game-audit.ts",
     "models:report": "tsx src/tools/model-compat-view.ts",
     "build:vercel": "node scripts/build-vercel-output.mjs",
     "watch": "ARCADE_DEV=1 tsx watch src/arcade/main.ts",
     "type-check": "tsc --noEmit",
-    "test": "node --import tsx --test '{src,apps}/**/*.test.ts'"
+    "test": "node --import tsx --test '{src,apps}/**/*.test.ts'",
+    "postinstall": "node scripts/postinstall.mjs"
   },
   "devDependencies": {
     "@types/node": "22.10.5",
@@ -43,6 +51,7 @@
   },
   "files": [
     "bin",
+    "scripts/postinstall.mjs",
     "assets",
     "src",
     "!src/tools",

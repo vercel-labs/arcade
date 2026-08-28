@@ -14,6 +14,8 @@ import {
   FONT,
   type Mat4,
   mat4MulVec4,
+  hash2,
+  mulberry32,
   quad,
   rasterize,
   type RenderTarget,
@@ -301,18 +303,6 @@ export function creatorTint(creator: string): Vec3 {
   return tint;
 }
 
-// Small deterministic PRNG so ember motion is reproducible across snapshots.
-export function mulberry32(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let x = Math.imul(a ^ (a >>> 15), 1 | a);
-    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
-    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 // --- internals (shared by both render paths) ---------------------------------
 
 interface P2 {
@@ -368,12 +358,6 @@ function voiceEnergy(t: number, phase: number): number {
   env = 0.5 + (env - 0.5) * 1.7;
   env += 0.4 * Math.pow(Math.max(0, env - 0.55) / 0.45, 1.5);
   return Math.max(0.08, Math.min(1.3, env));
-}
-
-function hash2(x: number, y: number): number {
-  let h = (x * 374761393 + y * 668265263) | 0;
-  h = (h ^ (h >>> 13)) * 1274126177;
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
 }
 
 function vnoise(x: number, y: number): number {
@@ -503,4 +487,3 @@ function drawEmbers(target: RenderTarget, P: Vec3, embers: Ember[], proj: Projec
     }
   }
 }
-

@@ -1,4 +1,4 @@
-// Bake the AI Gateway model catalog + creator logos for the match-setup picker.
+// Bake the fallback AI Gateway model catalog + creator logos for match setup.
 // Fetches the public model list, keeps the language models, groups them by
 // creator, and writes assets/models.json. Then bakes each creator's logo
 // PNG to assets/logos/<slug>.png (the wisp + picker load these). Run:

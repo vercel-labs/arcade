@@ -137,6 +137,12 @@ export interface PokerMatchDetails {
   tableSize: number;
   smallBlind: number;
   bigBlind: number;
+  blindLevels?: Array<{
+    level: number;
+    startsAtHand: number;
+    smallBlind: number;
+    bigBlind: number;
+  }>;
   startingStacks: number[];
   finalStacks?: number[];
   handCount: number;

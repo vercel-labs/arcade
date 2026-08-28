@@ -6,10 +6,11 @@
 import { Box, Button, Dialog, Modal, RoundedButton, Text, type Node, type Style } from '../../tui/index.ts';
 import { BISHOP, BLACK, type Color, KNIGHT, type PieceType, QUEEN, ROOK } from '../../rules/chess/types.ts';
 import type { RGB } from '../../engine/index.ts';
-import { UI_CHROME_BG } from '../theme.ts';
+import { ARCADE_CHROME_TEXT, ARCADE_OUTLINE_CONTROL, UI_CHROME_BG, UI_CHROME_PILL } from '../theme.ts';
+import { CHESS_PALETTE } from '../games/chess/palette.ts';
 
-export type Mode = 'prism' | 'menu' | 'chess-game' | 'logos' | 'ui' | 'audio' | 'cards' | 'poker';
-export type RenderMode = 'ascii' | 'pixels';
+export type Mode = 'prism' | 'menu' | 'chess-game' | 'logos' | 'ui' | 'audio' | 'cards' | 'poker' | 'catan' | 'catan-tiles';
+export type RenderMode = 'ascii' | 'pixels' | 'hybrid';
 
 export interface BarActions {
   back(): void;
@@ -27,13 +28,9 @@ export interface BarActions {
 // (text is cell-locked, so only odd heights center — 1 row here, 3 if more body
 // is wanted). A centered 2-row pill needs half-block edges + scene compositing.
 const PILL: Style = {
+  ...UI_CHROME_PILL,
   padding: [0, 2],
-  background: [44, 46, 56],
-  color: [212, 214, 224],
   bold: true,
-  hover: { background: [238, 240, 248], color: [16, 16, 24] },
-  focus: { background: [86, 90, 108], color: [248, 248, 252] },
-  pressed: { background: [255, 255, 255], color: [12, 12, 18] },
 };
 
 // Center a string within a fixed-width field. Keeps the display button a stable
@@ -91,25 +88,25 @@ export function buildBar(
     // Rounded (outlined) control: 3 rows tall, arc border, a little horizontal padding,
     // transparent interior (the 2D scene shows through). Active (match running) tints
     // the outline + label purple; hover/focus whiten the border + label + bold.
-    const aiActive = ai.active ? { color: [200, 206, 236] as RGB, borderColor: [112, 122, 188] as RGB } : {};
+    const aiActive = ai.active ? { color: ARCADE_OUTLINE_CONTROL.activeText, borderColor: ARCADE_OUTLINE_CONTROL.activeBorder } : {};
     buttons = [RoundedButton({ id: 'ai', label: ai.label, onClick: a.aiMatch, ...aiActive })];
     // A "reset board" control only sits beside play/pause while a match exists — idle
     // already reads "new match", so it would be redundant there. Same "reset board"
     // the ☰ menu offers, surfaced on the felt for one-click reset.
     if (ai.active) buttons.push(RoundedButton({ id: 'new-game', label: 'reset board', onClick: a.newGame }));
-  } else if (mode === 'cards') {
-    // The cards screen: the mode picker + per-mode controls live in the poker HUD
-    // panel; the bar just carries nav / camera reset / display style / quit.
+  } else if (mode === 'cards' || mode === 'catan-tiles') {
+    // The cards / catan-tile test beds: the picker lives in the top-left HUD panel;
+    // the bar just carries nav / camera reset / display style / quit.
     buttons = [
       Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
       Button({ id: 'reset', label: 'reset view', onClick: a.reset, style: PILL }),
       Button({ id: 'mode', label: displayLabel(renderMode), onClick: a.mode, style: PILL }),
       Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
     ];
-  } else if (mode === 'poker') {
-    // The poker table has NO bottom bar: everything system-level (home / new game /
-    // reset camera / display / quit) lives in the menu popup; play/pause is 'p', and betting
-    // lives in the HUD — so the felt stays a clean broadcast overlay, not a toolbar.
+  } else if (mode === 'poker' || mode === 'catan') {
+    // The poker table and the Catan board have NO bottom bar: everything system-level (home /
+    // new game / reset camera / display / quit) lives in the menu popup, and the game's own
+    // controls live in the HUD — so the play surface stays a clean overlay, not a toolbar.
     buttons = [];
   }
 
@@ -123,8 +120,8 @@ export function buildBar(
 
 // Piece colors for the promotion popup — the side's set color, lifted a touch so
 // brown stays legible on the dark popup background.
-const IVORY: RGB = [232, 228, 216];
-const BROWN: RGB = [184, 126, 74];
+const IVORY: RGB = CHESS_PALETTE.lightPiece;
+const BROWN: RGB = CHESS_PALETTE.darkPiece;
 
 // Filled chess glyphs (outline glyphs read poorly at one cell); tinted to the
 // promoting side's color via the button's fg.
@@ -156,18 +153,9 @@ export function buildPromotion(color: Color, onPick: (t: PieceType) => void, onC
 
   // The card's fill reads as a panel against the busy ASCII scene; the rounded choices
   // sit over it with transparent interiors. Tight padding keeps it compact.
-  const popup = Box(
-    {
-      flexDirection: 'column',
-      alignItems: 'stretch',
-      gap: 1, // one row between the "promote to" header and the choices (the choices stay flush)
-      padding: [1, 2],
-      background: UI_CHROME_BG,
-    },
-    [
-      Box({ justifyContent: 'center' }, [Text({ text: 'promote to', style: { color: [222, 224, 234], bold: true } })]),
-      Box({ flexDirection: 'column', alignItems: 'stretch', gap: 0 }, options),
-    ],
+  const popup = Dialog(
+    { title: 'promote to', align: 'center', titleColor: ARCADE_CHROME_TEXT.title, padding: [1, 2], background: UI_CHROME_BG },
+    [Box({ flexDirection: 'column', alignItems: 'stretch', gap: 0 }, options)],
   );
 
   // Centered modal: a translucent scrim dims the scene behind the popup (real
@@ -178,8 +166,8 @@ export function buildPromotion(color: Color, onPick: (t: PieceType) => void, onC
 // Rounded-button treatments shared by the modal family (confirm / game-over): a purple
 // outline for the affirmative/primary action, neutral grey for cancel/close. Hover/focus
 // whiten the border + label (see tui/button.ts). Matches the chess bar's purple ai control.
-const MODAL_PRIMARY = { color: [200, 206, 236] as RGB, borderColor: [112, 122, 188] as RGB };
-const MODAL_NEUTRAL = { color: [212, 214, 224] as RGB, borderColor: [88, 92, 110] as RGB };
+const MODAL_PRIMARY = { color: ARCADE_OUTLINE_CONTROL.activeText, borderColor: ARCADE_OUTLINE_CONTROL.activeBorder };
+const MODAL_NEUTRAL = { color: ARCADE_OUTLINE_CONTROL.neutralText, borderColor: ARCADE_OUTLINE_CONTROL.neutralBorder };
 
 // The game-over result popup (chess.com style): a centered card with the outcome
 // ("White wins" / "Draw") tinted to the winner's set color, the reason beneath
@@ -197,13 +185,10 @@ export function buildGameOver(
   // Centered title/subtitle, then a centered row of content-sized buttons (same layout as
   // buildConfirm) — the buttons size to their labels + padding rather than stretching to
   // the card width.
-  const card = Box(
-    { flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [1, 3], background: UI_CHROME_BG },
+  const card = Dialog(
+    { title: opts.title, align: 'center', titleColor: opts.tint, padding: [1, 3], background: UI_CHROME_BG },
     [
-      Box({ flexDirection: 'column', alignItems: 'stretch', gap: 1 }, [
-        Box({ justifyContent: 'center' }, [Text({ text: opts.title, style: { color: opts.tint, bold: true } })]),
-        Box({ justifyContent: 'center' }, [Text({ text: opts.subtitle, style: { color: [170, 174, 188] } })]),
-      ]),
+      Box({ justifyContent: 'center' }, [Text({ text: opts.subtitle, style: { color: ARCADE_CHROME_TEXT.secondary } })]),
       Box({ flexDirection: 'row', justifyContent: 'center', gap: 2 }, [
         btn('over-newgame', 'new game', onNewGame, true),
         btn('over-close', 'close', onClose, false),
@@ -230,10 +215,9 @@ export function buildConfirm(opts: {
 
   // One row between the prompt and the buttons (the middle ground — no double spacer);
   // the two buttons keep a horizontal gap so they read as separate actions.
-  const card = Box(
-    { flexDirection: 'column', alignItems: 'stretch', gap: 1, padding: [1, 3], background: UI_CHROME_BG },
+  const card = Dialog(
+    { title: opts.prompt, align: 'center', titleColor: ARCADE_CHROME_TEXT.title, padding: [1, 3], background: UI_CHROME_BG },
     [
-      Box({ justifyContent: 'center' }, [Text({ text: opts.prompt, style: { color: [222, 224, 234], bold: true } })]),
       Box({ flexDirection: 'row', justifyContent: 'center', gap: 2 }, [
         btn(`${opts.idPrefix}-yes`, opts.confirmLabel, opts.onConfirm, true),
         btn(`${opts.idPrefix}-cancel`, 'cancel', opts.onCancel, false),
@@ -320,7 +304,7 @@ export function buildGameMenu(opts: { groups: MenuItem[][]; onClose: () => void;
   // border + readable label; hover/focus whitens the border + label and bolds. No
   // fill, so box-drawing corners stay seam-free over the Dialog card.
   const btn = (item: MenuItem): Node =>
-    RoundedButton({ id: item.id, label: labelOf(item), onClick: item.onClick, color: [212, 214, 224], borderColor: [88, 92, 110] });
+    RoundedButton({ id: item.id, label: labelOf(item), onClick: item.onClick, color: ARCADE_OUTLINE_CONTROL.neutralText, borderColor: ARCADE_OUTLINE_CONTROL.neutralBorder });
 
   // The outlined items stack flush (gap 0): each button's own arc border is the
   // divider, so adjacent bottom/top borders read as one continuous list — no empty
@@ -359,7 +343,7 @@ function prettyChord(k: string): string {
 // The mouse controls documented in the controls overlay, per screen. Orbit screens
 // share drag/pan/zoom; the menu browses covers + launches; chess adds click-to-select/
 // move on top of orbit. Screens absent here (e.g. the prism) have no mouse row.
-const ORBIT_MODES: Mode[] = ['chess-game', 'poker', 'logos', 'audio', 'cards', 'ui'];
+const ORBIT_MODES: Mode[] = ['chess-game', 'poker', 'logos', 'audio', 'cards', 'catan', 'catan-tiles', 'ui'];
 export function mouseControlsFor(mode: Mode): { keys: string; label: string }[] {
   if (mode === 'menu') return [{ keys: 'scroll', label: 'prev / next' }, { keys: 'click', label: 'launch' }];
   const rows: { keys: string; label: string }[] = [];
@@ -367,6 +351,11 @@ export function mouseControlsFor(mode: Mode): { keys: string; label: string }[] 
   if (mode === 'chess-game') rows.push({ keys: 'click', label: 'select / move' });
   // Poker: hover a hole card to peek (bends it up), click to lift it fully face-on.
   if (mode === 'poker') rows.push({ keys: 'hover', label: 'peek at card' }, { keys: 'click', label: 'lift card' });
+  // Catan: only legal spots highlight, so a click is always a legal placement.
+  if (mode === 'catan') rows.push(
+    { keys: 'click', label: 'place on a highlighted spot' },
+    { keys: 'sidebar', label: 'type public table talk as the human player' },
+  );
   return rows;
 }
 
@@ -396,7 +385,7 @@ export function buildShortcuts(
   const mkRow = (keyColW: number) => (r: { label: string; keys: string }): Node =>
     Box({ flexDirection: 'row', gap: 2 }, [
       Text({ text: r.keys.padEnd(keyColW), style: { color: [140, 190, 255], bold: true } }),
-      Text({ text: r.label, style: { color: [212, 214, 224] } }),
+      Text({ text: r.label, style: { color: ARCADE_OUTLINE_CONTROL.neutralText } }),
     ]);
   const section = (label: string, rows: { label: string; keys: string }[], keyColW: number): Node[] =>
     rows.length === 0 ? [] : [Text({ text: label, style: { color: [130, 134, 148], bold: true } }), ...rows.map(mkRow(keyColW))];

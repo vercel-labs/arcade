@@ -35,7 +35,7 @@
 // comb). Every card's (x, y, curl, edgeDepth, depth) is continuous across each phase boundary, so
 // the loop never pops.
 
-import { type Mat4, mat4Multiply, mat4RotY, mat4Translate, type RenderTarget, type Texture } from '../../../engine/index.ts';
+import { type Mat4, mat4Multiply, mat4RotY, mat4Translate, type RenderTarget, smoothstep, type Texture } from '../../../engine/index.ts';
 import type { Card } from '../../../rules/poker/cards.ts';
 import { type ArchPlace, drawArchCard, drawCard, flatDown } from './card-render.ts';
 
@@ -78,11 +78,6 @@ const LOOP = PHASES.reduce((s, [, d]) => s + d, 0);
 
 const DUMMY: Card = { rank: 0, suit: 0 }; // drawn face-down, so identity is irrelevant
 
-const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
-const ease = (x: number): number => {
-  const t = clamp01(x);
-  return t * t * (3 - 2 * t);
-};
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 
 export class DeckShuffle {
@@ -164,8 +159,8 @@ export class DeckShuffle {
         // up into a floating pile while the bottom half (even) squares down on the felt —
         // both still centred at cx. part (second ~half): the halves move apart to packetX,
         // the top pile descending as it goes. Sequenced so you SEE the top lift off first.
-        const rise = ease(clamp01(p / 0.5));
-        const part = ease(clamp01((p - 0.4) / 0.6));
+        const rise = smoothstep(p / 0.5);
+        const part = smoothstep((p - 0.4) / 0.6);
         x = lerp(this.cx, packetX, part);
         if (even) {
           y = lerp(settledY, packetY, rise); // bottom half: gather down onto the felt
@@ -179,7 +174,7 @@ export class DeckShuffle {
         // While still apart, each half flexes its inner short edge up off the felt.
         x = packetX;
         y = packetY;
-        curl = CURL_LIFT * ease(p);
+        curl = CURL_LIFT * smoothstep(p);
         break;
       }
       case 'riffle': {
@@ -188,8 +183,8 @@ export class DeckShuffle {
         // outer end retains packet-local spacing; only the inner end fans toward the
         // combined interleaved order once most of the horizontal overlap is present.
         const lag = (1 - RIFFLE_W) / Math.max(1, N - 1);
-        const e = ease(clamp01((p - i * lag) / RIFFLE_W));
-        const stack = ease(clamp01((e - RIFFLE_STACK_AT) / (1 - RIFFLE_STACK_AT)));
+        const e = smoothstep((p - i * lag) / RIFFLE_W);
+        const stack = smoothstep((e - RIFFLE_STACK_AT) / (1 - RIFFLE_STACK_AT));
         // The final card travels the last few centimetres farther across the seam so its
         // face visibly covers the opposing packet. Delay that inset until stacking begins;
         // the early riffle trajectory stays identical.
@@ -204,7 +199,7 @@ export class DeckShuffle {
         // through it like a blade. Squaring (1-e) keeps both endpoints continuous.
         if (covering) curl *= 1 - e;
         if (!covering) {
-          const covered = ease(clamp01((e - RIFFLE_EDGE_COVER_AT) / (1 - RIFFLE_EDGE_COVER_AT)));
+          const covered = smoothstep((e - RIFFLE_EDGE_COVER_AT) / (1 - RIFFLE_EDGE_COVER_AT));
           innerEdgeVisibility = 1 - covered;
         }
         break;
@@ -213,7 +208,7 @@ export class DeckShuffle {
         // Keep the subtle inward motion and fan the centres by packet rank: bottom cards
         // overlap farther across the seam, while top cards stay progressively wider. The
         // flat inner apex keeps the opposing surfaces depth-ordered instead of crossing.
-        const arch = ease(p);
+        const arch = smoothstep(p);
         x = lerp(riffledX, coveredBridgeX, arch);
         y = BASE_Y;
         dome = true;
@@ -229,7 +224,7 @@ export class DeckShuffle {
         // cadence while preserving the overall bottom-to-top release order.
         const lag = (1 - CASCADE_W - CASCADE_JITTER) / Math.max(1, N - 1);
         const jitter = (((i * 7) % 5) / 4) * CASCADE_JITTER;
-        const e = ease(clamp01((p - (i * lag + jitter)) / CASCADE_W));
+        const e = smoothstep((p - (i * lag + jitter)) / CASCADE_W);
         x = lerp(coveredBridgeX, this.cx, e);
         y = BASE_Y;
         dome = true;

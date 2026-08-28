@@ -25,7 +25,7 @@ export interface GameType {
 export interface GameState<A> {
   /** Whose turn it is (0-based player index), or `TERMINAL`. */
   currentPlayer(): number;
-  /** All legal actions for the current player (empty at a terminal state). */
+  /** Enumerable legal actions for the current player (empty at a terminal state). */
   legalActions(): A[];
   /** Apply an action in place, advancing to the next state. */
   applyAction(action: A): void;
@@ -40,6 +40,25 @@ export interface GameState<A> {
   actionToString(action: A): string;
   /** Parse an action string (lenient — SAN or UCI for chess); null if illegal. */
   actionFromString(s: string): A | null;
+  /** Optional authoritative validator for games with parameterized legal-action families. */
+  isLegalAction?(action: A): boolean;
+  /**
+   * Optional model-facing context for the current decision. Games with complicated
+   * action spaces can expose the exact legal-action menu plus neutral, computed facts
+   * about each choice. `ModelPlayer` includes this on the FIRST attempt; games that omit
+   * it keep the chess-style "reason first, show legal moves only after an error" flow.
+   *
+   * This is deliberately separate from `informationStateString`: the latter defines
+   * what the player is allowed to know, while this method explains what the player may
+   * legally do with that information. It must never contain another player's secrets.
+   */
+  decisionContextString?(player: number): string;
+  /**
+   * Representative executable actions for legal parameter families that cannot be fully
+   * flattened (for example negotiated trade quantities). Model fallbacks and normalizers
+   * may include these alongside `legalActions()`; every returned example must be legal.
+   */
+  parameterizedActionExamples?(): A[];
 }
 
 export interface Game<S extends GameState<A>, A> {

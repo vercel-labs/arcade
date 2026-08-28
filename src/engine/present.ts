@@ -53,10 +53,29 @@ export interface ShapeGlyphOptions {
   // (e.g. a shadowed surface), fall back to a faint luminance-ramp glyph so the
   // form stays visible instead of dropping out.
   hybrid?: boolean;
+  // Paint each emitted glyph over a darker version of its average scene color.
+  // Blank glyph cells remain black, so this adds color blocks without filling
+  // the untouched backdrop.
+  coloredBackground?: boolean;
+  // Treat pixels outside the finite-depth scene bounds as an intentionally blank
+  // backdrop. This avoids shape matching large empty margins for bounded scenes.
+  blankOutsideDepthBounds?: boolean;
 }
 
 // Cells dimmer than this are matched deterministically even when jitter is on.
 const JITTER_MIN_BRIGHTNESS = 0.25;
+const SHAPE_GLYPH_BACKGROUND_SCALE = 0.28;
+// Hybrid backgrounds occupy a deliberately dark, compressed color range. Snap
+// nearby shades together so animated gradients reuse terminal background state
+// without changing the full-fidelity foreground glyph color.
+const SHAPE_GLYPH_BACKGROUND_QUANTUM = 8;
+
+export function shapeGlyphBackgroundChannel(channel: number): number {
+  return byte(
+    Math.round((channel * SHAPE_GLYPH_BACKGROUND_SCALE) / SHAPE_GLYPH_BACKGROUND_QUANTUM)
+      * SHAPE_GLYPH_BACKGROUND_QUANTUM,
+  );
+}
 
 export function toShapeGlyph(
   target: RenderTarget,
@@ -64,7 +83,7 @@ export function toShapeGlyph(
   rows: number,
   options: ShapeGlyphOptions = {},
 ): string {
-  const { color = true, skipTopRows = 0, contrast = 2, jitterTemp = 0, hybrid = false } = options;
+  const { color = true, skipTopRows = 0, contrast = 2, jitterTemp = 0, hybrid = false, coloredBackground = false } = options;
   const rampMax = LUMINANCE_RAMP.length - 1;
   const W = target.width;
   const H = target.height;
@@ -130,11 +149,23 @@ export function toShapeGlyph(
         ch = LUMINANCE_RAMP[Math.min(rampMax, Math.max(0, Math.round(lum * rampMax)))];
       }
       if (ch === ' ') {
+        if (coloredBackground) {
+          const seq = '\x1b[48;2;0;0;0m';
+          if (seq !== last) {
+            out += seq;
+            last = seq;
+          }
+        }
         out += ' ';
         continue;
       }
       if (color && cc > 0) {
-        const seq = `\x1b[38;2;${byte(cr / cc)};${byte(cg / cc)};${byte(cb / cc)}m`;
+        const fr = cr / cc;
+        const fg = cg / cc;
+        const fb = cb / cc;
+        const seq = coloredBackground
+          ? `\x1b[38;2;${byte(fr)};${byte(fg)};${byte(fb)};48;2;${shapeGlyphBackgroundChannel(fr)};${shapeGlyphBackgroundChannel(fg)};${shapeGlyphBackgroundChannel(fb)}m`
+          : `\x1b[38;2;${byte(fr)};${byte(fg)};${byte(fb)}m`;
         if (seq !== last) {
           out += seq;
           last = seq;

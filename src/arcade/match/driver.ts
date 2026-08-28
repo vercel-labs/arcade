@@ -16,6 +16,7 @@ import { normalizerModel } from './models.ts';
 import { isTelemetryEnabled, localPlayerKey, trackMatchEnded, trackMatchRecord, trackMatchStarted, trackModelFallback } from '../../telemetry/index.ts';
 import { ChessGameRecorder, type RecorderController } from './game-recorders.ts';
 import type { RecordEndReason } from '../../telemetry/records.ts';
+import { shortModel } from './model-label.ts';
 
 // A seat's telemetry identity: the model slug, or 'human' for a keyboard seat.
 const seatId = (seat: Seat): string => (seat.kind === 'ai' ? seat.model : 'human');
@@ -31,7 +32,6 @@ const matchMode = (seats: Seat[]): string => {
 export type Seat = { kind: 'ai'; model: string } | { kind: 'human' };
 
 const creatorOf = (slug: string): string => slug.split('/')[0] ?? slug;
-const shortModel = (slug: string): string => slug.slice(slug.indexOf('/') + 1);
 
 export interface AiMatchDeps {
   chessGame: ChessGameScene;

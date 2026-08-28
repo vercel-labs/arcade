@@ -1,0 +1,13 @@
+{
+  "name": "@vercel/arcade-site",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Arcade landing page and `curl … | sh` installer — the front door for the @vercel/arcade CLI.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

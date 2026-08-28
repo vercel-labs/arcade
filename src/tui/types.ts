@@ -4,7 +4,7 @@
 
 import type { Surface } from '../engine/index.ts';
 import type { KeyEvent } from '../platform/input.ts';
-import type { ColorToken } from './theme.ts';
+import type { ColorToken, Theme } from './theme.ts';
 
 // A size along one axis: fixed cells, a percentage of the parent's content box,
 // or 'auto' (intrinsic — text width for Text, summed children for Box).
@@ -18,7 +18,34 @@ export type Spacing = number | [number, number] | [number, number, number, numbe
 export type Padding = Spacing;
 export type Position = 'relative' | 'absolute';
 export type Overflow = 'visible' | 'hidden';
+// What to do with Text/Button content wider than its own content box, named after
+// the CSS property. Opt-in: without it text overflows its box and is clipped only
+// by an ancestor's overflow:hidden, which is what most of the app still relies on.
+export type TextOverflow = 'clip' | 'ellipsis';
 export type BorderStyle = 'none' | 'square' | 'round';
+
+// A tooltip is deliberately data on its trigger rather than a hidden child in
+// the layout tree. The painter only materializes the active tooltip, after all
+// portal overlays, so it cannot resize its trigger or intercept pointer input.
+export interface TooltipText {
+  text: string;
+  bold?: boolean;
+  color?: ColorToken;
+}
+
+export type TooltipContent = string | readonly (string | TooltipText)[];
+export type TooltipPlacement = 'top' | 'bottom' | 'auto';
+
+export interface TooltipSpec {
+  content: TooltipContent;
+  maxWidth?: number;
+  placement?: TooltipPlacement;
+  gap?: number;
+  padding?: Padding;
+  background?: ColorToken;
+  color?: ColorToken;
+  arrow?: boolean;
+}
 
 export interface Style {
   width?: Dimension;
@@ -54,10 +81,22 @@ export interface Style {
   bold?: boolean;
   dim?: boolean;
   underline?: boolean;
+  // Fit Text/Button content to this node's content box (see TextOverflow). Needs a
+  // resolved width to measure against, so it's inert on an 'auto'-width node —
+  // which is sized to its text and therefore never overflows anyway.
+  textOverflow?: TextOverflow;
   // State overlays merged over the base style at paint time.
   hover?: Partial<Style>;
   focus?: Partial<Style>;
   pressed?: Partial<Style>;
+  // Applied when the node sets `disabled`, INSTEAD of the three above — a control
+  // that does nothing must not light up when the pointer crosses it.
+  disabled?: Partial<Style>;
+  // `none` makes this node and its descendants purely visual: pointer hover,
+  // presses, wheels, and hover-scroll keys pass through to whatever is behind
+  // the subtree. Useful for projected scene labels that paint an opaque badge
+  // without becoming an invisible interaction blocker.
+  pointerEvents?: 'auto' | 'none';
 }
 
 // Absolute cell rectangle filled in by the layout pass.
@@ -80,6 +119,9 @@ export interface PointerHit {
   w: number;
   h: number;
   wheel?: -1 | 1; // for type 'wheel': -1 = up, +1 = down
+  // SGR button held: 0 = left, 1 = middle, 2 = right. A drag reports the button
+  // its down captured with. Callers that don't forward one are read as left.
+  button?: number;
 }
 
 export interface Node {
@@ -89,6 +131,15 @@ export interface Node {
   children?: Node[];
   text?: string; // Text/Button content
   focusable?: boolean;
+  // Inert: no clicks, no hover/focus/pressed styling, skipped by Tab. Mirrors the DOM
+  // attribute — `focusable` still describes what the control IS, so re-enabling it
+  // doesn't have to restore anything. The node keeps absorbing pointer gestures, so a
+  // click on a dead button doesn't fall through and drag the scene behind it.
+  disabled?: boolean;
+  // Opt into hover hit-testing without also making the node clickable or
+  // keyboard-focusable. Tooltip() sets this for passive and disabled controls.
+  hoverable?: boolean;
+  tooltip?: TooltipSpec;
   onClick?: () => void;
   // Returns true if the key was consumed (stops fall-through to app handlers).
   onKey?: (ev: KeyEvent) => boolean;
@@ -108,7 +159,7 @@ export interface Node {
   // FrameBuffer escape hatch: hand-draw into this node's content box. Called by
   // paint after the node's own bg/border, clipped to the node. The box is the
   // content rect (inside border + padding), in absolute Surface cells.
-  draw?: (surf: Surface, box: LayoutBox) => void;
+  draw?: (surf: Surface, box: LayoutBox, theme: Theme) => void;
   // Portal: paint this subtree LAST (above everything) and hit-test it FIRST, so
   // it floats over later siblings — a dropdown list, popover, tooltip. Pair with
   // position:'absolute' so it's out of flow and doesn't resize its container; it

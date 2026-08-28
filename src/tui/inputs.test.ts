@@ -37,6 +37,36 @@ test('Input: typing, editing, onChange/onEnter', () => {
   ok(input.onKey(key('tab')) === false, 'Tab is not consumed (falls through to focus cycling)');
 });
 
+test('Input: a specialized key handler can consume autocomplete keys before editing', () => {
+  const consumed: string[] = [];
+  const input = new Input({
+    id: 'autocomplete-input',
+    onKeyDown: (event) => {
+      if (event.name !== 'tab') return false;
+      consumed.push(event.name);
+      return true;
+    },
+  });
+  assert.equal(input.onKey(key('tab')), true);
+  assert.deepEqual(consumed, ['tab']);
+  assert.equal(input.onKey(ch('a')), true);
+  assert.equal(input.value, 'a');
+});
+
+test('Input: multiline fields grow with wrapped text and Enter submits the full value', () => {
+  let entered = '';
+  const input = new Input({ id: 'multiline-input', width: 4, maxRows: 3, onEnter: (value) => { entered = value; } });
+  assert.equal(input.build().style.height, 1);
+  for (const c of 'abcde') input.onKey(ch(c));
+  assert.equal(input.build().style.height, 2);
+  for (const c of 'fghij') input.onKey(ch(c));
+  assert.equal(input.build().style.height, 3);
+  for (const c of 'klmnop') input.onKey(ch(c));
+  assert.equal(input.build().style.height, 3, 'height caps at maxRows while content keeps growing');
+  input.onKey(key('enter'));
+  assert.equal(entered, 'abcdefghijklmnop');
+});
+
 test('Select: navigation, clamping, onSelect', () => {
   let chosen = -1;
   const sel = new Select({ id: 's', items: ['a', 'b', 'c'], onSelect: (i) => (chosen = i) });
@@ -90,7 +120,7 @@ test('Select: wrapped items remain one selectable row block', () => {
   });
   sel.onKey(key('down'));
   const rows = sel.build().children ?? [];
-  const wrapped = rows.filter((row) => row.style.background === 'focusRing');
+  const wrapped = rows.filter((row) => row.style.background === 'controlFocusBg');
   assert.ok(wrapped.length >= 2, 'the selected long item spans multiple highlighted lines');
   assert.ok(rows.every((row) => (row.text ?? '').length <= 12), 'no visual line exceeds the padded content width');
 
@@ -476,7 +506,7 @@ test('mouse (via Screen): capture, wheel, overlays, wrapping', () => {
   ok(wlines().every((n) => (n.text ?? '').length <= 11), 'wrapping: no line exceeds the inner width (nothing cut off)');
   // Highlight the long (2nd) item; all of its lines should carry the accent bg.
   wd.onKey(key('down')); // highlight item 1 (the long one)
-  const litLines = wlines().filter((n) => n.style.background === 'pillHoverBg');
+  const litLines = wlines().filter((n) => n.style.background === 'controlHoverBg');
   ok(litLines.length >= 2, `wrapping: the whole wrapped item highlights (${litLines.length} highlighted lines)`);
   // Clicking any line of the wrapped item commits that ITEM (index 1).
   const wsel = wlist();
@@ -499,4 +529,26 @@ test('propagation: panel blocks scene, transparent area passes through', () => {
   s.pointerUp();
   ok(s.wheel(3, 3, 1) === true, 'wheel over the panel is blocked from the scene');
   ok(s.wheel(30, 8, 1) === false, 'wheel over the transparent area reaches the scene');
+});
+
+test('propagation: pointerEvents none makes an opaque subtree pass through', () => {
+  const s = new Screen(40, 10);
+  let clicked = false;
+  const tree = Box({ width: 40, height: 10 }, [
+    Box({ width: 20, height: 5, background: [10, 10, 10], pointerEvents: 'none' }, [
+      {
+        kind: 'button',
+        id: 'decorative-child',
+        text: 'visual only',
+        focusable: true,
+        onClick: () => { clicked = true; },
+        style: { background: [20, 20, 20] },
+      },
+    ]),
+  ]) as Node;
+  s.setRoot(tree, { x: 0, y: 0, w: 40, h: 10 });
+
+  ok(s.pointerDown(3, 3) == null, 'opaque pass-through visual does not absorb a scene press');
+  ok(!clicked, 'interactive descendants of a pass-through visual are not routed');
+  ok(s.wheel(3, 3, 1) === false, 'wheel reaches the scene through the visual');
 });

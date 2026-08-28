@@ -24,6 +24,11 @@ test('duplicate poker slugs reach the live player-strip view with visible indice
   );
 
   assert.deepEqual(
+    (({ smallBlind, bigBlind, level, hand, handsUntilNextLevel }) => ({ smallBlind, bigBlind, level, hand, handsUntilNextLevel }))(match.tournamentState()),
+    { smallBlind: 10, bigBlind: 20, level: 1, hand: 1, handsUntilNextLevel: 15 },
+  );
+
+  assert.deepEqual(
     scene.tableView()?.seats.map((seat) => seat.name),
     ['claude-haiku-4.5 (1)', 'claude-haiku-4.5 (2)', 'gpt-5.4'],
   );

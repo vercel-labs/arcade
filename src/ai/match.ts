@@ -23,9 +23,14 @@ export interface MatchHooks<A> {
    */
   onActionChosen?(info: MatchActionEvent<A>): void;
   /** Fired after playMove settles and the authoritative state contains the action. */
-  onActionApplied?(info: MatchActionEvent<A>): void;
+  onActionApplied?(info: MatchActionEvent<A>): void | Promise<void>;
   /** Cancels the match between/within turns. */
   signal?: AbortSignal;
+  /**
+   * Optional phase boundary for partial-game harnesses. Checked before asking the next
+   * player to act. Catan uses this for setup-only benchmarks; full matches leave it unset.
+   */
+  shouldStop?(state: GameState<A>): boolean;
 }
 
 export interface MatchActionEvent<A> {
@@ -49,7 +54,7 @@ export async function runMatch<A>(
 ): Promise<number[]> {
   const { signal } = hooks;
   let lastSaid: string | undefined; // the previous mover's line, for opponent banter
-  while (!scene.state().isTerminal()) {
+  while (!scene.state().isTerminal() && !hooks.shouldStop?.(scene.state())) {
     if (signal?.aborted) break;
     const state = scene.state();
     const idx = state.currentPlayer();
@@ -76,7 +81,7 @@ export async function runMatch<A>(
     if (!emitted && rationale) hooks.onCommentary?.(rationale, player, idx);
     if (rationale) lastSaid = rationale;
     await scene.playMove(action);
-    hooks.onActionApplied?.({ player, playerIndex: idx, choice, state: scene.state() });
+    await hooks.onActionApplied?.({ player, playerIndex: idx, choice, state: scene.state() });
   }
   return scene.state().returns();
 }

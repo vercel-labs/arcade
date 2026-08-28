@@ -235,6 +235,8 @@ test('an incomplete canonical record rolls unrealized commitments back to carrie
 test('informationStateString never leaks another seat hole card', () => {
   const s = new HoldemState({ stacks: [1000, 1000, 1000], button: 0, smallBlind: 10, bigBlind: 20, rng: rng() });
   const view0 = s.informationStateString(0);
+  assert.match(view0, /Blinds: 10\/20/);
+  assert.match(view0, /Your stack: \d+ chips \([\d.]+ big blinds\)/);
   // Seat 0's view must contain its own two cards but not both of any other seat's.
   const own = s.holeOf(0).map((c) => `${c.rank}:${c.suit}`);
   for (let other = 1; other < 3; other++) {

@@ -10,11 +10,14 @@
 // positioned content column inside an overflow-clipped viewport, with follow-to-
 // bottom (sticks to the newest entry until the reader scrolls up).
 
-import { Box, Text, type Component, type Node, type Screen } from '../../../tui/index.ts';
-import type { RGB, Surface } from '../../../engine/index.ts';
-import type { KeyEvent } from '../../../platform/input.ts';
-import type { LayoutBox, PointerHit } from '../../../tui/types.ts';
-import { creatorTint } from '../../scenes/wisp.ts';
+import { Box, Text, wrapText, type Component, type Node, type Screen } from '../../tui/index.ts';
+import type { RGB, Surface } from '../../engine/index.ts';
+import type { KeyEvent } from '../../platform/input.ts';
+import type { LayoutBox, PointerHit } from '../../tui/types.ts';
+import { creatorTint } from '../scenes/wisp.ts';
+import { shortModel } from './model-label.ts';
+import { SIDEBAR_PAD_L, SIDEBAR_PAD_R } from '../../tui/index.ts';
+import { ARCADE_THEME, RAIL_ERROR_FG, RAIL_MUTED_FG, RAIL_TEXT_FG } from '../theme.ts';
 
 // One chat line. Normally a model's rationale, tagged with its slug (drives the name +
 // color). When `event` is set it's a neutral game-event notice (e.g. "Flop  Q♥ 9♦ 5♣"),
@@ -39,77 +42,26 @@ export const CHAT_WIDTH = 34 + SCROLLBAR_W + RIGHT_GAP;
 // Panel insets: a touch more on the left; ZERO on the right so the scrollbar sits
 // flush at the panel edge (a right inset leaves a translucent strip that shows the
 // moving scene through it, reading as a jagged edge). Mirrors the moves panel.
-export const PANEL_PAD_L = 2;
-export const PANEL_PAD_R = 0;
+export const PANEL_PAD_L = SIDEBAR_PAD_L;
+export const PANEL_PAD_R = SIDEBAR_PAD_R;
 const MSG_GAP = 1; // blank rows between messages
 const VIEW_W = CHAT_WIDTH - PANEL_PAD_L - PANEL_PAD_R; // viewport width inside the panel
 const CONTENT_W = VIEW_W - SCROLLBAR_W - RIGHT_GAP; // text wrap width — a gap col, then the scrollbar
 
-const MSG_FG: RGB = [224, 226, 234]; // dialogue + colon — normal white
-const EVENT_FG: RGB = [138, 142, 156]; // grey — game-event notices
-const ERROR_FG: RGB = [226, 92, 86]; // red — illegal-move events (matches the moves panel)
+const MSG_FG: RGB = RAIL_TEXT_FG; // dialogue + colon — normal white
+const EVENT_FG: RGB = RAIL_MUTED_FG; // grey — game-event notices
+const ERROR_FG: RGB = RAIL_ERROR_FG;
 const DEFAULT_PLACEHOLDER = 'ai dialogue will appear here';
-const PLACEHOLDER_FG: RGB = [120, 124, 140]; // muted
-const TRACK: RGB = [44, 46, 56];
-const THUMB: RGB = [150, 154, 170];
+const PLACEHOLDER_FG: RGB = ARCADE_THEME.textMuted;
+const TRACK: RGB = ARCADE_THEME.scrollbarTrack;
+const THUMB: RGB = ARCADE_THEME.scrollbarThumb;
 const WHEEL_STEP = 3;
-
-// "anthropic/claude-opus-4.8" → "claude-opus-4.8".
-function shortModel(slug: string): string {
-  const i = slug.indexOf('/');
-  return i >= 0 ? slug.slice(i + 1) : slug;
-}
 
 // The creator's wisp color for a slug (its provider's tint — the same signature
 // color the model's orb glows in the match HUD).
 function creatorColor(slug: string): RGB {
   const t = creatorTint(slug.split('/')[0] ?? slug);
   return [Math.round(t.x), Math.round(t.y), Math.round(t.z)];
-}
-
-// Greedy word-wrap. `first` is the width available on the FIRST line (it shares the
-// row with the "name: " prefix); `rest` is the width for wrapped continuation lines.
-// A word longer than the line is hard-split so a single token can't overflow.
-function wrapInline(s: string, rest: number, first: number): string[] {
-  const out: string[] = [];
-  let line = '';
-  const cap = (): number => Math.max(1, out.length === 0 ? first : rest);
-  for (const word of s.split(/\s+/).filter(Boolean)) {
-    let w = word;
-    while (w.length > cap()) {
-      if (line) {
-        out.push(line);
-        line = '';
-      } else {
-        const width = cap();
-        if (out.length === 0 && width < rest && w.length <= rest) {
-          // A long speaker name can leave only a few cells on the first row.
-          // Keep a normal-sized first word intact on the continuation row instead
-          // of producing awkward fragments such as "Gem" / "ini,".
-          out.push('');
-        } else {
-          // Capture the width before pushing: cap() switches from the first-line
-          // width to the continuation width once out gains an entry. Calling it
-          // again after push used to discard the remainder of the word.
-          out.push(w.slice(0, width));
-          w = w.slice(width);
-        }
-      }
-    }
-    if (!line) line = w;
-    else if (line.length + 1 + w.length <= cap()) line += ' ' + w;
-    else {
-      out.push(line);
-      line = w;
-    }
-  }
-  out.push(line);
-  return out;
-}
-
-// Plain greedy wrap to a single width (kept for reuse/tests).
-export function wrapText(s: string, width: number): string[] {
-  return wrapInline(s, width, width);
 }
 
 // A message's rendered form: the colored bold name, and its dialogue split into
@@ -124,10 +76,10 @@ interface Rendered {
 
 function render(messages: ChatMessage[]): Rendered[] {
   return messages.map((m) => {
-    if (m.event) return { name: '', color: m.error ? ERROR_FG : EVENT_FG, lines: wrapInline(m.text, CONTENT_W, CONTENT_W), event: true };
+    if (m.event) return { name: '', color: m.error ? ERROR_FG : EVENT_FG, lines: wrapText(m.text, CONTENT_W), event: true };
     const name = m.label ?? shortModel(m.model);
     const prefixW = name.length + 2; // "name" + ": "
-    return { name, color: creatorColor(m.model), lines: wrapInline(m.text, CONTENT_W, CONTENT_W - prefixW), event: false };
+    return { name, color: creatorColor(m.model), lines: wrapText(m.text, CONTENT_W, { first: CONTENT_W - prefixW }), event: false };
   });
 }
 
@@ -243,7 +195,7 @@ export class ChatBox implements Component {
     // Empty state (no dialogue yet and no match running): a muted hint centered in
     // the viewport. A match in progress suppresses it — its dialogue is imminent.
     if (this.messages.length === 0 && !this.active) {
-      const lines = wrapInline(this.placeholder, CONTENT_W, CONTENT_W);
+      const lines = wrapText(this.placeholder, CONTENT_W);
       return {
         ...Box({ width: VIEW_W, height: this.viewport, flexDirection: 'column', justifyContent: 'center', alignItems: 'center' },
           lines.map((l) => Text({ text: l, style: { color: PLACEHOLDER_FG } }))),

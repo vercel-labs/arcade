@@ -7,25 +7,19 @@
 // previews the choices live — chairs follow the player count and each AI seat's wisp
 // follows its creator — via the onChanged hook (main wires it to scene.setPreview).
 
-import { Box, Button, Dropdown, Slider, Slot, Text, type Node, type Screen } from '../../tui/index.ts';
+import { Box, Dropdown, Field, Slider, Slot, Text, type Node, type Screen } from '../../tui/index.ts';
 import type { RGB } from '../../engine/index.ts';
-import { includeEarlyAccessModels, pickerCreators, type ModelInfo } from './models.ts';
+import { includeEarlyAccessModels, pickerCreators } from './models.ts';
 import { availableRealtimeModels, DEFAULT_REALTIME_MODEL_ID } from '../../voice/index.ts';
-import { SLOW_MODELS } from './beta-allowlist.ts';
-import { creatorTint } from '../scenes/wisp.ts';
-import { shortModel } from '../games/chess/hud.ts';
+import { shortModel } from './model-label.ts';
 import { BIG_BLIND, type PokerSeatSpec } from './poker-driver.ts';
 import { pokerVoiceCapable } from './poker-voice.ts';
 import type { PokerSeatView } from '../games/poker/poker-scene.ts';
+import { ARCADE_CHROME_TEXT } from '../theme.ts';
+import { createModelSeatPicker, hiddenModelSeat, modelSeatControls, modelSeatTint, mountModelSeat, setModelSeatCreators, type ModelCreator, type ModelSeatPicker } from './model-seat-picker.ts';
 
-interface AiCreator {
-  slug: string;
-  name: string;
-  models: ModelInfo[];
-}
-
-const TEXT_CREATORS: AiCreator[] = pickerCreators();
-const REALTIME_CREATORS: AiCreator[] = [];
+let TEXT_CREATORS: ModelCreator[] = pickerCreators();
+let REALTIME_CREATORS: ModelCreator[] = [];
 for (const model of availableRealtimeModels(includeEarlyAccessModels())) {
   let creator = REALTIME_CREATORS.find((candidate) => candidate.slug === model.creator);
   if (!creator) {
@@ -34,7 +28,6 @@ for (const model of availableRealtimeModels(includeEarlyAccessModels())) {
   }
   creator.models.push({ id: model.id, name: model.name });
 }
-const LIST_ROWS = 7;
 const CREATOR_W = 22;
 const MODEL_W = 22;
 const MAX_OPP = 5; // up to a 6-seat table (you + 5)
@@ -51,87 +44,6 @@ const changed = (): void => {
   onChanged?.();
 };
 
-interface AiSide {
-  readonly creators: readonly AiCreator[];
-  readonly creatorDropdown: Dropdown;
-  readonly modelDropdown: Dropdown;
-  readonly randomId: string; // the seat's "↻ random" affordance id
-  creator: string | null;
-  models: ModelInfo[];
-  modelId: string | null;
-}
-
-function creatorIndex(creators: readonly AiCreator[], slug: string): number {
-  const i = creators.findIndex((c) => c.slug === slug);
-  return i < 0 ? 0 : i;
-}
-
-// Drop a random creator+model combo into a seat. Drives the seat's own dropdowns
-// via pick() (clearing `creator` first so an unchanged creator still repopulates),
-// so pickCreator + the model handler + changed() all fire and the field, model
-// list, and live preview update exactly as a manual pick would. Prefers a combo
-// different from the current one (bounded retries) so a click always feels like it
-// did something; every offered combo is pre-validated by pickerCreators().
-function randomizeSide(side: AiSide): void {
-  const creators = side.creators;
-  if (creators.length === 0) return;
-  const prev = side.modelId;
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const c = creators[(Math.random() * creators.length) | 0];
-    if (c.models.length === 0) continue;
-    const m = c.models[(Math.random() * c.models.length) | 0];
-    if (m.id === prev && attempt < 7) continue; // avoid re-picking the current model when we can
-    side.creator = null;
-    side.creatorDropdown.pick(creatorIndex(creators, c.slug));
-    const i = side.models.findIndex((mm) => mm.id === m.id);
-    if (i >= 0) side.modelDropdown.pick(i);
-    return;
-  }
-}
-
-function pickCreator(side: AiSide, slug: string): void {
-  if (side.creator === slug) return;
-  side.creator = slug;
-  side.models = side.creators.find((creator) => creator.slug === slug)?.models ?? [];
-  side.modelDropdown.setItems(side.models.map((m) => m.name));
-  side.modelId = null;
-}
-
-function makeSide(idPrefix: string, creators: readonly AiCreator[], defaultCreator: string, defaultModelId: string): AiSide {
-  let side: AiSide;
-  const creatorDropdown = new Dropdown({
-    searchable: true,
-    searchPlaceholder: 'Search',
-    id: `${idPrefix}-creator`,
-    items: creators.map((creator) => creator.name),
-    width: CREATOR_W,
-    rows: LIST_ROWS,
-    index: creatorIndex(creators, defaultCreator),
-    onSelect: (i) => {
-      pickCreator(side, creators[i].slug);
-      changed();
-    },
-  });
-  const modelDropdown = new Dropdown({
-    searchable: true,
-    searchPlaceholder: 'Search',
-    id: `${idPrefix}-model`,
-    items: [],
-    width: MODEL_W,
-    rows: LIST_ROWS,
-    placeholder: 'pick a model…',
-    onSelect: (i) => {
-      side.modelId = side.models[i]?.id ?? null;
-      changed();
-    },
-  });
-  side = { creators, creator: null, models: [], modelId: null, creatorDropdown, modelDropdown, randomId: `${idPrefix}-random` };
-  pickCreator(side, defaultCreator);
-  const i = side.models.findIndex((m) => m.id === defaultModelId);
-  if (i >= 0) modelDropdown.pick(i);
-  return side;
-}
-
 // Per-seat model configs, pre-committed so "start match" is live immediately; re-pick
 // any creator/model to change them. Index 0 is seat 1's config — used only in SPECTATE
 // mode (where seat 1 is an AI too); in HERO mode you play seat 1 and indices 1..MAX_OPP
@@ -146,12 +58,21 @@ const DEFAULT_MODELS = [
   ['xai', 'xai/grok-4.1-fast-non-reasoning'],
   ['anthropic', 'anthropic/claude-haiku-4.5'],
 ] as const;
-const sides: AiSide[] = DEFAULT_MODELS.map(([prov, model], i) =>
-  makeSide(`poker-opp${i}`, TEXT_CREATORS, prov, model),
+const sides: ModelSeatPicker[] = DEFAULT_MODELS.map(([prov, model], i) =>
+  createModelSeatPicker({ idPrefix: `poker-opp${i}`, creators: TEXT_CREATORS, defaultCreator: prov, defaultModelId: model, onChange: changed }),
 );
-const realtimeSide = makeSide(
-  'poker-realtime-opp', REALTIME_CREATORS, 'openai', DEFAULT_REALTIME_MODEL_ID,
-);
+const realtimeSide = createModelSeatPicker({ idPrefix: 'poker-realtime-opp', creators: REALTIME_CREATORS, defaultCreator: 'openai', defaultModelId: DEFAULT_REALTIME_MODEL_ID, onChange: changed });
+
+export function setPokerSetupModelCatalog(
+  textCreators: readonly ModelCreator[],
+  realtimeCreators: readonly ModelCreator[],
+): void {
+  TEXT_CREATORS = [...textCreators];
+  REALTIME_CREATORS = [...realtimeCreators];
+  for (const side of sides) setModelSeatCreators(side, TEXT_CREATORS);
+  setModelSeatCreators(realtimeSide, REALTIME_CREATORS);
+  changed();
+}
 
 // How many players sit at the table (you included in HERO mode): 2..6. Defaults to a
 // 4-handed table. Index i → i+2 players → i+1 AI opponent configs. Exported (like the
@@ -236,7 +157,7 @@ function modelTypeApplicable(): boolean {
 function realtimeSelected(): boolean {
   return modelTypeApplicable() && modelTypeDropdown.index === 1;
 }
-function sideForIndex(index: number): AiSide {
+function sideForIndex(index: number): ModelSeatPicker {
   return realtimeSelected() && index === 1 ? realtimeSide : sides[index];
 }
 
@@ -254,12 +175,7 @@ export function mountPokerSetup(ui: Screen): void {
   ui.mount(modeDropdown);
   ui.mount(modelTypeDropdown);
   ui.mount(stackSlider);
-  for (const s of sides) {
-    ui.mount(s.creatorDropdown);
-    ui.mount(s.modelDropdown);
-  }
-  ui.mount(realtimeSide.creatorDropdown);
-  ui.mount(realtimeSide.modelDropdown);
+  for (const side of [...sides, realtimeSide]) mountModelSeat(ui, side);
 }
 
 // Ready when every shown seat's config has a committed model.
@@ -287,7 +203,7 @@ export function pokerSetupSelection(): PokerSeatSpec[] | null {
 // ring follows the count and each AI seat's wisp follows its creator. A seat whose
 // model is un-committed (creator re-picked, model pending) still previews by creator.
 export function pokerPreviewSeats(): PokerSeatView[] {
-  const ai = (side: AiSide): PokerSeatView => ({
+  const ai = (side: ModelSeatPicker): PokerSeatView => ({
     kind: 'ai',
     label: side.modelId ? shortModel(side.modelId) : side.creator ?? 'AI',
     creator: side.creator ?? undefined,
@@ -297,45 +213,11 @@ export function pokerPreviewSeats(): PokerSeatView[] {
   return seats;
 }
 
-const TITLE_FG: RGB = [222, 224, 234];
-const HERO_FG: RGB = [224, 226, 236];
-const SLOW_FG: RGB = [210, 168, 90]; // amber hint for slow-but-working models
-const RANDOM_HOVER_FG: RGB = [255, 255, 255]; // "↻ random" brightens on hover/focus
-
-// A muted "↻ random" affordance beside a seat's model picker — one click rerolls
-// the seat to a random creator+model, surfacing the breadth of the catalog. Rests
-// at 'muted' grey and brightens to white on hover/focus (the dialog-affordance
-// convention); no tooltip needed since the label says what it does.
-function randomBadge(side: AiSide): Node {
-  return Button({
-    id: side.randomId,
-    label: '↻ random',
-    onClick: () => randomizeSide(side),
-    style: { padding: [0, 0], color: 'muted', hover: { color: RANDOM_HOVER_FG }, focus: { color: RANDOM_HOVER_FG } },
-  });
-}
-
-// A dim "slow" hint shown beside a seat's model when it's a known-slow pick
-// (SLOW_MODELS) — it still plays, just takes a while (mostly poker). Node[] so it
-// spreads cleanly into a row and is nothing when the model is fast.
-function slowBadge(modelId: string | null): Node[] {
-  return modelId && SLOW_MODELS.has(modelId)
-    ? [Text({ text: '(slow)', style: { color: SLOW_FG } })]
-    : [];
-}
-
-function brandTint(side: AiSide): RGB {
-  if (!side.creator) return [212, 214, 224];
-  const t = creatorTint(side.creator);
-  return [t.x | 0, t.y | 0, t.z | 0];
-}
-
+const TITLE_FG: RGB = ARCADE_CHROME_TEXT.title;
+const HERO_FG: RGB = ARCADE_CHROME_TEXT.body;
 // A settings line: a muted label gutter + the control, so the columns align.
 function row(label: string, control: Node): Node {
-  return Box({ flexDirection: 'row', gap: 1, alignItems: 'start' }, [
-    Box({ width: SEAT_LABEL_W }, [Text({ text: label, style: { color: 'muted' } })]),
-    control,
-  ]);
+  return Field({ label, child: control, direction: 'row', labelWidth: SEAT_LABEL_W });
 }
 
 // The starting-stack control body: a "$" readout with the slider to its right, together
@@ -349,15 +231,8 @@ function stackControl(): Node {
 
 // One seat's row: a "Seat N" label tinted in the creator's brand hue + the creator
 // and model pickers side by side. `seatNo` is the 1-based table seat this config fills.
-function seatRow(side: AiSide, seatNo: number): Node {
-  side.creatorDropdown.setAccent(brandTint(side));
-  return Box({ flexDirection: 'row', gap: 1, alignItems: 'start' }, [
-    Box({ width: SEAT_LABEL_W }, [Text({ text: `seat ${seatNo}`, style: { color: brandTint(side), bold: true } })]),
-    Slot(side.creatorDropdown.id),
-    Slot(side.modelDropdown.id),
-    randomBadge(side),
-    ...slowBadge(side.modelId),
-  ]);
+function seatRow(side: ModelSeatPicker, seatNo: number): Node {
+  return Field({ label: `seat ${seatNo}`, child: modelSeatControls(side), direction: 'row', labelWidth: SEAT_LABEL_W, labelStyle: { color: modelSeatTint(side), bold: true } });
 }
 
 // Build the top-left settings panel: title, mode + players, then one row per AI seat
@@ -381,7 +256,7 @@ export function buildPokerSetupPanel(): Node {
   seatRows.push(...shownIdx.map((i) => seatRow(sideForIndex(i), i + 1))); // config i fills table seat i+1
   const hidden = [...sides, realtimeSide]
     .filter((side) => !visibleSides.has(side))
-    .map((side) => Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot(side.creatorDropdown.id), Slot(side.modelDropdown.id)]));
+    .map(hiddenModelSeat);
   // Model type only applies to heads-up Play; keep its Slot mounted when hidden.
   const modelTypeShown = modelTypeApplicable();
   const realtimeUnavailable = modelTypeShown && realtimeSelected() && !pokerVoiceCapable();

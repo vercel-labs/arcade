@@ -11,6 +11,7 @@
 
 import { stringWidth } from '../engine/index.ts';
 
+import { distribute } from './distribute.ts';
 import type { Dimension, LayoutBox, Node, Spacing, Style } from './types.ts';
 
 type Axis = 'w' | 'h';
@@ -191,28 +192,13 @@ function layoutContainer(node: Node, clip: LayoutBox | undefined): void {
 
     // 1. Base main sizes (flexBasis overrides), then distribute grow / shrink.
     const base = flow.map((k) => resolveBasis(k, mainAxis, mainSize));
-    const sizesMain = base.slice();
     const free = mainSize - (base.reduce((a, v) => a + v, 0) + sumMargin + totalGap);
-    const grows = flow.map((k) => k.style.flexGrow ?? 0);
-    const totalGrow = grows.reduce((a, v) => a + v, 0);
-    if (free > 0 && totalGrow > 0) {
-      let distributed = 0;
-      let last = -1;
-      for (let i = 0; i < flow.length; i++) {
-        if (grows[i] <= 0) continue;
-        const add = Math.floor((free * grows[i]) / totalGrow);
-        sizesMain[i] += add;
-        distributed += add;
-        last = i;
-      }
-      if (last >= 0) sizesMain[last] += free - distributed;
-    } else if (free < 0) {
-      const weighted = base.map((bv, i) => bv * (flow[i].style.flexShrink ?? 1));
-      const totalW = weighted.reduce((a, v) => a + v, 0) || 1;
-      for (let i = 0; i < flow.length; i++) {
-        sizesMain[i] = Math.max(0, sizesMain[i] - Math.round((-free * weighted[i]) / totalW));
-      }
-    }
+    const sizesMain = distribute(
+      base,
+      flow.map((k) => k.style.flexGrow ?? 0),
+      flow.map((k) => k.style.flexShrink ?? 1),
+      free,
+    );
 
     // 2/3. Position along the main axis per justifyContent; place cross axis.
     const usedMain = sizesMain.reduce((a, v) => a + v, 0) + sumMargin + totalGap;

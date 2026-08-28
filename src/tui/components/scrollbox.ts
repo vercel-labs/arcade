@@ -3,12 +3,11 @@
 // visible slice is built each frame (viewport culling), and a slim scrollbar is
 // hand-drawn on the right edge via the FrameBuffer hook to show position.
 
-import { type RGB } from '../../engine/index.ts';
 import type { Surface } from '../../engine/index.ts';
 import type { KeyEvent } from '../../platform/input.ts';
 import type { Component } from '../component.ts';
 import { Box, Text } from '../nodes.ts';
-import { defaultTheme } from '../theme.ts';
+import type { Theme } from '../theme.ts';
 import type { LayoutBox, Node, PointerHit } from '../types.ts';
 
 // A row is either a plain string (rendered as a single fg-colored line) or a
@@ -27,8 +26,6 @@ export interface ScrollBoxOpts {
   autoHeight?: boolean;
 }
 
-const TRACK: RGB = defaultTheme.pillBg;
-const THUMB: RGB = [150, 154, 170]; // a light gray (not the blue accent)
 const WHEEL_STEP = 3; // rows scrolled per wheel notch (1 felt sluggish)
 
 export class ScrollBox implements Component {
@@ -43,6 +40,14 @@ export class ScrollBox implements Component {
     this.opts = opts;
     this.rows = opts.rows;
     this.height = opts.height;
+  }
+
+  // Resize the viewport. For panels sized from the terminal rather than a constant, which can
+  // only be measured at build time. Re-clamps the offset so shrinking cannot strand the view
+  // past the last row.
+  setHeight(height: number): void {
+    this.height = Math.max(1, height);
+    this.scroll = Math.min(this.scroll, this.maxScroll());
   }
 
   // Rows actually shown: the full list until it reaches the cap (autoHeight), then
@@ -90,7 +95,7 @@ export class ScrollBox implements Component {
   // Painted via cell BACKGROUNDS (a space glyph) rather than block characters, so
   // stacked cells form one solid, gapless bar — a foreground '█' can show thin
   // line-spacing seams between rows in many terminals.
-  private paintBar(surf: Surface, box: LayoutBox): void {
+  private paintBar(surf: Surface, box: LayoutBox, theme: Theme): void {
     const total = this.rows.length;
     const vh = this.visibleHeight();
     if (total <= vh) return; // nothing to scroll
@@ -99,7 +104,7 @@ export class ScrollBox implements Component {
     const span = box.h - thumb;
     const top = box.y + (this.maxScroll() === 0 ? 0 : Math.round((this.scroll / this.maxScroll()) * span));
     for (let y = box.y; y < box.y + box.h; y++) {
-      const color = y >= top && y < top + thumb ? THUMB : TRACK;
+      const color = y >= top && y < top + thumb ? theme.scrollbarThumb : theme.scrollbarTrack;
       surf.setCell(x, y, ' ', color, color);
     }
   }
@@ -110,7 +115,7 @@ export class ScrollBox implements Component {
     const lines: Node[] = [];
     for (let i = this.scroll; i < end; i++) {
       const row = this.rows[i];
-      lines.push(typeof row === 'string' ? Text({ text: row, style: { color: 'fg', width: this.opts.width } }) : row);
+      lines.push(typeof row === 'string' ? Text({ text: row, style: { color: 'textPrimary', width: this.opts.width } }) : row);
     }
     return {
       ...Box(
@@ -121,7 +126,7 @@ export class ScrollBox implements Component {
       focusable: true,
       onKey: (ev) => this.onKey(ev),
       onMouse: (ev) => this.onMouse(ev),
-      draw: (surf, b) => this.paintBar(surf, b),
+      draw: (surf, b, theme) => this.paintBar(surf, b, theme),
     };
   }
 }

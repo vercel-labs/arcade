@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { Box, Screen, Slot } from '../../../tui/index.ts';
+import { Box, Screen, Slot } from '../../tui/index.ts';
 import { ChatBox } from './chat.ts';
 
 function renderedRows(chat: ChatBox, height: number): string[] {

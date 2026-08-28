@@ -20,8 +20,8 @@ import { Button } from './nodes.ts';
 import type { ColorToken } from './theme.ts';
 import type { Node, Padding, Style } from './types.ts';
 
-const WHITE: ColorToken = [255, 255, 255];
-const NEUTRAL_FG: ColorToken = [212, 214, 224];
+const WHITE: ColorToken = 'controlPressedBg';
+const NEUTRAL_FG: ColorToken = 'textPrimary';
 
 export interface RoundedButtonStyleOpts {
   color?: ColorToken; // label + border at rest
@@ -58,6 +58,11 @@ export function roundedButtonStyle(o: RoundedButtonStyleOpts = {}): Style {
     hover: lit,
     focus: lit,
     pressed: { color: WHITE, borderColor: WHITE, bold: true },
+    // No fill to gray out (see the file header), so an inert rounded button drops its
+    // ink and outline together and gives up the bold. Override via `style: { disabled }`,
+    // which merges last — it can't be an opt here because ButtonProps already owns the
+    // name `disabled` for the boolean flag.
+    disabled: { color: 'disabledFg', borderColor: 'disabledFg', bold: false },
   };
 }
 
@@ -78,12 +83,14 @@ export interface FilledButtonStyleOpts {
 export function filledButtonStyle(o: FilledButtonStyleOpts = {}): Style {
   return {
     padding: o.padding ?? [0, 2],
-    background: o.background ?? [44, 46, 56],
+    background: o.background ?? 'surfaceControl',
     color: o.color ?? NEUTRAL_FG,
     bold: o.bold ?? true,
-    hover: o.hover ?? { background: [238, 240, 248], color: [16, 16, 24] },
-    focus: o.focus ?? { background: [86, 90, 108], color: [248, 248, 252] },
-    pressed: o.pressed ?? { background: [255, 255, 255], color: [12, 12, 18] },
+    hover: o.hover ?? { background: 'controlHoverBg', color: 'controlHoverFg' },
+    focus: o.focus ?? { background: 'controlFocusBg', color: 'controlFocusFg' },
+    pressed: o.pressed ?? { background: 'controlPressedBg', color: 'controlPressedFg' },
+    // Override via `style: { disabled }` — see roundedButtonStyle for why not an opt.
+    disabled: { background: 'disabledBg', color: 'disabledFg' },
   };
 }
 
@@ -92,17 +99,20 @@ interface ButtonProps {
   label: string;
   onClick?: () => void;
   onKey?: (ev: KeyEvent) => boolean;
+  // Inert and visibly so. Prefer this over dropping onClick and dimming the color by
+  // hand: that leaves the button hoverable and Tab-focusable while it does nothing.
+  disabled?: boolean;
   // Extra style merged LAST, over the generated treatment — for layout tweaks
-  // (margin, width, alignSelf) or one-off overrides without leaving the helper.
+  // (margin, width) or one-off overrides without leaving the helper.
   style?: Style;
 }
 
 // A rounded (outlined) button: Button + roundedButtonStyle in one call.
 export function RoundedButton(o: ButtonProps & RoundedButtonStyleOpts): Node {
-  return Button({ id: o.id, label: o.label, onClick: o.onClick, onKey: o.onKey, style: { ...roundedButtonStyle(o), ...o.style } });
+  return Button({ id: o.id, label: o.label, onClick: o.onClick, onKey: o.onKey, disabled: o.disabled, style: { ...roundedButtonStyle(o), ...o.style } });
 }
 
 // A filled (square) button: Button + filledButtonStyle in one call.
 export function FilledButton(o: ButtonProps & FilledButtonStyleOpts): Node {
-  return Button({ id: o.id, label: o.label, onClick: o.onClick, onKey: o.onKey, style: { ...filledButtonStyle(o), ...o.style } });
+  return Button({ id: o.id, label: o.label, onClick: o.onClick, onKey: o.onKey, disabled: o.disabled, style: { ...filledButtonStyle(o), ...o.style } });
 }

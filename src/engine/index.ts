@@ -16,11 +16,89 @@ export { bloom, type BloomOptions } from './bloom.ts';
 export { cube, flatShade, meshBounds, quad, tetrahedron, TETRA_VERTS, TETRA_FACES, type AABB, type Mesh } from './mesh.ts';
 export { parseObj, type ParseObjOptions } from './obj.ts';
 export { cameraMatrices, type Camera, type CameraMatrices } from './camera.ts';
+export { OrbitCamera, type OrbitCameraSnapshotOptions, type OrbitState } from './orbit.ts';
+export {
+  intersectRayPlane,
+  projectPoint,
+  projectedDiscHit,
+  projectedPolygonFootprint,
+  projectedPointToViewport,
+  projectedSegmentDistance,
+  Raycaster,
+  rayFromCamera,
+  type ProjectedPoint,
+  type ProjectedShapeHit,
+  type ViewportPoint,
+  type ProjectedSegmentDistance,
+  type Ray,
+} from './picking.ts';
+export {
+  AnimationScheduler,
+  FrameClock,
+  SpringValue,
+  Tween,
+  bounceOut,
+  clamp01,
+  lerpVec3,
+  linear,
+  smoothstep,
+  travelPoint,
+  type Animation,
+  type Easing,
+  type SpringOptions,
+  type TweenOptions,
+} from './animation.ts';
+export {
+  appendTriangle,
+  appendQuad,
+  GeometryBuilder,
+  type MutableGeometry,
+  type VertexOptions,
+} from './geometry.ts';
+export { hash2, mulberry32, sineHash2 } from './random.ts';
+export {
+  hysteresisThreshold,
+  nearestHit,
+  resolveStickyHover,
+  type NearestHitOptions,
+  type StickyHoverOptions,
+} from './interaction.ts';
+export {
+  ResourceCache,
+  type ResourceCacheOptions,
+  type ResourceDisposer,
+  type ResourceFactory,
+} from './resources.ts';
+export {
+  BufferAttribute,
+  BufferGeometry,
+  type BoundingSphere,
+  type BufferAttributeName,
+  type UpdateRange,
+} from './buffer-geometry.ts';
+export {
+  Group,
+  InstancedMesh,
+  MaterialInstance,
+  MeshObject,
+  Object3D,
+  ObjectPool,
+  Scene,
+  SceneRenderer,
+  type RenderContext,
+  type UniformSource,
+  type WorldUniforms,
+  WorldMaterialInstance,
+  type WorldMaterialValues,
+  worldUniforms,
+} from './scene.ts';
 export {
   lambertMaterial,
   type LambertUniforms,
   feltMaterial,
   type FeltUniforms,
+  waterMaterial,
+  type WaterUniforms,
   glassMaterial,
   type GlassUniforms,
   pieceMaterial,
@@ -45,4 +123,11 @@ export {
 } from './surface.ts';
 export { applyTerminalColorMode, rgbToAnsi256, type TerminalColorMode } from './terminal-color.ts';
 export { CellDiffer } from './diff.ts';
-export { halfBlockToSurface, shapeGlyphToSurface, luminanceToSurface } from './present-cells.ts';
+export {
+  halfBlockToSurface,
+  halfBlockLayerToSurface,
+  ShapeGlyphSurfaceCache,
+  shapeGlyphToSurface,
+  shapeGlyphLayerToSurface,
+  luminanceToSurface,
+} from './present-cells.ts';

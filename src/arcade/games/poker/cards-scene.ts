@@ -18,19 +18,24 @@ import {
   type Camera,
   cameraMatrices,
   feltMaterial,
+  InstancedMesh,
   lambertMaterial,
   type Mat4,
   mat4Multiply,
   mat4RotY,
   mat4Translate,
+  MeshObject,
   normalize3,
-  rasterize,
+  mulberry32,
+  OrbitCamera,
   type RenderTarget,
+  Scene,
+  SceneRenderer,
+  smoothstep,
   type Texture,
-  type Vec3,
+  WorldMaterialInstance,
 } from '../../../engine/index.ts';
-import { OrbitCamera, type OrbitState } from '../../orbit.ts';
-import { mulberry32 } from '../../scenes/wisp.ts';
+import type { OrbitState } from '../../../engine/index.ts';
 import { type Card, fullDeck, shuffle } from '../../../rules/poker/cards.ts';
 import { cardBackTexture } from './card-textures.ts';
 import { CARD_SCALE, CARD_W, drawCard, flatDown } from './card-render.ts';
@@ -51,11 +56,6 @@ const TABLE_AMBIENT = 0.74; // high floor so the wood/felt stay bright (esp. in 
 // dealt out to a ring of seats.
 const HAND_SEAT_Z = 2.6;
 const DECK_POS = { x: 0, z: -0.4 };
-
-const smooth = (x: number): number => {
-  const t = x < 0 ? 0 : x > 1 ? 1 : x;
-  return t * t * (3 - 2 * t);
-};
 
 // Per-mode camera homes + how low the camera may drop (elevation floor). single is
 // free (see under the card); hand/deck are pinned above the table. hand looks over
@@ -83,6 +83,31 @@ export class CardsScene {
   private dirty = true;
   private lastT = 0;
   private back: Texture;
+  private readonly authoredScene = new Scene();
+  private readonly sceneRenderer = new SceneRenderer();
+  private readonly chairGeometry = chairMesh();
+  private readonly frameObject = new MeshObject(
+    frameMesh(),
+    new WorldMaterialInstance(lambertMaterial, {
+      lightDir: TABLE_LIGHT,
+      ambient: TABLE_AMBIENT,
+    }),
+  );
+  private readonly feltObject = new MeshObject(
+    feltMesh(),
+    new WorldMaterialInstance(feltMaterial, {
+      lightDir: TABLE_LIGHT,
+      ambient: TABLE_AMBIENT,
+      ...FELT_STIPPLE,
+    }),
+  );
+  private readonly chairInstances = new InstancedMesh(
+    this.chairGeometry,
+    new WorldMaterialInstance(lambertMaterial, {
+      lightDir: TABLE_LIGHT,
+      ambient: TABLE_AMBIENT,
+    }),
+  );
 
   // single
   private single: Card = { rank: 0, suit: 0 };
@@ -107,6 +132,11 @@ export class CardsScene {
     this.resetHand();
     const h = HOMES.single;
     this.cam = new OrbitCamera(h.home, h.min, h.max);
+    this.frameObject.setMatrix(TABLE_MODEL);
+    this.feltObject.setMatrix(TABLE_MODEL);
+    this.authoredScene.add(this.frameObject);
+    this.authoredScene.add(this.feltObject);
+    this.authoredScene.add(this.chairInstances);
   }
 
   private resetHand(): void {
@@ -244,10 +274,9 @@ export class CardsScene {
   }
 
   // Camera + projection for the current frame.
-  private viewProj(target: RenderTarget): { vp: Mat4; eye: Vec3 } {
-    const eye = this.cam.eye();
-    const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 200 };
-    return { vp: cameraMatrices(camera, target.width / target.height).viewProjection, eye };
+  private viewProj(target: RenderTarget): { camera: Camera; vp: Mat4 } {
+    const camera = this.cam.toCamera({ fovy: FOVY, near: 0.05, far: 200 });
+    return { camera, vp: cameraMatrices(camera, target.width / target.height).viewProjection };
   }
 
   // Draw a double-sided card at model matrix M (already scaled to the card quad),
@@ -258,15 +287,14 @@ export class CardsScene {
 
   // The poker table (felt green, wood brown), felt at y=0. `seats` chairs are
   // placed around the rail facing center — 1 (hero) for hand mode, N for deck.
-  private drawTable(target: RenderTarget, vp: Mat4, seats: number[]): void {
-    const tableMvp = mat4Multiply(vp, TABLE_MODEL);
-    rasterize(target, frameMesh(), lambertMaterial, { mvp: tableMvp, model: TABLE_MODEL, lightDir: TABLE_LIGHT, ambient: TABLE_AMBIENT });
-    rasterize(target, feltMesh(), feltMaterial, { mvp: tableMvp, model: TABLE_MODEL, lightDir: TABLE_LIGHT, ambient: TABLE_AMBIENT, ...FELT_STIPPLE });
-    const chair = chairMesh();
-    for (const a of seats) {
+  private drawTable(target: RenderTarget, camera: Camera, seats: number[]): void {
+    this.chairInstances.clearInstances();
+    for (let k = 0; k < seats.length; k++) {
+      const a = seats[k];
       const model = chairModel(a);
-      rasterize(target, chair, lambertMaterial, { mvp: mat4Multiply(vp, model), model, lightDir: TABLE_LIGHT, ambient: TABLE_AMBIENT });
+      this.chairInstances.setMatrixAt(k, model);
     }
+    this.sceneRenderer.render(target, this.authoredScene, camera);
   }
 
   renderScene(target: RenderTarget, t = 0): void {
@@ -286,8 +314,8 @@ export class CardsScene {
 
   private renderHand(target: RenderTarget, dt: number): void {
     target.clear(6, 10, 8);
-    const { vp } = this.viewProj(target);
-    this.drawTable(target, vp, [0]); // one chair: the hero seat at +z (front)
+    const { camera, vp } = this.viewProj(target);
+    this.drawTable(target, camera, [0]); // one chair: the hero seat at +z (front)
     // Advance the peek/lift springs, then draw both cards bent to their reveal.
     this.handPeek.step(dt);
     this.handPeek.draw(target, vp, this.cam.azimuth, this.back);
@@ -295,11 +323,11 @@ export class CardsScene {
 
   private renderDeck(target: RenderTarget, dt: number): void {
     target.clear(6, 10, 8);
-    const { vp } = this.viewProj(target);
+    const { camera, vp } = this.viewProj(target);
     // One chair per player, evenly around the rail (seat 0 at +z, the front).
     const seats: number[] = [];
     for (let s = 0; s < this.numPlayers; s++) seats.push((s / this.numPlayers) * Math.PI * 2);
-    this.drawTable(target, vp, seats);
+    this.drawTable(target, camera, seats);
 
     if (this.shuffling) {
       this.shuffleT += dt / 0.9;
@@ -339,7 +367,7 @@ export class CardsScene {
     // The in-flight card arcs from the deck top to its slot.
     if (this.dealing && this.dealDone < this.deals.length) {
       const d = this.deals[this.dealDone];
-      const p = smooth(this.dealT);
+      const p = smoothstep(this.dealT);
       const x = DECK_POS.x + (d.toX - DECK_POS.x) * p;
       const z = DECK_POS.z + (d.toZ - DECK_POS.z) * p;
       const y = deckTopY + Math.sin(p * Math.PI) * 0.9 + 0.02; // parabolic hop

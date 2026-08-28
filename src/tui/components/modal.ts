@@ -12,7 +12,7 @@ import type { ColorToken } from '../theme.ts';
 import type { Node } from '../types.ts';
 
 // Dark, ~55% opaque — enough to push the scene back without hiding it.
-const DEFAULT_SCRIM: ColorToken = [6, 8, 12, 0.55];
+const DEFAULT_SCRIM: ColorToken = 'scrim';
 
 export interface ModalOpts {
   scrim?: ColorToken;

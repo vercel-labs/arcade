@@ -14,11 +14,14 @@ import type { RGB } from '../../../engine/index.ts';
 import { UI_CHROME_BG, UI_CHROME_PILL, uiChromeBg } from '../../theme.ts';
 import type { ChessResult } from '../../../rules/chess/chess.ts';
 import { WHITE } from '../../../rules/chess/types.ts';
-import { CHAT_WIDTH, type ChatMessage, chatBox, mountChat, PANEL_PAD_L, PANEL_PAD_R } from './chat.ts';
+import { CHAT_WIDTH, type ChatMessage, chatBox, mountChat } from '../../match/chat.ts';
+import { buildChatSidebar } from '../../match/chat-sidebar.ts';
+import { hudTopCenter, hudTopRight } from '../../shell/hud-chrome.ts';
+import { CHESS_PALETTE } from './palette.ts';
 
 const HISTORY_HEIGHT = 18; // MAX visible move rows — the panel grows to this, then scrolls
 const HISTORY_WIDTH = 22; // inner content width — header + list share it (fixed)
-const ILLEGAL: RGB = [226, 92, 86]; // a move played under the illegal-moves toggle
+const ILLEGAL = CHESS_PALETTE.illegal; // a move played under the illegal-moves toggle
 
 // Long-lived so scroll position persists across frames/visits. autoHeight: the
 // panel is only as tall as the moves played (tiny/empty at game start) and grows
@@ -100,11 +103,8 @@ export function refreshMoveHistory(sans: readonly string[], illegal: readonly bo
   moveHistory.scroll = atBottom ? newMax : Math.min(moveHistory.scroll, newMax);
 }
 
-// "anthropic/claude-opus-4.8" → "claude-opus-4.8" for compact labels.
-export function shortModel(slug: string): string {
-  const slash = slug.indexOf('/');
-  return slash >= 0 ? slug.slice(slash + 1) : slug;
-}
+export { shortModel } from '../../match/model-label.ts';
+import { shortModel } from '../../match/model-label.ts';
 
 // ── Eval bar ──────────────────────────────────────────────────────────────────
 // A chess.com-style vertical eval rail near the right edge. White fills from the
@@ -117,8 +117,8 @@ const EVAL_LABEL_W = 4; // widest numeric label ("+1.2")
 const EVAL_RIGHT_PAD = 2; // matches the top-right menu/chat control inset
 const EVAL_COL_W = EVAL_LABEL_W + EVAL_RIGHT_PAD;
 const EVAL_VPAD = 4; // rows of gap above and below the rail
-const EVAL_LIGHT: RGB = [232, 228, 216]; // white side (ivory, matches the set)
-const EVAL_DARK: RGB = [48, 46, 52]; // black side (charcoal)
+const EVAL_LIGHT = CHESS_PALETTE.evalLight; // white side (ivory, matches the set)
+const EVAL_DARK = CHESS_PALETTE.evalDark; // black side (charcoal)
 const EVAL_LABEL_BG = uiChromeBg(0.9); // matches the move panel
 
 // White's share of the bar (0..1) from a centipawn score. tanh squashes so a huge
@@ -316,36 +316,23 @@ export function buildChessGameRoot(
   // the cluster is just the menu pill, floated flush against the panel's left edge (past
   // the eval rail too, when it's showing).
   const railW = (opts.chatVisible ? CHAT_WIDTH : 0) + (opts.evalVisible ? EVAL_COL_W : 0);
-  const cluster = Box({ position: 'absolute', top: 1, right: opts.chatVisible ? railW + 1 : 2, flexDirection: 'row', gap: 1 }, [
+  const cluster = hudTopRight([
     Button({ id: 'chess-menu', label: '☰ menu', onClick: opts.onOpenMenu, style: UI_CHROME_PILL }),
     ...(opts.chatVisible ? [] : [Button({ id: 'chat-open', label: 'chat', onClick: opts.onToggleChat, style: UI_CHROME_PILL })]),
-  ]);
+  ], { railWidth: opts.chatVisible ? railW - 1 : 0 });
   // The match banner floats at the top, centered in the space to the LEFT of the right
   // rail (chat + eval) rather than the full screen width — so it tracks the board area
   // and re-centers when chat or the eval bar toggles.
-  const banner = Box({ position: 'absolute', top: 1, left: 0, width: Math.max(0, region.w - railW), flexDirection: 'row', justifyContent: 'center' }, [
-    buildMatchBanner(opts.matchup),
-  ]);
+  const banner = hudTopCenter(buildMatchBanner(opts.matchup), region.w, { railWidth: railW });
   return Box({ width: region.w, height: region.h }, [row, cluster, banner]);
 }
 
 // The right-edge chat panel: a "Chat" header (clickable → hide, plus a ✕) over the
 // scrollable ChatBox Slot, full region height with a translucent fill matching the
 // move panel. Sizes the ChatBox viewport from the available height each frame.
-const CHAT_PAD_V = 1; // top/bottom inset
-const CHAT_HEADER_H = 2; // header row + a gap row
 function buildChatPanel(height: number, onToggle: () => void, active: boolean): Node {
-  chatBox.setViewport(Math.max(1, height - 2 * CHAT_PAD_V - CHAT_HEADER_H));
-  chatBox.setActive(active);
-  const header = Box({ flexDirection: 'row', justifyContent: 'between', alignItems: 'center', width: CHAT_WIDTH - PANEL_PAD_L - PANEL_PAD_R, padding: [0, 2, 0, 0] }, [
-    Button({ id: 'chat-toggle', label: 'chat', onClick: onToggle, style: HEADER_BTN }),
-    CloseButton({ id: 'chat-close', onClick: onToggle }),
-  ]);
   // flexShrink 0: the wide chess-game bar in the main column overflows its row, so
   // without this the panel would be squeezed below CHAT_WIDTH and clip its bubbles.
-  return Box({ flexDirection: 'column', width: CHAT_WIDTH, flexShrink: 0, height, padding: [CHAT_PAD_V, PANEL_PAD_R, CHAT_PAD_V, PANEL_PAD_L], background: uiChromeBg(0.9) }, [
-    header,
-    Box({ height: 1 }), // gap between header and the thread
-    Slot('chess-chat'),
-  ]);
+  return buildChatSidebar({ chat: chatBox, height, active, onToggle, closeId: 'chat-close', flexShrink: 0,
+    title: Button({ id: 'chat-toggle', label: 'chat', onClick: onToggle, style: HEADER_BTN }) });
 }

@@ -1,25 +1,33 @@
 import { readFileSync } from 'node:fs';
 import {
-  add3,
-  type Camera,
   cameraMatrices,
   flatShade,
   mat4Identity,
-  mat4MulVec4,
   mat4Multiply,
   mat4RotY,
   mat4Scale,
   mat4Translate,
   meshBounds,
   type Mesh,
+  MeshObject,
+  mulberry32,
+  nearestHit,
   normalize3,
+  ObjectPool,
+  OrbitCamera,
   parseObj,
   pieceMaterial,
-  rasterize,
+  Raycaster,
   type RenderTarget,
-  scale3,
+  ResourceCache,
+  Scene,
+  SceneRenderer,
+  smoothstep,
+  travelPoint,
+  type PieceUniforms,
   type Vec3,
   type VertexIn,
+  WorldMaterialInstance,
 } from '../../../engine/index.ts';
 import { ChessState } from '../../../rules/chess/chess.ts';
 import {
@@ -43,11 +51,11 @@ import {
   square,
   WHITE,
 } from '../../../rules/chess/types.ts';
-import { OrbitCamera } from '../../orbit.ts';
-import { loadCreatorWisp, mulberry32, type Wisp, WISP_SIZE } from '../../scenes/wisp.ts';
+import { loadCreatorWisp, type Wisp, WISP_SIZE } from '../../scenes/wisp.ts';
 import { asset } from '../../assets.ts';
 
 const PIECE_NAMES = ['pawn', 'queen', 'bishop', 'rook', 'king', 'knight'];
+const pieceMeshCache = new ResourceCache<string, Mesh>();
 
 const FOVY = (50 * Math.PI) / 180;
 const TALLEST = 1.7; // world height of the tallest piece (king)
@@ -85,6 +93,7 @@ const HILITE_LIFT = 0.004; // selected-square tint sits just above the board, un
 const ARC_HEIGHT = 0.5; // peak lift of a parabolic arc (captures + knight hops), world units
 const JAIL_GAP = 0.9; // x-gap between the board edge and the first jail column (× square)
 const JAIL_STEP = 0.9; // jail slot spacing, a touch tighter than a board square (× square)
+const EMPTY_MESH: Mesh = { vertices: [], indices: [] };
 
 // How a piece travels between two world points: `slide` stays on the board
 // plane; `arc` adds a low parabolic hop (captured pieces leaving the board, and
@@ -104,16 +113,10 @@ interface AnimSeg {
   hideSq: number; // 0x88 board square to suppress while animating (-1 = none)
 }
 
-const ease = (t: number): number => t * t * (3 - 2 * t);
-
 // Interpolate a world position along a segment at eased parameter `e`, adding a
 // low parabolic lift (peaks at e=0.5) for arc motion.
 function travel(a: Vec3, b: Vec3, e: number, motion: Motion): Vec3 {
-  return {
-    x: a.x + (b.x - a.x) * e,
-    y: a.y + (b.y - a.y) * e + (motion === 'arc' ? ARC_HEIGHT * 4 * e * (1 - e) : 0),
-    z: a.z + (b.z - a.z) * e,
-  };
+  return travelPoint(a, b, e, motion === 'arc' ? ARC_HEIGHT : 0);
 }
 
 // A playable chess board: a procedural 8×8 board driven by a live ChessState.
@@ -131,6 +134,21 @@ export class ChessGameScene {
   private scale: number;
   private square: number;
   private cam: OrbitCamera;
+  private readonly raycaster = new Raycaster();
+  private readonly authoredScene = new Scene();
+  private readonly sceneRenderer = new SceneRenderer();
+  private readonly authoredPool = new ObjectPool(() => new MeshObject(
+    EMPTY_MESH,
+    new WorldMaterialInstance(pieceMaterial, {
+      cameraPos: { x: 0, y: 0, z: 0 },
+      keyDir: KEY_DIR,
+      fillDir: FILL_DIR,
+      keyStrength: KEY_STRENGTH,
+      fillStrength: FILL_STRENGTH,
+      ambient: AMBIENT,
+      tint: IVORY,
+    }),
+  ));
 
   // Interaction state.
   private selectedSq = -1; // selected piece's square, or -1
@@ -208,7 +226,8 @@ export class ChessGameScene {
     let maxH = 0;
     let maxFootprint = 0;
     for (const name of PIECE_NAMES) {
-      const mesh = flatShade(parseObj(readFileSync(`${dir}/${name}.obj`, 'utf8')));
+      const path = `${dir}/${name}.obj`;
+      const mesh = pieceMeshCache.getOrCreate(path, () => flatShade(parseObj(readFileSync(path, 'utf8'))));
       meshes[name] = mesh;
       const b = meshBounds(mesh);
       maxH = Math.max(maxH, b.max.y - b.min.y);
@@ -238,6 +257,7 @@ export class ChessGameScene {
       this.square,
       boardWidth * 3,
     );
+    this.authoredScene.add(this.authoredPool);
   }
 
   // World center of a square. White's bottom-right (h1) is +X,+Z; ranks increase
@@ -338,7 +358,7 @@ export class ChessGameScene {
       const kingMesh = this.meshByType[KING];
       for (const s of A.segs) {
         if (s.mesh !== kingMesh || s.color !== color) continue;
-        return s.phase < A.phase ? s.to : s.phase > A.phase ? s.from : travel(s.from, s.to, ease(A.t), s.motion);
+        return s.phase < A.phase ? s.to : s.phase > A.phase ? s.from : travel(s.from, s.to, smoothstep(A.t), s.motion);
       }
     }
     const sq = this.kingSquare(color);
@@ -420,36 +440,26 @@ export class ChessGameScene {
   // orchestrator to raise the in-match model-swap popup for the clicked side.
   wispAt(ndcX: number, ndcY: number, aspect: number): Color | null {
     if (!this.matchActive) return null;
-    const eye = this.cam.eye();
-    const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 400 };
-    const { viewProjection: vp } = cameraMatrices(camera, aspect);
+    const camera = this.cam.toCamera({ fovy: FOVY, near: 0.05, far: 400 });
+    const raycaster = this.raycaster.setFromCamera(camera, ndcX, ndcY, aspect);
     const { up } = this.cam.basis();
     const size = WISP_SIZE * WISP_SCALE;
-    let best: Color | null = null;
-    let bestD = Infinity;
+    const hits: ({ color: Color } & NonNullable<ReturnType<Raycaster['projectedDisc']>>)[] = [];
     const test = (color: Color, wisp: Wisp | null): void => {
       if (!wisp) return;
       const k = this.kingWorldPos(color);
       if (!k) return;
       const P = { x: k.x, y: WISP_FLOAT, z: k.z };
-      const c = mat4MulVec4(vp, { x: P.x, y: P.y, z: P.z, w: 1 });
-      const cw = c.w || 1e-4;
-      const cx = c.x / cw;
-      const cy = c.y / cw;
-      // Clip-space radius from the center to a point one wisp-height up (matches
-      // the billboard's vertical half-extent), same measure the click is tested in.
-      const e = mat4MulVec4(vp, { x: P.x + up.x * size, y: P.y + up.y * size, z: P.z + up.z * size, w: 1 });
-      const ew = e.w || 1e-4;
-      const radius = Math.hypot(e.x / ew - cx, e.y / ew - cy);
-      const d = Math.hypot(ndcX - cx, ndcY - cy);
-      if (d < radius * 1.6 && d < bestD) {
-        bestD = d;
-        best = color;
-      }
+      const hit = raycaster.projectedDisc(
+        P,
+        { x: up.x * size, y: up.y * size, z: up.z * size },
+        1.6,
+      );
+      if (hit) hits.push({ color, ...hit });
     };
     test(WHITE, this.whiteWisp);
     test(BLACK, this.blackWisp);
-    return best;
+    return nearestHit(hits, { maxScore: 1.6 })?.color ?? null;
   }
 
   // Preview the two sides' creator wisps over the kings while the match-setup panel
@@ -531,19 +541,13 @@ export class ChessGameScene {
   // Map a normalized device coordinate (−1..1, +y up) to the 0x88 board square
   // under it, by casting a ray from the eye through the cursor onto the y=0 plane.
   private squareAt(ndcX: number, ndcY: number, aspect: number): number {
-    const { forward, right, up } = this.cam.basis();
-    const tanHalf = Math.tan(FOVY / 2);
-    const dir = normalize3(add3(forward, add3(scale3(right, ndcX * tanHalf * aspect), scale3(up, ndcY * tanHalf))));
-    const eye = this.cam.eye();
-    if (Math.abs(dir.y) < 1e-6) return -1;
-    const t = -eye.y / dir.y;
-    if (t <= 0) return -1;
+    const camera = this.cam.toCamera({ fovy: FOVY, near: 0.05, far: 400 });
+    const hit = this.raycaster.setFromCamera(camera, ndcX, ndcY, aspect).intersectPlane({ x: 0, y: 1, z: 0 });
+    if (!hit) return -1;
     // World hit point → square. When flipped the render negates x/z, so negate the
     // hit point back before mapping, keeping clicks aligned with what's drawn.
-    const hx = eye.x + dir.x * t;
-    const hz = eye.z + dir.z * t;
-    const wx = this.flipped ? -hx : hx;
-    const wz = this.flipped ? -hz : hz;
+    const wx = this.flipped ? -hit.x : hit.x;
+    const wz = this.flipped ? -hit.z : hit.z;
     const file = Math.floor(wx / this.square + 4);
     const rank = Math.floor(4 - wz / this.square);
     if (file < 0 || file > 7 || rank < 0 || rank > 7) return -1;
@@ -687,24 +691,20 @@ export class ChessGameScene {
   // it defaults to 0 for the snapshot/bench tools that render a single still frame.
   renderScene(target: RenderTarget, t = 0): void {
     target.clear(10, 11, 14);
-    const eye = this.cam.eye();
-    const camera: Camera = { eye, target: this.cam.target, up: { x: 0, y: 1, z: 0 }, fovy: FOVY, near: 0.05, far: 400 };
+    this.authoredPool.begin();
+    const camera = this.cam.toCamera({ fovy: FOVY, near: 0.05, far: 400 });
+    const eye = camera.eye;
     const { viewProjection } = cameraMatrices(camera, target.width / target.height);
     const scaleM = mat4Scale(this.scale, this.scale, this.scale);
     const blackOrient = mat4Multiply(mat4RotY(Math.PI), scaleM);
 
     const draw = (mesh: Mesh, model: number[], tint: Vec3): void => {
-      rasterize(target, mesh, pieceMaterial, {
-        mvp: mat4Multiply(viewProjection, model),
-        model,
-        cameraPos: eye,
-        keyDir: KEY_DIR,
-        fillDir: FILL_DIR,
-        keyStrength: KEY_STRENGTH,
-        fillStrength: FILL_STRENGTH,
-        ambient: AMBIENT,
-        tint,
-      });
+      const object = this.authoredPool.acquire();
+      object.geometry = mesh;
+      const material = object.material as WorldMaterialInstance<PieceUniforms>;
+      material.values.cameraPos = eye;
+      material.values.tint = tint;
+      object.setMatrix(model);
     };
     const orient = (color: Color): number[] => (color === WHITE ? scaleM : blackOrient);
 
@@ -759,7 +759,7 @@ export class ChessGameScene {
       const A = this.anim;
       for (const s of A.segs) {
         const pos =
-          s.phase < A.phase ? s.to : s.phase > A.phase ? s.from : travel(s.from, s.to, ease(A.t), s.motion);
+          s.phase < A.phase ? s.to : s.phase > A.phase ? s.from : travel(s.from, s.to, smoothstep(A.t), s.motion);
         place(s.mesh, pos, s.color);
       }
       A.t += 1 / ANIM_FRAMES;
@@ -779,6 +779,11 @@ export class ChessGameScene {
         }
       }
     }
+
+    // The authored scene traversal emits the same ordered raster calls queued by
+    // draw() above. Wisps remain a custom post-pass until their particle renderer
+    // becomes a scene object; keeping that boundary preserves their blend order.
+    this.sceneRenderer.render(target, this.authoredScene, camera);
 
     // Match HUD: each side's creator wisp floats in 3D just above that side's
     // king, tracking it as it moves and scaling with the camera. The side to move

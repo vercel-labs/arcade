@@ -104,7 +104,15 @@ export class Surface {
   // exceed 255; a raw Uint8Array store would wrap mod 256 and corrupt the hue).
   setCell(x: number, y: number, ch: string, fg: RGB, bg: RGB, style = 0): void {
     if (!this.inBounds(x, y)) return;
+    // A two-cell glyph cannot live in the final column: there is no second cell for its other
+    // half, and the terminal draws it regardless and advances the cursor two columns — off the
+    // edge, which wraps. The glyph then appears at the START of the next row, somewhere the model
+    // never wrote, so the differ compares that cell against an identical shadow and reports no
+    // change: the debris is unreachable until something else happens to overdraw it. Keeping the
+    // colours but dropping the glyph costs one blank column and cannot desync the row.
+    if (x + 1 >= this.cols && stringWidth(ch) === 2) ch = ' ';
     const i = y * this.cols + x;
+    this.breakWidePair(x, y, i, ch);
     this.ch[i] = ch === '' ? ' ' : ch;
     this.fg[i * 3] = byte(fg[0]);
     this.fg[i * 3 + 1] = byte(fg[1]);
@@ -164,15 +172,39 @@ export class Surface {
   // wide glyph occupies two cells (the second is a continuation sentinel).
   drawText(x: number, y: number, str: string, fg: RGB, bg: RGB, style = 0): void {
     let cx = x;
+    let lastX = -1;
     for (const g of str) {
       const w = stringWidth(g);
-      if (w === 0) continue; // combining mark / zero-width: no advance
+      if (w === 0) {
+        this.appendToCell(lastX, y, g);
+        continue;
+      }
       this.setCell(cx, y, g, fg, bg, style);
       if (w === 2 && this.inBounds(cx + 1, y)) {
         this.setCell(cx + 1, y, CONTINUATION, fg, bg, style);
       }
+      lastX = cx;
       cx += w;
     }
+  }
+
+  // The terminal draws a wide glyph across both of its cells, so a half-replaced pair is a state
+  // no terminal can reproduce. Overwriting either half blanks the other.
+  private breakWidePair(x: number, y: number, i: number, ch: string): void {
+    if (ch !== CONTINUATION && this.ch[i] === CONTINUATION && x > 0) {
+      this.ch[i - 1] = ' '; // orphaned head
+    }
+    if (stringWidth(ch) < 2 && x + 1 < this.cols && this.ch[i + 1] === CONTINUATION) {
+      this.ch[i + 1] = ' '; // orphaned tail
+    }
+  }
+
+  // A zero-width codepoint modifies the glyph before it and must share its cell. Dropping a
+  // U+FE0F changes what the terminal draws, desyncing the row. See docs/emoji.md.
+  private appendToCell(x: number, y: number, mark: string): void {
+    if (x < 0 || !this.inBounds(x, y)) return;
+    if (this.clipRect && (x < this.clipRect.x || x >= this.clipRect.x + this.clipRect.w || y < this.clipRect.y || y >= this.clipRect.y + this.clipRect.h)) return;
+    this.ch[y * this.cols + x] += mark;
   }
 
   // Draw text over the existing surface without introducing a new background
@@ -180,15 +212,20 @@ export class Surface {
   // cell's current background instead of painting a label chip behind the text.
   drawTextOver(x: number, y: number, str: string, fg: RGB, style = 0): void {
     let cx = x;
+    let lastX = -1;
     for (const g of str) {
       const w = stringWidth(g);
-      if (w === 0) continue;
+      if (w === 0) {
+        this.appendToCell(lastX, y, g);
+        continue;
+      }
       const bg = this.getCell(cx, y)?.bg ?? [0, 0, 0];
       this.setCell(cx, y, g, fg, bg, style);
       if (w === 2 && this.inBounds(cx + 1, y)) {
         const continuationBg = this.getCell(cx + 1, y)?.bg ?? bg;
         this.setCell(cx + 1, y, CONTINUATION, fg, continuationBg, style);
       }
+      lastX = cx;
       cx += w;
     }
   }
@@ -233,7 +270,11 @@ export class Surface {
           runActive = true;
           lastSeq = ''; // force an SGR at the start of each positioned run
         }
-        if (this.ch[i] === CONTINUATION) continue; // wide-glyph tail: emit nothing
+        // The tail emits nothing, so the cursor never advanced over it; end the run.
+        if (this.ch[i] === CONTINUATION) {
+          runActive = false;
+          continue;
+        }
         const seq = this.sgr(i);
         if (seq !== lastSeq) {
           out += seq;
@@ -253,27 +294,31 @@ export class Surface {
   // full emit, so the first frame after a reset repaints everything.
   diff(prev: Surface): string {
     let out = '';
-    let lastSeq = '';
     for (let y = 0; y < this.rows; y++) {
       let runActive = false;
+      let lastStyledCell = -1;
       for (let x = 0; x < this.cols; x++) {
         const i = y * this.cols + x;
         if (this.cellEq(prev, i)) {
           runActive = false; // an unchanged cell breaks the cursor run
+          lastStyledCell = -1;
           continue;
         }
         if (!runActive) {
           out += `\x1b[${y + 1};${x + 1}H`;
           runActive = true;
-          lastSeq = '';
+          lastStyledCell = -1;
         }
-        if (this.ch[i] === CONTINUATION) continue;
-        const seq = this.sgr(i);
-        if (seq !== lastSeq) {
-          out += seq;
-          lastSeq = seq;
+        // The tail emits nothing, so the cursor never advanced over it. Keeping the run open
+        // would write the next cell a column early and shift the rest of the line.
+        if (this.ch[i] === CONTINUATION) {
+          runActive = false;
+          lastStyledCell = -1;
+          continue;
         }
+        out += lastStyledCell < 0 ? this.sgr(i) : this.sgrTransition(lastStyledCell, i);
         out += this.ch[i];
+        lastStyledCell = i;
       }
     }
     if (out) out += '\x1b[0m';
@@ -315,5 +360,30 @@ export class Surface {
     s += `;38;2;${this.fg[i * 3]};${this.fg[i * 3 + 1]};${this.fg[i * 3 + 2]}`;
     s += `;48;2;${this.bg[i * 3]};${this.bg[i * 3 + 1]};${this.bg[i * 3 + 2]}m`;
     return s;
+  }
+
+  // Within one contiguous cursor run the terminal already holds the preceding cell's style.
+  // Emit only the color side that changed; a style-bit change still needs a reset because SGR
+  // has no compact way to clear an arbitrary combination of bold/dim/underline/reverse bits.
+  private sgrTransition(from: number, to: number): string {
+    if (this.style[from] !== this.style[to]) return this.sgr(to);
+    const parts: string[] = [];
+    const fromColor = from * 3;
+    const toColor = to * 3;
+    if (
+      this.fg[fromColor] !== this.fg[toColor] ||
+      this.fg[fromColor + 1] !== this.fg[toColor + 1] ||
+      this.fg[fromColor + 2] !== this.fg[toColor + 2]
+    ) {
+      parts.push(`38;2;${this.fg[toColor]};${this.fg[toColor + 1]};${this.fg[toColor + 2]}`);
+    }
+    if (
+      this.bg[fromColor] !== this.bg[toColor] ||
+      this.bg[fromColor + 1] !== this.bg[toColor + 1] ||
+      this.bg[fromColor + 2] !== this.bg[toColor + 2]
+    ) {
+      parts.push(`48;2;${this.bg[toColor]};${this.bg[toColor + 1]};${this.bg[toColor + 2]}`);
+    }
+    return parts.length ? `\x1b[${parts.join(';')}m` : '';
   }
 }

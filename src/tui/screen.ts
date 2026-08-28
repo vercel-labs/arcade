@@ -12,9 +12,10 @@ import { CellDiffer, Surface } from '../engine/index.ts';
 import type { KeyEvent } from '../platform/input.ts';
 import { type Component, Registry } from './component.ts';
 import { focusOrder } from './focus.ts';
-import { hitSurface, hitTest } from './hit.ts';
+import { hitSurface, hitTest, hoverTest } from './hit.ts';
 import { layout } from './layout.ts';
-import { paint, type PaintState } from './paint.ts';
+import { paint, paintWithForeground, type ForegroundPainter, type PaintState } from './paint.ts';
+import { defaultTheme, type Theme } from './theme.ts';
 import type { LayoutBox, Node, PointerHit } from './types.ts';
 
 export class Screen {
@@ -41,6 +42,7 @@ export class Screen {
   // cells is the expensive step, so we recompute it only when the scene actually
   // changed and reuse it (cheap copy) on UI-only frames (e.g. a hover).
   private sceneLayer: Surface;
+  private theme: Theme;
   private sceneValid = false;
   // Persistent components + the bookkeeping for their per-frame lifecycle: the
   // set of component ids referenced by last frame's tree, and which component
@@ -51,6 +53,8 @@ export class Screen {
   // The node that received the last pointer 'down' and has onMouse — drags route
   // here (pointer capture) until the next up.
   private captured: Node | null = null;
+  // Button held since the last down, replayed onto the drags that follow it.
+  private pressButton = 0;
   // Every expanded node is associated with its persistent component owner. The
   // map includes floating overlay descendants, so their clicks still count as
   // inside the component even when they extend beyond the field's layout box.
@@ -59,11 +63,21 @@ export class Screen {
   // internal search row) while still belonging to one component lifecycle.
   private focusOwners = new Map<string, string>();
 
-  constructor(cols: number, rows: number) {
+  constructor(cols: number, rows: number, theme: Theme = defaultTheme) {
     this.cols = cols;
     this.rows = rows;
+    this.theme = theme;
     this.surface = new Surface(cols, rows);
     this.sceneLayer = new Surface(cols, rows);
+  }
+
+  /** Replace the active palette without rebuilding component state. */
+  setTheme(theme: Theme): void {
+    if (theme === this.theme) return;
+    this.theme = theme;
+    this.sceneValid = false;
+    this.differ.reset();
+    this.contentDirty = true;
   }
 
   resize(cols: number, rows: number): void {
@@ -148,7 +162,7 @@ export class Screen {
   // geometry per screen, so they leave no ghosts.
   frame(): string {
     this.surface.clear();
-    if (this.root) paint(this.root, this.surface, this.state);
+    if (this.root) paint(this.root, this.surface, this.state, this.theme);
     this.painted = { ...this.state };
     this.contentDirty = false;
     return this.surface.serialize();
@@ -161,14 +175,19 @@ export class Screen {
   // expensive scene re-sample and reuse the cached scene layer — the perf
   // fix that makes this viable on static screens like the chess turntable.
   // resetDiff() (after an ESC[2J / resize) forces a full repaint next frame.
-  frameComposited(present: (surf: Surface) => void, sceneChanged = true): string {
+  frameComposited(present: (surf: Surface) => void, sceneChanged = true, foreground?: ForegroundPainter): string {
     if (sceneChanged || !this.sceneValid) {
       this.sceneLayer.clear();
       present(this.sceneLayer);
       this.sceneValid = true;
     }
     this.sceneLayer.copyInto(this.surface);
-    if (this.root) paint(this.root, this.surface, this.state);
+    if (this.root) {
+      if (foreground) paintWithForeground(this.root, this.surface, this.state, foreground, this.theme);
+      else paint(this.root, this.surface, this.state, this.theme);
+    } else {
+      foreground?.(this.surface);
+    }
     this.painted = { ...this.state };
     this.contentDirty = false;
     return this.differ.diff(this.surface);
@@ -181,10 +200,15 @@ export class Screen {
 
   // Composite scene + UI into a fresh Surface and return it (no diff) — for
   // headless rasterization (snapshots / tests). The root must already be set.
-  snapshot(present: (surf: Surface) => void): Surface {
+  snapshot(present: (surf: Surface) => void, foreground?: ForegroundPainter): Surface {
     const surf = new Surface(this.cols, this.rows);
     present(surf);
-    if (this.root) paint(this.root, surf, this.state);
+    if (this.root) {
+      if (foreground) paintWithForeground(this.root, surf, this.state, foreground, this.theme);
+      else paint(this.root, surf, this.state, this.theme);
+    } else {
+      foreground?.(surf);
+    }
     return surf;
   }
 
@@ -204,9 +228,16 @@ export class Screen {
     this.state.focusId = id;
   }
 
+  // Set hover directly for headless previews and non-pointer integrations. The
+  // normal terminal path should continue to use hover(x, y), which hit-tests the
+  // laid-out tree before assigning the id.
+  setHover(id: string | null): void {
+    this.state.hoverId = id;
+  }
+
   // Mouse move (1-based). Returns whether the hovered node changed.
   hover(x1: number, y1: number): boolean {
-    const n = this.root ? hitTest(this.root, x1 - 1, y1 - 1) : null;
+    const n = this.root ? hoverTest(this.root, x1 - 1, y1 - 1) : null;
     const id = n?.id ?? null;
     if (id === this.state.hoverId) return false;
     this.state.hoverId = id;
@@ -216,9 +247,12 @@ export class Screen {
   // Mouse press (1-based). Focuses + fires the hit node's onClick (the old bar
   // also acted on `down`). If the node has onMouse it also gets a 'down' (with
   // local coords) and captures the pointer, so subsequent drag()s route to it.
+  // `button` is the SGR button (0 = left, 2 = right); it reaches onMouse only —
+  // onClick stays button-agnostic, so every existing pill fires on any button.
   // Returns the hit node, or null if the press missed.
-  pointerDown(x1: number, y1: number): Node | null {
+  pointerDown(x1: number, y1: number, button = 0): Node | null {
     this.captured = null;
+    this.pressButton = button;
     if (!this.root) return null;
 
     const x = x1 - 1;
@@ -300,7 +334,7 @@ export class Screen {
   // Build a PointerHit in coordinates local to node n's layout box.
   private local(n: Node, x1: number, y1: number, type: 'down' | 'drag' | 'wheel'): PointerHit {
     const lb = n.layout!;
-    return { type, x: x1 - 1 - lb.x, y: y1 - 1 - lb.y, w: lb.w, h: lb.h };
+    return { type, x: x1 - 1 - lb.x, y: y1 - 1 - lb.y, w: lb.w, h: lb.h, button: this.pressButton };
   }
 
   // Mouse release: drop the pressed highlight + release the capture.

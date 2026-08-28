@@ -11,7 +11,7 @@
 
 import { readFileSync } from 'node:fs';
 import { asset } from '../../assets.ts';
-import { decodePng, FONT, type RGB, type Texture } from '../../../engine/index.ts';
+import { decodePng, FONT, ResourceCache, type RGB, type Texture } from '../../../engine/index.ts';
 import { type Card, isRed, RANK_LABELS } from '../../../rules/poker/cards.ts';
 
 // Card face resolution (5:7, a real card's ratio). Big enough that pips + indices
@@ -199,16 +199,13 @@ const COURT_Y = 30;
 const COURT_W = 174; // uniform 1.074× of the source 162×270 (aspect preserved, no distortion)
 const COURT_H = 290;
 
-const courtCache = new Map<string, SuitMask>();
+const courtCache = new ResourceCache<string, SuitMask>();
 
 function loadCourt(rank: number, suit: number): SuitMask {
   const key = `${rank}:${suit}`;
-  let m = courtCache.get(key);
-  if (!m) {
-    m = buildSuitMask(decodePng(readFileSync(`${COURT_DIR}/${COURT_NAMES[rank - 10]} of ${SUIT_FILES[suit]}s.png`)));
-    courtCache.set(key, m);
-  }
-  return m;
+  return courtCache.getOrCreate(key, () =>
+    buildSuitMask(decodePng(readFileSync(`${COURT_DIR}/${COURT_NAMES[rank - 10]} of ${SUIT_FILES[suit]}s.png`))),
+  );
 }
 
 // Fill the court box with the figure (1:1 when authored at box size, else scaled).
@@ -255,28 +252,26 @@ function drawCenter(put: Put, card: Card, ink: RGB): void {
 
 // ── public builders (cached) ────────────────────────────────────────────────────
 
-const faceCache = new Map<string, Texture>();
+const faceCache = new ResourceCache<string, Texture>();
 
 export function cardFaceTexture(card: Card): Texture {
   const key = `${card.rank}:${card.suit}`;
-  const hit = faceCache.get(key);
-  if (hit) return hit;
-  const data = new Uint8Array(FW * FH * 4);
-  for (let i = 0; i < FW * FH; i++) {
-    data[i * 4] = CARD_WHITE[0];
-    data[i * 4 + 1] = CARD_WHITE[1];
-    data[i * 4 + 2] = CARD_WHITE[2];
-    data[i * 4 + 3] = 255;
-  }
-  const ink = isRed(card) ? INK_RED : INK_BLACK;
-  const put: Put = (x, y, rgb, a) => blend(data, FW, FH, x, y, rgb, a);
-  const putRot: Put = (x, y, rgb, a) => blend(data, FW, FH, FW - 1 - x, FH - 1 - y, rgb, a);
-  drawCenter(put, card, ink);
-  drawCorner(put, card, ink);
-  drawCorner(putRot, card, ink); // opposite corner, rotated 180°
-  const tex: Texture = { width: FW, height: FH, data };
-  faceCache.set(key, tex);
-  return tex;
+  return faceCache.getOrCreate(key, () => {
+    const data = new Uint8Array(FW * FH * 4);
+    for (let i = 0; i < FW * FH; i++) {
+      data[i * 4] = CARD_WHITE[0];
+      data[i * 4 + 1] = CARD_WHITE[1];
+      data[i * 4 + 2] = CARD_WHITE[2];
+      data[i * 4 + 3] = 255;
+    }
+    const ink = isRed(card) ? INK_RED : INK_BLACK;
+    const put: Put = (x, y, rgb, a) => blend(data, FW, FH, x, y, rgb, a);
+    const putRot: Put = (x, y, rgb, a) => blend(data, FW, FH, FW - 1 - x, FH - 1 - y, rgb, a);
+    drawCenter(put, card, ink);
+    drawCorner(put, card, ink);
+    drawCorner(putRot, card, ink); // opposite corner, rotated 180°
+    return { width: FW, height: FH, data };
+  });
 }
 
 let backTex: Texture | null = null;

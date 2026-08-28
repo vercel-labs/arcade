@@ -56,6 +56,10 @@ game). Inside a library, modules import each other directly, not through the bar
 - `pnpm snapshot:png …` — same, then convert the `.ppm` to a `.png` in one step
 - `pnpm type-check` — `tsc --noEmit`
 - `pnpm test` — unit tests via `node:test` under `tsx` (auto-discovers `src/**/*.test.ts`; no extra deps)
+- `pnpm catan:check capture` then `pnpm catan:check` — fingerprint 24 Catan views before a refactor
+  and compare after, to prove a move of mesh or scene code doesn't change what's drawn. A pass means
+  the `.ppm` snapshots are byte-identical too. The baseline is local (gitignored), not a committed
+  golden file, so intended visual changes don't fight it — just re-`capture`.
 
 The published CLI also answers `arcade --version` / `--help`, which print and exit before
 any auth, network, or alt-screen work so they stay fast and scriptable.
@@ -120,11 +124,32 @@ the build script, `vercel.json`) — so arcade-only commits don't redeploy the p
 Test the exact handler locally: `pnpm exec tsx src/tools/serve-prism.ts` then
 `curl -sN localhost:8080`.
 
+## Install surfaces (site + banner)
+
+Three separate Vercel projects live in this repo, all in **vercel-labs**: `ascii-prisms`
+(the curl prism, root `vercel.json`), `arcade-telemetry` (`apps/telemetry-proxy`), and
+`vercel-arcade` — the landing page + `curl … | sh` installer at
+[vercel-arcade.vercel.app](https://vercel-arcade.vercel.app) (`apps/site`, root directory
+`apps/site`, static output, deploys on push to `main`). Deploy notes, including why
+`--prebuilt` is the wrong tool for that one, are in
+[apps/site/README.md](apps/site/README.md).
+
+After a **global** npm install the package prints a banner with the run command
+([src/arcade/install-banner.ts](src/arcade/install-banner.ts), entered from
+`scripts/postinstall.mjs`). Two constraints to respect when touching it: package
+managers capture and discard lifecycle-script stdout, so it writes to `/dev/tty`; and a
+postinstall that throws fails the install, so nothing in that path may throw. It stays
+silent for `npx`, a dev checkout, CI, and quiet log levels — and never runs under
+`pnpm add -g`, which blocks a package's lifecycle scripts.
+
 ## Conventions
 
 - Pin dependency versions (no `^`/`~`); prefer zero/few deps.
 - No dead code — if a refactor orphans a file/export, delete it.
 - The renderer's style hook is the **`Material`** (vertex + fragment shader). New visual
   looks should be materials, so the whole arcade shares one controllable style.
+- Terminal emoji: only use glyphs whose Unicode `Emoji_Presentation` is `Yes`, or the renderer
+  desyncs from the terminal in a way the diff cannot repair. Check with
+  `pnpm exec tsx src/tools/glyph-width.ts` — see [docs/emoji.md](docs/emoji.md).
 - `reference/` holds read-only inspo clones (gitignored). `docs/INSPO.MD` lists sources.
   Rendering patterns are informed by `sinclairzx81/zero` (MIT) — see `NOTICE.md`.
