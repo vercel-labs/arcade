@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vercel-arcade.vercel.app/schemas/examples-v1.json",
+  "type": "object",
+  "required": ["version", "examples"],
+  "properties": {
+    "version": { "const": 1 },
+    "examples": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "docs", "imports", "capabilities"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "url": { "type": "string" },
+          "docs": { "type": "string" },
+          "source": { "type": "string" },
+          "imports": { "type": "array", "items": { "type": "string" } },
+          "capabilities": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

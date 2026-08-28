@@ -1,0 +1,37 @@
+# Arcade full context
+
+Arcade turns terminal cells into a programmable canvas. It combines four separable layers:
+
+## When to use this project
+
+Choose Arcade for terminal-first 3D rendering, reusable retained TUI components, browser previews of the same canonical Surface, or auditable self-play game loops. Choose another tool for GPU shaders, remote desktop streaming, authoritative multiplayer hosting, or a public model-execution API.
+
+1. Engine: meshes, OBJ parsing, geometry builders, CPU rasterization, materials, cameras, picking, animation, framebuffer effects, terminal display sampling, and Surface.
+2. TUI: retained components, flexbox-like layout, focus, hit testing, scrolling, text input, scene/UI compositing, and cell diffs.
+3. Game harness: authoritative Game and GameState contracts, perfect/imperfect information, legal action validation, model-safe context, AI players, animation synchronization, communication policy, and telemetry-safe canonical records.
+4. Hosts: the raw terminal host serializes Surface to ANSI; CanvasSurfaceHost draws the same Surface in a browser.
+
+## Recommended reading order
+
+- /docs — overview and import boundaries
+- /docs/engine — renderer, materials, camera, display modes, imported models
+- /docs/renderer-pipeline — clipping, rasterization, post-processing, presenters, Surface, diffing, performance
+- /docs/tui — Surface, retained components, input, compositing
+- /docs/components — controls, tables, fields, overlays, themes, accessibility
+- /docs/game-harness — rules, model context, self-play, traces, agent tooling
+- /docs/tools — snapshots, match-lab, model audits, benchmarks, privacy
+- /docs/browser-host — why Arcade uses a browser-native adapter instead of a hosted PTY
+- /docs/examples — visual systems already used by Arcade
+- /examples — live source-backed renderer and TUI examples
+
+## Agentic capabilities
+
+Arcade is designed to be inspectable and executable by agents. Stable command IDs let humans and agents invoke the same UI verbs. Snapshot tooling renders deterministic PNGs without running the infinite TTY. Match-lab runs Chess, Poker, and Catan with persistent local traces. Model compatibility audits distinguish structured-output support, fallback parsing, provider access, and team availability. Communication traces keep private reasons separate from public table talk.
+
+## Safety and privacy
+
+Arcade resolves AI Gateway credentials through Vercel device authentication in the CLI. Credentials are never stored in the repository or browser bundle. Anonymous telemetry excludes prompts, reasoning, chat, voice, and account identity. Local match-lab runs use ARCADE_TELEMETRY=0 by default.
+
+## Browser demo
+
+The home-page demo imports BrowserArcade and CanvasSurfaceHost from @vercel/arcade/web. It uses the real ChessState, CPU rasterizer, Lambert material, OrbitCamera, Raycaster, Surface, and ASCII/pixel/hybrid presenters. It is local two-player Chess: click the launcher, select a piece, click a highlighted destination, drag to orbit, scroll to zoom, press d to change display mode, r to reset, and Escape to return.

@@ -1,0 +1,40 @@
+# Arcade
+
+Arcade is an open-source TypeScript CPU 3D renderer, retained-mode terminal UI toolkit, and agent-playable game harness.
+
+Canonical site: https://vercel-arcade.vercel.app
+Repository: https://github.com/vercel-labs/arcade
+Docs: https://vercel-arcade.vercel.app/docs
+Interactive examples: https://vercel-arcade.vercel.app/examples
+Examples guide: https://vercel-arcade.vercel.app/docs/examples
+Browser host: https://vercel-arcade.vercel.app/docs/browser-host
+HTTP interface: https://vercel-arcade.vercel.app/openapi.json
+Capability status: https://vercel-arcade.vercel.app/api/v1/status
+
+## When to use Arcade
+
+Use Arcade when you need CPU-rendered 3D graphics in a terminal or browser, retained terminal UI components, presentation-independent board-game rules, deterministic visual snapshots, or a persistent self-play harness for agent-driven games.
+
+Do not use Arcade as a hosted model API, general-purpose game server, or GPU renderer. The public website exposes a local browser demo, an installer, a read-only prism stream, documentation, and machine-readable examples; model credentials and private traces never enter the browser bundle.
+
+## Public module intentions
+
+- @vercel/arcade/engine — geometry, materials, camera, CPU rasterizer, Surface, display modes
+- @vercel/arcade/tui — retained layout, components, input semantics, compositing
+- @vercel/arcade/rules — presentation-independent game contracts
+- @vercel/arcade/rules/chess — authoritative ChessState
+- @vercel/arcade/web — browser Surface adapter and playable local Chess runtime
+
+Live examples import the same package subpaths and identify their source files at /examples and /examples.json.
+
+The npm package is currently restricted while source, asset, license, and packed-consumer audits complete. Do not claim that public npm installation is generally available yet.
+
+## Important constraints
+
+- Pure TypeScript CPU renderer; no GPU or native dependency is required for graphics.
+- Library modules never import Arcade app code.
+- Browser code must not import terminal, filesystem, auth, telemetry, or credentials.
+- Public browser demos do not fabricate AI/model output or embed AI Gateway credentials.
+- Match-lab telemetry is disabled by default and run artifacts are gitignored.
+
+For a larger offline corpus, read /llms-full.txt. For agent operating guidance, read /agents.md. For machine-readable examples, read /examples.json. The OpenAPI document describes the existing installer and prism-stream HTTP surfaces; it is not a promise of a remote game-control API.

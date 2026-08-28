@@ -2,15 +2,24 @@ import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { NextConfig } from 'next';
 
-// This app has its own pnpm-workspace.yaml/lockfile so it stays fully decoupled
-// from the outer arcade repo's dependency graph — but Next's root-detection walks
-// up looking for lockfiles and finds the outer repo's too, then Turbopack resolves
-// paths against the wrong (outer) root and panics on a symlink that only makes
-// sense from here. Pin it explicitly so it never looks further up than this app.
-const root = dirname(fileURLToPath(import.meta.url));
+// The site consumes browser-safe subpaths from the parent @vercel/arcade package.
+// Keep Turbopack rooted at the repository so it can follow that deliberate link;
+// package exports prevent the browser graph from reaching Node-only app modules.
+const siteRoot = dirname(fileURLToPath(import.meta.url));
+const root = dirname(dirname(siteRoot));
 
 const config: NextConfig = {
   turbopack: { root },
+  transpilePackages: ['@vercel/arcade'],
+  async headers() {
+    return [{
+      source: '/:path*',
+      headers: [{
+        key: 'Link',
+        value: '</llms.txt>; rel="alternate"; type="text/markdown", </openapi.json>; rel="service-desc"; type="application/vnd.oai.openapi+json"',
+      }],
+    }];
+  },
   async rewrites() {
     return [{ source: '/install.sh', destination: '/install' }];
   },

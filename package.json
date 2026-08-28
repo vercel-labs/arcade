@@ -19,6 +19,7 @@
     "models:audit": "tsx src/tools/model-compat-report.ts",
     "models:game-audit": "ARCADE_TELEMETRY=0 node --import tsx src/tools/model-game-audit.ts",
     "models:report": "tsx src/tools/model-compat-view.ts",
+    "smoke:package": "node scripts/smoke-package.mjs",
     "build:vercel": "node scripts/build-vercel-output.mjs",
     "watch": "ARCADE_DEV=1 tsx watch src/arcade/main.ts",
     "type-check": "tsc --noEmit",
@@ -48,6 +49,14 @@
   },
   "bin": {
     "arcade": "./bin/arcade.mjs"
+  },
+  "exports": {
+    ".": "./src/public-api.ts",
+    "./engine": "./src/engine/index.ts",
+    "./tui": "./src/tui/index.ts",
+    "./rules": "./src/rules/game.ts",
+    "./rules/chess": "./src/rules/chess/chess.ts",
+    "./web": "./src/web/index.ts"
   },
   "files": [
     "bin",

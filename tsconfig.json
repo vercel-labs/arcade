@@ -12,5 +12,6 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["node"]
   },
-  "include": ["src", "apps"]
+  "include": ["src", "apps"],
+  "exclude": ["apps/site"]
 }

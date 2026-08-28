@@ -15,6 +15,17 @@ export const generateStaticParams = () => i18n.languages.map((lang) => ({ lang }
 
 export const metadata: Metadata = {
   metadataBase: isSiteUrlConfigured ? siteUrl : undefined,
+  applicationName: 'Arcade',
+  title: { default: 'Arcade — 3D games in your terminal', template: '%s — Arcade' },
+  description: 'A pure-TypeScript CPU 3D renderer, retained TUI, and agent-playable game harness.',
+  alternates: { canonical: '/' },
+  openGraph: {
+    type: 'website',
+    siteName: 'Arcade',
+    title: 'Arcade — 3D games in your terminal',
+    description: 'Build and play CPU-rendered 3D ASCII games in terminals and browsers.',
+    images: [{ url: '/opengraph-image', width: 1200, height: 630, alt: 'Arcade — build worlds inside text' }],
+  },
 };
 
 const Layout = async ({ children }: LayoutProps<'/[lang]'>) => {

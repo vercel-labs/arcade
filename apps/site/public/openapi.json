@@ -1,0 +1,112 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Arcade public HTTP surfaces",
+    "version": "1.0.0",
+    "description": "Version 1 of the read-only and installation endpoints exposed by the Arcade website. Versioned endpoints remain compatible within v1; incompatible changes use a new URL version. Deprecations are announced in the docs and use Deprecation and Sunset response headers before removal. Arcade does not expose a remote game-control or model-execution API.",
+    "license": {
+      "name": "See repository licensing status",
+      "url": "https://github.com/vercel-labs/arcade"
+    }
+  },
+  "servers": [
+    { "url": "https://vercel-arcade.vercel.app", "description": "Production website" }
+  ],
+  "externalDocs": {
+    "description": "Arcade developer documentation",
+    "url": "https://vercel-arcade.vercel.app/docs"
+  },
+  "paths": {
+    "/api/v1/status": {
+      "get": {
+        "operationId": "getArcadeSiteStatus",
+        "summary": "Inspect Arcade website capabilities",
+        "description": "Returns the API version and links to the machine-readable surfaces that agents can safely consume.",
+        "responses": {
+          "200": {
+            "description": "Current public capability metadata.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StatusResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/prism-stream": {
+      "get": {
+        "operationId": "streamAsciiPrism",
+        "summary": "Stream the live truecolor ASCII prism",
+        "description": "Proxies the public ASCII prism renderer as a no-cache text stream for the website. This endpoint is visual and read-only; it does not create a game or invoke a model.",
+        "parameters": [
+          { "name": "cols", "in": "query", "description": "Requested terminal columns.", "schema": { "type": "integer", "minimum": 20, "maximum": 400 } },
+          { "name": "rows", "in": "query", "description": "Requested terminal rows.", "schema": { "type": "integer", "minimum": 10, "maximum": 200 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "A streaming ANSI/truecolor text response.",
+            "content": { "text/plain": { "schema": { "type": "string" } } }
+          },
+          "502": {
+            "description": "The upstream prism renderer is unavailable.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          }
+        }
+      }
+    },
+    "/install": {
+      "get": {
+        "operationId": "getArcadeInstaller",
+        "summary": "Download the Arcade shell installer",
+        "description": "Returns the repository's reviewed shell installer as plain text. Inspect the response before piping it to a shell.",
+        "responses": {
+          "200": {
+            "description": "The Arcade installation script.",
+            "content": { "text/plain": { "schema": { "type": "string" } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "StatusResponse": {
+        "type": "object",
+        "required": ["service", "apiVersion", "status", "capabilities"],
+        "properties": {
+          "service": { "type": "string" },
+          "apiVersion": { "type": "string", "const": "v1" },
+          "status": { "type": "string", "const": "ok" },
+          "capabilities": {
+            "type": "object",
+            "required": ["gameControl", "modelExecution", "installer", "prismStream", "agentIndex", "examples"],
+            "properties": {
+              "gameControl": { "type": "boolean", "const": false },
+              "modelExecution": { "type": "boolean", "const": false },
+              "installer": { "type": "string" },
+              "prismStream": { "type": "string" },
+              "agentIndex": { "type": "string" },
+              "examples": { "type": "string" }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message", "resolution"],
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "resolution": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -20,49 +20,57 @@ import dynamic from 'next/dynamic';
 const PrismTerminal = dynamic(() => import('./prism-terminal').then((m) => m.PrismTerminal), {
   ssr: false,
 });
+const ArcadePlayground = dynamic(() => import('./arcade-playground').then((m) => m.ArcadePlayground), {
+  ssr: false,
+});
 
 const CURL_COMMAND = 'curl -fsSL vercel-arcade.vercel.app/install | sh';
 const NPM_COMMAND = 'npm i -g @vercel/arcade';
 
 export const Hero = () => (
-  <section className="mt-(--fd-nav-height) px-4 pt-16 pb-16 text-center @min-[640px]:pt-24">
-    <div className="mx-auto w-full max-w-3xl space-y-5">
-      <h1 className="text-balance text-center font-mono font-bold text-[40px]! leading-[1.1] tracking-tight @min-[640px]:text-6xl!">
-        arcade
-      </h1>
-      <p className="mx-auto max-w-2xl text-balance text-gray-900 leading-relaxed @min-[640px]:text-xl">
-        3D games in your terminal, played by frontier AI models.
-      </p>
+  <section className="hero-shell mt-(--fd-nav-height) px-4 pt-12 pb-20 @min-[640px]:pt-20">
+    <div className="hero-grid mx-auto w-full max-w-[1240px]">
+      <div className="hero-copy">
+        <p className="hero-eyebrow">CPU-rendered · agent-playable · open source</p>
+        <h1>Build worlds<br />inside text.</h1>
+        <p className="hero-lede">
+          Arcade is a TypeScript 3D engine, retained TUI, and game harness that turns terminal cells into a
+          programmable canvas. Play it here, install the CLI, or import the primitives.
+        </p>
+
+        <div className="mt-8 w-full max-w-xl">
+          <CommandPromptRoot defaultValue="curl">
+            <CommandPromptList>
+              <CommandPromptTrigger className="min-w-[70px]" value="curl">curl</CommandPromptTrigger>
+              <CommandPromptTriggerDivider />
+              <CommandPromptTrigger className="min-w-[70px]" value="npm">npm</CommandPromptTrigger>
+            </CommandPromptList>
+            <CommandPromptSurface>
+              <CommandPromptPrefix>$</CommandPromptPrefix>
+              <CommandPromptViewport>
+                <CommandPromptContent copyValue={CURL_COMMAND} value="curl">{CURL_COMMAND}</CommandPromptContent>
+                <CommandPromptContent copyValue={NPM_COMMAND} value="npm">{NPM_COMMAND}</CommandPromptContent>
+              </CommandPromptViewport>
+              <CommandPromptCopy />
+            </CommandPromptSurface>
+          </CommandPromptRoot>
+        </div>
+      </div>
+
+      <div className="hero-playground">
+        <ArcadePlayground />
+        <p className="hero-playground__caption">A real browser host: Arcade rules + CPU renderer + Surface. No PTY, no fake model output.</p>
+      </div>
     </div>
 
-    <div className="mx-auto mt-10 aspect-video w-full max-w-4xl overflow-hidden rounded-xl border bg-black">
-      <PrismTerminal className="h-full w-full" />
-    </div>
-
-    <div className="mx-auto mt-8 w-full max-w-xl">
-      <CommandPromptRoot defaultValue="curl">
-        <CommandPromptList>
-          <CommandPromptTrigger className="min-w-[70px]" value="curl">
-            curl
-          </CommandPromptTrigger>
-          <CommandPromptTriggerDivider />
-          <CommandPromptTrigger className="min-w-[70px]" value="npm">
-            npm
-          </CommandPromptTrigger>
-        </CommandPromptList>
-        <CommandPromptSurface>
-          <CommandPromptPrefix>$</CommandPromptPrefix>
-          <CommandPromptViewport>
-            <CommandPromptContent copyValue={CURL_COMMAND} value="curl">
-              {CURL_COMMAND}
-            </CommandPromptContent>
-            <CommandPromptContent copyValue={NPM_COMMAND} value="npm">
-              {NPM_COMMAND}
-            </CommandPromptContent>
-          </CommandPromptViewport>
-          <CommandPromptCopy />
-        </CommandPromptSurface>
-      </CommandPromptRoot>
+    <div className="prism-strip mx-auto mt-20 w-full max-w-[1240px]">
+      <div className="prism-strip__copy">
+        <span>01 / same engine, another surface</span>
+        <strong>The curl-able prism is still live.</strong>
+      </div>
+      <div className="prism-strip__terminal">
+        <PrismTerminal className="h-full w-full" />
+      </div>
     </div>
   </section>
 );

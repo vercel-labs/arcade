@@ -19,7 +19,29 @@ export async function GET(req: Request): Promise<Response> {
     if (value) upstream.searchParams.set(key, value);
   }
 
-  const res = await fetch(upstream, { signal: req.signal });
+  let res: Response;
+  try {
+    res = await fetch(upstream, { signal: req.signal });
+  } catch {
+    return Response.json({
+      error: {
+        code: 'PRISM_UPSTREAM_UNAVAILABLE',
+        message: 'The live prism stream is temporarily unavailable.',
+        resolution: 'Retry the request or use the local snapshot command documented at /docs/examples.',
+      },
+    }, { status: 502 });
+  }
+
+  if (!res.ok) {
+    return Response.json({
+      error: {
+        code: 'PRISM_UPSTREAM_ERROR',
+        message: `The prism renderer returned HTTP ${res.status}.`,
+        resolution: 'Retry the request later or render a local frame with pnpm snapshot:png.',
+      },
+    }, { status: 502 });
+  }
+
   return new Response(res.body, {
     status: res.status,
     headers: {

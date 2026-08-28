@@ -7,7 +7,11 @@ import Link from 'next/link';
 // last two unconditionally with no config to hide them, and this site has neither
 // a search index nor a chat route to back them). Reuses geistdocs' own logo/icon
 // assets and design tokens (theme.css) so it still matches the rest of the page.
-const NAV_LINKS = [{ label: 'AI Gateway', href: 'https://vercel.com/ai-gateway' }];
+const NAV_LINKS = [
+  { label: 'Docs', href: '/docs' },
+  { label: 'Examples', href: '/examples' },
+  { label: 'AI Gateway', href: 'https://vercel.com/ai-gateway' },
+];
 
 const GitHubIcon = () => (
   <svg aria-hidden="true" height="20" viewBox="0 0 16 16" width="20" fill="currentColor">
@@ -27,15 +31,13 @@ export const SiteNav = () => (
       </Link>
       <nav className="flex items-center gap-5">
         {NAV_LINKS.map((link) => (
-          <a
+          <Link
             className="text-gray-900 text-sm hover:text-gray-1000"
             href={link.href}
             key={link.href}
-            rel="noopener noreferrer"
-            target="_blank"
           >
             {link.label}
-          </a>
+          </Link>
         ))}
         <a
           aria-label="GitHub repository"

@@ -9,15 +9,14 @@ curl -fsSL vercel-arcade.vercel.app/install | sh
 
 A Next.js app built on **[`@vercel/geistdocs`](https://github.com/vercel/geistdocs)** —
 the shared package behind vgpu.sh, skills.sh, and other Vercel OSS sites — for the
-"▲ OSS / product ▾" nav (with the cross-product flyout) and the Vercel-wide footer.
-Only the minimal shell is adopted: `Navbar` + `Footer` + a hero page, none of
-geistdocs' MDX docs/i18n-content/AI-chat machinery, since there's no docs corpus to
-manage yet. A real `/docs` section can adopt that later.
+"▲ OSS / product ▾" nav, docs shell, and Vercel-wide footer. The hero embeds a
+browser-native Arcade host: the same CPU renderer, cell `Surface`, presentation
+modes, and Chess rules used by the CLI, drawn by a canvas adapter instead of ANSI.
 
 It's its own [pnpm workspace root](pnpm-workspace.yaml) (own lockfile,
 own `node_modules`) nested inside the arcade repo, fully decoupled from the CLI's
-own dependency graph — `pnpm install`/`pnpm build` here never touches the root
-`@vercel/arcade` package or its published `files`.
+own dependency graph. It consumes the root package through a workspace link and
+public subpath exports rather than copying game or renderer code.
 
 ## Layout
 
@@ -26,11 +25,15 @@ own dependency graph — `pnpm install`/`pnpm build` here never touches the root
 | `geistdocs.tsx` | product config: logo, nav links, GitHub repo, title |
 | `lib/geistdocs/config.tsx` | `defineConfig(...)` wiring the above into geistdocs |
 | `app/[lang]/layout.tsx` | root layout — `Navbar` + `Footer` from `@vercel/geistdocs` |
-| `app/[lang]/(home)/page.tsx` | the hero page + the old README-style content sections |
-| `app/[lang]/(home)/components/hero.tsx` | wordmark, tagline, the streamed prism, install CTA |
+| `app/[lang]/(home)/page.tsx` | product overview, capabilities, install, and privacy sections |
+| `app/[lang]/(home)/components/hero.tsx` | wordmark, playable browser Arcade, prism strip, install CTA |
+| `app/[lang]/(home)/components/arcade-playground.tsx` | thin React adapter around `@vercel/arcade/web` |
+| `app/[lang]/docs/[[...slug]]` | renderer, TUI, harness, browser-host, and examples documentation |
 | `app/[lang]/(home)/components/prism-terminal.tsx` | client component: `xterm.js` rendering the streamed prism |
 | `app/api/prism-stream/route.ts` | proxies `ascii-prisms.vercel.app`'s stream same-origin (avoids a CORS change to that shared, three-consumer handler) |
 | `app/install/route.ts` | serves `install.sh` verbatim at `/install` (and `/install.sh` via a rewrite) |
+| `public/llms.txt`, `public/llms-full.txt`, `public/agents.md` | agent-readable entry points |
+| `public/examples.json`, `public/schemas/examples-v1.json` | machine-readable example catalog and schema |
 | `install.sh` | the installer itself — unchanged, still checks Node 20+ then runs `npm i -g @vercel/arcade` |
 
 The `[lang]` segment is geistdocs' routing convention; only `en` is configured
