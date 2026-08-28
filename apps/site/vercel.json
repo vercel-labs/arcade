@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "buildCommand": "next build",
+  "buildCommand": "pnpm build",
   "installCommand": "pnpm install",
-  "ignoreCommand": "git diff --quiet ${VERCEL_GIT_PREVIOUS_SHA:-HEAD^} HEAD -- ':/apps/site' || exit 1"
+  "ignoreCommand": "git diff --quiet ${VERCEL_GIT_PREVIOUS_SHA:-HEAD^} HEAD -- ':/apps/site' ':/package.json' ':/pnpm-lock.yaml' ':/bin' ':/src' ':/assets' ':/scripts/postinstall.mjs' ':/README.md' || exit 1"
 }
