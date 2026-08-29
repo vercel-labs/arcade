@@ -22,16 +22,21 @@ try {
 import assert from 'node:assert/strict';
 import { Surface } from '@vercel/arcade/engine';
 import { decodePng } from '@vercel/arcade/engine/png';
+import { fetchObjMesh } from '@vercel/arcade/game-visuals';
 import { tileMesh } from '@vercel/arcade/game-visuals/catan';
+import { CHESS_PIECE_NAMES, parseChessPieceMeshes } from '@vercel/arcade/game-visuals/chess';
 import { Box, Text } from '@vercel/arcade/tui';
 import { ChessState } from '@vercel/arcade/rules/chess';
 import { BrowserArcade, BrowserRenderShowcase, BrowserTuiShowcase, createBrowserMiniScene } from '@vercel/arcade/web';
 
 assert.equal(new Surface(3, 2).cols, 3);
 assert.equal(typeof decodePng, 'function');
+assert.equal(typeof fetchObjMesh, 'function');
 assert.equal(Box({}, [Text({ text: 'ok' })]).children.length, 1);
 assert.equal(new ChessState().isTerminal(), false);
 assert.ok(tileMesh('fields').vertices.length > 0);
+const triangleObj = 'v -0.5 0 0\\nv 0.5 0 0\\nv 0 1 0\\nf 1 2 3';
+assert.equal(parseChessPieceMeshes(Object.fromEntries(CHESS_PIECE_NAMES.map((name) => [name, triangleObj]))).king.indices.length, 3);
 assert.equal(new BrowserArcade().play('e4'), true);
 assert.equal(new BrowserRenderShowcase().frame(48, 26, 0).displayMode, 'ascii');
 assert.match(new BrowserTuiShowcase().frame(48, 26).status, /Selected/);
@@ -41,7 +46,7 @@ console.log('packed Arcade subpaths import successfully');
   execFileSync(process.execPath, ['--import', 'tsx', 'smoke.mjs'], { cwd: consumer, stdio: 'inherit' });
 
   const packed = JSON.parse(readFileSync(join(temp, 'package', 'package.json'), 'utf8'));
-  for (const subpath of ['.', './engine', './engine/png', './game-visuals/catan', './tui', './rules', './rules/chess', './web']) {
+  for (const subpath of ['.', './engine', './engine/png', './game-visuals', './game-visuals/catan', './game-visuals/chess', './tui', './rules', './rules/chess', './web']) {
     if (!packed.exports?.[subpath]) throw new Error(`packed package is missing export ${subpath}`);
   }
 } finally {

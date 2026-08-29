@@ -54,10 +54,12 @@
     ".": "./src/public-api.ts",
     "./engine": "./src/engine/index.ts",
     "./engine/png": "./src/engine/texture.ts",
+    "./game-visuals": "./src/game-visuals/index.ts",
     "./tui": "./src/tui/index.ts",
     "./rules": "./src/rules/game.ts",
     "./rules/chess": "./src/rules/chess/chess.ts",
     "./game-visuals/catan": "./src/game-visuals/catan/index.ts",
+    "./game-visuals/chess": "./src/game-visuals/chess/index.ts",
     "./web": "./src/web/index.ts"
   },
   "files": [

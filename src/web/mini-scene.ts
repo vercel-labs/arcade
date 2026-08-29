@@ -3,6 +3,13 @@ import type { BrowserDisplayMode } from './browser-chess.ts';
 
 export type BrowserMiniSceneId = 'chess-board' | 'catan-fields';
 
+export interface BrowserMiniSceneOptions {
+  /** Browser-visible directory containing pawn.obj, knight.obj, and the other production pieces. */
+  chessPieceAssetBaseUrl?: string;
+  /** Optional transport override for tests, authenticated assets, or custom hosts. */
+  chessPieceFetchText?: (url: string) => Promise<string>;
+}
+
 export interface BrowserMiniSceneFrame {
   surface: Surface;
   status: string;
@@ -14,6 +21,8 @@ export interface BrowserMiniSceneFrame {
  * Arcade continues to own geometry, cameras, rendering, and terminal cells.
  */
 export interface BrowserMiniScene {
+  /** Optional one-time asset preparation. Frames remain valid while it is pending. */
+  prepare?(): Promise<void>;
   frame(cols: number, rows: number, timeSeconds?: number): BrowserMiniSceneFrame;
   cycleDisplayMode(): BrowserDisplayMode;
   orbit(dx: number, dy: number): void;

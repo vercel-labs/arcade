@@ -1,13 +1,11 @@
 import { readFileSync } from 'node:fs';
 import {
   cameraMatrices,
-  flatShade,
   mat4Identity,
   mat4Multiply,
   mat4RotY,
   mat4Scale,
   mat4Translate,
-  meshBounds,
   type Mesh,
   MeshObject,
   mulberry32,
@@ -15,7 +13,6 @@ import {
   normalize3,
   ObjectPool,
   OrbitCamera,
-  parseObj,
   pieceMaterial,
   Raycaster,
   type RenderTarget,
@@ -29,6 +26,12 @@ import {
   type VertexIn,
   WorldMaterialInstance,
 } from '../../../engine/index.ts';
+import {
+  CHESS_PIECE_NAMES,
+  measureChessPieceMeshes,
+  parseChessPieceMesh,
+  type ChessPieceMeshes,
+} from '../../../game-visuals/chess/index.ts';
 import { ChessState } from '../../../rules/chess/chess.ts';
 import {
   BISHOP,
@@ -54,7 +57,6 @@ import {
 import { loadCreatorWisp, type Wisp, WISP_SIZE } from '../../scenes/wisp.ts';
 import { asset } from '../../assets.ts';
 
-const PIECE_NAMES = ['pawn', 'queen', 'bishop', 'rook', 'king', 'knight'];
 const pieceMeshCache = new ResourceCache<string, Mesh>();
 
 const FOVY = (50 * Math.PI) / 180;
@@ -222,19 +224,14 @@ export class ChessGameScene {
   }
 
   constructor(dir = asset('chess_blender')) {
-    const meshes: Record<string, Mesh> = {};
-    let maxH = 0;
-    let maxFootprint = 0;
-    for (const name of PIECE_NAMES) {
+    const meshes = {} as ChessPieceMeshes;
+    for (const name of CHESS_PIECE_NAMES) {
       const path = `${dir}/${name}.obj`;
-      const mesh = pieceMeshCache.getOrCreate(path, () => flatShade(parseObj(readFileSync(path, 'utf8'))));
-      meshes[name] = mesh;
-      const b = meshBounds(mesh);
-      maxH = Math.max(maxH, b.max.y - b.min.y);
-      maxFootprint = Math.max(maxFootprint, b.max.x - b.min.x, b.max.z - b.min.z);
+      meshes[name] = pieceMeshCache.getOrCreate(path, () => parseChessPieceMesh(readFileSync(path, 'utf8')));
     }
-    this.scale = TALLEST / (maxH || 1);
-    this.square = maxFootprint * this.scale * 1.25;
+    const metrics = measureChessPieceMeshes(meshes, TALLEST);
+    this.scale = metrics.scale;
+    this.square = metrics.square;
     this.meshByType[PAWN] = meshes.pawn;
     this.meshByType[KNIGHT] = meshes.knight;
     this.meshByType[BISHOP] = meshes.bishop;

@@ -25,6 +25,16 @@ test('mini-scene factory creates a focused real Chess board', () => {
   assert.equal(scene.cycleDisplayMode(), 'pixel');
 });
 
+test('Chess mini scene can prepare imported production-style OBJ assets asynchronously', async () => {
+  const source = ['v -0.5 0 0', 'v 0.5 0 0', 'v 0 1 0', 'f 1 2 3'].join('\n');
+  const scene = createBrowserMiniScene('chess-board', {
+    chessPieceAssetBaseUrl: '/models/chess',
+    chessPieceFetchText: async () => source,
+  });
+  await scene.prepare?.();
+  assert.ok(visibleGlyphs(scene) > 100);
+});
+
 test('Catan mini scene renders the shared production terrain mesh', () => {
   const scene = createBrowserMiniScene('catan-fields');
   assert.ok(scene instanceof BrowserCatanTileShowcase);

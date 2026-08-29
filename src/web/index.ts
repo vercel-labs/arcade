@@ -24,4 +24,5 @@ export type {
   BrowserMiniScene,
   BrowserMiniSceneFrame,
   BrowserMiniSceneId,
+  BrowserMiniSceneOptions,
 } from './mini-scene.ts';

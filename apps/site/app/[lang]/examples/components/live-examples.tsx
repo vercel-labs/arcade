@@ -180,7 +180,11 @@ export function ChessBoardExample() {
     imports="@vercel/arcade/web"
     source="src/web/browser-mini-scenes.ts"
     title="Chess board"
-  ><ArcadeSceneEmbed ariaLabel="Interactive Arcade chess board" scene="chess-board" /></ExampleShell>;
+  ><ArcadeSceneEmbed
+    ariaLabel="Interactive Arcade chess board"
+    assetBaseUrl="/arcade-assets/chess"
+    scene="chess-board"
+  /></ExampleShell>;
 }
 
 export function CatanTileExample() {

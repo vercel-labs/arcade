@@ -4,6 +4,7 @@ import { RenderTarget } from '../engine/framebuffer.ts';
 import { lambertMaterial } from '../engine/materials.ts';
 import {
   mat4Multiply,
+  mat4RotY,
   mat4Scale,
   mat4Translate,
   normalize3,
@@ -27,6 +28,11 @@ import {
   STYLE_DIM,
   Surface,
 } from '../engine/surface.ts';
+import {
+  measureChessPieceMeshes,
+  type ChessPieceMeshes,
+  type ChessPieceName,
+} from '../game-visuals/chess/index.ts';
 import { ChessState } from '../rules/chess/chess.ts';
 import {
   BLACK,
@@ -64,6 +70,14 @@ const FRAME: RGB = [35, 38, 48];
 const GOLD: RGB = [217, 178, 77];
 const CYAN: RGB = [76, 191, 212];
 const DISPLAY_MODES: BrowserDisplayMode[] = ['ascii', 'pixel', 'hybrid'];
+const PIECE_NAME: Record<PieceType, ChessPieceName> = {
+  [PAWN]: 'pawn',
+  [KNIGHT]: 'knight',
+  [BISHOP]: 'bishop',
+  [ROOK]: 'rook',
+  [QUEEN]: 'queen',
+  [KING]: 'king',
+};
 const PIECE_SCALE: Record<PieceType, Vec3> = {
   [PAWN]: { x: 0.34, y: 0.72, z: 0.34 },
   [KNIGHT]: { x: 0.42, y: 1.05, z: 0.56 },
@@ -79,7 +93,7 @@ export class BrowserArcade {
   private readonly raycaster = new Raycaster();
   private readonly boardMesh = tint(flatShade(cube(0.5)), [255, 255, 255]);
   private readonly pieceMesh = tint(flatShade(cube(0.5)), [255, 255, 255]);
-  private readonly tintedMeshes = new Map<string, Mesh>();
+  private readonly tintedMeshes = new WeakMap<Mesh, Map<string, Mesh>>();
   private readonly camera = new OrbitCamera(
     { azimuth: 0, elevation: 0.67, distance: 12.4, target: { x: 0, y: 0.3, z: 0 } },
     0.05,
@@ -92,6 +106,8 @@ export class BrowserArcade {
   private moveLog: string[] = [];
   private cols = 92;
   private rows = 52;
+  private pieceMeshes: ChessPieceMeshes | null = null;
+  private importedPieceScale = 1;
 
   frame(cols = this.cols, rows = this.rows): BrowserArcadeFrame {
     this.cols = Math.max(48, cols);
@@ -114,6 +130,12 @@ export class BrowserArcade {
     this.moveLog = [];
     this.selected = -1;
     this.targets.clear();
+  }
+
+  /** Swap the temporary procedural markers for Arcade's production Chess OBJ set. */
+  setPieceMeshes(meshes: ChessPieceMeshes): void {
+    this.pieceMeshes = meshes;
+    this.importedPieceScale = measureChessPieceMeshes(meshes, 1.55).scale;
   }
 
   cycleDisplayMode(): BrowserDisplayMode {
@@ -258,25 +280,43 @@ export class BrowserArcade {
         const encoded = this.game.board.squares[sq];
         if (!encoded) continue;
         const type = pieceType(encoded) as PieceType;
-        const scale = PIECE_SCALE[type];
-        draw(
-          this.pieceMesh,
-          mat4Multiply(mat4Translate(x, scale.y * 0.48 + 0.08, z), mat4Scale(scale.x, scale.y, scale.z)),
-          pieceColor(encoded) === WHITE ? WHITE_RGB : BROWN,
-          0.36,
-        );
+        const color = pieceColor(encoded);
+        if (this.pieceMeshes) {
+          const orient = color === WHITE ? mat4Scale(this.importedPieceScale, this.importedPieceScale, this.importedPieceScale) : mat4Multiply(
+            mat4RotY(Math.PI),
+            mat4Scale(this.importedPieceScale, this.importedPieceScale, this.importedPieceScale),
+          );
+          draw(
+            this.pieceMeshes[PIECE_NAME[type]],
+            mat4Multiply(mat4Translate(x, 0.08, z), orient),
+            color === WHITE ? WHITE_RGB : BROWN,
+            0.36,
+          );
+        } else {
+          const scale = PIECE_SCALE[type];
+          draw(
+            this.pieceMesh,
+            mat4Multiply(mat4Translate(x, scale.y * 0.48 + 0.08, z), mat4Scale(scale.x, scale.y, scale.z)),
+            color === WHITE ? WHITE_RGB : BROWN,
+            0.36,
+          );
+        }
       }
     }
     return target;
   }
 
   private tintedMesh(mesh: Mesh, color: RGB): Mesh {
-    const source = mesh === this.boardMesh ? 'board' : 'piece';
-    const key = `${source}:${color.join(',')}`;
-    const cached = this.tintedMeshes.get(key);
+    const key = color.join(',');
+    let variants = this.tintedMeshes.get(mesh);
+    if (!variants) {
+      variants = new Map();
+      this.tintedMeshes.set(mesh, variants);
+    }
+    const cached = variants.get(key);
     if (cached) return cached;
     const colored = tint(mesh, color);
-    this.tintedMeshes.set(key, colored);
+    variants.set(key, colored);
     return colored;
   }
 

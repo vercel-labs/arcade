@@ -21,8 +21,9 @@ import {
   Surface,
 } from '../engine/surface.ts';
 import { animatedTileMesh, tileMesh } from '../game-visuals/catan/index.ts';
+import { fetchChessPieceMeshes } from '../game-visuals/chess/index.ts';
 import { BrowserArcade, type BrowserDisplayMode } from './browser-chess.ts';
-import type { BrowserMiniScene, BrowserMiniSceneFrame, BrowserMiniSceneId } from './mini-scene.ts';
+import type { BrowserMiniScene, BrowserMiniSceneFrame, BrowserMiniSceneId, BrowserMiniSceneOptions } from './mini-scene.ts';
 
 const BLACK: RGB = [0, 0, 0];
 const CYAN: RGB = [88, 212, 236];
@@ -32,10 +33,18 @@ const MODES: BrowserDisplayMode[] = ['ascii', 'pixel', 'hybrid'];
 /** Board-only adapter around Arcade's browser-safe Chess rules and renderer. */
 export class BrowserChessBoardShowcase implements BrowserMiniScene {
   private readonly arcade = new BrowserArcade();
+  private readonly preparation: Promise<void> | null;
 
-  constructor() {
+  constructor(options: BrowserMiniSceneOptions = {}) {
     this.arcade.openChess();
+    this.preparation = options.chessPieceAssetBaseUrl
+      ? fetchChessPieceMeshes(options.chessPieceAssetBaseUrl, options.chessPieceFetchText).then((meshes) => {
+        this.arcade.setPieceMeshes(meshes);
+      })
+      : null;
   }
+
+  prepare(): Promise<void> { return this.preparation ?? Promise.resolve(); }
 
   frame(cols: number, rows: number): BrowserMiniSceneFrame {
     const frame = this.arcade.frame(cols, rows);
@@ -109,7 +118,7 @@ export class BrowserCatanTileShowcase implements BrowserMiniScene {
   reset(): void { this.camera.reset(); }
 }
 
-export function createBrowserMiniScene(id: BrowserMiniSceneId): BrowserMiniScene {
-  if (id === 'chess-board') return new BrowserChessBoardShowcase();
+export function createBrowserMiniScene(id: BrowserMiniSceneId, options: BrowserMiniSceneOptions = {}): BrowserMiniScene {
+  if (id === 'chess-board') return new BrowserChessBoardShowcase(options);
   return new BrowserCatanTileShowcase();
 }
