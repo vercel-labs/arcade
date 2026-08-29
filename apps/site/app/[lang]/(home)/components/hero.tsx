@@ -12,14 +12,22 @@ import {
   CommandPromptViewport,
 } from '@vercel/geistdocs/components/command-prompt';
 import { QuickTerminalButton } from '@/components/quick-terminal';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { HeroGameField } from './hero-game-field';
+
+const PrismTerminal = dynamic(
+  () => import('./prism-terminal').then((module) => module.PrismTerminal),
+  { ssr: false },
+);
 
 const NPM_COMMAND = 'npm i -g @vercel/arcade';
 const CURL_COMMAND = 'curl -fsSL https://vercel-arcade.vercel.app/install | sh';
 
 export const Hero = () => (
   <section className="hero-shell mt-(--fd-nav-height)">
+    <div aria-hidden="true" className="hero-prism-field">
+      <PrismTerminal className="hero-prism-terminal" />
+    </div>
     <div className="hero-stage mx-auto w-full max-w-[1200px] px-5">
       <div className="hero-copy">
         <h1>arcade</h1>
@@ -65,7 +73,6 @@ export const Hero = () => (
         </div>
       </div>
 
-      <HeroGameField />
     </div>
   </section>
 );
