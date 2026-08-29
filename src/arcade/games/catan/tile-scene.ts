@@ -420,7 +420,7 @@ export class TileScene {
   private readonly sceneRenderer = new SceneRenderer();
   private waterTarget: RenderTarget | null = null;
   private staticBoardTarget: RenderTarget | null = null;
-  private staticBoardPixels = new Uint32Array(0);
+  private staticBoardPixels: Uint32Array = new Uint32Array(0);
   private staticBoardDirty = true;
   private cameraInteracting = false;
   private cameraMotionTarget: RenderTarget | null = null;
