@@ -60,8 +60,8 @@ body { background: var(--site-background); color: var(--site-foreground); }
 .hero-launch-button:hover { opacity: .82; }
 .hero-docs-link { color: var(--site-muted); font-size: 14px; font-weight: 550; }
 .hero-docs-link:hover { color: var(--site-foreground); }
-.hero-prism-field { position: absolute; z-index: 1; inset: 0 -3vw 0 37%; overflow: hidden; pointer-events: none; background: #000; }
-.hero-prism-terminal { width: 100%; height: 100%; }
+.hero-prism-field { position: absolute; z-index: 0; inset: 0; overflow: hidden; pointer-events: none; background: #000; }
+.hero-prism-terminal { position: absolute; inset: 0 -8% 0 31%; }
 .hero-prism-terminal .xterm { height: 100%; }
 .hero-prism-terminal .xterm-viewport { overflow: hidden !important; }
 .hero-prism-terminal .xterm-screen { margin: auto; }
@@ -131,7 +131,7 @@ button.quick-terminal-control:hover::after, button.quick-terminal-control:focus-
   .hero-shell { min-height: 820px; }
   .hero-stage { display: block; min-height: 820px; padding-top: 72px; padding-bottom: 440px; }
   .hero-copy { width: min(100%, 680px); max-width: 680px; }
-  .hero-prism-field { inset: 390px -12vw 0 -12vw; }
+  .hero-prism-terminal { inset: 390px -12vw 0 -12vw; }
   .feature-grid { grid-template-columns: 1fr; }
   .feature-card { min-height: 200px; border-right: 0; border-bottom: 1px solid var(--site-border); }
   .feature-card:last-child { border-bottom: 0; }
@@ -145,7 +145,7 @@ button.quick-terminal-control:hover::after, button.quick-terminal-control:focus-
   .hero-actions { align-items: flex-start; flex-direction: column; gap: 16px; }
   .hero-shell { min-height: 760px; }
   .hero-stage { min-height: 760px; padding-bottom: 340px; }
-  .hero-prism-field { inset: 430px -35vw 0 -35vw; }
+  .hero-prism-terminal { inset: 430px -35vw 0 -35vw; }
   .arcade-terminal__viewport { padding: 6px; }
   .quick-terminal-panel { left: 8px; top: 72px; width: calc(100% - 16px); min-width: 0; height: calc(100vh - 80px); min-height: 300px; transform: none; }
   .quick-terminal-shell.is-open .quick-terminal-panel { transform: none; }

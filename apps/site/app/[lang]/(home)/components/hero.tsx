@@ -72,7 +72,6 @@ export const Hero = () => (
           </Link>
         </div>
       </div>
-
     </div>
   </section>
 );
