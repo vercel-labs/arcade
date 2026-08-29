@@ -1,6 +1,7 @@
 import { LogoIconVercel } from '@vercel/geistdocs/assets/logos/logo-icon-vercel';
 import { IconSlashForward } from '@vercel/geistdocs/assets/icons/icon-slash-forward';
 import Link from 'next/link';
+import { QuickTerminalButton } from './quick-terminal';
 
 // A deliberately plain top bar: the standard Vercel triangle (no "OSS" flyout, no
 // search box, no Ask AI button — @vercel/geistdocs's own <Navbar> renders those
@@ -27,7 +28,7 @@ export const SiteNav = () => (
         <span className="w-4 text-center text-gray-alpha-400">
           <IconSlashForward size={18} />
         </span>
-        <span className="font-mono font-semibold text-lg leading-none tracking-tight">arcade</span>
+        <span className="site-wordmark">arcade</span>
       </Link>
       <nav className="flex items-center gap-5">
         {NAV_LINKS.map((link) => (
@@ -39,6 +40,10 @@ export const SiteNav = () => (
             {link.label}
           </Link>
         ))}
+        <QuickTerminalButton className="site-terminal-trigger">
+          <span aria-hidden="true">›_</span>
+          <span className="site-terminal-trigger__label">Open Arcade</span>
+        </QuickTerminalButton>
         <a
           aria-label="GitHub repository"
           className="text-gray-900 hover:text-gray-1000"

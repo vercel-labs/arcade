@@ -148,6 +148,7 @@ export function ArcadeTerminal() {
         setConnection('unavailable');
         terminal.writeln('\r\n\x1b[31mThe hosted terminal is temporarily unavailable.\x1b[0m');
         terminal.writeln('\x1b[2mInstall locally with: npm i -g @vercel/arcade\x1b[0m');
+        terminal.writeln('\x1b[2mOr: curl -fsSL https://vercel-arcade.vercel.app/install | sh\x1b[0m');
       }
     };
 
@@ -208,7 +209,7 @@ function handleControlMessage(
 }
 
 function connectionLabel(state: ConnectionState): string {
-  if (state === 'ready') return 'Live shell · type arcade to play';
+  if (state === 'ready') return 'Live shell · type help for commands';
   if (state === 'ended') return 'Session ended';
   if (state === 'unavailable') return 'Terminal unavailable';
   return 'Starting shell…';

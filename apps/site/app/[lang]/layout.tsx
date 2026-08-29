@@ -3,9 +3,10 @@ import '@/lib/geistdocs/site-url-warning';
 import { Footer } from '@vercel/geistdocs/footer';
 import type { Metadata } from 'next';
 import { GeistdocsProvider } from '@/components/geistdocs/provider';
+import { QuickTerminalProvider } from '@/components/quick-terminal';
 import { SiteNav } from '@/components/site-nav';
 import { config } from '@/lib/geistdocs/config';
-import { mono, sans } from '@/lib/geistdocs/fonts';
+import { mono, pixel, sans } from '@/lib/geistdocs/fonts';
 import { i18n } from '@/lib/geistdocs/i18n';
 import { getRootLang } from '@/lib/geistdocs/root-params';
 import { isSiteUrlConfigured, siteUrl } from '@/lib/geistdocs/site-url';
@@ -32,12 +33,14 @@ const Layout = async ({ children }: LayoutProps<'/[lang]'>) => {
   const lang = await getRootLang();
 
   return (
-    <html className={cn(sans.variable, mono.variable, 'antialiased')} lang={lang} suppressHydrationWarning>
+    <html className={cn(sans.variable, mono.variable, pixel.variable, 'antialiased')} lang={lang} suppressHydrationWarning>
       <body>
         <GeistdocsProvider basePath={config.basePath} lang={lang}>
-          <SiteNav />
-          {children}
-          <Footer />
+          <QuickTerminalProvider>
+            <SiteNav />
+            {children}
+            <Footer />
+          </QuickTerminalProvider>
         </GeistdocsProvider>
       </body>
     </html>

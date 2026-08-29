@@ -3,7 +3,7 @@ import type { NetworkPolicy } from '@vercel/sandbox';
 export const TERMINAL_CWD = '/vercel/sandbox/arcade';
 export const TERMINAL_TIMEOUT_MS = 20 * 60 * 1000;
 export const BASE_TIMEOUT_MS = 10 * 60 * 1000;
-export const TERMINAL_BASE_VERSION = 11;
+export const TERMINAL_BASE_VERSION = 12;
 export const GATEWAY_HOST = 'ai-gateway.vercel.sh';
 
 export interface TerminalSize {
@@ -146,7 +146,7 @@ export function terminalFiles(packageSource: string, placeholder: string): Array
     },
     {
       path: `${TERMINAL_CWD}/system/visitor.bashrc`,
-      content: `export PATH="/usr/local/bin:/usr/bin:/bin"\nexport PS1='arcade \\w $ '\nexport PAGER=cat\nfunction arcade() { sudo -n -u arcade -- /usr/local/bin/arcade-demo "$@"; }\nclear\nprintf '\\033[1mArcade\\033[0m — interactive terminal\\n'\nprintf 'Run \\033[36marcade\\033[0m to start. Explore with \\033[36mls\\033[0m, \\033[36mcd docs\\033[0m, and \\033[36mcat README.md\\033[0m.\\n\\n'\ncd ${TERMINAL_CWD}\n`,
+      content: `export PATH="/usr/local/bin:/usr/bin:/bin"\nexport PS1='arcade \\w $ '\nexport PAGER=cat\nfunction arcade() { sudo -n -u arcade -- /usr/local/bin/arcade-demo "$@"; }\nfunction arcade_help() {\n  printf '\\033[1mArcade terminal\\033[0m\\n\\n'\n  printf '  \\033[36marcade\\033[0m             Start Arcade\\n'\n  printf '  \\033[36mhelp\\033[0m               Show this guide\\n'\n  printf '  \\033[36mls\\033[0m                 List files\\n'\n  printf '  \\033[36mcd docs\\033[0m            Browse documentation\\n'\n  printf '  \\033[36mcd examples\\033[0m        Browse examples\\n'\n  printf '  \\033[36mcat README.md\\033[0m      Read the current directory\\n'\n  printf '  \\033[36marcade --version\\033[0m   Show the installed version\\n\\n'\n  printf '\\033[2mThis session is temporary. Telemetry is disabled.\\033[0m\\n'\n}\nfunction help() { arcade_help; }\ncd ${TERMINAL_CWD}\nclear\narcade_help\nprintf '\\n'\n`,
     },
     {
       path: `${TERMINAL_CWD}/system/visitor.profile`,

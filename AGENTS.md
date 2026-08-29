@@ -4,6 +4,12 @@ A terminal-rendered ASCII arcade: 3D games and an animated prism screen drawn wi
 truecolor half-blocks in the terminal. **Pure TypeScript, no GPU, no native deps.** Run
 with `tsx`/Node and plain `pnpm`.
 
+When shaping, editing, hardening, or reviewing user-facing UI, load
+`.agents/skills/product-design/SKILL.md`. It applies to the website, terminal UI,
+game HUDs, interaction flows, product copy, accessibility, responsive behavior,
+and visible failure states. Skip it for backend-only, telemetry-only, generated,
+or test-only work with no shipped UI impact.
+
 ## Seeing your own output (read this before judging visuals)
 
 The apps are full-screen, raw-mode, **infinite** TTY programs — do NOT run `pnpm dev` to

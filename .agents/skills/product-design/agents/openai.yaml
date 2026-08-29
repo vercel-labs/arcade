@@ -1,0 +1,4 @@
+interface:
+  display_name: "Product Design"
+  short_description: "Shape and verify Arcade product interfaces"
+  default_prompt: "Use $product-design to review and improve this Arcade interface."
