@@ -1,4 +1,5 @@
 import type { Surface } from '../engine/surface.ts';
+import type { ChessPieceName } from '../game-visuals/chess/index.ts';
 import type { BrowserDisplayMode } from './browser-chess.ts';
 
 export type BrowserMiniSceneId = 'chess-board' | 'catan-fields';
@@ -6,6 +7,8 @@ export type BrowserMiniSceneId = 'chess-board' | 'catan-fields';
 export interface BrowserMiniSceneOptions {
   /** Browser-visible directory containing pawn.obj, knight.obj, and the other production pieces. */
   chessPieceAssetBaseUrl?: string;
+  /** Exact per-piece URLs override the package-owned model URLs. */
+  chessPieceAssetUrls?: Record<ChessPieceName, string>;
   /** Optional transport override for tests, authenticated assets, or custom hosts. */
   chessPieceFetchText?: (url: string) => Promise<string>;
 }

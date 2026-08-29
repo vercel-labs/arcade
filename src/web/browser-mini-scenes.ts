@@ -21,7 +21,11 @@ import {
   Surface,
 } from '../engine/surface.ts';
 import { animatedTileMesh, tileMesh } from '../game-visuals/catan/index.ts';
-import { fetchChessPieceMeshes } from '../game-visuals/chess/index.ts';
+import {
+  CHESS_PIECE_ASSET_URLS,
+  fetchChessPieceMeshes,
+  fetchChessPieceMeshesFromUrls,
+} from '../game-visuals/chess/index.ts';
 import { BrowserArcade, type BrowserDisplayMode } from './browser-chess.ts';
 import type { BrowserMiniScene, BrowserMiniSceneFrame, BrowserMiniSceneId, BrowserMiniSceneOptions } from './mini-scene.ts';
 
@@ -33,18 +37,26 @@ const MODES: BrowserDisplayMode[] = ['ascii', 'pixel', 'hybrid'];
 /** Board-only adapter around Arcade's browser-safe Chess rules and renderer. */
 export class BrowserChessBoardShowcase implements BrowserMiniScene {
   private readonly arcade = new BrowserArcade();
-  private readonly preparation: Promise<void> | null;
+  private readonly loadPieceMeshes: () => Promise<void>;
+  private preparation: Promise<void> | null = null;
 
   constructor(options: BrowserMiniSceneOptions = {}) {
     this.arcade.openChess();
-    this.preparation = options.chessPieceAssetBaseUrl
-      ? fetchChessPieceMeshes(options.chessPieceAssetBaseUrl, options.chessPieceFetchText).then((meshes) => {
-        this.arcade.setPieceMeshes(meshes);
-      })
-      : null;
+    this.loadPieceMeshes = async () => {
+      const meshes = options.chessPieceAssetBaseUrl
+        ? await fetchChessPieceMeshes(options.chessPieceAssetBaseUrl, options.chessPieceFetchText)
+        : await fetchChessPieceMeshesFromUrls(
+          options.chessPieceAssetUrls ?? CHESS_PIECE_ASSET_URLS,
+          options.chessPieceFetchText,
+        );
+      this.arcade.setPieceMeshes(meshes);
+    };
   }
 
-  prepare(): Promise<void> { return this.preparation ?? Promise.resolve(); }
+  prepare(): Promise<void> {
+    this.preparation ??= this.loadPieceMeshes();
+    return this.preparation;
+  }
 
   frame(cols: number, rows: number): BrowserMiniSceneFrame {
     const frame = this.arcade.frame(cols, rows);

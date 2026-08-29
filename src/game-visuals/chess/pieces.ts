@@ -54,5 +54,12 @@ export async function fetchChessPieceMeshes(
 ): Promise<ChessPieceMeshes> {
   const root = baseUrl.replace(/\/$/, '');
   const urls = Object.fromEntries(CHESS_PIECE_NAMES.map((name) => [name, `${root}/${name}.obj`])) as Record<ChessPieceName, string>;
+  return fetchChessPieceMeshesFromUrls(urls, fetchText);
+}
+
+export function fetchChessPieceMeshesFromUrls(
+  urls: Record<ChessPieceName, string>,
+  fetchText?: TextAssetTransport,
+): Promise<ChessPieceMeshes> {
   return fetchObjMeshSet(urls, fetchText) as Promise<ChessPieceMeshes>;
 }

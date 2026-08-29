@@ -12,7 +12,6 @@ import { useEffect, useRef, useState } from 'react';
 
 export interface ArcadeSceneEmbedProps {
   ariaLabel: string;
-  assetBaseUrl?: string;
   className?: string;
   cols?: number;
   rows?: number;
@@ -25,7 +24,6 @@ export interface ArcadeSceneEmbedProps {
  */
 export function ArcadeSceneEmbed({
   ariaLabel,
-  assetBaseUrl,
   className = '',
   cols = 58,
   rows = 34,
@@ -40,7 +38,7 @@ export function ArcadeSceneEmbed({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const runtime = createBrowserMiniScene(scene, { chessPieceAssetBaseUrl: assetBaseUrl });
+    const runtime = createBrowserMiniScene(scene);
     const host = new CanvasSurfaceHost(canvas as unknown as CanvasLike, {
       devicePixelRatio: window.devicePixelRatio,
     });
@@ -136,7 +134,7 @@ export function ArcadeSceneEmbed({
       runtimeRef.current = null;
       requestDrawRef.current = () => {};
     };
-  }, [assetBaseUrl, cols, rows, scene]);
+  }, [cols, rows, scene]);
 
   const cycleDisplay = () => {
     const runtime = runtimeRef.current;
