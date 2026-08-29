@@ -8,7 +8,7 @@ const structuredData = {
   name: 'Arcade',
   description: 'A pure-TypeScript CPU 3D renderer, retained TUI, and agent-playable game harness.',
   applicationCategory: 'DeveloperApplication',
-  operatingSystem: 'Node.js 20+ and modern browsers',
+  operatingSystem: 'Node.js 22+ and modern browsers',
   isAccessibleForFree: true,
   codeRepository: 'https://github.com/vercel-labs/arcade',
   programmingLanguage: 'TypeScript',
@@ -61,7 +61,7 @@ const HomePage = () => (
     <section className="site-section">
       <div className="install-grid mx-auto grid w-full max-w-[1080px] gap-8 px-5 md:grid-cols-2">
         <h2 className="section-heading">Install</h2>
-        <div className="space-y-4 text-gray-900 leading-7"><p><code>npx @vercel/arcade@latest</code> runs Arcade in a truecolor terminal. The package remains restricted while the source, asset, and license review is completed.</p><p>Requires Node.js 20 or later. Terminal color support is detected automatically.</p><p className="text-sm">Telemetry never includes prompts, reasoning, chat, voice, or account identity. Disable it with <code>ARCADE_TELEMETRY=0</code>.</p><p className="site-resource-links"><Link href="/about">About</Link><Link href="/privacy">Privacy</Link><Link href="/contact">Contact</Link><a href="/openapi.json">OpenAPI</a><a href="/llms.txt">For agents</a></p></div>
+        <div className="space-y-4 text-gray-900 leading-7"><p><code>npx @vercel/arcade@latest</code> runs Arcade in a truecolor terminal. The package remains restricted while the source, asset, and license review is completed.</p><p>Requires Node.js 22 or later. Terminal color support is detected automatically.</p><p className="text-sm">Telemetry never includes prompts, reasoning, chat, voice, or account identity. Disable it with <code>ARCADE_TELEMETRY=0</code>.</p><p className="site-resource-links"><Link href="/about">About</Link><Link href="/privacy">Privacy</Link><Link href="/contact">Contact</Link><a href="/openapi.json">OpenAPI</a><a href="/llms.txt">For agents</a></p></div>
       </div>
     </section>
   </main>

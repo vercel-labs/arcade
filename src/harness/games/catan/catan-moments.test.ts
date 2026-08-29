@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { CatanState } from '../../rules/catan/catan.ts';
-import { reactionOpportunities } from '../../ai/communication/moments.ts';
+import type { CatanState } from '../../../rules/catan/catan.ts';
+import { reactionOpportunities } from '../../communication/moments.ts';
 import { detectCatanMoments } from './catan-moments.ts';
 
 function state(values: { vp?: number[]; longest?: number; army?: number }): CatanState {

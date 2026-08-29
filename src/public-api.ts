@@ -1,5 +1,5 @@
 export * as engine from './engine/index.ts';
-export * as tui from './tui/index.ts';
+export * as tui from './tui/browser.ts';
 export {
   BrowserArcade,
   BrowserCatanTileShowcase,

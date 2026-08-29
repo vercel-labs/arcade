@@ -6,7 +6,7 @@
 // blinds and $1000 starts, and player stacks are spread across denominations (not one fat
 // tower) so a table of stacks reads as a lively mix of colors.
 
-import { type Mat4, mat4Multiply, mat4RotY, mat4Translate, type Mesh, rasterize, type RenderTarget, lambertMaterial, ResourceCache, type VertexIn, type Vec3 } from '../../../engine/index.ts';
+import { type Mat4, mat4Multiply, mat4RotY, mat4Translate, type Mesh, rasterize, type RenderTarget, lambertMaterial, ResourceCache, type VertexIn, type Vec3 } from '../../engine/index.ts';
 
 // Classic casino colors, dialed a touch darker than neon so they sit into the felt. `base`
 // is the chip body; `spot` is the edge/face marking (the ring line + the six rim spots).

@@ -13,7 +13,7 @@ import { type Card, isRed, RANK_LABELS } from '../../../rules/poker/cards.ts';
 import type { SeatCardView, TableView } from './poker-scene.ts';
 import { creatorTint } from '../../scenes/wisp.ts';
 import { CHAT_WIDTH } from '../../match/chat.ts';
-import { shortModel } from '../../match/model-label.ts';
+import { shortModel } from '../../../harness/model-label.ts';
 import { ARCADE_CHROME_TEXT, ARCADE_OUTLINE_CONTROL, UI_CHROME_PILL, uiChromeBg } from '../../theme.ts';
 import { POKER_PALETTE } from './palette.ts';
 import { buildPokerChatSidebar, clearPokerChat, mountPokerChat, pushPokerChat } from './poker-chat.ts';

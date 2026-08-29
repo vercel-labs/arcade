@@ -1,10 +1,10 @@
 import { resolve } from 'node:path';
-import { STARTING_STACK } from '../../arcade/match/poker-session.ts';
+import { STARTING_STACK } from '../../harness/games/poker/poker-session.ts';
 import { DEFAULT_BIG_BLIND, DEFAULT_HANDS_PER_LEVEL, DEFAULT_SMALL_BLIND } from '../../rules/poker/blinds.ts';
 import { DEFAULT_CATAN_MODELS } from './adapters/catan.ts';
 import { deriveSeed } from './random.ts';
 import type { MatchLabGame, MatchLabLimits, MatchLabPlan } from './types.ts';
-import type { CommunicationMode } from '../../ai/communication/types.ts';
+import type { CommunicationMode } from '../../harness/communication/types.ts';
 
 const DEFAULT_MODELS: Record<MatchLabGame, string[]> = {
   chess: ['anthropic/claude-haiku-4.5', 'openai/gpt-5.4-nano'],

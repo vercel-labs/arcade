@@ -1,5 +1,5 @@
 import { DEFAULT_BIG_BLIND, DEFAULT_HANDS_PER_LEVEL, DEFAULT_SMALL_BLIND } from '../../rules/poker/blinds.ts';
-import { STARTING_STACK } from '../../arcade/match/poker-session.ts';
+import { STARTING_STACK } from '../../harness/games/poker/poker-session.ts';
 import { deriveSeed } from './random.ts';
 import type { MatchLabEvent, MatchLabGame, MatchLabPlan, MatchLabResult } from './types.ts';
 

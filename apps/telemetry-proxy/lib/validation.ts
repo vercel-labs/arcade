@@ -1,7 +1,7 @@
 // Server-side validation for the three ingest routes. The public client is untrusted,
 // so the proxy re-checks shape, size, and the privacy boundary here — reusing the exact
 // guard the client uses (isPrivacySafeRecord) so the two can never drift apart.
-import { isPrivacySafeRecord, MAX_RECORD_BYTES } from '../../../src/telemetry/records.ts';
+import { isPrivacySafeRecord, MAX_RECORD_BYTES } from '../../../src/telemetry/record-wire.ts';
 
 export type RecordKind = 'event' | 'match' | 'poker_hand';
 

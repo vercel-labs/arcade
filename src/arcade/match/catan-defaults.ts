@@ -1,5 +1,5 @@
-// Shared by the in-app Catan setup picker and the headless observer tool so the
-// four-seat spectate lineup cannot drift between the two entry points.
+// Arcade product defaults shared by the setup picker and repository-owned tools. These
+// provider choices are intentionally not part of the public game harness contract.
 export const CATAN_DEFAULT_AI_SEATS = [
   { creator: 'xai', model: 'xai/grok-4.1-fast-non-reasoning' },
   { creator: 'anthropic', model: 'anthropic/claude-haiku-4.5' },

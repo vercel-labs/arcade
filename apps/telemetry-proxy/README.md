@@ -44,7 +44,7 @@ a request's rows as a single Events-API call with `wait=true`, and treats any
 ## Layout
 
 - `lib/ingest.ts` — transport-agnostic core (limits → validation → sink). Fully unit-tested.
-- `lib/validation.ts` — per-route validation; reuses the client's `isPrivacySafeRecord`.
+- `lib/validation.ts` — per-route validation; reuses the client's internal telemetry wire guard.
 - `lib/sink.ts` — `Sink` interface, `consoleSink` (local/preview default), and `createTinybirdSink`.
 - `lib/rate-limit.ts` — in-memory + KV-REST limiters with a blocklist; `rateLimiterFromEnv`.
 - `lib/deps.ts` — builds the sink + limiters from env (Tinybird token, KV creds).
@@ -63,7 +63,7 @@ Provisioning checklist (one-time):
 1. **Claim the name early.** Create the Vercel project `arcade-telemetry` (Vercel Labs team)
    before the first deploy so the production hostname is reserved.
 2. **Root Directory** `apps/telemetry-proxy`, and enable **"Include source files outside of
-   the Root Directory in the Build Step"** — the bundle reaches `../../../src/telemetry/records.ts`.
+   the Root Directory in the Build Step"** — the bundle reaches `../../../src/harness/records.ts`.
 3. **Disable Deployment Protection.** This is a public unauthenticated endpoint by design; the
    CLI posts with no credential.
 4. **Env vars:** `TINYBIRD_TOKEN` (append-only, scoped to only the three `arcade_*_v1`

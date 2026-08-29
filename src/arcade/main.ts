@@ -27,7 +27,7 @@ import { CATAN_RAIL_W, catanRailVisible } from './games/catan/card-hud.ts';
 import { CatanGameScene } from './games/catan/game-scene.ts';
 import { buildCatanGameRoot, mountCatanGameHud } from './games/catan/game-hud.ts';
 import { CatanDriver } from './match/catan-driver.ts';
-import type { CommunicationMode } from '../ai/communication/types.ts';
+import type { CommunicationMode } from '../harness/communication/types.ts';
 import { catanSetupSelection, setCatanSetupChanged, setCatanSetupModelCatalog } from './match/catan-setup-panel.ts';
 import { buildPokerRoot, mountPokerHud, pokerMode, setPokerHandlers } from './games/poker/hud.ts';
 import { PokerGameScene } from './games/poker/poker-scene.ts';
@@ -59,7 +59,7 @@ import { buildTeamSwitch, markSwitchSucceeded, mountTeamSwitch, setTeamSwitchHan
 import * as term from '../platform/terminal.ts';
 import { availableTeams, ensureGatewayKey, isLoggedIn, loadEnv, signOut as signOutVercel, switchTeam, type EnsureResult, type Team, useTeam } from '../auth/index.ts';
 import { AiMatch, type Seat } from './match/driver.ts';
-import { disambiguateLabels } from './match/labels.ts';
+import { disambiguateLabels } from '../harness/labels.ts';
 import { flushTelemetry, initTelemetry, isTelemetryEnabled, setTelemetryEnabled, telemetryStatus, trackSessionStart, type RecordEndReason } from '../telemetry/index.ts';
 import { supersampleForMode, supersampleForViewport } from './render-quality.ts';
 

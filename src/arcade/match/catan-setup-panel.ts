@@ -11,7 +11,7 @@
 import { Box, Dropdown, Field, Slot, Text, type Node, type Screen } from '../../tui/index.ts';
 import type { RGB } from '../../engine/index.ts';
 import { pickerCreators } from './models.ts';
-import { shortModel } from './model-label.ts';
+import { shortModel } from '../../harness/model-label.ts';
 import { PLAYER_LOOK } from '../games/catan/palette.ts';
 import { PLAYER_COLORS, type PlayerColor } from '../../rules/catan/types.ts';
 import type { CatanSeatSpec } from './catan-driver.ts';

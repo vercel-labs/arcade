@@ -4,8 +4,16 @@
   "type": "module",
   "packageManager": "pnpm@10.34.5",
   "description": "Terminal-rendered ASCII arcade \u2014 3D games in the terminal, powered by Vercel AI Gateway",
+  "homepage": "https://vercel-arcade.vercel.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vercel-labs/arcade.git"
+  },
+  "bugs": {
+    "url": "https://github.com/vercel-labs/arcade/issues"
+  },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "dev": "ARCADE_DEV=1 tsx src/arcade/main.ts",
@@ -20,6 +28,8 @@
     "models:game-audit": "ARCADE_TELEMETRY=0 node --import tsx src/tools/model-game-audit.ts",
     "models:report": "tsx src/tools/model-compat-view.ts",
     "smoke:package": "node scripts/smoke-package.mjs",
+    "build:package": "node scripts/build-package.mjs",
+    "prepack": "pnpm build:package",
     "build:vercel": "node scripts/build-vercel-output.mjs",
     "watch": "ARCADE_DEV=1 tsx watch src/arcade/main.ts",
     "type-check": "tsc --noEmit",
@@ -29,12 +39,12 @@
   "devDependencies": {
     "@types/node": "22.10.5",
     "@types/ws": "8.18.1",
+    "tsx": "4.19.2",
     "typescript": "5.7.3"
   },
   "dependencies": {
     "@ai-sdk/gateway": "4.0.0-beta.113",
     "ai": "6.0.208",
-    "tsx": "4.19.2",
     "ws": "8.21.0",
     "zod": "4.4.3"
   },
@@ -51,24 +61,35 @@
     "arcade": "./bin/arcade.mjs"
   },
   "exports": {
-    ".": "./src/public-api.ts",
-    "./engine": "./src/engine/index.ts",
-    "./engine/png": "./src/engine/texture.ts",
-    "./game-visuals": "./src/game-visuals/index.ts",
-    "./tui": "./src/tui/index.ts",
-    "./rules": "./src/rules/game.ts",
-    "./rules/chess": "./src/rules/chess/chess.ts",
-    "./game-visuals/catan": "./src/game-visuals/catan/index.ts",
-    "./game-visuals/chess": "./src/game-visuals/chess/index.ts",
-    "./web": "./src/web/index.ts"
+    ".": { "types": "./dist/public-api.d.ts", "import": "./dist/public-api.js" },
+    "./engine": { "types": "./dist/engine/index.d.ts", "import": "./dist/engine/index.js" },
+    "./engine/png": { "types": "./dist/engine/texture.d.ts", "import": "./dist/engine/texture.js" },
+    "./harness": { "types": "./dist/harness/index.d.ts", "import": "./dist/harness/index.js" },
+    "./harness/communication": { "types": "./dist/harness/communication/index.d.ts", "import": "./dist/harness/communication/index.js" },
+    "./harness/chess": { "types": "./dist/harness/games/chess/index.d.ts", "import": "./dist/harness/games/chess/index.js" },
+    "./harness/catan": { "types": "./dist/harness/games/catan/index.d.ts", "import": "./dist/harness/games/catan/index.js" },
+    "./harness/poker": { "types": "./dist/harness/games/poker/index.d.ts", "import": "./dist/harness/games/poker/index.js" },
+    "./harness/records": { "types": "./dist/harness/records.d.ts", "import": "./dist/harness/records.js" },
+    "./platform": { "types": "./dist/platform/index.d.ts", "import": "./dist/platform/index.js" },
+    "./game-visuals": { "types": "./dist/game-visuals/index.d.ts", "import": "./dist/game-visuals/index.js" },
+    "./tui": { "types": "./dist/tui/index.d.ts", "import": "./dist/tui/index.js" },
+    "./rules": { "types": "./dist/rules/game.d.ts", "import": "./dist/rules/game.js" },
+    "./rules/chess": { "types": "./dist/rules/chess/index.d.ts", "import": "./dist/rules/chess/index.js" },
+    "./rules/catan": { "types": "./dist/rules/catan/index.d.ts", "import": "./dist/rules/catan/index.js" },
+    "./rules/poker": { "types": "./dist/rules/poker/index.d.ts", "import": "./dist/rules/poker/index.js" },
+    "./game-visuals/catan": { "types": "./dist/game-visuals/catan/index.d.ts", "import": "./dist/game-visuals/catan/index.js" },
+    "./game-visuals/chess": { "types": "./dist/game-visuals/chess/index.d.ts", "import": "./dist/game-visuals/chess/index.js" },
+    "./game-visuals/poker": { "types": "./dist/game-visuals/poker/index.d.ts", "import": "./dist/game-visuals/poker/index.js" },
+    "./web": { "types": "./dist/web/index.d.ts", "import": "./dist/web/index.js" }
   },
   "files": [
     "bin",
     "scripts/postinstall.mjs",
     "assets",
-    "src",
-    "!src/tools",
-    "!src/**/*.test.ts"
+    "dist",
+    "docs/harness.md",
+    "docs/architecture/package-boundaries.md",
+    "docs/architecture/repository-map.md"
   ],
   "publishConfig": {
     "access": "restricted"

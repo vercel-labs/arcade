@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { ActionChoice, Player } from '../../ai/player.ts';
+import type { ActionChoice, Player } from '../player.ts';
 import { ChessState } from '../../rules/chess/chess.ts';
 import type { Move } from '../../rules/chess/types.ts';
 import { HoldemState, type PokerAction } from '../../rules/poker/holdem.ts';
-import { toCanonicalRecordRow } from '../../telemetry/records.ts';
 import { CHESS_CHECKPOINT_INTERVAL_PLIES, ChessGameRecorder, PokerSessionRecorder } from './game-recorders.ts';
 
 const player = <A>(name: string): Player<A> => ({
@@ -51,7 +50,6 @@ test('chess recorder persists replay state and temporal model assignments', () =
     record.actions.filter((a) => a.participantId === record.participants[0].participantId).map((a) => record.controllerAssignments.find((x) => x.assignmentId === a.assignmentId)?.requestedModel),
     ['openai/a', 'google/c'],
   );
-  assert.ok(toCanonicalRecordRow(record, { session: 'test', env: 'dev', appVersion: 'test' }));
 });
 
 test('a human controller carries the pseudonymous playerKey; a model carries its slug', () => {

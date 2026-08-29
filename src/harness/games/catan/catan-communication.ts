@@ -1,8 +1,8 @@
-import { PublicConversation } from '../../ai/communication/conversation.ts';
-import { CommunicationPolicy } from '../../ai/communication/policy.ts';
-import type { Communication, CommunicationDecision, CommunicationMode, PublicConversationMessage } from '../../ai/communication/types.ts';
-import type { CommunicationOpportunity } from '../../ai/communication/moments.ts';
-import type { CatanAction } from '../../rules/catan/types.ts';
+import { PublicConversation } from '../../communication/conversation.ts';
+import { CommunicationPolicy } from '../../communication/policy.ts';
+import type { Communication, CommunicationDecision, CommunicationMode, PublicConversationMessage } from '../../communication/types.ts';
+import type { CommunicationOpportunity } from '../../communication/moments.ts';
+import type { CatanAction } from '../../../rules/catan/types.ts';
 
 const CATAN_COMMUNICATION_GUIDE =
   'Public speech should sound like a human tabletop player, not an action log. Useful speech includes answering another player, negotiating a domestic trade, briefly explaining visible strategic pressure, table politics, a genuine reaction, concise banter, or a very rare monologue. Do not announce routine rolls, resource distributions, bank or port trades, or end turns when the UI already shows them. Never reveal exact private resources, development-card identities, hidden victory points, or detailed calculations. Use one or two natural sentences normally. Use public board labels verbatim when supplied. A monologue is comedic color only at a genuinely dramatic moment and must stay under five short sentences.';

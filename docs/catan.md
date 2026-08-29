@@ -8,7 +8,7 @@ rules engine is coded against a spec, not guesswork.
 [`src/rules/catan/`](../src/rules/catan) implements board topology and setup plus the full
 authoritative phase machine: initial placement, production, robber/discards, building,
 maritime and optional domestic trade, development cards, special awards, and victory.
-[`src/arcade/match/catan-setup.ts`](../src/arcade/match/catan-setup.ts) exposes both a
+[`src/harness/games/catan/catan-setup.ts`](../src/harness/games/catan/catan-setup.ts) exposes both a
 full-match runner and the setup-only benchmark runner. The board UI can integrate through
 the generic `state()` / `playMove(action)` scene seam; it is not a dependency of the rules.
 
@@ -323,7 +323,7 @@ poker (`HoldemState` deals internally) rather than the "explicit CHANCE node" so
 prefer.
 
 Rationale, specific to this codebase: the generic match loop
-([`src/ai/match.ts`](../src/ai/match.ts) `runMatch`) reads `currentPlayer()` and asks
+([`src/harness/match.ts`](../src/harness/match.ts) `runMatch`) reads `currentPlayer()` and asks
 `players[idx]` — it **cannot resolve chance nodes**. `game.ts` documents exactly this: a
 game "may deal internally and never surface a chance node." Surfacing dice as chance nodes
 would require changing the match loop; internal resolution keeps Catan drop-in compatible

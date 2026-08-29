@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { RecordOutbox, type FetchLike } from './outbox.ts';
-import type { CanonicalRecordRow } from './records.ts';
+import type { CanonicalRecordRow } from './record-wire.ts';
 
 const row: CanonicalRecordRow = {
   emittedAt: '2026-07-17T10:02:00.000Z',

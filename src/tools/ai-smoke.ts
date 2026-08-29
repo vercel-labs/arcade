@@ -6,7 +6,7 @@
 //   pnpm exec tsx src/tools/ai-smoke.ts openai/gpt-5.4
 import { ensureCachedGatewayKey } from '../auth/index.ts';
 import { ChessState } from '../rules/chess/chess.ts';
-import { ModelPlayer } from '../ai/model-player.ts';
+import { ModelPlayer } from '../harness/model-player.ts';
 import type { Move } from '../rules/chess/types.ts';
 
 async function main(): Promise<void> {

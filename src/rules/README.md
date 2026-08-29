@@ -42,10 +42,10 @@ counts for the start and "kiwipete" positions.
 
 ## Catan (`rules/catan/`)
 
-Base 3–4 player game. **Phase 1 in progress** — topology and board setup are done, and the
-initial snake placement is playable through `legalActions`/`applyAction` and the generic
-model harness. Regular roll/build/trade turns remain staged. The full rules, phase model,
-and harness-mapping design (plus the phasing plan and sources) are in
+Base 2–4 player game. The base-game flow is implemented end to end: topology and board
+setup, snake-order placement, second-settlement production, regular production, building
+and costs, domestic and maritime trades, development cards, robber/discard barriers,
+Longest Road/Largest Army, and victory. The full rules, phase model, and harness mapping are in
 [docs/catan.md](../../docs/catan.md).
 
 - `types.ts` — resources, terrain, pieces, ports, dev cards, the resource **freqdeck**,

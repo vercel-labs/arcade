@@ -51,7 +51,7 @@ import {
   mergeChipColumns,
   playerColumns,
   takeChipColumns,
-} from './chips.ts';
+} from '../../../game-visuals/poker/chips.ts';
 
 const FOVY = (46 * Math.PI) / 180;
 const TABLE_LIGHT = normalize3({ x: 0.25, y: 0.9, z: 0.4 });

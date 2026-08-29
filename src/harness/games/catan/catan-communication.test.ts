@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { directedReplyOpportunities } from '../../ai/communication/moments.ts';
+import { directedReplyOpportunities } from '../../communication/moments.ts';
 import { CatanCommunicationCoordinator, catanActionSalience } from './catan-communication.ts';
 
 test('Catan action salience distinguishes negotiations from routine turn mechanics', () => {

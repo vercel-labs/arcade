@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ActionChoice, DecisionDiagnostics as AiDecisionDiagnostics, Player } from '../../ai/player.ts';
+import type { ActionChoice, DecisionDiagnostics as AiDecisionDiagnostics, Player } from '../player.ts';
 import type { ChessState, ChessResult } from '../../rules/chess/chess.ts';
 import { moveToUci } from '../../rules/chess/san.ts';
 import {
@@ -33,7 +33,7 @@ import {
   type PokerRequestedAction,
   type RecordEndReason,
   type RecordParticipant,
-} from '../../telemetry/records.ts';
+} from '../records.ts';
 
 export type RecorderController =
   | { kind: 'human' }

@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { MockLanguageModelV3 } from 'ai/test';
-import type { GameState } from '../../rules/game.ts';
-import { CatanState } from '../../rules/catan/catan.ts';
-import type { CatanAction } from '../../rules/catan/types.ts';
-import type { Player } from '../../ai/player.ts';
+import type { GameState } from '../../../rules/game.ts';
+import { CatanState } from '../../../rules/catan/catan.ts';
+import type { CatanAction } from '../../../rules/catan/types.ts';
+import type { Player } from '../../player.ts';
 import {
   type CatanSetupScene,
   CatanMatchActionLimitError,
@@ -102,24 +102,28 @@ test('full match runner uses the same scene seam beyond setup with no UI depende
   const result = await runCatanMatch(scene, players, {
     shouldStop: () => state.initialPlacementComplete() && state.currentPlayer() === 1,
   });
-  assert.equal(result, state);
+  assert.equal(result.state, state);
+  assert.equal(result.status, 'bounded');
+  assert.equal(result.stopReason, 'stopped');
+  assert.equal(result.actionCount, scene.actions.length);
   assert.ok(scene.actions.length >= 18, '16 setup actions, then at least roll and end turn');
   assert.equal(scene.actions[16].type, 'roll');
   assert.equal(scene.actions.at(-1)?.type, 'endTurn');
   assert.deepEqual(state.currentPrompt(), { kind: 'roll', player: 1 });
 });
 
-test('full match runner stops a legal but non-progressing evaluation at its action limit', async () => {
+test('full match runner reports a legal but non-progressing evaluation at its action limit', async () => {
   const state = new CatanState({ numPlayers: 4, rng: rng() });
   const scene = new SetupScene(state);
   const players: Player<CatanAction>[] = Array.from({ length: 4 }, (_, seat) => ({
     name: `P${seat}`,
     chooseAction: async (game) => ({ action: game.legalActions()[0], rationale: 'first legal action' }),
   }));
-  await assert.rejects(
-    () => runCatanMatch(scene, players, { maxActions: 20 }),
-    (error) => error instanceof CatanMatchActionLimitError && error.maxActions === 20,
-  );
+  const result = await runCatanMatch(scene, players, { maxActions: 20 });
+  assert.equal(result.state, state);
+  assert.equal(result.status, 'bounded');
+  assert.equal(result.stopReason, 'action_limit');
+  assert.equal(result.actionCount, 20);
   assert.equal(scene.actions.length, 20);
   assert.equal(state.isTerminal(), false);
 });

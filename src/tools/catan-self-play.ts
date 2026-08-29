@@ -11,8 +11,8 @@
 
 import { dirname, resolve } from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import type { MatchScene } from '../ai/match.ts';
-import type { Player } from '../ai/player.ts';
+import type { MatchScene } from '../harness/match.ts';
+import type { Player } from '../harness/player.ts';
 import { ensureCachedGatewayKey } from '../auth/index.ts';
 import { CATAN_DEFAULT_AI_SEATS } from '../arcade/match/catan-defaults.ts';
 import {
@@ -21,8 +21,8 @@ import {
   createCatanSetupModelPlayer,
   runCatanInitialPlacement,
   runCatanMatch,
-} from '../arcade/match/catan-setup.ts';
-import { shortModel } from '../arcade/match/model-label.ts';
+} from '../harness/games/catan/catan-setup.ts';
+import { shortModel } from '../harness/model-label.ts';
 import { normalizerModel } from '../arcade/match/models.ts';
 import { NUM_EDGES, NUM_NODES } from '../rules/catan/board-topology.ts';
 import { CatanState, type InitialSettlementOption } from '../rules/catan/catan.ts';
@@ -235,11 +235,16 @@ async function main(): Promise<void> {
   let stopReason = 'setup complete';
   let runError: unknown;
   try {
-    if (full) await runCatanMatch(scene, players, { ...hooks, maxActions });
-    else await runCatanInitialPlacement(scene, players, hooks);
-    if (state.isTerminal()) stopReason = 'game complete';
+    if (full) {
+      const result = await runCatanMatch(scene, players, { ...hooks, maxActions });
+      stopReason = result.stopReason === 'victory'
+        ? 'game complete'
+        : result.stopReason === 'action_limit'
+          ? `action limit ${maxActions}`
+          : result.stopReason;
+    } else await runCatanInitialPlacement(scene, players, hooks);
   } catch (error) {
-    if (error instanceof CatanMatchActionLimitError) stopReason = `action limit ${error.maxActions}`;
+    if (!full && error instanceof CatanMatchActionLimitError) stopReason = `action limit ${error.maxActions}`;
     else {
       stopReason = signal.aborted ? `timeout after ${timeoutSeconds}s` : `error: ${error instanceof Error ? error.message : String(error)}`;
       runError = error;

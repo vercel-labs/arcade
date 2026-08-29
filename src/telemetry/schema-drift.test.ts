@@ -24,8 +24,8 @@ writeFileSync(
 
 const telemetry = await import('./index.ts');
 const { RECORD_SCHEMA_VERSION, toCanonicalRecordRow } = telemetry;
-type ChessMatchRecord = import('./records.ts').ChessMatchRecord;
-type PokerHandRecord = import('./records.ts').PokerHandRecord;
+type ChessMatchRecord = import('../harness/records.ts').ChessMatchRecord;
+type PokerHandRecord = import('../harness/records.ts').PokerHandRecord;
 
 type ColumnKind = 'string' | 'number' | 'boolean' | 'string[]';
 

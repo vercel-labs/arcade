@@ -2,10 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   RECORD_SCHEMA_VERSION,
-  isPrivacySafeRecord,
-  toCanonicalRecordRow,
   type PokerHandRecord,
-} from './records.ts';
+} from '../harness/records.ts';
+import { isPrivacySafeRecord, toCanonicalRecordRow } from './record-wire.ts';
 
 function hand(): PokerHandRecord {
   return {
@@ -38,7 +37,7 @@ function hand(): PokerHandRecord {
     bigBlind: 20,
     finalStreet: 'preflop',
     cards: [
-      { card: 'As', dealtToParticipantId: 'p0', dealtAtActionSeq: 0 }, // hidden throughout
+      { card: 'As', dealtToParticipantId: 'p0', dealtAtActionSeq: 0 },
       { card: 'Kh', dealtToParticipantId: 'p1', dealtAtActionSeq: 0, publicAtActionSeq: 1 },
     ],
     actions: [
@@ -90,7 +89,6 @@ test('privacy guard rejects accidentally attached prompt/chat/reasoning fields',
 });
 
 test('playerKey tags the envelope only when a human participated', () => {
-  // hand() has two model participants → not the user's own gameplay.
   const aiOnly = toCanonicalRecordRow(hand(), { session: 's', env: 'prod', appVersion: 'v', playerKey: 'pk-abc' });
   assert.ok(aiOnly);
   assert.equal(aiOnly.playerKey, '');
@@ -108,8 +106,6 @@ test('playerKey tags the envelope only when a human participated', () => {
 });
 
 test('an oversized canonical record is rejected rather than enqueued', () => {
-  // A payload past the record ceiling (real games are kilobytes; this is pathological).
-  // The filler key is privacy-safe, so this exercises the size guard specifically.
   const big = { ...hand(), filler: 'x'.repeat(1_000_000) } as unknown as PokerHandRecord;
   assert.equal(
     toCanonicalRecordRow(big, { session: 's', env: 'prod', appVersion: 'v' }),

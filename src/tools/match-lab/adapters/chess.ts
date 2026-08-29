@@ -1,28 +1,15 @@
-import { runMatch, type MatchScene } from '../../../ai/match.ts';
-import { TableCommunicationCoordinator } from '../../../ai/communication/coordinator.ts';
-import { ModelPlayer } from '../../../ai/model-player.ts';
-import { ChessGameRecorder } from '../../../arcade/match/game-recorders.ts';
+import { TableCommunicationCoordinator } from '../../../harness/communication/coordinator.ts';
+import {
+  CHESS_AMBIENT_GUIDE,
+  ChessGameRecorder,
+  chessActionSalience,
+  createChessModelPlayer,
+  runHeadlessChessMatch,
+} from '../../../harness/games/chess/index.ts';
 import { normalizerModel } from '../../../arcade/match/models.ts';
 import { ChessState, START_FEN } from '../../../rules/chess/chess.ts';
-import type { Move } from '../../../rules/chess/types.ts';
 import type { MatchLabAdapter } from '../types.ts';
 import { mulberry32 } from '../random.ts';
-
-class HeadlessChessScene implements MatchScene<Move> {
-  constructor(private readonly game: ChessState) {}
-  state(): ChessState { return this.game; }
-  async playMove(action: Move): Promise<void> { this.game.applyAction(action); }
-}
-
-const CHESS_AMBIENT_GUIDE =
-  'Public speech is optional chess-table conversation, not move notation or an engine annotation. Speak for a genuine reaction, concise banter, or a short visible strategic observation. Do not announce every move, expose hidden chain-of-thought, or restate the UI. Usually choose silence.';
-
-function chessActionSalience(san: string): number {
-  if (san.includes('#')) return 0.98;
-  if (san.includes('+') || san.includes('=')) return 0.72;
-  if (san.includes('x') || san.startsWith('O-O')) return 0.52;
-  return 0.1;
-}
 
 export const runChessMatch: MatchLabAdapter = async ({ plan, signal, emit }) => {
   if (plan.models.length !== 2) throw new RangeError('Chess needs exactly two models');
@@ -30,7 +17,6 @@ export const runChessMatch: MatchLabAdapter = async ({ plan, signal, emit }) => 
   const started = performance.now();
   const rng = mulberry32(plan.seed);
   const state = new ChessState();
-  const scene = new HeadlessChessScene(state);
   const normalizer = normalizerModel();
   const communication = plan.communicationMode === 'ambient'
     ? new TableCommunicationCoordinator('ambient', plan.models, CHESS_AMBIENT_GUIDE)
@@ -41,10 +27,9 @@ export const runChessMatch: MatchLabAdapter = async ({ plan, signal, emit }) => 
     START_FEN,
     false,
   );
-  const players = plan.models.map((model, seat) => new ModelPlayer<Move>({
+  const players = plan.models.map((model, seat) => createChessModelPlayer({
     model,
     name: model,
-    gameName: 'chess',
     normalizer,
     fallbackRng: rng,
     ...(communication ? {
@@ -56,9 +41,9 @@ export const runChessMatch: MatchLabAdapter = async ({ plan, signal, emit }) => 
   let plies = 0;
   let pendingSan = '';
   try {
-    await runMatch(scene, players, {
+    await runHeadlessChessMatch(state, players, {
       signal,
-      shouldStop: () => plies >= plan.limits.maxPlies,
+      maxPlies: plan.limits.maxPlies,
       onThinking: (_player, seat) => emit({ type: 'decision_started', game: 'chess', seat, model: plan.models[seat], action: plies + 1, data: { fen: state.fen() } }),
       onCommentary: (text, _player, seat) => emit({ type: 'commentary', game: 'chess', seat, model: plan.models[seat], action: plies + 1, data: { text } }),
       onActionChosen: ({ player, playerIndex, choice }) => {

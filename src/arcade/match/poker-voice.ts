@@ -12,7 +12,7 @@
 // The human's own cards are NEVER sent to the bot's session (AIG-78). Talk feeds
 // decisions for free — it's all one session's context.
 
-import type { Player, TurnContext } from '../../ai/player.ts';
+import type { Player, TurnContext } from '../../harness/player.ts';
 import type { HoldemState, PokerAction } from '../../rules/poker/holdem.ts';
 import {
   AudioLog,

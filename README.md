@@ -4,7 +4,7 @@
 
 Arcade is the first build-out of **Vercel Arcade**: play classic games against frontier models through the [Vercel AI Gateway](https://vercel.com/ai-gateway), or sit back and watch two models play each other. It all runs inside a terminal, drawn with truecolor half-blocks. Everything here is pure TypeScript with **zero native dependencies**: the 3D renderer, the UI layer, and the game rules are all written from scratch.
 
-**Chess and poker are playable today.** Real 3D pieces (and a felt table with chips for poker) are lit and rasterized in software, then presented as ASCII/half-blocks. Play a model yourself, or watch two models play. Either side's model can be swapped mid-match.
+**Chess, poker, and Catan are playable today.** Real 3D pieces, a felt poker table, and a full Catan board are lit and rasterized in software, then presented as ASCII/half-blocks. Play a model yourself, or watch models play each other.
 
 > This README covers the codebase and how to run it. Internal product context lives in the Vercel Arcade Notion.
 
@@ -69,9 +69,10 @@ src/
   tui/        retained-mode TUI: flexbox layout + Box/Text/Button, hover/focus/press,
               hit-testing, paints to a Surface
   platform/   terminal control (alt-screen, raw mode, SGR mouse) + input parsing
-  rules/      game harness (Game/State + registry) + the chess and poker rules engines
+  rules/      UI-independent chess, poker, and Catan rules states
+  harness/    Player/ModelPlayer + communication + live/headless match orchestration
+  game-visuals/ reusable renderer-only Catan, Chess, and Poker primitives
   prism/      the animated prism screen (self-contained), also the curl-able stream behind api/
-  ai/         game AI: a Player interface + LLM-backed ModelPlayer + the match loop
   auth/       Vercel sign-in (OAuth device flow) + AI Gateway key resolution
   voice/      realtime speech-to-speech session + mic/speaker I/O + echo cancellation
   telemetry/  fire-and-forget anonymous usage counts (opt-out)
@@ -95,11 +96,13 @@ A small retained-mode UI layer that provides the shared building blocks for ever
 
 Rendering is **unified**: the 3D scene paints into the same `Surface` as the UI, so each frame is one alpha-composited cell grid that gets diffed and flushed (only changed cells are written). That's what lets a translucent **Modal** scrim dim the live scene behind a popup.
 
-### `rules/`: the game harness + chess & poker
+### `rules/` and `harness/`: game authority + agentic play
 
-An extensible, **AI-ready** harness modeled on DeepMind OpenSpiel (a `Game`/`State` split) and Kaggle Game Arena (a player is just `observation → action`). A `State` exposes `legalActions`, `applyAction`, `isTerminal`, `returns`, `clone`, and notation conversion; games self-register in a name→factory registry, so a `ModelPlayer` and a `HumanPlayer` are interchangeable.
+The rules use an extensible, **AI-ready** state contract modeled on DeepMind OpenSpiel (a `Game`/`State` split) and Kaggle Game Arena (a player is just `observation → action`). A `State` exposes `legalActions`, `applyAction`, `isTerminal`, `returns`, `clone`, and notation conversion. The public `harness/` layer connects those states to interchangeable model, human, or custom players without owning credentials or telemetry.
 
-The **chess rules engine** is written from scratch (0x88 board, full legal move generation, castling/en passant/promotion, checkmate/stalemate, the 50-move/threefold/insufficient-material draws, SAN + UCI notation), proven by **perft** against reference node counts (`pnpm exec tsx src/tools/perft.ts`). The **poker engine** is no-limit Texas Hold'em (betting rounds, side pots, a standalone hand evaluator).
+The **chess rules engine** is written from scratch (0x88 board, full legal move generation, castling/en passant/promotion, checkmate/stalemate, the 50-move/threefold/insufficient-material draws, SAN + UCI notation), proven by **perft** against reference node counts (`pnpm exec tsx src/tools/perft.ts`). Poker implements no-limit Texas Hold'em, and Catan implements setup, production, building, trading, development cards, robber/discards, awards, and victory.
+
+See [the harness guide](docs/harness.md), [repository map](docs/architecture/repository-map.md), and [package boundary policy](docs/architecture/package-boundaries.md) for the reusable API and complete app/library/deployment layout.
 
 ## Roadmap
 
@@ -110,7 +113,7 @@ The **chess rules engine** is written from scratch (0x88 board, full legal move 
 - [x] **Poker**: no-limit Texas Hold'em, human-vs-AI and AI-vs-AI
 - [x] **Realtime audio "table talk"**: give a heads-up poker opponent a realtime voice model
 - [ ] **Model leaderboard**: per-model play-style stats from game telemetry
-- [ ] **More games** (Catan in R&D) plus a web build for the public beta
+- [ ] **More games and public-beta hardening** across the CLI, docs, and examples
 
 ## Scripts
 

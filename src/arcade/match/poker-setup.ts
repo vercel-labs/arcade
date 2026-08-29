@@ -11,7 +11,7 @@ import { Box, Dropdown, Field, Slider, Slot, Text, type Node, type Screen } from
 import type { RGB } from '../../engine/index.ts';
 import { includeEarlyAccessModels, pickerCreators } from './models.ts';
 import { availableRealtimeModels, DEFAULT_REALTIME_MODEL_ID } from '../../voice/index.ts';
-import { shortModel } from './model-label.ts';
+import { shortModel } from '../../harness/model-label.ts';
 import { BIG_BLIND, type PokerSeatSpec } from './poker-driver.ts';
 import { pokerVoiceCapable } from './poker-voice.ts';
 import type { PokerSeatView } from '../games/poker/poker-scene.ts';

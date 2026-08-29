@@ -6,19 +6,19 @@
 // trades, development cards, and the terminal victory state. The rules state remains the only
 // authority; this layer merely connects seats to it and records presentation-friendly history.
 
-import { HumanPlayer } from '../../ai/human-player.ts';
-import type { CommunicationDecision, CommunicationMode, PublicConversationMessage } from '../../ai/communication/types.ts';
-import type { Player } from '../../ai/player.ts';
+import { HumanPlayer } from '../../harness/human-player.ts';
+import type { CommunicationDecision, CommunicationMode, PublicConversationMessage } from '../../harness/communication/types.ts';
+import type { Player } from '../../harness/player.ts';
 import { CatanState } from '../../rules/catan/catan.ts';
 import { RESOURCES, resourceIndex, type CatanAction, type PlayerColor, type Resource } from '../../rules/catan/types.ts';
 import { DEV_CARD_ICON, KNIGHT_ICON, RESOURCE_LOOK, ROAD_ICON, SETTLEMENT_ICON } from '../games/catan/palette.ts';
-import { createCatanModelPlayer, runCatanMatch } from './catan-setup.ts';
-import { disambiguateLabels } from './labels.ts';
-import { shortModel } from './model-label.ts';
+import { createCatanModelPlayer, runCatanMatch } from '../../harness/games/catan/catan-setup.ts';
+import { disambiguateLabels } from '../../harness/labels.ts';
+import { shortModel } from '../../harness/model-label.ts';
 import { normalizerModel } from './models.ts';
-import { CatanCommunicationCoordinator } from './catan-communication.ts';
-import { detectCatanMoments } from './catan-moments.ts';
-import { directedReplyOpportunities, primaryMoment, reactionOpportunities } from '../../ai/communication/moments.ts';
+import { CatanCommunicationCoordinator } from '../../harness/games/catan/catan-communication.ts';
+import { detectCatanMoments } from '../../harness/games/catan/catan-moments.ts';
+import { directedReplyOpportunities, primaryMoment, reactionOpportunities } from '../../harness/communication/moments.ts';
 
 // One seat in the session: you, or an AI model (a Gateway slug). The color is the seat's
 // piece color — picked in setup and distinct per seat.

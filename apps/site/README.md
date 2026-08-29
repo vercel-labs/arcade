@@ -37,7 +37,7 @@ exact artifact into a reusable base snapshot, and forks a temporary session for 
 | `app/install/route.ts` | serves `install.sh` verbatim at `/install` (and `/install.sh` via a rewrite) |
 | `public/llms.txt`, `public/llms-full.txt`, `public/agents.md` | agent-readable entry points |
 | `public/examples.json`, `public/schemas/examples-v1.json` | machine-readable example catalog and schema |
-| `install.sh` | the installer itself — unchanged, still checks Node 20+ then runs `npm i -g @vercel/arcade` |
+| `install.sh` | the installer itself — checks Node 22+ then runs `npm i -g @vercel/arcade` |
 
 The `[lang]` segment is geistdocs' routing convention; only `en` is configured
 (`translations` in `geistdocs.tsx`) — there's no real i18n content here.

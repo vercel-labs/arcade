@@ -1,4 +1,4 @@
-import type { CommunicationMode } from '../../ai/communication/types.ts';
+import type { CommunicationMode } from '../../harness/communication/types.ts';
 
 export type MatchLabGame = 'chess' | 'catan' | 'poker';
 

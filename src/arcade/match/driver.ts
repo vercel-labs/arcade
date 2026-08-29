@@ -4,19 +4,20 @@
 // lease keeps frames flowing so the HUD wisps animate while we wait. main.ts owns
 // the surrounding UI — the setup modal, the commentary toast, and the
 // illegal-moves flag — and injects the seams below.
-import { runMatch } from '../../ai/match.ts';
-import { FALLBACK_RATIONALE, isFallbackRationale, ModelPlayer } from '../../ai/model-player.ts';
-import { HumanPlayer } from '../../ai/human-player.ts';
-import type { Player } from '../../ai/player.ts';
+import { runMatch } from '../../harness/match.ts';
+import { FALLBACK_RATIONALE, isFallbackRationale } from '../../harness/model-player.ts';
+import { createChessModelPlayer } from '../../harness/games/chess/chess-session.ts';
+import { HumanPlayer } from '../../harness/human-player.ts';
+import type { Player } from '../../harness/player.ts';
 import type { ChessGameScene } from '../games/chess/scene.ts';
 import type { ChessState } from '../../rules/chess/chess.ts';
 import type { Move } from '../../rules/chess/types.ts';
-import { disambiguateLabels } from './labels.ts';
+import { disambiguateLabels } from '../../harness/labels.ts';
 import { normalizerModel } from './models.ts';
 import { isTelemetryEnabled, localPlayerKey, trackMatchEnded, trackMatchRecord, trackMatchStarted, trackModelFallback } from '../../telemetry/index.ts';
-import { ChessGameRecorder, type RecorderController } from './game-recorders.ts';
-import type { RecordEndReason } from '../../telemetry/records.ts';
-import { shortModel } from './model-label.ts';
+import { ChessGameRecorder, type RecorderController } from '../../harness/recording/game-recorders.ts';
+import type { RecordEndReason } from '../../harness/records.ts';
+import { shortModel } from '../../harness/model-label.ts';
 
 // A seat's telemetry identity: the model slug, or 'human' for a keyboard seat.
 const seatId = (seat: Seat): string => (seat.kind === 'ai' ? seat.model : 'human');
@@ -213,7 +214,7 @@ export class AiMatch {
     if (seat.kind === 'human') {
       return new HumanPlayer<Move>({ name: 'you', awaitMove: (_state, ctx) => this.deps.chessGame.requestHumanMove(ctx?.signal) });
     }
-    return new ModelPlayer<Move>({ model: seat.model, gameName: 'chess', allowIllegal: this.deps.allowIllegal, normalizer: normalizerModel() });
+    return createChessModelPlayer({ model: seat.model, allowIllegal: this.deps.allowIllegal, normalizer: normalizerModel() });
   }
 
   private computeLabels(): void {
@@ -232,7 +233,7 @@ export class AiMatch {
   // handoff) and resumes after. No-op when idle (no players yet).
   setPlayer(index: number, model: string): void {
     if (!this.players || index < 0 || index >= this.players.length) return;
-    this.players[index] = new ModelPlayer<Move>({ model, gameName: 'chess', allowIllegal: this.deps.allowIllegal, normalizer: normalizerModel() });
+    this.players[index] = createChessModelPlayer({ model, allowIllegal: this.deps.allowIllegal, normalizer: normalizerModel() });
     if (this.seats) this.seats[index] = { kind: 'ai', model };
     this.computeLabels();
   }

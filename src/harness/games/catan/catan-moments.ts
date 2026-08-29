@@ -1,7 +1,7 @@
-import { edgeNodes, nodeEdges } from '../../rules/catan/board-topology.ts';
-import type { CatanState } from '../../rules/catan/catan.ts';
-import type { CatanAction } from '../../rules/catan/types.ts';
-import type { GameMoment } from '../../ai/communication/moments.ts';
+import { edgeNodes, nodeEdges } from '../../../rules/catan/board-topology.ts';
+import type { CatanState } from '../../../rules/catan/catan.ts';
+import type { CatanAction } from '../../../rules/catan/types.ts';
+import type { GameMoment } from '../../communication/moments.ts';
 
 export function detectCatanMoments(
   before: CatanState,

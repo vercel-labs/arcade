@@ -103,8 +103,8 @@ export function refreshMoveHistory(sans: readonly string[], illegal: readonly bo
   moveHistory.scroll = atBottom ? newMax : Math.min(moveHistory.scroll, newMax);
 }
 
-export { shortModel } from '../../match/model-label.ts';
-import { shortModel } from '../../match/model-label.ts';
+export { shortModel } from '../../../harness/model-label.ts';
+import { shortModel } from '../../../harness/model-label.ts';
 
 // ── Eval bar ──────────────────────────────────────────────────────────────────
 // A chess.com-style vertical eval rail near the right edge. White fills from the

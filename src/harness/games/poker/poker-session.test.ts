@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { Player } from '../../ai/player.ts';
-import type { GameState } from '../../rules/game.ts';
-import type { PokerAction } from '../../rules/poker/holdem.ts';
+import type { Player } from '../../player.ts';
+import type { GameState } from '../../../rules/game.ts';
+import type { PokerAction } from '../../../rules/poker/holdem.ts';
 import { runPokerSession } from './poker-session.ts';
 
 class FirstLegalPlayer implements Player<PokerAction> {

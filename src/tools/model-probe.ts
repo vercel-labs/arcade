@@ -27,8 +27,8 @@ import { generateText, Output, streamText } from 'ai';
 import { z } from 'zod';
 import { ChessState } from '../rules/chess/chess.ts';
 import type { Move } from '../rules/chess/types.ts';
-import { isFallbackRationale, ModelPlayer, FALLBACK_RATIONALE } from '../ai/model-player.ts';
-import { classifyModelError, type FailureKind } from '../ai/model-errors.ts';
+import { isFallbackRationale, ModelPlayer, FALLBACK_RATIONALE } from '../harness/model-player.ts';
+import { classifyModelError, type FailureKind } from '../harness/model-errors.ts';
 import { creators, modelsFor } from '../arcade/match/models.ts';
 import { availableTeams, ensureCachedGatewayKey, useTeam } from '../auth/index.ts';
 

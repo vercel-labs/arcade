@@ -5,31 +5,33 @@
 // one seat has chips (or it's stopped). The scene renders each hand and provides the
 // human seam; main owns the surrounding UI (setup modal, commentary, HUD).
 
-import { runMatch } from '../../ai/match.ts';
-import { FALLBACK_RATIONALE, isFallbackRationale } from '../../ai/model-player.ts';
-import { HumanPlayer } from '../../ai/human-player.ts';
+import { runMatch } from '../../harness/match.ts';
+import { FALLBACK_RATIONALE, isFallbackRationale } from '../../harness/model-player.ts';
+import { HumanPlayer } from '../../harness/human-player.ts';
 import { isTelemetryEnabled, localPlayerKey, trackHandEnded, trackMatchRecord, trackMatchStarted, trackModelFallback, trackPokerHandRecord } from '../../telemetry/index.ts';
-import type { Player } from '../../ai/player.ts';
+import type { Player } from '../../harness/player.ts';
 import { type HandPublicRecord, HoldemState, type PokerAction } from '../../rules/poker/holdem.ts';
 import { pokerBlindState, pokerTournamentContext, type PokerBlindState, type PokerBlindStructure } from '../../rules/poker/blinds.ts';
 import type { PokerGameScene, PokerSeatView } from '../games/poker/poker-scene.ts';
-import { shortModel } from './model-label.ts';
-import { disambiguateLabels } from './labels.ts';
+import { shortModel } from '../../harness/model-label.ts';
+import { disambiguateLabels } from '../../harness/labels.ts';
 import { PokerMemory } from './poker-memory.ts';
 import { PokerVoice, pokerVoiceCapable } from './poker-voice.ts';
 import { normalizerModel } from './models.ts';
-import { PokerSessionRecorder, type RecorderController } from './game-recorders.ts';
-import type { RecordEndReason } from '../../telemetry/records.ts';
+import { PokerSessionRecorder, type RecorderController } from '../../harness/recording/game-recorders.ts';
+import type { RecordEndReason } from '../../harness/records.ts';
 import {
   BIG_BLIND,
   createPokerTextPlayer,
   SMALL_BLIND,
   STARTING_STACK,
-  type PokerSeatSpec,
-} from './poker-session.ts';
+} from '../../harness/games/poker/poker-session.ts';
 
 export { BIG_BLIND };
-export type { PokerSeatSpec };
+export type PokerSeatSpec =
+  | { kind: 'human' }
+  | { kind: 'ai'; model: string; runtime: 'text' }
+  | { kind: 'ai'; model: string; runtime: 'realtime' };
 // Chip amounts read as money in the winner banner: a "$" prefix + thousands separators.
 const money = (n: number): string => `$${n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
 

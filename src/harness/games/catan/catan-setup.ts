@@ -2,11 +2,11 @@
 // scene plugs in by implementing the same tiny `state()` / `playMove()` interface. The
 // initial-placement runner remains useful for isolated setup benchmarks.
 
-import { type MatchHooks, type MatchScene, runMatch } from '../../ai/match.ts';
-import { ModelPlayer, type ModelPlayerOpts, type MoveNotation } from '../../ai/model-player.ts';
-import type { Player } from '../../ai/player.ts';
-import type { CatanState } from '../../rules/catan/catan.ts';
-import type { CatanAction } from '../../rules/catan/types.ts';
+import { type MatchHooks, type MatchScene, runMatch } from '../../match.ts';
+import { ModelPlayer, type ModelPlayerOpts, type MoveNotation } from '../../model-player.ts';
+import type { Player } from '../../player.ts';
+import type { CatanState } from '../../../rules/catan/catan.ts';
+import type { CatanAction } from '../../../rules/catan/types.ts';
 
 export const CATAN_SETUP_MOVE_NOTATION: MoveNotation = {
   description: 'Catan setup notation: init-settlement <node> or init-road <edge>',
@@ -65,6 +65,13 @@ export type CatanMatchHooks = MatchHooks<CatanAction> & {
   maxActions?: number;
 };
 
+export interface CatanMatchResult {
+  state: CatanState;
+  actionCount: number;
+  status: 'completed' | 'bounded';
+  stopReason: 'victory' | 'action_limit' | 'stopped' | 'aborted';
+}
+
 export class CatanMatchActionLimitError extends Error {
   constructor(readonly maxActions: number) {
     super(`Catan match reached its ${maxActions}-action safety limit without a winner`);
@@ -76,12 +83,13 @@ export async function runCatanMatch(
   scene: CatanSetupScene,
   players: Player<CatanAction>[],
   hooks: CatanMatchHooks = {},
-): Promise<CatanState> {
+): Promise<CatanMatchResult> {
   assertSeatCount(scene.state(), players);
   const { maxActions = 10_000, onActionApplied, shouldStop, ...baseHooks } = hooks;
   if (!Number.isInteger(maxActions) || maxActions <= 0) throw new RangeError(`maxActions must be a positive integer; received ${maxActions}`);
   let applied = 0;
   let hitLimit = false;
+  let requestedStop = false;
   await runMatch(scene, players, {
     ...baseHooks,
     onActionApplied: async (info) => {
@@ -89,21 +97,37 @@ export async function runCatanMatch(
       await onActionApplied?.(info);
     },
     shouldStop: (state) => {
-      if (shouldStop?.(state)) return true;
+      if (shouldStop?.(state)) {
+        requestedStop = true;
+        return true;
+      }
       if (applied < maxActions) return false;
       hitLimit = true;
       return true;
     },
   });
-  if (hitLimit && !scene.state().isTerminal()) throw new CatanMatchActionLimitError(maxActions);
-  return scene.state();
+  const state = scene.state();
+  return {
+    state,
+    actionCount: applied,
+    status: state.isTerminal() ? 'completed' : 'bounded',
+    stopReason: state.isTerminal()
+      ? 'victory'
+      : hitLimit
+        ? 'action_limit'
+        : hooks.signal?.aborted
+          ? 'aborted'
+          : requestedStop
+            ? 'stopped'
+            : 'stopped',
+  };
 }
 
 export async function runHeadlessCatanMatch(
   state: CatanState,
   players: Player<CatanAction>[],
   hooks: CatanMatchHooks = {},
-): Promise<CatanState> {
+): Promise<CatanMatchResult> {
   return runCatanMatch(
     {
       state: () => state,

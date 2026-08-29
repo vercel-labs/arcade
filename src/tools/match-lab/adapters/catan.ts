@@ -1,6 +1,6 @@
-import type { Player } from '../../../ai/player.ts';
-import { directedReplyOpportunities, primaryMoment, reactionOpportunities } from '../../../ai/communication/moments.ts';
-import type { PublicConversationMessage } from '../../../ai/communication/types.ts';
+import type { Player } from '../../../harness/player.ts';
+import { directedReplyOpportunities, primaryMoment, reactionOpportunities } from '../../../harness/communication/moments.ts';
+import type { PublicConversationMessage } from '../../../harness/communication/types.ts';
 import { CATAN_DEFAULT_AI_SEATS } from '../../../arcade/match/catan-defaults.ts';
 import {
   CatanMatchActionLimitError,
@@ -8,10 +8,10 @@ import {
   createCatanSetupModelPlayer,
   runCatanInitialPlacement,
   runHeadlessCatanMatch,
-} from '../../../arcade/match/catan-setup.ts';
+} from '../../../harness/games/catan/catan-setup.ts';
 import { normalizerModel } from '../../../arcade/match/models.ts';
-import { CatanCommunicationCoordinator } from '../../../arcade/match/catan-communication.ts';
-import { detectCatanMoments } from '../../../arcade/match/catan-moments.ts';
+import { CatanCommunicationCoordinator } from '../../../harness/games/catan/catan-communication.ts';
+import { detectCatanMoments } from '../../../harness/games/catan/catan-moments.ts';
 import { NUM_EDGES, NUM_NODES } from '../../../rules/catan/board-topology.ts';
 import { CatanState } from '../../../rules/catan/catan.ts';
 import { DEV_CARD_TYPES, PLAYER_COLORS, RESOURCES, resourceIndex, type CatanAction, type Resource } from '../../../rules/catan/types.ts';
@@ -147,10 +147,12 @@ export const runCatanMatchLab: MatchLabAdapter = async ({ plan, signal, emit }) 
         { ...hooks, maxActions: plan.limits.maxActions },
       );
     } else {
-      await runHeadlessCatanMatch(state, players, { ...hooks, maxActions: plan.limits.maxActions });
+      const result = await runHeadlessCatanMatch(state, players, { ...hooks, maxActions: plan.limits.maxActions });
+      if (result.stopReason === 'action_limit') stopReason = 'action limit';
+      else if (result.stopReason === 'aborted') stopReason = 'timeout';
     }
   } catch (error) {
-    if (error instanceof CatanMatchActionLimitError) stopReason = 'action limit';
+    if (plan.setupOnly && error instanceof CatanMatchActionLimitError) stopReason = 'action limit';
     else if (signal.aborted) stopReason = 'timeout';
     else throw error;
   }

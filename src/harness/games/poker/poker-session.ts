@@ -1,9 +1,9 @@
-import { runMatch, type MatchScene } from '../../ai/match.ts';
-import { TableCommunicationCoordinator } from '../../ai/communication/coordinator.ts';
-import { ModelPlayer, type ModelPlayerOpts, type MoveNotation } from '../../ai/model-player.ts';
-import type { ActionChoice, Player } from '../../ai/player.ts';
-import type { CommunicationDecision, CommunicationMode } from '../../ai/communication/types.ts';
-import { HoldemState, type PokerAction } from '../../rules/poker/holdem.ts';
+import { runMatch, type MatchScene } from '../../match.ts';
+import { TableCommunicationCoordinator } from '../../communication/coordinator.ts';
+import { ModelPlayer, type ModelPlayerOpts, type MoveNotation } from '../../model-player.ts';
+import type { ActionChoice, Player } from '../../player.ts';
+import type { CommunicationDecision, CommunicationMode } from '../../communication/types.ts';
+import { HoldemState, type PokerAction } from '../../../rules/poker/holdem.ts';
 import {
   DEFAULT_BIG_BLIND,
   DEFAULT_HANDS_PER_LEVEL,
@@ -12,16 +12,11 @@ import {
   pokerTournamentContext,
   type PokerBlindState,
   type PokerBlindStructure,
-} from '../../rules/poker/blinds.ts';
-import type { PokerHandRecord, PokerMatchRecord } from '../../telemetry/records.ts';
-import { PokerSessionRecorder } from './game-recorders.ts';
-import { disambiguateLabels } from './labels.ts';
-import { shortModel } from './model-label.ts';
-
-export type PokerSeatSpec =
-  | { kind: 'human' }
-  | { kind: 'ai'; model: string; runtime: 'text' }
-  | { kind: 'ai'; model: string; runtime: 'realtime' };
+} from '../../../rules/poker/blinds.ts';
+import type { PokerHandRecord, PokerMatchRecord } from '../../records.ts';
+import { PokerSessionRecorder } from '../../recording/game-recorders.ts';
+import { disambiguateLabels } from '../../labels.ts';
+import { shortModel } from '../../model-label.ts';
 
 export const STARTING_STACK = 1000;
 export const SMALL_BLIND = DEFAULT_SMALL_BLIND;

@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "description": "Arcade's hero site and `curl … | sh` installer — the front door for the @vercel/arcade CLI.",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "prepare:terminal": "node scripts/prepare-terminal-package.mjs",

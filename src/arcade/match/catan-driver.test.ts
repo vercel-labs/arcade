@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { Player } from '../../ai/player.ts';
+import type { Player } from '../../harness/player.ts';
 import type { CatanState } from '../../rules/catan/catan.ts';
 import { RESOURCES, resourceIndex, type CatanAction, type PlayerColor } from '../../rules/catan/types.ts';
 import { catanLiveView, catanPlayerLegend, catanStatusLine } from '../games/catan/game-hud.ts';

@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 // unsupported OS), `available()` is false and the caller falls back to sox +
 // node-speaker. Set ARCADE_NO_AEC=1 to force the fallback.
 
-// Per-platform sidecar binary, relative to this module (src/ai/).
+// Per-platform sidecar binary, relative to this module (src/voice/).
 const SIDECARS: Partial<Record<NodeJS.Platform, string>> = {
   darwin: '../../native/aec-mac/aec-mac',
   win32: '../../native/aec-win/aec-win.exe',

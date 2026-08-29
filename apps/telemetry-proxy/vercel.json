@@ -2,5 +2,5 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "node build.mjs",
   "installCommand": "echo skip-install",
-  "ignoreCommand": "git diff --quiet ${VERCEL_GIT_PREVIOUS_SHA:-HEAD^} HEAD -- ':/apps/telemetry-proxy' ':/src/telemetry/records.ts' || exit 1"
+  "ignoreCommand": "git diff --quiet ${VERCEL_GIT_PREVIOUS_SHA:-HEAD^} HEAD -- ':/apps/telemetry-proxy' ':/src/telemetry/record-wire.ts' ':/src/harness/records.ts' || exit 1"
 }
