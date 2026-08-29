@@ -32,9 +32,9 @@ See [ADR 0001](../architecture/0001-hosted-arcade-terminal.md).
 - [x] Run an initial `is-agentic` audit against the preview.
 - [x] Address actionable findings, redeploy, and record the final audit (95/100).
 
-Final branch preview: <https://vercel-arcade-2ks99xwmy.labs.vercel.dev>
+Final branch preview: <https://vercel-arcade-pwb2okkqv.labs.vercel.dev>
 
-Final audit: <https://is-agentic.com/scan/vercel-arcade-2ks99xwmy.labs.vercel.dev>
+Final audit: <https://is-agentic.com/scan/vercel-arcade-pwb2okkqv.labs.vercel.dev>
 
 The remaining audit deductions are not honest code-only fixes: preview-domain search
 indexing, organization address/contact metadata that should not be invented, rate-limit
