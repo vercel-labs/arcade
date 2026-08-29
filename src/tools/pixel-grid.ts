@@ -5,7 +5,7 @@
 //
 //   pnpm exec tsx src/tools/pixel-grid.ts [assets/games/frogger.png]
 import { readFileSync } from 'node:fs';
-import { decodePng } from '../engine/index.ts';
+import { decodePng } from '../engine/texture.ts';
 
 const path = process.argv[2] ?? 'assets/games/frogger.png';
 const t = decodePng(readFileSync(path));

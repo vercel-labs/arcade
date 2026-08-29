@@ -8,7 +8,8 @@
 //
 // Logos are third-party brand assets; bake only what you use.
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { blendOver, decodePng, sampleTexture, type RGB } from '../engine/index.ts';
+import { blendOver, sampleTexture, type RGB } from '../engine/index.ts';
+import { decodePng } from '../engine/texture.ts';
 import { logoUrl, LOGO_NAMES } from '../arcade/scenes/logos.ts';
 
 const name = process.argv[2];

@@ -10,7 +10,6 @@ import { readFileSync } from 'node:fs';
 import {
   analyzeLogo,
   bakeMarkAlpha,
-  decodePng,
   FONT,
   type Mat4,
   mat4MulVec4,
@@ -23,6 +22,7 @@ import {
   type Vec3,
   wispMaterial,
 } from '../../engine/index.ts';
+import { decodePng } from '../../engine/texture.ts';
 import { BRAND_HUE } from './logos.ts';
 import { asset } from '../assets.ts';
 

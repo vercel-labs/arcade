@@ -11,7 +11,8 @@
 
 import { readFileSync } from 'node:fs';
 import { asset } from '../../assets.ts';
-import { decodePng, FONT, ResourceCache, type RGB, type Texture } from '../../../engine/index.ts';
+import { FONT, ResourceCache, type RGB, type Texture } from '../../../engine/index.ts';
+import { decodePng } from '../../../engine/texture.ts';
 import { type Card, isRed, RANK_LABELS } from '../../../rules/poker/cards.ts';
 
 // Card face resolution (5:7, a real card's ratio). Big enough that pips + indices

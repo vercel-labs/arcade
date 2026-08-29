@@ -13,7 +13,6 @@ import {
   cameraMatrices,
   type Camera,
   coverMaterial,
-  decodePng,
   FONT,
   type Mat4,
   mat4Multiply,
@@ -28,6 +27,7 @@ import {
   type Texture,
   type Vec3,
 } from '../../engine/index.ts';
+import { decodePng } from '../../engine/texture.ts';
 import { MENU_ITEMS } from './menu.ts';
 import { asset } from '../assets.ts';
 

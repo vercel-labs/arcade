@@ -5,7 +5,7 @@
 import { type Mesh, type Vec3 } from '../../../../engine/index.ts';
 import { coastalEdgeRing, edgeNodes } from '../../../../rules/catan/board-topology.ts';
 import { NODE_XZ } from '../scene/board-layout.ts';
-import { build, faceQuadFlat, hash2, shade, smooth, UP, v, type RGB } from './build.ts';
+import { build, faceQuadFlat, hash2, shade, smooth, UP, v, type RGB } from '../../../../game-visuals/catan/build.ts';
 
 export const BEACH_DRY_WIDTH = 0.22;
 export const BEACH_OUTER_WIDTH = 0.36;

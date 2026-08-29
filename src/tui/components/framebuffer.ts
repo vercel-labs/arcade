@@ -8,7 +8,7 @@
 // captures. Wrap it in a Component when the drawing has state that must survive
 // the per-frame rebuild.
 
-import type { Surface } from '../../engine/index.ts';
+import type { Surface } from '../../engine/surface.ts';
 import type { Dimension, LayoutBox, Node, Style } from '../types.ts';
 
 export type FrameDraw = (surf: Surface, box: LayoutBox) => void;

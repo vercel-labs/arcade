@@ -1,16 +1,11 @@
 import { deflateSync, inflateSync } from 'node:zlib';
-import type { RGBA } from './color.ts';
+import type { Texture } from './texture-data.ts';
+export { sampleTexture, type Texture } from './texture-data.ts';
 
 // An RGBA8 image in memory: row-major, top-left origin, 4 bytes/pixel. The
 // engine's only image primitive — decode a PNG into one (decodePng) then read it
 // with sampleTexture. Knows nothing about where the bytes came from (the app
 // reads files / fetches URLs and hands us the buffer), matching parseObj.
-export interface Texture {
-  width: number;
-  height: number;
-  data: Uint8Array;
-}
-
 const PNG_SIG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 // colorType -> channels per pixel. 0 gray, 2 rgb, 3 palette(index), 4 gray+a, 6 rgba.
 const CHANNELS: Record<number, number> = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 };
@@ -196,39 +191,4 @@ function crc32(buf: Buffer): number {
   let c = 0xffffffff;
   for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
   return (c ^ 0xffffffff) >>> 0;
-}
-
-const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
-
-// Bilinearly sample a texture at uv in [0,1] (clamped at the edges). Returns the
-// engine's RGBA convention: rgb 0..255, alpha 0..1 — so the result drops straight
-// into blendOver()/plot() without conversion. v=0 is the top row.
-//
-// Writes into a single reused tuple (no per-pixel array + `lerp` closure): the
-// textured fragment shaders (coverMaterial for cards, logoMaterial for wisps) call
-// this once per covered pixel, so a fresh 4-array + closure each time was real GC
-// churn at high resolution. Callers read the result synchronously into scalars
-// before the next call, so a shared mutable return is safe.
-const SAMPLE: RGBA = [0, 0, 0, 0];
-export function sampleTexture(tex: Texture, u: number, v: number): RGBA {
-  const { width: W, height: H, data: d } = tex;
-  const fx = clamp01(u) * (W - 1);
-  const fy = clamp01(v) * (H - 1);
-  const x0 = Math.floor(fx);
-  const y0 = Math.floor(fy);
-  const x1 = Math.min(W - 1, x0 + 1);
-  const y1 = Math.min(H - 1, y0 + 1);
-  const tx = fx - x0;
-  const ty = fy - y0;
-  const i00 = (y0 * W + x0) * 4;
-  const i10 = (y0 * W + x1) * 4;
-  const i01 = (y1 * W + x0) * 4;
-  const i11 = (y1 * W + x1) * 4;
-  for (let k = 0; k < 4; k++) {
-    const top = d[i00 + k] + (d[i10 + k] - d[i00 + k]) * tx;
-    const bot = d[i01 + k] + (d[i11 + k] - d[i01 + k]) * tx;
-    SAMPLE[k] = top + (bot - top) * ty;
-  }
-  SAMPLE[3] /= 255;
-  return SAMPLE;
 }

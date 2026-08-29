@@ -1,7 +1,8 @@
 // Recognisable natural props and their palette: pines (standing and felled), round trees,
 // bushes, sheep, and brickwork. Shared by the terrain tiles and the harbour ship's cargo.
 
-import { mulberry32, type Vec3 } from '../../../../engine/index.ts';
+import type { Vec3 } from '../../engine/math.ts';
+import { mulberry32 } from '../../engine/random.ts';
 import { type Build, type RGB, shade, smooth, v } from './build.ts';
 import { beam, blob, box, cone, coneAxis, logBeamAxis } from './props.ts';
 

@@ -53,9 +53,11 @@
   "exports": {
     ".": "./src/public-api.ts",
     "./engine": "./src/engine/index.ts",
+    "./engine/png": "./src/engine/texture.ts",
     "./tui": "./src/tui/index.ts",
     "./rules": "./src/rules/game.ts",
     "./rules/chess": "./src/rules/chess/chess.ts",
+    "./game-visuals/catan": "./src/game-visuals/catan/index.ts",
     "./web": "./src/web/index.ts"
   },
   "files": [

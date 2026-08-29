@@ -2,7 +2,7 @@
 // (and h/l) nudge by `step`. The track + thumb are hand-drawn via the FrameBuffer
 // hook: a filled bar up to the thumb, an empty track after it.
 
-import type { Surface } from '../../engine/index.ts';
+import type { Surface } from '../../engine/surface.ts';
 import type { KeyEvent } from '../../platform/input.ts';
 import type { Component } from '../component.ts';
 import type { Theme } from '../theme.ts';

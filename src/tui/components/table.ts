@@ -11,7 +11,7 @@
 // click handler, per-cell flag colors, or to sit inside a ScrollBox. Table's whole job
 // is the arithmetic nobody wants to repeat.
 
-import { stringWidth } from '../../engine/index.ts';
+import { stringWidth } from '../../engine/width.ts';
 import { distribute } from '../distribute.ts';
 import { Box, Text } from '../nodes.ts';
 import type { Justify, Node, Style } from '../types.ts';

@@ -8,6 +8,7 @@ import {
 } from '@vercel/arcade/web';
 import dynamic from 'next/dynamic';
 import { useEffect, useRef, useState } from 'react';
+import { ArcadeSceneEmbed } from '../../../../components/arcade-scene-embed';
 
 const COLS = 64;
 const ROWS = 34;
@@ -173,6 +174,24 @@ export function TuiExample() {
   ><canvas aria-label="Interactive retained Arcade TUI example" className="live-example__canvas" ref={canvasRef} tabIndex={0} /></ExampleShell>;
 }
 
+export function ChessBoardExample() {
+  return <ExampleShell
+    description="A focused browser scene backed by Arcade's Chess rules and CPU renderer. The website hosts a canvas; the package owns the board, camera, rasterization, and terminal cells."
+    imports="@vercel/arcade/web"
+    source="src/web/browser-mini-scenes.ts"
+    title="Chess board"
+  ><ArcadeSceneEmbed ariaLabel="Interactive Arcade chess board" scene="chess-board" /></ExampleShell>;
+}
+
+export function CatanTileExample() {
+  return <ExampleShell
+    description="The same procedural fields-tile mesh used by Catan, extracted into a browser-safe visual module and rendered independently from the complete game board."
+    imports="@vercel/arcade/game-visuals/catan · @vercel/arcade/web"
+    source="src/game-visuals/catan/tiles/fields"
+    title="Catan tile"
+  ><ArcadeSceneEmbed ariaLabel="Interactive animated Catan fields tile" scene="catan-fields" /></ExampleShell>;
+}
+
 export function PrismExample() {
   return <ExampleShell
     controls={<span>curl ascii-prisms.vercel.app</span>}
@@ -185,7 +204,7 @@ export function PrismExample() {
 
 function ExampleShell({ children, controls, description, imports, source, title }: {
   children: React.ReactNode;
-  controls: React.ReactNode;
+  controls?: React.ReactNode;
   description: string;
   imports: string;
   source: string;
@@ -194,7 +213,7 @@ function ExampleShell({ children, controls, description, imports, source, title 
   return <article className="live-example">
     <header><div><span>live example</span><h2>{title}</h2></div><code>{imports}</code></header>
     <div className="live-example__stage">{children}</div>
-    <div className="live-example__controls">{controls}</div>
+    {controls ? <div className="live-example__controls">{controls}</div> : null}
     <p>{description}</p>
     <footer><code>{source}</code><a href="https://github.com/vercel-labs/arcade" rel="noreferrer" target="_blank">view repository ↗</a></footer>
   </article>;

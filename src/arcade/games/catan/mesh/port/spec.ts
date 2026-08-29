@@ -1,7 +1,7 @@
 // The harbour ship's form data: what a port trades, the hull palette, and the longitudinal
 // station tables (deck-edge and keel half-widths/heights) the hull is lofted through.
 
-import { type RGB } from '../build.ts';
+import { type RGB } from '../../../../../game-visuals/catan/build.ts';
 
 export type PortKind = 'generic' | 'brick' | 'grain' | 'lumber' | 'ore' | 'wool';
 

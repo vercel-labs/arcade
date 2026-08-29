@@ -1,26 +1,32 @@
+import { cameraMatrices } from '../engine/camera.ts';
+import type { RGB } from '../engine/color.ts';
+import { RenderTarget } from '../engine/framebuffer.ts';
+import { lambertMaterial } from '../engine/materials.ts';
 import {
-  cameraMatrices,
-  cube,
-  flatShade,
-  halfBlockToSurface,
-  lambertMaterial,
   mat4Multiply,
   mat4Scale,
   mat4Translate,
   normalize3,
-  OrbitCamera,
-  rasterize,
-  Raycaster,
-  RenderTarget,
+  type Mat4,
+  type Vec3,
+} from '../engine/math.ts';
+import {
+  cube,
+  flatShade,
+  type Mesh,
+} from '../engine/mesh.ts';
+import { OrbitCamera } from '../engine/orbit.ts';
+import { Raycaster } from '../engine/picking.ts';
+import {
+  halfBlockToSurface,
   shapeGlyphToSurface,
+} from '../engine/present-cells.ts';
+import { rasterize } from '../engine/raster.ts';
+import {
   STYLE_BOLD,
   STYLE_DIM,
   Surface,
-  type Mat4,
-  type Mesh,
-  type RGB,
-  type Vec3,
-} from '../engine/index.ts';
+} from '../engine/surface.ts';
 import { ChessState } from '../rules/chess/chess.ts';
 import {
   BLACK,

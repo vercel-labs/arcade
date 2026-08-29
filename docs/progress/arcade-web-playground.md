@@ -53,6 +53,7 @@ Credential-safe AI sessions and browser expansion beyond local Chess are tracked
 - Actual packaged launcher and games through a temporary Linux PTY, plus a miniature
   navigable docs/examples filesystem.
 - Live mesh/material and retained-TUI specimens in `/examples`.
+- Focused Chess-board and production Catan-tile mini scenes through one browser-safe embed contract.
 - Static, crawlable docs and machine-readable agent indexes.
 - Browser-safe exports for `engine`, `tui`, `rules/chess`, and `web` proven from the packed
   tarball, not only through workspace aliases.

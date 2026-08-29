@@ -1,7 +1,7 @@
 import { hslToRgb } from './color.ts';
 import { dot3, mat4MulDir, mat4MulVec4, normalize3, sub3, type Mat4, type Vec3 } from './math.ts';
 import type { Material } from './shader.ts';
-import { sampleTexture, type Texture } from './texture.ts';
+import { sampleTexture, type Texture } from './texture-data.ts';
 
 export interface LambertUniforms {
   mvp: Mat4;

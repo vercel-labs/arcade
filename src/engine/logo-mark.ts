@@ -16,7 +16,7 @@
 //     floor so a lighter/greyer mark region still counts as full mark.
 import type { RGB } from './color.ts';
 import type { Vec3 } from './math.ts';
-import type { Texture } from './texture.ts';
+import type { Texture } from './texture-data.ts';
 
 // Normalize an RGB Euclidean distance (0..441.7) to 0..1 (black↔white == 1).
 const NORM = 1 / Math.sqrt(3 * 255 * 255);

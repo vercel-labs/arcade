@@ -4,7 +4,8 @@
 //
 //   pnpm exec tsx src/tools/make-catan-cover.ts [terrain] [size]
 import { writeFileSync } from 'node:fs';
-import { downsample, encodePng, RenderTarget } from '../engine/index.ts';
+import { downsample, RenderTarget } from '../engine/index.ts';
+import { encodePng } from '../engine/texture.ts';
 import { TileScene } from '../arcade/games/catan/tile-scene.ts';
 import { asset } from '../arcade/assets.ts';
 import { TERRAINS, type Terrain } from '../rules/catan/types.ts';

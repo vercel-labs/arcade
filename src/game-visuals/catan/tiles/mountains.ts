@@ -1,6 +1,7 @@
 // The mountains tile: jagged peaks over a bare rock shelf.
 
-import { mulberry32, type Vec3 } from '../../../../../engine/index.ts';
+import type { Vec3 } from '../../../engine/math.ts';
+import { mulberry32 } from '../../../engine/random.ts';
 import { EDGE_Y, hexCorners, R_RIM, rimAndWall } from '../base.ts';
 import { build, type Build, faceTri, hash2, type RGB, shade, smooth, UP, v } from '../build.ts';
 

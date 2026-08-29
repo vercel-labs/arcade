@@ -32,7 +32,9 @@ export const DOCS: DocPage[] = [
 import { Surface } from '@vercel/arcade/engine'
 import { Box, Text } from '@vercel/arcade/tui'
 import { ChessState } from '@vercel/arcade/rules/chess'
-import { BrowserArcade, CanvasSurfaceHost } from '@vercel/arcade/web'`}</Code><Note>The package is currently restricted while the source, asset, license, and packed-consumer audits finish. These explicit subpaths are the intended boundary and are exercised by the site today; do not claim general public npm availability yet.</Note></>,
+import {
+  CanvasSurfaceHost, createBrowserMiniScene
+} from '@vercel/arcade/web'`}</Code><Note>The package is currently restricted while the source, asset, license, and packed-consumer audits finish. These explicit subpaths are the intended boundary and are exercised by the site today; do not claim general public npm availability yet.</Note></>,
       },
       {
         heading: 'One-way architecture',
@@ -318,7 +320,7 @@ $ arcade
       },
       {
         heading: 'What is shared',
-        body: <p>The homepage shares the complete CLI: launcher, games, renderer, TUI, key and mouse parsing, model harness, and ANSI output. The site owns only Sandbox lifecycle, xterm sizing, the WebSocket bridge, and surrounding prose. The examples page separately demonstrates browser-safe engine and TUI imports.</p>,
+        body: <p>The homepage shares the complete CLI: launcher, games, renderer, TUI, key and mouse parsing, model harness, and ANSI output. The site owns only Sandbox lifecycle, xterm sizing, the WebSocket bridge, and surrounding prose. Focused examples use browser-safe mini scenes: the site owns the canvas lifecycle, while Arcade still owns the geometry, camera, rasterization, and terminal cells.</p>,
       },
       {
         heading: 'Security boundary',
@@ -338,7 +340,21 @@ $ arcade
     sections: [
       {
         heading: 'Run the live gallery',
-        body: <><p><a href="/examples">Open interactive examples</a> for a rotating CPU-rendered scene, retained TUI specimen, and the prism stream. They import <code>@vercel/arcade</code> subpaths without pretending to be the complete app; the live shell on the homepage is the complete app.</p><div className="example-grid"><Example glyph="◢" title="Mesh + material" text="Camera, geometry, Lambert shading, rasterization, and all three presenters." /><Example glyph="▦" title="Retained HUD" text="Theme, layout, table, buttons, state, and Surface compositing." /><Example glyph="⌁" title="Prism stream" text="A separate curl-able deploy built from the same engine closure." /><Example glyph="$" title="Hosted CLI" text="Actual package, Linux shell, docs filesystem, and temporary PTY session." /></div></>,
+        body: <><p><a href="/examples">Open interactive examples</a> for focused Chess and Catan scenes, a generic CPU-rendered scene, retained TUI specimen, and the prism stream. They import <code>@vercel/arcade</code> subpaths without pretending to be the complete app; the live shell on the homepage is the complete app.</p><div className="example-grid"><Example glyph="♞" title="Chess board" text="Browser-safe Chess rules and renderer behind the shared mini-scene contract." /><Example glyph="⬡" title="Catan tile" text="The production procedural fields mesh, isolated from the complete board." /><Example glyph="◢" title="Mesh + material" text="Camera, geometry, Lambert shading, rasterization, and all three presenters." /><Example glyph="▦" title="Retained HUD" text="Theme, layout, table, buttons, state, and Surface compositing." /></div></>,
+      },
+      {
+        heading: 'Embed a focused Arcade scene',
+        body: <><Code>{`import {
+  CanvasSurfaceHost,
+  createBrowserMiniScene
+} from '@vercel/arcade/web'
+
+const scene = createBrowserMiniScene('catan-fields')
+const host = new CanvasSurfaceHost(canvas)
+const frame = scene.frame(58, 34, performance.now() / 1000)
+
+host.resize(canvas.clientWidth, canvas.clientHeight, 58, 34)
+host.draw(frame.surface)`}</Code><p>Use one host component for resize, visibility, reduced motion, pointer orbit, zoom, and reset. Add a new scene inside Arcade only when it exposes a reusable visual boundary. Production geometry should live below <code>src/arcade</code> so both the terminal application and <code>@vercel/arcade/web</code> can consume it without reversing the import graph.</p></>,
       },
       {
         heading: 'Production systems to study',
@@ -346,7 +362,7 @@ $ arcade
       },
       {
         heading: 'Example standard',
-        body: <ul><li>Import public Arcade modules instead of copying engine or game logic into the website.</li><li>Provide controls, reset behavior, responsive sizing, focus labels, and reduced-motion behavior.</li><li>Name the source file and API subpaths used.</li><li>Add focused source tests and a packed-consumer smoke test before promising a stable public API.</li><li>Keep experimental game-specific scenes in app code until their dependency boundary is genuinely reusable.</li></ul>,
+        body: <ul><li>Import public Arcade modules instead of copying engine or game logic into the website.</li><li>Provide controls, reset behavior, responsive sizing, focus labels, and reduced-motion behavior.</li><li>Name the source file and API subpaths used.</li><li>Add focused source tests and a packed-consumer smoke test before promising a stable public API.</li><li>Extract only browser-safe geometry and state; terminal shell, auth, voice, telemetry, and full-game orchestration stay out of mini scenes.</li></ul>,
       },
       {
         heading: 'Machine-readable catalog',

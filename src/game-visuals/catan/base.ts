@@ -2,7 +2,8 @@
 // rim ledge, and a gently-undulating triangulated ground. Terrain height is a pure function of
 // (x,z) so independently-built sectors meet seamlessly and props can be sat exactly on it.
 
-import { type Mesh, type Vec3 } from '../../../../engine/index.ts';
+import type { Vec3 } from '../../engine/math.ts';
+import type { Mesh } from '../../engine/mesh.ts';
 import { build, type Build, DOWN, faceQuad, faceQuadFlat, faceTri, hash2, norm, type RGB, shade, smooth, UP, v } from './build.ts';
 
 // ── Shared thin, flat-top base ────────────────────────────────────────────────

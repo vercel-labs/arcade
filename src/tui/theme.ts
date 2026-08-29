@@ -2,7 +2,7 @@
 // resolveColor maps a token to a concrete RGBA at paint time. One place to
 // retheme the whole UI instead of scattering literals through component styles.
 
-import { parseColor, type RGB, type RGBA } from '../engine/index.ts';
+import { parseColor, type RGB, type RGBA } from '../engine/color.ts';
 
 export interface Theme {
   // Semantic surfaces. Components should choose by role rather than copying a

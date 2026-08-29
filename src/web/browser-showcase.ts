@@ -1,27 +1,33 @@
+import { cameraMatrices } from '../engine/camera.ts';
+import type { RGB } from '../engine/color.ts';
+import { RenderTarget } from '../engine/framebuffer.ts';
+import { lambertMaterial } from '../engine/materials.ts';
 import {
-  cameraMatrices,
-  cube,
-  flatShade,
-  halfBlockToSurface,
-  lambertMaterial,
   mat4Multiply,
   mat4RotX,
   mat4RotY,
   mat4Scale,
   mat4Translate,
   normalize3,
-  OrbitCamera,
-  rasterize,
-  RenderTarget,
+  type Mat4,
+} from '../engine/math.ts';
+import {
+  cube,
+  flatShade,
+  tetrahedron,
+  type Mesh,
+} from '../engine/mesh.ts';
+import { OrbitCamera } from '../engine/orbit.ts';
+import {
+  halfBlockToSurface,
   shapeGlyphToSurface,
+} from '../engine/present-cells.ts';
+import { rasterize } from '../engine/raster.ts';
+import {
   STYLE_BOLD,
   STYLE_DIM,
   Surface,
-  tetrahedron,
-  type Mat4,
-  type Mesh,
-  type RGB,
-} from '../engine/index.ts';
+} from '../engine/surface.ts';
 import {
   Box,
   FilledButton,

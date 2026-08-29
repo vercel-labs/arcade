@@ -4,8 +4,10 @@
 // Tiles are being rebuilt from reference art one at a time: fields/ is done, and the other five
 // still dress the shared thin base with their older props.
 
-import { BufferGeometry, type Mesh, ResourceCache } from '../../../../../engine/index.ts';
-import { type Terrain } from '../../../../../rules/catan/types.ts';
+import { BufferGeometry } from '../../../engine/buffer-geometry.ts';
+import type { Mesh } from '../../../engine/mesh.ts';
+import { ResourceCache } from '../../../engine/resources.ts';
+import { type Terrain } from '../../../rules/catan/types.ts';
 import { type Build, type RGB } from '../build.ts';
 import { animatedDesertTile, desertTile, placeRobber } from './desert.ts';
 import { animatedFieldsTile, fieldsTile } from './fields/tile.ts';

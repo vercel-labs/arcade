@@ -1,7 +1,7 @@
 // The harbour ship: hull and rig, plus the cargo for the resource it trades.
 
 import { type Mesh, ResourceCache } from '../../../../../engine/index.ts';
-import { build } from '../build.ts';
+import { build } from '../../../../../game-visuals/catan/build.ts';
 import { boatCargo } from './cargo.ts';
 import { boatHull, boatRig } from './hull.ts';
 import { type PortKind } from './spec.ts';

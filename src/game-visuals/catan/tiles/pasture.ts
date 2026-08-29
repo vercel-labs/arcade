@@ -1,7 +1,8 @@
 // The pasture tile: fenced meadow with trees and bushes, plus the overlay that walks its
 // sheep across the baked terrain surface.
 
-import { type Mesh, mulberry32 } from '../../../../../engine/index.ts';
+import type { Mesh } from '../../../engine/mesh.ts';
+import { mulberry32 } from '../../../engine/random.ts';
 import { surfaceY, tileBase } from '../base.ts';
 import { build, type Build, type RGB, smooth } from '../build.ts';
 import { bush, roundTree, sheep } from '../nature.ts';

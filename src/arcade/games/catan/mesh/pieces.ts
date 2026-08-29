@@ -3,9 +3,9 @@
 
 import { type Mesh, ResourceCache, type Vec3 } from '../../../../engine/index.ts';
 import { type PlayerColor } from '../../../../rules/catan/types.ts';
-import { EDGE_Y } from './base.ts';
-import { build, type Build, faceQuad, faceTri, norm, type RGB, sub, v } from './build.ts';
-import { box } from './props.ts';
+import { EDGE_Y } from '../../../../game-visuals/catan/base.ts';
+import { build, type Build, faceQuad, faceTri, norm, type RGB, sub, v } from '../../../../game-visuals/catan/build.ts';
+import { box } from '../../../../game-visuals/catan/props.ts';
 
 const PLAYER_RGB: Record<PlayerColor, RGB> = {
   red: [201, 58, 47],

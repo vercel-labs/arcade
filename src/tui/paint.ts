@@ -8,17 +8,14 @@
 // flat. The resolved RGB is inherited by descendants so text without its own
 // background still paints over the right color (black if nothing set it).
 
+import { blendOver, type RGB, type RGBA } from '../engine/color.ts';
+import type { Surface } from '../engine/surface.ts';
 import {
-  blendOver,
-  cellWidth,
   STYLE_BOLD,
   STYLE_DIM,
   STYLE_UNDERLINE,
-  stringWidth,
-  type RGB,
-  type RGBA,
-  type Surface,
-} from '../engine/index.ts';
+} from '../engine/surface.ts';
+import { cellWidth, stringWidth } from '../engine/width.ts';
 
 import { clipText, truncate } from './text.ts';
 import { defaultTheme, resolveColor, type Theme } from './theme.ts';

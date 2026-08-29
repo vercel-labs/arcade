@@ -1,8 +1,8 @@
 // The ship's hull and decks, and the mast with its billowing sail and pennant.
 
 import { type Vec3 } from '../../../../../engine/index.ts';
-import { type Build, cross, DOWN, faceQuad, faceQuadFlat, norm, sub, UP, v } from '../build.ts';
-import { box } from '../props.ts';
+import { type Build, cross, DOWN, faceQuad, faceQuadFlat, norm, sub, UP, v } from '../../../../../game-visuals/catan/build.ts';
+import { box } from '../../../../../game-visuals/catan/props.ts';
 import { AFT_Y, BOW, DECK, DECK_INSET, FLOOR_Y, HULL, HULL_DK, LIP, LIPW, MASTC, SAIL_TAN, SAIL_WHITE, ST_BW, ST_BY, ST_TW, ST_TY, ST_X, STEP } from './spec.ts';
 
 function smoothWall(m: Build, s: number): void {

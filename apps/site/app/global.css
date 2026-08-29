@@ -197,6 +197,12 @@ button.quick-terminal-control:hover::after, button.quick-terminal-control:focus-
 .live-example header > code, .live-example footer code { color: var(--site-muted); font-size: 11px; }
 .live-example__stage { border-block: 1px solid #282b35; background: #000; }
 .live-example__canvas { display: block; width: 100%; aspect-ratio: 16 / 8.5; outline: none; touch-action: none; }
+.arcade-scene-embed { background: #000; }
+.arcade-scene-embed__canvas { display: block; width: 100%; aspect-ratio: 1 / 1; outline: none; touch-action: none; }
+.arcade-scene-embed__canvas:focus-visible { box-shadow: inset 0 0 0 2px var(--site-foreground); }
+.arcade-scene-embed__controls { min-height: 43px; display: flex; align-items: center; justify-content: flex-end; gap: 1px; border-top: 1px solid var(--site-border); background: var(--site-border); }
+.arcade-scene-embed__controls button { align-self: stretch; border: 0; padding: 0 14px; color: var(--site-muted); background: var(--site-background); cursor: pointer; font: 600 10px/1 var(--font-geist-mono), monospace; text-transform: uppercase; }
+.arcade-scene-embed__controls button:hover { color: var(--site-foreground); background: var(--site-hover); }
 .live-example__terminal { width: 100%; height: 360px; }
 .live-example__canvas:focus-visible { box-shadow: inset 0 0 0 2px var(--site-foreground); }
 .live-example__controls { min-height: 43px; display: flex; align-items: center; justify-content: flex-end; gap: 1px; border-bottom: 1px solid var(--site-border); background: var(--site-border); }

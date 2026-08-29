@@ -3,8 +3,8 @@
 // Component, not a plain builder. The visible text + caret are hand-drawn via a
 // FrameBuffer draw hook so the caret can invert exactly one cell.
 
-import { stringWidth, STYLE_REVERSE } from '../../engine/index.ts';
-import type { Surface } from '../../engine/index.ts';
+import { STYLE_REVERSE, type Surface } from '../../engine/surface.ts';
+import { stringWidth } from '../../engine/width.ts';
 import type { KeyEvent } from '../../platform/input.ts';
 import type { Component } from '../component.ts';
 import type { Theme } from '../theme.ts';

@@ -9,7 +9,7 @@
 // ancestor sets overflow:hidden) onto every node. Paint and hit-test read those,
 // so geometry can't drift between them.
 
-import { stringWidth } from '../engine/index.ts';
+import { stringWidth } from '../engine/width.ts';
 
 import { distribute } from './distribute.ts';
 import type { Dimension, LayoutBox, Node, Spacing, Style } from './types.ts';

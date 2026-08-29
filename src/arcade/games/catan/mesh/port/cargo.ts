@@ -2,9 +2,9 @@
 // open well. Grain rides as tied wheat sheaves; a 3:1 (generic) ship carries nothing.
 
 import { mulberry32, type Vec3 } from '../../../../../engine/index.ts';
-import { type Build, cross, faceQuadFlat, faceTriWithNormal, norm, type RGB, shade, UP, v } from '../build.ts';
-import { felledPine, PINE_GREENS, sheep } from '../nature.ts';
-import { angularRock, box } from '../props.ts';
+import { type Build, cross, faceQuadFlat, faceTriWithNormal, norm, type RGB, shade, UP, v } from '../../../../../game-visuals/catan/build.ts';
+import { felledPine, PINE_GREENS, sheep } from '../../../../../game-visuals/catan/nature.ts';
+import { angularRock, box } from '../../../../../game-visuals/catan/props.ts';
 import { FLOOR_Y, type PortKind } from './spec.ts';
 
 // ── Sheaves (the grain port's cargo) ────────────────────────────────────────

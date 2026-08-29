@@ -1,17 +1,17 @@
 // Mesh assembly primitives shared by every Catan mesh module: the Build buffer, the face
 // emitters (which orient winding to an "outward" hint), and small vector/colour helpers.
 
+import { smoothstep } from '../../engine/animation.ts';
+import { BufferGeometry } from '../../engine/buffer-geometry.ts';
+import { appendQuad, appendTriangle } from '../../engine/geometry.ts';
 import {
-  appendQuad,
-  appendTriangle,
-  BufferGeometry,
   cross3,
   normalize3,
-  sineHash2,
   sub3,
   type Vec3,
-} from '../../../../engine/index.ts';
-export { smoothstep as smooth } from '../../../../engine/index.ts';
+} from '../../engine/math.ts';
+import { sineHash2 } from '../../engine/random.ts';
+export { smoothstep as smooth };
 
 export type RGB = [number, number, number];
 export const v = (x: number, y: number, z: number): Vec3 => ({ x, y, z });

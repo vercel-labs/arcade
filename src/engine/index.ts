@@ -109,7 +109,7 @@ export {
   type CoverUniforms,
 } from './materials.ts';
 export { hslToRgb, lerpRgb, parseColor, blendOver, type RGB, type RGBA } from './color.ts';
-export { decodePng, encodePng, sampleTexture, type Texture } from './texture.ts';
+export { sampleTexture, type Texture } from './texture-data.ts';
 export { analyzeLogo, markCoverage, bakeMarkAlpha, backgroundRgb, type MarkAnalysis } from './logo-mark.ts';
 export { cellWidth, stringWidth } from './width.ts';
 export { FONT } from './font8x8.ts';

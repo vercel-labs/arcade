@@ -1,7 +1,8 @@
 // Geometric solids reused across terrains and port cargo: boxes, cones, blobs, angular rocks,
 // beams and capped logs (both ground-resting and free-axis).
 
-import { mulberry32, type Vec3 } from '../../../../engine/index.ts';
+import type { Vec3 } from '../../engine/math.ts';
+import { mulberry32 } from '../../engine/random.ts';
 import { type Build, cross, faceQuad, faceQuadFlat, faceTri, norm, type RGB, shade, sub, UP, v } from './build.ts';
 
 // ── Prop primitives ───────────────────────────────────────────────────────────

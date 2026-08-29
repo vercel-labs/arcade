@@ -1,6 +1,7 @@
 // The forest tile: pines on rolling ground, with felled trunks and a cut woodpile.
 
-import { mulberry32, ResourceCache } from '../../../../../engine/index.ts';
+import { mulberry32 } from '../../../engine/random.ts';
+import { ResourceCache } from '../../../engine/resources.ts';
 import { surfaceY, tileBase } from '../base.ts';
 import { build, type Build, type RGB } from '../build.ts';
 import { pine, PINE_GREENS } from '../nature.ts';

@@ -6,7 +6,8 @@
 //   pnpm exec tsx src/tools/fetch-games.ts [cover-id ...]
 //
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { decodePng, encodePng, type Texture } from '../engine/index.ts';
+import type { Texture } from '../engine/index.ts';
+import { decodePng, encodePng } from '../engine/texture.ts';
 
 const noto = (cp: string): string => `https://cdn.jsdelivr.net/gh/googlefonts/noto-emoji/png/128/emoji_u${cp}.png`;
 const artSource = (id: string, cp: string): string =>

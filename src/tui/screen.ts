@@ -7,7 +7,8 @@
 // inside the TUI (layout, Surface, hit-test) is 0-based, so the mouse methods
 // subtract 1 at the boundary.
 
-import { CellDiffer, Surface } from '../engine/index.ts';
+import { CellDiffer } from '../engine/diff.ts';
+import { Surface } from '../engine/surface.ts';
 
 import type { KeyEvent } from '../platform/input.ts';
 import { type Component, Registry } from './component.ts';

@@ -3,7 +3,7 @@
 // visible slice is built each frame (viewport culling), and a slim scrollbar is
 // hand-drawn on the right edge via the FrameBuffer hook to show position.
 
-import type { Surface } from '../../engine/index.ts';
+import type { Surface } from '../../engine/surface.ts';
 import type { KeyEvent } from '../../platform/input.ts';
 import type { Component } from '../component.ts';
 import { Box, Text } from '../nodes.ts';

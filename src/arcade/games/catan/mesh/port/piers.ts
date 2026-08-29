@@ -3,7 +3,7 @@
 // meshes rendered with their individual transforms.
 
 import { type Mesh, type Vec3 } from '../../../../../engine/index.ts';
-import { build, faceQuad, faceQuadFlat, norm, shade, sub, UP, v, type Build, type RGB } from '../build.ts';
+import { build, faceQuad, faceQuadFlat, norm, shade, sub, UP, v, type Build, type RGB } from '../../../../../game-visuals/catan/build.ts';
 import { type HarborConnector } from '../../scene/harbors.ts';
 
 const DECK: RGB = [202, 137, 55];

@@ -3,7 +3,7 @@
 // stays sticky above the options. Overflow scrolls automatically after the
 // configured number of visible rows.
 
-import type { Surface } from '../../engine/index.ts';
+import type { Surface } from '../../engine/surface.ts';
 import type { KeyEvent } from '../../platform/input.ts';
 import type { Component } from '../component.ts';
 import { Box, Text } from '../nodes.ts';

@@ -3,7 +3,7 @@
 // chooses. Rendered declaratively as a column of Text rows — the selected row
 // gets a highlight style, brighter while focused.
 
-import type { Surface } from '../../engine/index.ts';
+import type { Surface } from '../../engine/surface.ts';
 import type { KeyEvent } from '../../platform/input.ts';
 import type { Component } from '../component.ts';
 import { Box, Text } from '../nodes.ts';

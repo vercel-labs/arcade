@@ -13,7 +13,7 @@
 // disagreeing with it would reintroduce the off-by-a-cell that measuring by width
 // exists to remove.
 
-import { stringWidth } from '../engine/index.ts';
+import { stringWidth } from '../engine/width.ts';
 
 const ELLIPSIS = '…';
 

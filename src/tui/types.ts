@@ -2,7 +2,7 @@
 // frame (cheap, like the old currentBar()); per-node interaction state lives in
 // the Screen runtime keyed by `id`, so the tree itself stays pure data.
 
-import type { Surface } from '../engine/index.ts';
+import type { Surface } from '../engine/surface.ts';
 import type { KeyEvent } from '../platform/input.ts';
 import type { ColorToken, Theme } from './theme.ts';
 

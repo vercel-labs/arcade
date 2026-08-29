@@ -1,7 +1,7 @@
 // The clickable 3D die used by the board's roll overlay.
 
 import { type Mesh, type Vec3 } from '../../../../engine/index.ts';
-import { build, faceQuad, type RGB, v } from './build.ts';
+import { build, faceQuad, type RGB, v } from '../../../../game-visuals/catan/build.ts';
 
 let dieCache: Mesh | null = null;
 // A single die: an ivory cube (half-size 0.5, centered at the origin) with big, near-black

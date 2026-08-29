@@ -1,9 +1,9 @@
+import type { Surface } from '../engine/surface.ts';
 import {
   STYLE_BOLD,
   STYLE_DIM,
   STYLE_UNDERLINE,
-  type Surface,
-} from '../engine/index.ts';
+} from '../engine/surface.ts';
 
 export interface CanvasSurfaceHostOptions {
   fontFamily?: string;

@@ -9,8 +9,8 @@
 //   tiles/           one module per terrain; tiles/fields/ holds the wheat system
 //   pieces, dice     player pieces, the board overlay, the rollable die
 //   port/            the harbour ship: form data, hull + rig, deck cargo
-export type { RGB } from './build.ts';
-export { tileBackMesh } from './base.ts';
+export type { RGB } from '../../../../game-visuals/catan/index.ts';
+export { animatedTileMesh, robberMarkerMesh, tileBackMesh, tileMesh } from '../../../../game-visuals/catan/index.ts';
 export { BEACH_DRY_WIDTH, BEACH_OUTER_WIDTH, coastMesh, shoreWaveField, surfMesh, swashMesh } from './coast.ts';
 export type { ShoreWaveField } from './coast.ts';
 export { dieMesh } from './dice.ts';
@@ -31,4 +31,3 @@ export { PORT_SAIL_CENTER } from './port/hull.ts';
 export { portMesh } from './port/index.ts';
 export { harborPiersMesh } from './port/piers.ts';
 export type { PortKind } from './port/spec.ts';
-export { animatedTileMesh, robberMarkerMesh, tileMesh } from './tiles/index.ts';

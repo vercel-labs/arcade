@@ -15,3 +15,13 @@ export {
   BrowserTuiShowcase,
   type BrowserShowcaseFrame,
 } from './browser-showcase.ts';
+export {
+  BrowserCatanTileShowcase,
+  BrowserChessBoardShowcase,
+  createBrowserMiniScene,
+} from './browser-mini-scenes.ts';
+export type {
+  BrowserMiniScene,
+  BrowserMiniSceneFrame,
+  BrowserMiniSceneId,
+} from './mini-scene.ts';
