@@ -30,9 +30,7 @@ const encoder = new TextEncoder();
  */
 export function ArcadeTerminal() {
   const containerRef = useRef<HTMLDivElement>(null);
-  const terminalRef = useRef<Terminal | null>(null);
   const [connection, setConnection] = useState<ConnectionState>('connecting');
-  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -65,7 +63,6 @@ export function ArcadeTerminal() {
 
     terminal.loadAddon(fit);
     terminal.open(container);
-    terminalRef.current = terminal;
     terminal.writeln('\x1b[2mStarting an isolated Arcade shell…\x1b[0m');
 
     const fitTerminal = () => {
@@ -137,7 +134,7 @@ export function ArcadeTerminal() {
           if (abort.signal.aborted) return;
           started = false;
           setConnection('ended');
-          terminal.writeln('\r\n\x1b[2mSession ended. Use Restart shell to begin again.\x1b[0m');
+          terminal.writeln('\r\n\x1b[2mSession ended. Close and reopen the terminal to start a new shell.\x1b[0m');
         });
         socket.addEventListener('error', () => {
           if (!abort.signal.aborted) setConnection('unavailable');
@@ -171,23 +168,16 @@ export function ArcadeTerminal() {
       container.removeEventListener('pointerdown', focus);
       socket?.close();
       terminal.dispose();
-      terminalRef.current = null;
     };
-  }, [attempt]);
+  }, []);
 
   return (
-    <div className="arcade-terminal" aria-label="Interactive Arcade command line">
+    <div
+      aria-busy={connection === 'connecting'}
+      aria-label={`Interactive Arcade command line. ${connectionLabel(connection)}`}
+      className="arcade-terminal"
+    >
       <div className="arcade-terminal__viewport" ref={containerRef} />
-      <div className="arcade-terminal__bar">
-        <span>{connectionLabel(connection)}</span>
-        <div>
-          <button onClick={() => terminalRef.current?.focus()} type="button">Focus</button>
-          <button onClick={() => {
-            setConnection('connecting');
-            setAttempt((value) => value + 1);
-          }} type="button">Restart shell</button>
-        </div>
-      </div>
     </div>
   );
 }

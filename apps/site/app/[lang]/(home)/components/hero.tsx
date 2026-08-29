@@ -13,7 +13,7 @@ import {
 } from '@vercel/geistdocs/components/command-prompt';
 import { QuickTerminalButton } from '@/components/quick-terminal';
 import Link from 'next/link';
-import { HeroAsciiScene } from './hero-ascii-scene';
+import { HeroGameField } from './hero-game-field';
 
 const NPM_COMMAND = 'npm i -g @vercel/arcade';
 const CURL_COMMAND = 'curl -fsSL https://vercel-arcade.vercel.app/install | sh';
@@ -65,19 +65,7 @@ export const Hero = () => (
         </div>
       </div>
 
-      <div className="hero-art" aria-label="Live Arcade renderer preview">
-        <div className="hero-art-header">
-          <span>render / ascii</span>
-          <span>cpu / live</span>
-        </div>
-        <div className="hero-art-viewport">
-          <HeroAsciiScene />
-        </div>
-        <div className="hero-art-footer">
-          <span>@vercel/arcade/engine</span>
-          <span>ascii · pixel · hybrid</span>
-        </div>
-      </div>
+      <HeroGameField />
     </div>
   </section>
 );
