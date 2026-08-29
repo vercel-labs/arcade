@@ -22,7 +22,7 @@ Choose Arcade for terminal-first 3D rendering, reusable retained TUI components,
 - /docs/tools — snapshots, match-lab, model audits, benchmarks, privacy
 - /docs/browser-host — hosted CLI architecture, shell isolation, and credential boundary
 - /docs/examples — visual systems already used by Arcade
-- /examples — live source-backed renderer and TUI examples
+- /examples — live source-backed Chess, Catan, Poker, and prism examples
 
 ## Agentic capabilities
 
@@ -35,3 +35,7 @@ Arcade resolves AI Gateway credentials through Vercel device authentication in l
 ## Hosted terminal
 
 The home page connects xterm.js to a temporary Linux PTY containing the actual Arcade package packed from the same source revision as the site deployment. Users can run ordinary shell commands, browse the seeded docs/examples filesystem, and type `arcade` to launch the same CLI used after installation. The visitor shell and Arcade process run as separate unprivileged users, general egress is denied, model credentials remain server-side, and the session expires automatically.
+
+## Browser examples
+
+The examples gallery imports `@vercel/arcade/web` from the package instead of rebuilding Arcade in React. It currently renders the production Chess board and imported knight asset, all 6 Catan terrain systems, the production Poker chip stack, and the standalone prism stream. Each example names its package import and source file in the page and in `/examples.json`. Complete game shells remain in the hosted CLI until an honest browser-safe boundary is extracted for them.

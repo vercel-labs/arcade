@@ -18,9 +18,12 @@ export {
 export {
   BrowserCatanTileShowcase,
   BrowserChessBoardShowcase,
+  BrowserChessPieceShowcase,
+  BrowserPokerChipsShowcase,
   createBrowserMiniScene,
 } from './browser-mini-scenes.ts';
 export type {
+  BrowserCatanTerrainSceneId,
   BrowserMiniScene,
   BrowserMiniSceneFrame,
   BrowserMiniSceneId,

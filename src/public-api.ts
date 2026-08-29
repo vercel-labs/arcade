@@ -4,6 +4,8 @@ export {
   BrowserArcade,
   BrowserCatanTileShowcase,
   BrowserChessBoardShowcase,
+  BrowserChessPieceShowcase,
+  BrowserPokerChipsShowcase,
   BrowserRenderShowcase,
   BrowserTuiShowcase,
   CanvasSurfaceHost,
@@ -12,6 +14,7 @@ export {
 export type {
   BrowserArcadeFrame,
   BrowserArcadeScreen,
+  BrowserCatanTerrainSceneId,
   BrowserDisplayMode,
   BrowserMiniScene,
   BrowserMiniSceneFrame,

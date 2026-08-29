@@ -340,7 +340,7 @@ $ arcade
     sections: [
       {
         heading: 'Run the live gallery',
-        body: <><p><a href="/examples">Open interactive examples</a> for focused Chess and Catan scenes, a generic CPU-rendered scene, retained TUI specimen, and the prism stream. They import <code>@vercel/arcade</code> subpaths without pretending to be the complete app; the live shell on the homepage is the complete app.</p><div className="example-grid"><Example glyph="♞" title="Chess board" text="Browser-safe Chess rules and renderer behind the shared mini-scene contract." /><Example glyph="⬡" title="Catan tile" text="The production procedural fields mesh, isolated from the complete board." /><Example glyph="◢" title="Mesh + material" text="Camera, geometry, Lambert shading, rasterization, and all three presenters." /><Example glyph="▦" title="Retained HUD" text="Theme, layout, table, buttons, state, and Surface compositing." /></div></>,
+        body: <><p><a href="/examples">Open interactive examples</a> for the complete Chess board, an imported Chess asset, all 6 Catan terrain systems, the production Poker chip stack, and the prism stream. The gallery is deliberately organized around things Arcade actually ships—not generic renderer demos.</p><div className="example-grid"><Example glyph="♞" title="Chess" text="The complete board plus an isolated imported knight asset." /><Example glyph="⬡" title="Catan" text="Fields, forest, pasture, hills, mountains, and desert terrain." /><Example glyph="●" title="Poker" text="The real chip geometry, denomination model, and pile layout." /><Example glyph="◢" title="Prism" text="The standalone ANSI stream rendered with terminal semantics." /></div></>,
       },
       {
         heading: 'Embed a focused Arcade scene',
@@ -358,7 +358,7 @@ host.draw(frame.surface)`}</Code><p>Use one host component for resize, visibilit
       },
       {
         heading: 'Production systems to study',
-        body: <div className="example-grid"><Example glyph="⬡" title="Catan board" text="Instanced terrain, number tokens, ports, cached water, and projected labels." /><Example glyph="▤" title="Cards" text="Peek, reveal, parabolic flight, shuffle geometry, and retained hit targets." /><Example glyph="↔" title="Cover flow" text="Projected hit bounds, horizontal and vertical wheel input, and launch flip." /><Example glyph="⇅" title="Trade and discard" text="Reusable resource rows, constraints, animated transfers, and model playback." /></div>,
+        body: <><p>Some systems are documented before they are exposed as browser mini-scenes. Keep these app-level until a browser-safe, reusable boundary can be extracted without importing the terminal shell or game controller.</p><div className="example-grid"><Example glyph="⬡" title="Catan board" text="Island assembly, number tokens, ports, cached water, and projected labels." /><Example glyph="▤" title="Cards" text="Peek, reveal, parabolic flight, shuffle geometry, and retained hit targets." /><Example glyph="↔" title="Cover flow" text="Projected hit bounds, horizontal and vertical wheel input, and launch flip." /><Example glyph="⇅" title="Trade and discard" text="Resource rows, constraints, animated transfers, and model playback." /></div></>,
       },
       {
         heading: 'Example standard',

@@ -25,7 +25,11 @@ import {
   CHESS_PIECE_ASSET_URLS,
   fetchChessPieceMeshes,
   fetchChessPieceMeshesFromUrls,
+  measureChessPieceMeshes,
+  type ChessPieceMeshes,
 } from '../game-visuals/chess/index.ts';
+import { drawChipStack, playerColumns } from '../game-visuals/poker/index.ts';
+import { TERRAINS, type Terrain } from '../rules/catan/types.ts';
 import { BrowserArcade, type BrowserDisplayMode } from './browser-chess.ts';
 import type { BrowserMiniScene, BrowserMiniSceneFrame, BrowserMiniSceneId, BrowserMiniSceneOptions } from './mini-scene.ts';
 
@@ -33,6 +37,29 @@ const BLACK: RGB = [0, 0, 0];
 const CYAN: RGB = [88, 212, 236];
 const MUTED: RGB = [126, 132, 149];
 const MODES: BrowserDisplayMode[] = ['ascii', 'pixel', 'hybrid'];
+
+function present(target: RenderTarget, cols: number, rows: number, mode: BrowserDisplayMode): Surface {
+  const surface = new Surface(cols, rows);
+  surface.fillRect(0, 0, cols, rows, BLACK);
+  if (mode === 'pixel') halfBlockToSurface(surface, target);
+  else shapeGlyphToSurface(surface, target, cols, rows, {
+    color: true,
+    contrast: 2,
+    hybrid: mode === 'hybrid',
+    coloredBackground: mode === 'hybrid',
+    blankOutsideDepthBounds: true,
+  });
+  return surface;
+}
+
+function loadChessMeshes(options: BrowserMiniSceneOptions): Promise<ChessPieceMeshes> {
+  return options.chessPieceAssetBaseUrl
+    ? fetchChessPieceMeshes(options.chessPieceAssetBaseUrl, options.chessPieceFetchText)
+    : fetchChessPieceMeshesFromUrls(
+      options.chessPieceAssetUrls ?? CHESS_PIECE_ASSET_URLS,
+      options.chessPieceFetchText,
+    );
+}
 
 /** Board-only adapter around Arcade's browser-safe Chess rules and renderer. */
 export class BrowserChessBoardShowcase implements BrowserMiniScene {
@@ -42,15 +69,7 @@ export class BrowserChessBoardShowcase implements BrowserMiniScene {
 
   constructor(options: BrowserMiniSceneOptions = {}) {
     this.arcade.openChess();
-    this.loadPieceMeshes = async () => {
-      const meshes = options.chessPieceAssetBaseUrl
-        ? await fetchChessPieceMeshes(options.chessPieceAssetBaseUrl, options.chessPieceFetchText)
-        : await fetchChessPieceMeshesFromUrls(
-          options.chessPieceAssetUrls ?? CHESS_PIECE_ASSET_URLS,
-          options.chessPieceFetchText,
-        );
-      this.arcade.setPieceMeshes(meshes);
-    };
+    this.loadPieceMeshes = async () => this.arcade.setPieceMeshes(await loadChessMeshes(options));
   }
 
   prepare(): Promise<void> {
@@ -82,6 +101,8 @@ export class BrowserCatanTileShowcase implements BrowserMiniScene {
   );
   private displayMode: BrowserDisplayMode = 'ascii';
 
+  constructor(private readonly terrain: Terrain = 'fields') {}
+
   frame(cols = 56, rows = 32, timeSeconds = 0): BrowserMiniSceneFrame {
     cols = Math.max(36, cols);
     rows = Math.max(22, rows);
@@ -100,24 +121,15 @@ export class BrowserCatanTileShowcase implements BrowserMiniScene {
       ambient,
       wrap: 0.22,
     });
-    draw(tileMesh('fields', 2), 0.32);
-    const animated = animatedTileMesh('fields', 2, timeSeconds, { x: 0, z: 0 });
+    draw(tileMesh(this.terrain, 2), 0.32);
+    const animated = animatedTileMesh(this.terrain, 2, timeSeconds, { x: 0, z: 0 });
     if (animated) draw(animated, 0.38);
 
-    const surface = new Surface(cols, rows);
-    surface.fillRect(0, 0, cols, rows, BLACK);
-    if (this.displayMode === 'pixel') halfBlockToSurface(surface, target);
-    else shapeGlyphToSurface(surface, target, cols, rows, {
-      color: true,
-      contrast: 2,
-      hybrid: this.displayMode === 'hybrid',
-      coloredBackground: this.displayMode === 'hybrid',
-      blankOutsideDepthBounds: true,
-    });
-    surface.drawTextOver(2, 1, 'catan / fields tile', [238, 240, 246], STYLE_BOLD);
+    const surface = present(target, cols, rows, this.displayMode);
+    surface.drawTextOver(2, 1, `catan / ${this.terrain}`, [238, 240, 246], STYLE_BOLD);
     surface.drawTextOver(Math.max(2, cols - 10), 1, this.displayMode, CYAN, STYLE_BOLD);
     surface.drawTextOver(2, rows - 2, 'production procedural mesh · drag · scroll', MUTED, STYLE_DIM);
-    return { surface, status: 'Animated Catan fields tile', displayMode: this.displayMode };
+    return { surface, status: `Catan ${this.terrain} tile`, displayMode: this.displayMode };
   }
 
   cycleDisplayMode(): BrowserDisplayMode {
@@ -130,7 +142,119 @@ export class BrowserCatanTileShowcase implements BrowserMiniScene {
   reset(): void { this.camera.reset(); }
 }
 
+/** One imported production Chess asset, isolated from the complete board. */
+export class BrowserChessPieceShowcase implements BrowserMiniScene {
+  private readonly camera = new OrbitCamera(
+    { azimuth: 0.5, elevation: 0.24, distance: 4.2, target: { x: 0, y: 0.7, z: 0 } },
+    2.4,
+    8,
+  );
+  private displayMode: BrowserDisplayMode = 'ascii';
+  private mesh: Mesh | null = null;
+  private preparation: Promise<void> | null = null;
+
+  constructor(private readonly options: BrowserMiniSceneOptions = {}) {}
+
+  prepare(): Promise<void> {
+    this.preparation ??= loadChessMeshes(this.options).then((meshes) => {
+      const { scale } = measureChessPieceMeshes(meshes, 2.15);
+      this.mesh = {
+        indices: meshes.knight.indices,
+        vertices: meshes.knight.vertices.map((vertex) => ({
+          ...vertex,
+          position: { ...vertex.position },
+          normal: { ...vertex.normal },
+          uv: [...vertex.uv] as [number, number],
+          color: { x: 225, y: 226, z: 230 },
+        })),
+      };
+      this.pieceScale = scale;
+    });
+    return this.preparation;
+  }
+
+  private pieceScale = 1;
+
+  frame(cols = 56, rows = 32, timeSeconds = 0): BrowserMiniSceneFrame {
+    cols = Math.max(36, cols);
+    rows = Math.max(22, rows);
+    const target = this.displayMode === 'pixel' ? new RenderTarget(cols, rows * 2) : new RenderTarget(cols * 3, rows * 6);
+    target.clear();
+    const camera = this.camera.toCamera({ fovy: (42 * Math.PI) / 180, near: 0.05, far: 30 });
+    const { viewProjection } = cameraMatrices(camera, target.width / target.height);
+    if (this.mesh) {
+      const model = mat4Multiply(mat4RotY(timeSeconds * 0.32), mat4Scale(this.pieceScale, this.pieceScale, this.pieceScale));
+      rasterize(target, this.mesh, lambertMaterial, {
+        mvp: mat4Multiply(viewProjection, model),
+        model,
+        lightDir: normalize3({ x: -0.5, y: 0.88, z: 0.3 }),
+        ambient: 0.28,
+        wrap: 0.18,
+      });
+    }
+    const surface = present(target, cols, rows, this.displayMode);
+    surface.drawTextOver(2, 1, 'chess / knight.obj', [238, 240, 246], STYLE_BOLD);
+    surface.drawTextOver(Math.max(2, cols - 10), 1, this.displayMode, CYAN, STYLE_BOLD);
+    surface.drawTextOver(2, rows - 2, this.mesh ? 'production asset · drag · scroll' : 'loading production asset…', MUTED, STYLE_DIM);
+    return { surface, status: this.mesh ? 'Imported Chess knight' : 'Loading Chess knight', displayMode: this.displayMode };
+  }
+
+  cycleDisplayMode(): BrowserDisplayMode {
+    this.displayMode = MODES[(MODES.indexOf(this.displayMode) + 1) % MODES.length];
+    return this.displayMode;
+  }
+  orbit(dx: number, dy: number): void { this.camera.orbit(dx, dy); }
+  zoom(delta: number): void { this.camera.zoomBy(Math.exp(delta * 0.0015)); }
+  reset(): void { this.camera.reset(); }
+}
+
+/** Production Poker chips rendered without the app-level table or match controller. */
+export class BrowserPokerChipsShowcase implements BrowserMiniScene {
+  private readonly camera = new OrbitCamera(
+    { azimuth: 0.65, elevation: 0.48, distance: 5.3, target: { x: 0, y: 0.25, z: 0 } },
+    2.8,
+    9,
+  );
+  private displayMode: BrowserDisplayMode = 'ascii';
+
+  frame(cols = 56, rows = 32): BrowserMiniSceneFrame {
+    cols = Math.max(36, cols);
+    rows = Math.max(22, rows);
+    const target = this.displayMode === 'pixel' ? new RenderTarget(cols, rows * 2) : new RenderTarget(cols * 3, rows * 6);
+    target.clear();
+    const camera = this.camera.toCamera({ fovy: (42 * Math.PI) / 180, near: 0.05, far: 30 });
+    const { viewProjection } = cameraMatrices(camera, target.width / target.height);
+    drawChipStack(
+      target,
+      viewProjection,
+      { x: 0, z: 0 },
+      { x: 1, z: 0 },
+      playerColumns(1000),
+      normalize3({ x: -0.45, y: 0.9, z: 0.3 }),
+      0.28,
+      3,
+    );
+    const surface = present(target, cols, rows, this.displayMode);
+    surface.drawTextOver(2, 1, 'poker / 1,000 chips', [238, 240, 246], STYLE_BOLD);
+    surface.drawTextOver(Math.max(2, cols - 10), 1, this.displayMode, CYAN, STYLE_BOLD);
+    surface.drawTextOver(2, rows - 2, 'production denomination stack · drag · scroll', MUTED, STYLE_DIM);
+    return { surface, status: 'Poker starting stack', displayMode: this.displayMode };
+  }
+
+  cycleDisplayMode(): BrowserDisplayMode {
+    this.displayMode = MODES[(MODES.indexOf(this.displayMode) + 1) % MODES.length];
+    return this.displayMode;
+  }
+  orbit(dx: number, dy: number): void { this.camera.orbit(dx, dy); }
+  zoom(delta: number): void { this.camera.zoomBy(Math.exp(delta * 0.0015)); }
+  reset(): void { this.camera.reset(); }
+}
+
 export function createBrowserMiniScene(id: BrowserMiniSceneId, options: BrowserMiniSceneOptions = {}): BrowserMiniScene {
   if (id === 'chess-board') return new BrowserChessBoardShowcase(options);
-  return new BrowserCatanTileShowcase();
+  if (id === 'chess-knight') return new BrowserChessPieceShowcase(options);
+  if (id === 'poker-chips') return new BrowserPokerChipsShowcase();
+  const terrain = id.slice('catan-'.length) as Terrain;
+  if (id.startsWith('catan-') && TERRAINS.includes(terrain)) return new BrowserCatanTileShowcase(terrain);
+  throw new Error(`Unknown browser mini scene: ${id}`);
 }

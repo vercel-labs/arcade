@@ -9,13 +9,13 @@ import { config } from '@/lib/geistdocs/config';
 import { mono, pixel, sans } from '@/lib/geistdocs/fonts';
 import { i18n } from '@/lib/geistdocs/i18n';
 import { getRootLang } from '@/lib/geistdocs/root-params';
-import { isSiteUrlConfigured, siteUrl } from '@/lib/geistdocs/site-url';
+import { siteUrl } from '@/lib/geistdocs/site-url';
 import { cn } from '@/lib/utils';
 
 export const generateStaticParams = () => i18n.languages.map((lang) => ({ lang }));
 
 export const metadata: Metadata = {
-  metadataBase: isSiteUrlConfigured ? siteUrl : undefined,
+  metadataBase: siteUrl,
   applicationName: 'Arcade',
   title: { default: 'Arcade — 3D games in your terminal', template: '%s — Arcade' },
   description: 'A pure-TypeScript CPU 3D renderer, retained TUI, and agent-playable game harness.',

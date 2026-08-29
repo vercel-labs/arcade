@@ -1,6 +1,6 @@
 # Arcade site agent-readiness audit
 
-Last updated: 2026-08-28
+Last updated: 2026-08-29
 
 ## Initial preview
 
@@ -50,10 +50,11 @@ heuristic rather than a launch blocker.
 - Audit: `https://is-agentic.com/scan/vercel-arcade-2ks99xwmy.labs.vercel.dev`
 - Score: 95/100 — Strong technical baseline
 
-This rescan covers the release candidate with the live renderer and retained-TUI examples,
-expanded source-backed documentation, packed-consumer smoke test, and final metadata
-cleanup. It confirms that the earlier agent-readiness improvements remain present after the
-browser examples and documentation expansion.
+This rescan covers the earlier release candidate with source-backed browser examples,
+expanded documentation, a packed-consumer smoke test, and metadata cleanup. A newer
+public-beta readiness pass replaces the generic specimens with shipped Chess, Catan,
+Poker, and prism systems; its preview and audit evidence should be recorded below rather
+than overwriting this historical result.
 
 The remaining failed checks are not honest metadata-only fixes:
 
