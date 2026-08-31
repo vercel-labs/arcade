@@ -18,7 +18,6 @@ export interface MenuItem {
 const ALL_ITEMS: MenuItem[] = [
   ...ARCADE_CATALOGUE.slice(0, 3),
   { id: 'catan-test', title: 'Catan-Test', enabled: true, dev: true },
-  { id: 'prism-test', title: 'Prism-Test', enabled: true, dev: true },
   ...ARCADE_CATALOGUE.slice(3),
   { id: 'poker-test', title: 'Poker-Test', enabled: true, dev: true },
   { id: 'logos', title: 'Logos', enabled: true, dev: true },

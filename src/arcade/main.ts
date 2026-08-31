@@ -8,13 +8,14 @@ import {
   shapeGlyphToSurface,
   ShapeGlyphSurfaceCache,
   shapeGlyphLayerToSurface,
+  Surface,
   STYLE_BOLD,
   STYLE_DIM,
-  type Surface,
   type TerminalColorMode,
   toHalfBlock,
   toShapeGlyph,
 } from '../engine/index.ts';
+import { TimedInkTransition } from '../cinematic/transitions/timed-ink-transition.ts';
 import { PrismScene, SplashScene } from '../prism/index.ts';
 import { CoverFlowScene, LAUNCH_TOTAL } from './shell/coverflow.ts';
 import { CoverFlowWheelInput } from './shell/coverflow-input.ts';
@@ -36,7 +37,6 @@ import { PokerMatch } from './match/poker-driver.ts';
 import { buildPokerSetupPanel, mountPokerSetup, pokerPreviewSeats, pokerSetupReady, pokerSetupSelection, pokerStartingStack, setPokerSetupChanged, setPokerSetupModelCatalog } from './match/poker-setup.ts';
 import { LogosScene } from './scenes/logos-scene.ts';
 import { AudioScene } from './scenes/audio-scene.ts';
-import { PrismTestScene } from './scenes/prism-test-scene.ts';
 import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/input.ts';
 import { detectTerminalColorMode } from '../platform/terminal-color-detection.ts';
 import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, buildUpdateModal, mouseControlsFor, type BarActions, type MenuItem, type Mode, type RenderMode } from './shell/bars.ts';
@@ -107,10 +107,13 @@ const prism = new PrismScene();
 const coverflow = new CoverFlowScene();
 const coverFlowWheelInput = new CoverFlowWheelInput();
 const splash = new SplashScene();
+const prismToMenu = new TimedInkTransition({
+  duration: 1.35,
+  cut: { from: { x: 0.62, y: 0.43 }, to: { x: 0.5, y: 0.5 }, direction: { x: -0.82, y: 0.57 } },
+});
 const chessGame = new ChessGameScene();
 const logosScene = new LogosScene();
 const audioScene = new AudioScene();
-const prismTestScene = new PrismTestScene();
 const cardsScene = new CardsScene();
 const pokerScene = new PokerGameScene();
 // Game events (new hand, flop/turn/river, who won) go into the table-talk thread as grey
@@ -198,7 +201,6 @@ function activeOrbit(): { resetView(): void; pan(dx: number, dy: number): void; 
   if (mode === 'catan-tiles') return catan.scene;
   if (mode === 'catan') return catanGameScene.scene;
   if (mode === 'poker') return pokerScene;
-  if (mode === 'prism-test') return { resetView: () => prismTestScene.resetView(), pan: () => {}, orbit: () => {}, zoomBy: () => {} };
   if (mode === 'ui') return chessGame;
   return orbitScene();
 }
@@ -430,9 +432,9 @@ function closeGameOver(): void {
 function syncLive(): void {
   const want =
     mode === 'prism' ||
+    prismToMenu.active() ||
     mode === 'menu' ||
     mode === 'logos' ||
-    mode === 'prism-test' ||
     mode === 'audio' ||
     (mode === 'chess-game' && chessGame.isMatchActive()) ||
     (mode === 'poker' && pokerScene.isActive());
@@ -1203,13 +1205,6 @@ function enterLogos(): void {
   fullRepaint();
 }
 
-function enterPrismTest(): void {
-  stopAiMatch();
-  audioScene.deactivate();
-  mode = 'prism-test';
-  fullRepaint();
-}
-
 // The realtime voice screen: type-to-talk with a speech-to-speech model while its
 // creator wisp pulses. The session opens lazily on the first message.
 function enterAudio(): void {
@@ -1365,7 +1360,7 @@ function toPrism(): void {
 
 // The Wii-style menu hub. Reached from the prism loading screen (any key) and
 // returned to by a game's "back". No bar — the tiles are the navigation surface.
-function enterMenu(): void {
+function enterMenu(clear = true): void {
   stopAiMatch();
   stopPokerMatch();
   audioScene.deactivate(); // tear down any open voice session when leaving
@@ -1379,7 +1374,25 @@ function enterMenu(): void {
   coverFlowWheelInput.reset();
   launching = false;
   ui.setRoot(null);
-  fullRepaint();
+  if (clear) fullRepaint();
+  else {
+    forceFrame = true;
+    syncLive();
+    syncContext();
+    r.requestRender();
+  }
+}
+
+// The CLI owns only the trigger and wall-clock lifecycle. The actual transition
+// is the same platform-neutral Surface compositor used by browser cinematics.
+function startPrismToMenu(): void {
+  if (prismToMenu.active()) return;
+  homeMenuOpen = false;
+  ui.setRoot(null);
+  prismToMenu.start();
+  forceFrame = true;
+  syncLive();
+  r.requestRender();
 }
 
 // Clicking/▶ a cover starts the flip-to-title launch splash (enabled covers only;
@@ -1403,7 +1416,6 @@ function enterGame(id: string): void {
   else if (id === 'poker-test') enterCards();
   else if (id === 'catan') enterCatanGame();
   else if (id === 'catan-test') enterCatanTiles();
-  else if (id === 'prism-test') enterPrismTest();
   else if (id === 'ui') enterUi();
 }
 
@@ -2180,6 +2192,7 @@ function onKeyImpl(ev: KeyEvent): void {
     splashing = false;
     return;
   }
+  if (prismToMenu.active()) return;
   // Space advances a poker countdown immediately; other keys retain their normal behavior.
   if (mode === 'poker' && pokerScene.awaitingContinue() && ev.name === 'space') {
     pokerScene.continueGesture();
@@ -2190,7 +2203,7 @@ function onKeyImpl(ev: KeyEvent): void {
   // last level. (ctrl+c is already handled at the top of this function.)
   if (mode === 'prism' && !updateModalOpen) {
     if (ev.name !== 'escape') {
-      enterMenu();
+      startPrismToMenu();
       return;
     }
   }
@@ -2222,12 +2235,13 @@ function onMouseImpl(e: MouseEvent): void {
     splashing = false;
     return;
   }
+  if (prismToMenu.active()) return;
   // The poker continue gate advances on Space only (see onKeyImpl); the mouse stays free
   // here to orbit/zoom/pan the scene while the banner and prompt are up.
   // Prism loading screen: a click starts (→ menu) — unless the startup update popup is up,
   // in which case clicks fall through to its buttons (the prism pointer routing below).
   if (mode === 'prism' && e.type === 'down' && !updateModalOpen) {
-    enterMenu();
+    startPrismToMenu();
     return;
   }
   // Cover Flow: the wheel steps selection; clicking the focused cover (its real
@@ -2302,7 +2316,6 @@ function onMouseImpl(e: MouseEvent): void {
     }
     if (e.type === 'move') {
       ui.hover(e.x, e.y);
-      if (mode === 'prism-test') prismTestScene.setPointer((e.x - 1) / Math.max(1, cols - 1), (e.y - 1) / Math.max(1, rows - 1));
       // Cards screen / poker table: pointer-move drives the hole-card peek hover.
       if (mode === 'cards') {
         const { ndcX, ndcY, aspect } = pointerNdc(e.x, e.y);
@@ -2336,7 +2349,6 @@ function onMouseImpl(e: MouseEvent): void {
       return;
     }
     if (e.type === 'drag') {
-      if (mode === 'prism-test') prismTestScene.setPointer((e.x - 1) / Math.max(1, cols - 1), (e.y - 1) / Math.max(1, rows - 1));
       if (draggingCamera) {
         const dx = e.x - lastMouseX;
         const dy = e.y - lastMouseY;
@@ -2450,6 +2462,19 @@ function tick(dt: number): void {
     // except the startup update popup, which syncBar mounts as an overlay over the prism.
     if (updateModalOpen) syncBar();
     prism.renderScene(target, t);
+    if (prismToMenu.active()) {
+      const source = sceneSurface((surface) => drawPrismPrompt(surface, cols, rows, t));
+      coverflow.renderScene(target, 0, -1);
+      const destination = sceneSurface((surface) => drawCoverChrome(surface, cols, rows, 0));
+      const complete = prismToMenu.step(step);
+      const composed = prismToMenu.compose(source, destination);
+      writeFrame(ui.frameComposited((surface) => composed.copyInto(surface)));
+      if (complete) {
+        prismToMenu.cancel();
+        enterMenu(false);
+      }
+      return;
+    }
     writeFrame(
       UNIFIED
         ? ui.frameComposited((s) => {
@@ -2494,13 +2519,6 @@ function tick(dt: number): void {
 
   if (mode === 'logos') {
     logosScene.renderScene(target, t);
-    syncBar();
-    writeFrame(UNIFIED ? ui.frameComposited((s) => presentSceneInto(s)) : presentScene() + ui.frame());
-    return;
-  }
-
-  if (mode === 'prism-test') {
-    prismTestScene.renderScene(target, t);
     syncBar();
     writeFrame(UNIFIED ? ui.frameComposited((s) => presentSceneInto(s)) : presentScene() + ui.frame());
     return;
@@ -2666,6 +2684,15 @@ function tick(dt: number): void {
     if (orbit.needsRender()) r.requestRender();
     return;
   }
+}
+
+function sceneSurface(overlay?: (surface: Surface) => void): Surface {
+  const surface = new Surface(cols, rows);
+  surface.fillRect(0, 0, cols, rows, [0, 0, 0]);
+  if (renderMode === 'pixels') halfBlockToSurface(surface, downsample(target, supersampleForViewport(renderMode, cols, rows)));
+  else shapeGlyphToSurface(surface, target, cols, rows, { color: true, hybrid: renderMode === 'hybrid', coloredBackground: renderMode === 'hybrid' });
+  overlay?.(surface);
+  return surface;
 }
 
 process.stdout.on('resize', () => {

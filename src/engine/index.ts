@@ -103,8 +103,6 @@ export {
   type WaterUniforms,
   glassMaterial,
   type GlassUniforms,
-  studioGlassMaterial,
-  type StudioGlassUniforms,
   pieceMaterial,
   type PieceUniforms,
   wispMaterial,
