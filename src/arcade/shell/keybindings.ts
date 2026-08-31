@@ -172,7 +172,7 @@ export function installKeymap(h: KeyHandlers): Keymap {
   // the active scene via activeOrbit()). In 'ui', a focused component consumes
   // arrows first (Screen.handleKey runs before the keymap), so these pan only when
   // the scene — not a widget — has focus.
-  for (const layer of ['chess', 'logos', 'ui', 'cards', 'poker']) {
+  for (const layer of ['chess', 'logos', 'prism-test', 'ui', 'cards', 'poker']) {
     for (const b of [
       { key: 'r', cmd: 'camera.resetView' },
       { key: 'left', cmd: 'camera.panLeft' },
@@ -187,7 +187,7 @@ export function installKeymap(h: KeyHandlers): Keymap {
   // "return home?" confirm via escBack; other screens go straight to the menu. The menu's
   // own escape (→ prism) and each modal's escape (→ close) live in layers above these and
   // take precedence. (Prism's escape falls through to the global esc → quit.)
-  for (const layer of ['chess', 'cards', 'logos', 'ui', 'poker', 'audio']) keymap.bind(layer, { key: 'escape', cmd: 'nav.escBack' });
+  for (const layer of ['chess', 'cards', 'logos', 'prism-test', 'ui', 'poker', 'audio']) keymap.bind(layer, { key: 'escape', cmd: 'nav.escBack' });
 
   // Audio screen: type-to-talk owns letters (handled before the keymap), so only the
   // non-text keys are bound here — Escape returns to the menu and the arrows pan the

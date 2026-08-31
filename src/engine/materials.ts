@@ -435,6 +435,13 @@ export const glassMaterial: Material<GlassUniforms> = {
   },
 };
 
+export interface StudioGlassUniforms extends GlassUniforms { panelDirection: Vec3; panelStrength: number }
+/** Dark transmissive glass with Schlick Fresnel and one soft studio panel. */
+export const studioGlassMaterial: Material<StudioGlassUniforms> = {
+  ...glassMaterial,
+  fragment(u,vy){const base=glassMaterial.fragment(u,vy);if(!base)return null;const n=normalize3(vy.normal),view=normalize3(sub3(u.cameraPos,vy.world)),facing=Math.max(0,Math.min(1,Math.abs(dot3(n,view)))),f0=Math.pow((1.645-1)/(1.645+1),2),fresnel=f0+(1-f0)*Math.pow(1-facing,5);const reflected={x:2*dot3(n,view)*n.x-view.x,y:2*dot3(n,view)*n.y-view.y,z:2*dot3(n,view)*n.z-view.z},panel=Math.pow(Math.max(0,dot3(normalize3(reflected),normalize3(u.panelDirection))),18)*u.panelStrength;return{r:base.r*.42+235*(fresnel+panel),g:base.g*.46+242*(fresnel+panel),b:base.b*.55+255*(fresnel+panel),a:1};}
+};
+
 function smoothstep(a: number, b: number, x: number): number {
   const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
   return t * t * (3 - 2 * t);

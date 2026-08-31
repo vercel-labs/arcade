@@ -9,7 +9,7 @@ import type { RGB } from '../../engine/index.ts';
 import { ARCADE_CHROME_TEXT, ARCADE_OUTLINE_CONTROL, UI_CHROME_BG, UI_CHROME_PILL } from '../theme.ts';
 import { CHESS_PALETTE } from '../games/chess/palette.ts';
 
-export type Mode = 'prism' | 'menu' | 'chess-game' | 'logos' | 'ui' | 'audio' | 'cards' | 'poker' | 'catan' | 'catan-tiles';
+export type Mode = 'prism' | 'prism-test' | 'menu' | 'chess-game' | 'logos' | 'ui' | 'audio' | 'cards' | 'poker' | 'catan' | 'catan-tiles';
 export type RenderMode = 'ascii' | 'pixels' | 'hybrid';
 
 export interface BarActions {
@@ -62,7 +62,7 @@ export function buildBar(
       Button({ id: 'mode', label: displayLabel(renderMode), onClick: a.mode, style: PILL }),
       Button({ id: 'quit', label: 'quit', onClick: a.quit, style: PILL }),
     ];
-  } else if (mode === 'logos') {
+  } else if (mode === 'logos' || mode === 'prism-test') {
     buttons = [
       Button({ id: 'back', label: 'back', onClick: a.back, style: PILL }),
       Button({ id: 'reset', label: 'reset view', onClick: a.reset, style: PILL }),

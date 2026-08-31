@@ -36,6 +36,7 @@ import { PokerMatch } from './match/poker-driver.ts';
 import { buildPokerSetupPanel, mountPokerSetup, pokerPreviewSeats, pokerSetupReady, pokerSetupSelection, pokerStartingStack, setPokerSetupChanged, setPokerSetupModelCatalog } from './match/poker-setup.ts';
 import { LogosScene } from './scenes/logos-scene.ts';
 import { AudioScene } from './scenes/audio-scene.ts';
+import { PrismTestScene } from './scenes/prism-test-scene.ts';
 import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/input.ts';
 import { detectTerminalColorMode } from '../platform/terminal-color-detection.ts';
 import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, buildUpdateModal, mouseControlsFor, type BarActions, type MenuItem, type Mode, type RenderMode } from './shell/bars.ts';
@@ -109,6 +110,7 @@ const splash = new SplashScene();
 const chessGame = new ChessGameScene();
 const logosScene = new LogosScene();
 const audioScene = new AudioScene();
+const prismTestScene = new PrismTestScene();
 const cardsScene = new CardsScene();
 const pokerScene = new PokerGameScene();
 // Game events (new hand, flop/turn/river, who won) go into the table-talk thread as grey
@@ -189,13 +191,14 @@ function orbitScene(): ChessGameScene | null {
 // is camera-controllable too, so dragging on the scene behind the panel rotates
 // it.) `orbitScene()` stays null for 'ui' so the tick uses the dedicated 'ui'
 // branch, which always recomposites for live component edits.
-function activeOrbit(): ChessGameScene | LogosScene | AudioScene | CardsScene | TileScene | PokerGameScene | null {
+function activeOrbit(): { resetView(): void; pan(dx: number, dy: number): void; orbit(dx: number, dy: number): void; zoomBy(factor: number): void } | null {
   if (mode === 'logos') return logosScene;
   if (mode === 'audio') return audioScene;
   if (mode === 'cards') return cardsScene;
   if (mode === 'catan-tiles') return catan.scene;
   if (mode === 'catan') return catanGameScene.scene;
   if (mode === 'poker') return pokerScene;
+  if (mode === 'prism-test') return { resetView: () => prismTestScene.resetView(), pan: () => {}, orbit: () => {}, zoomBy: () => {} };
   if (mode === 'ui') return chessGame;
   return orbitScene();
 }
@@ -429,6 +432,7 @@ function syncLive(): void {
     mode === 'prism' ||
     mode === 'menu' ||
     mode === 'logos' ||
+    mode === 'prism-test' ||
     mode === 'audio' ||
     (mode === 'chess-game' && chessGame.isMatchActive()) ||
     (mode === 'poker' && pokerScene.isActive());
@@ -1199,6 +1203,13 @@ function enterLogos(): void {
   fullRepaint();
 }
 
+function enterPrismTest(): void {
+  stopAiMatch();
+  audioScene.deactivate();
+  mode = 'prism-test';
+  fullRepaint();
+}
+
 // The realtime voice screen: type-to-talk with a speech-to-speech model while its
 // creator wisp pulses. The session opens lazily on the first message.
 function enterAudio(): void {
@@ -1392,6 +1403,7 @@ function enterGame(id: string): void {
   else if (id === 'poker-test') enterCards();
   else if (id === 'catan') enterCatanGame();
   else if (id === 'catan-test') enterCatanTiles();
+  else if (id === 'prism-test') enterPrismTest();
   else if (id === 'ui') enterUi();
 }
 
@@ -2290,6 +2302,7 @@ function onMouseImpl(e: MouseEvent): void {
     }
     if (e.type === 'move') {
       ui.hover(e.x, e.y);
+      if (mode === 'prism-test') prismTestScene.setPointer((e.x - 1) / Math.max(1, cols - 1), (e.y - 1) / Math.max(1, rows - 1));
       // Cards screen / poker table: pointer-move drives the hole-card peek hover.
       if (mode === 'cards') {
         const { ndcX, ndcY, aspect } = pointerNdc(e.x, e.y);
@@ -2323,6 +2336,7 @@ function onMouseImpl(e: MouseEvent): void {
       return;
     }
     if (e.type === 'drag') {
+      if (mode === 'prism-test') prismTestScene.setPointer((e.x - 1) / Math.max(1, cols - 1), (e.y - 1) / Math.max(1, rows - 1));
       if (draggingCamera) {
         const dx = e.x - lastMouseX;
         const dy = e.y - lastMouseY;
@@ -2480,6 +2494,13 @@ function tick(dt: number): void {
 
   if (mode === 'logos') {
     logosScene.renderScene(target, t);
+    syncBar();
+    writeFrame(UNIFIED ? ui.frameComposited((s) => presentSceneInto(s)) : presentScene() + ui.frame());
+    return;
+  }
+
+  if (mode === 'prism-test') {
+    prismTestScene.renderScene(target, t);
     syncBar();
     writeFrame(UNIFIED ? ui.frameComposited((s) => presentSceneInto(s)) : presentScene() + ui.frame());
     return;

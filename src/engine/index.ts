@@ -13,7 +13,9 @@ export {
 } from './present.ts';
 export { downsample } from './supersample.ts';
 export { bloom, type BloomOptions } from './bloom.ts';
-export { cube, flatShade, meshBounds, quad, tetrahedron, TETRA_VERTS, TETRA_FACES, type AABB, type Mesh } from './mesh.ts';
+export * from './optics.ts';
+export * from './light-field.ts';
+export { cube, flatShade, meshBounds, quad, tetrahedron, triangularPrism, TETRA_VERTS, TETRA_FACES, type AABB, type Mesh } from './mesh.ts';
 export { parseObj, type ParseObjOptions } from './obj.ts';
 export { cameraMatrices, type Camera, type CameraMatrices } from './camera.ts';
 export { OrbitCamera, type OrbitCameraSnapshotOptions, type OrbitState } from './orbit.ts';
@@ -101,6 +103,8 @@ export {
   type WaterUniforms,
   glassMaterial,
   type GlassUniforms,
+  studioGlassMaterial,
+  type StudioGlassUniforms,
   pieceMaterial,
   type PieceUniforms,
   wispMaterial,
