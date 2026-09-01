@@ -4,6 +4,8 @@ import '@xterm/xterm/css/xterm.css';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
 import { useEffect, useRef, useState } from 'react';
+import { TerminalModeDetector, TerminalModeOutputFilter, terminalFontSize, type HostedTerminalMode } from './terminal-mode';
+import { pinchWheelSteps, sgrMouse, terminalCell } from './terminal-touch';
 
 interface InteractiveStart {
   command: string;
@@ -31,19 +33,24 @@ const encoder = new TextEncoder();
 export function ArcadeTerminal() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [connection, setConnection] = useState<ConnectionState>('connecting');
+  const [mode, setMode] = useState<HostedTerminalMode>('shell');
+  const [portrait, setPortrait] = useState(false);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
     const abort = new AbortController();
+    const portraitQuery = window.matchMedia('(orientation: portrait) and (pointer: coarse)');
+    const coarsePointer = window.matchMedia('(pointer: coarse)');
+    setPortrait(portraitQuery.matches);
     const terminal = new Terminal({
       allowTransparency: false,
       convertEol: false,
       cursorBlink: true,
       cursorStyle: 'block',
       fontFamily: 'var(--font-geist-mono), Geist Mono, ui-monospace, SFMono-Regular, Menlo, monospace',
-      fontSize: 12,
+      fontSize: terminalFontSize(window.innerWidth, coarsePointer.matches),
       lineHeight: 1.08,
       scrollback: 5_000,
       theme: {
@@ -60,14 +67,34 @@ export function ArcadeTerminal() {
     let socket: WebSocket | null = null;
     let started = false;
     let resizeTimer = 0;
+    const modeDetector = new TerminalModeDetector();
+    const outputFilter = new TerminalModeOutputFilter();
+    const outputDecoder = new TextDecoder();
+    let terminalMode: HostedTerminalMode = 'shell';
+    let shellCommand = '';
+    const touches = new Map<number, { x: number; y: number }>();
+    let touchStart: { id: number; x: number; y: number; moved: boolean } | null = null;
+    let pinchDistance = 0;
+    let longPressTimer = 0;
+    let longPressed = false;
 
     terminal.loadAddon(fit);
     terminal.open(container);
+    const bufferDisposable = terminal.onWriteParsed(() => {
+      syncInputMode(terminal.buffer.active.type === 'alternate' ? 'arcade' : 'shell');
+    });
+    const modeDisposable = terminal.parser.registerOscHandler(777, (data) => {
+      if (data === 'arcade=1') syncInputMode('arcade');
+      else if (data === 'arcade=0') syncInputMode('shell');
+      else return false;
+      return true;
+    });
     terminal.writeln('\x1b[2mStarting an isolated Arcade shell…\x1b[0m');
 
     const fitTerminal = () => {
       if (abort.signal.aborted || !terminal.element?.isConnected || container.clientWidth <= 0) return;
       try {
+        terminal.options.fontSize = terminalFontSize(window.innerWidth, coarsePointer.matches);
         fit.fit();
       } catch {
         // xterm can briefly report zero dimensions while CSS/fonts settle.
@@ -85,7 +112,32 @@ export function ArcadeTerminal() {
     });
     observer.observe(container);
 
+    const syncInputMode = (next: HostedTerminalMode) => {
+      if (next === terminalMode) return;
+      terminalMode = next;
+      setMode(next);
+      const textarea = terminal.textarea;
+      if (!textarea) return;
+      textarea.inputMode = next === 'arcade' ? 'none' : 'text';
+      textarea.setAttribute('enterkeyhint', next === 'arcade' ? '' : 'send');
+      if (next === 'arcade') textarea.blur();
+    };
+
+    const writePtyOutput = (data: Uint8Array | string) => {
+      const text = typeof data === 'string' ? data : outputDecoder.decode(data, { stream: true });
+      const filtered = outputFilter.push(text);
+      syncInputMode(filtered.mode === 'shell' ? modeDetector.push(filtered.output) : filtered.mode);
+      if (filtered.output) terminal.write(filtered.output);
+    };
+
     const dataDisposable = terminal.onData((data) => {
+      if (terminalMode === 'shell') {
+        if (data === '\r' || data === '\n') {
+          if (/^\s*arcade(?:\s|$)/.test(shellCommand)) syncInputMode('arcade');
+          shellCommand = '';
+        } else if (data === '\x7f') shellCommand = shellCommand.slice(0, -1);
+        else if (!data.startsWith('\x1b')) shellCommand += data;
+      }
       if (socket?.readyState === WebSocket.OPEN && started) socket.send(encoder.encode(data));
     });
 
@@ -117,18 +169,21 @@ export function ArcadeTerminal() {
           }));
           started = true;
           setConnection('ready');
-          terminal.focus();
+          if (terminal.textarea) terminal.textarea.inputMode = 'text';
+          // Desktop users can type immediately. On phones, wait for an explicit
+          // shell tap so opening the panel does not summon the software keyboard.
+          if (!window.matchMedia('(pointer: coarse)').matches) terminal.focus();
         });
         socket.addEventListener('message', async (event) => {
           if (event.data instanceof ArrayBuffer) {
-            terminal.write(new Uint8Array(event.data));
+            writePtyOutput(new Uint8Array(event.data));
             return;
           }
           if (event.data instanceof Blob) {
-            terminal.write(new Uint8Array(await event.data.arrayBuffer()));
+            writePtyOutput(new Uint8Array(await event.data.arrayBuffer()));
             return;
           }
-          handleControlMessage(terminal, String(event.data), setConnection);
+          handleControlMessage(terminal, String(event.data), setConnection, writePtyOutput);
         });
         socket.addEventListener('close', () => {
           if (abort.signal.aborted) return;
@@ -158,14 +213,105 @@ export function ArcadeTerminal() {
       });
     });
 
-    const focus = () => terminal.focus();
+    const focus = (event: PointerEvent) => {
+      if (terminalMode === 'arcade') {
+        terminal.textarea?.blur();
+        return;
+      }
+      // Shell mode deliberately preserves tap-to-type for commands such as
+      // `arcade`, `ls`, and `help`.
+      if (event.pointerType === 'touch' || document.activeElement !== terminal.textarea) terminal.focus();
+    };
+    const sendMouse = (kind: Parameters<typeof sgrMouse>[0], clientX: number, clientY: number) => {
+      if (!started || socket?.readyState !== WebSocket.OPEN) return;
+      const rect = terminal.element?.getBoundingClientRect() ?? container.getBoundingClientRect();
+      const cell = terminalCell(clientX, clientY, { left: rect.left, top: rect.top, width: rect.width, height: rect.height, cols: terminal.cols, rows: terminal.rows });
+      socket.send(encoder.encode(sgrMouse(kind, cell.x, cell.y)));
+    };
+    const clearLongPress = () => { window.clearTimeout(longPressTimer); longPressTimer = 0; };
+    const onTouchPointerDown = (event: PointerEvent) => {
+      if (terminalMode !== 'arcade' || event.pointerType !== 'touch') return;
+      event.preventDefault(); event.stopPropagation();
+      container.setPointerCapture(event.pointerId);
+      touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      longPressed = false;
+      if (touches.size === 1) {
+        touchStart = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
+        sendMouse('left-down', event.clientX, event.clientY);
+        longPressTimer = window.setTimeout(() => {
+          if (!touchStart || touchStart.moved || touches.size !== 1) return;
+          sendMouse('left-up', touchStart.x, touchStart.y);
+          sendMouse('right-down', touchStart.x, touchStart.y);
+          sendMouse('right-up', touchStart.x, touchStart.y);
+          longPressed = true;
+        }, 520);
+      } else if (touches.size === 2) {
+        clearLongPress();
+        if (touchStart) sendMouse('left-up', touchStart.x, touchStart.y);
+        touchStart = null;
+        const [a, b] = [...touches.values()];
+        pinchDistance = Math.hypot(a.x - b.x, a.y - b.y);
+      }
+    };
+    const onTouchPointerMove = (event: PointerEvent) => {
+      if (terminalMode !== 'arcade' || event.pointerType !== 'touch' || !touches.has(event.pointerId)) return;
+      event.preventDefault(); event.stopPropagation();
+      touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (touches.size === 2) {
+        const [a, b] = [...touches.values()];
+        const distance = Math.hypot(a.x - b.x, a.y - b.y);
+        const steps = pinchWheelSteps(pinchDistance, distance);
+        if (steps) {
+          const kind = steps > 0 ? 'wheel-up' : 'wheel-down';
+          for (let index = 0; index < Math.abs(steps); index++) sendMouse(kind, (a.x + b.x) / 2, (a.y + b.y) / 2);
+          pinchDistance += steps * 18;
+        }
+        return;
+      }
+      if (!touchStart || touchStart.id !== event.pointerId || longPressed) return;
+      if (Math.hypot(event.clientX - touchStart.x, event.clientY - touchStart.y) > 6) { touchStart.moved = true; clearLongPress(); }
+      if (touchStart.moved) sendMouse('left-drag', event.clientX, event.clientY);
+    };
+    const onTouchPointerUp = (event: PointerEvent) => {
+      if (event.pointerType !== 'touch' || !touches.has(event.pointerId)) return;
+      event.preventDefault(); event.stopPropagation();
+      const wasPrimary = touchStart?.id === event.pointerId;
+      touches.delete(event.pointerId); clearLongPress();
+      if (wasPrimary && !longPressed) sendMouse('left-up', event.clientX, event.clientY);
+      touchStart = null; pinchDistance = 0; longPressed = false;
+      if (container.hasPointerCapture(event.pointerId)) container.releasePointerCapture(event.pointerId);
+    };
+    const onViewportResize = () => {
+      setPortrait(portraitQuery.matches);
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        fitTerminal();
+        if (started && socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'resize', cols: terminal.cols, rows: terminal.rows }));
+      }, 80);
+    };
     container.addEventListener('pointerdown', focus);
+    container.addEventListener('pointerdown', onTouchPointerDown, { capture: true });
+    container.addEventListener('pointermove', onTouchPointerMove, { capture: true });
+    container.addEventListener('pointerup', onTouchPointerUp, { capture: true });
+    container.addEventListener('pointercancel', onTouchPointerUp, { capture: true });
+    window.addEventListener('orientationchange', onViewportResize);
+    window.visualViewport?.addEventListener('resize', onViewportResize);
+    portraitQuery.addEventListener('change', onViewportResize);
     return () => {
       abort.abort();
       window.clearTimeout(resizeTimer);
       observer.disconnect();
       dataDisposable.dispose();
+      bufferDisposable.dispose();
+      modeDisposable.dispose();
       container.removeEventListener('pointerdown', focus);
+      container.removeEventListener('pointerdown', onTouchPointerDown, { capture: true });
+      container.removeEventListener('pointermove', onTouchPointerMove, { capture: true });
+      container.removeEventListener('pointerup', onTouchPointerUp, { capture: true });
+      container.removeEventListener('pointercancel', onTouchPointerUp, { capture: true });
+      window.removeEventListener('orientationchange', onViewportResize);
+      window.visualViewport?.removeEventListener('resize', onViewportResize);
+      portraitQuery.removeEventListener('change', onViewportResize);
       socket?.close();
       terminal.dispose();
     };
@@ -175,9 +321,16 @@ export function ArcadeTerminal() {
     <div
       aria-busy={connection === 'connecting'}
       aria-label={`Interactive Arcade command line. ${connectionLabel(connection)}`}
-      className="arcade-terminal"
+      className={`arcade-terminal is-${mode}`}
+      data-terminal-mode={mode}
     >
       <div className="arcade-terminal__viewport" ref={containerRef} />
+      {mode === 'arcade' && portrait ? (
+        <div aria-live="polite" className="arcade-terminal__rotate-hint">
+          <span aria-hidden="true">↻</span>
+          Rotate for the full Arcade layout
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -186,6 +339,7 @@ function handleControlMessage(
   terminal: Terminal,
   raw: string,
   setConnection: (state: ConnectionState) => void,
+  writeOutput: (data: string) => void,
 ): void {
   try {
     const message = JSON.parse(raw) as { type?: string; exitCode?: number };
@@ -194,7 +348,7 @@ function handleControlMessage(
       terminal.writeln(`\r\n\x1b[2mShell exited${typeof message.exitCode === 'number' ? ` (${message.exitCode})` : ''}.\x1b[0m`);
     }
   } catch {
-    terminal.write(raw);
+    writeOutput(raw);
   }
 }
 

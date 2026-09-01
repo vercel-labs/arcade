@@ -44,13 +44,30 @@ test('projected board labels preserve every production token for the real-game H
   assert.equal(catanProjectedBoardLabels(tokens).length, 18);
 });
 
-test('an active game exposes all production numbers before the first placement', () => {
+test('an active game preserves the preview board and reveals numbers before the first placement', async () => {
   const game = new CatanGameScene();
-  const state = new CatanState({ numPlayers: 4, rng: () => 0.5 });
+  const target = new RenderTarget(160, 180);
+  game.scene.renderScene(target, 0);
+  game.scene.renderScene(target, 6);
+  assert.equal(game.scene.boardTokens(160, 90).length, 0, 'finished terrain waits for Start before revealing numbers');
+  game.scene.orbit(0.16, -0.04);
+  const cameraBeforeStart = game.scene.boardPortLabels(160, 90);
+  const preview = game.preparedBoard();
+  assert.ok(preview);
+  const state = new CatanState({ numPlayers: 4, board: preview });
 
-  game.beginSession(state, ['red', 'blue', 'purple', 'orange']);
+  const ready = game.beginSession(state, ['red', 'blue', 'purple', 'orange']);
 
   assert.equal(state.currentPrompt().kind, 'initialSettlement');
+  assert.equal(game.setupPresentationComplete(), false);
+  assert.equal(game.scene.boardSetup(), preview);
+  assert.deepEqual(game.scene.boardPortLabels(160, 90), cameraBeforeStart, 'starting does not reset the preview camera');
+  game.scene.renderScene(target, 0);
+  game.scene.renderScene(target, 6);
+  assert.equal(game.scene.boardTokens(160, 90).length, 18);
+  game.scene.renderScene(target, 8);
+  await ready;
+  assert.equal(game.setupPresentationComplete(), true);
   assert.equal(game.scene.boardTokens(160, 90).length, 18);
 });
 

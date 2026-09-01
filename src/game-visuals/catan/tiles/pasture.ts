@@ -181,8 +181,8 @@ function meshSurfaceYAt(mesh: Mesh, x: number, z: number, fallback: number): num
 
 // `meadow` is this tile's baked static mesh, passed in by the caller that owns the tile cache:
 // the sheep walk on the terrain surface, which is read back off those triangles.
-export function animatedPastureTile(seed: number, time: number, meadow: Mesh): Build {
-  const m = build();
+export function animatedPastureTile(seed: number, time: number, meadow: Mesh, reuse?: Build): Build {
+  const m = build(reuse);
   const layout = pastureLayout(seed);
   const amp = 0.15;
   const gseed = seed + 1.9;

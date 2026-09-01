@@ -68,3 +68,13 @@ test('shuffle orientation: every card keeps one yaw while bend direction mirrors
     assert.ok(cards.every((card, i) => card.bendDirection === (i % 2 === 0 ? 1 : -1)));
   }
 });
+
+test('explicit shuffle clocks wrap so cinematic owners can play multiple complete cycles', () => {
+  const first = placements(1.25);
+  const second = placements(1.25 + 4.5);
+  for (let i = 0; i < first.length; i++) {
+    close(second[i].x, first[i].x);
+    close(second[i].y, first[i].y);
+    close(second[i].curl, first[i].curl);
+  }
+});

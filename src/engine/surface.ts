@@ -41,6 +41,7 @@ export interface Cell {
   opaque: boolean;
 }
 
+
 export class Surface {
   cols: number;
   rows: number;
@@ -66,6 +67,7 @@ export class Surface {
     this.opaque = new Uint8Array(n);
     this.touched = new Uint8Array(rows);
   }
+
 
   resize(cols: number, rows: number): void {
     if (cols === this.cols && rows === this.rows) return;
@@ -241,6 +243,12 @@ export class Surface {
       style: this.style[i],
       opaque: this.opaque[i] === 1,
     };
+  }
+
+  /** Allocation-free equality probe for retained browser/canvas presenters. */
+  cellEqualsAt(other: Surface, x: number, y: number): boolean {
+    if (this.cols !== other.cols || this.rows !== other.rows || x < 0 || y < 0 || x >= this.cols || y >= this.rows) return false;
+    return this.cellEq(other, y * this.cols + x);
   }
 
   // Rows with at least one opaque cell this frame (for ghost-clearing).

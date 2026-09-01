@@ -3,9 +3,9 @@
 // and their animations are all the test bed's, and this adds only the three things a real game
 // needs on top.
 //
-//   1. The rules engine owns the board. `CatanState` generates the arrangement; the scene
-//      adopts it instead of generating one from its own seed, so the hexes the models reason
-//      about and the hexes you see are the same hexes.
+//   1. The rules engine owns the board once play starts. It accepts the arrangement the setup
+//      scene already presented, so the hexes the models reason about and the hexes you see are
+//      the same hexes without rebuilding the scene or resetting its camera.
 //   2. Legality comes from the state, not from geometry. Every turn the scene is handed the
 //      exact legal node/edge set for the current prompt, so a click can only ever be a legal
 //      move and no cost or distance rule is re-implemented here.
@@ -18,6 +18,7 @@
 
 import { type RenderTarget } from '../../../engine/index.ts';
 import { CatanState } from '../../../rules/catan/catan.ts';
+import type { BoardSetup } from '../../../rules/catan/setup.ts';
 import { DEV_CARD_TYPES, RESOURCES, resourceIndex, type CatanAction, type DevCardType, type PlayerColor, type Resource } from '../../../rules/catan/types.ts';
 import type { LayoutBox } from '../../../tui/index.ts';
 import { catanBankDepartureCell, catanDevDeckDepartureCell, catanDevHandLandingCellForTypes, catanHandLandingCell } from './card-hud.ts';
@@ -177,10 +178,20 @@ export class CatanGameScene {
   private previewDurationMs = 0;
   private synchronizeActionAnimations = false;
   private humanSeat = -1;
+  private setupComplete = false;
   private onChange: () => void = () => {};
 
   constructor() {
     this.scene.setMode('boardCards');
+    this.scene.deferNumberReveal();
+  }
+
+  preparedBoard(): BoardSetup | null {
+    return this.scene.boardSetup();
+  }
+
+  prepareBoard(): void {
+    this.scene.generateBoardPreview();
   }
 
   // Repaint hook — fired whenever a click or an applied move changes what the HUD reads.
@@ -190,7 +201,7 @@ export class CatanGameScene {
 
   // Take over the board for a new session: adopt the engine's arrangement, drop any pieces
   // from a previous game, and remember each seat's color.
-  beginSession(state: CatanState, colors: PlayerColor[], viewerSeat = 0, humanSeat = -1): void {
+  beginSession(state: CatanState, colors: PlayerColor[], viewerSeat = 0, humanSeat = -1): Promise<void> {
     this.cancelPending('A new game started');
     this.scene.cancelActionAnimations();
     this.clearResourceFlights();
@@ -198,14 +209,19 @@ export class CatanGameScene {
     this.colors = colors.slice();
     this.viewerSeat = viewerSeat;
     this.humanSeat = humanSeat;
+    this.setupComplete = false;
     this.clearHumanChoice();
     this.scene.setMode('boardCards');
     this.scene.clearPieces();
-    // The first player is asked to choose a settlement immediately. Snap the authoritative
-    // board into its finished pose so every production number is visible before that decision;
-    // the animated tile reveal belongs to the workbench/idle preview, not an active prompt.
+    // The rules state owns the exact board already being presented. Claim it without rebuilding
+    // the scene or touching its camera, then reveal its number chips before play is released.
     this.scene.adoptBoard(state.boardSetup(), false);
     this.refreshGate();
+    return this.scene.revealNumbers().then(() => {
+      if (this.live !== state) return;
+      this.setupComplete = true;
+      this.onChange();
+    });
   }
 
   // Leaving the screen / ending the session: release the board back to an ungated state so a
@@ -217,6 +233,7 @@ export class CatanGameScene {
     this.live = null;
     this.colors = [];
     this.humanSeat = -1;
+    this.setupComplete = false;
     this.clearHumanChoice();
     this.scene.setPlacementGate(null);
   }
@@ -227,6 +244,9 @@ export class CatanGameScene {
   }
   hasSession(): boolean {
     return this.live !== null;
+  }
+  setupPresentationComplete(): boolean {
+    return this.setupComplete;
   }
   colorOf(seat: number): PlayerColor {
     return this.colors[seat] ?? 'red';

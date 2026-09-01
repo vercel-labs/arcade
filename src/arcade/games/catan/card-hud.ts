@@ -247,8 +247,7 @@ const TRADE_SLOT_BG = CATAN_CARD.tradeSlotBg;
 // Player offers use compact exchange tokens rather than the full hand-card silhouette. Their
 // width stays intrinsic: the two exchange rows establish the panel width, while the lower row
 // also reserves exactly enough room for the response controls.
-const PLAYER_TRADE_IDENTITY_W = 18;
-const PLAYER_TRADE_NAME_W = PLAYER_TRADE_IDENTITY_W - 2;
+const PLAYER_TRADE_IDENTITY_W = 4;
 const PLAYER_TRADE_TOKEN_GAP = 2;
 const PLAYER_TRADE_H = 5;
 const PLAYER_TRADE_ROW_H = 2;
@@ -1066,15 +1065,8 @@ function playerTradeOffer(offer: CatanPlayerTradeOffer, controller: CatanPlayerT
     alignItems: 'center',
   }, [
     Text({
-      text: crowd ? '👥' : offer.offerer.name,
-      style: crowd
-        ? { width: PLAYER_TRADE_NAME_W }
-        : {
-            width: PLAYER_TRADE_NAME_W,
-            color: PLAYER_LOOK[offer.offerer.color],
-            bold: true,
-            textOverflow: 'ellipsis',
-          },
+      text: crowd ? '👥' : '■',
+      style: { color: crowd ? CATAN_CARD.tradeAccent : PLAYER_LOOK[offer.offerer.color], bold: true },
     }),
     Text({
       text: crowd ? '↓' : '↑',
@@ -1086,6 +1078,7 @@ function playerTradeOffer(offer: CatanPlayerTradeOffer, controller: CatanPlayerT
   ]);
   const exchangeRow = (crowd: boolean, counts: Record<Resource, number>): Node => Box({
     height: PLAYER_TRADE_ROW_H,
+    gap: 1,
     alignItems: 'center',
   }, [
     exchangeIdentity(crowd),
@@ -1105,7 +1098,7 @@ function playerTradeOffer(offer: CatanPlayerTradeOffer, controller: CatanPlayerT
   const counterRows = offer.reactions.flatMap((reaction) => {
     if (reaction.status !== 'countered' || !reaction.counterGive || !reaction.counterGet) return [];
     return [Box({ height: PLAYER_TRADE_ROW_H, gap: 1, alignItems: 'center' }, [
-      Text({ text: `${reaction.player.name} ↔`, style: { color: PLAYER_LOOK[reaction.player.color], bold: true } }),
+      Text({ text: '■ ↔', style: { color: PLAYER_LOOK[reaction.player.color], bold: true } }),
       playerTradeCards(reaction.counterGive),
       Text({ text: 'for', style: { color: RAIL_MUTED } }),
       playerTradeCards(reaction.counterGet),

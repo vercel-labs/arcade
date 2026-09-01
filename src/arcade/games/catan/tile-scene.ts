@@ -53,10 +53,11 @@ import {
   type MaritimeTradeRates,
 } from '../../../rules/catan/maritime-trade.ts';
 import { type PlayerColor, RED_NUMBERS, type Resource, type Terrain, TOKEN_DOTS } from '../../../rules/catan/types.ts';
-import { animatedTileMesh, boardOverlayMesh, coastMesh, dieMesh, harborPiersMesh, hoverColorFor, type OverlaySpec, piecesMesh, PORT_SAIL_CENTER, type PortKind, portMesh, robberMarkerMesh, surfMesh, swashMesh, tileBackMesh, tileMesh } from './mesh/index.ts';
+import { AnimatedTileMeshCache, animatedTileMesh, boardOverlayMesh, coastMesh, harborPiersMesh, hoverColorFor, type OverlaySpec, piecesMesh, PORT_SAIL_CENTER, type PortKind, portMesh, robberMarkerMesh, surfMesh, swashMesh, tileBackMesh, tileMesh } from './mesh/index.ts';
+import { drawCatanDiceOverlay } from '../../../game-visuals/catan/dice-overlay.ts';
 import { catanPieceMaterial, type CatanPieceUniforms } from './mesh/piece-material.ts';
 import { EDGE_ENDS, hexRing, hexWorld, NODE_XZ } from './scene/board-layout.ts';
-import { DICE_BOX, DICE_EYE, DICE_FOVY, DICE_HOLD, DICE_LAND_TILT, DICE_POS, DICE_ROLL_DUR, DICE_STAGGER, DICE_TARGET, type Die, DIE_RIGHT, diceHeight, type DicePhase, diceViewport, faceAngles, freshDie, TAU } from './scene/dice.ts';
+import { DICE_HOLD, DICE_ROLL_DUR, DICE_STAGGER, type Die, type DicePhase, freshDie } from './scene/dice.ts';
 import { type BoardHarborPose, boardHarborPoses } from './scene/harbors.ts';
 import { type BoardPickTarget, measureBoardTarget, pickBoardTarget } from './scene/placement-picking.ts';
 import { rollPayouts, rollYield } from './scene/production.ts';
@@ -387,6 +388,8 @@ export class TileScene {
   private readonly placementClock = new FrameClock();
   private revealing = false; // the number-token slot-settle is playing
   private readonly revealClock = new FrameClock();
+  private numberRevealRequested = true;
+  private numberRevealCompletions: Array<() => void> = [];
   private tokensDirty = false; // force one composite when the tokens (re)appear after placing
   private dice: [Die, Die] = [freshDie(), freshDie()];
   private dicePhase: DicePhase = 'idle';
@@ -455,6 +458,7 @@ export class TileScene {
       wrap: WRAP,
     }),
   ));
+  private readonly animatedTileCache = new AnimatedTileMeshCache();
   private readonly piecePool = new ObjectPool(() => new MeshObject(
     EMPTY_MESH,
     new WorldMaterialInstance<CatanPieceUniforms>(catanPieceMaterial, {
@@ -504,7 +508,44 @@ export class TileScene {
   // rather than one of its own. Same `BoardSetup` type either way, so nothing downstream cares.
   adoptBoard(setup: BoardSetup, animate: boolean): void {
     this.adoptedBoard = setup;
+    if (setup === this.board) {
+      this.dirty = true;
+      return;
+    }
     this.regenerate(animate);
+  }
+
+  boardSetup(): BoardSetup | null {
+    return this.board;
+  }
+
+  generateBoardPreview(): void {
+    this.adoptedBoard = null;
+    this.boardSeed++;
+    this.regenerate(true);
+    this.deferNumberReveal();
+  }
+
+  deferNumberReveal(): void {
+    this.numberRevealRequested = false;
+    this.revealing = false;
+    this.revealClock.reset();
+    this.dirty = true;
+  }
+
+  revealNumbers(): Promise<void> {
+    this.numberRevealRequested = true;
+    if (!this.placing && !this.revealing) {
+      this.revealing = true;
+      this.revealClock.reset();
+    }
+    this.dirty = true;
+    return new Promise<void>((resolve) => { this.numberRevealCompletions.push(resolve); });
+  }
+
+  private finishNumberReveal(): void {
+    this.revealing = false;
+    for (const resolve of this.numberRevealCompletions.splice(0)) resolve();
   }
 
   // Restrict which vertices/edges may be hovered and clicked. Null (the default, and what the
@@ -903,6 +944,8 @@ export class TileScene {
     this.placing = animate;
     this.placementClock.reset();
     this.revealing = false; // reset any in-progress token reveal for the new board
+    this.numberRevealRequested = true;
+    for (const resolve of this.numberRevealCompletions.splice(0)) resolve();
     this.rolledSum = null; // clear a stale dice highlight from the previous board
     this.robberGate = null;
     this.hoverHex = null;
@@ -916,6 +959,7 @@ export class TileScene {
   // Snap any in-progress placement to done (used for static snapshots).
   settle(): void {
     this.placing = false;
+    this.finishNumberReveal();
     this.staticBoardDirty = true;
     this.dirty = true;
   }
@@ -956,6 +1000,7 @@ export class TileScene {
     this.rollCompletion = null;
     finishRoll?.();
     this.finishDrop();
+    this.finishNumberReveal();
     this.dicePhase = 'idle';
     this.rolledSum = null;
     this.tokensDirty = true;
@@ -1046,7 +1091,7 @@ export class TileScene {
   // cell of its center with the current board camera (matches what renderScene draws). Empty
   // in tile mode or while tiles are still being placed.
   boardTokens(cols: number, rows: number): BoardToken[] {
-    if (!isBoardMode(this.modeName) || this.placing || !this.board) return [];
+    if (!isBoardMode(this.modeName) || this.placing || !this.numberRevealRequested || !this.board) return [];
     const cam = this.cam();
     const camera = cam.toCamera({ fovy: FOVY, near: 0.05, far: 100 });
     const vp = cameraMatrices(camera, cols / (rows * 2)).viewProjection; // aspect matches the render target
@@ -1227,7 +1272,7 @@ export class TileScene {
     else if (this.modeName === 'port') this.queueLambert(portMesh(this.portKind), MODEL, PORT_LIGHT, PORT_WRAP);
     else {
       this.queueLambert(tileMesh(this.terrain, this.variant, this.robber), MODEL);
-      const animated = animatedTileMesh(this.terrain, this.variant, t);
+      const animated = animatedTileMesh(this.terrain, this.variant, t, undefined, this.animatedTileCache);
       if (animated) this.queueLambert(animated, MODEL);
     }
     if (isBoardMode(this.modeName)) this.renderBoardLayers(target, camera);
@@ -1311,8 +1356,10 @@ export class TileScene {
       this.placementClock.tick(t);
       if (this.placementClock.elapsed > BOARD_BUILD_END) {
         this.placing = false;
-        this.revealing = true; // hand off to the number-token slot-settle
-        this.revealClock.reset();
+        if (this.numberRevealRequested) {
+          this.revealing = true; // hand off to the number-token slot-settle
+          this.revealClock.reset();
+        }
         this.staticBoardDirty = true;
       }
     }
@@ -1332,7 +1379,7 @@ export class TileScene {
     }
     if (this.revealing) {
       this.revealClock.tick(t);
-      if (this.revealClock.elapsed >= REVEAL_END) this.revealing = false;
+      if (this.revealClock.elapsed >= REVEAL_END) this.finishNumberReveal();
     }
     for (let oi = 0; oi < NUM_HEXES; oi++) {
       const hex = this.order[oi];
@@ -1362,7 +1409,7 @@ export class TileScene {
       const mesh = faceUp ? tileMesh(terrain, seed, hex === this.robberHex) : tileBackMesh();
       this.queueLambert(mesh, model);
       if (faceUp) {
-        const animated = animatedTileMesh(terrain, seed, t, dest);
+        const animated = animatedTileMesh(terrain, seed, t, dest, this.animatedTileCache);
         if (animated) this.queueAnimatedLambert(animated, model);
       }
     }
@@ -1456,51 +1503,6 @@ export class TileScene {
     }
     if (this.dicePhase === 'idle') return;
 
-    target.depth.fill(Infinity); // draw the dice over everything already rendered
-    const aspect = (DICE_BOX.sx / DICE_BOX.sy) * (target.width / target.height); // keep the dice undistorted in the box
-    // Shift the eye left so the right die's outer edge maps to the box's right edge (~flush) —
-    // computed from the frame's half-width at the dice plane, so it holds at any aspect.
-    const dist = Math.hypot(DICE_EYE.y - DICE_TARGET.y, DICE_EYE.z - DICE_TARGET.z);
-    const halfW = dist * Math.tan(DICE_FOVY / 2) * aspect;
-    const camX = DIE_RIGHT - halfW * 0.82; // <1 leaves right-edge margin so the tumbling corners never clip
-    const cam: Camera = { eye: { x: camX, y: DICE_EYE.y, z: DICE_EYE.z }, target: { x: camX, y: DICE_TARGET.y, z: DICE_TARGET.z }, up: { x: 0, y: 1, z: 0 }, fovy: DICE_FOVY, near: 0.05, far: 100 };
-    const vp = mat4Multiply(diceViewport(), cameraMatrices(cam, aspect).viewProjection);
-    const rolling = this.dicePhase === 'rolling';
-    // The camera's screen-vertical axis in world space (perpendicular to the view direction) —
-    // dropping the dice ALONG this keeps their depth, and therefore their SIZE, constant as they
-    // fall (rather than growing/shrinking like a straight world-Y drop under a tilted camera).
-    const fY = DICE_TARGET.y - DICE_EYE.y;
-    const fZ = DICE_TARGET.z - DICE_EYE.z;
-    const fMag = Math.hypot(fY, fZ) || 1;
-    const upY = -fZ / fMag;
-    const upZ = fY / fMag;
-    for (let i = 0; i < 2; i++) {
-      const d = this.dice[i];
-      // Per-die (staggered, duration-scaled) progress. It tumbles fast then slows — keeping the
-      // spin alive through the bounces and rocking onto its face at the end — so it never snaps
-      // flat onto the result early.
-      const pd = rolling ? Math.min(1, Math.max(0, (this.rollClock.elapsed - i * DICE_STAGGER) / (DICE_ROLL_DUR * d.dur))) : 1;
-      const drop = rolling ? diceHeight(pd) : 0;
-      const decay = (1 - pd) * (1 - pd); // gross-tumble energy bleeding off (fast → slow)
-      const settle = 1 - decay; // 0→1 lock-in; drives the camera-lean tilt
-      // Damped rock over the last third: the die rocks onto its face rather than freezing flat.
-      const w = Math.min(1, Math.max(0, (pd - 0.68) / 0.32));
-      const rock = rolling ? d.wob * Math.sin(w * Math.PI * 3) * (1 - w) : 0;
-      const rockZ = rolling ? d.wob * 0.6 * Math.cos(w * Math.PI * 2) * (1 - w) : 0;
-      const a = faceAngles(d.val);
-      const ax = a.ax + d.spinX * TAU * decay + rock;
-      const az = a.az + d.spinZ * TAU * decay + rockZ;
-      const yaw = d.yaw + d.yawSpin * TAU * decay;
-      const px = DICE_POS[i].x + d.jx;
-      const pz = DICE_POS[i].z + d.jz;
-      // Outer world-X tilt leans the settled top face toward the viewer; a world-Y yaw (over the
-      // value orientation) keeps the result on top while varying which side faces show.
-      const tilt = DICE_LAND_TILT * settle;
-      const model = mat4Multiply(
-        mat4Translate(px, DICE_POS[i].y + upY * drop, pz + upZ * drop),
-        mat4Multiply(mat4RotX(tilt), mat4Multiply(mat4RotY(yaw), mat4Multiply(mat4RotZ(az), mat4RotX(ax)))),
-      );
-      rasterize(target, dieMesh(), lambertMaterial, { mvp: mat4Multiply(vp, model), model, lightDir: LIGHT, ambient: AMBIENT, wrap: WRAP });
-    }
+    drawCatanDiceOverlay(target, this.dice, this.rollClock.elapsed, this.dicePhase === 'rolling');
   }
 }

@@ -17,6 +17,7 @@ import {
 } from '../engine/index.ts';
 import { TimedInkTransition } from '../cinematic/transitions/timed-ink-transition.ts';
 import { PrismScene, SplashScene } from '../prism/index.ts';
+import { coverFlowIndex } from '../cinematic/scenes/cover-flow.ts';
 import { CoverFlowScene, LAUNCH_TOTAL } from './shell/coverflow.ts';
 import { CoverFlowWheelInput } from './shell/coverflow-input.ts';
 import { MENU_ITEMS } from './shell/menu.ts';
@@ -29,7 +30,7 @@ import { CatanGameScene } from './games/catan/game-scene.ts';
 import { buildCatanGameRoot, mountCatanGameHud } from './games/catan/game-hud.ts';
 import { CatanDriver } from './match/catan-driver.ts';
 import type { CommunicationMode } from '../harness/communication/types.ts';
-import { catanSetupSelection, setCatanSetupChanged, setCatanSetupModelCatalog } from './match/catan-setup-panel.ts';
+import { catanSetupCommunicationMode, catanSetupSelection, setCatanSetupChanged, setCatanSetupModelCatalog } from './match/catan-setup-panel.ts';
 import { buildPokerRoot, mountPokerHud, pokerMode, setPokerHandlers } from './games/poker/hud.ts';
 import { PokerGameScene } from './games/poker/poker-scene.ts';
 import { buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, type HeroContext, mountPokerGameHud, nudgePokerBet, pushPokerChat, setNotesObserverPick, setPokerGameHandlers, setPokerVoiceStage } from './games/poker/poker-hud.ts';
@@ -45,7 +46,7 @@ import { buildChessGameRoot, chessMoveChat, type Commentary, type MatchSide, mou
 import { CHESS_PALETTE } from './games/chess/palette.ts';
 import { creatorTint } from './scenes/wisp.ts';
 import { CHAT_WIDTH, clearChat, pushChatMessage } from './match/chat.ts';
-import { buildMatchSetup, buildSwapSetup, chessPreviewSides, matchSetupSelection, mountMatchSetup, mountSwapSetup, openSwapSetup, setMatchSetupChanged, setMatchSetupModelCatalog, swapSetupSelection } from './match/setup.ts';
+import { buildMatchSetup, buildSwapSetup, chessPreviewSides, matchSetupOptions, matchSetupSelection, mountMatchSetup, mountSwapSetup, openSwapSetup, setMatchSetupChanged, setMatchSetupModelCatalog, swapSetupSelection } from './match/setup.ts';
 import { fallbackArcadeModelCatalog, fetchTeamModelCatalog } from './match/team-model-catalog.ts';
 import { copyToClipboard } from '../platform/clipboard.ts';
 import { checkForUpdate, packageInfo, refreshLatestInBackground, type UpdateInfo } from './update.ts';
@@ -67,9 +68,10 @@ import { supersampleForMode, supersampleForViewport } from './render-quality.ts'
 // Populate process.env from .env.local before anything reads AI_GATEWAY_API_KEY.
 loadEnv();
 
-const FPS = 30;
+const MAX_FPS = 60;
+const MIN_FPS = 30;
 // Animations advance by the renderer's real elapsed time (see tick), so they play
-// at wall-clock speed even when a large terminal drops the loop below FPS. The step
+// at wall-clock speed even when a large terminal drops the loop below its target cadence. The step
 // is clamped so a stall or an idle→interaction gap can't teleport the animation.
 const MAX_STEP = 0.1;
 const SCENE_CELL_PIXEL_ASPECT = 2;
@@ -122,9 +124,10 @@ pokerScene.setEventSink((text) => pushPokerChat({ text, model: '', event: true }
 // The 2D UI overlay (button bar). Lays out + paints over the scene each frame.
 const ui = new Screen(cols, rows, ARCADE_THEME);
 const catanGlyphCache = new ShapeGlyphSurfaceCache();
+const sceneGlyphCache = new ShapeGlyphSurfaceCache();
 // Render-on-demand loop. Animating screens hold a live lease; static screens
 // (chess turntable) render only when an interaction requests it.
-const r = new Renderer({ targetFps: FPS });
+const r = new Renderer({ maxFps: MAX_FPS, minFps: MIN_FPS });
 
 // The Catan test-bed facade: owns its scene, menu/modal state, HUD wiring, UI roots, pointer,
 // and render/dirty. main.ts only wires it into the shared mode/render/mouse plumbing below.
@@ -170,7 +173,7 @@ let catanGameTimer: ReturnType<typeof setInterval> | null = null;
 // test bed runs at, and far cheaper than repainting the board at the full frame rate.
 const CATAN_ANIMATION_FRAME_MS = 90;
 let catanGameMenuOpen = false;
-let catanCommunicationMode: CommunicationMode = 'autoreply';
+let catanCommunicationMode: CommunicationMode = 'ambient';
 
 // Bar geometry: a band of pills composited over the scene, lifted off the very
 // bottom edge by a margin so it doesn't hug it. BAR_HEIGHT must match the pill
@@ -733,6 +736,9 @@ function closeMatchSetup(): void {
 function confirmMatchSetup(): void {
   const sel = matchSetupSelection();
   if (!sel) return;
+  const options = matchSetupOptions();
+  evalBarVisible = options.evalBar;
+  illegalAllowed = options.illegalMoves;
   closeMatchSetup();
   matchSeats = { white: sel.white, black: sel.black };
   clearChat(); // fresh thread for the new game
@@ -1156,8 +1162,8 @@ function pokerStatus(): string {
   return '';
 }
 
-// Toggle illegal-moves mode (bar button / 'i' key). Takes effect on the next AI
-// move (the ModelPlayers read it live via a thunk).
+// Illegal moves is chosen during match setup but remains adjustable from the visible Chess
+// menu. Keep it menu-only rather than restoring the old hidden keyboard shortcut.
 function toggleIllegal(): void {
   illegalAllowed = !illegalAllowed;
   forceFrame = true;
@@ -1247,6 +1253,8 @@ function enterCatanGame(): void {
   mode = 'catan';
   draggingCamera = false;
   mountCatanGameHud(ui);
+  catanGameScene.scene.resetView();
+  catanGameScene.prepareBoard();
   // The island animates (water, blades, livestock) on its own timer, like the test bed's.
   if (catanGameTimer === null) {
     catanGameTimer = setInterval(() => {
@@ -1261,19 +1269,16 @@ function enterCatanGame(): void {
 function startCatanGame(): void {
   const seats = catanSetupSelection();
   if (!seats) return;
-  catanDriver.start(seats, { communicationMode: catanCommunicationMode });
-  fullRepaint();
-}
-
-function cycleCatanCommunicationMode(): void {
-  catanCommunicationMode = catanCommunicationMode === 'autoreply' ? 'ambient' : 'autoreply';
-  catanDriver.setCommunicationMode(catanCommunicationMode);
+  catanCommunicationMode = catanSetupCommunicationMode();
+  const board = catanGameScene.preparedBoard();
+  catanDriver.start(seats, { communicationMode: catanCommunicationMode, ...(board ? { board } : {}) });
   fullRepaint();
 }
 
 // Tear the session down and return to the setup panel.
 function newCatanGame(): void {
   catanDriver.reset();
+  catanGameScene.prepareBoard();
   fullRepaint();
 }
 
@@ -1290,7 +1295,6 @@ function buildCatanGameMenu(): Node {
       { id: 'catan-game-menu-reset', label: 'reset camera', onClick: () => { catanGameScene.scene.resetView(); closeMenu(); } },
       { id: 'catan-game-menu-mode', label: 'display', value: renderMode, onClick: () => cycleMode() },
       { id: 'catan-game-menu-color', label: 'color', value: colorMode, onClick: () => cycleColor() },
-      { id: 'catan-game-menu-communication', label: 'communication', value: catanCommunicationMode, onClick: cycleCatanCommunicationMode },
     ],
     [
       { id: 'catan-game-menu-shortcuts', label: 'controls', onClick: () => openShortcuts() },
@@ -1399,7 +1403,7 @@ function startPrismToMenu(): void {
 // placeholders are no-ops). enterGame runs when the splash finishes.
 function launchSelected(): void {
   if (launching) return;
-  const item = MENU_ITEMS[menuSel];
+  const item = MENU_ITEMS[coverFlowIndex(menuSel, MENU_ITEMS.length)];
   if (!item?.enabled) return;
   launching = true;
   launchT = 0;
@@ -1419,10 +1423,11 @@ function enterGame(id: string): void {
   else if (id === 'ui') enterUi();
 }
 
-// Step the Cover Flow selection by ±1 (clamped). The carousel eases to it in tick.
+// Step the virtual Cover Flow selection by ±1. Rendering and launch identity
+// resolve modulo the catalogue, so navigation remains continuous at both seams.
 function menuNav(step: number): void {
   if (launching) return; // input is locked while the launch splash plays
-  menuSel = Math.max(0, Math.min(MENU_ITEMS.length - 1, menuSel + step));
+  menuSel += step;
 }
 
 function menuWheelNav(e: MouseEvent): void {
@@ -1432,7 +1437,7 @@ function menuWheelNav(e: MouseEvent): void {
 // The Cover Flow chrome over the 3D covers: the focused game's title centred below
 // the carousel, with a dim "coming soon" tail for placeholders.
 function drawCoverChrome(surf: Surface, cols: number, rows: number, sel: number): void {
-  const item = MENU_ITEMS[sel];
+  const item = MENU_ITEMS[coverFlowIndex(sel, MENU_ITEMS.length)];
   const suffix = item.enabled ? '' : '   coming soon';
   const tx = Math.max(0, Math.floor((cols - (item.title.length + suffix.length)) / 2));
   const ty = rows - 4;
@@ -1507,7 +1512,6 @@ const keymap = installKeymap({
   toggleHistory,
   toggleChat,
   resetGame,
-  toggleIllegal,
   toggleEvalBar,
   closeGameOver,
   closeMatchSetup,
@@ -1821,7 +1825,7 @@ function syncBar(): void {
     popSwap();
     promoFocused = false;
     // The chess in-game menu popup. Home/new game/quit act and dismiss; display/eval bar/
-    // illegal toggle in place (menu stays open, label reflects the new state). Escape
+    // illegal update in place (menu stays open, labels reflect current state). Escape
     // (chess-menu layer) and the header ✕ close it. No default focus (uniform buttons).
     if (!keymap.hasContext('chess-menu')) keymap.pushContext('chess-menu', true);
     const groups: MenuItem[][] = [
@@ -1834,7 +1838,7 @@ function syncBar(): void {
         { id: 'chess-menu-mode', label: 'display', value: renderMode, onClick: cycleMode },
         { id: 'chess-menu-color', label: 'color', value: colorMode, onClick: cycleColor },
         { id: 'chess-menu-eval', label: 'eval bar', value: evalBarVisible ? 'on' : 'off', onClick: toggleEvalBar },
-        { id: 'chess-menu-illegal', label: 'illegal', value: illegalAllowed ? 'on' : 'off', onClick: toggleIllegal },
+        { id: 'chess-menu-illegal', label: 'illegal moves', value: illegalAllowed ? 'on' : 'off', onClick: toggleIllegal },
       ],
       [
         { id: 'chess-menu-shortcuts', label: 'controls', onClick: openShortcuts },
@@ -2146,7 +2150,7 @@ function presentSceneInto(surf: Surface, withBloom = true, hybridShadow = false)
       },
       viewport.x,
       viewport.y,
-      mode === 'catan' || mode === 'catan-tiles' ? catanGlyphCache : undefined,
+      mode === 'catan' || mode === 'catan-tiles' ? catanGlyphCache : sceneGlyphCache,
     );
     return;
   }
@@ -2494,7 +2498,7 @@ function tick(dt: number): void {
       writeFrame(UNIFIED ? ui.frameComposited((s) => presentSceneInto(s)) : presentScene());
       if (launchT >= LAUNCH_TOTAL) {
         launching = false;
-        enterGame(MENU_ITEMS[launchSel].id);
+        enterGame(MENU_ITEMS[coverFlowIndex(launchSel, MENU_ITEMS.length)].id);
       }
       return;
     }

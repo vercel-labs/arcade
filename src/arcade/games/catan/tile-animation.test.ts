@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Mesh } from '../../../engine/index.ts';
-import { animatedTileMesh, tileMesh } from './mesh/index.ts';
+import { AnimatedTileMeshCache, animatedTileMesh, tileMesh } from './mesh/index.ts';
 import { sampleWind } from '../../../game-visuals/catan/tiles/wind.ts';
 
 const positions = (mesh: Mesh): number[] => mesh.vertices.flatMap((vertex) => [
@@ -35,6 +35,33 @@ test('animated tile overlays move while the dense terrain mesh remains cached', 
   assertValid(sheep1);
   assert.equal(sheep0.vertices.length, sheep1.vertices.length);
   assert.notDeepEqual(positions(sheep0), positions(sheep1));
+});
+
+test('retained animated tile meshes reuse vertex storage without changing active topology', () => {
+  const cache = new AnimatedTileMeshCache();
+  const first = animatedTileMesh('fields', 4, 0, { x: 0, z: 0 }, cache);
+  assert.ok(first);
+  const vertex = first.vertices[0];
+  const second = animatedTileMesh('fields', 4, 0.7, { x: 0, z: 0 }, cache);
+  assert.strictEqual(second, first);
+  assert.strictEqual(second?.vertices[0], vertex);
+
+  const calm = animatedTileMesh('desert', 3, 0, { x: 0, z: 0 }, cache);
+  assert.equal(calm?.vertices.length, 0);
+  const gust = animatedTileMesh('desert', 3, 82, { x: 0, z: 0 }, cache);
+  assert.ok(gust && gust.vertices.length > 0);
+  const gustVertex = gust.vertices[0];
+  animatedTileMesh('desert', 3, 0, { x: 0, z: 0 }, cache);
+  const nextGust = animatedTileMesh('desert', 3, 82.1, { x: 0, z: 0 }, cache);
+  assert.strictEqual(nextGust, gust);
+  assert.strictEqual(nextGust?.vertices[0], gustVertex);
+});
+
+test('animated tile cache evicts obsolete board seeds', () => {
+  const cache = new AnimatedTileMeshCache();
+  const first = cache.mesh('fields', 0);
+  for (let seed = 1; seed <= 24; seed++) cache.mesh('fields', seed);
+  assert.notEqual(cache.mesh('fields', 0), first);
 });
 
 test('weather overlays cover wind-responsive terrain while mountains remain still', () => {

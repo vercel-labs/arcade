@@ -12,6 +12,7 @@
 import { readFileSync } from 'node:fs';
 import { flatShade, type Mat4, mat4Multiply, mat4RotY, mat4Scale, mat4Translate, type Mesh, parseObj, type Vec3 } from '../../../engine/index.ts';
 import { asset } from '../../assets.ts';
+import { POKER_FELT_GREEN as FELT_GREEN, POKER_FELT_STIPPLE as FELT_STIPPLE, POKER_WOOD_BROWN as WOOD_BROWN } from '../../../game-visuals/poker/table.ts';
 
 // A very dark green felt: flat and uniformly lit, its base brightness is low
 // enough that the shape-glyph presenter matches it to blank cells (no card-border
@@ -22,8 +23,6 @@ import { asset } from '../../assets.ts';
 // (It used to be pure black precisely because a flat green shape-matched to
 // blanks; the stipple is what makes the green legible.) The brown rail frames the
 // oval; it's a separate mesh drawn with plain lambert (no stipple).
-const FELT_GREEN: Vec3 = { x: 12, y: 46, z: 28 };
-const WOOD_BROWN: Vec3 = { x: 132, y: 88, z: 52 };
 
 // Stipple config for the felt's `feltMaterial` (see engine/materials.ts): a sparse
 // scatter of faint brighter-green flecks, keyed to the table's OBJECT space (felt
@@ -31,13 +30,7 @@ const WOOD_BROWN: Vec3 = { x: 132, y: 88, z: 52 };
 // Tuned so a handful of cells catch a fleck and resolve to a low-coverage glyph.
 // Exported so every scene drawing this table shares one felt texture; spread it
 // into feltMaterial's uniforms alongside the scene's own lightDir/ambient.
-export const FELT_STIPPLE = {
-  stipple: { x: 40, y: 120, z: 78 } as Vec3, // fleck color (0..255)
-  stippleFreq: 1.2, // ~1.2 lattice cells per object unit
-  stippleDensity: 0.1, // ~10% of cells carry a fleck
-  stippleGain: 1.1, // fleck peak brightness, added over the lit base
-  stippleRadius: 0.27, // fleck disc radius in lattice-cell units (< 0.5)
-};
+export { FELT_STIPPLE };
 
 // Table local-space landmarks (see header) and the scale that maps it into the
 // card world. Cards are ~1.0×1.4; scaling the ~34.8-radius table by 0.16 gives a

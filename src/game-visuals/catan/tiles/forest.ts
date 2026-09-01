@@ -90,8 +90,8 @@ export function forestTile(seed: number): Build {
   return m;
 }
 
-export function animatedForestTile(seed: number, time: number, origin: WindOrigin): Build {
-  const m = build();
+export function animatedForestTile(seed: number, time: number, origin: WindOrigin, reuse?: Build): Build {
+  const m = build(reuse);
   const amp = 0.12;
   const gseed = seed + 3.1;
   const hAt = (x: number, z: number): number => surfaceY(x, z, amp, gseed);

@@ -145,7 +145,7 @@ function run(name: BenchScene, mode: BenchMode): void {
   const surface = new Surface(cols, rows);
   const differ = new CellDiffer();
   const catanScene = name === 'catan' || name === 'catan-dice';
-  const glyphCache = catanScene ? new ShapeGlyphSurfaceCache() : undefined;
+  const glyphCache = new ShapeGlyphSurfaceCache();
   const render = stat();
   const present = stat();
   const diff = stat();

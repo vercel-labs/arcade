@@ -7,7 +7,7 @@
 // only once BOTH sides have a model committed; picking a different creator clears
 // that side's model (re-picking the same creator, or a different model under it,
 // leaves the creator intact).
-import { Box, Dialog, Dropdown, Field, Modal, RoundedButton, Slot, Text, type LayoutBox, type Node, type Screen } from '../../tui/index.ts';
+import { Box, Dialog, Dropdown, Field, Modal, RoundedButton, ToggleButton, Slot, Text, type LayoutBox, type Node, type Screen } from '../../tui/index.ts';
 import type { RGB } from '../../engine/index.ts';
 import { includeEarlyAccessModels, pickerCreators } from './models.ts';
 import { availableRealtimeModels } from '../../voice/index.ts';
@@ -27,7 +27,7 @@ for (const model of availableRealtimeModels(includeEarlyAccessModels())) {
   creator.models.push({ id: model.id, name: model.name });
 }
 const MODEL_W = 26;
-const SIDE_LABEL_W = 8; // the "white"/"black" gutter, so the side rows line up (mirrors poker-setup)
+const SIDE_LABEL_W = 15; // two-cell breathing room after "illegal moves"; keeps every setup row aligned
 
 // Fires on every committed change (mode / creator / model), so main can refresh the
 // live king-wisp preview behind the panel. Null until main wires it (module init
@@ -110,6 +110,23 @@ export function matchSetupSelection(): { white: Seat; black: Seat } | null {
   return w && b ? { white: w, black: b } : null;
 }
 
+let setupEvalBar = false;
+let setupIllegalMoves = false;
+export function matchSetupOptions(): { evalBar: boolean; illegalMoves: boolean } {
+  return { evalBar: setupEvalBar, illegalMoves: setupIllegalMoves };
+}
+
+function booleanControl(id: string, value: boolean, onChange: (value: boolean) => void): Node {
+  return ToggleButton({
+    id,
+    value,
+    onChange: (next) => {
+      onChange(next);
+      changed();
+    },
+  });
+}
+
 // The white/black creators to preview as king wisps while the setup panel is open.
 // A human side contributes no wisp (null) — the in-match convention, mirroring
 // poker's human seat. The creator is pre-committed, so it's rarely null in practice.
@@ -190,6 +207,8 @@ export function buildMatchSetup(region: LayoutBox, opts: { onStart: () => void; 
     row('mode', 'muted', [Slot('setup-mode')]),
     sideRow(white),
     sideRow(black),
+    row('eval bar', 'muted', [booleanControl('setup-eval', setupEvalBar, (value) => { setupEvalBar = value; })]),
+    row('illegal moves', 'muted', [booleanControl('setup-illegal', setupIllegalMoves, (value) => { setupIllegalMoves = value; })]),
   ]);
 
   // Full region: panel top-left, start/cancel bottom-left (mirrors the poker HUD layout).

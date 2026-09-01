@@ -39,6 +39,7 @@ export {
   type ProjectedAnchorOptions,
 } from './components/projected-anchor.ts';
 export { Field, type FieldOpts } from './components/field.ts';
+export { ToggleButton, type ToggleButtonOpts } from './components/toggle-button.ts';
 export { Dropdown, type DropdownOpts } from './components/dropdown.ts';
 export { Input, type InputOpts } from './components/input.ts';
 export { Select, type SelectOpts } from './components/select.ts';

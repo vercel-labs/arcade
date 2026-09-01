@@ -63,8 +63,8 @@ export function fieldsTile(seed: number): Build {
   return m;
 }
 
-export function animatedFieldsTile(seed: number, time: number, origin: WindOrigin): Build {
-  const m = build();
+export function animatedFieldsTile(seed: number, time: number, origin: WindOrigin, reuse?: Build): Build {
+  const m = build(reuse);
   const amp = 0.025;
   const groundSeed = seed + 4.2;
   const soilY = (x: number, z: number): number => surfaceY(x, z, amp, groundSeed);

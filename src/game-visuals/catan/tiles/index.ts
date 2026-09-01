@@ -60,12 +60,35 @@ export function robberMarkerMesh(terrain: Terrain, seed = 0): Mesh {
 
 // Small time-varying overlays. `origin` is the tile's board-space centre, allowing weather to
 // move coherently across neighbouring hexes instead of restarting independently on each tile.
-export function animatedTileMesh(terrain: Terrain, seed = 0, time = 0, origin: WindOrigin = { x: 0, z: 0 }): Mesh | null {
+export class AnimatedTileMeshCache {
+  private readonly meshes = new ResourceCache<string, BufferGeometry>({ maxEntries: 24 });
+
+  mesh(terrain: Terrain, seed: number): BufferGeometry {
+    const key = `${terrain}:${seed}`;
+    return this.meshes.getOrCreate(key, () => new BufferGeometry());
+  }
+}
+
+export function animatedTileMesh(
+  terrain: Terrain,
+  seed = 0,
+  time = 0,
+  origin: WindOrigin = { x: 0, z: 0 },
+  cache?: AnimatedTileMeshCache,
+): Mesh | null {
   const t = Number.isFinite(time) ? time : 0;
-  if (terrain === 'fields') return animatedFieldsTile(seed, t, origin);
-  if (terrain === 'forest') return animatedForestTile(seed, t, origin);
-  if (terrain === 'desert') return animatedDesertTile(seed, t, origin);
-  if (terrain === 'pasture') return animatedPastureTile(seed, t, tileMesh('pasture', seed));
-  if (terrain === 'hills') return animatedHillsTile(seed, t);
-  return null;
+  const reuse = cache?.mesh(terrain, seed);
+  const mesh = terrain === 'fields'
+    ? animatedFieldsTile(seed, t, origin, reuse)
+    : terrain === 'forest'
+      ? animatedForestTile(seed, t, origin, reuse)
+      : terrain === 'desert'
+        ? animatedDesertTile(seed, t, origin, reuse)
+        : terrain === 'pasture'
+          ? animatedPastureTile(seed, t, tileMesh('pasture', seed), reuse)
+          : terrain === 'hills'
+            ? animatedHillsTile(seed, t, reuse)
+            : null;
+  if (mesh && reuse) mesh.markNeedsUpdate(0, mesh.vertices.length);
+  return mesh;
 }

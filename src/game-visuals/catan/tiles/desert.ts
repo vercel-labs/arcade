@@ -249,8 +249,8 @@ export function desertTile(seed: number): Build {
   return m;
 }
 
-export function animatedDesertTile(seed: number, time: number, origin: WindOrigin): Build {
-  const m = build();
+export function animatedDesertTile(seed: number, time: number, origin: WindOrigin, reuse?: Build): Build {
+  const m = build(reuse);
   const wind = sampleWind(time, origin.x, origin.z);
   if (wind.strength < 0.05) return m;
   const SAND: RGB = [255, 240, 174];

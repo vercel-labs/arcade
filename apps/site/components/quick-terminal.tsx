@@ -91,7 +91,7 @@ export function QuickTerminalProvider({ children }: { children: ReactNode }) {
     if (!isOpen) return;
     const panel = panelRef.current;
     const positionFrame = requestAnimationFrame(() => {
-      if (!panel || hasPositionedRef.current || isFullscreen || window.innerWidth <= 640) return;
+      if (!panel || hasPositionedRef.current || isFullscreen || window.innerWidth <= 640 || window.matchMedia('(pointer: coarse)').matches) return;
       const rect = panel.getBoundingClientRect();
       panel.style.left = `${Math.max(8, (window.innerWidth - rect.width) / 2)}px`;
       panel.style.top = `${Math.max(8, Math.min(80, window.innerHeight - rect.height - 8))}px`;
@@ -102,7 +102,7 @@ export function QuickTerminalProvider({ children }: { children: ReactNode }) {
       if (event.key === 'Escape') close();
     };
     const keepInViewport = () => {
-      if (!panel || isFullscreen || window.innerWidth <= 640) return;
+      if (!panel || isFullscreen || window.innerWidth <= 640 || window.matchMedia('(pointer: coarse)').matches) return;
       const rect = panel.getBoundingClientRect();
       const width = Math.min(rect.width, window.innerWidth - 16);
       const height = Math.min(rect.height, window.innerHeight - 16);
@@ -112,12 +112,30 @@ export function QuickTerminalProvider({ children }: { children: ReactNode }) {
       panel.style.top = `${Math.max(8, Math.min(rect.top, window.innerHeight - height - 8))}px`;
       panel.style.transform = 'none';
     };
+    const fitMobileVisualViewport = () => {
+      if (!panel || !window.matchMedia('(pointer: coarse)').matches) return;
+      const viewport = window.visualViewport;
+      panel.style.left = `${(viewport?.offsetLeft ?? 0) + 8}px`;
+      panel.style.top = `${(viewport?.offsetTop ?? 0) + 8}px`;
+      panel.style.width = `${Math.max(1, (viewport?.width ?? window.innerWidth) - 16)}px`;
+      panel.style.height = `${Math.max(1, (viewport?.height ?? window.innerHeight) - 16)}px`;
+      panel.style.minWidth = '0';
+      panel.style.minHeight = '0';
+      panel.style.maxWidth = 'none';
+      panel.style.maxHeight = 'none';
+      panel.style.transform = 'none';
+    };
+    fitMobileVisualViewport();
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('resize', keepInViewport);
+    window.visualViewport?.addEventListener('resize', fitMobileVisualViewport);
+    window.visualViewport?.addEventListener('scroll', fitMobileVisualViewport);
     return () => {
       cancelAnimationFrame(positionFrame);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('resize', keepInViewport);
+      window.visualViewport?.removeEventListener('resize', fitMobileVisualViewport);
+      window.visualViewport?.removeEventListener('scroll', fitMobileVisualViewport);
     };
   }, [close, isFullscreen, isOpen]);
 

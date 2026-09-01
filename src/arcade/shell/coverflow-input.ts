@@ -1,19 +1,21 @@
 import type { MouseEvent } from '../../platform/input.ts';
 
 // SGR mouse input carries direction but no gesture magnitude. macOS terminals emit
-// noticeably fewer horizontal reports for the same trackpad travel, so a continuing
-// horizontal swipe gets a second cover step. The first report stays one-to-one, keeping
-// a small deliberate nudge as precise as vertical scrolling.
+// noticeably fewer horizontal reports for the same trackpad travel, so report cadence
+// is the only available proxy for a horizontal fling. Repeated reports accelerate from
+// 1 -> 2 -> 3 -> 4 covers; the first report remains one-to-one for precise nudges.
 const HORIZONTAL_REPEAT_WINDOW_MS = 240;
-const HORIZONTAL_REPEAT_STEP = 2;
+const HORIZONTAL_MAX_STEP = 4;
 
 export class CoverFlowWheelInput {
   private lastHorizontalAt = -Infinity;
   private lastHorizontalDirection = 0;
+  private horizontalRun = 0;
 
   reset(): void {
     this.lastHorizontalAt = -Infinity;
     this.lastHorizontalDirection = 0;
+    this.horizontalRun = 0;
   }
 
   step(e: Pick<MouseEvent, 'wheel' | 'wheelAxis'>, now = performance.now()): number {
@@ -26,8 +28,9 @@ export class CoverFlowWheelInput {
     const continuingSwipe =
       direction === this.lastHorizontalDirection &&
       now - this.lastHorizontalAt <= HORIZONTAL_REPEAT_WINDOW_MS;
+    this.horizontalRun = continuingSwipe ? Math.min(HORIZONTAL_MAX_STEP, this.horizontalRun + 1) : 1;
     this.lastHorizontalAt = now;
     this.lastHorizontalDirection = direction;
-    return direction * (continuingSwipe ? HORIZONTAL_REPEAT_STEP : 1);
+    return direction * this.horizontalRun;
   }
 }

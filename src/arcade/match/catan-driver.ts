@@ -10,6 +10,7 @@ import { HumanPlayer } from '../../harness/human-player.ts';
 import type { CommunicationDecision, CommunicationMode, PublicConversationMessage } from '../../harness/communication/types.ts';
 import type { Player } from '../../harness/player.ts';
 import { CatanState } from '../../rules/catan/catan.ts';
+import type { BoardSetup } from '../../rules/catan/setup.ts';
 import { RESOURCES, resourceIndex, type CatanAction, type PlayerColor, type Resource } from '../../rules/catan/types.ts';
 import { DEV_CARD_ICON, KNIGHT_ICON, RESOURCE_LOOK, ROAD_ICON, SETTLEMENT_ICON } from '../games/catan/palette.ts';
 import { createCatanModelPlayer, runCatanMatch } from '../../harness/games/catan/catan-setup.ts';
@@ -28,7 +29,7 @@ export type CatanSeatSpec = { kind: 'human'; color: PlayerColor } | { kind: 'ai'
 // human seam. Deliberately the same shape as `MatchScene` plus `requestHumanMove`, so the
 // scene stays swappable and the driver never reaches into rendering.
 export interface CatanBoardScene {
-  beginSession(state: CatanState, colors: PlayerColor[], viewerSeat: number, humanSeat?: number): void;
+  beginSession(state: CatanState, colors: PlayerColor[], viewerSeat: number, humanSeat?: number): void | Promise<void>;
   endSession(): void;
   state(): CatanState;
   playMove(action: CatanAction): Promise<void>;
@@ -157,7 +158,7 @@ export class CatanDriver {
   // still needs no model call. `rng` makes the session reproducible — it seeds everything the
   // state draws from: the board layout, the dev-card deck, the dice, and the robber's steal.
   // Live sessions leave it unset and keep Math.random.
-  start(seats: CatanSeatSpec[], opts?: { autoRun?: boolean; rng?: () => number; maxActions?: number; communicationMode?: CommunicationMode }): CatanState {
+  start(seats: CatanSeatSpec[], opts?: { autoRun?: boolean; rng?: () => number; board?: BoardSetup; maxActions?: number; communicationMode?: CommunicationMode }): CatanState {
     this.stop();
     this.seats = seats.slice();
     this.labels = disambiguateLabels(
@@ -190,6 +191,7 @@ export class CatanDriver {
       domesticTrade: true,
       ...(seats.every((seat) => seat.kind === 'ai') ? { domesticTradeOfferLimit: 3 } : {}),
       rng: opts?.rng,
+      board: opts?.board,
     });
     this.live = state;
     this.communication = new CatanCommunicationCoordinator(opts?.communicationMode ?? 'autoreply', modelContextLabels);
@@ -198,9 +200,9 @@ export class CatanDriver {
     // Install the authoritative state in the scene before the runner can synchronously read it.
     // Keeping this inside the driver makes session creation atomic for the app and tools alike.
     const humanSeat = seats.findIndex((seat) => seat.kind === 'human');
-    this.deps.scene.beginSession(state, seats.map((seat) => seat.color), humanSeat >= 0 ? humanSeat : 0, humanSeat);
+    const setupReady = this.deps.scene.beginSession(state, seats.map((seat) => seat.color), humanSeat >= 0 ? humanSeat : 0, humanSeat);
     this.running = opts?.autoRun !== false;
-    if (this.running) void this.run(opts?.maxActions);
+    if (this.running) void this.run(opts?.maxActions, setupReady);
     return state;
   }
 
@@ -222,9 +224,11 @@ export class CatanDriver {
     });
   }
 
-  private async run(maxActions = 10_000): Promise<void> {
+  private async run(maxActions = 10_000, setupReady?: void | Promise<void>): Promise<void> {
     const signal = this.abort?.signal;
     try {
+      await setupReady;
+      if (signal?.aborted) return;
       await runCatanMatch(this.deps.scene, this.players, {
         signal,
         maxActions,

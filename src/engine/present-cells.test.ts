@@ -169,3 +169,11 @@ test('retained shape-glyph cells match a fresh presentation across animated chan
     for (let x = 0; x < cols; x++) assert.deepEqual(retained.getCell(x, y), fresh.getCell(x, y));
   }
 });
+test('render target resize reuses buffers at one size and reallocates only when dimensions change', () => {
+  const target = new RenderTarget(8, 6), color = target.color, depth = target.depth;
+  target.resize(8, 6);
+  assert.equal(target.color, color); assert.equal(target.depth, depth);
+  target.resize(12, 9);
+  assert.equal(target.width, 12); assert.equal(target.height, 9);
+  assert.notEqual(target.color, color); assert.notEqual(target.depth, depth);
+});

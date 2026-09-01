@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { CatanState } from '../../../rules/catan/catan.ts';
 import { DEV_CARD_TYPES, RESOURCES, resourceIndex, type CatanAction } from '../../../rules/catan/types.ts';
-import type { Node } from '../../../tui/index.ts';
+import { Screen, type Node } from '../../../tui/index.ts';
 import { CatanDriver, type CatanSeatSpec } from '../../match/catan-driver.ts';
 import { buildCatanGameRoot, catanLiveView, catanStatusLine } from './game-hud.ts';
 import { catanSidebarPlayers } from './card-hud.ts';
@@ -16,6 +16,26 @@ function findNode(node: Node, id: string): Node | undefined {
   }
   return undefined;
 }
+
+function allText(node: Node): string[] {
+  return [node.text ?? '', ...(node.children ?? []).flatMap(allText)].filter(Boolean);
+}
+
+test('initial-turn status stays hidden until the board setup presentation completes', () => {
+  const scene = new CatanGameScene();
+  const driver = new CatanDriver({ scene, syncLive: () => {} });
+  driver.start([
+    { kind: 'human', color: 'red' },
+    { kind: 'ai', color: 'blue', model: 'test/blue' },
+  ], { autoRun: false });
+  const root = buildCatanGameRoot({ x: 0, y: 0, w: 140, h: 50 }, {
+    driver,
+    scene,
+    onOpenMenu: () => {},
+    onStart: () => {},
+  });
+  assert.equal(allText(root).some((text) => text.includes('your turn')), false);
+});
 
 test('the live hand owns the shared trade and buy-dev cards while new game stays in the menu', async () => {
   const scene = new CatanGameScene();
@@ -50,6 +70,36 @@ test('the live hand owns the shared trade and buy-dev cards while new game stays
 
   assert.equal(scene.submitHumanAction({ type: 'endTurn' }), true);
   await pending;
+});
+
+test('the hovered roll button paints one continuous background across its die icon and label', async () => {
+  const scene = new CatanGameScene();
+  const driver = new CatanDriver({ scene, syncLive: () => {} });
+  const state = driver.start([
+    { kind: 'human', color: 'red' },
+    { kind: 'ai', color: 'blue', model: 'test/blue' },
+  ], { autoRun: false, rng: () => 0.5 });
+  while (!state.initialPlacementComplete()) await scene.playMove(state.legalActions()[0]);
+  assert.equal(state.currentPrompt().kind, 'roll');
+  void scene.requestHumanMove();
+
+  const root = buildCatanGameRoot({ x: 0, y: 0, w: 140, h: 50 }, {
+    driver,
+    scene,
+    onOpenMenu: () => {},
+    onStart: () => {},
+  });
+  const screen = new Screen(140, 50);
+  screen.setRoot(root, { x: 0, y: 0, w: 140, h: 50 });
+  const roll = findNode(root, 'catan-live-roll');
+  assert.ok(roll?.layout);
+  screen.setHover('catan-live-roll');
+  const surface = screen.snapshot(() => {});
+  const backgrounds = Array.from({ length: roll.layout.w }, (_, offset) =>
+    surface.getCell(roll.layout!.x + offset, roll.layout!.y)?.bg.join(','));
+  assert.equal(new Set(backgrounds).size, 1);
+  assert.equal(surface.getCell(roll.layout.x + 1, roll.layout.y)?.ch, '⚄');
+  assert.equal(surface.getCell(roll.layout.x + 2, roll.layout.y)?.ch, ' ');
 });
 
 test('spectators can click a player to inspect that seat hand and development cards', () => {
@@ -342,7 +392,7 @@ test('spectator mode still renders model maritime-trade editor previews', async 
   await applying;
 });
 
-test('spectated AI roll actions visibly press the same live control before applying', async () => {
+test('spectated AI actions do not flash transient controls above the persistent hand actions', async () => {
   const scene = new CatanGameScene();
   scene.setActionPreviewDuration(5);
   const driver = new CatanDriver({ scene, syncLive: () => {} });
@@ -359,9 +409,9 @@ test('spectated AI roll actions visibly press the same live control before apply
     onOpenMenu: () => {},
     onStart: () => {},
   });
-  const roll = findNode(root, 'catan-live-spectator-preview');
-  assert.equal(roll?.disabled, true);
-  assert.equal(roll?.text, '⚄ roll');
+  assert.equal(findNode(root, 'catan-live-spectator-preview'), undefined);
+  assert.ok(findNode(root, 'catan-trade-open'));
+  assert.ok(findNode(root, 'catan-buy-dev'));
   await applying;
 });
 

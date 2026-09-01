@@ -89,6 +89,8 @@ function nodePosition(node: number): { x: number; y: number } {
 export interface CatanOpts {
   numPlayers: number; // base game is 3–4; 2 is allowed for testing
   rng?: () => number; // injected for reproducible boards/deals (defaults to Math.random)
+  /** Reuse an already-presented board instead of generating a second arrangement. */
+  board?: BoardSetup;
   // Optional per-seat display names for the observation (e.g. a model slug); defaults to
   // "P0"/"P1"… so the engine stays generic, as poker does.
   seatNames?: readonly string[];
@@ -275,7 +277,7 @@ export class CatanState implements ImperfectInfoState<CatanAction> {
       throw new RangeError(`domesticTradeOfferLimit must be a nonnegative integer; received ${this.domesticTradeOfferLimit}`);
     }
 
-    this.board = generateBoard(() => this.random());
+    this.board = opts.board ?? generateBoard(() => this.random());
     this.productionByNode = nodeProduction(this.board);
     this.robberHex = this.board.robberHex;
 

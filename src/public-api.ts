@@ -2,14 +2,18 @@ export * as engine from './engine/index.ts';
 export * as tui from './tui/browser.ts';
 export {
   BrowserArcade,
+  BrowserCatanCinematic,
   BrowserCatanTileShowcase,
   BrowserChessBoardShowcase,
   BrowserChessPieceShowcase,
   BrowserPokerChipsShowcase,
+  BrowserPokerCinematic,
   BrowserRenderShowcase,
   BrowserTuiShowcase,
   CanvasSurfaceHost,
+  TERMINAL_CELL_ASPECT_RATIO,
   createBrowserMiniScene,
+  LivingTitleScene,
 } from './web/index.ts';
 export type {
   BrowserArcadeFrame,
@@ -23,4 +27,6 @@ export type {
   Canvas2DContextLike,
   CanvasLike,
   CanvasSurfaceHostOptions,
+  LivingTitleFrameOptions,
+  LivingTitleAct,
 } from './web/index.ts';

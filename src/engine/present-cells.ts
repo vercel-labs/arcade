@@ -105,6 +105,7 @@ export class ShapeGlyphSurfaceCache {
 }
 
 function finiteDepthBounds(target: RenderTarget): PixelBounds | null {
+  if (target.maxDepthX >= 0) return { minX: target.minDepthX, minY: target.minDepthY, maxX: target.maxDepthX, maxY: target.maxDepthY };
   const { width: W, height: H, depth } = target;
   let minX = W;
   let minY = H;

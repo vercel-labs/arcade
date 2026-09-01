@@ -9,6 +9,8 @@ import { writeFileSync } from 'node:fs';
 import { bloom, downsample, halfBlockToSurface, mulberry32, RenderTarget, shapeGlyphLayerToSurface, shapeGlyphToSurface, STYLE_BOLD, STYLE_DIM, Surface } from '../engine/index.ts';
 import { FONT } from '../engine/font8x8.ts';
 import { PrismScene, SplashScene } from '../prism/index.ts';
+import { TimedInkTransition } from '../cinematic/transitions/timed-ink-transition.ts';
+import { coverFlowIndex } from '../cinematic/scenes/cover-flow.ts';
 import { ChessGameScene } from '../arcade/games/chess/scene.ts';
 import { LogosScene } from '../arcade/scenes/logos-scene.ts';
 import { AudioScene } from '../arcade/scenes/audio-scene.ts';
@@ -361,6 +363,7 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot settings [cols] [rows] [open|account [dropdown|loading|switched|error|long]] [out]   home menu button, popup, or account modal
   pnpm snapshot launch [cols] [rows] [index] [t] [out]   Cover Flow flip-to-title splash
   pnpm snapshot prism-prompt [cols] [rows] [t] [out]    prism loading screen + press-any-key marquee
+  pnpm snapshot prism-menu-ink [cols] [rows] [progress] [out]   CLI prism → Cover Flow ink transition
   pnpm snapshot cards [single|hand|deck] [cols] [rows] [state] [out]   the cards screen
       (single: a code like Kh/10s/As · hand: peek|up · deck: shuffle|deal)
   pnpm snapshot catan [sidebar] [discard|trade|trade-port3|trade-port2|trade-empty|player-trade|player-trade-ready|player-trade-mixed] [play-knight|play-road|play-plenty|play-monopoly] [hover=<id>] [hybrid] [shadow-glyphs] [forest|hills|pasture|fields|mountains|desert] [cols] [rows] [<t>] [board|board-cards|pieces|port|edit] [robber|robber-moveN] [fly<roll>@<s>|trade-fly<N>@<s>|dev-fly@<s>] [hud|modal] [out]   a 3D Catan tile
@@ -418,6 +421,8 @@ if (process.argv[2] === 'help' || process.argv[2] === '--help' || process.argv[2
   launchSnapshot();
 } else if (process.argv[2] === 'prism-prompt') {
   prismPromptSnapshot();
+} else if (process.argv[2] === 'prism-menu-ink') {
+  prismMenuInkSnapshot();
 } else if (process.argv[2] === 'cards') {
   cardsSnapshot();
 } else if (process.argv[2] === 'poker') {
@@ -1391,7 +1396,7 @@ function coverflowSnapshot(): void {
   // title chrome on top (mirrors drawCoverChrome in main.ts).
   const surf = new Surface(cols, rows);
   shapeGlyphToSurface(surf, target, cols, rows, { color: true });
-  const item = MENU_ITEMS[sel];
+  const item = MENU_ITEMS[coverFlowIndex(sel, MENU_ITEMS.length)];
   if (item) {
     const suffix = item.enabled ? '' : '   coming soon';
     const x = Math.max(0, Math.floor((cols - item.title.length - suffix.length) / 2));
@@ -1535,6 +1540,33 @@ function prismPromptSnapshot(): void {
     if (text[i] !== ' ') surf.setCellWithAlphaBlending(x0 + i, y, text[i], [205, 210, 230, alpha], [0, 0, 0, 0]);
   }
   surfaceToPpm(surf, cols, rows, out);
+}
+
+function prismMenuInkSnapshot(): void {
+  const cols = Number(process.argv[3]) || 140;
+  const rows = Number(process.argv[4]) || 44;
+  const progress = Math.max(0, Math.min(1, Number(process.argv[5]) || 0));
+  const out = process.argv.find((arg) => arg.endsWith('.ppm')) ?? '.snapshots/prism-menu-ink.ppm';
+  const SS = 3;
+  const target = new RenderTarget(cols * SS, rows * 2 * SS);
+  new PrismScene().renderScene(target, 0.9 + progress * 0.2);
+  const source = new Surface(cols, rows);
+  shapeGlyphToSurface(source, target, cols, rows, { color: true });
+  const prompt = 'press any key to start';
+  source.drawTextOver(Math.max(0, Math.floor((cols - prompt.length) / 2)), rows - 2, prompt, [205, 210, 230]);
+
+  const coverflow = new CoverFlowScene();
+  coverflow.renderScene(target, 0, -1);
+  const destination = new Surface(cols, rows);
+  shapeGlyphToSurface(destination, target, cols, rows, { color: true });
+  const item = MENU_ITEMS[0];
+  destination.drawTextOver(Math.max(0, Math.floor((cols - item.title.length) / 2)), rows - 4, item.title, [240, 244, 255], STYLE_BOLD);
+
+  const transition = new TimedInkTransition({ duration: 1, cut: { from: { x: 0.62, y: 0.43 }, to: { x: 0.5, y: 0.5 }, direction: { x: -0.82, y: 0.57 } } });
+  transition.start();
+  transition.step(progress);
+  surfaceToPpm(transition.compose(source, destination), cols, rows, out);
+  console.log(`wrote ${out} (${cols}x${rows}, progress=${progress})`);
 }
 
 // A single frame of the boot splash at time `t` (the intro animation). Mirrors the
@@ -1684,7 +1716,7 @@ function chessOverlaySnapshot(): void {
             { id: 'chess-menu-mode', label: 'display', value: 'ascii', onClick: noop },
             { id: 'chess-menu-color', label: 'color', value: 'truecolor', onClick: noop },
             { id: 'chess-menu-eval', label: 'eval bar', value: evalVisible ? 'on' : 'off', onClick: noop },
-            { id: 'chess-menu-illegal', label: 'illegal', value: 'off', onClick: noop },
+            { id: 'chess-menu-illegal', label: 'illegal moves', value: 'off', onClick: noop },
           ],
           [
             { id: 'chess-menu-shortcuts', label: 'controls', onClick: noop },

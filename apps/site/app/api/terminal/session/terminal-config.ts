@@ -3,7 +3,7 @@ import type { NetworkPolicy } from '@vercel/sandbox';
 export const TERMINAL_CWD = '/vercel/sandbox/arcade';
 export const TERMINAL_TIMEOUT_MS = 20 * 60 * 1000;
 export const BASE_TIMEOUT_MS = 10 * 60 * 1000;
-export const TERMINAL_BASE_VERSION = 12;
+export const TERMINAL_BASE_VERSION = 15;
 export const GATEWAY_HOST = 'ai-gateway.vercel.sh';
 
 export interface TerminalSize {
@@ -89,7 +89,7 @@ export function terminalFiles(packageSource: string, placeholder: string): Array
   content: string;
   mode?: number;
 }> {
-  return [
+  const files = [
     {
       path: `${TERMINAL_CWD}/README.md`,
       content: `# Arcade terminal\n\nThis is an isolated Linux shell containing the real Arcade CLI.\n\nStart it:\n\n    arcade\n\nExplore this miniature documentation filesystem:\n\n    ls\n    cd docs\n    cat README.md\n    cd ../examples\n    cat README.md\n\nThe session is temporary. Telemetry is disabled.\n`,
@@ -158,6 +158,14 @@ export function terminalFiles(packageSource: string, placeholder: string): Array
       mode: 0o440,
     },
   ];
+  const bashrc = `${TERMINAL_CWD}/system/visitor.bashrc`;
+  return files.map((file) => file.path !== bashrc ? file : {
+    ...file,
+    content: file.content.replace(
+      'function arcade() { sudo -n -u arcade -- /usr/local/bin/arcade-demo "$@"; }',
+      "function arcade() { printf '__ARCADE_HOST_MODE_1__'; sudo -n -u arcade -- /usr/local/bin/arcade-demo \"$@\"; local status=$?; printf '__ARCADE_HOST_MODE_0__'; return $status; }",
+    ),
+  });
 }
 
 export function interactiveStart(size: TerminalSize) {

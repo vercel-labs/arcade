@@ -39,7 +39,7 @@ const Layout = async ({ children }: LayoutProps<'/[lang]'>) => {
           <QuickTerminalProvider>
             <SiteNav />
             {children}
-            <Footer />
+            <div className="site-default-footer"><Footer /></div>
           </QuickTerminalProvider>
         </GeistdocsProvider>
       </body>

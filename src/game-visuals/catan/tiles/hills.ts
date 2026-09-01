@@ -483,8 +483,8 @@ export function hillsTile(seed: number): Build {
   return m;
 }
 
-export function animatedHillsTile(seed: number, time: number): Build {
-  const m = build();
+export function animatedHillsTile(seed: number, time: number, reuse?: Build): Build {
+  const m = build(reuse);
   const hseed = seed + 5.7;
   const layout = quarryLayout(seed);
   const hAt = (x: number, z: number): number => quarryHeight(layout, x, z, hseed);

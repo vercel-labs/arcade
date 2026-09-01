@@ -61,6 +61,10 @@ function isWide(cp: number): boolean {
 // Width of a single codepoint in cells (0, 1, or 2).
 export function cellWidth(cp: number): number {
   if (isZeroWidth(cp)) return 0;
+  // Unicode die faces (⚀–⚉) are text-presentation symbols in terminals. Treating the Catan
+  // roll icon as wide writes a continuation sentinel into the following cell even though the
+  // terminal advances only one column, leaving a vertical hole in the button's hover fill.
+  if (cp >= 0x2680 && cp <= 0x2689) return 1;
   // Chess piece symbols (U+2654–265F) sit in the Misc-Symbols block that's
   // otherwise wide, but terminals render them in a single cell (no emoji
   // presentation). Treat them as narrow so glyph+label rows stay aligned.

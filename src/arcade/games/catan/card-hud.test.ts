@@ -632,7 +632,7 @@ test('workbench player trade can be cancelled while reactions are pending', () =
   resetCatanWorkbenchCards();
 });
 
-test('player trade popup constrains a long model name before the exchange tokens', () => {
+test('player trade popup uses a fixed color-square identity and spaces arrows from resources', () => {
   const view = catanWorkbenchView();
   const controller: CatanPlayerTradeOffersController = {
     offers: [{
@@ -664,10 +664,15 @@ test('player trade popup constrains a long model name before the exchange tokens
     for (const child of node.children ?? []) visit(child);
   };
   visit(root);
-  const name = nodes.find((node) => node.text === 'grok-4.1-fast-non-reasoning');
-  assert.ok(name);
-  assert.equal(name.style.textOverflow, 'ellipsis');
-  assert.equal(typeof name.style.width, 'number');
+  assert.equal(nodes.some((node) => node.text === 'grok-4.1-fast-non-reasoning'), false);
+  const identity = nodes.find((node) => node.text === '■');
+  assert.ok(identity);
+  const arrow = nodes.find((node) => node.text === '↑');
+  assert.ok(arrow);
+  const exchangeRow = nodes.find((node) => node.children?.includes(arrow) === false
+    && node.children?.some((child) => child.children?.includes(arrow))
+    && node.style.gap === 1);
+  assert.ok(exchangeRow, 'exchange row reserves one cell between its identity arrow and resources');
 });
 
 test('workbench development purchase spends the official cost and draws a card', () => {

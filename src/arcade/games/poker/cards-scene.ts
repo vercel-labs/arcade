@@ -41,6 +41,7 @@ import { cardBackTexture } from './card-textures.ts';
 import { CARD_SCALE, CARD_W, drawCard, flatDown } from './card-render.ts';
 import { HandPeek } from './card-peek.ts';
 import { chairMesh, chairModel, FELT_STIPPLE, feltMesh, frameMesh, TABLE_MODEL, TABLE_RADIUS } from './table.ts';
+import { POKER_TABLE_AMBIENT as TABLE_AMBIENT, POKER_TABLE_LIGHT as TABLE_LIGHT } from '../../../game-visuals/poker/table.ts';
 
 export type CardsMode = 'single' | 'hand' | 'deck';
 
@@ -48,8 +49,6 @@ const FOVY = (46 * Math.PI) / 180;
 
 // Table/chair lighting (lambert): a soft key from above-front so the felt reads
 // green and the brown wood keeps form.
-const TABLE_LIGHT = normalize3({ x: 0.25, y: 0.9, z: 0.4 });
-const TABLE_AMBIENT = 0.74; // high floor so the wood/felt stay bright (esp. in ASCII mode)
 
 // HAND mode: the hero's two hole cards rest here (on the felt, in front of the
 // hero seat at +z). DECK mode: the stock sits just back of center, and cards are

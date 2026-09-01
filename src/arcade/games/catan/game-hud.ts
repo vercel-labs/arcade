@@ -31,7 +31,7 @@ import {
 } from './card-hud.ts';
 import { CatanState } from '../../../rules/catan/catan.ts';
 import { DEV_CARD_TYPES, type CatanAction, type DevCardType, RESOURCES, type Resource, resourceIndex } from '../../../rules/catan/types.ts';
-import { CATAN_CARD, CATAN_STATUS, DEV_CARD_ICON, KNIGHT_ICON, PLAYER_LOOK, RESOURCE_LOOK, ROAD_ICON, SETTLEMENT_ICON } from './palette.ts';
+import { CATAN_CARD, CATAN_STATUS, PLAYER_LOOK, RESOURCE_LOOK } from './palette.ts';
 import { hudTopCenter, hudTopRight } from '../../shell/hud-chrome.ts';
 import type { BoardToken, SailLabel } from './tile-scene.ts';
 import { catanFlyingCardNodes, catanProjectedBoardLabels } from './tile-hud.ts';
@@ -188,9 +188,11 @@ function previewActionText(driver: CatanDriver, preview: CatanActionPreview): st
 export function catanStatusLine(
   driver: CatanDriver,
   preview?: CatanActionPreview | null,
+  setupComplete = true,
 ): { text: string; color: [number, number, number]; hint: string; detail: string } | null {
   const state = driver.state();
   if (!state) return null;
+  if (!setupComplete) return null;
   if (driver.error()) return { text: 'the game stopped', color: STATUS_FG, hint: driver.error() ?? '', detail: '' };
   if (driver.isComplete()) {
     const winner = driver.winner();
@@ -244,8 +246,8 @@ export function catanStatusLine(
 
 // The status pill, centred along the top of the board so it reads before the eye reaches the
 // rail. Nothing is drawn before a game starts — the setup panel is the whole screen then.
-function statusPanel(driver: CatanDriver, region: LayoutBox, preview?: CatanActionPreview | null): Node[] {
-  const status = catanStatusLine(driver, preview);
+function statusPanel(driver: CatanDriver, scene: CatanGameScene, region: LayoutBox, preview?: CatanActionPreview | null): Node[] {
+  const status = catanStatusLine(driver, preview, scene.setupPresentationComplete());
   if (!status) return [];
   const rail = catanRailVisible(region.w, region.h) ? CATAN_RAIL_W : 0;
   return [
@@ -512,37 +514,6 @@ function humanActionPanel(deps: CatanGameHudDeps, region: LayoutBox): Node | nul
   }, children);
 }
 
-function spectatorActionPanel(deps: CatanGameHudDeps, region: LayoutBox): Node | null {
-  if (deps.driver.humanSeat() >= 0) return null;
-  const action = deps.scene.actionPreview()?.action;
-  if (!action || action.type === 'offerTrade' || action.type === 'counterTrade'
-    || action.type === 'maritimeTrade' || action.type === 'maritimeBulkTrade' || action.type === 'buyDevCard'
-    || action.type === 'acceptTrade' || action.type === 'rejectTrade' || action.type === 'confirmTrade'
-    || action.type === 'cancelTrade') return null;
-  const label = action.type === 'roll' ? '⚄ roll'
-    : action.type === 'endTurn' ? 'end turn'
-      : action.type === 'buildRoad' || action.type === 'initialRoad' ? `${ROAD_ICON} road`
-        : action.type === 'buildSettlement' || action.type === 'initialSettlement' ? `${SETTLEMENT_ICON} settlement`
-          : action.type === 'buildCity' ? `${SETTLEMENT_ICON} city`
-            : action.type === 'playKnight' ? `${KNIGHT_ICON} knight`
-              : action.type === 'playRoadBuilding' ? `${ROAD_ICON} road building`
-                : action.type === 'playYearOfPlenty' ? `${DEV_CARD_ICON} year of plenty`
-                  : action.type === 'playMonopoly' ? `${DEV_CARD_ICON} monopoly`
-                    : action.type === 'discard' ? 'discard'
-                      : action.type === 'moveRobber' ? `${KNIGHT_ICON} move robber`
-                        : null;
-  if (!label) return null;
-  const layout = catanCardsLayout(region);
-  return Box({
-    position: 'absolute',
-    left: 2,
-    bottom: layout.handHeight + 2,
-    minHeight: 1,
-    padding: [0, 1],
-    background: UI_CHROME_BG,
-  }, [liveActionButton('spectator-preview', label, () => {}, true, true)]);
-}
-
 function liveDiscardController(scene: CatanGameScene, state: CatanState): CatanDiscardEditorController | undefined {
   if (scene.humanMenuKind() !== 'discard') return undefined;
   const required = state.legalActionFamilies().find((family) => family.type === 'discard')?.count ?? 0;
@@ -803,9 +774,8 @@ export function buildCatanGameRoot(region: LayoutBox, deps: CatanGameHudDeps): N
       chatComposer,
     ),
     ...([humanActionPanel(deps, region)].filter((node): node is Node => node !== null)),
-    ...([spectatorActionPanel(deps, region)].filter((node): node is Node => node !== null)),
     ...catanFlyingCardNodes(deps.resourceFlights ?? []),
-    ...statusPanel(driver, region, deps.scene.actionPreview()),
+    ...statusPanel(driver, deps.scene, region, deps.scene.actionPreview()),
     catanPlayerLegend(
       driver,
       region,

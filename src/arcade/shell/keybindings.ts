@@ -37,7 +37,6 @@ export interface KeyHandlers {
   toggleHistory(): void;
   toggleChat(): void;
   resetGame(): void;
-  toggleIllegal(): void;
   toggleEvalBar(): void;
   openChessMenu(): void;
   closeGameOver(): void;
@@ -105,7 +104,6 @@ export function installKeymap(h: KeyHandlers): Keymap {
     { id: 'chess.toggleHistory', title: 'Toggle move history', run: h.toggleHistory },
     { id: 'chess.toggleChat', title: 'Toggle chat', run: h.toggleChat },
     { id: 'chess.resetGame', title: 'Reset board', run: h.resetGame }, // menu / bar button only (no user key)
-    { id: 'chess.toggleIllegal', title: 'Toggle illegal moves', run: h.toggleIllegal },
     { id: 'chess.toggleEvalBar', title: 'Toggle eval bar', run: h.toggleEvalBar },
     { id: 'chess.closeGameOver', title: 'Close result', run: h.closeGameOver },
     { id: 'chess.cancelSetup', title: 'Cancel match setup', run: h.closeMatchSetup },
@@ -140,7 +138,6 @@ export function installKeymap(h: KeyHandlers): Keymap {
   keymap.bind('chess', { key: 'p', cmd: 'chess.toggleAI' });
   keymap.bind('chess', { key: 'h', cmd: 'chess.toggleHistory' });
   keymap.bind('chess', { key: 'c', cmd: 'chess.toggleChat' }); // chat toggle (was 't')
-  keymap.bind('chess', { key: 'i', cmd: 'chess.toggleIllegal' });
   keymap.bind('chess', { key: 'e', cmd: 'chess.toggleEvalBar' });
   keymap.bind('chess', { key: 'm', cmd: 'chess.openMenu' }); // ☰ menu (chess-game only; no-op in the showcase)
   // Poker: play/pause ('p'), ☰ menu ('m'), toggle table-talk chat ('c'), plus −/+ to nudge the

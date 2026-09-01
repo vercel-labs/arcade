@@ -44,6 +44,9 @@ The following remain implementation details:
 - `voice/`: used by the CLI, but not exported while browser/terminal platform coverage,
   native speaker behavior, and echo cancellation remain launch decisions.
 - `arcade/`: the concrete product UI and lifecycle.
+- `cinematic/`: shared implementation used by CLI and browser, but not a supported package
+  subpath yet. Its compatibility surface is exposed through `/web` where needed; a dedicated
+  export can follow after the API settles.
 
 ## 3. Repository-only apps and tools
 

@@ -22,7 +22,9 @@ rules ─────────────> harness ───────┬�
 engine ──┬──> tui ──────────────────────────────────────────┤
          ├──> game-visuals ─────────────────────────────────┤
          ├──> prism ───────────────> api                     │
-         └──> web <── tui / rules / game-visuals ──> apps/site
+         ├──> cinematic ────────────┬──> arcade app           │
+         │                          └──> web ─────> apps/site  │
+         └──> web <── tui / rules / game-visuals ────────────┘
 
 auth / voice / telemetry ───────────────────────> arcade app
 ```
@@ -37,8 +39,13 @@ auth / voice / telemetry ──────────────────�
   sessions. It does not choose credentials or publish telemetry.
 - `src/game-visuals/` contains renderer-only assets and primitives that can be composed by
   Arcade, the web examples, or another application.
+- `src/cinematic/` owns platform-neutral timelines, camera choreography, scene transitions,
+  display-mode transitions, and shared scene compositions such as Cover Flow. It consumes
+  renderer primitives and injected assets, never browser APIs, filesystem APIs, or
+  `src/arcade/`.
 - `src/web/` adapts browser-safe renderer/TUI/rules pieces to Canvas. It is not a second
-  implementation of the full Arcade launcher; the website uses a hosted PTY for that.
+  implementation of shared cinematic behavior: browser image decoding, Canvas presentation,
+  pointer input, and scroll observation stay here.
 - `src/prism/` is a self-contained visual shared by the CLI, curl endpoint, snapshots, and
   the website.
 - `src/arcade/` owns product composition: launcher, HUDs, animation pacing, setup panels,
@@ -48,9 +55,10 @@ auth / voice / telemetry ──────────────────�
 
 ## Dependency rule
 
-Library layers must not import `src/arcade/`. If both the live application and a headless
-tool need the same rules, prompt, player, session, or visual code, that code belongs below
-the app—usually in `rules/`, `harness/`, or `game-visuals/`.
+Library layers must not import `src/arcade/`. If both the live application and a browser,
+headless tool, or other host need the same rules, prompt, player, session, visual, or
+choreography, that code belongs below the app—usually in `rules/`, `harness/`,
+`game-visuals/`, or `cinematic/`.
 
 The package root is a browser-safe convenience surface. Node-only capabilities such as raw
 terminal control and model match execution are intentionally reached through `/platform`
@@ -64,6 +72,8 @@ current model catalog, but reusable match execution must not live under `arcade/
 - New legal rule or state transition: `rules/<game>/`.
 - New agent/player implementation or generic match behavior: `harness/`.
 - Renderer-only mesh, animation, or board-game prop: `game-visuals/<game>/`.
+- Timeline, deterministic camera pose, match cut, or cross-host scene composition:
+  `cinematic/`, with assets supplied by the host.
 - HUD, menu, click behavior, or product animation choreography: `arcade/games/<game>/`.
 - Snapshot, audit, or batch evaluation command: `tools/` using the harness.
 - Credential selection, account state, telemetry delivery, or voice hardware integration:

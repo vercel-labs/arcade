@@ -20,7 +20,6 @@ import {
   Scene,
   SceneRenderer,
   smoothstep,
-  travelPoint,
   type PieceUniforms,
   type Vec3,
   type VertexIn,
@@ -32,15 +31,12 @@ import {
   parseChessPieceMesh,
   type ChessPieceMeshes,
 } from '../../../game-visuals/chess/index.ts';
+import { chessJailPosition, chessMovePosition, chessSquarePosition, planChessMove } from '../../../game-visuals/chess/move-animation.ts';
 import { ChessState } from '../../../rules/chess/chess.ts';
 import {
   BISHOP,
   BLACK,
   type Color,
-  FLAG_CAPTURE,
-  FLAG_CASTLE_K,
-  FLAG_CASTLE_Q,
-  FLAG_EP,
   FLAG_PROMO,
   KING,
   KNIGHT,
@@ -92,9 +88,6 @@ const WISP_FLOAT = 2.7;
 const WISP_SCALE = 0.6;
 const DOT_LIFT = 0.012; // float the move dots just above the board surface
 const HILITE_LIFT = 0.004; // selected-square tint sits just above the board, under the piece
-const ARC_HEIGHT = 0.5; // peak lift of a parabolic arc (captures + knight hops), world units
-const JAIL_GAP = 0.9; // x-gap between the board edge and the first jail column (× square)
-const JAIL_STEP = 0.9; // jail slot spacing, a touch tighter than a board square (× square)
 const EMPTY_MESH: Mesh = { vertices: [], indices: [] };
 
 // How a piece travels between two world points: `slide` stays on the board
@@ -118,7 +111,7 @@ interface AnimSeg {
 // Interpolate a world position along a segment at eased parameter `e`, adding a
 // low parabolic lift (peaks at e=0.5) for arc motion.
 function travel(a: Vec3, b: Vec3, e: number, motion: Motion): Vec3 {
-  return travelPoint(a, b, e, motion === 'arc' ? ARC_HEIGHT : 0);
+  return chessMovePosition({ type: PAWN, color: WHITE, from: a, to: b, motion, hideSq: -1 }, e);
 }
 
 // A playable chess board: a procedural 8×8 board driven by a live ChessState.
@@ -260,12 +253,7 @@ export class ChessGameScene {
   // World center of a square. White's bottom-right (h1) is +X,+Z; ranks increase
   // away from white (toward −Z).
   private squareCenter(sq: number): Vec3 {
-    const file = sq & 7;
-    const rank = sq >> 4;
-    const x = (file - 3.5) * this.square;
-    const z = (3.5 - rank) * this.square;
-    // Flipped (human plays Black): a 180° turn about the board center, i.e. negate x and z.
-    return this.flipped ? { x: -x, y: 0, z: -z } : { x, y: 0, z };
+    return chessSquarePosition(sq, this.square, this.flipped);
   }
 
   // World position of a captured piece's parking slot, for the given captor's
@@ -274,17 +262,7 @@ export class ChessGameScene {
   // and the 9th piece (index 8) starts a second column further out. Black's jail
   // is the 180° mirror, putting it at the top-left from White's view.
   private jailSlot(captor: Color, index: number): Vec3 {
-    const sq = this.square;
-    const edge = 4 * sq; // right edge of the playing surface
-    const col = Math.floor(index / 8); // 0 = nearer the board, 1 = further out
-    const row = index % 8; // 0 = nearest the h1 corner, 7 = back by h8
-    const x = edge + JAIL_GAP * sq + col * JAIL_STEP * sq;
-    // Row 0 aligns just inside the front-right corner, a touch ahead of h1's
-    // center; successive rows step back toward h8.
-    const z = edge - (JAIL_STEP * sq) / 2 - row * JAIL_STEP * sq;
-    const slot = captor === WHITE ? { x, y: 0, z } : { x: -x, y: 0, z: -z };
-    // Jails rotate with the board when flipped, so the human's captures stay near them.
-    return this.flipped ? { x: -slot.x, y: 0, z: -slot.z } : slot;
+    return chessJailPosition(captor, index, this.square, this.flipped);
   }
 
   // ── Camera passthrough ─────────────────────────────────────────────────────
@@ -625,60 +603,9 @@ export class ChessGameScene {
   }
 
   private startMove(move: Move): void {
-    const color = pieceColor(move.piece);
-    const segs: AnimSeg[] = [];
-    let jail: { type: number; color: Color; captor: Color } | undefined;
-
-    // Capture: the captured piece arcs off to its jail slot at the same time the
-    // capturer moves to the square — both in phase 0 — so the whole thing reads
-    // as one smooth motion rather than a two-step take-then-move.
-    if (move.flags & (FLAG_CAPTURE | FLAG_EP)) {
-      // En passant takes the pawn behind the destination, not on it.
-      const capturedSq = move.flags & FLAG_EP ? move.to + (color === WHITE ? -16 : 16) : move.to;
-      const capType = pieceType(move.captured);
-      const capColor = pieceColor(move.captured);
-      const list = color === WHITE ? this.whiteJail : this.blackJail;
-      segs.push({
-        mesh: this.meshByType[capType],
-        color: capColor,
-        from: this.squareCenter(capturedSq),
-        to: this.jailSlot(color, list.length),
-        motion: 'arc',
-        phase: 0,
-        hideSq: capturedSq,
-      });
-      jail = { type: capType, color: capColor, captor: color };
-    }
-
-    // The mover travels in phase 0 too. Knights hop (arc); everyone else slides.
-    const moverPhase = 0;
-    segs.push({
-      mesh: this.meshByType[pieceType(move.piece)],
-      color,
-      from: this.squareCenter(move.from),
-      to: this.squareCenter(move.to),
-      motion: pieceType(move.piece) === KNIGHT ? 'arc' : 'slide',
-      phase: moverPhase,
-      hideSq: move.from,
-    });
-
-    // Castling rook rides alongside the king (same phase, sliding; never a capture).
-    const addRook = (fromFile: number, toFile: number): void => {
-      const rank = color === WHITE ? 0 : 7;
-      segs.push({
-        mesh: this.meshByType[ROOK],
-        color,
-        from: this.squareCenter(square(fromFile, rank)),
-        to: this.squareCenter(square(toFile, rank)),
-        motion: 'slide',
-        phase: moverPhase,
-        hideSq: square(fromFile, rank),
-      });
-    };
-    if (move.flags & FLAG_CASTLE_K) addRook(7, 5);
-    if (move.flags & FLAG_CASTLE_Q) addRook(0, 3);
-
-    this.anim = { segs, move, phases: 1, phase: 0, t: 0, jail };
+    const plan = planChessMove(move, { square: this.square, flipped: this.flipped, whiteJailCount: this.whiteJail.length, blackJailCount: this.blackJail.length });
+    const segs: AnimSeg[] = plan.segments.map((segment) => ({ ...segment, mesh: this.meshByType[segment.type], phase: 0 }));
+    this.anim = { segs, move, phases: 1, phase: 0, t: 0, jail: plan.captured };
     this.dirty = true;
     this.deselect();
   }

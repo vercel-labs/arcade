@@ -42,7 +42,7 @@ export const SiteNav = () => (
         ))}
         <QuickTerminalButton className="site-terminal-trigger">
           <span aria-hidden="true">›_</span>
-          <span className="site-terminal-trigger__label">Open Arcade</span>
+          <span className="site-terminal-trigger__label">Play</span>
         </QuickTerminalButton>
         <a
           aria-label="GitHub repository"

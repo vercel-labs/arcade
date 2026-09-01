@@ -39,3 +39,12 @@ test('d globally cycles display mode and is advertised by the controls modal', (
   assert.equal(keymap.handle(D_KEY), true);
   assert.deepEqual(calls, ['cycleMode'], 'd should keep cycling while the controls modal is open');
 });
+
+test('illegal moves has no hidden shortcut while eval remains keyboard-adjustable', () => {
+  const handlers = new Proxy({}, { get: () => () => {} }) as KeyHandlers;
+  const keymap = installKeymap(handlers);
+  keymap.setBase('chess');
+  assert.equal(keymap.commands().some((command) => command.id === 'chess.toggleIllegal'), false);
+  assert.equal(keymap.activeBindings().some((binding) => binding.key === 'i'), false);
+  assert.equal(keymap.activeBindings().some((binding) => binding.key === 'e' && binding.id === 'chess.toggleEvalBar'), true);
+});

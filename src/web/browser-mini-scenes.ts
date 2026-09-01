@@ -20,7 +20,7 @@ import {
   STYLE_DIM,
   Surface,
 } from '../engine/surface.ts';
-import { animatedTileMesh, tileMesh } from '../game-visuals/catan/index.ts';
+import { AnimatedTileMeshCache, animatedTileMesh, tileMesh } from '../game-visuals/catan/index.ts';
 import {
   CHESS_PIECE_ASSET_URLS,
   fetchChessPieceMeshes,
@@ -73,18 +73,21 @@ export class BrowserChessBoardShowcase implements BrowserMiniScene {
   }
 
   prepare(): Promise<void> {
-    this.preparation ??= this.loadPieceMeshes();
+    this.preparation ??= Promise.all([this.loadPieceMeshes(), this.arcade.prepareWisps()]).then(() => undefined);
     return this.preparation;
   }
 
-  frame(cols: number, rows: number): BrowserMiniSceneFrame {
-    const frame = this.arcade.frame(cols, rows);
+  frame(cols: number, rows: number, timeSeconds = 0): BrowserMiniSceneFrame {
+    const frame = this.arcade.frame(cols, rows, timeSeconds);
     return {
       surface: frame.surface,
       status: frame.status,
       displayMode: frame.displayMode,
     };
   }
+
+  setCinematicProgress(progress: number): void { this.arcade.setCinematicProgress(progress); }
+  setCinematicState(cameraProgress: number, gameplayPhase: number): void { this.arcade.setCinematicState(cameraProgress, gameplayPhase); }
 
   cycleDisplayMode(): BrowserDisplayMode { return this.arcade.cycleDisplayMode(); }
   orbit(dx: number, dy: number): void { this.arcade.orbit(dx, dy); }
@@ -94,6 +97,7 @@ export class BrowserChessBoardShowcase implements BrowserMiniScene {
 
 /** One production Catan terrain tile rendered independently from the full board. */
 export class BrowserCatanTileShowcase implements BrowserMiniScene {
+  private readonly animatedTileCache = new AnimatedTileMeshCache();
   private readonly camera = new OrbitCamera(
     { azimuth: 0.42, elevation: 0.62, distance: 3.45, target: { x: 0, y: 0.06, z: 0 } },
     1.8,
@@ -122,7 +126,7 @@ export class BrowserCatanTileShowcase implements BrowserMiniScene {
       wrap: 0.22,
     });
     draw(tileMesh(this.terrain, 2), 0.32);
-    const animated = animatedTileMesh(this.terrain, 2, timeSeconds, { x: 0, z: 0 });
+    const animated = animatedTileMesh(this.terrain, 2, timeSeconds, { x: 0, z: 0 }, this.animatedTileCache);
     if (animated) draw(animated, 0.38);
 
     const surface = present(target, cols, rows, this.displayMode);

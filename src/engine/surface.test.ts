@@ -31,6 +31,19 @@ test('a leading zero-width codepoint cannot escape into an earlier cell', () => 
 const W: [number, number, number] = [255, 255, 255];
 const K: [number, number, number] = [0, 0, 0];
 
+test('text-presentation die faces occupy one terminal cell', () => {
+  assert.equal(stringWidth('⚄ roll'), 6);
+  const hovered = new Surface(8, 1);
+  const fill: [number, number, number] = [44, 46, 58];
+  hovered.fillRect(0, 0, 8, 1, fill);
+  hovered.drawText(1, 0, '⚄ roll', W, fill);
+  assert.deepEqual(
+    Array.from({ length: 6 }, (_, x) => hovered.getCell(x + 1, 0)?.ch),
+    ['⚄', ' ', 'r', 'o', 'l', 'l'],
+  );
+  assert.ok(Array.from({ length: 6 }, (_, x) => hovered.getCell(x + 1, 0)?.bg).every((bg) => bg?.join(',') === fill.join(',')));
+});
+
 test('overwriting either half of a double-width glyph blanks the other', () => {
   // A half-replaced pair cannot be rendered: the old glyph stays and new content lands on it.
   const tail = new Surface(6, 1);

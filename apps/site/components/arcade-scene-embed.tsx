@@ -2,6 +2,7 @@
 
 import {
   CanvasSurfaceHost,
+  TERMINAL_CELL_ASPECT_RATIO,
   createBrowserMiniScene,
   type BrowserDisplayMode,
   type BrowserMiniScene,
@@ -40,6 +41,7 @@ export function ArcadeSceneEmbed({
     if (!canvas) return;
     const runtime = createBrowserMiniScene(scene);
     const host = new CanvasSurfaceHost(canvas as unknown as CanvasLike, {
+      cellAspectRatio: TERMINAL_CELL_ASPECT_RATIO,
       devicePixelRatio: window.devicePixelRatio,
     });
     runtimeRef.current = runtime;

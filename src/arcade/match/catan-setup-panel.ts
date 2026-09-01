@@ -9,6 +9,7 @@
 // order, so two seats can never share a color and no per-seat color control is needed.
 
 import { Box, Dropdown, Field, Slot, Text, type Node, type Screen } from '../../tui/index.ts';
+import type { CommunicationMode } from '../../harness/communication/types.ts';
 import type { RGB } from '../../engine/index.ts';
 import { pickerCreators } from './models.ts';
 import { shortModel } from '../../harness/model-label.ts';
@@ -22,7 +23,7 @@ import { CATAN_DEFAULT_AI_SEATS } from './catan-defaults.ts';
 let TEXT_CREATORS: ModelCreator[] = pickerCreators();
 const MAX_SEATS = 4; // the base game's ceiling; the rules engine allows 2 for heads-up
 const MIN_SEATS = 2;
-const SEAT_LABEL_W = 10; // wide enough for "your color"; keeps every control aligned
+const SEAT_LABEL_W = 14; // wide enough for "communication"; keeps every control aligned
 
 // Fires on every committed change, so main can refresh the live board preview (the seat
 // colors). Null until main wires it — module init commits the defaults before the hook
@@ -87,6 +88,21 @@ export const modeDropdown = new Dropdown({
   index: 0,
   onSelect: () => changed(),
 });
+
+const COMMUNICATION_W = 14;
+export const communicationDropdown = new Dropdown({
+  id: 'catan-setup-communication',
+  items: ['ambient', 'autoreply'],
+  width: COMMUNICATION_W,
+  index: 0,
+  onSelect: () => changed(),
+});
+export function catanSetupCommunicationMode(): CommunicationMode {
+  return communicationDropdown.index === 1 ? 'autoreply' : 'ambient';
+}
+function communicationDescription(): string {
+  return catanSetupCommunicationMode() === 'ambient' ? 'chat after key moments' : 'chat after every action';
+}
 function spectating(): boolean {
   return modeDropdown.index === 1;
 }
@@ -111,6 +127,7 @@ export function mountCatanSetup(ui: Screen): void {
   ui.mount(seatsDropdown);
   ui.mount(modeDropdown);
   ui.mount(colorDropdown);
+  ui.mount(communicationDropdown);
   for (const side of sides) mountModelSeat(ui, side);
 }
 
@@ -181,6 +198,10 @@ export function buildCatanSetupPanel(): Node {
     Text({ text: 'new game', style: { color: TITLE_FG, bold: true } }),
     row('mode', Slot('catan-setup-mode')),
     row('players', Slot('catan-seats')),
+    row('communication', Box({ gap: 2, alignItems: 'center' }, [
+      Slot('catan-setup-communication', { width: COMMUNICATION_W }),
+      Text({ text: communicationDescription(), style: { color: 'muted' } }),
+    ])),
     row(spectating() ? 'seat 1' : 'your color', Slot('catan-setup-color')),
     ...seatRows,
     ...hidden,

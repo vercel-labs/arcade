@@ -45,20 +45,40 @@ import { DeckShuffle } from './deck-shuffle.ts';
 import { chairMesh, chairModel, FELT_STIPPLE, feltMesh, frameMesh, TABLE_MODEL, TABLE_RADIUS } from './table.ts';
 import {
   type ChipColumn,
-  chipPileHalfExtent,
   cloneChipColumns,
   drawChipStack,
   mergeChipColumns,
   playerColumns,
   takeChipColumns,
 } from '../../../game-visuals/poker/chips.ts';
+import { POKER_TABLE_AMBIENT as TABLE_AMBIENT, POKER_TABLE_LIGHT as TABLE_LIGHT } from '../../../game-visuals/poker/table.ts';
+import {
+  POKER_BOARD_Z as BOARD_Z,
+  POKER_CARD_LIFT as CARD_LIFT,
+  POKER_DEAL_HOP as DEAL_HOP,
+  POKER_DECK_FULL as DECK_FULL,
+  POKER_DECK_POSITION as DECK_POS,
+  POKER_DECK_THICKNESS as DECK_THICK,
+  POKER_HOLE_GAP as HOLE_GAP,
+  POKER_HOLE_RADIUS as HOLE_R,
+  pokerBetCenter,
+  pokerBoardCardPose,
+  pokerStackCenter,
+} from '../../../game-visuals/poker/layout.ts';
+import {
+  POKER_GATHER_STEP as GATHER_STEP,
+  POKER_GATHER_STAGGER as GATHER_STAGGER,
+  POKER_MUCK_STEP as MUCK_STEP,
+  createPokerGatherCard,
+  createPokerMuckCards,
+  pokerGatherCardPose,
+  pokerMuckCardPose,
+  type PokerGatherCard as GatherCard,
+  type PokerMuckCard as MuckCard,
+} from '../../../game-visuals/poker/card-collection.ts';
+import { POKER_CHIP_AWARD_HOP as CHIP_AWARD_HOP, POKER_CHIP_AWARD_STEP as CHIP_AWARD_T, POKER_CHIP_COLLECT_STEP as CHIP_COLLECT_T, POKER_CHIP_POT_POSITION as CHIP_POT_POS, pokerChipFlight } from '../../../game-visuals/poker/chip-motion.ts';
 
 const FOVY = (46 * Math.PI) / 180;
-const TABLE_LIGHT = normalize3({ x: 0.25, y: 0.9, z: 0.4 });
-const TABLE_AMBIENT = 0.74;
-
-const HOLE_R = TABLE_RADIUS * 0.72; // radius at which a seat's hole cards rest (out toward the rail)
-const HOLE_GAP = 0.62 * CARD_W; // tangential half-gap between a seat's two cards (> ½ card wide → no overlap)
 
 // Camera framing. The overview orbits/zooms about the table-top centre (0,0,0);
 // the "my hand" button jumps to a close over-the-shoulder pose on the hero's seat.
@@ -67,9 +87,7 @@ const CAM_MIN_DIST = 3;
 const CAM_MAX_DIST = 24;
 const OVERVIEW_TARGET: Vec3 = { x: 0, y: 0, z: 0 }; // the table-top center — orbit pivots here
 
-const BOARD_SPACING = CARD_W * 1.12; // gap between community cards
-const BOARD_Z = 0.5; // community row sits a touch toward the hero, clear of the centre deck
-const CARD_LIFT = 0.08; // rest cards clear of the felt — enough that far seats' cards, seen at a
+// rest cards clear of the felt — enough that far seats' cards, seen at a
 // grazing angle across the larger table, don't z-fight the felt and drop out
 const WISP_FLOAT = 2.2; // world height a seat's wisp floats above the felt
 const WISP_SCALE = 1.0; // orb ~0.85 world radius; centred at WISP_FLOAT so its base (~y1.35) still clears the raised backrests
@@ -99,12 +117,8 @@ const CINE_MARGIN = 1.18;
 // flies two cards out to each seat, and each community street (flop/turn/river) is
 // dealt from it too. Purely cosmetic — the state already knows every card; this just
 // animates them onto the felt, sandbox-deck-mode style.
-const DECK_POS = { x: 0, z: -1.4 }; // centre-back; clear of the board row and the seats
-const DECK_FULL = 34; // backs in a full stack (visual only); it shrinks as cards are dealt
-const DECK_THICK = 0.02; // stacked back thickness
 const DEAL_STEP = 0.3; // seconds each card takes to fly to its seat — an unhurried, dealt-by-hand pace
 const COMMUNITY_STEP = 0.68; // a community card flies out slowly (it flips face-up mid-flight) so the bird's-eye reads
-const DEAL_HOP = 0.85; // height of a dealt card's arc
 const DEAL_CARD: Card = { rank: 0, suit: 0 }; // dealt face-down, so identity is irrelevant
 // After the opening deal lands, hold this long before the first action is requested, so
 // every seat's cards are clearly on the felt (and the hero can peek) before play begins.
@@ -114,14 +128,6 @@ const DEAL_HOLD = 2.0;
 // Cards never teleport. A fold slides its two cards into a loose burn pile beside the
 // deck; the end of a hand gathers every card on the felt back into the deck, which then
 // riffle-shuffles twice before the next deal (see runInterlude).
-const MUCK_POS = { x: 1.7, z: DECK_POS.z }; // burn pile, beside the deck (clear of the board row + seat cards)
-const MUCK_STEP = 0.42; // seconds a folded card takes to slide into the muck
-const MUCK_HOP = 0.28; // small arc height as a card slides to the muck
-const MUCK_JITTER_POS = 0.16; // world jitter of a mucked card off the pile centre
-const MUCK_JITTER_YAW = 0.34; // radians of random rotation per mucked card (a messy pile)
-const MUCK_STACK = 0.014; // y increment per mucked card so later folds sit on top
-const GATHER_STEP = 0.5; // seconds one gathered card takes to reach the deck
-const GATHER_STAGGER = 0.05; // per-card start delay, so cards sweep in rather than all at once
 const SHUFFLE_CYCLES = 2; // riffle+bridge passes between hands (the user asked for two)
 const SHUFFLE_SPEED = 1.5; // interlude shuffle playback speed (mild speed-up so it reads without dragging)
 const DECK_TURN_T = 0.45; // after the bridge settles, smoothly turn the squared deck into its live orientation
@@ -135,26 +141,7 @@ const DECK_TURN_T = 0.45; // after the bridge settles, smoothly turn the squared
 // from CHIP_BET_R to the pot (opposite the muck across the deck) over CHIP_COLLECT_T. The
 // deal cinematic waits for both to finish before it cuts to the bird's-eye, so the user sees
 // their chips land in front and sweep to the pot on their own view first.
-const CHIP_SIDE = 1.58; // baseline tangential offset of the carried stack from the seat's cards
-const CHIP_EDGE_NUDGE = 0.12; // sit just outside the card radius, toward the rail
-// A tall carried stack piles into a wider cluster; left at the fixed CHIP_SIDE it creeps back
-// over the seat's own hole cards (a $10k stack is much wider than a $1k one). So the offset is
-// pushed out until the pile's near edge clears the far edge of the two cards by CHIP_CARD_GAP.
-// Small stacks stay at CHIP_SIDE; only wide piles shift further out (never onto the cards).
-const CARD_TAN_EDGE = HOLE_GAP + CARD_W / 2; // tangential half-span of a seat's two hole cards
-const CHIP_CARD_GAP = 0.11; // snug clearance between the pile's near edge and the cards
-const CHIP_BET_CARD_GAP = 0.18; // extra clearance when a bet spot meets the community row
-// The felt is flat out to TABLE_RADIUS, where a raised rail lip begins; a chip whose base is
-// past this radius rides up into / behind that lip and reads as sinking under the table. So a
-// carried stack's whole footprint is kept inside this radius (pulled toward centre if a big
-// pile would otherwise overhang the rail). The felt top is y=0, so chips rest at BASE_Y on it.
-const FELT_USABLE_R = TABLE_RADIUS - 0.42;
-const CHIP_BET_R = 2.4; // radius of the this-street bet, in front of the seat toward centre
-const CHIP_POT_POS = { x: -1.7, z: -1.4 }; // mirror of MUCK_POS across the deck
 const BET_PLACE_T = 0.3; // seconds chips take to fly from a seat's stack to its bet spot
-const CHIP_COLLECT_T = 0.42; // seconds the front bets take to sweep into the pot
-const CHIP_AWARD_T = 0.55; // pot flight to the winner before cards gather
-const CHIP_AWARD_HOP = 0.72; // clears the board while crossing the felt
 
 // Idle: with no session running the table isn't bare — it shows a ring of
 // chairs and a centre deck that riffle-shuffles on a loop (see DeckShuffle).
@@ -172,39 +159,11 @@ interface DealCard {
 
 // A folded card sliding into (then resting in) the muck pile. `from*` is its seat rest
 // pose; `to*`/`yaw` its jittered spot on the pile; `t` the 0..1 slide progress.
-interface MuckCard {
-  card: Card;
-  fromX: number;
-  fromZ: number;
-  fromYaw: number;
-  toX: number;
-  toZ: number;
-  yaw: number;
-  lift: number; // resting y (stacked so later folds sit on top)
-  t: number;
-}
-
-// One card being gathered back into the deck at the end of a hand. It flies from its
-// felt rest pose (`from*`, face-up or face-down) to the deck, flattening face-down and
-// squaring to the deck's orientation; `delay` staggers the sweep.
-interface GatherCard {
-  card: Card;
-  fromX: number;
-  fromZ: number;
-  fromYaw: number;
-  faceUp: boolean;
-  delay: number;
-}
-
 interface ChipAward {
   seat: number;
   amount: number;
   cols: ChipColumn[];
 }
-
-// Shortest signed angle into (−π, π] — so a card yawing to a new facing spins the short
-// way rather than unwinding a full turn.
-const wrapPi = (a: number): number => ((a + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
 
 // A seat's session-level identity (persists across hands): whether it's the human
 // hero or an AI, its display label, and (AI) its model creator for the wisp.
@@ -345,6 +304,12 @@ export class PokerGameScene {
   // camera, or viewport state changes.
   private idleBase: RenderTarget | null = null;
   private idleBaseChairCount = -1;
+  // Active hands animate cards, chips, and wisps over a table/chair environment that changes
+  // only with camera, viewport, or seat count. Retain that complete color+depth layer so every
+  // moving frame pays only for gameplay objects while preserving exact occlusion.
+  private activeBase: RenderTarget | null = null;
+  private activeBaseKey = '';
+  private readonly cacheActiveEnvironment: boolean;
 
   private hand: HoldemState | null = null;
   private seats: PokerSeatView[] = [];
@@ -442,7 +407,8 @@ export class PokerGameScene {
   // The hero's pending move request (the HumanPlayer seam), or null.
   private humanReq: { resolve: (a: PokerAction) => void; reject: (e: Error) => void } | null = null;
 
-  constructor() {
+  constructor(options: { cacheActiveEnvironment?: boolean } = {}) {
+    this.cacheActiveEnvironment = options.cacheActiveEnvironment ?? true;
     this.back = cardBackTexture();
     this.idleDeck = new DeckShuffle(this.back, { x: 0, z: 0 }); // dead centre of the felt
     this.handDeck = new DeckShuffle(this.back, DECK_POS); // the between-hands shuffle, at the game deck
@@ -482,6 +448,37 @@ export class PokerGameScene {
     const dWidth = (spanX * 0.5 * CINE_MARGIN) / (tanV * this.lastAspect);
     const dHeight = (CARD_H * 0.5 * CINE_MARGIN) / tanV;
     return new OrbitCamera({ azimuth: 0, elevation: CINE_ELEVATION, distance: Math.max(dWidth, dHeight), target: { x: cx, y: 0, z: BOARD_Z } }, CAM_MIN_DIST, CAM_MAX_DIST);
+  }
+
+  private staticEnvironmentKey(target: RenderTarget, camera: ReturnType<OrbitCamera['toCamera']>, chairCount: number): string {
+    const e = camera.eye;
+    const c = camera.target;
+    return `${target.width}/${target.height}/${chairCount}/${e.x}/${e.y}/${e.z}/${c.x}/${c.y}/${c.z}/${camera.fovy}/${camera.near}/${camera.far}`;
+  }
+
+  private drawStaticEnvironment(target: RenderTarget, camera: ReturnType<OrbitCamera['toCamera']>, chairCount: number): void {
+    target.clear(6, 10, 8);
+    this.queueTable();
+    this.queueChairRing(chairCount);
+    this.sceneRenderer.render(target, this.authoredScene, camera);
+  }
+
+  private restoreActiveEnvironment(target: RenderTarget, camera: ReturnType<OrbitCamera['toCamera']>, chairCount: number): void {
+    if (!this.cacheActiveEnvironment) {
+      this.drawStaticEnvironment(target, camera, chairCount);
+      return;
+    }
+    const key = this.staticEnvironmentKey(target, camera, chairCount);
+    if (!this.activeBase || this.activeBase.width !== target.width || this.activeBase.height !== target.height) {
+      this.activeBase = new RenderTarget(target.width, target.height);
+      this.activeBaseKey = '';
+    }
+    if (key !== this.activeBaseKey) {
+      this.drawStaticEnvironment(this.activeBase, camera, chairCount);
+      this.activeBaseKey = key;
+    }
+    target.color.set(this.activeBase.color);
+    target.depth.set(this.activeBase.depth);
   }
 
   // Wire the game-event sink (main pushes these into the chat as grey lines).
@@ -1101,12 +1098,7 @@ export class PokerGameScene {
       target.depth.set(this.idleBase!.depth);
       this.idleDeck.step(dt);
       this.idleDeck.draw(target, vp);
-    } else {
-      target.clear(6, 10, 8);
-      this.queueTable();
-      this.queueChairRing(chairCount);
-      this.sceneRenderer.render(target, this.authoredScene, camera);
-    }
+    } else this.restoreActiveEnvironment(target, camera, chairCount);
 
     const hand = this.hand;
     if (hand) {
@@ -1222,40 +1214,14 @@ export class PokerGameScene {
   // inside the felt (never overhanging the raised rail). Also the origin of the seat's bet
   // flights, so the chips fly from where the stack is actually drawn.
   private stackCenter(s: number, cols: ChipColumn[]): { x: number; z: number } {
-    const ext = chipPileHalfExtent(cols, s);
-    const off = Math.max(CHIP_SIDE, CARD_TAN_EDGE + CHIP_CARD_GAP + ext.perp); // clear the cards tangentially
-    const tang = off + ext.perp; // the pile's farthest reach along the tangent
-    const rMax = Math.sqrt(Math.max(0, FELT_USABLE_R * FELT_USABLE_R - tang * tang)) - ext.axis;
-    const r = Math.max(0, Math.min(HOLE_R + CHIP_EDGE_NUDGE, rMax)); // nudge outward, but never cross the safe felt radius
-    const c = this.seatPos(s, r);
-    const a = this.seatAngle(s);
-    return { x: c.x + Math.cos(a) * off, z: c.z - Math.sin(a) * off };
+    return pokerStackCenter(s, this.seats.length, cols);
   }
 
   // A bet normally sits on the seat's radial line. If that pile would intersect a dealt
   // community card, move it just beyond the board's near edge; all other seats keep their
   // established positions.
   private betCenter(s: number, cols: ChipColumn[], seed: number): { x: number; z: number } {
-    const a = this.seatAngle(s);
-    const axis = { x: Math.cos(a), z: -Math.sin(a) };
-    const perp = { x: Math.sin(a), z: Math.cos(a) };
-    const ext = chipPileHalfExtent(cols, seed);
-    const halfX = Math.abs(axis.x) * ext.axis + Math.abs(perp.x) * ext.perp;
-    const halfZ = Math.abs(axis.z) * ext.axis + Math.abs(perp.z) * ext.perp;
-    const at = this.seatPos(s, CHIP_BET_R);
-    if (this.boardShown <= 0) return { x: at.x, z: at.z };
-
-    const boardMinX = this.boardSlotX(0) - CARD_W / 2;
-    const boardMaxX = this.boardSlotX(this.boardShown - 1) + CARD_W / 2;
-    const boardMinZ = BOARD_Z - CARD_H / 2;
-    const boardMaxZ = BOARD_Z + CARD_H / 2;
-    const overlapsBoard =
-      at.x + halfX + CHIP_BET_CARD_GAP > boardMinX &&
-      at.x - halfX - CHIP_BET_CARD_GAP < boardMaxX &&
-      at.z + halfZ + CHIP_BET_CARD_GAP > boardMinZ &&
-      at.z - halfZ - CHIP_BET_CARD_GAP < boardMaxZ;
-    if (overlapsBoard) at.z = boardMaxZ + halfZ + CHIP_BET_CARD_GAP;
-    return { x: at.x, z: at.z };
+    return pokerBetCenter(s, this.seats.length, cols, seed, this.boardShown);
   }
 
   // ── Chips: per-seat carried stacks + this-street bets + the pot pile ────────────
@@ -1285,7 +1251,7 @@ export class PokerGameScene {
         const cols = collect.bets[s] ?? [];
         if (cols.length === 0) continue;
         const from = this.betCenter(s, cols, s + 100);
-        const at = { x: from.x + (CHIP_POT_POS.x - from.x) * p, z: from.z + (CHIP_POT_POS.z - from.z) * p };
+        const at = pokerChipFlight(from, CHIP_POT_POS, p);
         drawChipStack(target, vp, at, tangentOf(s), cols, light, ambient, s + 100);
       }
     } else {
@@ -1312,11 +1278,8 @@ export class PokerGameScene {
       for (const share of award.awards) {
         const destination = mergeChipColumns(this.chipStacks[share.seat] ?? [], share.cols);
         const to = this.stackCenter(share.seat, destination);
-        const at = {
-          x: CHIP_POT_POS.x + (to.x - CHIP_POT_POS.x) * p,
-          z: CHIP_POT_POS.z + (to.z - CHIP_POT_POS.z) * p,
-        };
-        drawChipStack(target, vp, at, tangentOf(share.seat), share.cols, light, ambient, share.seat + 300, lift);
+        const at = pokerChipFlight(CHIP_POT_POS, to, p, CHIP_AWARD_HOP);
+        drawChipStack(target, vp, at, tangentOf(share.seat), share.cols, light, ambient, share.seat + 300, at.lift);
       }
       return;
     }
@@ -1371,12 +1334,7 @@ export class PokerGameScene {
       // slider); the bare idle ring uses its varied per-seat amounts.
       const cols = this.previewCols ?? this.idleStacks[k % this.idleStacks.length];
       if (cols.length === 0) continue;
-      const ext = chipPileHalfExtent(cols, k);
-      const sideOff = Math.max(CHIP_SIDE, CARD_TAN_EDGE + CHIP_CARD_GAP + ext.perp);
-      const tang = sideOff + ext.perp;
-      const rMax = Math.sqrt(Math.max(0, FELT_USABLE_R * FELT_USABLE_R - tang * tang)) - ext.axis;
-      const r = Math.max(0, Math.min(HOLE_R + CHIP_EDGE_NUDGE, rMax));
-      const center = { x: Math.sin(a) * r + Math.cos(a) * sideOff, z: Math.cos(a) * r - Math.sin(a) * sideOff };
+      const center = pokerStackCenter(k, n, cols);
       drawChipStack(target, vp, center, { x: Math.sin(a), z: Math.cos(a) }, cols, TABLE_LIGHT, TABLE_AMBIENT, k);
     }
   }
@@ -1397,7 +1355,7 @@ export class PokerGameScene {
   // Fixed 5-slot community row, centred; the flop fills the left three, turn + river
   // extend rightward — so cards never shift as the board grows.
   private boardSlotX(i: number): number {
-    return (i - 2) * BOARD_SPACING;
+    return pokerBoardCardPose(i).x;
   }
 
   // Community cards that have landed (face-up) plus the one currently flying out of the
@@ -1471,26 +1429,7 @@ export class PokerGameScene {
   // pose to a jittered, rotated spot beside the deck (a loose pile, not a neat stack).
   private muckSeat(seat: number): void {
     if (!this.hand) return;
-    const hole = this.hand.holeOf(seat);
-    const a = this.seatAngle(seat);
-    const c = this.seatPos(seat, HOLE_R);
-    const tx = Math.cos(a);
-    const tz = -Math.sin(a);
-    for (let k = 0; k < hole.length; k++) {
-      const off = k === 0 ? -HOLE_GAP : HOLE_GAP;
-      const idx = this.muck.length;
-      this.muck.push({
-        card: hole[k],
-        fromX: c.x + tx * off,
-        fromZ: c.z + tz * off,
-        fromYaw: a,
-        toX: MUCK_POS.x + (this.muckRng() * 2 - 1) * MUCK_JITTER_POS,
-        toZ: MUCK_POS.z + (this.muckRng() * 2 - 1) * MUCK_JITTER_POS,
-        yaw: (this.muckRng() * 2 - 1) * MUCK_JITTER_YAW,
-        lift: CARD_LIFT + idx * MUCK_STACK,
-        t: 0,
-      });
-    }
+    this.muck.push(...createPokerMuckCards(this.hand.holeOf(seat), seat, this.seats.length, this.muck.length, this.muckRng));
     this.dirty = true;
   }
 
@@ -1502,12 +1441,8 @@ export class PokerGameScene {
   // jittered resting spot, face-down the whole way.
   private drawMuck(target: RenderTarget, vp: Mat4): void {
     for (const m of this.muck) {
-      const p = smoothstep(m.t);
-      const x = m.fromX + (m.toX - m.fromX) * p;
-      const z = m.fromZ + (m.toZ - m.fromZ) * p;
-      const y = m.lift + Math.sin(p * Math.PI) * MUCK_HOP;
-      const yaw = m.fromYaw + wrapPi(m.yaw - m.fromYaw) * p;
-      const M = mat4Multiply(mat4Translate(x, y, z), mat4Multiply(mat4RotY(yaw), flatDown()));
+      const pose = pokerMuckCardPose(m);
+      const M = mat4Multiply(mat4Translate(pose.x, pose.y, pose.z), mat4Multiply(mat4RotY(pose.yaw), flatDown()));
       drawCard(target, vp, M, DEAL_CARD, this.back);
     }
   }
@@ -1569,7 +1504,7 @@ export class PokerGameScene {
     const g: GatherCard[] = [];
     this.potDelivered = awards.length > 0;
     const push = (card: Card, fromX: number, fromZ: number, fromYaw: number, faceUp: boolean): void => {
-      g.push({ card, fromX, fromZ, fromYaw, faceUp, delay: g.length * GATHER_STAGGER });
+      g.push(createPokerGatherCard(card, fromX, fromZ, fromYaw, faceUp, g.length));
     };
     // Live seats' hole cards (folded seats are already in the muck), face-up if shown.
     const reveal = hand.showdownSeats();
@@ -1678,15 +1613,8 @@ export class PokerGameScene {
       const baseTopY = this.deckTopY();
       for (let i = 0; i < this.gather.length; i++) {
         const gc = this.gather[i];
-        const p = smoothstep((this.gatherT - gc.delay) / GATHER_STEP);
-        const landY = baseTopY + i * DECK_THICK;
-        const x = gc.fromX + (DECK_POS.x - gc.fromX) * p;
-        const z = gc.fromZ + (DECK_POS.z - gc.fromZ) * p;
-        const y = CARD_LIFT + (landY - CARD_LIFT) * p + Math.sin(p * Math.PI) * DEAL_HOP * 0.6;
-        const yaw = gc.fromYaw + wrapPi(0 - gc.fromYaw) * p;
-        const rx0 = gc.faceUp ? -Math.PI / 2 : Math.PI / 2; // flatUp vs flatDown tilt
-        const rx = rx0 + (Math.PI / 2 - rx0) * p; // flatten to face-down
-        const M = mat4Multiply(mat4Translate(x, y, z), mat4Multiply(mat4RotY(yaw), mat4Multiply(mat4RotX(rx), CARD_SCALE)));
+        const pose = pokerGatherCardPose(gc, i, this.gatherT, baseTopY);
+        const M = mat4Multiply(mat4Translate(pose.x, pose.y, pose.z), mat4Multiply(mat4RotY(pose.yaw), mat4Multiply(mat4RotX(pose.rx ?? Math.PI / 2), CARD_SCALE)));
         drawCard(target, vp, M, gc.card, this.back);
       }
       return;

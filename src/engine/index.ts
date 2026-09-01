@@ -15,6 +15,7 @@ export { downsample } from './supersample.ts';
 export { bloom, type BloomOptions } from './bloom.ts';
 export * from './optics.ts';
 export * from './light-field.ts';
+export * from './pointer-field.ts';
 export { cube, flatShade, meshBounds, quad, tetrahedron, triangularPrism, TETRA_VERTS, TETRA_FACES, type AABB, type Mesh } from './mesh.ts';
 export { parseObj, type ParseObjOptions } from './obj.ts';
 export { cameraMatrices, type Camera, type CameraMatrices } from './camera.ts';

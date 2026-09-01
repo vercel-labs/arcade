@@ -54,6 +54,7 @@ export interface PrismIntro {
   rainbow: number; // 0..1 rainbow length + intensity
 }
 
+
 function lerp(a: number, b: number, k: number): number {
   return a + (b - a) * k;
 }

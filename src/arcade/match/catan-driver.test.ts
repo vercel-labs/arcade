@@ -35,6 +35,20 @@ class DriverScene implements CatanBoardScene {
   }
 }
 
+class GatedDriverScene extends DriverScene {
+  private releaseSetup!: () => void;
+  readonly setupReady = new Promise<void>((resolve) => { this.releaseSetup = resolve; });
+
+  override beginSession(state: CatanState): Promise<void> {
+    super.beginSession(state);
+    return this.setupReady;
+  }
+
+  release(): void {
+    this.releaseSetup();
+  }
+}
+
 function rng(seed: number): () => number {
   let value = seed >>> 0;
   return () => {
@@ -80,6 +94,32 @@ async function waitForIdle(driver: CatanDriver): Promise<void> {
   }
   assert.equal(driver.isRunning(), false, 'driver did not settle');
 }
+
+test('driver waits for board setup presentation before asking for initial placement', async () => {
+  const scene = new GatedDriverScene();
+  let choices = 0;
+  const driver = new CatanDriver({
+    scene,
+    syncLive: () => {},
+    createPlayer: (_spec, _seat, label) => ({
+      name: label,
+      chooseAction: async (state) => {
+        choices++;
+        return { action: state.legalActions()[0], rationale: 'test' };
+      },
+    }),
+  });
+  driver.start([
+    { kind: 'ai', color: 'red', model: 'test/red' },
+    { kind: 'ai', color: 'blue', model: 'test/blue' },
+  ], { maxActions: 1 });
+
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(choices, 0);
+  scene.release();
+  await waitForIdle(driver);
+  assert.equal(choices, 1);
+});
 
 test('driver installs the scene before models run a complete rules-authoritative game', async () => {
   const scene = new DriverScene();
