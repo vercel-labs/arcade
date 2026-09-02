@@ -1,6 +1,7 @@
 'use client';
 
 import { IconCheck } from '@vercel/geistdocs/assets/icons/icon-check';
+import { IconChevronRight } from '@vercel/geistdocs/assets/icons/icon-chevron-right';
 import { IconCopy } from '@vercel/geistdocs/assets/icons/icon-copy';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
@@ -40,7 +41,7 @@ export function MobileDocsNav({ active, items }: { active: string; items: DocsNa
   return <div className="doc-mobile-nav">
     <button aria-controls="doc-mobile-nav-sheet" aria-expanded={open} onClick={() => setOpen((value) => !value)} type="button"><span>Browse docs</span><span aria-hidden="true">{open ? '−' : '+'}</span></button>
     <div className={open ? 'open' : ''} id="doc-mobile-nav-sheet">
-      <nav>{items.map((item, index) => item.group ? <span className="doc-sidebar__group" key={`${item.group}-${index}`}>{item.group}</span> : <Link aria-current={item.href === active ? 'page' : undefined} href={item.href} key={item.href} onClick={() => setOpen(false)}><span>{item.label}</span>{item.drillIn ? <span aria-hidden="true">›</span> : null}</Link>)}</nav>
+      <nav>{items.map((item, index) => item.group ? <span className="doc-sidebar__group" key={`${item.group}-${index}`}>{item.group}</span> : <Link aria-current={item.href === active ? 'page' : undefined} href={item.href} key={item.href} onClick={() => setOpen(false)}><span>{item.label}</span>{item.drillIn ? <span aria-hidden="true"><IconChevronRight size={16} /></span> : null}</Link>)}</nav>
     </div>
   </div>;
 }

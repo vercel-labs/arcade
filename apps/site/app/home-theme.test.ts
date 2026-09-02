@@ -33,7 +33,7 @@ test('the living title uses borderless chrome and no duplicate examples or docs 
   assert.match(nav, /'Docs'/);
   assert.match(nav, /'AI Gateway'/);
   assert.doesNotMatch(nav, /QuickTerminalButton|Open Arcade terminal|IconDisplaySmall|>Play<|site-terminal-trigger__label/);
-  assert.match(nav, /site-nav__link text-gray-900 text-sm/);
+  assert.match(nav, /pathname\.includes\('\/docs'\).*'text-gray-1000' : 'text-gray-900'/);
   assert.match(nav, /site-nav__link site-nav__github text-gray-900/);
   assert.match(css, /header\.sticky \.site-nav__link:hover,[\s\S]*header\.sticky \.site-nav__link:focus-visible \{ color: #fff; \}/);
   assert.match(css, /\.site-nav__link:focus-visible \{ outline: 1px solid currentColor;/);
@@ -76,6 +76,7 @@ test('AI Gateway opens externally while Docs stays in the current tab', async ()
   assert.match(nav, /rel=\{link\.external \? 'noopener noreferrer' : undefined\}/);
   assert.match(nav, /\{ label: 'Docs', href: '\/docs', external: false \}/);
   assert.match(nav, /\{ label: 'AI Gateway'.*external: true \}/);
+  assert.match(nav, /pathname\.includes\('\/docs'\).*text-gray-1000/);
 });
 
 test('the hero advertises one canonical npm command with a full-row copy target', async () => {

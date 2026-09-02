@@ -3,6 +3,7 @@
 import { LogoIconVercel } from '@vercel/geistdocs/assets/logos/logo-icon-vercel';
 import { IconSlashForward } from '@vercel/geistdocs/assets/icons/icon-slash-forward';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 
 // A deliberately plain top bar: the standard Vercel triangle (no "OSS" flyout, no
@@ -23,6 +24,7 @@ const GitHubIcon = () => (
 );
 
 export const SiteNav = () => {
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const firstLinkRef = useRef<HTMLAnchorElement>(null);
@@ -66,7 +68,7 @@ export const SiteNav = () => {
         <nav aria-label="Primary navigation" className="site-nav__desktop flex items-center gap-5">
           {NAV_LINKS.slice(0, 2).map((link) => (
             <Link
-              className="site-nav__link text-gray-900 text-sm"
+              className={`site-nav__link text-sm ${!link.external && pathname.includes('/docs') ? 'text-gray-1000' : 'text-gray-900'}`}
               href={link.href}
               key={link.href}
               rel={link.external ? 'noopener noreferrer' : undefined}

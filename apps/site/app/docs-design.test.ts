@@ -27,7 +27,8 @@ test('guides and reference use real child routes with generated symbol coverage'
   ]);
   for (const slug of ['guides/render-scene', 'guides/terminal-app', 'guides/custom-game', 'guides/visual-testing', 'reference/engine/render-target', 'reference/engine/material', 'reference/engine/surface', 'reference/tui/screen', 'reference/tui/layout-nodes', 'reference/tui/renderer-keymap', 'reference/components/input', 'reference/symbols']) assert.match(reference, new RegExp(slug));
   for (const section of ['Import', 'Signature', 'Lifecycle', 'Example', 'Common failures']) assert.match(reference, new RegExp(`heading: '${section}'`));
-  assert.match(page, /All documentation/);
+  assert.match(page, /Back to all documentation sections/);
+  assert.match(page, /IconChevronRight/);
   assert.match(generated, /@vercel\/arcade\/engine/);
   assert.match(generated, /@vercel\/arcade\/tui/);
   assert.match(script, /checker\.getExportsOfModule/);
