@@ -4,12 +4,12 @@ Arcade turns terminal cells into a programmable canvas. It combines four separab
 
 ## When to use this project
 
-Choose Arcade for terminal-first 3D rendering, reusable retained TUI components, focused browser examples of package primitives, or auditable self-play game loops. Choose another tool for GPU shaders, remote desktop streaming, authoritative multiplayer hosting, or a general public model-execution API.
+Choose Arcade for terminal-first 3D rendering, reusable retained TUI components, browser-safe rendering primitives, or auditable self-play game loops. Choose another tool for GPU shaders, remote desktop streaming, authoritative multiplayer hosting, or a general public model-execution API.
 
 1. Engine: meshes, OBJ parsing, geometry builders, CPU rasterization, materials, cameras, picking, animation, framebuffer effects, terminal display sampling, and Surface.
 2. TUI: retained components, flexbox-like layout, focus, hit testing, scrolling, text input, scene/UI compositing, and cell diffs.
 3. Game harness: authoritative Game and GameState contracts, perfect/imperfect information, legal action validation, model-safe context, AI players, animation synchronization, communication policy, and telemetry-safe canonical records.
-4. Hosts: the raw terminal host serializes Surface to ANSI; the homepage runs that actual host in an isolated PTY; CanvasSurfaceHost remains available for focused browser examples.
+4. Hosts: the raw terminal host serializes Surface to ANSI; the homepage runs that actual host in an isolated PTY; CanvasSurfaceHost remains available for focused browser surfaces.
 
 ## Recommended reading order
 
@@ -21,8 +21,6 @@ Choose Arcade for terminal-first 3D rendering, reusable retained TUI components,
 - /docs/game-harness — rules, model context, self-play, traces, agent tooling
 - /docs/tools — snapshots, match-lab, model audits, benchmarks, privacy
 - /docs/browser-host — hosted CLI architecture, shell isolation, and credential boundary
-- /docs/examples — visual systems already used by Arcade
-- /examples — live source-backed Chess, Islanders, Poker, and prism examples
 
 ## Agentic capabilities
 
@@ -36,6 +34,6 @@ Arcade resolves AI Gateway credentials through Vercel device authentication in l
 
 The home page connects xterm.js to a temporary Linux PTY containing the actual Arcade package packed from the same source revision as the site deployment. Users can run ordinary shell commands, browse the seeded docs/examples filesystem, and type `arcade` to launch the same CLI used after installation. The visitor shell and Arcade process run as separate unprivileged users, general egress is denied, model credentials remain server-side, and the session expires automatically.
 
-## Browser examples
+## Browser surfaces
 
-The examples gallery imports `@vercel/arcade/web` from the package instead of rebuilding Arcade in React. It currently renders the production Chess board and imported knight asset, all 6 Islanders terrain systems, the production Poker chip stack, and the standalone prism stream. Each example names its package import and source file in the page and in `/examples.json`. Complete game shells remain in the hosted CLI until an honest browser-safe boundary is extracted for them.
+The cinematic and hosted terminal reuse `@vercel/arcade/web` and the packaged CLI instead of rebuilding Arcade in React. Complete game shells remain in the hosted CLI until an honest browser-safe boundary is extracted for them.

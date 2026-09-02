@@ -1,7 +1,6 @@
 import { LogoIconVercel } from '@vercel/geistdocs/assets/logos/logo-icon-vercel';
 import { IconSlashForward } from '@vercel/geistdocs/assets/icons/icon-slash-forward';
 import Link from 'next/link';
-import { QuickTerminalButton } from './quick-terminal';
 
 // A deliberately plain top bar: the standard Vercel triangle (no "OSS" flyout, no
 // search box, no Ask AI button — @vercel/geistdocs's own <Navbar> renders those
@@ -10,7 +9,6 @@ import { QuickTerminalButton } from './quick-terminal';
 // assets and design tokens (theme.css) so it still matches the rest of the page.
 const NAV_LINKS = [
   { label: 'Docs', href: '/docs' },
-  { label: 'Examples', href: '/examples' },
   { label: 'AI Gateway', href: 'https://vercel.com/ai-gateway' },
 ];
 
@@ -21,8 +19,8 @@ const GitHubIcon = () => (
 );
 
 export const SiteNav = () => (
-  <header className="sticky top-0 z-30 border-b bg-background-100/80 backdrop-blur">
-    <div className="mx-auto flex h-16 w-full max-w-[1448px] items-center justify-between px-4">
+  <header className="sticky top-0 z-30 bg-background-100/80 backdrop-blur">
+    <div className="site-nav__inner mx-auto flex h-16 w-full max-w-[1448px] items-center justify-between px-4">
       <Link className="flex items-center gap-2.5 text-gray-1000" href="/">
         <LogoIconVercel size={18} />
         <span className="w-4 text-center text-gray-alpha-400">
@@ -40,10 +38,6 @@ export const SiteNav = () => (
             {link.label}
           </Link>
         ))}
-        <QuickTerminalButton className="site-terminal-trigger">
-          <span aria-hidden="true">›_</span>
-          <span className="site-terminal-trigger__label">Play</span>
-        </QuickTerminalButton>
         <a
           aria-label="GitHub repository"
           className="text-gray-900 hover:text-gray-1000"

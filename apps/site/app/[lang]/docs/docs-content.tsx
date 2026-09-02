@@ -22,7 +22,7 @@ export const DOCS: DocPage[] = [
           <a href="/docs/engine"><strong>Engine</strong><span>Geometry, camera, materials, rasterization</span></a>
           <a href="/docs/tui"><strong>TUI</strong><span>Layout, components, input, Surface</span></a>
           <a href="/docs/game-harness"><strong>Game harness</strong><span>Rules, models, communication, traces</span></a>
-          <a href="/examples"><strong>Live examples</strong><span>Focused renderer and interface specimens</span></a>
+          <a href="/docs/browser-host"><strong>Browser host</strong><span>Packaged CLI, xterm, Sandbox, and auth</span></a>
         </div>,
       },
       {
@@ -38,9 +38,9 @@ import {
       },
       {
         heading: 'One-way architecture',
-        body: <><p><code>engine</code> is the reusable CPU graphics layer. <code>tui</code> consumes engine cells and normalized platform input. Rules and AI contracts remain presentation-agnostic. <code>arcade</code> composes those libraries into games. Browser examples import only browser-safe subpaths, while the homepage connects to the actual packaged CLI in an isolated PTY.</p><Code>{`engine ----> tui ---------> terminal host -> ANSI
+        body: <><p><code>engine</code> is the reusable CPU graphics layer. <code>tui</code> consumes engine cells and normalized platform input. Rules and AI contracts remain presentation-agnostic. <code>arcade</code> composes those libraries into games. Browser surfaces import only browser-safe subpaths, while the homepage connects to the actual packaged CLI in an isolated PTY.</p><Code>{`engine ----> tui ---------> terminal host -> ANSI
    |          |
-   |          +-----------> focused browser examples -> Canvas
+   |          +-----------> focused browser surfaces -> Canvas
    +----> arcade <---- rules + ai ----> hosted PTY`}</Code><p>Read the <Source path="docs/architecture/0001-hosted-arcade-terminal.md">hosted-terminal decision record</Source> before introducing a new host or credential path.</p></>,
       },
       {
@@ -138,8 +138,12 @@ rasterize(target, flatShade(cube()), lambertMaterial, {
         body: <><p><code>Surface</code> draws text, wide glyphs, rectangles, clips, alpha backgrounds, and overlays. <code>Screen.frameComposited</code> caches an unchanged scene layer, paints retained UI, and asks <code>CellDiffer</code> for only changed cells. An idle frame writes nothing.</p><p>The native terminal host serializes those changed cells to ANSI. The homepage preserves that entire path by running the actual CLI in a PTY; xterm.js displays the emitted bytes without recreating Arcade’s cells in React.</p><Source path="src/engine/present-cells.ts" /><Source path="src/engine/surface.ts" /><Source path="src/engine/diff.ts" /></>,
       },
       {
+        heading: 'Browser-safe scenes',
+        body: <><p><code>@vercel/arcade/web</code> adapts the same geometry, cameras, rules, cinematic timing, and terminal-cell surfaces to Canvas. The homepage composes the prism, Cover Flow, Chess, Poker, and Islanders from those shared layers; it is the replacement for the former standalone examples gallery.</p><p>Use <code>CanvasSurfaceHost</code> for a focused browser surface and keep reusable scene logic below <code>src/arcade</code>. Browser hosts should own only image decoding, Canvas presentation, pointer input, visibility, and resize behavior.</p><Source path="src/web/index.ts" /><Source path="src/web/living-title-scene.ts" /></>,
+      },
+      {
         heading: 'Performance checklist',
-        body: <ul><li>Render at the lowest source resolution that preserves the selected presenter.</li><li>Reuse RenderTargets, geometry, material instances, arrays, and downsample outputs.</li><li>Draw opaque geometry front-to-back to maximize early-Z wins.</li><li>Bound static scenes and cache stable glyph cells; do not shade land-hidden water.</li><li>Separate scene-dirty from UI-dirty frames so hover changes do not re-sample 3D.</li><li>Pause browser animation when examples are offscreen.</li><li>Benchmark by mode: pixel touches every half-block color pair; hybrid does ASCII matching plus background color state, so both cost more than plain ASCII.</li></ul>,
+        body: <ul><li>Render at the lowest source resolution that preserves the selected presenter.</li><li>Reuse RenderTargets, geometry, material instances, arrays, and downsample outputs.</li><li>Draw opaque geometry front-to-back to maximize early-Z wins.</li><li>Bound static scenes and cache stable glyph cells; do not shade land-hidden water.</li><li>Separate scene-dirty from UI-dirty frames so hover changes do not re-sample 3D.</li><li>Pause browser animation when surfaces are offscreen.</li><li>Benchmark by mode: pixel touches every half-block color pair; hybrid does ASCII matching plus background color state, so both cost more than plain ASCII.</li></ul>,
       },
     ],
   },
@@ -171,7 +175,7 @@ const hud = Box({
       },
       {
         heading: 'Portable Surface boundary',
-        body: <p>Every cell stores glyph, foreground, background, style bits, opacity, and wide-character continuation. Terminal hosts serialize and diff it to ANSI. <code>CanvasSurfaceHost</code> draws it into a 2D canvas. Snapshot tools consume it headlessly. The <a href="/examples#tui">live retained-HUD example</a> uses real <code>Box</code>, <code>Text</code>, <code>Table</code>, <code>FilledButton</code>, <code>Screen</code>, and <code>Surface</code> imports.</p>,
+        body: <p>Every cell stores glyph, foreground, background, style bits, opacity, and wide-character continuation. Terminal hosts serialize and diff it to ANSI. <code>CanvasSurfaceHost</code> draws it into a 2D canvas. Snapshot tools consume it headlessly. The retained UI uses real <code>Box</code>, <code>Text</code>, <code>Table</code>, <code>FilledButton</code>, <code>Screen</code>, and <code>Surface</code> imports.</p>,
       },
       {
         heading: 'Browse components',
@@ -297,7 +301,7 @@ pnpm match:run -- --game islanders --players=4 --communication=ambient`}</Code><
       },
       {
         heading: 'Privacy and telemetry',
-        body: <><p>Match-lab forces telemetry off. Local traces may contain prompts, model attempts, private reasoning, public communication, hands, and intermediate state; they must not be committed or uploaded as production telemetry. Arcade telemetry separately records anonymous usage and canonical game records only—never prompts, reasoning, chat, voice, or account identity.</p><p>Credentials are resolved by the CLI’s Vercel device flow and selected team. They never enter the browser bundle, docs examples, repository, or run manifest.</p></>,
+        body: <><p>Match-lab forces telemetry off. Local traces may contain prompts, model attempts, private reasoning, public communication, hands, and intermediate state; they must not be committed or uploaded as production telemetry. Arcade telemetry separately records anonymous usage and canonical game records only—never prompts, reasoning, chat, voice, or account identity.</p><p>Credentials are resolved by the CLI’s Vercel device flow and selected team. They never enter the browser bundle, documentation, repository, or run manifest.</p></>,
       },
     ],
   },
@@ -305,7 +309,7 @@ pnpm match:run -- --game islanders --players=4 --communication=ambient`}</Code><
     slug: 'browser-host',
     eyebrow: '04 / Host adapter',
     title: 'Run the actual CLI in the browser.',
-    summary: 'The homepage connects xterm.js to an isolated PTY containing the package; focused examples continue to use browser-safe imports.',
+    summary: 'The homepage connects xterm.js to an isolated PTY containing the package; focused browser surfaces use browser-safe imports.',
     sections: [
       {
         heading: 'Use the hosted shell',
@@ -320,7 +324,7 @@ $ arcade
       },
       {
         heading: 'What is shared',
-        body: <p>The homepage shares the complete CLI: launcher, games, renderer, TUI, key and mouse parsing, model harness, and ANSI output. The site owns only Sandbox lifecycle, xterm sizing, the WebSocket bridge, and surrounding prose. Focused examples use browser-safe mini scenes: the site owns the canvas lifecycle, while Arcade still owns the geometry, camera, rasterization, and terminal cells.</p>,
+        body: <p>The homepage shares the complete CLI: launcher, games, renderer, TUI, key and mouse parsing, model harness, and ANSI output. The site owns only Sandbox lifecycle, xterm sizing, the WebSocket bridge, and surrounding prose. Browser-safe scenes keep geometry, camera, rasterization, and terminal cells inside Arcade while the site owns only the canvas lifecycle.</p>,
       },
       {
         heading: 'Security boundary',
@@ -332,48 +336,6 @@ $ arcade
       },
     ],
   },
-  {
-    slug: 'examples',
-    eyebrow: '05 / Gallery',
-    title: 'Examples are small systems, not screenshots.',
-    summary: 'Each advertised example identifies its imports, real source, controls, and the production Arcade feature that already uses the same primitive.',
-    sections: [
-      {
-        heading: 'Run the live gallery',
-        body: <><p><a href="/examples">Open interactive examples</a> for the complete Chess board, an imported Chess asset, all 6 Islanders terrain systems, the production Poker chip stack, and the prism stream. The gallery is deliberately organized around things Arcade actually ships—not generic renderer demos.</p><div className="example-grid"><Example glyph="♞" title="Chess" text="The complete board plus an isolated imported knight asset." /><Example glyph="⬡" title="Islanders" text="Fields, forest, pasture, hills, mountains, and desert terrain." /><Example glyph="●" title="Poker" text="The real chip geometry, denomination model, and pile layout." /><Example glyph="◢" title="Prism" text="The standalone ANSI stream rendered with terminal semantics." /></div></>,
-      },
-      {
-        heading: 'Embed a focused Arcade scene',
-        body: <><Code>{`import {
-  CanvasSurfaceHost,
-  createBrowserMiniScene
-} from '@vercel/arcade/web'
-
-const scene = createBrowserMiniScene('islanders-fields')
-const host = new CanvasSurfaceHost(canvas)
-const frame = scene.frame(58, 34, performance.now() / 1000)
-
-host.resize(canvas.clientWidth, canvas.clientHeight, 58, 34)
-host.draw(frame.surface)`}</Code><p>Use one host component for resize, visibility, reduced motion, pointer orbit, zoom, and reset. Add a new scene inside Arcade only when it exposes a reusable visual boundary. Production geometry should live below <code>src/arcade</code> so both the terminal application and <code>@vercel/arcade/web</code> can consume it without reversing the import graph.</p></>,
-      },
-      {
-        heading: 'Production systems to study',
-        body: <><p>Some systems are documented before they are exposed as browser mini-scenes. Keep these app-level until a browser-safe, reusable boundary can be extracted without importing the terminal shell or game controller.</p><div className="example-grid"><Example glyph="⬡" title="Islanders board" text="Island assembly, number tokens, ports, cached water, and projected labels." /><Example glyph="▤" title="Cards" text="Peek, reveal, parabolic flight, shuffle geometry, and retained hit targets." /><Example glyph="↔" title="Cover flow" text="Projected hit bounds, horizontal and vertical wheel input, and launch flip." /><Example glyph="⇅" title="Trade and discard" text="Resource rows, constraints, animated transfers, and model playback." /></div></>,
-      },
-      {
-        heading: 'Example standard',
-        body: <ul><li>Import public Arcade modules instead of copying engine or game logic into the website.</li><li>Provide controls, reset behavior, responsive sizing, focus labels, and reduced-motion behavior.</li><li>Name the source file and API subpaths used.</li><li>Add focused source tests and a packed-consumer smoke test before promising a stable public API.</li><li>Extract only browser-safe geometry and state; terminal shell, auth, voice, telemetry, and full-game orchestration stay out of mini scenes.</li></ul>,
-      },
-      {
-        heading: 'Machine-readable catalog',
-        body: <p>Agents can discover examples through <a href="/examples.json">/examples.json</a>, validate the shape with <a href="/schemas/examples-v1.json">its JSON schema</a>, and read the broader offline corpus at <a href="/llms-full.txt">/llms-full.txt</a>.</p>,
-      },
-    ],
-  },
 ];
-
-function Example({ glyph, title, text }: { glyph: string; title: string; text: string }) {
-  return <article className="example-card"><div aria-hidden="true">{glyph}</div><strong>{title}</strong><p>{text}</p></article>;
-}
 
 export function findDoc(slug: string): DocPage | undefined { return DOCS.find((page) => page.slug === slug); }

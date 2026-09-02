@@ -10,6 +10,10 @@ game HUDs, interaction flows, product copy, accessibility, responsive behavior,
 and visible failure states. Skip it for backend-only, telemetry-only, generated,
 or test-only work with no shipped UI impact.
 
+For the same user-facing work, also read root [`design.md`](design.md). It links
+Vercel's canonical design guidance and defines how Arcade applies that baseline
+without losing its terminal, ASCII, cinematic, and Geist Pixel identity.
+
 ## Seeing your own output (read this before judging visuals)
 
 The apps are full-screen, raw-mode, **infinite** TTY programs — do NOT run `pnpm dev` to

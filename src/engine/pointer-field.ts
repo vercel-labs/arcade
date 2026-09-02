@@ -55,6 +55,22 @@ export class PointerField {
     this.strength = Math.max(this.strength, 0.85);
   }
 
+  /** Start an independent stroke without emitting from the prior release point. */
+  beginStroke(input: PointerFieldInput): void {
+    const x = clamp01(input.x), y = clamp01(input.y);
+    this.targetX = x;
+    this.targetY = y;
+    this.x = x;
+    this.y = y;
+    this.lastTrailX = x;
+    this.lastTrailY = y;
+    this.vx = 0;
+    this.vy = 0;
+    this.active = input.active ?? true;
+    this.idleFor = 0;
+    this.strength = Math.max(this.strength, 0.85);
+  }
+
   release(): void { this.active = false; }
 
   /** Inject a loose, expanding triangular smoke ring. */

@@ -33,6 +33,20 @@ test('PointerField fills fast movement segments with multiple emission anchors',
   assert.ok(positions.at(-1)! - positions[0] > 0.15);
 });
 
+test('a new stroke does not connect to the previous release point', () => {
+  const field = new PointerField({ response: 52, velocityResponse: 18, trailSpacing: 0.0045, maxTrail: 52 });
+  field.beginStroke({ x: 0.15, y: 0.4 });
+  field.setInput({ x: 0.25, y: 0.4 });
+  field.step(1 / 60);
+  field.release();
+  field.beginStroke({ x: 0.85, y: 0.6 });
+  const restarted = field.step(1 / 60);
+  assert.equal(restarted.x, 0.85);
+  assert.equal(restarted.y, 0.6);
+  assert.equal(restarted.speed, 0);
+  assert.ok(restarted.trail.every(({ x }) => x < 0.35 || x > 0.75), 'separate strokes must not emit a bridge');
+});
+
 test('high-response browser field keeps its emission head attached to the cursor', () => {
   const field = new PointerField({ response: 52, velocityResponse: 18, trailSpacing: 0.0045 });
   field.setInput({ x: 0.92, y: 0.18 });

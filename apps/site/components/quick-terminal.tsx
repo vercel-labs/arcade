@@ -293,16 +293,18 @@ export function QuickTerminalProvider({ children }: { children: ReactNode }) {
 }
 
 export function QuickTerminalButton({
+  ariaLabel,
   children,
   className,
 }: {
+  ariaLabel?: string;
   children: ReactNode;
   className?: string;
 }) {
   const terminal = useContext(QuickTerminalContext);
   if (!terminal) throw new Error('QuickTerminalButton must be used within QuickTerminalProvider');
   return (
-    <button className={className} onClick={terminal.open} type="button">
+    <button aria-label={ariaLabel} className={className} onClick={terminal.open} type="button">
       {children}
     </button>
   );

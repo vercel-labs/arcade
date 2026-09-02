@@ -1,21 +1,16 @@
 'use client';
 
-import { CanvasSurfaceHost, LIVING_TITLE_MORPH_STARTS, LivingTitleScene, PointerField, SPLASH_END, TERMINAL_CELL_ASPECT_RATIO, advanceAutoTourProgress, interruptsAutoTourKey, livingTitleTimeline, responsiveTerminalGrid, type CanvasLike, type SurfacePointerMode } from '@vercel/arcade/web';
+import { CanvasSurfaceHost, LIVING_TITLE_MORPH_STARTS, LivingTitleScene, PointerField, SPLASH_END, TERMINAL_CELL_ASPECT_RATIO, advanceAutoTourProgress, interruptsAutoTourKey, livingTitleTimeline, responsiveTerminalGrid, type CanvasLike } from '@vercel/arcade/web';
 import { QuickTerminalButton } from '@/components/quick-terminal';
-import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { visibleViewportHeight } from './hero-viewport';
-
-const INSTALL_COMMANDS = {
-  npm: 'npm i -g @vercel/arcade',
-  curl: 'curl -fsSL https://vercel-arcade.vercel.app/install | sh',
-} as const;
+import { InstallCommand } from './install-command';
 const CHAPTERS = [
-  { title: '3D games in terminal cells.', body: 'Pure TypeScript. No GPU.' },
-  { title: 'One engine. Many games.', body: 'The Arcade launcher, rendered in the same canvas.' },
-  { title: 'Models make their move.', body: 'Rules, cameras, materials, and model wisps.' },
-  { title: 'Shuffle. Deal. Reveal.', body: 'Production cards and table choreography.' },
-  { title: 'An island assembles.', body: 'Water, terrain, ports, dice, and pieces.' },
+  { title: 'The 3D game engine for agents.', body: 'ASCII in your terminal. No GPU.\nHumans can play too.' },
+  { title: 'Powered by Vercel’s AI Gateway.', body: 'Watch hundreds of models face off, or challenge them yourself.' },
+  { title: 'Different minds. Endless possibilities.', body: 'Everything you see is open source. Your move.' },
+  { title: 'Every player has a tell.', body: 'Discover the hidden tendencies of your favorite models.' },
+  { title: 'Settle in, have some fun!', body: 'Play a few rounds while coding agents do your work.' },
 ] as const;
 const AUTO_START_DELAY_MS = SPLASH_END * 1_000;
 
@@ -25,24 +20,14 @@ export const Hero = () => {
   const tourRef = useRef<HTMLButtonElement>(null);
   const progressRef = useRef(0);
   const pointerRef = useRef<{ x: number; y: number } | null>(null);
-  const pointerModeRef = useRef<SurfacePointerMode>('trail');
   const [chapter, setChapter] = useState(0);
-  const [copied, setCopied] = useState(false);
-  const [installMode, setInstallMode] = useState<keyof typeof INSTALL_COMMANDS>('npm');
   const [tourState, setTourState] = useState<'idle' | 'playing' | 'interrupted' | 'complete'>('idle');
-  const [pointerMode, setPointerMode] = useState<SurfacePointerMode>('trail');
   const tourStateRef = useRef(tourState);
 
   const updateTourState = (state: typeof tourState) => {
     tourStateRef.current = state;
     setTourState(state);
   };
-  const updatePointerMode = (mode: SurfacePointerMode) => {
-    pointerModeRef.current = mode;
-    setPointerMode(mode);
-    try { window.localStorage.setItem('arcade-pointer-mode', mode); } catch {}
-  };
-
   useEffect(() => {
     const root = rootRef.current;
     const canvas = canvasRef.current;
@@ -60,13 +45,12 @@ export const Hero = () => {
     const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
     const precisePointer = window.matchMedia('(hover: hover) and (pointer: fine)');
     const pointerField = new PointerField({ response: 52, velocityResponse: 18, trailLifetime: 1.05, trailSpacing: 0.0045, maxTrail: 52, idleDelay: 0.18, fadeRate: 7 });
-    try {
-      const saved = window.localStorage.getItem('arcade-pointer-mode');
-      if (saved === 'off') updatePointerMode('off');
-      else updatePointerMode('trail');
-    } catch {}
     let reducedMotion = motion.matches;
     let pointerEffects = precisePointer.matches && !reducedMotion;
+    let activePointerId: number | null = null;
+    let pressX = 0;
+    let pressY = 0;
+    let dragged = false;
     let frame = 0;
     let displayedProgress = progressRef.current;
     let displayedChapterRef = -1;
@@ -156,11 +140,11 @@ export const Hero = () => {
     const onPointerInterrupt = (event: PointerEvent) => {
       // The tour button owns its click. Stopping on its pointerdown and then
       // toggling again on click made Pause immediately restart on pointerup.
-      if ((event.target as Element | null)?.closest('.living-title__tour, .living-title__pointer-modes')) return;
+      if ((event.target as Element | null)?.closest('.living-title__tour')) return;
       interruptTour();
     };
     const onTouchInterrupt = (event: TouchEvent) => {
-      if ((event.target as Element | null)?.closest('.living-title__tour, .living-title__pointer-modes')) return;
+      if ((event.target as Element | null)?.closest('.living-title__tour')) return;
       interruptTour();
     };
     const draw = (time: number) => {
@@ -207,12 +191,12 @@ export const Hero = () => {
       const dt = previousFrameTime ? (time - previousFrameTime) / 1000 : 0;
       previousFrameTime = time;
       const field = pointerEffects ? pointerField.step(dt) : null;
-      const surface = scene.frame({ cols, rows, timeSeconds: time / 1000, progress: displayedProgress, pointer: pointerRef.current, pointerField: field, pointerMode: pointerModeRef.current, reducedMotion });
+      const surface = scene.frame({ cols, rows, timeSeconds: time / 1000, progress: displayedProgress, pointer: pointerRef.current, pointerField: field, pointerMode: 'trail', reducedMotion });
       const sceneFinished = performance.now();
       // Dense animated terrain and ink fibers touch many neighboring glyphs.
       // A complete repaint is still cheap relative to their 3D render and is
       // the only pixel-exact canvas presentation path under fractional cells.
-      const activePointerVisual = pointerModeRef.current !== 'off' && !!field && (field.strength >= 0.01 || field.trail.length > 0 || field.bursts.length > 0);
+      const activePointerVisual = !!field && (field.strength >= 0.01 || field.trail.length > 0 || field.bursts.length > 0);
       const forceFullCanvas = activePointerVisual || displayedChapter === 4 || (
         displayedChapter < 4 && displayedLocal >= LIVING_TITLE_MORPH_STARTS[displayedChapter]
       );
@@ -238,19 +222,41 @@ export const Hero = () => {
         }
       }
     };
+    const pointerPosition = (event: PointerEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      return { x: (event.clientX - rect.left) / Math.max(1, rect.width), y: (event.clientY - rect.top) / Math.max(1, rect.height) };
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      if (!pointerEffects || event.button !== 0) return;
+      activePointerId = event.pointerId;
+      pressX = event.clientX;
+      pressY = event.clientY;
+      dragged = false;
+      pointerRef.current = pointerPosition(event);
+      pointerField.beginStroke(pointerRef.current);
+      canvas.setPointerCapture(event.pointerId);
+    };
     const onPointerMove = (event: PointerEvent) => {
-      const rect = canvas.getBoundingClientRect();
-      pointerRef.current = { x: (event.clientX - rect.left) / Math.max(1, rect.width), y: (event.clientY - rect.top) / Math.max(1, rect.height) };
-      if (pointerEffects) {
-        pointerField.setInput(pointerRef.current);
-      }
+      if (!pointerEffects || event.pointerId !== activePointerId) return;
+      pointerRef.current = pointerPosition(event);
+      if (Math.hypot(event.clientX - pressX, event.clientY - pressY) >= 4) dragged = true;
+      pointerField.setInput(pointerRef.current);
     };
-    const onCanvasClick = (event: MouseEvent) => {
-      if (!pointerEffects || pointerModeRef.current !== 'trail') return;
-      const rect = canvas.getBoundingClientRect();
-      pointerField.burst((event.clientX - rect.left) / Math.max(1, rect.width), (event.clientY - rect.top) / Math.max(1, rect.height));
+    const onPointerUp = (event: PointerEvent) => {
+      if (event.pointerId !== activePointerId) return;
+      const release = pointerPosition(event);
+      if (pointerEffects && !dragged) pointerField.burst(release.x, release.y);
+      if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+      activePointerId = null;
+      pointerRef.current = null;
+      pointerField.release();
     };
-    const clearPointer = () => { pointerRef.current = null; pointerField.release(); };
+    const onPointerCancel = (event: PointerEvent) => {
+      if (event.pointerId !== activePointerId) return;
+      if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+      clearPointer();
+    };
+    const clearPointer = () => { activePointerId = null; pointerRef.current = null; pointerField.release(); };
     const onMotion = (event: MediaQueryListEvent) => {
       reducedMotion = event.matches;
       pointerEffects = precisePointer.matches && !reducedMotion;
@@ -264,9 +270,10 @@ export const Hero = () => {
     window.addEventListener('resize', fitVisibleViewport);
     window.visualViewport?.addEventListener('resize', fitVisibleViewport);
     window.visualViewport?.addEventListener('scroll', fitVisibleViewport);
+    canvas.addEventListener('pointerdown', onPointerDown);
     canvas.addEventListener('pointermove', onPointerMove);
-    canvas.addEventListener('pointerleave', clearPointer);
-    canvas.addEventListener('click', onCanvasClick);
+    canvas.addEventListener('pointerup', onPointerUp);
+    canvas.addEventListener('pointercancel', onPointerCancel);
     root.addEventListener('arcade-tour-request', onTourRequest);
     window.addEventListener('wheel', interruptTour, { passive: true });
     window.addEventListener('touchstart', onTouchInterrupt, { passive: true });
@@ -288,9 +295,10 @@ export const Hero = () => {
       window.removeEventListener('resize', fitVisibleViewport);
       window.visualViewport?.removeEventListener('resize', fitVisibleViewport);
       window.visualViewport?.removeEventListener('scroll', fitVisibleViewport);
+      canvas.removeEventListener('pointerdown', onPointerDown);
       canvas.removeEventListener('pointermove', onPointerMove);
-      canvas.removeEventListener('pointerleave', clearPointer);
-      canvas.removeEventListener('click', onCanvasClick);
+      canvas.removeEventListener('pointerup', onPointerUp);
+      canvas.removeEventListener('pointercancel', onPointerCancel);
       root.removeEventListener('arcade-tour-request', onTourRequest);
       window.removeEventListener('wheel', interruptTour);
       window.removeEventListener('touchstart', onTouchInterrupt);
@@ -307,14 +315,12 @@ export const Hero = () => {
     };
   }, []);
 
-  const copyInstall = async () => {
-    await navigator.clipboard.writeText(INSTALL_COMMANDS[installMode]);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1600);
-  };
-
   return (
     <section className="living-title" ref={rootRef}>
+      <span aria-hidden="true" className="living-title__legacy-anchor" id="system" style={{ top: '0' }} />
+      <span aria-hidden="true" className="living-title__legacy-anchor" id="chess" style={{ top: 'calc((100% - var(--arcade-visual-height, 100dvh)) * .25 + 1px)' }} />
+      <span aria-hidden="true" className="living-title__legacy-anchor" id="poker" style={{ top: 'calc((100% - var(--arcade-visual-height, 100dvh)) * .52 + 1px)' }} />
+      <span aria-hidden="true" className="living-title__legacy-anchor" id="islanders" style={{ top: 'calc((100% - var(--arcade-visual-height, 100dvh)) * .76 + 1px)' }} />
       <div className="living-title__stage">
         <canvas aria-label="Arcade scenes transforming from a glass prism into games" className="living-title__canvas" ref={canvasRef} />
         <div aria-hidden="true" className="living-title__vignette" />
@@ -333,24 +339,10 @@ export const Hero = () => {
             <span aria-hidden="true">{tourState === 'playing' ? 'Ⅱ' : '▶'}</span>
             {tourState === 'playing' ? 'Pause' : 'Auto-scroll'}
           </button>
-          <div aria-label="Pointer effect" className="living-title__pointer-modes" role="group">
-            {(['trail', 'off'] as const).map((mode) => (
-              <button aria-pressed={pointerMode === mode} key={mode} onClick={() => updatePointerMode(mode)} type="button">{mode}</button>
-            ))}
-          </div>
         </div>
         <div className="living-title__actions">
           <QuickTerminalButton className="living-title__primary"><span aria-hidden="true">›_</span>Play</QuickTerminalButton>
-          <div className="living-title__command">
-            <div aria-label="Installation method" className="living-title__command-tabs" role="group">
-              {(Object.keys(INSTALL_COMMANDS) as Array<keyof typeof INSTALL_COMMANDS>).map((mode) => (
-                <button aria-pressed={installMode === mode} key={mode} onClick={() => { setInstallMode(mode); setCopied(false); }} type="button">{mode}</button>
-              ))}
-            </div>
-            <code>{INSTALL_COMMANDS[installMode]}</code>
-            <button aria-label={`Copy ${installMode} install command`} className="living-title__command-copy" onClick={copyInstall} type="button">{copied ? 'copied' : 'copy'}</button>
-          </div>
-          <Link href="/docs">Docs ↗</Link>
+          <InstallCommand />
         </div>
       </div>
     </section>

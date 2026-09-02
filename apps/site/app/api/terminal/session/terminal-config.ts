@@ -122,7 +122,7 @@ export function terminalFiles(packageSource: string, placeholder: string): Array
     },
     {
       path: `${TERMINAL_CWD}/examples/README.md`,
-      content: `# Examples\n\n- rendering.md — package-level renderer imports\n- self-play.md — Match Lab and model compatibility tools\n- prism.md — standalone ANSI stream\n\nInteractive visual examples are available on the website at /examples.\n`,
+      content: `# Examples\n\n- rendering.md — package-level renderer imports\n- self-play.md — Match Lab and model compatibility tools\n- prism.md — standalone ANSI stream\n`,
     },
     {
       path: `${TERMINAL_CWD}/examples/rendering.md`,

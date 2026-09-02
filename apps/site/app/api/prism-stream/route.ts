@@ -27,7 +27,7 @@ export async function GET(req: Request): Promise<Response> {
       error: {
         code: 'PRISM_UPSTREAM_UNAVAILABLE',
         message: 'The live prism stream is temporarily unavailable.',
-        resolution: 'Retry the request or use the local snapshot command documented at /docs/examples.',
+        resolution: 'Retry the request or use the local snapshot command documented at /docs/tools.',
       },
     }, { status: 502 });
   }

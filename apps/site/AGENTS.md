@@ -1,3 +1,7 @@
+Before changing the Arcade website's visual design, product copy, layout, or
+interaction, read the repository root `design.md` and the root-directed
+`.agents/skills/product-design/SKILL.md` references for `apps/site`.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know

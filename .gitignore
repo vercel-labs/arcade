@@ -34,3 +34,6 @@ assets/chess_decimated/
 # project's newer pnpm drops a v11 store here)
 .worktrees/
 .pnpm-store/
+
+# local Tinybird CLI credentials/config
+.tinyb
