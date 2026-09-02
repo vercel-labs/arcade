@@ -1,6 +1,6 @@
 // Build the Vercel Build Output API tree (.vercel/output) for the arcade-telemetry proxy:
 // three ingest functions. Mirrors the prism's prebuilt approach — esbuild bundles each
-// .ts entry (including the shared ../../../src/telemetry/records.ts privacy guard, which
+// .ts entry (including the shared ../../../src/telemetry/record-wire.ts privacy guard, which
 // the default @vercel/node build can't resolve across the .ts specifier + root-dir
 // boundary) into one self-contained .mjs, so Vercel ships finished output.
 //

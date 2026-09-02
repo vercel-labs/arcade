@@ -9,29 +9,19 @@
 
 import { Box, Dropdown, Field, Slider, Slot, Text, type Node, type Screen } from '../../tui/index.ts';
 import type { RGB } from '../../engine/index.ts';
-import { includeEarlyAccessModels, pickerCreators } from './models.ts';
-import { availableRealtimeModels, DEFAULT_REALTIME_MODEL_ID } from '../../voice/index.ts';
-import { shortModel } from './model-label.ts';
+import { pickerCreators } from './models.ts';
+import { shortModel } from '../../harness/model-label.ts';
 import { BIG_BLIND, type PokerSeatSpec } from './poker-driver.ts';
-import { pokerVoiceCapable } from './poker-voice.ts';
 import type { PokerSeatView } from '../games/poker/poker-scene.ts';
 import { ARCADE_CHROME_TEXT } from '../theme.ts';
 import { createModelSeatPicker, hiddenModelSeat, modelSeatControls, modelSeatTint, mountModelSeat, setModelSeatCreators, type ModelCreator, type ModelSeatPicker } from './model-seat-picker.ts';
+import { matchSetupHeading } from './match-setup-chrome.ts';
 
 let TEXT_CREATORS: ModelCreator[] = pickerCreators();
-let REALTIME_CREATORS: ModelCreator[] = [];
-for (const model of availableRealtimeModels(includeEarlyAccessModels())) {
-  let creator = REALTIME_CREATORS.find((candidate) => candidate.slug === model.creator);
-  if (!creator) {
-    creator = { slug: model.creator, name: model.creatorName, models: [] };
-    REALTIME_CREATORS.push(creator);
-  }
-  creator.models.push({ id: model.id, name: model.name });
-}
 const CREATOR_W = 22;
 const MODEL_W = 22;
 const MAX_OPP = 5; // up to a 6-seat table (you + 5)
-const SEAT_LABEL_W = 10; // wide enough for "model type"; all controls stay aligned
+const SEAT_LABEL_W = 10;
 
 // Fires on every committed change (mode / players / creator / model), so main can
 // refresh the live table preview. Null until main wires it (module init picks the
@@ -61,16 +51,9 @@ const DEFAULT_MODELS = [
 const sides: ModelSeatPicker[] = DEFAULT_MODELS.map(([prov, model], i) =>
   createModelSeatPicker({ idPrefix: `poker-opp${i}`, creators: TEXT_CREATORS, defaultCreator: prov, defaultModelId: model, onChange: changed }),
 );
-const realtimeSide = createModelSeatPicker({ idPrefix: 'poker-realtime-opp', creators: REALTIME_CREATORS, defaultCreator: 'openai', defaultModelId: DEFAULT_REALTIME_MODEL_ID, onChange: changed });
-
-export function setPokerSetupModelCatalog(
-  textCreators: readonly ModelCreator[],
-  realtimeCreators: readonly ModelCreator[],
-): void {
+export function setPokerSetupModelCatalog(textCreators: readonly ModelCreator[]): void {
   TEXT_CREATORS = [...textCreators];
-  REALTIME_CREATORS = [...realtimeCreators];
   for (const side of sides) setModelSeatCreators(side, TEXT_CREATORS);
-  setModelSeatCreators(realtimeSide, REALTIME_CREATORS);
   changed();
 }
 
@@ -141,24 +124,8 @@ function spectating(): boolean {
   return modeDropdown.index === 1;
 }
 
-// Model type only applies to heads-up Play. Text uses the standard model catalog;
-// Realtime voice uses the speech-to-speech catalog and the selected model is the
-// actual opponent that speaks and acts.
-export const modelTypeDropdown = new Dropdown({
-  id: 'poker-model-type',
-  items: ['text', 'realtime voice'],
-  width: 18,
-  index: 1,
-  onSelect: () => changed(),
-});
-function modelTypeApplicable(): boolean {
-  return !spectating() && oppCount() === 1; // Play mode, 2 players (you + one AI)
-}
-function realtimeSelected(): boolean {
-  return modelTypeApplicable() && modelTypeDropdown.index === 1;
-}
 function sideForIndex(index: number): ModelSeatPicker {
-  return realtimeSelected() && index === 1 ? realtimeSide : sides[index];
+  return sides[index];
 }
 
 // The AI-config indices shown as rows: opponents 1..oppCount always, plus seat 1's
@@ -173,15 +140,13 @@ function shownIndices(): number[] {
 export function mountPokerSetup(ui: Screen): void {
   ui.mount(playersDropdown);
   ui.mount(modeDropdown);
-  ui.mount(modelTypeDropdown);
   ui.mount(stackSlider);
-  for (const side of [...sides, realtimeSide]) mountModelSeat(ui, side);
+  for (const side of sides) mountModelSeat(ui, side);
 }
 
 // Ready when every shown seat's config has a committed model.
 export function pokerSetupReady(): boolean {
-  const committed = shownIndices().every((i) => sideForIndex(i).modelId !== null);
-  return committed && (!realtimeSelected() || pokerVoiceCapable());
+  return shownIndices().every((i) => sideForIndex(i).modelId !== null);
 }
 
 // The chosen seats. HERO: seat 1 is the human, seats 2..N are the shown opponents.
@@ -194,7 +159,7 @@ export function pokerSetupSelection(): PokerSeatSpec[] | null {
   ];
   for (let i = 1; i <= oppCount(); i++) {
     const side = sideForIndex(i);
-    seats.push({ kind: 'ai', model: side.modelId!, runtime: realtimeSelected() ? 'realtime' : 'text' });
+    seats.push({ kind: 'ai', model: side.modelId!, runtime: 'text' });
   }
   return seats;
 }
@@ -213,7 +178,6 @@ export function pokerPreviewSeats(): PokerSeatView[] {
   return seats;
 }
 
-const TITLE_FG: RGB = ARCADE_CHROME_TEXT.title;
 const HERO_FG: RGB = ARCADE_CHROME_TEXT.body;
 // A settings line: a muted label gutter + the control, so the columns align.
 function row(label: string, control: Node): Node {
@@ -241,7 +205,7 @@ function seatRow(side: ModelSeatPicker, seatNo: number): Node {
 // currently shown keep their dropdown Slots mounted (hidden in a 0×0 box) so the
 // Screen doesn't unmount them. Starting is the bottom-left "start match" button (built
 // by the HUD), not a button here; Esc closes.
-export function buildPokerSetupPanel(): Node {
+export function buildPokerSetupPanel(healthStatus?: { lines: string[]; failed: boolean }): Node {
   const shownIdx = shownIndices();
   const visibleSides = new Set(shownIdx.map((index) => sideForIndex(index)));
   const seatRows: Node[] = [];
@@ -254,24 +218,17 @@ export function buildPokerSetupPanel(): Node {
     );
   }
   seatRows.push(...shownIdx.map((i) => seatRow(sideForIndex(i), i + 1))); // config i fills table seat i+1
-  const hidden = [...sides, realtimeSide]
+  const hidden = sides
     .filter((side) => !visibleSides.has(side))
     .map(hiddenModelSeat);
-  // Model type only applies to heads-up Play; keep its Slot mounted when hidden.
-  const modelTypeShown = modelTypeApplicable();
-  const realtimeUnavailable = modelTypeShown && realtimeSelected() && !pokerVoiceCapable();
-  if (!modelTypeShown) {
-    hidden.push(Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot('poker-model-type')]));
-  }
 
   return Box({ flexDirection: 'column', gap: 1, alignItems: 'start' }, [
-    Text({ text: 'new match', style: { color: TITLE_FG, bold: true } }),
+    matchSetupHeading(),
     row('mode', Slot('poker-setup-mode')),
     row('players', Slot('poker-players')),
     row('stack', stackControl()),
-    ...(modelTypeShown ? [row('model type', Slot('poker-model-type'))] : []),
-    ...(realtimeUnavailable ? [row('', Text({ text: 'realtime voice unavailable', style: { color: 'muted' } }))] : []),
     ...seatRows,
+    ...(healthStatus ? healthStatus.lines.map((text) => Text({ text, style: { color: healthStatus.failed ? 'danger' : 'muted' } })) : []),
     ...hidden,
   ]);
 }

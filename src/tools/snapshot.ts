@@ -9,6 +9,8 @@ import { writeFileSync } from 'node:fs';
 import { bloom, downsample, halfBlockToSurface, mulberry32, RenderTarget, shapeGlyphLayerToSurface, shapeGlyphToSurface, STYLE_BOLD, STYLE_DIM, Surface } from '../engine/index.ts';
 import { FONT } from '../engine/font8x8.ts';
 import { PrismScene, SplashScene } from '../prism/index.ts';
+import { TimedInkTransition } from '../cinematic/transitions/timed-ink-transition.ts';
+import { coverFlowIndex } from '../cinematic/scenes/cover-flow.ts';
 import { ChessGameScene } from '../arcade/games/chess/scene.ts';
 import { LogosScene } from '../arcade/scenes/logos-scene.ts';
 import { AudioScene } from '../arcade/scenes/audio-scene.ts';
@@ -24,53 +26,54 @@ import { buildMatchSetup, chessPreviewSides, mountMatchSetup } from '../arcade/m
 import { creators } from '../arcade/match/models.ts';
 import { CardsScene, type CardsMode } from '../arcade/games/poker/cards-scene.ts';
 import { buildPokerRoot, mountPokerHud } from '../arcade/games/poker/hud.ts';
-import { TileScene } from '../arcade/games/catan/tile-scene.ts';
-import { buildCatanPieceModal, buildCatanTileRoot, mountCatanTileHud } from '../arcade/games/catan/tile-hud.ts';
+import { TileScene } from '../arcade/games/islanders/tile-scene.ts';
+import { buildIslandersPieceModal, buildIslandersTileRoot, mountIslandersTileHud } from '../arcade/games/islanders/tile-hud.ts';
 import {
-  adjustCatanWorkbenchDev,
-  adjustCatanWorkbenchDiscard,
-  adjustCatanWorkbenchHand,
-  adjustCatanWorkbenchTradeStaging,
-  bankCatanResource,
-  beginCatanWorkbenchDevPurchase,
-  beginCatanWorkbenchDevelopmentPlay,
-  beginCatanWorkbenchDiscard,
-  beginStagedCatanWorkbenchBankTrade,
-  CATAN_LOCAL_COLOR,
-  catanBankDepartureCell,
-  catanDevDeckDepartureCell,
-  catanDevHandLandingCell,
-  catanHandLandingCell,
-  catanRailVisible,
-  catanSidebarOpen,
-  catanWorkbenchView,
-  createCatanWorkbenchPlayerTrade,
-  departCatanWorkbenchBankResource,
-  departCatanWorkbenchHandResource,
-  departCatanWorkbenchDevCard,
-  landCatanWorkbenchBankResource,
-  landCatanWorkbenchDevCard,
-  resetCatanWorkbenchCards,
-  resolveCatanWorkbenchPlayerTradeOffer,
-  setCatanTradeEditorOpen,
-  setCatanWorkbenchTradeSelection,
-  toggleCatanSidebar,
-} from '../arcade/games/catan/card-hud.ts';
-import { type FlyingResource, ResourceFlights } from '../arcade/games/catan/scene/resource-flight.ts';
-import { CatanGameScene } from '../arcade/games/catan/game-scene.ts';
-import { buildCatanGameRoot, mountCatanGameHud } from '../arcade/games/catan/game-hud.ts';
-import { CatanDriver, type CatanSeatSpec } from '../arcade/match/catan-driver.ts';
-import { generateBoard } from '../rules/catan/setup.ts';
-import { type CatanAction, type DevCardType, type PlayerColor, type Resource, resourceIndex, type Terrain, TERRAINS } from '../rules/catan/types.ts';
+  adjustIslandersWorkbenchDev,
+  adjustIslandersWorkbenchDiscard,
+  adjustIslandersWorkbenchHand,
+  adjustIslandersWorkbenchTradeStaging,
+  bankIslandersResource,
+  beginIslandersWorkbenchDevPurchase,
+  beginIslandersWorkbenchDevelopmentPlay,
+  beginIslandersWorkbenchDiscard,
+  beginStagedIslandersWorkbenchBankTrade,
+  ISLANDERS_LOCAL_COLOR,
+  islandersBankDepartureCell,
+  islandersDevDeckDepartureCell,
+  islandersDevHandLandingCell,
+  islandersHandLandingCell,
+  islandersRailVisible,
+  islandersSidebarOpen,
+  islandersWorkbenchView,
+  createIslandersWorkbenchPlayerTrade,
+  departIslandersWorkbenchBankResource,
+  departIslandersWorkbenchHandResource,
+  departIslandersWorkbenchDevCard,
+  landIslandersWorkbenchBankResource,
+  landIslandersWorkbenchDevCard,
+  resetIslandersWorkbenchCards,
+  resolveIslandersWorkbenchPlayerTradeOffer,
+  setIslandersTradeEditorOpen,
+  setIslandersWorkbenchTradeSelection,
+  toggleIslandersSidebar,
+} from '../arcade/games/islanders/card-hud.ts';
+import { type FlyingResource, ResourceFlights } from '../arcade/games/islanders/scene/resource-flight.ts';
+import { IslandersGameScene } from '../arcade/games/islanders/game-scene.ts';
+import { buildIslandersGameRoot, mountIslandersGameHud } from '../arcade/games/islanders/game-hud.ts';
+import { IslandersDriver, type IslandersSeatSpec } from '../arcade/match/islanders-driver.ts';
+import { generateBoard } from '../rules/islanders/setup.ts';
+import { type IslandersAction, type DevCardType, type PlayerColor, type Resource, resourceIndex, type Terrain, TERRAINS } from '../rules/islanders/types.ts';
 import { PokerGameScene, type PokerSeatView } from '../arcade/games/poker/poker-scene.ts';
 import { betInput as pokerBetInput, buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, mountPokerGameHud, pushPokerChat } from '../arcade/games/poker/poker-hud.ts';
 import { buildPokerSetupPanel, modeDropdown as pokerModeDropdown, mountPokerSetup, playersDropdown as pokerPlayersDropdown, pokerPreviewSeats, pokerStartingStack } from '../arcade/match/poker-setup.ts';
 import { HoldemState } from '../rules/poker/holdem.ts';
 import { RANK_LABELS, type Suit, SUIT_LETTERS } from '../rules/poker/cards.ts';
 import type { Color } from '../rules/chess/types.ts';
-import { Box, Button, Dropdown, insetSceneViewport, layout, paint, Screen, type PaintState } from '../tui/index.ts';
+import { Box, Button, Dropdown, NoticeToast, insetSceneViewport, layout, paint, Screen, Text, type PaintState } from '../tui/index.ts';
 import { buildTeamSwitch, markSwitchSucceeded, mountTeamSwitch, setTeamSwitchTeams } from '../arcade/shell/team-switch.ts';
 import { UI_CHROME_PILL } from '../arcade/theme.ts';
+import { modelFailureNotice } from '../harness/model-failure-notice.ts';
 
 type Rgb = [number, number, number];
 // Terminal cells are roughly twice as tall as they are wide. Rasterize each
@@ -299,6 +302,77 @@ function uiSnapshot(): void {
   surfaceToPpm(surf, cols, rows, out);
 }
 
+function noticeSnapshot(): void {
+  const args = process.argv.slice(3);
+  const cols = Number(args[0]) || 110;
+  const rows = Number(args[1]) || 44;
+  const out = args.find((a) => a.endsWith('.ppm')) ?? '.snapshots/notice.ppm';
+  const focused = args.includes('focus');
+  const kind = args.find((arg) => arg.startsWith('kind='))?.slice(5) ?? 'insufficient_funds';
+  const fixtures: Record<string, { status: number; type?: string; failureKind?: 'timeout' | 'transient' | 'schema' }> = {
+    insufficient_funds: { status: 402, type: 'insufficient_funds' },
+    customer_verification_required: { status: 403, type: 'customer_verification_required' },
+    byok_requires_paid_credits: { status: 403, type: 'byok_requires_paid_credits' },
+    quota_for_entity_exceeded: { status: 429, type: 'quota_for_entity_exceeded' },
+    authentication_error: { status: 401, type: 'authentication_error' },
+    model_not_found: { status: 404, type: 'model_not_found' },
+    model_unavailable_in_region: { status: 403, type: 'model_unavailable_in_region' },
+    rate_limit_exceeded: { status: 429, type: 'rate_limit_exceeded' },
+    no_providers_available: { status: 403, type: 'no_providers_available' },
+    timeout: { status: 504, failureKind: 'timeout' },
+    service_unavailable: { status: 503, failureKind: 'transient' },
+  };
+  const fixture = fixtures[kind] ?? fixtures.service_unavailable;
+  const notice = modelFailureNotice({ kind: fixture.failureKind ?? 'unknown', status: fixture.status, gatewayType: fixture.type, gatewayFailure: true, message: kind }, 'anthropic/claude-haiku-4.5');
+  if (!notice) throw new Error(`notice fixture ${kind} produced no notice`);
+  const screen = new Screen(cols, rows);
+  screen.setRoot(Box({ width: cols, height: rows }), { x: 0, y: 0, w: cols, h: rows });
+  screen.setGlobalOverlay(NoticeToast({
+    id: 'gateway-failure', severity: notice.severity, title: notice.title,
+    body: notice.body,
+    width: Math.min(48, Math.max(30, cols - 4)),
+    actionColor: 'textStrong',
+    actionBorderColor: 'textStrong',
+    ...(notice.action ? { action: { label: notice.action.label, onClick: () => {} } } : {}), onDismiss: () => {},
+  }));
+  if (focused) screen.setFocus('gateway-failure-action');
+  const surf = screen.snapshot((surface) => surface.fillRect(0, 0, cols, rows, [5, 7, 11]));
+  surfaceToPpm(surf, cols, rows, out);
+}
+
+function gatewayStatusSnapshot(): void {
+  const args = process.argv.slice(3);
+  const cols = Number(args[0]) || 100;
+  const rows = Number(args[1]) || 32;
+  const out = args.find((a) => a.endsWith('.ppm')) ?? '.snapshots/gateway-status.ppm';
+  const checking = args.includes('checking');
+  const withModal = args.includes('modal');
+  const root = checking
+    ? Box({ width: cols, height: rows, flexDirection: 'column' }, [
+        Box({ flexGrow: 1 }),
+        Box({ flexDirection: 'row', alignItems: 'center', gap: 2, padding: [0, 0, 1, 2] }, [
+          Button({ id: 'start', label: 'new match', style: { border: 'round', padding: [0, 3], color: [110, 114, 126], borderColor: [110, 114, 126] } }),
+          Text({ text: 'checking model health ...', style: { color: 'muted' } }),
+        ]),
+      ])
+    : Box({ width: cols, height: rows, position: 'relative' }, [
+        Box({ position: 'absolute', left: 0, bottom: 0, width: cols, justifyContent: 'center' }, [
+          Box({ flexDirection: 'row', alignItems: 'center', gap: 2 }, [
+            Text({ text: 'game paused, model request failed.', style: { color: 'danger', bold: true } }),
+            Button({ id: 'retry', label: 'retry request  ↻', onClick: () => {}, style: { padding: 0, color: 'textPrimary', hover: { color: 'textStrong', bold: true }, focus: { color: 'textStrong', bold: true } } }),
+          ]),
+        ]),
+        ...(withModal ? [{ ...NoticeToast({
+          id: 'failure', severity: 'error', title: 'out of credit', body: 'buy AI Gateway credit to resume model requests.',
+          action: { label: 'buy AI Gateway credit', onClick: () => {} }, onDismiss: () => {},
+        }), style: { position: 'absolute' as const, top: 0, left: 0, width: cols, height: rows, justifyContent: 'center' as const, alignItems: 'center' as const, scrim: 'scrim' as const } }] : []),
+      ]);
+  const screen = new Screen(cols, rows);
+  screen.setRoot(root, { x: 0, y: 0, w: cols, h: rows });
+  const surf = screen.snapshot((surface) => surface.fillRect(0, 0, cols, rows, [5, 7, 11]));
+  surfaceToPpm(surf, cols, rows, out);
+}
+
 function sceneSnapshot(): void {
   const a0 = process.argv[2];
   const scene = a0 === 'chess-game' || a0 === 'logos' ? a0 : null;
@@ -344,6 +418,8 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
       (chess-game also accepts 'match' to play a few opening plies first)
 
   pnpm snapshot ui [cols] [rows] [hover=<id>|focus=<id>|pressed=<id>] [out]   button bar
+  pnpm snapshot notice [cols] [rows] [focus] [out]   actionable Gateway failure toast
+  pnpm snapshot gateway-status [cols] [rows] [checking|modal] [out]   paused model-failure recovery state
   pnpm snapshot overlay [chess-game|prism] [cols] [rows] [out]   bar over a scene
   pnpm snapshot unified [prism|chess|chess-game|logos] [cols] [rows] [out]   unified compositing path
   pnpm snapshot showcase [cols] [rows] [focus=<id>] [query=<text>] [blur] [out]   the UI component playground
@@ -361,16 +437,17 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot settings [cols] [rows] [open|account [dropdown|loading|switched|error|long]] [out]   home menu button, popup, or account modal
   pnpm snapshot launch [cols] [rows] [index] [t] [out]   Cover Flow flip-to-title splash
   pnpm snapshot prism-prompt [cols] [rows] [t] [out]    prism loading screen + press-any-key marquee
+  pnpm snapshot prism-menu-ink [cols] [rows] [progress] [out]   CLI prism → Cover Flow ink transition
   pnpm snapshot cards [single|hand|deck] [cols] [rows] [state] [out]   the cards screen
       (single: a code like Kh/10s/As · hand: peek|up · deck: shuffle|deal)
-  pnpm snapshot catan [sidebar] [discard|trade|trade-port3|trade-port2|trade-empty|player-trade|player-trade-ready|player-trade-mixed] [play-knight|play-road|play-plenty|play-monopoly] [hover=<id>] [hybrid] [shadow-glyphs] [forest|hills|pasture|fields|mountains|desert] [cols] [rows] [<t>] [board|board-cards|pieces|port|edit] [robber|robber-moveN] [fly<roll>@<s>|trade-fly<N>@<s>|dev-fly@<s>] [hud|modal] [out]   a 3D Catan tile
+  pnpm snapshot islanders [sidebar] [discard|trade|trade-port3|trade-port2|trade-empty|player-trade|player-trade-ready|player-trade-mixed] [play-knight|play-road|play-plenty|play-monopoly] [hover=<id>] [hybrid] [shadow-glyphs] [forest|hills|pasture|fields|mountains|desert] [cols] [rows] [<t>] [board|board-cards|pieces|port|edit] [robber|robber-moveN] [fly<roll>@<s>|trade-fly<N>@<s>|dev-fly@<s>] [hud|modal] [out]   a 3D Islanders tile
       (fly5@0.4: freeze the resource cards mid-arc, 0.4s after a roll of 5 pays out — needs hud; the sample board pays on 2, 5 and 10, and a non-paying roll throws nothing)
       (trade-fly2@0.4: freeze both sides of a two-card bank trade mid-arc; add sidebar to use the visible bank row)
       (dev-fly@0.4: freeze a purchased development card mid-arc; add sidebar to launch it from the visible dev pile)
       (robber-move5: preview moving the robber to hex 5 while leaving the current robber in place)
       (<t> a decimal spins the turntable · azN/elN rotate in degrees · zoomN scales camera distance · hud composites the terrain dropdown panel)
       (board modes also take anim<s>|roll[<s>]|build[<s>] to freeze the fly-in, a dice roll, or a build-drop · water<N> sets the current time · varN rerolls the layout · top orbits overhead · modal shows the piece-edit popup)
-  pnpm snapshot catan-game [setup|actions|discard|trade|counter|ai-trade|posted-trade] [spectate] [pov=N] [sidebar] [seats=N] [plies=N] [seed=N] [cols] [rows] [out]   the Catan game screen
+  pnpm snapshot islanders-game [setup|actions|discard|trade|counter|ai-trade|posted-trade] [spectate] [pov=N] [sidebar] [seats=N] [plies=N] [seed=N] [cols] [rows] [out]   the Islanders game screen
       (default: placement in progress, driven by the rules engine's own legal options — no model calls · setup: the pre-game seat panel)
       (the board is seeded, so the same arguments always render the same hexes; seed=N picks another)
   pnpm snapshot poker [cols] [rows] [preflop|flop|river|showdown] [players=N] [stack=N] [hud|setup|cine|result|menu|notes] [bet=N] [spectate] [longnames] [muck|gather|shuffle] [color] [out]   the poker table
@@ -384,6 +461,10 @@ if (process.argv[2] === 'help' || process.argv[2] === '--help' || process.argv[2
   console.log(HELP);
 } else if (process.argv[2] === 'ui') {
   uiSnapshot();
+} else if (process.argv[2] === 'notice') {
+  noticeSnapshot();
+} else if (process.argv[2] === 'gateway-status') {
+  gatewayStatusSnapshot();
 } else if (process.argv[2] === 'overlay') {
   overlaySnapshot();
 } else if (process.argv[2] === 'unified') {
@@ -418,24 +499,26 @@ if (process.argv[2] === 'help' || process.argv[2] === '--help' || process.argv[2
   launchSnapshot();
 } else if (process.argv[2] === 'prism-prompt') {
   prismPromptSnapshot();
+} else if (process.argv[2] === 'prism-menu-ink') {
+  prismMenuInkSnapshot();
 } else if (process.argv[2] === 'cards') {
   cardsSnapshot();
 } else if (process.argv[2] === 'poker') {
   pokerSnapshot();
-} else if (process.argv[2] === 'catan-game') {
-  catanGameSnapshot();
-} else if (process.argv[2] === 'catan') {
-  catanSnapshot();
+} else if (process.argv[2] === 'islanders-game') {
+  islandersGameSnapshot();
+} else if (process.argv[2] === 'islanders') {
+  islandersSnapshot();
 } else {
   sceneSnapshot();
 }
 
-// The Catan tile test bed: one 3D hex tile for a terrain, on its turntable. Defaults to the
+// The Islanders tile test bed: one 3D hex tile for a terrain, on its turntable. Defaults to the
 // truer half-block color path (this is a graphics test); `hud` composites the dropdown panel
 // + bar through the app's ASCII path; a decimal arg spins the turntable to that time.
 // `waterN` captures board-mode current time N so motion can be compared across stills.
-//   pnpm exec tsx src/tools/snapshot.ts catan [forest|hills|pasture|fields|mountains|desert] [cols] [rows] [<t>] [board|board-cards] [waterN] [azN] [elN] [zoomN] [hud] [out.ppm]
-function catanSnapshot(): void {
+//   pnpm exec tsx src/tools/snapshot.ts islanders [forest|hills|pasture|fields|mountains|desert] [cols] [rows] [<t>] [board|board-cards] [waterN] [azN] [elN] [zoomN] [hud] [out.ppm]
+function islandersSnapshot(): void {
   const args = process.argv.slice(3);
   const terrain = ((TERRAINS as readonly string[]).find((x) => args.includes(x)) ?? 'forest') as Terrain;
   const nums = args.filter((a) => /^\d+$/.test(a)).map(Number);
@@ -444,7 +527,7 @@ function catanSnapshot(): void {
   const spinTo = Number(args.find((a) => /^\d+\.\d+$/.test(a))) || 0;
   const waterArg = args.find((a) => /^water[\d.]+$/.test(a));
   const waterTime = waterArg ? Number(waterArg.slice(5)) : 0;
-  const out = args.find((a) => a.endsWith('.ppm')) ?? `.snapshots/catan-${terrain}.ppm`;
+  const out = args.find((a) => a.endsWith('.ppm')) ?? `.snapshots/islanders-${terrain}.ppm`;
   const SS = 4;
 
   const scene = new TileScene();
@@ -479,15 +562,15 @@ function catanSnapshot(): void {
     const board = generateBoard(mulberry32(0xc47a));
     scene.adoptBoard(board, false);
     const harbor = board.harbors.find(({ port }) => port.resource === (portTradeArg === 'generic' ? null : 'brick'))!;
-    scene.placePiece('building', harbor.nodes[0], CATAN_LOCAL_COLOR);
+    scene.placePiece('building', harbor.nodes[0], ISLANDERS_LOCAL_COLOR);
   }
   if (args.includes('discard')) {
-    resetCatanWorkbenchCards();
-    for (let i = 0; i < 5; i++) adjustCatanWorkbenchHand('brick', 1);
-    for (let i = 0; i < 4; i++) adjustCatanWorkbenchHand('grain', 1);
-    beginCatanWorkbenchDiscard();
-    adjustCatanWorkbenchDiscard('brick', 1);
-    adjustCatanWorkbenchDiscard('grain', 1);
+    resetIslandersWorkbenchCards();
+    for (let i = 0; i < 5; i++) adjustIslandersWorkbenchHand('brick', 1);
+    for (let i = 0; i < 4; i++) adjustIslandersWorkbenchHand('grain', 1);
+    beginIslandersWorkbenchDiscard();
+    adjustIslandersWorkbenchDiscard('brick', 1);
+    adjustIslandersWorkbenchDiscard('grain', 1);
   }
   if (args.includes('top')) scene.orbit(0, 34);
   if (spinTo) scene.orbit(-spinTo * 120, 0);
@@ -541,7 +624,7 @@ function catanSnapshot(): void {
   if (args.includes('modal')) {
     const screen = new Screen(cols, rows);
     const region = { x: 0, y: 0, w: cols, h: rows };
-    screen.setRoot(buildCatanPieceModal({ road: false, city: false, color: 'blue', onUpgrade: noop, onRemove: noop, onColor: () => {}, onClose: noop }), region);
+    screen.setRoot(buildIslandersPieceModal({ road: false, city: false, color: 'blue', onUpgrade: noop, onRemove: noop, onColor: () => {}, onClose: noop }), region);
     const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, coloredBackground }));
     surfaceToPpm(surf, cols, rows, out);
     return;
@@ -557,38 +640,38 @@ function catanSnapshot(): void {
             ? 'monopoly'
             : null;
     if (developmentPlay) {
-      resetCatanWorkbenchCards();
-      adjustCatanWorkbenchDev(developmentPlay, 1);
-      if (developmentPlay === 'roadBuilding') scene.placePiece('building', 0, CATAN_LOCAL_COLOR);
-      beginCatanWorkbenchDevelopmentPlay(developmentPlay);
+      resetIslandersWorkbenchCards();
+      adjustIslandersWorkbenchDev(developmentPlay, 1);
+      if (developmentPlay === 'roadBuilding') scene.placePiece('building', 0, ISLANDERS_LOCAL_COLOR);
+      beginIslandersWorkbenchDevelopmentPlay(developmentPlay);
       if (developmentPlay === 'knight') scene.beginRobberMove();
       if (developmentPlay === 'roadBuilding') {
-        scene.setPlacementGate({ nodes: [], edges: scene.legalRoadEdges(CATAN_LOCAL_COLOR) });
+        scene.setPlacementGate({ nodes: [], edges: scene.legalRoadEdges(ISLANDERS_LOCAL_COLOR) });
       }
     }
     const screen = new Screen(cols, rows);
     const tradeFlightArg = args.find((arg) => /^trade-fly\d*@\d+(?:\.\d+)?$/.test(arg));
     if (args.includes('trade') || args.includes('trade-port3') || args.includes('trade-port2') || args.includes('trade-empty') || tradeFlightArg) {
-      resetCatanWorkbenchCards();
+      resetIslandersWorkbenchCards();
       const animatedGets = tradeFlightArg ? Number(tradeFlightArg.match(/^trade-fly(\d*)@/)?.[1] || 1) : 1;
-      const giveCount = portTradeArg ? scene.maritimeTradeRates(CATAN_LOCAL_COLOR).brick : 4 * animatedGets;
-      for (let i = 0; i < giveCount; i++) adjustCatanWorkbenchHand('brick', 1);
-      setCatanTradeEditorOpen(true);
+      const giveCount = portTradeArg ? scene.maritimeTradeRates(ISLANDERS_LOCAL_COLOR).brick : 4 * animatedGets;
+      for (let i = 0; i < giveCount; i++) adjustIslandersWorkbenchHand('brick', 1);
+      setIslandersTradeEditorOpen(true);
       if (!args.includes('trade-empty')) {
-        setCatanWorkbenchTradeSelection('brick', 'ore', giveCount);
-        for (let i = 1; i < animatedGets; i++) adjustCatanWorkbenchTradeStaging('receive', 'ore', 1);
+        setIslandersWorkbenchTradeSelection('brick', 'ore', giveCount);
+        for (let i = 1; i < animatedGets; i++) adjustIslandersWorkbenchTradeStaging('receive', 'ore', 1);
       }
     }
     if (args.some((arg) => /^dev-fly@\d+(?:\.\d+)?$/.test(arg))) {
-      resetCatanWorkbenchCards();
+      resetIslandersWorkbenchCards();
       // Leave one further purchase in hand after the animated card is paid for, so the snapshot
       // also verifies that an in-flight card does not disable the trade or buy-dev actions.
-      adjustCatanWorkbenchHand('ore', 2);
-      adjustCatanWorkbenchHand('wool', 2);
-      adjustCatanWorkbenchHand('grain', 2);
+      adjustIslandersWorkbenchHand('ore', 2);
+      adjustIslandersWorkbenchHand('wool', 2);
+      adjustIslandersWorkbenchHand('grain', 2);
     }
     if (args.includes('player-trade') || args.includes('player-trade-ready') || args.includes('player-trade-mixed')) {
-      resetCatanWorkbenchCards();
+      resetIslandersWorkbenchCards();
       const stageOffer = (
         giveCounts: readonly (readonly ['lumber' | 'brick' | 'wool' | 'grain' | 'ore', number])[],
         receive: 'lumber' | 'brick' | 'wool' | 'grain' | 'ore',
@@ -596,14 +679,14 @@ function catanSnapshot(): void {
       ): void => {
         for (const [resource, count] of giveCounts) {
           for (let i = 0; i < count; i++) {
-            adjustCatanWorkbenchHand(resource, 1);
-            adjustCatanWorkbenchTradeStaging('give', resource, 1);
+            adjustIslandersWorkbenchHand(resource, 1);
+            adjustIslandersWorkbenchTradeStaging('give', resource, 1);
           }
         }
-        adjustCatanWorkbenchTradeStaging('receive', receive, 1);
-        const view = catanWorkbenchView();
-        const id = createCatanWorkbenchPlayerTrade(view.localPlayer, view.opponents, noop);
-        if (id !== null && ready) resolveCatanWorkbenchPlayerTradeOffer(id);
+        adjustIslandersWorkbenchTradeStaging('receive', receive, 1);
+        const view = islandersWorkbenchView();
+        const id = createIslandersWorkbenchPlayerTrade(view.localPlayer, view.opponents, noop);
+        if (id !== null && ready) resolveIslandersWorkbenchPlayerTradeOffer(id);
       };
       if (args.includes('player-trade-mixed')) {
         stageOffer([['lumber', 1]], 'ore', true);
@@ -618,19 +701,19 @@ function catanSnapshot(): void {
     }
     // `sidebar` expands the card rail, which starts collapsed. Note this previews the rail only —
     // the scene stays full width here, where the app also insets the 3D viewport behind it.
-    if (args.includes('sidebar') && !catanSidebarOpen()) toggleCatanSidebar();
-    mountCatanTileHud(screen);
-    (screen.component('catan-terrain') as Dropdown | undefined)?.pick(TERRAINS.indexOf(terrain));
-    (screen.component('catan-mode') as Dropdown | undefined)?.pick(['tile', 'board', 'boardCards', 'pieces', 'port'].indexOf(scene.currentMode()));
-    if (pieceColor) (screen.component('catan-color') as Dropdown | undefined)?.pick(['red', 'blue', 'purple', 'orange'].indexOf(pieceColor));
-    if (portKind) (screen.component('catan-port') as Dropdown | undefined)?.pick(['generic', 'brick', 'grain', 'lumber', 'ore', 'wool'].indexOf(portKind));
+    if (args.includes('sidebar') && !islandersSidebarOpen()) toggleIslandersSidebar();
+    mountIslandersTileHud(screen);
+    (screen.component('islanders-terrain') as Dropdown | undefined)?.pick(TERRAINS.indexOf(terrain));
+    (screen.component('islanders-mode') as Dropdown | undefined)?.pick(['tile', 'board', 'boardCards', 'pieces', 'port'].indexOf(scene.currentMode()));
+    if (pieceColor) (screen.component('islanders-color') as Dropdown | undefined)?.pick(['red', 'blue', 'purple', 'orange'].indexOf(pieceColor));
+    if (portKind) (screen.component('islanders-port') as Dropdown | undefined)?.pick(['generic', 'brick', 'grain', 'lumber', 'ore', 'wool'].indexOf(portKind));
     const region = { x: 0, y: 0, w: cols, h: rows };
     const singlePort = scene.portSailLabel(cols, rows);
-    const flightState = catanFlights(scene, region, args);
+    const flightState = islandersFlights(scene, region, args);
     const cardsView = scene.currentMode() === 'boardCards'
-      ? catanWorkbenchView(
-          scene.maritimeTradeRates(CATAN_LOCAL_COLOR),
-          scene.maritimePortTradeRates(CATAN_LOCAL_COLOR),
+      ? islandersWorkbenchView(
+          scene.maritimeTradeRates(ISLANDERS_LOCAL_COLOR),
+          scene.maritimePortTradeRates(ISLANDERS_LOCAL_COLOR),
         )
       : undefined;
     if (cardsView) cardsView.maritimeTradeBusy = flightState.maritimeTradeBusy;
@@ -638,7 +721,7 @@ function catanSnapshot(): void {
       cardsView.developmentPurchaseBusy = true;
       cardsView.pendingDevelopmentCards = flightState.pendingDevelopmentCards;
     }
-    screen.setRoot(buildCatanTileRoot(region, noop, scene.boardTokens(cols, rows), scene.currentMode(), singlePort ? [singlePort] : scene.boardPortLabels(cols, rows), flightState.active, scene.isMovingRobber(), cardsView), region);
+    screen.setRoot(buildIslandersTileRoot(region, noop, scene.boardTokens(cols, rows), scene.currentMode(), singlePort ? [singlePort] : scene.boardPortLabels(cols, rows), flightState.active, scene.isMovingRobber(), cardsView), region);
     screen.setHover(args.find((arg) => arg.startsWith('hover='))?.slice(6) ?? null);
     const surf = screen.snapshot(
       (s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: shadowGlyphs, coloredBackground }),
@@ -652,13 +735,13 @@ function catanSnapshot(): void {
   writeDisplayPpm(downsample(target, SS), out);
 }
 
-// The Catan GAME screen (not the tile bed): `setup` captures the pre-game panel, and the default
+// The Islanders GAME screen (not the tile bed): `setup` captures the pre-game panel, and the default
 // captures a placement in progress. Placement is driven with the rules engine's own legal options
 // rather than models, so the still is reproducible and needs no network. The board is seeded
 // (`seed=N` to pick another one), so re-rendering the same arguments lands the same hexes — a
 // visual change is then the only thing that can move the pixels.
-//   pnpm exec tsx src/tools/snapshot.ts catan-game [setup|actions|discard|trade|counter|ai-trade|posted-trade] [spectate] [longnames] [pov=N] [sidebar] [seats=N] [plies=N] [seed=N] [cols] [rows] [out.ppm]
-function catanGameSnapshot(): void {
+//   pnpm exec tsx src/tools/snapshot.ts islanders-game [setup|actions|discard|trade|counter|ai-trade|posted-trade] [spectate] [longnames] [pov=N] [sidebar] [seats=N] [plies=N] [seed=N] [cols] [rows] [out.ppm]
+function islandersGameSnapshot(): void {
   const args = process.argv.slice(3);
   const nums = args.filter((a) => /^\d+$/.test(a)).map(Number);
   const cols = nums[0] ?? 170;
@@ -666,14 +749,14 @@ function catanGameSnapshot(): void {
   const seats = Number(args.find((a) => a.startsWith('seats='))?.slice(6) ?? 4);
   const plies = Number(args.find((a) => a.startsWith('plies='))?.slice(6) ?? 5);
   const seed = Number(args.find((a) => a.startsWith('seed='))?.slice(5) ?? 0xca7a4);
-  const out = args.find((a) => a.endsWith('.ppm')) ?? `.snapshots/catan-game.ppm`;
+  const out = args.find((a) => a.endsWith('.ppm')) ?? `.snapshots/islanders-game.ppm`;
   const region = { x: 0, y: 0, w: cols, h: rows };
   const SS = 3;
 
-  const gameScene = new CatanGameScene();
-  const driver = new CatanDriver({ scene: gameScene, syncLive: noop });
+  const gameScene = new IslandersGameScene();
+  const driver = new IslandersDriver({ scene: gameScene, syncLive: noop });
   if (!args.includes('setup')) {
-    if (args.includes('sidebar') && !catanSidebarOpen()) toggleCatanSidebar();
+    if (args.includes('sidebar') && !islandersSidebarOpen()) toggleIslandersSidebar();
     const colors: PlayerColor[] = ['red', 'blue', 'purple', 'orange'].slice(0, seats) as PlayerColor[];
     const counter = args.includes('counter');
     const trade = args.includes('trade');
@@ -686,13 +769,13 @@ function catanGameSnapshot(): void {
     const snapshotModels = args.includes('longnames')
       ? ['snapshot/grok-4.1-fast-non-reasoning', 'snapshot/claude-haiku-4.5', 'snapshot/gpt-5.4-nano', 'snapshot/gemini-2.5-flash']
       : colors.map((_color, i) => `snapshot/model-${i}`);
-    const specs: CatanSeatSpec[] = colors.map((color, i) => (!spectate && i === humanSeat
+    const specs: IslandersSeatSpec[] = colors.map((color, i) => (!spectate && i === humanSeat
       ? { kind: 'human', color }
       : { kind: 'ai', color, model: snapshotModels[i] }));
     const state = driver.start(specs, { autoRun: false, rng: mulberry32(seed) });
     const pov = Number(args.find((arg) => arg.startsWith('pov='))?.slice(4) ?? 0);
     if (spectate && pov > 0 && pov < seats) gameScene.setViewedSeat(pov);
-    gameScene.setResourceFlightLayout(region, seats, catanRailVisible(cols, rows));
+    gameScene.setResourceFlightLayout(region, seats, islandersRailVisible(cols, rows));
     if (aiTrade || postedTrade) {
       while (!state.initialPlacementComplete()) void gameScene.playMove(state.legalActions()[0]);
       void gameScene.playMove({ type: 'roll' });
@@ -701,7 +784,7 @@ function catanGameSnapshot(): void {
       hands[1].fill(0);
       hands[0][resourceIndex('brick')] = 3;
       hands[1][resourceIndex('grain')] = 3;
-      const offer: CatanAction = { type: 'offerTrade', give: [1, 0, 0, 0, 0], receive: [0, 2, 0, 0, 0] };
+      const offer: IslandersAction = { type: 'offerTrade', give: [1, 0, 0, 0, 0], receive: [0, 2, 0, 0, 0] };
       if (aiTrade) gameScene.setActionPreviewDuration(5);
       void gameScene.playMove(offer);
     } else if (counter) {
@@ -758,8 +841,8 @@ function catanGameSnapshot(): void {
   const target = new RenderTarget(cols * SS, rows * SS);
   gameScene.renderScene(target, 0.7);
   const screen = new Screen(cols, rows);
-  mountCatanGameHud(screen);
-  screen.setRoot(buildCatanGameRoot(region, {
+  mountIslandersGameHud(screen);
+  screen.setRoot(buildIslandersGameRoot(region, {
     driver,
     scene: gameScene,
     tokens: gameScene.scene.boardTokens(cols, rows),
@@ -774,38 +857,38 @@ function catanGameSnapshot(): void {
 }
 
 // `fly<roll>@<seconds>` freezes the resource-card animation mid-arc: pay out that roll to the
-// local seat and step the flights to that instant. Mirrors what CatanController does on a landed
+// local seat and step the flights to that instant. Mirrors what IslandersController does on a landed
 // roll — the tool has no controller, so it drives the same two pieces directly.
-interface CatanSnapshotFlightState {
+interface IslandersSnapshotFlightState {
   active: FlyingResource<Resource | DevCardType>[];
   maritimeTradeBusy?: boolean;
   pendingDevelopmentCards?: DevCardType[];
 }
 
-function catanFlights(scene: TileScene, region: { w: number; h: number }, args: string[]): CatanSnapshotFlightState {
+function islandersFlights(scene: TileScene, region: { w: number; h: number }, args: string[]): IslandersSnapshotFlightState {
   const devArg = args.find((arg) => /^dev-fly@\d+(?:\.\d+)?$/.test(arg));
   if (devArg) {
     const at = Number(devArg.slice('dev-fly@'.length));
-    const card = beginCatanWorkbenchDevPurchase();
+    const card = beginIslandersWorkbenchDevPurchase();
     if (!card) return { active: [] };
     const flights = new ResourceFlights<DevCardType>();
     const layoutRegion = { x: 0, y: 0, ...region };
-    const railVisible = catanRailVisible(region.w, region.h);
-    const view = catanWorkbenchView();
+    const railVisible = islandersRailVisible(region.w, region.h);
+    const view = islandersWorkbenchView();
     view.developmentPurchaseBusy = true;
     view.pendingDevelopmentCards = [card];
     flights.spawn(
       card,
       1,
-      catanDevDeckDepartureCell(layoutRegion, view.opponents.length + 1, railVisible),
-      catanDevHandLandingCell(layoutRegion, card, railVisible, view),
+      islandersDevDeckDepartureCell(layoutRegion, view.opponents.length + 1, railVisible),
+      islandersDevHandLandingCell(layoutRegion, card, railVisible, view),
       0,
       7,
     );
     for (let f = 0; f <= Math.round(at * 60); f++) {
       const events = flights.advanceWithDepartures(f / 60);
-      for (const departed of events.departed) departCatanWorkbenchDevCard(departed);
-      for (const landed of events.landed) landCatanWorkbenchDevCard(landed);
+      for (const departed of events.departed) departIslandersWorkbenchDevCard(departed);
+      for (const landed of events.landed) landIslandersWorkbenchDevCard(landed);
     }
     return {
       active: flights.active(),
@@ -818,18 +901,18 @@ function catanFlights(scene: TileScene, region: { w: number; h: number }, args: 
     const match = tradeArg.match(/^trade-fly(\d*)@(\d+(?:\.\d+)?)$/)!;
     const count = Number(match[1] || 1);
     const at = Number(match[2]);
-    const trade = beginStagedCatanWorkbenchBankTrade();
+    const trade = beginStagedIslandersWorkbenchBankTrade();
     if (!trade || trade.gets.length !== count) return { active: [] };
     const incomingFlights = new ResourceFlights();
     const offerFlights = new ResourceFlights();
     const layoutRegion = { x: 0, y: 0, ...region };
-    const playerCount = catanWorkbenchView().opponents.length + 1;
-    const railVisible = catanRailVisible(region.w, region.h);
+    const playerCount = islandersWorkbenchView().opponents.length + 1;
+    const railVisible = islandersRailVisible(region.w, region.h);
     offerFlights.spawn(
       trade.give,
       trade.rate * trade.gets.length,
-      catanHandLandingCell(layoutRegion, trade.give),
-      catanBankDepartureCell(layoutRegion, trade.give, playerCount, railVisible),
+      islandersHandLandingCell(layoutRegion, trade.give),
+      islandersBankDepartureCell(layoutRegion, trade.give, playerCount, railVisible),
       0,
       7,
       false,
@@ -839,8 +922,8 @@ function catanFlights(scene: TileScene, region: { w: number; h: number }, args: 
       incomingFlights.spawn(
         resource,
         1,
-        catanBankDepartureCell(layoutRegion, resource, playerCount, railVisible),
-        catanHandLandingCell(layoutRegion, resource),
+        islandersBankDepartureCell(layoutRegion, resource, playerCount, railVisible),
+        islandersHandLandingCell(layoutRegion, resource),
         order,
         7,
       );
@@ -848,10 +931,10 @@ function catanFlights(scene: TileScene, region: { w: number; h: number }, args: 
     for (let f = 0; f <= Math.round(at * 60); f++) {
       const incoming = incomingFlights.advanceWithDepartures(f / 60);
       const offered = offerFlights.advanceWithDepartures(f / 60);
-      for (const resource of incoming.departed) departCatanWorkbenchBankResource(resource);
-      for (const resource of incoming.landed) bankCatanResource(resource);
-      for (const resource of offered.departed) departCatanWorkbenchHandResource(resource);
-      for (const resource of offered.landed) landCatanWorkbenchBankResource(resource);
+      for (const resource of incoming.departed) departIslandersWorkbenchBankResource(resource);
+      for (const resource of incoming.landed) bankIslandersResource(resource);
+      for (const resource of offered.departed) departIslandersWorkbenchHandResource(resource);
+      for (const resource of offered.landed) landIslandersWorkbenchBankResource(resource);
     }
     return {
       active: [...offerFlights.active(), ...incomingFlights.active()],
@@ -864,8 +947,8 @@ function catanFlights(scene: TileScene, region: { w: number; h: number }, args: 
   const [roll, at] = arg.slice(3).split('@').map(Number);
   const flights = new ResourceFlights();
   let thrown = 0;
-  for (const source of scene.rollSources(CATAN_LOCAL_COLOR, roll, region.w, region.h)) {
-    flights.spawn(source.resource, source.count, source, catanHandLandingCell({ x: 0, y: 0, ...region }, source.resource), thrown);
+  for (const source of scene.rollSources(ISLANDERS_LOCAL_COLOR, roll, region.w, region.h)) {
+    flights.spawn(source.resource, source.count, source, islandersHandLandingCell({ x: 0, y: 0, ...region }, source.resource), thrown);
     thrown += source.count;
   }
   for (let f = 1; f <= Math.round(at * 60); f++) flights.advance(f / 60);
@@ -949,8 +1032,8 @@ function pokerSnapshot(): void {
         onToggleChat: noop,
         onOpenMenu: noop,
         onOpenNotes: noop,
-        setup: buildPokerSetupPanel(),
-        matchControls: { setup: true, onPrimary: noop, onCancel: noop },
+        setup: buildPokerSetupPanel(args.includes('checking') ? { lines: ['checking model health ...'], failed: false } : args.includes('health-failed') ? { lines: ['claude-haiku-4.5, gpt-5.4-nano failed health check.'], failed: true } : undefined),
+        matchControls: { setup: true, onPrimary: args.includes('checking') || args.includes('health-failed') ? undefined : noop, onCancel: noop },
         pauseControl: null,
         hideHud: false,
         cineLabel: null,
@@ -1391,7 +1474,7 @@ function coverflowSnapshot(): void {
   // title chrome on top (mirrors drawCoverChrome in main.ts).
   const surf = new Surface(cols, rows);
   shapeGlyphToSurface(surf, target, cols, rows, { color: true });
-  const item = MENU_ITEMS[sel];
+  const item = MENU_ITEMS[coverFlowIndex(sel, MENU_ITEMS.length)];
   if (item) {
     const suffix = item.enabled ? '' : '   coming soon';
     const x = Math.max(0, Math.floor((cols - item.title.length - suffix.length) / 2));
@@ -1535,6 +1618,33 @@ function prismPromptSnapshot(): void {
     if (text[i] !== ' ') surf.setCellWithAlphaBlending(x0 + i, y, text[i], [205, 210, 230, alpha], [0, 0, 0, 0]);
   }
   surfaceToPpm(surf, cols, rows, out);
+}
+
+function prismMenuInkSnapshot(): void {
+  const cols = Number(process.argv[3]) || 140;
+  const rows = Number(process.argv[4]) || 44;
+  const progress = Math.max(0, Math.min(1, Number(process.argv[5]) || 0));
+  const out = process.argv.find((arg) => arg.endsWith('.ppm')) ?? '.snapshots/prism-menu-ink.ppm';
+  const SS = 3;
+  const target = new RenderTarget(cols * SS, rows * 2 * SS);
+  new PrismScene().renderScene(target, 0.9 + progress * 0.2);
+  const source = new Surface(cols, rows);
+  shapeGlyphToSurface(source, target, cols, rows, { color: true });
+  const prompt = 'press any key to start';
+  source.drawTextOver(Math.max(0, Math.floor((cols - prompt.length) / 2)), rows - 2, prompt, [205, 210, 230]);
+
+  const coverflow = new CoverFlowScene();
+  coverflow.renderScene(target, 0, null);
+  const destination = new Surface(cols, rows);
+  shapeGlyphToSurface(destination, target, cols, rows, { color: true });
+  const item = MENU_ITEMS[0];
+  destination.drawTextOver(Math.max(0, Math.floor((cols - item.title.length) / 2)), rows - 4, item.title, [240, 244, 255], STYLE_BOLD);
+
+  const transition = new TimedInkTransition({ duration: 1, cut: { from: { x: 0.62, y: 0.43 }, to: { x: 0.5, y: 0.5 }, direction: { x: -0.82, y: 0.57 } } });
+  transition.start();
+  transition.step(progress);
+  surfaceToPpm(transition.compose(source, destination), cols, rows, out);
+  console.log(`wrote ${out} (${cols}x${rows}, progress=${progress})`);
 }
 
 // A single frame of the boot splash at time `t` (the intro animation). Mirrors the
@@ -1684,7 +1794,7 @@ function chessOverlaySnapshot(): void {
             { id: 'chess-menu-mode', label: 'display', value: 'ascii', onClick: noop },
             { id: 'chess-menu-color', label: 'color', value: 'truecolor', onClick: noop },
             { id: 'chess-menu-eval', label: 'eval bar', value: evalVisible ? 'on' : 'off', onClick: noop },
-            { id: 'chess-menu-illegal', label: 'illegal', value: 'off', onClick: noop },
+            { id: 'chess-menu-illegal', label: 'illegal moves', value: 'off', onClick: noop },
           ],
           [
             { id: 'chess-menu-shortcuts', label: 'controls', onClick: noop },
@@ -1813,7 +1923,7 @@ function setupSnapshot(): void {
   chess.setPreview(chessPreviewSides());
   chess.renderScene(target, 0.6);
   const region = { x: 0, y: 0, w: cols, h: rows };
-  screen.setRoot(buildMatchSetup(region, { onStart: noop, onCancel: noop }), region);
+  screen.setRoot(buildMatchSetup(region, { onStart: noop, onCancel: noop, healthStatus: process.argv.includes('checking') ? { lines: ['checking model health ...'], failed: false } : process.argv.includes('health-failed') ? { lines: ['claude-haiku-4.5, gpt-5.4-nano failed health check.'], failed: true } : undefined }), region);
   const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
   surfaceToPpm(surf, cols, rows, out);
 }

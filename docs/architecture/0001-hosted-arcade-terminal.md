@@ -34,8 +34,9 @@ a temporary fork with its own shell and filesystem. Typing `arcade` invokes the 
 `ls`, `cd docs`, and `cat README.md` are ordinary shell operations rather than website
 simulations.
 
-Browser-native engine and TUI specimens remain useful under `/examples`. They demonstrate the
-reusable package subpaths, but they are not presented as the full Arcade application.
+Browser-native engine, cinematic, and TUI surfaces remain useful through the homepage and
+public `@vercel/arcade/web` exports. They demonstrate reusable package boundaries, but they are
+not presented as a second full Arcade application or a separate website gallery.
 
 ## Credential and process boundary
 
@@ -58,7 +59,8 @@ reusable package subpaths, but they are not presented as the full Arcade applica
 - A base snapshot avoids reinstalling the package for every visitor, while per-session forks
   preserve isolation.
 - The site now has server compute, WebSocket, abuse-control, and capacity responsibilities.
-- Package exports remain important for third-party authors and the `/examples` gallery, but the
-  full website demo no longer depends on an alternate browser app orchestrator.
+- Package exports remain important for third-party authors and the homepage's browser-safe
+  cinematic surfaces, but the full website demo does not depend on an alternate browser app
+  orchestrator.
 - A deployment must expose Vercel Sandbox access and a server-side Gateway credential (or OIDC)
   before AI model play is available in the hosted terminal.

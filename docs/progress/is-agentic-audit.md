@@ -1,6 +1,6 @@
 # Arcade site agent-readiness audit
 
-Last updated: 2026-08-28
+Last updated: 2026-08-29
 
 ## Initial preview
 
@@ -50,10 +50,11 @@ heuristic rather than a launch blocker.
 - Audit: `https://is-agentic.com/scan/vercel-arcade-2ks99xwmy.labs.vercel.dev`
 - Score: 95/100 — Strong technical baseline
 
-This rescan covers the release candidate with the live renderer and retained-TUI examples,
-expanded source-backed documentation, packed-consumer smoke test, and final metadata
-cleanup. It confirms that the earlier agent-readiness improvements remain present after the
-browser examples and documentation expansion.
+This rescan covers the earlier release candidate with source-backed browser examples,
+expanded documentation, a packed-consumer smoke test, and metadata cleanup. A newer
+public-beta readiness pass replaces the generic specimens with shipped Chess, Islanders,
+Poker, and prism systems; its preview and audit evidence should be recorded below rather
+than overwriting this historical result.
 
 The remaining failed checks are not honest metadata-only fixes:
 
@@ -68,3 +69,20 @@ operation IDs, its deprecation-policy heuristic despite the documented
 fabricated organization data, fake quotas, hidden keyword content, or a hollow MCP endpoint
 to increase the score. A real credential-safe, rate-limited browser model-session boundary
 is tracked in Linear as `AIG-706`.
+
+## Public-beta readiness rescan
+
+- Preview: `https://vercel-arcade-pwb2okkqv.labs.vercel.dev`
+- Inspector: `https://vercel.com/vercel-labs/vercel-arcade/GaQcdjsg1Qa7uax85aLqbsZQwQ7o`
+- Audit: `https://is-agentic.com/scan/vercel-arcade-pwb2okkqv.labs.vercel.dev`
+- Score: 95/100 — Strong technical baseline
+
+This rescan covers the canonical package and harness boundaries, production-backed browser
+examples, expanded documentation, and the hosted terminal package built from the exact root
+lockfile toolchain in Vercel's isolated site environment. The preview passed the remote
+Turbopack build, all public route probes, and browser visual inspection of the complete
+Chess board and imported knight asset.
+
+The scanner reported the same non-blocking deductions documented above. We continue to
+avoid fabricated organization details, fake rate limits, or an empty MCP surface solely to
+raise the score.

@@ -1,5 +1,5 @@
 import { normalizerModel } from '../../../arcade/match/models.ts';
-import { runPokerSession } from '../../../arcade/match/poker-session.ts';
+import { runPokerSession } from '../../../harness/games/poker/poker-session.ts';
 import { mulberry32 } from '../random.ts';
 import type { MatchLabAdapter } from '../types.ts';
 

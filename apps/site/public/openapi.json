@@ -87,7 +87,7 @@
               "installer": { "type": "string" },
               "prismStream": { "type": "string" },
               "agentIndex": { "type": "string" },
-              "examples": { "type": "string" }
+              "examples": { "type": "string", "description": "Compatibility index of surviving Arcade examples and browser surfaces." }
             }
           }
         }

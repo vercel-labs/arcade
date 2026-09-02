@@ -7,6 +7,8 @@ export interface Camera {
   fovy: number;
   near: number;
   far: number;
+  /** Vertical film shift in normalized device coordinates, positive = up. */
+  ndcOffsetY?: number;
 }
 
 export interface CameraMatrices {
@@ -18,5 +20,6 @@ export interface CameraMatrices {
 export function cameraMatrices(cam: Camera, aspect: number): CameraMatrices {
   const view = mat4LookAt(cam.eye, cam.target, cam.up);
   const projection = mat4Perspective(cam.fovy, aspect, cam.near, cam.far);
+  if (cam.ndcOffsetY) projection[9] = -cam.ndcOffsetY;
   return { view, projection, viewProjection: mat4Multiply(projection, view) };
 }

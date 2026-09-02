@@ -100,11 +100,11 @@ test('an empty body is rejected', async () => {
 
 test('an oversized single record is 413 record_too_large; an oversized request is 413 request_too_large', async () => {
   const { sink } = capturingSink();
-  const bigRecord = await ingest(req('match', matchRow({ payloadJson: 'x'.repeat(950_000) })), { sink });
+  const bigRecord = await ingest(req('match', matchRow({ payloadJson: JSON.stringify('x'.repeat(4_100_000)) })), { sink });
   assert.equal(bigRecord.status, 413);
   assert.deepEqual(bigRecord.body, { ok: false, error: 'record_too_large' });
 
-  const bigRequest = await ingest(req('match', matchRow({ payloadJson: 'x'.repeat(1_100_000) })), { sink });
+  const bigRequest = await ingest(req('match', matchRow({ payloadJson: 'x'.repeat(4_300_000) })), { sink });
   assert.equal(bigRequest.status, 413);
   assert.deepEqual(bigRequest.body, { ok: false, error: 'request_too_large' });
 });

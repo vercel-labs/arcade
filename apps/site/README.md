@@ -1,7 +1,7 @@
 # Arcade site
 
-The front door for the `@vercel/arcade` CLI: the hero page and the
-`curl … | sh` installer it points at.
+The front door for the `@vercel/arcade` CLI. The hero presents the canonical npm
+install command; the curl installer remains available as a standalone endpoint.
 
 ```
 curl -fsSL vercel-arcade.vercel.app/install | sh
@@ -16,7 +16,7 @@ or games.
 
 It's its own [pnpm workspace root](pnpm-workspace.yaml) (own lockfile,
 own `node_modules`) nested inside the arcade repo, fully decoupled from the CLI's
-own dependency graph. Focused examples consume the root package through a workspace
+own dependency graph. Browser surfaces consume the root package through a workspace
 link and public subpath exports rather than copying game or renderer code. The hosted
 terminal build packs the current root workspace into a deployment artifact, installs that
 exact artifact into a reusable base snapshot, and forks a temporary session for each visitor.
@@ -33,11 +33,11 @@ exact artifact into a reusable base snapshot, and forks a temporary session for 
 | `app/[lang]/(home)/components/arcade-terminal.tsx` | xterm.js client connected to the isolated Arcade PTY |
 | `app/api/terminal/session` | packages the current CLI, provisions the reusable Sandbox base, and opens temporary PTY sessions |
 | `scripts/prepare-terminal-package.mjs` | packs the current root workspace for the hosted terminal build |
-| `app/[lang]/docs/[[...slug]]` | renderer, TUI, harness, browser-host, and examples documentation |
+| `app/[lang]/docs/[[...slug]]` | renderer, TUI, harness, browser-host, and tools documentation |
 | `app/install/route.ts` | serves `install.sh` verbatim at `/install` (and `/install.sh` via a rewrite) |
 | `public/llms.txt`, `public/llms-full.txt`, `public/agents.md` | agent-readable entry points |
-| `public/examples.json`, `public/schemas/examples-v1.json` | machine-readable example catalog and schema |
-| `install.sh` | the installer itself — unchanged, still checks Node 20+ then runs `npm i -g @vercel/arcade` |
+| `public/examples.json`, `public/schemas/examples-v1.json` | compatibility index retained for the public v1 capability contract |
+| `install.sh` | the installer itself — checks Node 22+ then runs `npm i -g @vercel/arcade` |
 
 The `[lang]` segment is geistdocs' routing convention; only `en` is configured
 (`translations` in `geistdocs.tsx`) — there's no real i18n content here.

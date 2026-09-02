@@ -22,7 +22,6 @@ pnpm test
 pnpm type-check
 ```
 
-Machine-readable example metadata is available at `/examples.json`.
 The site's existing HTTP surfaces are described at `/openapi.json`.
 Use `/api/v1/status` to inspect the public capability boundary before assuming a remote action exists.
 

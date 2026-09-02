@@ -69,7 +69,7 @@ Do not trust the heuristic — run the tool. It tests the terminal you are actua
 disagree.
 
 Some meanings have no safe glyph. There is no `Emoji_Presentation=Yes` hammer-and-wrench, so the
-Catan dev card uses 🔨 rather than 🛠️. Prefer a safe glyph with a slightly different meaning, or a
+Islanders dev card uses 🔨 rather than 🛠️. Prefer a safe glyph with a slightly different meaning, or a
 short text label, over a correct-looking one that corrupts the screen.
 
 ### Also treat as suspect
@@ -86,7 +86,7 @@ None are used in the UI today. Run them through the tool first if you want one.
 
 ## Current state of the codebase
 
-Audited with `\p{Emoji_Presentation}`; the five Catan resource glyphs (🪵 🧱 🐑 🌾 🪨) and every
+Audited with `\p{Emoji_Presentation}`; the five Islanders resource glyphs (🪵 🧱 🐑 🌾 🪨) and every
 other emoji rendered through the TUI are emoji-by-default. The text-default characters that remain
 in `src/` are card suits and chess pieces (already special-cased narrow in `width.ts`), strings in
 CLI tools that print straight to stdout rather than through a `Surface`, and the width tables and

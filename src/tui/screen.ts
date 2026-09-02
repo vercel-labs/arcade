@@ -24,6 +24,8 @@ export class Screen {
   rows: number;
   private surface: Surface;
   private root: Node | null = null;
+  private baseRoot: Node | null = null;
+  private globalOverlay: Node | null = null;
   private state: PaintState = { hoverId: null, focusId: null, pressedId: null };
   // Interaction state as of the last paint, for dirty() (mirrors the old
   // `hoveredButton !== lastHoveredButton` check that gated chess repaints).
@@ -95,8 +97,23 @@ export class Screen {
   // setRoot does NOT mark dirty (so an idle chess screen with an unchanged bar
   // still skips repaints — dirty() tracks only interaction state).
   setRoot(root: Node | null, region?: LayoutBox): void {
-    this.root = root;
+    this.baseRoot = root;
     if (region) this.region = region;
+    this.composeRoot();
+  }
+
+  /** App-global chrome or modal painted and hit-tested above whichever root is active. */
+  setGlobalOverlay(overlay: Node | null): void {
+    this.globalOverlay = overlay;
+    this.composeRoot();
+    this.contentDirty = true;
+  }
+
+  private composeRoot(): void {
+    const layer = (node: Node): Node => ({ ...node, style: { ...node.style, position: 'absolute', top: 0, left: 0, width: this.region.w, height: this.region.h } });
+    this.root = this.globalOverlay
+      ? { kind: 'box', style: { width: this.region.w, height: this.region.h, position: 'relative' }, children: [...(this.baseRoot ? [layer(this.baseRoot)] : []), layer(this.globalOverlay)] }
+      : this.baseRoot;
     this.expand(this.root);
     if (this.root) layout(this.root, this.region);
   }

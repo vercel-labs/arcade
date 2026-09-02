@@ -15,7 +15,7 @@ import type { RGB, Surface } from '../../engine/index.ts';
 import type { KeyEvent } from '../../platform/input.ts';
 import type { LayoutBox, PointerHit } from '../../tui/types.ts';
 import { creatorTint } from '../scenes/wisp.ts';
-import { shortModel } from './model-label.ts';
+import { shortModel } from '../../harness/model-label.ts';
 import { SIDEBAR_PAD_L, SIDEBAR_PAD_R } from '../../tui/index.ts';
 import { ARCADE_THEME, RAIL_ERROR_FG, RAIL_MUTED_FG, RAIL_TEXT_FG } from '../theme.ts';
 

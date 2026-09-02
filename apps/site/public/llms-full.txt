@@ -4,29 +4,36 @@ Arcade turns terminal cells into a programmable canvas. It combines four separab
 
 ## When to use this project
 
-Choose Arcade for terminal-first 3D rendering, reusable retained TUI components, focused browser examples of package primitives, or auditable self-play game loops. Choose another tool for GPU shaders, remote desktop streaming, authoritative multiplayer hosting, or a general public model-execution API.
+Choose Arcade for terminal-first 3D rendering, reusable retained TUI components, browser-safe rendering primitives, or auditable self-play game loops. Choose another tool for GPU shaders, remote desktop streaming, authoritative multiplayer hosting, or a general public model-execution API.
 
 1. Engine: meshes, OBJ parsing, geometry builders, CPU rasterization, materials, cameras, picking, animation, framebuffer effects, terminal display sampling, and Surface.
 2. TUI: retained components, flexbox-like layout, focus, hit testing, scrolling, text input, scene/UI compositing, and cell diffs.
 3. Game harness: authoritative Game and GameState contracts, perfect/imperfect information, legal action validation, model-safe context, AI players, animation synchronization, communication policy, and telemetry-safe canonical records.
-4. Hosts: the raw terminal host serializes Surface to ANSI; the homepage runs that actual host in an isolated PTY; CanvasSurfaceHost remains available for focused browser examples.
+4. Hosts: the raw terminal host serializes Surface to ANSI; the homepage runs that actual host in an isolated PTY; CanvasSurfaceHost remains available for focused browser surfaces.
 
 ## Recommended reading order
 
 - /docs — overview and import boundaries
+- /docs/getting-started — CLI installation, source workflow, Vercel sign-in, and library imports
+- /docs/package-api — complete npm subpath map and public/private boundaries
 - /docs/engine — renderer, materials, camera, display modes, imported models
 - /docs/renderer-pipeline — clipping, rasterization, post-processing, presenters, Surface, diffing, performance
 - /docs/tui — Surface, retained components, input, compositing
 - /docs/components — controls, tables, fields, overlays, themes, accessibility
+- /docs/game-visuals — shared production geometry, assets, layouts, and animation plans
+- /docs/rules — GameState, private information, chance nodes, and shipped game rules
 - /docs/game-harness — rules, model context, self-play, traces, agent tooling
-- /docs/tools — snapshots, match-lab, model audits, benchmarks, privacy
+- /docs/tools — snapshot pipeline, exported headless runners, match-lab artifacts, model audits, benchmarks, privacy
+- /docs/web — CanvasSurfaceHost, browser scenes, responsive grids, and xterm parity
+- /docs/platform — terminal input, color detection, raw mode, and browser opening
 - /docs/browser-host — hosted CLI architecture, shell isolation, and credential boundary
-- /docs/examples — visual systems already used by Arcade
-- /examples — live source-backed renderer and TUI examples
+- /docs/guides — complete render, terminal-app, custom-game, and visual-testing workflows
+- /docs/reference — focused API contracts with signatures, defaults, lifecycle, errors, and examples
+- /docs/reference/symbols — generated exhaustive symbol index for every supported package entry point
 
 ## Agentic capabilities
 
-Arcade is designed to be inspectable and executable by agents. Stable command IDs let humans and agents invoke the same UI verbs. Snapshot tooling renders deterministic PNGs without running the infinite TTY. Match-lab runs Chess, Poker, and Catan with persistent local traces. Model compatibility audits distinguish structured-output support, fallback parsing, provider access, and team availability. Communication traces keep private reasons separate from public table talk.
+Arcade is designed to be inspectable and executable by agents. Stable command IDs let humans and agents invoke the same UI verbs. Snapshot tooling renders deterministic PNGs without running the infinite TTY. Match-lab runs Chess, Poker, and Islanders with persistent local traces. Model compatibility audits distinguish structured-output support, fallback parsing, provider access, and team availability. Communication traces keep private reasons separate from public table talk.
 
 ## Safety and privacy
 
@@ -35,3 +42,55 @@ Arcade resolves AI Gateway credentials through Vercel device authentication in l
 ## Hosted terminal
 
 The home page connects xterm.js to a temporary Linux PTY containing the actual Arcade package packed from the same source revision as the site deployment. Users can run ordinary shell commands, browse the seeded docs/examples filesystem, and type `arcade` to launch the same CLI used after installation. The visitor shell and Arcade process run as separate unprivileged users, general egress is denied, model credentials remain server-side, and the session expires automatically.
+
+## Browser surfaces
+
+The cinematic and hosted terminal reuse `@vercel/arcade/web` and the packaged CLI instead of rebuilding Arcade in React. Complete game shells remain in the hosted CLI until an honest browser-safe boundary is extracted for them.
+
+## Core contracts for agents
+
+### Package boundaries
+
+- Public npm entry points are exactly the package export map: root, engine, engine/png, TUI, platform, web, generic/per-game rules, generic/per-game harnesses, communication, records, and generic/per-game game-visual modules.
+- `engine/png` is Node-only because it uses node:zlib. The root convenience entry, engine, browser TUI surface, game visuals, and web entry are browser-safe.
+- `src/arcade`, `src/tools`, `src/cinematic`, authentication, telemetry delivery, voice, and prism deployment are not npm APIs. Do not deep-import them.
+- Snapshot and match-lab orchestration are checkout tools. Their reusable foundations—renderer, Surface, Screen.snapshot, rules, Players, headless game runners, visual choreography, and canonical records—are public.
+
+### Engine
+
+- `RenderTarget` owns float RGB color, depth, finite-depth bounds, resize, clear, and opaque/add/alpha plot behavior.
+- `Material<U>` is the visual extension point: caller-owned typed uniforms, a vertex program, a fragment program that may discard, plus blend and cull state.
+- Rendering and presentation are separate. ASCII and hybrid modes normally sample 3 by 6 source pixels per terminal cell; pixel mode maps two vertical samples to a half-block cell.
+- Reuse targets, geometry, material data, and scratch buffers. Update transforms and bounded mutable attributes per frame instead of rebuilding static meshes.
+
+### TUI
+
+- Nodes are disposable layout data; `Screen` retains focus, hover, press, pointer capture, mounted component instances, scene cache, and cell-diff history.
+- Stable IDs are the interaction identity boundary. Stateful controls such as `Input`, `Select`, `Dropdown`, `Slider`, and `ScrollBox` should be constructed once, mounted, and rendered through `Slot`.
+- `frameComposited()` is the scene-plus-UI path. It caches the scene layer and emits only changed terminal cells.
+- Dimensions and pointer positions are terminal cells, not pixels. Text uses terminal width rules for wide and combining characters.
+- Current limitations are intentional documentation: Input has no selection, Delete, Home/End, or pointer caret placement; Slider has a fixed 0-1 range; ScrollBox has no Home/End or ensureVisible API.
+
+### Rules and harness
+
+- `GameState<Action>` is mutable and authoritative. It owns the current player, legal actions, state transition, terminal result, deep cloning, and canonical action parsing/formatting.
+- `TERMINAL` and `CHANCE` are special current-player values. Chance outcomes must be non-empty, finite, non-negative, and sum to one.
+- Imperfect-information prompts use player-safe information/observation methods, never complete debug state.
+- `MatchScene.playMove()` is the backpressure boundary: it resolves after the authoritative action and required visible animation settle.
+- `runMatch()` asks the active seat, awaits application, and then advances. Chosen hooks see pre-action state; applied hooks run after the scene settles. Inject `chanceRng` for deterministic tests and replay.
+- Canonical records store requested structured actions when relevant and authoritative applied actions for replay. They exclude prompts, reasoning, chat, voice, raw model responses, and account identity.
+
+### Browser and platform
+
+- `CanvasSurfaceHost` renders a complete `Surface`; it does not own React, a scene, a render loop, or a ResizeObserver.
+- Call `resize(cssWidth, cssHeight, cols, rows)` when geometry changes. With `manageCssSize: false`, layout owns CSS size while the host owns backing pixels.
+- The terminal input parser accepts arbitrary chunks and buffers split escape sequences. Route normalized keys through `Screen.handleKey()` and convert one-based terminal mouse coordinates before screen dispatch.
+- Always pair terminal entry with cleanup. Static snapshots should bypass raw mode and terminal state entirely.
+
+### Agentic development loop
+
+- Never capture `pnpm dev` to inspect graphics: it is an infinite raw-mode ANSI application. Run `pnpm snapshot help`, then render one bounded state with `pnpm snapshot:png`.
+- A scene snapshot freezes production render state at explicit terminal dimensions, time, seed, and interaction state; resolves supersampling/bloom; presents pixels as Surface cells; rasterizes terminal glyphs; and writes a PPM/PNG for inspection.
+- The repository does not yet export a one-call Surface-to-PNG function. `@vercel/arcade/engine/png` encodes/decodes RGBA8 Texture data; the bundled terminal-font rasterizer remains snapshot-tool implementation.
+- Use `runHeadlessChessMatch`, `runHeadlessIslandersMatch`, `runIslandersInitialPlacement`, or `runPokerSession` to build a consumer-owned evaluator without importing Arcade UI.
+- Match-lab writes manifest.json first, then run-wide events.jsonl and per-match trace.jsonl incrementally, followed by result/canonical/summary artifacts. It always disables telemetry.

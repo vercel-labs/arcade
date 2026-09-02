@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { CanonicalRecordRow, RecordTarget } from './records.ts';
+import type { CanonicalRecordRow, RecordTarget } from './record-wire.ts';
 
 export type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 

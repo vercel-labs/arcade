@@ -1,6 +1,6 @@
 // Live, team-aware compatibility matrix built on the real match-lab adapters.
 // Each selected model is seat 0 against one stable opponent in bounded Chess,
-// Poker, and Catan scenarios. Telemetry is always disabled; traces stay local.
+// Poker, and Islanders scenarios. Telemetry is always disabled; traces stay local.
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -9,7 +9,7 @@ import { join, resolve } from 'node:path';
 import { ensureCachedGatewayKey } from '../auth/index.ts';
 import { fetchTeamModelCatalog } from '../arcade/match/team-model-catalog.ts';
 import { MatchLabArtifacts, runWorkerPool } from './match-lab/artifacts.ts';
-import { runCatanMatchLab } from './match-lab/adapters/catan.ts';
+import { runIslandersMatchLab } from './match-lab/adapters/islanders.ts';
 import { runChessMatch } from './match-lab/adapters/chess.ts';
 import { runPokerMatchLab } from './match-lab/adapters/poker.ts';
 import {
@@ -29,7 +29,7 @@ process.env.ARCADE_TELEMETRY = '0';
 const ADAPTERS: Record<MatchLabGame, MatchLabAdapter> = {
   chess: runChessMatch,
   poker: runPokerMatchLab,
-  catan: runCatanMatchLab,
+  islanders: runIslandersMatchLab,
 };
 const DEFAULT_OPPONENT = 'anthropic/claude-haiku-4.5';
 const DEFAULT_SEED = 0xa11ce;
@@ -57,8 +57,8 @@ function nonnegativeInt(args: readonly string[], name: string, fallback: number)
 }
 
 function games(args: readonly string[]): MatchLabGame[] {
-  const selected = (value(args, 'games') ?? 'chess,poker,catan').split(',').map((game) => game.trim()).filter(Boolean);
-  if (selected.some((game) => !['chess', 'poker', 'catan'].includes(game))) throw new Error('--games accepts chess,poker,catan');
+  const selected = (value(args, 'games') ?? 'chess,poker,islanders').split(',').map((game) => game.trim()).filter(Boolean);
+  if (selected.some((game) => !['chess', 'poker', 'islanders'].includes(game))) throw new Error('--games accepts chess,poker,islanders');
   return [...new Set(selected)] as MatchLabGame[];
 }
 
@@ -68,10 +68,10 @@ function usage(): void {
 Runs every selected team-visible text model through real bounded match-lab scenarios:
   chess  target plays White for two plies
   poker  target plays seat 1 for one heads-up hand
-  catan  target performs its first settlement + road during initial setup
+  islanders  target performs its first settlement + road during initial setup
 
 Options:
-  --games=LIST             chess,poker,catan (default all three)
+  --games=LIST             chess,poker,islanders (default all three)
   --models=LIST            explicit comma-separated model IDs (default live team catalog)
   --creator=SLUG           only one creator from the live team catalog
   --opponent=MODEL         stable opponent (default ${DEFAULT_OPPONENT})
@@ -187,7 +187,7 @@ async function main(): Promise<void> {
     scenarios: {
       chess: { maxPlies: 2 },
       poker: { maxHands: 1 },
-      catan: { setupActions: 2 },
+      islanders: { setupActions: 2 },
     },
     gitCommit: gitCommit(),
     telemetry: 'disabled',

@@ -1,14 +1,14 @@
 import { resolve } from 'node:path';
-import { STARTING_STACK } from '../../arcade/match/poker-session.ts';
+import { STARTING_STACK } from '../../harness/games/poker/poker-session.ts';
 import { DEFAULT_BIG_BLIND, DEFAULT_HANDS_PER_LEVEL, DEFAULT_SMALL_BLIND } from '../../rules/poker/blinds.ts';
-import { DEFAULT_CATAN_MODELS } from './adapters/catan.ts';
+import { DEFAULT_ISLANDERS_MODELS } from './adapters/islanders.ts';
 import { deriveSeed } from './random.ts';
 import type { MatchLabGame, MatchLabLimits, MatchLabPlan } from './types.ts';
-import type { CommunicationMode } from '../../ai/communication/types.ts';
+import type { CommunicationMode } from '../../harness/communication/types.ts';
 
 const DEFAULT_MODELS: Record<MatchLabGame, string[]> = {
   chess: ['anthropic/claude-haiku-4.5', 'openai/gpt-5.4-nano'],
-  catan: DEFAULT_CATAN_MODELS,
+  islanders: DEFAULT_ISLANDERS_MODELS,
   poker: [
     'xai/grok-4.1-fast-non-reasoning',
     'anthropic/claude-haiku-4.5',
@@ -50,13 +50,13 @@ function positiveInt(args: readonly string[], name: string, fallback: number): n
 
 export function parseMatchLabConfig(args: readonly string[]): MatchLabConfig {
   const game = value(args, 'game') as MatchLabGame | undefined;
-  if (!game || !['chess', 'catan', 'poker'].includes(game)) throw new Error('--game must be chess, catan, or poker');
+  if (!game || !['chess', 'islanders', 'poker'].includes(game)) throw new Error('--game must be chess, islanders, or poker');
   const models = value(args, 'models')?.split(',').map((model) => model.trim()).filter(Boolean) ?? DEFAULT_MODELS[game].slice();
-  const expected = game === 'chess' ? 'exactly 2' : game === 'catan' ? '2 through 4' : '2 through 6';
-  const valid = game === 'chess' ? models.length === 2 : game === 'catan' ? models.length >= 2 && models.length <= 4 : models.length >= 2 && models.length <= 6;
+  const expected = game === 'chess' ? 'exactly 2' : game === 'islanders' ? '2 through 4' : '2 through 6';
+  const valid = game === 'chess' ? models.length === 2 : game === 'islanders' ? models.length >= 2 && models.length <= 4 : models.length >= 2 && models.length <= 6;
   if (!valid) throw new RangeError(`${game} requires ${expected} models; received ${models.length}`);
   const output = value(args, 'output');
-  const communicationMode = (value(args, 'communication') ?? 'autoreply') as CommunicationMode;
+  const communicationMode = (value(args, 'communication') ?? (game === 'islanders' ? 'ambient' : 'autoreply')) as CommunicationMode;
   if (!['autoreply', 'ambient'].includes(communicationMode)) throw new Error('--communication must be autoreply or ambient');
   return {
     game,
@@ -74,7 +74,7 @@ export function parseMatchLabConfig(args: readonly string[]): MatchLabConfig {
     handsPerLevel: positiveInt(args, 'hands-per-level', DEFAULT_HANDS_PER_LEVEL),
     limits: {
       timeoutMs: positiveInt(args, 'timeout', 600) * 1_000,
-      maxActions: positiveInt(args, 'max-actions', game === 'catan' ? 500 : 2_000),
+      maxActions: positiveInt(args, 'max-actions', game === 'islanders' ? 500 : 2_000),
       maxPlies: positiveInt(args, 'max-plies', 300),
       maxHands: positiveInt(args, 'max-hands', 100),
     },

@@ -1,5 +1,5 @@
 import { DEFAULT_BIG_BLIND, DEFAULT_HANDS_PER_LEVEL, DEFAULT_SMALL_BLIND } from '../../rules/poker/blinds.ts';
-import { STARTING_STACK } from '../../arcade/match/poker-session.ts';
+import { STARTING_STACK } from '../../harness/games/poker/poker-session.ts';
 import { deriveSeed } from './random.ts';
 import type { MatchLabEvent, MatchLabGame, MatchLabPlan, MatchLabResult } from './types.ts';
 
@@ -62,7 +62,7 @@ function limits(game: MatchLabGame, timeoutMs: number): MatchLabPlan['limits'] {
     timeoutMs,
     maxPlies: game === 'chess' ? 2 : 300,
     maxHands: game === 'poker' ? 1 : 100,
-    maxActions: game === 'poker' ? 40 : game === 'catan' ? 2 : 20,
+    maxActions: game === 'poker' ? 40 : game === 'islanders' ? 2 : 20,
   };
 }
 
@@ -91,7 +91,7 @@ export function buildModelMatrixCases(opts: BuildModelMatrixOpts): ModelGameAudi
           smallBlind: DEFAULT_SMALL_BLIND,
           bigBlind: DEFAULT_BIG_BLIND,
           handsPerLevel: DEFAULT_HANDS_PER_LEVEL,
-          setupOnly: game === 'catan',
+          setupOnly: game === 'islanders',
           communicationMode: 'autoreply',
         },
       });
@@ -148,7 +148,8 @@ export function classifyModelGameAudit(
   else if (resolutions.includes('normalized')) status = 'NORMALIZED';
   else if (resolutions.includes('random-fallback')) {
     status = events.some((event) => fallbackReason(event) === 'unavailable') ? 'ACCESS' : 'FALLBACK';
-  } else if (result.status === 'failed') status = 'ERROR';
+  } else if (result.status === 'failed' && result.error?.name === 'NotifiedModelFailure') status = 'ACCESS';
+  else if (result.status === 'failed') status = 'ERROR';
   else if (result.stopReason === 'timeout') status = 'TIMEOUT';
   else status = 'NO_ACTION';
   return {

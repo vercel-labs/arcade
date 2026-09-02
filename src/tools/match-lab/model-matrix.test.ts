@@ -22,7 +22,7 @@ type CapturedEvent = Omit<MatchLabEvent, 'runId' | 'matchId' | 'at'>;
 
 test('model matrix creates one target-first real-game scenario per model and game', () => {
   const cases = buildModelMatrixCases({
-    games: ['chess', 'poker', 'catan'],
+    games: ['chess', 'poker', 'islanders'],
     models: ['one/model', 'two/model'],
     opponentModel: 'baseline/model',
     seed: 42,
@@ -69,4 +69,17 @@ test('model audit distinguishes unavailable random fallback and retries only sof
   assert.equal(noAction.status, 'NO_ACTION');
   assert.equal(shouldRetryModelGameAudit(noAction), true);
   assert.equal(betterModelGameAudit(noAction, access), noAction);
+});
+
+test('model audit preserves persistent Gateway failures as access failures', () => {
+  const [auditCase] = buildModelMatrixCases({ games: ['chess'], models: ['target/model'], opponentModel: 'opponent/model', seed: 1, timeoutMs: 1_000 });
+  const failed: MatchLabResult = {
+    ...result,
+    status: 'failed',
+    stopReason: 'NotifiedModelFailure',
+    error: { name: 'NotifiedModelFailure', message: 'out of credit', code: 'insufficient_funds' },
+  };
+  const row = classifyModelGameAudit(auditCase, failed, []);
+  assert.equal(row.status, 'ACCESS');
+  assert.equal(shouldRetryModelGameAudit(row), false);
 });

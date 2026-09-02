@@ -129,6 +129,7 @@ export class BufferGeometry implements Mesh {
   version = 0;
   boundingBox: AABB | null = null;
   boundingSphere: BoundingSphere | null = null;
+  private reusableVertices: VertexIn[] = [];
 
   constructor(
     public vertices: VertexIn[] = [],
@@ -147,6 +148,44 @@ export class BufferGeometry implements Mesh {
       copy ? mesh.vertices.map(cloneVertex) : mesh.vertices,
       copy ? [...mesh.indices] : mesh.indices,
     );
+  }
+
+  /**
+   * Reset active topology while retaining vertex objects for a same-shape procedural rebuild.
+   * Builders repopulate through appendReusableVertex(); the rasterizer still sees ordinary
+   * active `vertices`/`indices` arrays, including legitimately empty or variable-size frames.
+   */
+  resetForReuse(): this {
+    for (let i = this.reusableVertices.length; i < this.vertices.length; i++) {
+      this.reusableVertices[i] = this.vertices[i];
+    }
+    this.vertices.length = 0;
+    this.indices.length = 0;
+    this.markNeedsUpdate(0, 0);
+    return this;
+  }
+
+  appendReusableVertex(vertex: VertexIn): number {
+    const index = this.vertices.length;
+    let retained = this.reusableVertices[index];
+    if (!retained) {
+      retained = vertex;
+      this.reusableVertices[index] = retained;
+    } else {
+      retained.position.x = vertex.position.x;
+      retained.position.y = vertex.position.y;
+      retained.position.z = vertex.position.z;
+      retained.normal.x = vertex.normal.x;
+      retained.normal.y = vertex.normal.y;
+      retained.normal.z = vertex.normal.z;
+      retained.uv[0] = vertex.uv[0];
+      retained.uv[1] = vertex.uv[1];
+      retained.color.x = vertex.color.x;
+      retained.color.y = vertex.color.y;
+      retained.color.z = vertex.color.z;
+    }
+    this.vertices.push(retained);
+    return index;
   }
 
   getAttribute(name: BufferAttributeName): BufferAttribute {

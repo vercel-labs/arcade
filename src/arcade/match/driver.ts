@@ -4,19 +4,20 @@
 // lease keeps frames flowing so the HUD wisps animate while we wait. main.ts owns
 // the surrounding UI — the setup modal, the commentary toast, and the
 // illegal-moves flag — and injects the seams below.
-import { runMatch } from '../../ai/match.ts';
-import { FALLBACK_RATIONALE, isFallbackRationale, ModelPlayer } from '../../ai/model-player.ts';
-import { HumanPlayer } from '../../ai/human-player.ts';
-import type { Player } from '../../ai/player.ts';
+import { runMatch } from '../../harness/match.ts';
+import { createChessModelPlayer } from '../../harness/games/chess/chess-session.ts';
+import { HumanPlayer } from '../../harness/human-player.ts';
+import type { Player } from '../../harness/player.ts';
 import type { ChessGameScene } from '../games/chess/scene.ts';
 import type { ChessState } from '../../rules/chess/chess.ts';
 import type { Move } from '../../rules/chess/types.ts';
-import { disambiguateLabels } from './labels.ts';
+import { disambiguateLabels } from '../../harness/labels.ts';
 import { normalizerModel } from './models.ts';
 import { isTelemetryEnabled, localPlayerKey, trackMatchEnded, trackMatchRecord, trackMatchStarted, trackModelFallback } from '../../telemetry/index.ts';
-import { ChessGameRecorder, type RecorderController } from './game-recorders.ts';
-import type { RecordEndReason } from '../../telemetry/records.ts';
-import { shortModel } from './model-label.ts';
+import { ChessGameRecorder, type RecorderController } from '../../harness/recording/game-recorders.ts';
+import type { RecordEndReason } from '../../harness/records.ts';
+import { shortModel } from '../../harness/model-label.ts';
+import type { ModelFailureNotice } from '../../harness/model-failure-notice.ts';
 
 // A seat's telemetry identity: the model slug, or 'human' for a keyboard seat.
 const seatId = (seat: Seat): string => (seat.kind === 'ai' ? seat.model : 'human');
@@ -41,6 +42,8 @@ export interface AiMatchDeps {
   // Surface a pre-move rationale (main routes it into the chat thread) — the model
   // slug tags the line with its name + creator color.
   onCommentary(text: string, model: string, label: string): void;
+  onFailureNotice?(notice: ModelFailureNotice, model: string): void;
+  onBlocked?(): void;
   // Live illegal-moves flag, read per move by each ModelPlayer.
   allowIllegal(): boolean;
 }
@@ -113,12 +116,13 @@ export class AiMatch {
         const seat = index >= 0 ? this.seats?.[index] : null;
         const model = seat?.kind === 'ai' ? seat.model : player.name;
         const label = index >= 0 ? (this.labels[index] ?? shortModel(model)) : shortModel(model);
-        if (seat?.kind === 'ai' && isFallbackRationale(text)) {
-          trackModelFallback({ game: 'chess', model, reason: text === FALLBACK_RATIONALE.unavailable ? 'unavailable' : 'exhausted' });
-        }
         this.deps.onCommentary(text, model, label);
       },
       onActionChosen: ({ player, playerIndex, choice, state }) => {
+        const seat = this.seats?.[playerIndex];
+        if (seat?.kind === 'ai' && choice.diagnostics?.resolution === 'random-fallback') {
+          trackModelFallback({ game: 'chess', model: seat.model, reason: choice.diagnostics.fallbackReason ?? 'exhausted' });
+        }
         this.record(() =>
           this.recorder?.actionChosen(
             playerIndex,
@@ -146,7 +150,13 @@ export class AiMatch {
       .then((returns) => {
         finalReturns = returns;
       })
-      .catch(() => {}) // aborted mid-decision (pause/stop) — fine
+      .catch((error) => {
+        if (error?.name === 'NotifiedModelFailure') {
+          this.paused = true;
+          this.deps.chessGame.setMatchPaused(true);
+          this.deps.onBlocked?.();
+        }
+      })
       .finally(() => {
         if (this.abort === ctrl) this.abort = null;
         if (this.paused) return; // paused: keep the match alive on the current turn
@@ -213,7 +223,7 @@ export class AiMatch {
     if (seat.kind === 'human') {
       return new HumanPlayer<Move>({ name: 'you', awaitMove: (_state, ctx) => this.deps.chessGame.requestHumanMove(ctx?.signal) });
     }
-    return new ModelPlayer<Move>({ model: seat.model, gameName: 'chess', allowIllegal: this.deps.allowIllegal, normalizer: normalizerModel() });
+    return createChessModelPlayer({ model: seat.model, allowIllegal: this.deps.allowIllegal, normalizer: normalizerModel(), onFailureNotice: (notice) => this.deps.onFailureNotice?.(notice, seat.model) });
   }
 
   private computeLabels(): void {
@@ -232,7 +242,7 @@ export class AiMatch {
   // handoff) and resumes after. No-op when idle (no players yet).
   setPlayer(index: number, model: string): void {
     if (!this.players || index < 0 || index >= this.players.length) return;
-    this.players[index] = new ModelPlayer<Move>({ model, gameName: 'chess', allowIllegal: this.deps.allowIllegal, normalizer: normalizerModel() });
+    this.players[index] = createChessModelPlayer({ model, allowIllegal: this.deps.allowIllegal, normalizer: normalizerModel(), onFailureNotice: (notice) => this.deps.onFailureNotice?.(notice, model) });
     if (this.seats) this.seats[index] = { kind: 'ai', model };
     this.computeLabels();
   }
@@ -250,6 +260,7 @@ export class AiMatch {
 
   // Resume from the current turn: the same players continue against the live board.
   resume(): void {
+    if (!this.players || !this.paused) return;
     this.paused = false;
     this.deps.chessGame.setMatchPaused(false);
     this.runLoop();

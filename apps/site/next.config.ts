@@ -26,6 +26,12 @@ const config: NextConfig = {
   async rewrites() {
     return [{ source: '/install.sh', destination: '/install' }];
   },
+  async redirects() {
+    return [
+      { source: '/examples', destination: '/', permanent: true },
+      { source: '/docs/examples', destination: '/docs/renderer-pipeline', permanent: true },
+    ];
+  },
 };
 
 export default config;

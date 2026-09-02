@@ -13,11 +13,12 @@ import { type Card, isRed, RANK_LABELS } from '../../../rules/poker/cards.ts';
 import type { SeatCardView, TableView } from './poker-scene.ts';
 import { creatorTint } from '../../scenes/wisp.ts';
 import { CHAT_WIDTH } from '../../match/chat.ts';
-import { shortModel } from '../../match/model-label.ts';
-import { ARCADE_CHROME_TEXT, ARCADE_OUTLINE_CONTROL, UI_CHROME_PILL, uiChromeBg } from '../../theme.ts';
+import { shortModel } from '../../../harness/model-label.ts';
+import { ARCADE_CHROME_TEXT, ARCADE_OUTLINE_CONTROL, MENU_BUTTON_LABEL, UI_CHROME_PILL, uiChromeBg } from '../../theme.ts';
 import { POKER_PALETTE } from './palette.ts';
 import { buildPokerChatSidebar, clearPokerChat, mountPokerChat, pushPokerChat } from './poker-chat.ts';
 import { buildPokerNotesModal, mountPokerNotes, setNotesObserverPick } from './poker-notes.ts';
+import { cancelMatchButton, newMatchButton, startMatchButton } from '../../match/match-setup-chrome.ts';
 
 export { buildPokerNotesModal, setNotesObserverPick } from './poker-notes.ts';
 
@@ -199,10 +200,6 @@ function centerLabel(s: string, w: number): string {
 // which becomes a green "start" + a neutral "cancel" while the settings panel is open.
 // "start" dims (no onClick) until every shown seat has a committed model. Rounded
 // (outlined) treatment — hover/focus whiten the border + label (see tui/button.ts).
-const MATCH_GO: RGB = POKER_PALETTE.matchReady;
-const MATCH_OFF_FG: RGB = POKER_PALETTE.matchDisabled;
-const MATCH_NEUTRAL: RGB = ARCADE_OUTLINE_CONTROL.neutralText;
-const MATCH_NEUTRAL_BORDER: RGB = ARCADE_OUTLINE_CONTROL.neutralBorder;
 const PAUSE_FG: RGB = POKER_PALETTE.pauseFg;
 const PAUSE_BORDER: RGB = POKER_PALETTE.pauseBorder;
 
@@ -331,7 +328,6 @@ function cardCell(card: Card | null, placeholder: string): Node {
 
 // The two top-right pills: a hamburger glyph + "menu", and plain "chat" text (no icon —
 // a width-2 speech-bubble glyph left a stray continuation cell past the pill edge).
-const MENU_ICON = '☰'; // U+2630 — three stacked lines
 
 // ── Pot pill (top-left) ────────────────────────────────────────────────────────────
 const POT_BG: RGB = POKER_PALETTE.potBg;
@@ -560,7 +556,7 @@ export function buildPokerGameRoot(
   // the chat is OPEN the rail is a separate column and this band spans only `mainW`, so the
   // menu pill lands flush against the left edge of the chat panel — exactly where we want
   // it. The chat pill's ✕ (in the open panel's header) handles collapse, so it drops here.
-  const menuPill = Button({ id: 'poker-menu', label: `${MENU_ICON} menu`, onClick: opts.onOpenMenu, style: UI_CHROME_PILL });
+  const menuPill = Button({ id: 'poker-menu', label: MENU_BUTTON_LABEL, onClick: opts.onOpenMenu, style: UI_CHROME_PILL });
   // The notes pill sits between menu and chat, shown whenever a session is live (both when
   // the human plays and when spectating an all-AI table).
   const notesPill = opts.active ? Button({ id: 'poker-notes', label: 'reads', onClick: opts.onOpenNotes, style: UI_CHROME_PILL }) : null;
@@ -582,18 +578,11 @@ export function buildPokerGameRoot(
   const matchBtn = !mc
     ? []
     : !mc.setup
-      ? [RoundedButton({ id: 'poker-match', label: 'new match', onClick: mc.onPrimary, color: MATCH_NEUTRAL })]
+      ? [newMatchButton('poker-match', mc.onPrimary!)]
       : [
           Box({ flexDirection: 'row', gap: 2 }, [
-            RoundedButton({
-              id: 'poker-start',
-              label: 'start',
-              onClick: mc.onPrimary ?? undefined,
-              disabled: !mc.onPrimary,
-              color: mc.onPrimary ? MATCH_GO : MATCH_OFF_FG,
-              style: mc.onPrimary ? undefined : { disabled: { color: MATCH_OFF_FG, borderColor: MATCH_OFF_FG } },
-            }),
-            RoundedButton({ id: 'poker-cancel', label: 'cancel', onClick: mc.onCancel, color: MATCH_NEUTRAL, borderColor: MATCH_NEUTRAL_BORDER }),
+            startMatchButton('poker-start', mc.onPrimary),
+            cancelMatchButton('poker-cancel', mc.onCancel),
           ]),
         ];
 

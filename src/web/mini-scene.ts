@@ -1,8 +1,14 @@
 import type { Surface } from '../engine/surface.ts';
 import type { ChessPieceName } from '../game-visuals/chess/index.ts';
+import type { Terrain } from '../rules/islanders/types.ts';
 import type { BrowserDisplayMode } from './browser-chess.ts';
 
-export type BrowserMiniSceneId = 'chess-board' | 'catan-fields';
+export type BrowserIslandersTerrainSceneId = `islanders-${Terrain}`;
+export type BrowserMiniSceneId =
+  | 'chess-board'
+  | 'chess-knight'
+  | BrowserIslandersTerrainSceneId
+  | 'poker-chips';
 
 export interface BrowserMiniSceneOptions {
   /** Browser-visible directory containing pawn.obj, knight.obj, and the other production pieces. */

@@ -24,13 +24,18 @@ import { RecordOutbox } from './outbox.ts';
 import {
   recordTarget,
   toCanonicalRecordRow,
+} from './record-wire.ts';
+import {
   type CanonicalGameRecord,
   type ChessMatchRecord,
+  type IslandersMatchRecord,
   type PokerHandRecord,
   type PokerMatchRecord,
-} from './records.ts';
+} from '../harness/records.ts';
 
-export * from './records.ts';
+export { RECORD_SCHEMA_VERSION } from '../harness/records.ts';
+export { toCanonicalRecordRow } from './record-wire.ts';
+export type { RecordEndReason } from '../harness/records.ts';
 
 // The hosted Arcade telemetry proxy. The three ingest routes hang off this base; override
 // it via env to target a local mock or a preview deployment.
@@ -245,7 +250,7 @@ export function trackGameRecord(record: CanonicalGameRecord): boolean {
   return recordOutbox.enqueue(recordTarget(record), row);
 }
 
-export function trackMatchRecord(record: ChessMatchRecord | PokerMatchRecord): boolean {
+export function trackMatchRecord(record: ChessMatchRecord | PokerMatchRecord | IslandersMatchRecord): boolean {
   return trackGameRecord(record);
 }
 

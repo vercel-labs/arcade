@@ -8,6 +8,10 @@ export class RenderTarget {
   height: number;
   color: Float32Array;
   depth: Float32Array;
+  minDepthX = Infinity;
+  minDepthY = Infinity;
+  maxDepthX = -1;
+  maxDepthY = -1;
 
   constructor(width: number, height: number) {
     this.width = Math.max(1, width);
@@ -16,8 +20,24 @@ export class RenderTarget {
     this.depth = new Float32Array(this.width * this.height);
   }
 
+  resize(width: number, height: number): void {
+    const nextWidth = Math.max(1, width), nextHeight = Math.max(1, height);
+    if (nextWidth === this.width && nextHeight === this.height) return;
+    this.width = nextWidth; this.height = nextHeight;
+    this.color = new Float32Array(nextWidth * nextHeight * 3);
+    this.depth = new Float32Array(nextWidth * nextHeight);
+  }
+
   clear(r = 0, g = 0, b = 0): void {
+    this.minDepthX = Infinity; this.minDepthY = Infinity; this.maxDepthX = -1; this.maxDepthY = -1;
     const c = this.color;
+    // The renderers overwhelmingly clear to black. Native typed-array fill is
+    // substantially faster than a JavaScript loop on large browser targets.
+    if (r === 0 && g === 0 && b === 0) {
+      c.fill(0);
+      this.depth.fill(Infinity);
+      return;
+    }
     for (let i = 0; i < c.length; i += 3) {
       c[i] = r;
       c[i + 1] = g;
@@ -40,6 +60,10 @@ export class RenderTarget {
     if (blend === 'opaque') {
       if (z >= this.depth[di]) return;
       this.depth[di] = z;
+      if (px < this.minDepthX) this.minDepthX = px;
+      if (py < this.minDepthY) this.minDepthY = py;
+      if (px > this.maxDepthX) this.maxDepthX = px;
+      if (py > this.maxDepthY) this.maxDepthY = py;
       col[i] = c.r;
       col[i + 1] = c.g;
       col[i + 2] = c.b;

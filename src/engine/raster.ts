@@ -109,14 +109,27 @@ function drawTriangle<U>(
   const minY = Math.max(0, Math.floor(Math.min(a.sy, b.sy, c.sy)));
   const maxY = Math.min(H - 1, Math.ceil(Math.max(a.sy, b.sy, c.sy)));
   const positive = area > 0;
+  // The three edge equations share triangle-constant deltas. Hoist those once, and hoist each
+  // equation's Y term once per scanline; the remaining per-pixel work is one X subtraction,
+  // one multiply, and one subtraction per edge. This preserves the original operation order
+  // and therefore the exact coverage/barycentric values used by existing framebuffers.
+  const e0dx = c.sx - b.sx;
+  const e0dy = c.sy - b.sy;
+  const e1dx = a.sx - c.sx;
+  const e1dy = a.sy - c.sy;
+  const e2dx = b.sx - a.sx;
+  const e2dy = b.sy - a.sy;
 
   for (let y = minY; y <= maxY; y++) {
+    const py = y + 0.5;
+    const e0y = e0dx * (py - b.sy);
+    const e1y = e1dx * (py - c.sy);
+    const e2y = e2dx * (py - a.sy);
     for (let x = minX; x <= maxX; x++) {
       const px = x + 0.5;
-      const py = y + 0.5;
-      let w0 = edge(b.sx, b.sy, c.sx, c.sy, px, py);
-      let w1 = edge(c.sx, c.sy, a.sx, a.sy, px, py);
-      let w2 = edge(a.sx, a.sy, b.sx, b.sy, px, py);
+      let w0 = e0y - e0dy * (px - b.sx);
+      let w1 = e1y - e1dy * (px - c.sx);
+      let w2 = e2y - e2dy * (px - a.sx);
       if (positive ? w0 < 0 || w1 < 0 || w2 < 0 : w0 > 0 || w1 > 0 || w2 > 0) continue;
       w0 /= area;
       w1 /= area;

@@ -4,7 +4,7 @@
 
 Arcade is the first build-out of **Vercel Arcade**: play classic games against frontier models through the [Vercel AI Gateway](https://vercel.com/ai-gateway), or sit back and watch two models play each other. It all runs inside a terminal, drawn with truecolor half-blocks. Everything here is pure TypeScript with **zero native dependencies**: the 3D renderer, the UI layer, and the game rules are all written from scratch.
 
-**Chess and poker are playable today.** Real 3D pieces (and a felt table with chips for poker) are lit and rasterized in software, then presented as ASCII/half-blocks. Play a model yourself, or watch two models play. Either side's model can be swapped mid-match.
+**Chess, poker, and Islanders are playable today.** Real 3D pieces, a felt poker table, and a full Islanders board are lit and rasterized in software, then presented as ASCII/half-blocks. Play a model yourself, or watch models play each other.
 
 > This README covers the codebase and how to run it. Internal product context lives in the Vercel Arcade Notion.
 
@@ -41,7 +41,7 @@ On first launch it signs you into Vercel with a browser-based device login (like
 
 - **Any 3D scene:** **left-drag** orbits, **scroll** zooms, **arrow keys** pan. `q` / `Esc` quits.
 - **Chess:** click a piece to highlight its legal moves, click a dot to slide it there. Start a match from the bar (play as White or Black, or watch AI vs AI).
-- **Poker:** hover your hole cards to peek, click to lift them; drag the slider to size a bet. Pause/resume or deal a new match from the bar. _In heads-up human-vs-AI you can pick a realtime voice model for your opponent (in poker setup) and talk table-talk with it out loud._
+- **Poker:** hover your hole cards to peek, click to lift them; drag the slider to size a bet. Pause/resume or deal a new match from the bar. Shipped matches use text models; realtime voice remains experimental source and is not offered in setup.
 
 Telemetry: Arcade sends anonymous usage counts (which models get played, match/hand outcomes). It never sends prompts or game content. Opt out with `ARCADE_TELEMETRY=0`.
 
@@ -69,9 +69,10 @@ src/
   tui/        retained-mode TUI: flexbox layout + Box/Text/Button, hover/focus/press,
               hit-testing, paints to a Surface
   platform/   terminal control (alt-screen, raw mode, SGR mouse) + input parsing
-  rules/      game harness (Game/State + registry) + the chess and poker rules engines
+  rules/      UI-independent chess, poker, and Islanders rules states
+  harness/    Player/ModelPlayer + communication + live/headless match orchestration
+  game-visuals/ reusable renderer-only Islanders, Chess, and Poker primitives
   prism/      the animated prism screen (self-contained), also the curl-able stream behind api/
-  ai/         game AI: a Player interface + LLM-backed ModelPlayer + the match loop
   auth/       Vercel sign-in (OAuth device flow) + AI Gateway key resolution
   voice/      realtime speech-to-speech session + mic/speaker I/O + echo cancellation
   telemetry/  fire-and-forget anonymous usage counts (opt-out)
@@ -95,11 +96,13 @@ A small retained-mode UI layer that provides the shared building blocks for ever
 
 Rendering is **unified**: the 3D scene paints into the same `Surface` as the UI, so each frame is one alpha-composited cell grid that gets diffed and flushed (only changed cells are written). That's what lets a translucent **Modal** scrim dim the live scene behind a popup.
 
-### `rules/`: the game harness + chess & poker
+### `rules/` and `harness/`: game authority + agentic play
 
-An extensible, **AI-ready** harness modeled on DeepMind OpenSpiel (a `Game`/`State` split) and Kaggle Game Arena (a player is just `observation → action`). A `State` exposes `legalActions`, `applyAction`, `isTerminal`, `returns`, `clone`, and notation conversion; games self-register in a name→factory registry, so a `ModelPlayer` and a `HumanPlayer` are interchangeable.
+The rules use an extensible, **AI-ready** state contract modeled on DeepMind OpenSpiel (a `Game`/`State` split) and Kaggle Game Arena (a player is just `observation → action`). A `State` exposes `legalActions`, `applyAction`, `isTerminal`, `returns`, `clone`, and notation conversion. The public `harness/` layer connects those states to interchangeable model, human, or custom players without owning credentials or telemetry.
 
-The **chess rules engine** is written from scratch (0x88 board, full legal move generation, castling/en passant/promotion, checkmate/stalemate, the 50-move/threefold/insufficient-material draws, SAN + UCI notation), proven by **perft** against reference node counts (`pnpm exec tsx src/tools/perft.ts`). The **poker engine** is no-limit Texas Hold'em (betting rounds, side pots, a standalone hand evaluator).
+The **chess rules engine** is written from scratch (0x88 board, full legal move generation, castling/en passant/promotion, checkmate/stalemate, the 50-move/threefold/insufficient-material draws, SAN + UCI notation), proven by **perft** against reference node counts (`pnpm exec tsx src/tools/perft.ts`). Poker implements no-limit Texas Hold'em, and Islanders implements setup, production, building, trading, development cards, robber/discards, awards, and victory.
+
+See [the harness guide](docs/harness.md), [repository map](docs/architecture/repository-map.md), and [package boundary policy](docs/architecture/package-boundaries.md) for the reusable API and complete app/library/deployment layout.
 
 ## Roadmap
 
@@ -108,9 +111,9 @@ The **chess rules engine** is written from scratch (0x88 board, full legal move 
 - [x] Chess: 3D board, interactive play, and a verified rules engine
 - [x] **AI Gateway + AI SDK integration**: play **you vs AI** and **AI vs AI**, with mid-match model swaps
 - [x] **Poker**: no-limit Texas Hold'em, human-vs-AI and AI-vs-AI
-- [x] **Realtime audio "table talk"**: give a heads-up poker opponent a realtime voice model
+- [ ] **Realtime audio "table talk"**: experimental source exists, but setup and native playback are not shipped
 - [ ] **Model leaderboard**: per-model play-style stats from game telemetry
-- [ ] **More games** (Catan in R&D) plus a web build for the public beta
+- [ ] **More games and public-beta hardening** across the CLI, docs, and examples
 
 ## Scripts
 

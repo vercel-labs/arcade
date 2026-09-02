@@ -4,7 +4,7 @@ import type { Card } from '../../../rules/poker/cards.ts';
 import { HoldemState } from '../../../rules/poker/holdem.ts';
 import { PokerGameScene } from './poker-scene.ts';
 import { CARD_H, CARD_W } from './card-render.ts';
-import { chipAmount, chipPileHalfExtent, playerColumns, potColumns, type ChipColumn } from './chips.ts';
+import { chipAmount, chipPileHalfExtent, playerColumns, potColumns, type ChipColumn } from '../../../game-visuals/poker/chips.ts';
 import { TABLE_RADIUS } from './table.ts';
 
 interface GatherSnapshot {

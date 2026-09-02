@@ -14,6 +14,7 @@ import { asset } from '../../assets.ts';
 import { FONT, ResourceCache, type RGB, type Texture } from '../../../engine/index.ts';
 import { decodePng } from '../../../engine/texture.ts';
 import { type Card, isRed, RANK_LABELS } from '../../../rules/poker/cards.ts';
+import { pokerCardBackTexture } from '../../../game-visuals/poker/cards.ts';
 
 // Card face resolution (5:7, a real card's ratio). Big enough that pips + indices
 // stay clean once the terminal down-samples them.
@@ -275,49 +276,6 @@ export function cardFaceTexture(card: Card): Texture {
   });
 }
 
-let backTex: Texture | null = null;
-
-// The card back: a red field with a small white EQUILATERAL Vercel triangle (apex
-// up) centered on the card. Procedural + small, so a whole deck of backs is cheap.
-const BACK_WHITE: RGB = [244, 242, 238];
 export function cardBackTexture(): Texture {
-  if (backTex) return backTex;
-  const w = 200;
-  const h = 280;
-  const data = new Uint8Array(w * h * 4);
-  for (let i = 0; i < w * h; i++) {
-    data[i * 4] = BACK_RED[0];
-    data[i * 4 + 1] = BACK_RED[1];
-    data[i * 4 + 2] = BACK_RED[2];
-    data[i * 4 + 3] = 255;
-  }
-  const put: Put = (x, y, rgb, a) => blend(data, w, h, x, y, rgb, a);
-  const cx = w / 2;
-
-  // Small EQUILATERAL triangle (apex up), centered a touch above the middle. The
-  // texture is 5:7 and maps 1:1 onto the card, so equal pixel spans are equilateral.
-  const halfBase = w * 0.14;
-  const triH = halfBase * Math.sqrt(3); // height of an equilateral triangle with base 2·halfBase
-  const midY = h * 0.47;
-  const apexY = midY - triH / 2;
-  const baseY = midY + triH / 2;
-
-  // 2×2 supersampled fill.
-  for (let py = Math.floor(apexY) - 1; py <= Math.ceil(baseY) + 1; py++) {
-    for (let px = Math.floor(cx - halfBase) - 1; px <= Math.ceil(cx + halfBase) + 1; px++) {
-      let hits = 0;
-      for (let sy = 0; sy < 2; sy++) {
-        for (let sx = 0; sx < 2; sx++) {
-          const fx = px + 0.25 + sx * 0.5;
-          const fy = py + 0.25 + sy * 0.5;
-          if (fy < apexY || fy > baseY) continue;
-          const hw = (halfBase * (fy - apexY)) / (baseY - apexY);
-          if (Math.abs(fx - cx) <= hw) hits++;
-        }
-      }
-      if (hits) put(px, py, BACK_WHITE, hits / 4);
-    }
-  }
-  backTex = { width: w, height: h, data };
-  return backTex;
+  return pokerCardBackTexture();
 }

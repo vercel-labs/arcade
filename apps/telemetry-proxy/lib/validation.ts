@@ -1,14 +1,14 @@
 // Server-side validation for the three ingest routes. The public client is untrusted,
 // so the proxy re-checks shape, size, and the privacy boundary here — reusing the exact
 // guard the client uses (isPrivacySafeRecord) so the two can never drift apart.
-import { isPrivacySafeRecord, MAX_RECORD_BYTES } from '../../../src/telemetry/records.ts';
+import { isPrivacySafeRecord, MAX_RECORD_BYTES, MAX_RECORD_ROW_BYTES } from '../../../src/telemetry/record-wire.ts';
 
 export type RecordKind = 'event' | 'match' | 'poker_hand';
 
-export { MAX_RECORD_BYTES };
+export { MAX_RECORD_ROW_BYTES as MAX_RECORD_BYTES };
 // Whole-request ceiling: a small batch of NDJSON lines. The client posts one row per
 // request today; this leaves headroom without inviting large-batch abuse.
-export const MAX_BODY_BYTES = 1024 * 1024;
+export const MAX_BODY_BYTES = MAX_RECORD_ROW_BYTES;
 export const MAX_ROWS_PER_REQUEST = 100;
 
 const STATUSES = new Set(['in_progress', 'completed', 'abandoned']);
@@ -45,6 +45,7 @@ export function validateRow(kind: RecordKind, value: unknown): string | null {
   } catch {
     return 'payload_unparseable';
   }
+  if (Buffer.byteLength(value.payloadJson as string) > MAX_RECORD_BYTES) return 'record_too_large';
   // Guard both the flat row and the nested game payload; a forbidden key in either
   // (prompt, chat, reasoning, raw error, …) rejects the whole record.
   if (!isPrivacySafeRecord(value) || !isPrivacySafeRecord(payload)) return 'forbidden_field';

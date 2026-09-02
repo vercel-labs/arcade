@@ -41,6 +41,7 @@ import { cardBackTexture } from './card-textures.ts';
 import { CARD_SCALE, CARD_W, drawCard, flatDown } from './card-render.ts';
 import { HandPeek } from './card-peek.ts';
 import { chairMesh, chairModel, FELT_STIPPLE, feltMesh, frameMesh, TABLE_MODEL, TABLE_RADIUS } from './table.ts';
+import { POKER_TABLE_AMBIENT as TABLE_AMBIENT, POKER_TABLE_LIGHT as TABLE_LIGHT } from '../../../game-visuals/poker/table.ts';
 
 export type CardsMode = 'single' | 'hand' | 'deck';
 
@@ -48,8 +49,6 @@ const FOVY = (46 * Math.PI) / 180;
 
 // Table/chair lighting (lambert): a soft key from above-front so the felt reads
 // green and the brown wood keeps form.
-const TABLE_LIGHT = normalize3({ x: 0.25, y: 0.9, z: 0.4 });
-const TABLE_AMBIENT = 0.74; // high floor so the wood/felt stay bright (esp. in ASCII mode)
 
 // HAND mode: the hero's two hole cards rest here (on the felt, in front of the
 // hero seat at +z). DECK mode: the stock sits just back of center, and cards are
@@ -57,13 +56,13 @@ const TABLE_AMBIENT = 0.74; // high floor so the wood/felt stay bright (esp. in 
 const HAND_SEAT_Z = 2.6;
 const DECK_POS = { x: 0, z: -0.4 };
 
-// Per-mode camera homes + how low the camera may drop (elevation floor). single is
+// Per-mode camera homes and zoom ranges. single is
 // free (see under the card); hand/deck are pinned above the table. hand looks over
 // the hero's shoulder toward the felt; deck frames the whole table + chairs.
-const HOMES: Record<CardsMode, { home: OrbitState; elevMin: number; min: number; max: number }> = {
-  single: { home: { azimuth: 0, elevation: 0.16, distance: 2.15, target: { x: 0, y: 0, z: 0 } }, elevMin: -1.4, min: 1.2, max: 8 },
-  hand: { home: { azimuth: 0, elevation: 0.56, distance: 7, target: { x: 0, y: 0, z: 1.2 } }, elevMin: 0.14, min: 3, max: 14 },
-  deck: { home: { azimuth: 0, elevation: 0.86, distance: 13, target: { x: 0, y: 0, z: 0 } }, elevMin: 0.14, min: 4, max: 28 },
+const HOMES: Record<CardsMode, { home: OrbitState; min: number; max: number }> = {
+  single: { home: { azimuth: 0, elevation: 0.16, distance: 2.15, target: { x: 0, y: 0, z: 0 } }, min: 1.2, max: 8 },
+  hand: { home: { azimuth: 0, elevation: 0.56, distance: 7, target: { x: 0, y: 0, z: 1.2 } }, min: 3, max: 14 },
+  deck: { home: { azimuth: 0, elevation: 0.86, distance: 13, target: { x: 0, y: 0, z: 0 } }, min: 4, max: 28 },
 };
 
 // HAND mode's two hole cards (hover to peek, click to lift) live in the shared
@@ -252,8 +251,8 @@ export class CardsScene {
     this.dirty = true;
   }
   orbit(dx: number, dy: number): void {
-    this.cam.orbit(dx, dy);
-    this.cam.elevation = Math.max(HOMES[this.curMode].elevMin, this.cam.elevation);
+    if (this.curMode === 'single') this.cam.orbit(dx, dy);
+    else this.cam.orbitAbovePlane(dx, dy);
     this.dirty = true;
   }
   pan(dx: number, dy: number): void {

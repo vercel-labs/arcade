@@ -12,7 +12,7 @@
 set -eu
 
 PKG="@vercel/arcade"
-MIN_NODE_MAJOR=20
+MIN_NODE_MAJOR=22
 
 red() { printf '\033[38;2;235;130;130m%s\033[0m\n' "$1" >&2; }
 dim() { printf '\033[2m%s\033[0m\n' "$1"; }

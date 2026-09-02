@@ -1,6 +1,6 @@
-import type { CommunicationMode } from '../../ai/communication/types.ts';
+import type { CommunicationMode } from '../../harness/communication/types.ts';
 
-export type MatchLabGame = 'chess' | 'catan' | 'poker';
+export type MatchLabGame = 'chess' | 'islanders' | 'poker';
 
 export interface MatchLabLimits {
   timeoutMs: number;
@@ -40,7 +40,7 @@ export interface MatchLabResult {
   stopReason: string;
   canonical?: unknown;
   finalState?: unknown;
-  error?: { name: string; message: string; stack?: string };
+  error?: { name: string; message: string; code?: string; stack?: string };
 }
 
 export interface MatchLabEvent {

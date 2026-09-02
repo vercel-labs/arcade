@@ -9,9 +9,9 @@
 import { MockLanguageModelV3 } from 'ai/test';
 import { ChessState } from '../rules/chess/chess.ts';
 import type { GameState } from '../rules/game.ts';
-import { type MatchScene, runMatch } from '../ai/match.ts';
-import { ModelPlayer } from '../ai/model-player.ts';
-import type { Player } from '../ai/player.ts';
+import { type MatchScene, runMatch } from '../harness/match.ts';
+import { ModelPlayer } from '../harness/model-player.ts';
+import type { Player } from '../harness/player.ts';
 import { type RealtimeCodec, RealtimeSession, type RealtimeSocket } from '../voice/realtime-session.ts';
 import type { Move } from '../rules/chess/types.ts';
 import { readFileSync } from 'node:fs';

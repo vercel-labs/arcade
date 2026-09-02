@@ -171,6 +171,18 @@ export function tetrahedron(): Mesh {
   return { vertices, indices };
 }
 
+/** Upright equilateral triangle extruded along Z — a physical triangular prism. */
+export function triangularPrism(depth = 0.3): Mesh {
+  const h = Math.sqrt(3) / 2;
+  const front = [v(0, h * 2 / 3, depth / 2), v(-0.5, -h / 3, depth / 2), v(0.5, -h / 3, depth / 2)];
+  const back = front.map((p) => v(p.x, p.y, -depth / 2));
+  const points = [...front, ...back];
+  const tris = [[0,1,2],[5,4,3],[0,3,4],[0,4,1],[1,4,5],[1,5,2],[2,5,3],[2,3,0]];
+  const vertices: VertexIn[]=[];const indices:number[]=[];
+  for(const tri of tris){const a=points[tri[0]],b=points[tri[1]],c=points[tri[2]],normal=norm(cross(sub(b,a),sub(c,a))),base=vertices.length;for(const p of[a,b,c])vertices.push({position:p,normal,uv:[0,0],color:{x:255,y:255,z:255}});indices.push(base,base+1,base+2);}
+  return { vertices, indices };
+}
+
 function sub(a: Vec3, b: Vec3): Vec3 {
   return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
 }

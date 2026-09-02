@@ -5,31 +5,33 @@
 // one seat has chips (or it's stopped). The scene renders each hand and provides the
 // human seam; main owns the surrounding UI (setup modal, commentary, HUD).
 
-import { runMatch } from '../../ai/match.ts';
-import { FALLBACK_RATIONALE, isFallbackRationale } from '../../ai/model-player.ts';
-import { HumanPlayer } from '../../ai/human-player.ts';
+import { runMatch } from '../../harness/match.ts';
+import { HumanPlayer } from '../../harness/human-player.ts';
 import { isTelemetryEnabled, localPlayerKey, trackHandEnded, trackMatchRecord, trackMatchStarted, trackModelFallback, trackPokerHandRecord } from '../../telemetry/index.ts';
-import type { Player } from '../../ai/player.ts';
+import type { Player } from '../../harness/player.ts';
 import { type HandPublicRecord, HoldemState, type PokerAction } from '../../rules/poker/holdem.ts';
 import { pokerBlindState, pokerTournamentContext, type PokerBlindState, type PokerBlindStructure } from '../../rules/poker/blinds.ts';
 import type { PokerGameScene, PokerSeatView } from '../games/poker/poker-scene.ts';
-import { shortModel } from './model-label.ts';
-import { disambiguateLabels } from './labels.ts';
+import { shortModel } from '../../harness/model-label.ts';
+import { disambiguateLabels } from '../../harness/labels.ts';
 import { PokerMemory } from './poker-memory.ts';
 import { PokerVoice, pokerVoiceCapable } from './poker-voice.ts';
 import { normalizerModel } from './models.ts';
-import { PokerSessionRecorder, type RecorderController } from './game-recorders.ts';
-import type { RecordEndReason } from '../../telemetry/records.ts';
+import { PokerSessionRecorder, type RecorderController } from '../../harness/recording/game-recorders.ts';
+import type { RecordEndReason } from '../../harness/records.ts';
+import type { ModelFailureNotice } from '../../harness/model-failure-notice.ts';
 import {
   BIG_BLIND,
   createPokerTextPlayer,
   SMALL_BLIND,
   STARTING_STACK,
-  type PokerSeatSpec,
-} from './poker-session.ts';
+} from '../../harness/games/poker/poker-session.ts';
 
 export { BIG_BLIND };
-export type { PokerSeatSpec };
+export type PokerSeatSpec =
+  | { kind: 'human' }
+  | { kind: 'ai'; model: string; runtime: 'text' }
+  | { kind: 'ai'; model: string; runtime: 'realtime' };
 // Chip amounts read as money in the winner banner: a "$" prefix + thousands separators.
 const money = (n: number): string => `$${n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
 
@@ -40,6 +42,8 @@ export interface PokerMatchDeps {
   syncLive(): void;
   requestRender(): void;
   onCommentary(text: string, model: string, label: string): void;
+  onFailureNotice?(notice: ModelFailureNotice, model: string): void;
+  onBlocked?(): void;
   onHandOver(): void; // refresh the HUD / show the result between hands
   // A spoken line for the chat rail (voice heads-up): `event` lines render grey/nameless.
   onChat?(text: string, speaker: string, event: boolean, label?: string): void;
@@ -218,6 +222,7 @@ export class PokerMatch {
       model: seat.model,
       contextProvider: () => this.moveContext(index),
       normalizer: normalizerModel(),
+      onFailureNotice: (notice) => this.deps.onFailureNotice?.(notice, seat.model),
     });
   }
 
@@ -324,12 +329,13 @@ export class PokerMatch {
       onCommentary: (text, player, playerIndex) => {
         const seat = playerIndex;
         const spec = seat >= 0 ? this.seats[seat] : undefined;
-        if (spec?.kind === 'ai' && isFallbackRationale(text)) {
-          trackModelFallback({ game: 'poker', model: spec.model, reason: text === FALLBACK_RATIONALE.unavailable ? 'unavailable' : 'exhausted' });
-        }
         this.deps.onCommentary(text, player.name, seat >= 0 ? this.labelOf(seat) : shortModel(player.name));
       },
       onActionChosen: ({ player, playerIndex, choice }) => {
+        const chosenSpec = this.seats[playerIndex];
+        if (chosenSpec?.kind === 'ai' && choice.diagnostics?.resolution === 'random-fallback') {
+          trackModelFallback({ game: 'poker', model: chosenSpec.model, reason: choice.diagnostics.fallbackReason ?? 'exhausted' });
+        }
         this.record(() => {
           const spec = this.seats[playerIndex];
           this.recorder?.actionChosen(
@@ -382,7 +388,13 @@ export class PokerMatch {
         this.startReflections(state.publicRecord());
         if (this.running && !this.paused) this.proceedAfterHand(state);
       })
-      .catch(() => {}); // aborted mid-decision — fine
+      .catch((error) => {
+        if (error?.name === 'NotifiedModelFailure') {
+          this.paused = true;
+          this.deps.scene.setPaused(true);
+          this.deps.onBlocked?.();
+        }
+      });
   }
 
   // Kick off per-seat note-taking on the just-finished hand. Each AI seat still in the

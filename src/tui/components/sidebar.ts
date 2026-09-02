@@ -1,11 +1,11 @@
 // The edge sidebar: a translucent column with a title + ✕ header, shared by the chess
-// chat, the poker chat, and the Catan sidebar. Each caller supplies its own body (a chat
+// chat, the poker chat, and the Islanders sidebar. Each caller supplies its own body (a chat
 // thread, a scrollable history, stacked sections) while the chrome, insets, and header
 // live here, so every panel reads as the same object.
 //
 // A sidebar participates in the layout rather than painting over the scene behind it:
 // whoever opens one must also inset the scene viewport by the same width, or projected
-// scene overlays (Catan's number chips and port labels) land underneath the panel.
+// scene overlays (Islanders's number chips and port labels) land underneath the panel.
 
 import { Box, Text } from '../nodes.ts';
 import type { ColorToken } from '../theme.ts';

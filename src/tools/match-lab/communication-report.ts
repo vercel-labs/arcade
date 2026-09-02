@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { CommunicationDecision } from '../../ai/communication/types.ts';
+import type { CommunicationDecision } from '../../harness/communication/types.ts';
 import type { MatchLabEvent } from './types.ts';
 
 export interface CommunicationReportRow {

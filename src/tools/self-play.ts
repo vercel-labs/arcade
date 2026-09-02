@@ -10,7 +10,7 @@
 // Reuses Arcade's cached Vercel login + selected team; no pasted key required.
 
 import { ChessState } from '../rules/chess/chess.ts';
-import { isFallbackRationale, ModelPlayer } from '../ai/model-player.ts';
+import { isFallbackRationale, ModelPlayer } from '../harness/model-player.ts';
 import { ensureCachedGatewayKey } from '../auth/index.ts';
 import type { Move } from '../rules/chess/types.ts';
 

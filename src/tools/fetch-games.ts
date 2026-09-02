@@ -23,6 +23,7 @@ const ART: Record<string, string> = {
   ui: '1f3a8', // 🎨 artist palette
   leaderboard: '1f3c6', // 🏆 trophy
   achievements: '1f396', // 🎖 military medal
+  website: '1f310', // 🌐 globe with meridians
   codenames: '1f575', // 🕵 detective
   // pacman: not a Noto emoji — its cover is the classic sprite from Wikimedia
   // Commons (File:Original PacMan.png, transparent, "PD shape"), committed

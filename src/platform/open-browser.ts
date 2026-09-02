@@ -6,6 +6,10 @@ import { spawn } from 'node:child_process';
 // box, opener missing) is swallowed. Callers MUST also print the URL so login
 // still works when this no-ops.
 export function openBrowser(url: string): void {
+  if (process.env.ARCADE_HOSTED_TERMINAL === '1') {
+    process.stdout.write(`\x1b]778;open=${encodeURIComponent(url)}\x07`);
+    return;
+  }
   const [cmd, args]: [string, string[]] =
     process.platform === 'darwin'
       ? ['open', [url]]

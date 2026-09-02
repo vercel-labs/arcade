@@ -29,8 +29,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // Pinned: the version that produced the shipped bundle. Run via npx so the build
-// needs no `pnpm install` (avoids compiling the native `speaker` dep, which the
-// prism endpoint doesn't use).
+// needs no `pnpm install`; the prism endpoint uses only its bundled closure.
 const ESBUILD = 'esbuild@0.23.1';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');

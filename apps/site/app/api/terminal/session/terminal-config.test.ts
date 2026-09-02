@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import {
   GATEWAY_HOST,
+  VERCEL_API_HOST,
   TERMINAL_CWD,
   baseNetworkPolicy,
   baseSandboxName,
@@ -23,7 +24,7 @@ describe('hosted Arcade terminal configuration', () => {
   test('pins the installed package and reusable base to the deployment revision', () => {
     const env = { VERCEL_GIT_COMMIT_SHA: 'ABCDEF1234567890' } as unknown as NodeJS.ProcessEnv;
     assert.equal(packageSpec(env), '@vercel/arcade#ABCDEF1234567890');
-    assert.equal(baseSandboxName(env), 'arcade-web-base-v12-abcdef123456');
+    assert.equal(baseSandboxName(env), 'arcade-web-base-v16-abcdef123456');
   });
 
   test('allows only package installation hosts while building the base', () => {
@@ -32,8 +33,12 @@ describe('hosted Arcade terminal configuration', () => {
     });
   });
 
-  test('denies session networking without a hosted credential', () => {
-    assert.equal(sessionNetworkPolicy('placeholder', null), 'deny-all');
+  test('allows browser-auth APIs but no demo credential transform without a hosted credential', () => {
+    const policy = sessionNetworkPolicy('placeholder', null);
+    assert.notEqual(policy, 'deny-all');
+    if (typeof policy === 'string' || !policy.allow || Array.isArray(policy.allow)) assert.fail('expected allow policy');
+    assert.deepEqual(policy.allow[VERCEL_API_HOST], []);
+    assert.deepEqual(policy.allow[GATEWAY_HOST], [{ match: {}, transform: [] }]);
     assert.equal(hostedGatewayCredential({} as unknown as NodeJS.ProcessEnv), null);
   });
 
@@ -46,6 +51,7 @@ describe('hosted Arcade terminal configuration', () => {
     assert.ok(valueMatcher && 'exact' in valueMatcher);
     assert.equal(valueMatcher.exact, 'Bearer placeholder');
     assert.equal(rules?.[0]?.transform?.[0]?.headers?.authorization, 'Bearer real-token');
+    assert.deepEqual(rules?.[1], { match: {}, transform: [] });
   });
 
   test('seeds the actual CLI wrapper and navigable docs filesystem', () => {
@@ -59,6 +65,8 @@ describe('hosted Arcade terminal configuration', () => {
     assert.match(byPath.get(`${TERMINAL_CWD}/system/arcade-demo`) ?? '', /"\$@"/);
     const visitorShell = byPath.get(`${TERMINAL_CWD}/system/visitor.bashrc`) ?? '';
     assert.match(visitorShell, /function help\(\) \{ arcade_help; \}/);
+    assert.match(visitorShell, /__ARCADE_HOST_MODE_1__/);
+    assert.match(visitorShell, /__ARCADE_HOST_MODE_0__/);
     assert.match(visitorShell, /arcade --version/);
     assert.match(visitorShell, /cd docs/);
     assert.match(visitorShell, /cd examples/);
