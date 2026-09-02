@@ -65,7 +65,13 @@ export const SiteNav = () => {
         </Link>
         <nav aria-label="Primary navigation" className="site-nav__desktop flex items-center gap-5">
           {NAV_LINKS.slice(0, 2).map((link) => (
-            <Link className="site-nav__link text-gray-900 text-sm" href={link.href} key={link.href}>
+            <Link
+              className="site-nav__link text-gray-900 text-sm"
+              href={link.href}
+              key={link.href}
+              rel={link.external ? 'noopener noreferrer' : undefined}
+              target={link.external ? '_blank' : undefined}
+            >
               {link.label}
             </Link>
           ))}
