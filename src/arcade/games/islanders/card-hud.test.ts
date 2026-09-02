@@ -27,6 +27,7 @@ import {
   islandersBankDepartureCell,
   islandersDevDeckDepartureCell,
   islandersDevHandLandingCell,
+  islandersDiscardDepartureCell,
   islandersHandLandingCell,
   islandersHistoryRows,
   islandersWorkbenchDiscardOpen,
@@ -181,6 +182,12 @@ test('Board + cards remains a full board scene with projected number tokens', ()
 
 test('resource flights land on cards after the hand tray side padding', () => {
   assert.deepEqual(islandersHandLandingCell({ x: 0, y: 0, w: 140, h: 50 }, 'lumber'), { col: 7, row: 44 });
+});
+
+test('discard flights leave the staged resource row', () => {
+  const region = { x: 0, y: 0, w: 140, h: 50 };
+  assert.deepEqual(islandersDiscardDepartureCell(region, 'lumber'), { col: 7, row: 40 });
+  assert.notDeepEqual(islandersDiscardDepartureCell(region, 'lumber'), islandersHandLandingCell(region, 'lumber'));
 });
 
 test('trade flights leave the visible bank card or the hidden right edge at the same height', () => {

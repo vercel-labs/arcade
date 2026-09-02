@@ -3,6 +3,7 @@ import test from 'node:test';
 import { RenderTarget } from '../../../engine/index.ts';
 import { COSTS, DEV_CARD_TYPES, RESOURCES, resourceIndex } from '../../../rules/islanders/types.ts';
 import { IslandersDriver, type IslandersSeatSpec } from '../../match/islanders-driver.ts';
+import { islandersDiscardDepartureCell, islandersHandLandingCell } from './card-hud.ts';
 import { islandersLiveView } from './game-hud.ts';
 import { IslandersGameScene } from './game-scene.ts';
 import { TileScene } from './tile-scene.ts';
@@ -72,6 +73,63 @@ test('headless roll playback stays immediate when render synchronization is disa
   ], { autoRun: false, rng: () => 0.5 });
   await finishSetupWithProductionOnEight(game, state);
   await game.playMove({ type: 'roll' });
+});
+
+test('a confirmed human discard closes its panel and flies the staged cards to the bank', async () => {
+  const game = new IslandersGameScene();
+  const driver = new IslandersDriver({ scene: game, syncLive: () => {} });
+  const state = driver.start([
+    { kind: 'human', color: 'red' },
+    { kind: 'ai', color: 'blue', model: 'test/blue' },
+  ], { autoRun: false, rng: () => 0.5 });
+  const region = { x: 0, y: 0, w: 140, h: 50 };
+  game.setResourceFlightLayout(region, 2, true);
+  await finishSetupWithProductionOnEight(game, state);
+  const target = new RenderTarget(region.w, region.h * 2);
+  game.renderScene(target, 0);
+  game.renderScene(target, 5);
+  assert.equal(game.activeResourceFlights().length, 0, 'initial-placement grants are settled before the discard');
+
+  const hands = (state as unknown as { hands: number[][] }).hands;
+  hands[0].fill(0);
+  hands[0][resourceIndex('brick')] = 5;
+  hands[0][resourceIndex('grain')] = 4;
+  state.applyAction({ type: 'roll' }, { dice: [3, 4] });
+
+  const pending = game.requestHumanMove();
+  assert.equal(game.humanMenuKind(), 'discard');
+  for (let count = 0; count < 3; count++) assert.equal(game.pickHumanMenuResource('brick'), true);
+  assert.equal(game.pickHumanMenuResource('grain'), true);
+  assert.equal(game.submitHumanMenu(), true);
+  assert.equal(game.humanMenuKind(), null, 'confirming closes the discard panel before playback');
+
+  const action = await pending;
+  assert.deepEqual(action, { type: 'discard', resources: ['brick', 'brick', 'brick', 'grain'] });
+  void game.playMove(action);
+  assert.equal(total(game.resourceViewAdjustments().handPendingDeparture ?? {} as Record<(typeof RESOURCES)[number], number>), 4);
+
+  game.renderScene(target, 5);
+  const active = game.activeResourceFlights();
+  const brick = active.find((flight) => flight.resource === 'brick');
+  assert.ok(brick);
+  assert.deepEqual(
+    { col: brick.col, row: brick.row },
+    islandersDiscardDepartureCell(region, 'brick'),
+    'the first discarded card leaves its staged slot',
+  );
+  assert.notDeepEqual(
+    { col: brick.col, row: brick.row },
+    islandersHandLandingCell(region, 'brick'),
+    'the discard does not launch from the normal hand row',
+  );
+  const waitingToDepart = total(game.resourceViewAdjustments().handPendingDeparture
+    ?? {} as Record<(typeof RESOURCES)[number], number>);
+  assert.ok(waitingToDepart > 0 && waitingToDepart < 4, 'the stagger removes cards as each one leaves the panel');
+
+  for (let frame = 21; frame <= 40; frame++) game.renderScene(target, frame * 0.25);
+  assert.equal(game.activeResourceFlights().length, 0);
+  assert.equal(total(game.resourceViewAdjustments().handPendingDeparture ?? {} as Record<(typeof RESOURCES)[number], number>), 0);
+  assert.equal(total(game.resourceViewAdjustments().bankPendingArrival ?? {} as Record<(typeof RESOURCES)[number], number>), 0);
 });
 
 test('the next legal roll can replace the previous dice hold', async () => {

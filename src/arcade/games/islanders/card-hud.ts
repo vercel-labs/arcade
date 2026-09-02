@@ -1396,6 +1396,18 @@ export function islandersHandLandingCell(region: LayoutBox, resource: Resource):
   return { col: left + Math.floor(CARD_W / 2), row: panelTop + HAND_PAD_T };
 }
 
+// A confirmed discard closes its editor before the rules action is applied, but the cards should
+// still visibly leave the staged row the player just submitted. Restate that row's anchored
+// geometry so playback can start at the selected resource card after the panel disappears.
+export function islandersDiscardDepartureCell(region: LayoutBox, resource: Resource): { col: number; row: number } {
+  const panelTop = region.y + region.h - 1 - DISCARD_PANEL_H;
+  const left = region.x + HAND_PANEL_LEFT + 2 + RESOURCE_ORDER.indexOf(resource) * (CARD_W + 1);
+  return {
+    col: left + Math.floor(CARD_W / 2),
+    row: panelTop + TRADE_PANEL_PAD_V + Math.floor((CARD_H - 2) / 2),
+  };
+}
+
 // Where an animated bank card leaves its pile. With the sidebar open this is the exact center of
 // that resource or dev card. With it hidden, the whole four-cell flight chip starts one cell beyond
 // the terminal's right edge at the same roughly two-thirds-down height occupied by the bank row.

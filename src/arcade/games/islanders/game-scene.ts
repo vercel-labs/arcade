@@ -21,7 +21,7 @@ import { IslandersState } from '../../../rules/islanders/islanders.ts';
 import type { BoardSetup } from '../../../rules/islanders/setup.ts';
 import { DEV_CARD_TYPES, RESOURCES, resourceIndex, type IslandersAction, type DevCardType, type PlayerColor, type Resource } from '../../../rules/islanders/types.ts';
 import type { LayoutBox } from '../../../tui/index.ts';
-import { islandersBankDepartureCell, islandersDevDeckDepartureCell, islandersDevHandLandingCellForTypes, islandersHandLandingCell } from './card-hud.ts';
+import { islandersBankDepartureCell, islandersDevDeckDepartureCell, islandersDevHandLandingCellForTypes, islandersDiscardDepartureCell, islandersHandLandingCell } from './card-hud.ts';
 import { ResourceFlights, type FlyingResource } from './scene/resource-flight.ts';
 import { TileScene } from './tile-scene.ts';
 
@@ -101,6 +101,14 @@ interface PendingResourceGain {
   resolve: () => void;
 }
 
+interface PendingResourceLoss {
+  resource: Resource;
+  count: number;
+  toBank: boolean;
+  origin: 'hand' | 'discard';
+  resolve: () => void;
+}
+
 type BoardChoiceType = 'buildRoad' | 'buildSettlement' | 'buildCity' | 'playKnight' | 'playRoadBuilding';
 export type IslandersHumanMenuKind = 'discard' | 'yearOfPlenty' | 'monopoly' | 'bankTrade' | 'portTrade' | 'playerTrade' | 'tradeEditor' | 'tradeCounter';
 
@@ -159,7 +167,7 @@ export class IslandersGameScene {
   private readonly handPendingDeparture = emptyResourceCounts();
   private readonly bankPendingArrival = emptyResourceCounts();
   private pendingResourceGains: PendingResourceGain[] = [];
-  private pendingResourceLosses: PendingResourceGain[] = [];
+  private pendingResourceLosses: PendingResourceLoss[] = [];
   private readonly developmentHandPending = Object.fromEntries(DEV_CARD_TYPES.map((type) => [type, 0])) as Record<DevCardType, number>;
   private developmentDeckPendingDeparture = 0;
   private pendingDevelopmentCards: DevCardType[] = [];
@@ -323,7 +331,12 @@ export class IslandersGameScene {
     for (const resource of RESOURCES) {
       const gain = (handAfter[resourceIndex(resource)] ?? 0) - (handBefore[resourceIndex(resource)] ?? 0);
       if (gain > 0) resourceCompletions.push(this.queueResourceGain(resource, gain, fromBank, deferRollProduction));
-      else if (gain < 0) resourceCompletions.push(this.queueResourceLoss(resource, -gain, resourceLossGoesToBank(action)));
+      else if (gain < 0) {
+        const origin = action.type === 'discard' && seat === this.humanSeat && seat === this.viewerSeat
+          ? 'discard'
+          : 'hand';
+        resourceCompletions.push(this.queueResourceLoss(resource, -gain, resourceLossGoesToBank(action), origin));
+      }
     }
     if (action.type === 'buyDevCard' && seat === this.viewerSeat) {
       const card = state.actionRecords().at(-1)?.outcome?.developmentCard;
@@ -869,12 +882,17 @@ export class IslandersGameScene {
     this.pendingResourceGains = [];
   }
 
-  private queueResourceLoss(resource: Resource, count: number, toBank: boolean): Promise<void> {
+  private queueResourceLoss(
+    resource: Resource,
+    count: number,
+    toBank: boolean,
+    origin: PendingResourceLoss['origin'],
+  ): Promise<void> {
     let resolveCompletion: () => void = () => {};
     const completion = new Promise<void>((resolve) => { resolveCompletion = resolve; });
     this.handPendingDeparture[resource] += count;
     if (toBank) this.bankPendingArrival[resource] += count;
-    this.pendingResourceLosses.push({ resource, count, fromBank: toBank, resolve: resolveCompletion });
+    this.pendingResourceLosses.push({ resource, count, toBank, origin, resolve: resolveCompletion });
     this.flushPendingResourceLosses();
     return completion;
   }
@@ -884,10 +902,14 @@ export class IslandersGameScene {
     if (!layout || !this.pendingResourceLosses.length) return;
     let order = 0;
     for (const loss of this.pendingResourceLosses) {
-      const from = islandersHandLandingCell(layout.region, loss.resource);
-      const to = islandersBankDepartureCell(layout.region, loss.resource, layout.playerCount, loss.fromBank && layout.railVisible);
-      const flights = loss.fromBank ? this.bankBoundResourceFlights : this.externalBoundResourceFlights;
-      void flights.spawn(loss.resource, loss.count, from, to, order).then(loss.resolve);
+      const from = loss.origin === 'discard'
+        ? islandersDiscardDepartureCell(layout.region, loss.resource)
+        : islandersHandLandingCell(layout.region, loss.resource);
+      const to = islandersBankDepartureCell(layout.region, loss.resource, layout.playerCount, loss.toBank && layout.railVisible);
+      const flights = loss.toBank ? this.bankBoundResourceFlights : this.externalBoundResourceFlights;
+      // Outgoing cards rise toward the bank rather than sinking behind the hand. Keep the full
+      // chip visible for that path; target clipping is only for cards landing in the hand.
+      void flights.spawn(loss.resource, loss.count, from, to, order, undefined, false).then(loss.resolve);
       order += loss.count;
     }
     this.pendingResourceLosses = [];
