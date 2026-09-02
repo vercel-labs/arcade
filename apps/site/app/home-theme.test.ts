@@ -70,6 +70,14 @@ test('mobile navigation preserves every desktop destination in an accessible she
   assert.match(css, /\.site-nav__mobile-sheet\.is-open \{ opacity: 1; transform: translateY\(0\); pointer-events: auto; \}/);
 });
 
+test('AI Gateway opens externally while Docs stays in the current tab', async () => {
+  const nav = await readFile(new URL('../components/site-nav.tsx', import.meta.url), 'utf8');
+  assert.match(nav, /target=\{link\.external \? '_blank' : undefined\}/);
+  assert.match(nav, /rel=\{link\.external \? 'noopener noreferrer' : undefined\}/);
+  assert.match(nav, /\{ label: 'Docs', href: '\/docs', external: false \}/);
+  assert.match(nav, /\{ label: 'AI Gateway'.*external: true \}/);
+});
+
 test('the hero advertises one canonical npm command with a full-row copy target', async () => {
   const [css, hero] = await Promise.all([
     readFile(new URL('./global.css', import.meta.url), 'utf8'),
