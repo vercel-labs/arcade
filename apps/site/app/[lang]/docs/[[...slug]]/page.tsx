@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { IconChevronRight } from '@vercel/geistdocs/assets/icons/icon-chevron-right';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { CopyPageButton, MobileDocsNav, type DocsNavItem } from '../docs-client';
@@ -34,7 +35,7 @@ export default async function DocsPage({ params }: PageProps<'/[lang]/docs/[[...
 
   return <main className="doc-shell mt-(--fd-nav-height)">
     <MobileDocsNav active={activeHref} items={navItems} />
-    <aside aria-label="Documentation navigation" className="doc-sidebar"><nav className="doc-sidebar__scroll">{nestedMode ? <Link className="doc-sidebar__back" href="/docs"><span aria-hidden="true">←</span><span>All documentation</span></Link> : null}{navItems.map((item) => item.group ? <span className="doc-sidebar__group" key={`group-${item.group}`}>{item.group}</span> : <Link aria-current={item.href === activeHref ? 'page' : undefined} href={item.href} key={item.href}><span>{item.label}</span>{item.drillIn ? <span aria-hidden="true">›</span> : null}</Link>)}</nav></aside>
+    <aside aria-label="Documentation navigation" className="doc-sidebar"><nav className="doc-sidebar__scroll">{nestedMode ? <Link aria-label="Back to all documentation sections" className="doc-sidebar__section-header" href="/docs"><span aria-hidden="true"><IconChevronRight size={16} /></span><strong>{nestedMode === 'reference' ? 'API Reference' : 'Guides'}</strong><span aria-hidden="true" /></Link> : null}{navItems.map((item) => item.group ? <span className="doc-sidebar__group" key={`group-${item.group}`}>{item.group}</span> : <Link aria-current={item.href === activeHref ? 'page' : undefined} href={item.href} key={item.href}><span>{item.label}</span>{item.drillIn ? <span aria-hidden="true"><IconChevronRight size={16} /></span> : null}</Link>)}</nav></aside>
     <article className="doc-article" data-doc-article>
       <header className="doc-page-header"><nav aria-label="Breadcrumb" className="doc-breadcrumbs"><Link href="/docs">Docs</Link>{page.navParent ? <><span>/</span><Link href={`/docs/${page.navParent}`}>{page.navParent === 'reference' ? 'Reference' : 'Guides'}</Link></> : null}{page.slug ? <><span>/</span><span>{page.label}</span></> : null}</nav><h1>{page.title}</h1><p>{page.summary}</p><div className="doc-actions"><CopyPageButton /></div></header>
       {page.sections.map((section, sectionIndex) => { const id = sectionIds[sectionIndex]; return <section id={id} key={section.heading}><h2><a aria-label={`Link to ${section.heading}`} href={`#${id}`}>{section.heading}</a></h2><div>{section.body}</div></section>; })}
