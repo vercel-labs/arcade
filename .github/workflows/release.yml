@@ -23,6 +23,9 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.5
       # Trusted Publishing needs npm >= 11.5.1 — newer than the npm bundled with Node 24.
       - run: npm install -g npm@latest
       # access (restricted) comes from package.json publishConfig. Provenance is off: a
