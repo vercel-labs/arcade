@@ -26,16 +26,16 @@ const CHESS: SceneExampleDefinition[] = [
   },
 ];
 
-const CATAN: SceneExampleDefinition[] = [
+const ISLANDERS: SceneExampleDefinition[] = [
   ['fields', 'Fields'], ['forest', 'Forest'], ['pasture', 'Pasture'],
   ['hills', 'Hills'], ['mountains', 'Mountains'], ['desert', 'Desert'],
 ].map(([id, title]) => ({
-  id: `catan-${id}`,
+  id: `islanders-${id}`,
   title,
   description: `The production ${title.toLowerCase()} tile, including its procedural terrain and animated overlay where applicable.`,
-  scene: `catan-${id}` as SceneExampleDefinition['scene'],
-  source: `src/game-visuals/catan/tiles/${id}`,
-  imports: '@vercel/arcade/game-visuals/catan',
+  scene: `islanders-${id}` as SceneExampleDefinition['scene'],
+  source: `src/game-visuals/islanders/tiles/${id}`,
+  imports: '@vercel/arcade/game-visuals/islanders',
 }));
 
 const POKER: SceneExampleDefinition[] = [{
@@ -65,10 +65,10 @@ export default function ExamplesPage() {
       <span>Examples</span>
       <h1>Parts of Arcade, in isolation.</h1>
       <p>Every preview is rendered by Arcade. The site supplies a canvas and input lifecycle; the package owns the geometry, assets, camera, rasterization, animation, and terminal cells.</p>
-      <nav><a href="#chess">Chess</a><a href="#catan">Catan</a><a href="#poker">Poker</a><a href="#system">System</a><Link href="/docs/examples">Implementation guide</Link></nav>
+      <nav><a href="#chess">Chess</a><a href="#islanders">Islanders</a><a href="#poker">Poker</a><a href="#system">System</a><Link href="/docs/examples">Implementation guide</Link></nav>
     </header>
     <Group id="chess" title="Chess" description="Imported assets and the complete board renderer." examples={CHESS} />
-    <Group id="catan" title="Catan" description="The 6 terrain systems used to assemble the island." examples={CATAN} />
+    <Group id="islanders" title="Islanders" description="The 6 terrain systems used to assemble the island." examples={ISLANDERS} />
     <Group id="poker" title="Poker" description="Reusable table primitives extracted from the game presentation." examples={POKER} />
     <section className="example-group" id="system">
       <header className="example-group__header"><div><span>system</span><h2>Terminal stream</h2></div><p>The standalone render surface shared with the curl endpoint.</p></header>

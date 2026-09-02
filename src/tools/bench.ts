@@ -5,8 +5,8 @@
 //
 // Examples:
 //   pnpm bench all 140 50 60 all
-//   pnpm bench catan 200 60 100 pixels
-//   pnpm bench catan-dice 700 210 35 pixels
+//   pnpm bench islanders 200 60 100 pixels
+//   pnpm bench islanders-dice 700 210 35 pixels
 
 import {
   applyTerminalColorMode,
@@ -24,13 +24,13 @@ import {
 import { PrismScene } from '../prism/index.ts';
 import { ChessGameScene } from '../arcade/games/chess/scene.ts';
 import { PokerGameScene, type PokerSeatView } from '../arcade/games/poker/poker-scene.ts';
-import { TileScene } from '../arcade/games/catan/tile-scene.ts';
+import { TileScene } from '../arcade/games/islanders/tile-scene.ts';
 import { LogosScene } from '../arcade/scenes/logos-scene.ts';
 import { supersampleForViewport } from '../arcade/render-quality.ts';
 import { HoldemState } from '../rules/poker/holdem.ts';
 
 type BenchMode = 'ascii' | 'pixels' | 'hybrid';
-type BenchScene = 'prism' | 'logos' | 'chess' | 'poker-idle' | 'poker-hand' | 'catan' | 'catan-dice';
+type BenchScene = 'prism' | 'logos' | 'chess' | 'poker-idle' | 'poker-hand' | 'islanders' | 'islanders-dice';
 
 interface SceneDriver {
   render(target: RenderTarget, t: number): void;
@@ -41,8 +41,8 @@ interface Stat {
   samples: number[];
 }
 
-const ALL_SCENES: BenchScene[] = ['prism', 'logos', 'chess', 'poker-idle', 'poker-hand', 'catan'];
-const BENCH_SCENES: BenchScene[] = [...ALL_SCENES, 'catan-dice'];
+const ALL_SCENES: BenchScene[] = ['prism', 'logos', 'chess', 'poker-idle', 'poker-hand', 'islanders'];
+const BENCH_SCENES: BenchScene[] = [...ALL_SCENES, 'islanders-dice'];
 const ALL_MODES: BenchMode[] = ['ascii', 'pixels', 'hybrid'];
 const sceneArg = process.argv[2] ?? 'all';
 const cols = positiveInt(process.argv[3], 140);
@@ -131,10 +131,10 @@ function createScene(name: BenchScene): SceneDriver {
   scene.setMode('board');
   scene.seedDemo();
   scene.settle();
-  if (name === 'catan-dice') scene.rollDice();
+  if (name === 'islanders-dice') scene.rollDice();
   return {
     render: (target, t) => scene.renderScene(target, t),
-    hasForeground: name === 'catan-dice' ? () => scene.hasForegroundSceneLayer() : undefined,
+    hasForeground: name === 'islanders-dice' ? () => scene.hasForegroundSceneLayer() : undefined,
   };
 }
 
@@ -144,7 +144,7 @@ function run(name: BenchScene, mode: BenchMode): void {
   const scene = createScene(name);
   const surface = new Surface(cols, rows);
   const differ = new CellDiffer();
-  const catanScene = name === 'catan' || name === 'catan-dice';
+  const islandersScene = name === 'islanders' || name === 'islanders-dice';
   const glyphCache = new ShapeGlyphSurfaceCache();
   const render = stat();
   const present = stat();
@@ -178,7 +178,7 @@ function run(name: BenchScene, mode: BenchMode): void {
             rows,
             {
               coloredBackground: mode === 'hybrid',
-              blankOutsideDepthBounds: catanScene && !scene.hasForeground?.(),
+              blankOutsideDepthBounds: islandersScene && !scene.hasForeground?.(),
             },
             0,
             0,
@@ -209,7 +209,7 @@ function run(name: BenchScene, mode: BenchMode): void {
         rows,
         {
           coloredBackground: mode === 'hybrid',
-          blankOutsideDepthBounds: catanScene && !scene.hasForeground?.(),
+          blankOutsideDepthBounds: islandersScene && !scene.hasForeground?.(),
         },
         0,
         0,

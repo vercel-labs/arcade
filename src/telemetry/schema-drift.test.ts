@@ -25,6 +25,7 @@ writeFileSync(
 const telemetry = await import('./index.ts');
 const { RECORD_SCHEMA_VERSION, toCanonicalRecordRow } = telemetry;
 type ChessMatchRecord = import('../harness/records.ts').ChessMatchRecord;
+type IslandersMatchRecord = import('../harness/records.ts').IslandersMatchRecord;
 type PokerHandRecord = import('../harness/records.ts').PokerHandRecord;
 
 type ColumnKind = 'string' | 'number' | 'boolean' | 'string[]';
@@ -204,6 +205,22 @@ function pokerHand(): PokerHandRecord {
   };
 }
 
+function islandersMatch(): IslandersMatchRecord {
+  return {
+    recordType: 'match', recordSchemaVersion: RECORD_SCHEMA_VERSION, recordId: 'record-i1', revision: 2,
+    matchId: 'match-i1', game: 'islanders', rulesVersion: 'islanders-base-1', status: 'completed',
+    endReason: 'natural', startedAt: '2026-07-17T10:00:00.000Z', endedAt: '2026-07-17T10:05:00.000Z', lastActionSeq: 1,
+    participants: [{ participantId: 'red', kind: 'model', role: 'red' }, { participantId: 'blue', kind: 'model', role: 'blue' }],
+    controllerAssignments: [
+      { assignmentId: 'a0', participantId: 'red', controllerKind: 'model', requestedModel: 'openai/gpt-x', startActionSeq: 1 },
+      { assignmentId: 'a1', participantId: 'blue', controllerKind: 'model', requestedModel: 'anthropic/claude-x', startActionSeq: 1 },
+    ],
+    actions: [{ actionId: 'act-i1', seq: 1, participantId: 'red', assignmentId: 'a0', phase: 'roll', applied: { action: { type: 'roll' }, outcome: { dice: [3, 4] } } }],
+    results: [{ participantId: 'red', result: 'win', score: 10 }, { participantId: 'blue', result: 'loss', score: 7 }],
+    details: { mode: 'ai_table', tableSize: 2, domesticTrade: true, replay: { board: { hexes: [], robberHex: 0, harbors: [] }, initialDevelopmentDeck: [] }, finalVictoryPoints: [10, 7] },
+  };
+}
+
 const envelope = { session: 'run-1', env: 'prod' as const, appVersion: '0.1.2', playerKey: 'pk-hash', emittedAt: '2026-07-17T10:02:00.000Z' };
 
 // ---- canonical record rows ----
@@ -220,6 +237,12 @@ test('match rows cover the match datasource columns (hand fields are ignored ext
   // ingestion ignores unmapped fields, so they are harmless — but keep them pinned.
   assert.deepEqual(Object.keys(row).sort(), [...Object.keys(MATCH_RECORD_COLUMNS), 'handId', 'handNumber'].sort());
   assertMatchesColumns(row, MATCH_RECORD_COLUMNS, ['handId', 'handNumber']);
+});
+
+test('Islanders uses the existing match datasource wire shape', () => {
+  const row = wire(toCanonicalRecordRow(islandersMatch(), envelope));
+  assertMatchesColumns(row, MATCH_RECORD_COLUMNS, ['handId', 'handNumber']);
+  assert.equal(row.game, 'islanders');
 });
 
 test('an unfinished record omits endedAt so the column DEFAULT applies (never a sentinel)', () => {

@@ -1,4 +1,4 @@
-export * as catan from './catan/index.ts';
+export * as islanders from './islanders/index.ts';
 export * as chess from './chess/index.ts';
 export * as poker from './poker/index.ts';
 export {

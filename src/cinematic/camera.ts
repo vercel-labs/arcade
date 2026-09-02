@@ -24,27 +24,65 @@ export function chessCinematicPose(progress: number): ChessCinematicPose {
 
 export function pokerCinematicCamera(progress: number, aspect: number): CinematicOrbitCamera {
   const p = clamp01(progress);
-  const reveal = smoothstep(range(p, 0.08, 0.52));
+  const travel = smootherstep(p);
   // Begin at the human side in a genuine shuffle insert, aimed at the production
-  // deck position. Then perform one continuous clockwise orbit and monotonic
-  // pullback until the complete table and creator seats are established.
-  const azimuth = lerp(0.12, -2.08, smoothstep(p));
-  const elevation = lerp(0.58, 0.98, smoothstep(p));
-  const responsiveFit = aspect < 1.05 ? 3.4 : lerp(1.45, 1, clamp01((aspect - 1.05) / 1.15));
-  // Preserve the card insert on portrait too; introduce its stronger table fit
-  // only as the reveal opens, without changing direction.
-  const distance = lerp(5.4, 18.6 * responsiveFit, smoothstep(p));
-  const target = { x: 0, y: lerp(0.18, -1.1, reveal), z: lerp(-1.4, 0.18, reveal) };
-  return framePokerReveal(pokerOrbit(azimuth, elevation, distance, target), aspect, reveal, p);
+  // deck position. Then use the same counterclockwise direction as Chess and
+  // Islanders while performing one uninterrupted pullback.
+  // Begin just past xAI in the direction of travel. Starting before seat 0
+  // made the positive orbit cross through that flame during the close insert.
+  // The deck remains the optical target and the final angle is unchanged.
+  const azimuth = lerp(Math.PI / 10, 2.32, travel);
+  const elevation = lerp(0.52, 0.95, travel);
+  const portraitDistance = lerp(31.65, 18, smootherstep(range(aspect, 0.55, 1)));
+  const desktopDistance = lerp(18, 13.5, smootherstep(range(aspect, 1, 16 / 9)));
+  const finalDistance = aspect < 1 ? portraitDistance : desktopDistance;
+  // Preserve the close shuffle insert, then complete more of the pullback
+  // before the side-on creator angles. This is monotonic and has no late zoom
+  // correction; it only redistributes the same start/end lens move.
+  const pullback = smootherstep(p + Math.sin(Math.PI * p) * 0.18);
+  const distance = lerp(4.45, finalDistance, pullback);
+  // One continuous point-of-interest move: begin on the production deck, then
+  // arrive at the table center at the same instant as the orbit and pullback.
+  // There is no separate late settle/correction phase.
+  const target = { x: 0, y: lerp(0.08, 0, travel), z: lerp(-1.4, 0, travel) };
+  return framePokerReveal(pokerOrbit(azimuth, elevation, distance, target), travel);
 }
 
-export function catanCinematicCamera(progress: number, aspect: number): CinematicOrbitCamera {
+export function islandersCinematicCamera(progress: number, aspect: number, brickHarbor = { x: -3.6, z: -3.12 }): CinematicOrbitCamera {
   const p = clamp01(progress), fit = narrowCameraFit(aspect);
-  const azimuth = -0.72 + p * Math.PI * 1.24; // slower continuous counterclockwise motion
+  const studyAzimuth = -0.72 + p * Math.PI * 1.24; // slower continuous counterclockwise motion
   const cluster = { x: 0.5, y: 0.24, z: Math.sqrt(3) / 2 };
-  if (p < 0.22) { const t=smoothstep(p/0.22); return orbit(azimuth,lerp(0.92,0.68,t),lerp(14.8,10.8,t)*fit,{x:lerp(0,cluster.x,t),y:lerp(-0.1,cluster.y,t),z:lerp(0,cluster.z,t)}); }
-  if (p < 0.64) { const t=smoothstep((p-0.22)/0.06); return orbit(azimuth,lerp(0.68,0.4,t),lerp(10.8,3.35,t)*fit,cluster); }
-  const t=smoothstep(clamp01((p-0.64)/0.1)); return orbit(azimuth,lerp(0.4,0.8,t),lerp(3.35,12.8,t)*fit,{x:lerp(cluster.x,0,t),y:lerp(cluster.y,-0.1,t),z:lerp(cluster.z,0,t)});
+  // Aim just inside the boat rather than placing the optical axis directly on
+  // the outer water edge. The port stays prominent, while the finite production
+  // water mesh continues beyond the foreground on every side of the viewport.
+  const coastRadius = Math.hypot(brickHarbor.x, brickHarbor.z) * 0.7;
+  const brickAngle = Math.atan2(brickHarbor.x, brickHarbor.z);
+  const brickFocus = { x: Math.sin(brickAngle) * coastRadius, y: 0.03, z: Math.cos(brickAngle) * coastRadius };
+  if (p < 0.22) { const t=smoothstep(p/0.22); return orbit(studyAzimuth,lerp(0.92,0.68,t),lerp(14.8,10.8,t)*fit,{x:lerp(0,cluster.x,t),y:lerp(-0.1,cluster.y,t),z:lerp(0,cluster.z,t)}); }
+  if (p < 0.64) { const t=smootherstep((p-0.2)/0.14); return orbit(studyAzimuth,lerp(0.68,0.4,t),lerp(10.8,3.35,t)*fit,cluster); }
+
+  // Keep the same angular cadence used by the terrain study. The prior coast
+  // cut compressed a second multi-radian orbit into the final fifth, which is
+  // why equal scroll input suddenly made the camera fly around the island.
+  const arrival = smootherstep(range(p, 0.64, 0.86));
+  if (p < 0.86) return coastFrame(orbit(studyAzimuth, lerp(0.4, 0.62, arrival), lerp(3.35, 4.65, arrival) * fit, {
+    x: lerp(cluster.x, brickFocus.x, arrival),
+    y: lerp(cluster.y, brickFocus.y, arrival),
+    z: lerp(cluster.z, brickFocus.z, arrival),
+  }), arrival);
+
+  // Travel along the coast at that same restrained angular rate. A moderately
+  // higher elevation keeps the foreground water crossing the bottom edge while
+  // retaining an oblique close view of boats and adjacent hex corners.
+  const coastT = (p - 0.86) / 0.14;
+  const coastAngle = brickAngle + (p - 0.86) * Math.PI * 1.24;
+  return coastFrame(orbit(studyAzimuth, lerp(0.62, 0.68, smootherstep(coastT)), 4.65 * fit, {
+    x: Math.sin(coastAngle) * coastRadius, y: 0.03, z: Math.cos(coastAngle) * coastRadius,
+  }), 1);
+}
+
+function coastFrame(camera: CinematicOrbitCamera, strength: number): CinematicOrbitCamera {
+  return { ...camera, ndcOffsetY: lerp(0, -0.22, smootherstep(strength)) };
 }
 
 function orbit(azimuth: number, elevation: number, distance: number, target: { x: number; y: number; z: number }): CinematicOrbitCamera {
@@ -77,25 +115,11 @@ function fitPokerCreators(base: CinematicOrbitCamera, aspect: number, strength =
   const desiredCenterY = Math.min(0.25, 0.94 - (fitted.maxY - fitted.minY) / 2);
   return { ...camera, ndcOffsetY: (desiredCenterY - centerY) * strength };
 }
-function framePokerReveal(camera: CinematicOrbitCamera, aspect: number, reveal: number, progress: number): CinematicOrbitCamera {
-  // Distance is authored monotonically above. Only shift the film gate here;
-  // never invoke the iterative zoom solver, which would add an unintended
-  // in/out pulse as different chairs become the widest projected anchor.
-  const bounds = pokerCreatorBounds(camera, aspect);
-  const centerY = (bounds.minY + bounds.maxY) / 2;
-  const desiredCenterY = Math.min(0.52, 0.9 - (bounds.maxY - bounds.minY) / 2);
-  // The close insert deliberately excludes seats. During reveal, clamp the
-  // projected creator envelope just below the top edge using film shift alone.
-  const fittedOffset = desiredCenterY - centerY;
-  const middleLift = Math.sin(Math.PI * progress) * 0.13;
-  const revealOffset = lerp(0.08, fittedOffset, reveal) + middleLift;
-  // Once the complete table is established, let the shot settle around the
-  // felt instead of continuing to privilege the upper creator envelope. This
-  // affects only the final fifth of the orbit and adapts to narrow screens.
-  const table = projectNdc(cameraMatrices({ ...camera, ndcOffsetY: revealOffset }, aspect).viewProjection, { x: 0, y: 0, z: 0 });
-  const desiredTableY = aspect < 1.05 ? 0.18 : 0.08;
-  const settle = smoothstep(range(progress, 0.78, 1));
-  return { ...camera, ndcOffsetY: revealOffset + (desiredTableY - table.y) * settle };
+function framePokerReveal(camera: CinematicOrbitCamera, travel: number): CinematicOrbitCamera {
+  // One monotonic film-gate move keeps the opening deck centered, then places
+  // the established table a touch lower. The former sine-shaped hump pushed
+  // the far wisp through the hard top edge before relaxing into a late settle.
+  return { ...camera, ndcOffsetY: lerp(0.08, -0.01, smootherstep(range(travel, 0.35, 0.76))) };
 }
 function pokerCreatorBounds(camera: CinematicOrbitCamera, aspect: number): { minX: number; maxX: number; minY: number; maxY: number } {
   const vp = cameraMatrices(camera, aspect).viewProjection;
@@ -122,3 +146,4 @@ function scaleOrbit(camera: CinematicOrbitCamera, scale: number): CinematicOrbit
 function narrowCameraFit(aspect: number): number { return aspect >= 1 ? 1 : lerp(2.5,1,clamp01((aspect-0.55)/0.45)); }
 function range(value:number,from:number,to:number):number{return clamp01((value-from)/(to-from))}
 function clamp01(v:number):number{return Math.max(0,Math.min(1,v))} function lerp(a:number,b:number,t:number):number{return a+(b-a)*t} function smoothstep(v:number):number{const t=clamp01(v);return t*t*(3-2*t)}
+function smootherstep(v:number):number{const t=clamp01(v);return t*t*t*(t*(t*6-15)+10)}

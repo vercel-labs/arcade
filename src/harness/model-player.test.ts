@@ -328,7 +328,7 @@ test('reaction-only communication falls back to explicit markers when structured
   const { model, calls } = proseModel('INTENT: react\nSAY: You just boxed in my road.\nPRIVATE: directly affected');
   const player = new ModelPlayer<Move>({
     model,
-    gameName: 'Catan',
+    gameName: 'Islanders',
     communication: { mode: () => 'ambient', guide: 'Speak selectively.' },
   });
   const communication = await player.chooseCommunication({
@@ -337,7 +337,7 @@ test('reaction-only communication falls back to explicit markers when structured
       expectation: 'encouraged',
       reason: 'directly affected by the moment',
       moment: {
-        id: 'catan-1-1', game: 'catan', type: 'contested_route', actorSeat: 0,
+        id: 'islanders-1-1', game: 'islanders', type: 'contested_route', actorSeat: 0,
         affectedSeats: [1], relevantSeats: [1], strength: 'notable', importance: 0.82,
         publicSummary: 'Red built into Blue’s route.', publicFacts: [],
         suggestedIntents: ['react', 'banter'], responseExpectation: 'encouraged',
@@ -350,6 +350,41 @@ test('reaction-only communication falls back to explicit markers when structured
   assert.deepEqual(communication, {
     mode: 'speak', intent: 'react', text: 'You just boxed in my road.', privateReason: 'directly affected',
   });
+});
+
+test('reaction prompt explicitly distinguishes the reacting model from the action actor', async () => {
+  let request = '';
+  const model = new MockLanguageModelV3({
+    doGenerate: async (options) => {
+      request = JSON.stringify(options.prompt);
+      return okResult(JSON.stringify({ mode: 'silent', intent: 'none', text: '', privateReason: 'no comment', respondsTo: '', addressedSeats: [] }));
+    },
+  });
+  const player = new ModelPlayer<Move>({
+    model,
+    name: 'Claude',
+    gameName: 'Islanders',
+    communication: { mode: () => 'ambient', guide: 'Speak selectively.' },
+  });
+  await player.chooseCommunication({
+    opportunity: {
+      seat: 1,
+      expectation: 'encouraged',
+      reason: 'directly affected by the moment',
+      moment: {
+        id: 'islanders-12-1', game: 'islanders', type: 'robber_attack', actorSeat: 0, actorLabel: 'the human player',
+        affectedSeats: [1], affectedLabels: ['Claude'], relevantSeats: [1], strength: 'notable', importance: 0.84,
+        publicSummary: 'the human player moved the robber and targeted Claude.', publicFacts: [],
+        suggestedIntents: ['react'], responseExpectation: 'encouraged',
+      },
+    },
+    gameView: 'Islanders, 2 players. You are Claude.',
+    conversation: '',
+  });
+  assert.match(request, /YOU ARE THE REACTING PLAYER: Claude\./);
+  assert.match(request, /ACTION ACTOR: the human player\./);
+  assert.match(request, /DIRECTLY AFFECTED PLAYERS: Claude\./);
+  assert.match(request, /You did not perform it/);
 });
 
 test('structured success returns sanitized timing and token diagnostics', async () => {

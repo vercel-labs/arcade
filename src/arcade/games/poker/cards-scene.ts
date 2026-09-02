@@ -56,13 +56,13 @@ const FOVY = (46 * Math.PI) / 180;
 const HAND_SEAT_Z = 2.6;
 const DECK_POS = { x: 0, z: -0.4 };
 
-// Per-mode camera homes + how low the camera may drop (elevation floor). single is
+// Per-mode camera homes and zoom ranges. single is
 // free (see under the card); hand/deck are pinned above the table. hand looks over
 // the hero's shoulder toward the felt; deck frames the whole table + chairs.
-const HOMES: Record<CardsMode, { home: OrbitState; elevMin: number; min: number; max: number }> = {
-  single: { home: { azimuth: 0, elevation: 0.16, distance: 2.15, target: { x: 0, y: 0, z: 0 } }, elevMin: -1.4, min: 1.2, max: 8 },
-  hand: { home: { azimuth: 0, elevation: 0.56, distance: 7, target: { x: 0, y: 0, z: 1.2 } }, elevMin: 0.14, min: 3, max: 14 },
-  deck: { home: { azimuth: 0, elevation: 0.86, distance: 13, target: { x: 0, y: 0, z: 0 } }, elevMin: 0.14, min: 4, max: 28 },
+const HOMES: Record<CardsMode, { home: OrbitState; min: number; max: number }> = {
+  single: { home: { azimuth: 0, elevation: 0.16, distance: 2.15, target: { x: 0, y: 0, z: 0 } }, min: 1.2, max: 8 },
+  hand: { home: { azimuth: 0, elevation: 0.56, distance: 7, target: { x: 0, y: 0, z: 1.2 } }, min: 3, max: 14 },
+  deck: { home: { azimuth: 0, elevation: 0.86, distance: 13, target: { x: 0, y: 0, z: 0 } }, min: 4, max: 28 },
 };
 
 // HAND mode's two hole cards (hover to peek, click to lift) live in the shared
@@ -251,8 +251,8 @@ export class CardsScene {
     this.dirty = true;
   }
   orbit(dx: number, dy: number): void {
-    this.cam.orbit(dx, dy);
-    this.cam.elevation = Math.max(HOMES[this.curMode].elevMin, this.cam.elevation);
+    if (this.curMode === 'single') this.cam.orbit(dx, dy);
+    else this.cam.orbitAbovePlane(dx, dy);
     this.dirty = true;
   }
   pan(dx: number, dy: number): void {

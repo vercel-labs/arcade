@@ -34,3 +34,11 @@ test('clicking a lifting card down reverses it on the next frame', () => {
   const after = hand.reveal(0);
   assert.ok(after !== undefined && after < before, `card kept rising after down-click: ${before} -> ${after}`);
 });
+
+test('seat-oriented peeks retain their resting yaw while hero defaults remain unchanged', () => {
+  const hero = peekCardCenter({ seatX: 0, seatZ: 4.6, reveal: PEEK, peek: PEEK, az: 0 });
+  const explicitHero = peekCardCenter({ seatX: 0, seatZ: 4.6, reveal: PEEK, peek: PEEK, restAz: 0, az: 0 });
+  assert.deepEqual(explicitHero, hero);
+  const side = peekCardCenter({ seatX: 4.6, seatZ: 0, reveal: PEEK, peek: PEEK, restAz: Math.PI / 2, az: Math.PI / 2 });
+  assert.ok(Math.abs(side.x - 4.6) > Math.abs(side.z), 'side-seat curl should extend toward its seated viewer');
+});

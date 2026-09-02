@@ -19,7 +19,7 @@ See [ADR 0001](../architecture/0001-hosted-arcade-terminal.md).
 
 ## Delivery phases
 
-- [x] Reconcile the merged Catan branch and existing Geistdocs site work.
+- [x] Reconcile the merged Islanders branch and existing Geistdocs site work.
 - [x] Research VGPU/skills.sh patterns and existing Linear package/docs work.
 - [x] Ship an initial local Chess browser vertical slice, then replace the homepage clone with the actual CLI.
 - [x] Add live game-visual examples backed by public package imports.
@@ -52,7 +52,7 @@ Credential-safe AI sessions and browser expansion beyond local Chess are tracked
 - Arcade-native hero and installation affordance.
 - Actual packaged launcher and games through a temporary Linux PTY, plus a miniature
   navigable docs/examples filesystem.
-- The production Chess board and imported knight, all 6 Catan terrain systems, the Poker
+- The production Chess board and imported knight, all 6 Islanders terrain systems, the Poker
   starting-chip stack, and the prism stream in `/examples`.
 - One browser-safe mini-scene contract shared by the package and site instead of React replicas.
 - Static, crawlable docs and machine-readable agent indexes.
@@ -61,7 +61,7 @@ Credential-safe AI sessions and browser expansion beyond local Chess are tracked
 
 ## Deliberately deferred
 
-- Additional browser-native game specimens such as the complete Catan board, cards, table,
+- Additional browser-native game specimens such as the complete Islanders board, cards, table,
   cover flow, and HUD. The complete application already runs through the hosted CLI, so
   browser adapters should exist only when they teach a reusable package API.
 - Production capacity, abuse controls, and credential provisioning for the hosted terminal;

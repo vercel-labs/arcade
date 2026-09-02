@@ -26,6 +26,7 @@ export interface PokerLoopState {
   deckTurn: number;
   deal: number;
   peek: number;
+  seatPeeks: readonly (readonly [number, number])[];
   flop: number;
   turn: number;
   river: number;
@@ -49,6 +50,18 @@ export function pokerLoopState(phase: number): PokerLoopState {
     deckTurn: smooth(range(p, shifted(0.14), shifted(0.18))),
     deal: range(p, shifted(0.18), shifted(0.38)),
     peek: smooth(range(p, shifted(0.34), shifted(0.45))),
+    seatPeeks: [
+      // xAI: a quick staggered look at both cards.
+      [peekPulse(p, shifted(0.315), shifted(0.39), 0.45), peekPulse(p, shifted(0.335), shifted(0.41), 0.45)],
+      // OpenAI: checks only the first card.
+      [peekPulse(p, shifted(0.355), shifted(0.42), 0.45), 0],
+      // Anthropic: lifts the second card fully face-on, then checks the first.
+      [peekPulse(p, shifted(0.395), shifted(0.47), 0.45), peekPulse(p, shifted(0.35), shifted(0.455), 1)],
+      // Google: two short, slightly out-of-order peeks before folding later.
+      [peekPulse(p, shifted(0.38), shifted(0.435), 0.45), peekPulse(p, shifted(0.365), shifted(0.425), 0.45)],
+      // DeepSeek: one deliberate two-card look held a touch longer.
+      [peekPulse(p, shifted(0.37), shifted(0.47), 0.45), peekPulse(p, shifted(0.385), shifted(0.485), 0.45)],
+    ],
     flop: smooth(range(p, shifted(0.4), shifted(0.5))),
     turn: smooth(range(p, shifted(0.58), shifted(0.63))),
     river: smooth(range(p, shifted(0.69), shifted(0.74))),
@@ -64,6 +77,12 @@ export function pokerLoopState(phase: number): PokerLoopState {
     award: smooth(range(p, shifted(0.825), shifted(0.855))),
     gatherElapsed: p < shifted(0.86) ? null : range(p, shifted(0.86), shifted(0.98)) * (18 * 0.12),
   };
+}
+
+function peekPulse(phase: number, from: number, to: number, peak: number): number {
+  if (phase <= from || phase >= to) return 0;
+  const t = (phase - from) / (to - from);
+  return peak * smooth(1 - Math.abs(t * 2 - 1));
 }
 
 function scriptedBet(phase: number, seat: number, amount: number, start: number): PokerScriptedBet | null {

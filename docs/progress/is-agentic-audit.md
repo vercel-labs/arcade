@@ -52,7 +52,7 @@ heuristic rather than a launch blocker.
 
 This rescan covers the earlier release candidate with source-backed browser examples,
 expanded documentation, a packed-consumer smoke test, and metadata cleanup. A newer
-public-beta readiness pass replaces the generic specimens with shipped Chess, Catan,
+public-beta readiness pass replaces the generic specimens with shipped Chess, Islanders,
 Poker, and prism systems; its preview and audit evidence should be recorded below rather
 than overwriting this historical result.
 

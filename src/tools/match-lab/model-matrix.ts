@@ -62,7 +62,7 @@ function limits(game: MatchLabGame, timeoutMs: number): MatchLabPlan['limits'] {
     timeoutMs,
     maxPlies: game === 'chess' ? 2 : 300,
     maxHands: game === 'poker' ? 1 : 100,
-    maxActions: game === 'poker' ? 40 : game === 'catan' ? 2 : 20,
+    maxActions: game === 'poker' ? 40 : game === 'islanders' ? 2 : 20,
   };
 }
 
@@ -91,7 +91,7 @@ export function buildModelMatrixCases(opts: BuildModelMatrixOpts): ModelGameAudi
           smallBlind: DEFAULT_SMALL_BLIND,
           bigBlind: DEFAULT_BIG_BLIND,
           handsPerLevel: DEFAULT_HANDS_PER_LEVEL,
-          setupOnly: game === 'catan',
+          setupOnly: game === 'islanders',
           communicationMode: 'autoreply',
         },
       });

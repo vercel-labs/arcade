@@ -53,7 +53,7 @@ test('raw pointer head is exact on the input event even while its wake is smooth
   assert.notEqual(snapshot.x, snapshot.rawX);
 });
 
-test('click burst expands radially, drifts upward, and fully expires', () => {
+test('click smoke triangle expands, drifts, persists, and fully expires', () => {
   const field = new PointerField(); field.burst(0.5, 0.5, 48);
   const start = field.snapshot();
   assert.equal(start.bursts.length, 48);
@@ -61,17 +61,28 @@ test('click burst expands radially, drifts upward, and fully expires', () => {
   const expanded = field.snapshot();
   assert.ok(expanded.bursts.some((particle) => Math.hypot(particle.x - 0.5, particle.y - 0.5) > 0.015));
   assert.ok(expanded.bursts.some((particle) => particle.y < 0.5));
+  for (let i=0;i<5;i++) field.step(0.1);
+  assert.ok(field.snapshot().bursts.length > 0, 'smoke ring should linger beyond the old compact burst');
   for (let i=0;i<20;i++) field.step(0.1);
   assert.equal(field.snapshot().bursts.length, 0);
 });
 
-test('click burst is taller than wide and retains irregular particle distances', () => {
-  const field = new PointerField(); field.burst(0.5, 0.5, 80); field.step(0.1);
-  const particles = field.snapshot().bursts;
-  const xs = particles.map(({ x }) => Math.abs(x - 0.5));
-  const ys = particles.map(({ y }) => Math.abs(y - 0.5));
-  assert.ok(Math.max(...ys) > Math.max(...xs));
-  assert.ok(Math.max(...ys) - Math.min(...ys) > 0.025);
+test('click burst forms a loose hollow triangle with per-click variation', () => {
+  const field = new PointerField();
+  field.burst(0.5, 0.5, 90);
+  field.step(0.24);
+  const first = field.snapshot().bursts;
+  const radii = first.map((particle) => Math.hypot(particle.x - 0.5, particle.y - 0.5));
+  assert.ok(radii.filter((radius) => radius < 0.012).length < first.length * 0.12, 'triangle center should remain mostly hollow');
+  const sectors = new Set(first.map((particle) => Math.floor((((Math.atan2(particle.y - 0.5, particle.x - 0.5) + Math.PI * 2) % (Math.PI * 2)) / (Math.PI * 2)) * 6)));
+  assert.ok(sectors.size >= 5, 'smoke should occupy the complete triangular perimeter');
+
+  const second = new PointerField();
+  second.burst(0.5, 0.5, 90);
+  second.burst(0.5, 0.5, 90);
+  second.step(0.24);
+  const later = second.snapshot().bursts.slice(90);
+  assert.notDeepEqual(first.slice(0, 12).map(({ vx, vy }) => [vx, vy]), later.slice(0, 12).map(({ vx, vy }) => [vx, vy]));
 });
 
 test('pointer field sampling has a bright center and finite spectral rim', () => {

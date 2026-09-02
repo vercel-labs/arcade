@@ -1,6 +1,15 @@
 export type HostedTerminalMode = 'shell' | 'arcade';
 export const ARCADE_MODE_MARKER = '__ARCADE_HOST_MODE_1__';
 export const SHELL_MODE_MARKER = '__ARCADE_HOST_MODE_0__';
+export const HOSTED_SHELL_GUIDE = '\x1b[1mArcade terminal\x1b[0m\r\n\r\n'
+  + '  \x1b[36marcade\x1b[0m             Start Arcade\r\n'
+  + '  \x1b[36mhelp\x1b[0m               Show this guide\r\n'
+  + '  \x1b[36mls\x1b[0m                 List files\r\n'
+  + '  \x1b[36mcd docs\x1b[0m            Browse documentation\r\n'
+  + '  \x1b[36mcd examples\x1b[0m        Browse examples\r\n'
+  + '  \x1b[36mcat README.md\x1b[0m      Read the current directory\r\n'
+  + '  \x1b[36marcade --version\x1b[0m   Show the installed version\r\n\r\n'
+  + '\x1b[2mPreparing the isolated shell in the background…\x1b[0m\r\n';
 
 /**
  * Tracks the PTY's real alternate-screen state. Arcade enters 1049 when it owns
@@ -60,4 +69,19 @@ export function terminalFontSize(viewportWidth: number, coarsePointer = false): 
   if (viewportWidth <= 390) return 9;
   if (coarsePointer || viewportWidth <= 640) return 10;
   return 12;
+}
+
+export function terminalFontGeometry(fontSize: number): { letterSpacing: number; lineHeight: number } {
+  return { letterSpacing: fontSize <= 10 ? 0.5 : 1, lineHeight: 1 };
+}
+
+export function hostedBrowserUrl(payload: string): string | null {
+  if (!payload.startsWith('open=')) return null;
+  try {
+    const url = new URL(decodeURIComponent(payload.slice(5)));
+    if (url.protocol !== 'https:' || (url.hostname !== 'vercel.com' && !url.hostname.endsWith('.vercel.com'))) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
 }

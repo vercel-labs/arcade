@@ -33,7 +33,7 @@ const Layout = async ({ children }: LayoutProps<'/[lang]'>) => {
   const lang = await getRootLang();
 
   return (
-    <html className={cn(sans.variable, mono.variable, pixel.variable, 'antialiased')} lang={lang} suppressHydrationWarning>
+    <html className={cn(sans.variable, mono.variable, pixel.variable, 'antialiased dark')} lang={lang} suppressHydrationWarning>
       <body>
         <GeistdocsProvider basePath={config.basePath} lang={lang}>
           <QuickTerminalProvider>

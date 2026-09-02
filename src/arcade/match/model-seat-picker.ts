@@ -1,4 +1,4 @@
-// Shared Arcade-level creator -> model picker used by chess, poker, and Catan setup.
+// Shared Arcade-level creator -> model picker used by chess, poker, and Islanders setup.
 // It deliberately lives above tui/: creator catalogs, model slugs, wisp colors, and the
 // "slow" allowlist are Arcade concepts, while Dropdown/Slot remain generic TUI pieces.
 

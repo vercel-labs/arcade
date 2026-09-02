@@ -34,7 +34,7 @@ export interface MatchHooks<A> {
   signal?: AbortSignal;
   /**
    * Optional phase boundary for partial-game harnesses. Checked before asking the next
-   * player to act. Catan uses this for setup-only benchmarks; full matches leave it unset.
+   * player to act. Islanders uses this for setup-only benchmarks; full matches leave it unset.
    */
   shouldStop?(state: GameState<A>): boolean;
 }

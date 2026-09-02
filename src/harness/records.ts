@@ -9,6 +9,7 @@ export type RecordEndReason =
   | 'natural'
   | 'user_stopped'
   | 'navigation'
+  | 'action_limit'
   // Finalized while the process was exiting unexpectedly (uncaught error / crash); the
   // record is written to the durable outbox synchronously before exit.
   | 'process_exit_recovered';
@@ -16,7 +17,7 @@ export type RecordEndReason =
 export interface RecordParticipant {
   participantId: string;
   kind: 'human' | 'model';
-  /** Stable match-local role: chess color, poker seat, Catan color, etc. */
+  /** Stable match-local role: chess color, poker seat, Islanders color, etc. */
   role: string;
 }
 
@@ -151,6 +152,28 @@ export interface PokerMatchDetails {
 
 export type PokerMatchRecord = MatchRecord<'poker', never, PokerMatchDetails>;
 
+export interface IslandersAppliedAction {
+  action: import('../rules/islanders/types.ts').IslandersAction;
+  outcome?: import('../rules/islanders/islanders.ts').IslandersActionOutcome;
+}
+
+export interface IslandersMatchDetails {
+  mode: 'ai_table' | 'human_table' | 'mixed';
+  tableSize: number;
+  domesticTrade: boolean;
+  domesticTradeOfferLimit?: number;
+  /** The initial world needed to replay recorded actions and their explicit chance outcomes. */
+  replay: {
+    board: import('../rules/islanders/setup.ts').BoardSetup;
+    initialDevelopmentDeck: import('../rules/islanders/types.ts').DevCardType[];
+  };
+  finalVictoryPoints?: number[];
+  longestRoadParticipantId?: string;
+  largestArmyParticipantId?: string;
+}
+
+export type IslandersMatchRecord = MatchRecord<'islanders', IslandersAppliedAction, IslandersMatchDetails>;
+
 export type PokerActionKind = 'fold' | 'check' | 'call' | 'bet' | 'raise';
 
 export type PokerRequestedAction =
@@ -222,4 +245,4 @@ export interface PokerHandRecord extends CanonicalRecordBase {
   results: PokerHandResult[];
 }
 
-export type CanonicalGameRecord = ChessMatchRecord | PokerMatchRecord | PokerHandRecord;
+export type CanonicalGameRecord = ChessMatchRecord | PokerMatchRecord | IslandersMatchRecord | PokerHandRecord;

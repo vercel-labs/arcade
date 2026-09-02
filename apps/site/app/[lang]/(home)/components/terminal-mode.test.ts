@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ARCADE_MODE_MARKER, SHELL_MODE_MARKER, TerminalModeDetector, TerminalModeOutputFilter, terminalFontSize } from './terminal-mode.ts';
+import { ARCADE_MODE_MARKER, HOSTED_SHELL_GUIDE, SHELL_MODE_MARKER, TerminalModeDetector, TerminalModeOutputFilter, hostedBrowserUrl, terminalFontGeometry, terminalFontSize } from './terminal-mode.ts';
 
 test('hosted terminal mode follows alternate-screen entry and exit', () => {
   const detector = new TerminalModeDetector();
@@ -42,4 +42,16 @@ test('mobile terminal fonts gain cells without shrinking desktop text', () => {
   assert.equal(terminalFontSize(430), 10);
   assert.equal(terminalFontSize(844, true), 10);
   assert.equal(terminalFontSize(900), 12);
+});
+
+test('hosted xterm geometry approaches the renderer two-to-one cell convention', () => {
+  assert.deepEqual(terminalFontGeometry(12), { letterSpacing: 1, lineHeight: 1 });
+  assert.deepEqual(terminalFontGeometry(9), { letterSpacing: 0.5, lineHeight: 1 });
+  assert.match(HOSTED_SHELL_GUIDE, /Preparing the isolated shell in the background/);
+});
+
+test('hosted browser bridge accepts only Vercel HTTPS URLs', () => {
+  assert.equal(hostedBrowserUrl(`open=${encodeURIComponent('https://vercel.com/login?code=abc')}`), 'https://vercel.com/login?code=abc');
+  assert.equal(hostedBrowserUrl(`open=${encodeURIComponent('https://evil.example/login')}`), null);
+  assert.equal(hostedBrowserUrl(`open=${encodeURIComponent('javascript:alert(1)')}`), null);
 });

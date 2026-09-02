@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 const main = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
+const timedInk = readFileSync(new URL('../cinematic/transitions/timed-ink-transition.ts', import.meta.url), 'utf8');
+const inkCut = readFileSync(new URL('../cinematic/transitions/ink-match-cut.ts', import.meta.url), 'utf8');
 
 test('CLI applies shared ink only from the prism into Cover Flow', () => {
   assert.ok(main.includes("from '../cinematic/transitions/timed-ink-transition.ts'"));
@@ -12,6 +14,9 @@ test('CLI applies shared ink only from the prism into Cover Flow', () => {
   assert.ok(main.includes('prismToMenu.compose(source, destination)'));
   assert.ok(main.includes('enterMenu(false)'));
   assert.ok(!main.includes("from '../web/"), 'CLI must never import browser adapters');
+  assert.ok(timedInk.includes('anchoredInkMatchCut('), 'CLI controller must use the shared compositor');
+  assert.ok(inkCut.includes('coldInkTint('), 'shared compositor must retain the cold-silver treatment');
+  assert.ok(!inkCut.includes('const blue ='), 'CLI splash must not retain the old broad blue tint');
 });
 
 test('ordinary home navigation and cover launch remain outside the ink controller', () => {

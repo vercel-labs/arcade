@@ -97,11 +97,15 @@ test('legacy or malformed model responses do not replace the baked fallback', ()
 });
 
 test('team catalog fetch authenticates the availability request', async () => {
-  let input = '';
+  const inputs: string[] = [];
   let authorization = '';
   const catalog = await fetchTeamModelCatalog('team-key', {
     fetchImpl: (async (request, init) => {
-      input = String(request);
+      const input = String(request);
+      inputs.push(input);
+      if (input.endsWith('/coding-agent/v1/models')) {
+        return new Response(JSON.stringify({ data: [{ id: 'openai/text-ok' }] }), { status: 200 });
+      }
       authorization = new Headers(init?.headers).get('authorization') ?? '';
       return new Response(JSON.stringify({ data: [model('openai/text-ok', 'http')] }), {
         status: 200,
@@ -110,17 +114,73 @@ test('team catalog fetch authenticates the availability request', async () => {
     }) as typeof fetch,
   });
 
-  assert.equal(input, 'https://ai-gateway.vercel.sh/v1/models?include_availability');
+  assert.deepEqual(inputs.sort(), [
+    'https://ai-gateway.vercel.sh/coding-agent/v1/models',
+    'https://ai-gateway.vercel.sh/v1/models?include_availability',
+  ]);
   assert.equal(authorization, 'Bearer team-key');
   assert.equal(catalog.source, 'team');
 });
 
 test('team catalog fetch falls back when the availability endpoint fails', async () => {
   const catalog = await fetchTeamModelCatalog('team-key', {
-    fetchImpl: (async () => new Response('nope', { status: 503 })) as typeof fetch,
+    fetchImpl: (async (request) => String(request).includes('include_availability')
+      ? new Response('nope', { status: 503 })
+      : new Response(JSON.stringify({ data: [] }), { status: 200 })) as typeof fetch,
   });
 
   assert.equal(catalog.source, 'fallback');
   assert.equal(catalog.fallbackReason, 'HTTP 503');
   assert.ok(catalog.textCreators.length > 0);
+});
+
+test('team catalog remains available when the optional popularity request fails', async () => {
+  const catalog = await fetchTeamModelCatalog('team-key', {
+    fetchImpl: (async (request) => {
+      if (String(request).endsWith('/coding-agent/v1/models')) throw new Error('popularity unavailable');
+      return new Response(JSON.stringify({
+        data: [model('openai/zulu', 'http'), model('openai/alpha', 'http')],
+      }), { status: 200 });
+    }) as typeof fetch,
+  });
+
+  assert.equal(catalog.source, 'team');
+  assert.deepEqual(catalog.textCreators[0].models.map(({ id }) => id), [
+    'openai/alpha',
+    'openai/zulu',
+  ]);
+});
+
+test('malformed or stalled popularity never discards or delays valid availability', async () => {
+  for (const popularity of [
+    () => new Response('{not json', { status: 200 }),
+    () => new Promise<Response>(() => {}),
+  ]) {
+    const catalog = await fetchTeamModelCatalog('team-key', {
+      timeoutMs: 20,
+      fetchImpl: (async (request) => String(request).endsWith('/coding-agent/v1/models')
+        ? popularity()
+        : new Response(JSON.stringify({ data: [model('openai/text-ok', 'http')] }), { status: 200 })) as typeof fetch,
+    });
+    assert.equal(catalog.source, 'team');
+  }
+});
+
+test('team catalog follows Gateway popularity and groups fast variants with their base', () => {
+  const catalog = parseTeamModelCatalog({
+    data: [
+      model('openai/alpha', 'http'),
+      model('openai/base-fast', 'http'),
+      model('openai/base', 'http'),
+      model('openai/zulu', 'http'),
+    ],
+  }, ['openai/zulu', 'openai/base-fast', 'openai/base']);
+
+  assert.ok(catalog);
+  assert.deepEqual(catalog.textCreators[0].models.map(({ id }) => id), [
+    'openai/zulu',
+    'openai/base',
+    'openai/base-fast',
+    'openai/alpha',
+  ]);
 });

@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { anchoredInkMatchCut, LIVING_TITLE_ACT_BOUNDARIES, LIVING_TITLE_MORPH_STARTS, LivingTitleScene } from './living-title-scene.ts';
 import { Surface } from '../engine/surface.ts';
+import { inkNoise } from '../cinematic/transitions/ink-match-cut.ts';
 
-test('living title renders prism, Cover Flow, chess, poker, and Catan acts at one grid size', () => {
+test('living title renders prism, Cover Flow, chess, poker, and Islanders acts at one grid size', () => {
   const scene = new LivingTitleScene();
   const frames = [0, 0.2, 0.42, 0.62, 0.82, 1].map((progress) => scene.frame({
     cols: 80,
@@ -27,7 +28,7 @@ test('living title maps scroll progress to the expected game act', () => {
   assert.equal(scene.actAt(0.14), 'covers');
   assert.equal(scene.actAt(0.35), 'chess');
   assert.equal(scene.actAt(0.54), 'poker');
-  assert.equal(scene.actAt(0.77), 'catan');
+  assert.equal(scene.actAt(0.77), 'islanders');
 });
 
 test('Chess and Poker gameplay continue while scroll and camera remain still', () => {
@@ -65,6 +66,19 @@ test('late Chess orbit never lets the OpenAI wisp dominate the frame', () => {
   }
 });
 
+test('Chess cinematic preserves scene pixels at the bottom edge', () => {
+  const scene = new LivingTitleScene();
+  const start = LIVING_TITLE_ACT_BOUNDARIES[2], end = LIVING_TITLE_ACT_BOUNDARIES[3];
+  for (const local of [0.2, 0.45, 0.7, 0.9]) {
+    const frame = scene.frame({ cols: 213, rows: 60, timeSeconds: 9, progress: start + (end - start) * local });
+    let painted = 0;
+    for (let y = frame.rows - 4; y < frame.rows; y++) for (let x = 0; x < frame.cols; x++) {
+      if (frame.getCell(x, y)?.ch !== ' ') painted++;
+    }
+    assert.ok(painted > 0, `Chess bottom edge was erased at ${local}`);
+  }
+});
+
 test('anchored ink handoffs remain populated through the impossible scene cut', () => {
   const scene = new LivingTitleScene();
   for (const progress of transitionProgresses(0.86)) {
@@ -85,19 +99,57 @@ test('Chess and Poker ink cuts begin from the exact last live frame', () => {
   }
 });
 
-test('anchored ink match cut preserves exact endpoints and returns an indigo seam', () => {
+test('anchored ink match cut preserves exact endpoints and returns a cold silver seam', () => {
   const from = solidSurface(20, 10, 'A', [220, 120, 50]);
   const to = solidSurface(20, 10, 'B', [40, 210, 120]);
   const cut = { from: { x: 0.5, y: 0.5 }, to: { x: 0.5, y: 0.5 }, direction: { x: 1, y: 0.5 } };
   assert.equal(anchoredInkMatchCut(from, to, 20, 10, 0, cut).getCell(10, 5)?.ch, 'A');
   assert.equal(anchoredInkMatchCut(from, to, 20, 10, 1, cut).getCell(10, 5)?.ch, 'B');
   const middle = anchoredInkMatchCut(from, to, 20, 10, 0.5, cut);
-  let blueCells = 0;
+  let silverCells = 0;
+  let coolCells = 0;
   for (let y = 0; y < middle.rows; y++) for (let x = 0; x < middle.cols; x++) {
     const color = middle.getCell(x, y)?.fg;
-    if (color && color[2] > color[0]) blueCells++;
+    if (!color) continue;
+    const chroma = Math.max(...color) - Math.min(...color);
+    if (Math.min(...color) > 160 && chroma < 24) silverCells++;
+    if (color[2] > color[0]) coolCells++;
   }
-  assert.ok(blueCells > 20);
+  assert.ok(silverCells > 2, 'the burn front should retain a narrow bright silver contour');
+  assert.ok(coolCells > 0, 'the revealed edge should retain a faint cool afterglow');
+});
+
+test('ink noise remains continuous across its former lattice boundaries', () => {
+  const epsilon = 1e-5;
+  for (const boundary of [1, 2, 3]) {
+    const left = inkNoise(boundary - epsilon, 1.37);
+    const right = inkNoise(boundary + epsilon, 1.37);
+    assert.ok(Math.abs(right - left) < 0.001, `noise jumped at x=${boundary}: ${left} -> ${right}`);
+  }
+});
+
+test('ink cut connects empty black regions with a sparse charcoal fiber seam', () => {
+  const from = solidSurface(120, 50, ' ', [0, 0, 0]);
+  const to = solidSurface(120, 50, ' ', [0, 0, 0]);
+  const cut = { from: { x: 0.5, y: 0.5 }, to: { x: 0.5, y: 0.5 }, direction: { x: 0.84, y: 0.54 } };
+  const middle = anchoredInkMatchCut(from, to, 120, 50, 0.5, cut);
+  let fibers = 0;
+  let brightest = 0;
+  let mostChroma = 0;
+  for (let y = 0; y < middle.rows; y++) for (let x = 0; x < middle.cols; x++) {
+    const cell = middle.getCell(x, y);
+    if (!cell || cell.ch === ' ') continue;
+    fibers++;
+    brightest = Math.max(brightest, ...cell.fg);
+    mostChroma = Math.max(mostChroma, Math.max(...cell.fg) - Math.min(...cell.fg));
+    assert.ok(['·', ':', '~'].includes(cell.ch), `unexpected empty-space fiber ${cell.ch}`);
+  }
+  assert.ok(fibers > 25, 'the charcoal seam should connect sparse scene silhouettes');
+  assert.ok(fibers < middle.cols * middle.rows * 0.08, 'empty black space should remain predominantly black');
+  assert.ok(brightest <= 42, `charcoal fibers became too bright: ${brightest}`);
+  assert.ok(mostChroma <= 5, `charcoal fibers should remain grayscale: ${mostChroma}`);
+  assert.equal(countPaintedCells(anchoredInkMatchCut(from, to, 120, 50, 0, cut)), 0);
+  assert.equal(countPaintedCells(anchoredInkMatchCut(from, to, 120, 50, 1, cut)), 0);
 });
 
 test('anchored ink cut advances an outgoing moving plate while preserving endpoints', () => {

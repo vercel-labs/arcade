@@ -20,7 +20,7 @@ import {
   STYLE_DIM,
   Surface,
 } from '../engine/surface.ts';
-import { AnimatedTileMeshCache, animatedTileMesh, tileMesh } from '../game-visuals/catan/index.ts';
+import { AnimatedTileMeshCache, animatedTileMesh, tileMesh } from '../game-visuals/islanders/index.ts';
 import {
   CHESS_PIECE_ASSET_URLS,
   fetchChessPieceMeshes,
@@ -29,7 +29,7 @@ import {
   type ChessPieceMeshes,
 } from '../game-visuals/chess/index.ts';
 import { drawChipStack, playerColumns } from '../game-visuals/poker/index.ts';
-import { TERRAINS, type Terrain } from '../rules/catan/types.ts';
+import { TERRAINS, type Terrain } from '../rules/islanders/types.ts';
 import { BrowserArcade, type BrowserDisplayMode } from './browser-chess.ts';
 import type { BrowserMiniScene, BrowserMiniSceneFrame, BrowserMiniSceneId, BrowserMiniSceneOptions } from './mini-scene.ts';
 
@@ -72,6 +72,8 @@ export class BrowserChessBoardShowcase implements BrowserMiniScene {
     this.loadPieceMeshes = async () => this.arcade.setPieceMeshes(await loadChessMeshes(options));
   }
 
+  setChromeVisible(visible: boolean): void { this.arcade.setChromeVisible(visible); }
+
   prepare(): Promise<void> {
     this.preparation ??= Promise.all([this.loadPieceMeshes(), this.arcade.prepareWisps()]).then(() => undefined);
     return this.preparation;
@@ -95,8 +97,8 @@ export class BrowserChessBoardShowcase implements BrowserMiniScene {
   reset(): void { this.arcade.reset(); }
 }
 
-/** One production Catan terrain tile rendered independently from the full board. */
-export class BrowserCatanTileShowcase implements BrowserMiniScene {
+/** One production Islanders terrain tile rendered independently from the full board. */
+export class BrowserIslandersTileShowcase implements BrowserMiniScene {
   private readonly animatedTileCache = new AnimatedTileMeshCache();
   private readonly camera = new OrbitCamera(
     { azimuth: 0.42, elevation: 0.62, distance: 3.45, target: { x: 0, y: 0.06, z: 0 } },
@@ -130,10 +132,10 @@ export class BrowserCatanTileShowcase implements BrowserMiniScene {
     if (animated) draw(animated, 0.38);
 
     const surface = present(target, cols, rows, this.displayMode);
-    surface.drawTextOver(2, 1, `catan / ${this.terrain}`, [238, 240, 246], STYLE_BOLD);
+    surface.drawTextOver(2, 1, `islanders / ${this.terrain}`, [238, 240, 246], STYLE_BOLD);
     surface.drawTextOver(Math.max(2, cols - 10), 1, this.displayMode, CYAN, STYLE_BOLD);
     surface.drawTextOver(2, rows - 2, 'production procedural mesh · drag · scroll', MUTED, STYLE_DIM);
-    return { surface, status: `Catan ${this.terrain} tile`, displayMode: this.displayMode };
+    return { surface, status: `Islanders ${this.terrain} tile`, displayMode: this.displayMode };
   }
 
   cycleDisplayMode(): BrowserDisplayMode {
@@ -145,6 +147,7 @@ export class BrowserCatanTileShowcase implements BrowserMiniScene {
   zoom(delta: number): void { this.camera.zoomBy(Math.exp(delta * 0.0015)); }
   reset(): void { this.camera.reset(); }
 }
+
 
 /** One imported production Chess asset, isolated from the complete board. */
 export class BrowserChessPieceShowcase implements BrowserMiniScene {
@@ -258,7 +261,7 @@ export function createBrowserMiniScene(id: BrowserMiniSceneId, options: BrowserM
   if (id === 'chess-board') return new BrowserChessBoardShowcase(options);
   if (id === 'chess-knight') return new BrowserChessPieceShowcase(options);
   if (id === 'poker-chips') return new BrowserPokerChipsShowcase();
-  const terrain = id.slice('catan-'.length) as Terrain;
-  if (id.startsWith('catan-') && TERRAINS.includes(terrain)) return new BrowserCatanTileShowcase(terrain);
+  const terrain = id.slice('islanders-'.length) as Terrain;
+  if (id.startsWith('islanders-') && TERRAINS.includes(terrain)) return new BrowserIslandersTileShowcase(terrain);
   throw new Error(`Unknown browser mini scene: ${id}`);
 }

@@ -3,7 +3,7 @@ import test from 'node:test';
 import type { MatchLabEvent } from './types.ts';
 import { buildCommunicationReport, formatCommunicationReport } from './communication-report.ts';
 
-const base = { runId: 'run', matchId: '0001', at: '2026-08-26T00:00:00.000Z', game: 'catan' as const };
+const base = { runId: 'run', matchId: '0001', at: '2026-08-26T00:00:00.000Z', game: 'islanders' as const };
 
 test('communication report preserves model proposals and Arcade decisions', () => {
   const events: MatchLabEvent[] = [

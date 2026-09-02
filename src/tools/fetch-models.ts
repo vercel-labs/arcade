@@ -7,10 +7,12 @@
 //
 // Re-run to refresh the catalog when the gateway adds models/creators. The JSON
 // and PNGs are committed so the app loads instantly and offline.
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { logoUrl } from '../arcade/scenes/logos.ts';
+import { orderCreatorModels } from '../arcade/match/model-catalog-order.ts';
 
 const MODELS_URL = 'https://ai-gateway.vercel.sh/v1/models';
+const POPULAR_MODELS_URL = 'https://ai-gateway.vercel.sh/coding-agent/v1/models';
 const ASSET_DIR = 'assets';
 const LOGO_DIR = `${ASSET_DIR}/logos`;
 
@@ -39,13 +41,24 @@ interface ApiModel {
   owned_by?: string;
 }
 
-const res = await fetch(MODELS_URL);
-if (!res.ok) {
-  console.error(`fetch failed: ${res.status} ${res.statusText} (${MODELS_URL})`);
+const orderExisting = process.argv.includes('--order-existing');
+const [res, popularityRes] = await Promise.all([
+  orderExisting ? Promise.resolve(null) : fetch(MODELS_URL),
+  fetch(POPULAR_MODELS_URL),
+]);
+if ((!orderExisting && !res?.ok) || !popularityRes.ok) {
+  const failed = !orderExisting && !res?.ok
+    ? { response: res!, url: MODELS_URL }
+    : { response: popularityRes, url: POPULAR_MODELS_URL };
+  console.error(`fetch failed: ${failed.response.status} ${failed.response.statusText} (${failed.url})`);
   process.exit(1);
 }
-const json = (await res.json()) as { data: ApiModel[] };
-const language = json.data.filter((m) => m.type === 'language');
+const popularityJson = (await popularityRes.json()) as { data: Array<{ id: string }> };
+const popularityOrder = popularityJson.data.map(({ id }) => id);
+const existing = orderExisting
+  ? JSON.parse(readFileSync(`${ASSET_DIR}/models.json`, 'utf8')) as { creators: Array<{ slug: string; name: string; models: Array<{ id: string; name: string }> }> }
+  : null;
+const language = orderExisting ? [] : ((await res!.json()) as { data: ApiModel[] }).data.filter((m) => m.type === 'language');
 
 // `owned_by` is the API's explicit creator identity. The model ID prefix is the
 // documented creator namespace and remains a compatibility fallback. Warn if the
@@ -62,17 +75,22 @@ for (const m of language) {
   byCreator.set(slug, list);
 }
 
-const creators = [...byCreator.entries()]
+const creators = existing?.creators.map((creator) => ({
+  ...creator,
+  models: orderCreatorModels(creator.models, popularityOrder),
+})) ?? [...byCreator.entries()]
   .map(([slug, models]) => ({
     slug,
     name: label(slug),
-    models: models.sort((a, b) => a.name.localeCompare(b.name)),
+    models: orderCreatorModels(models, popularityOrder),
   }))
   .sort((a, b) => a.name.localeCompare(b.name));
 
 mkdirSync(ASSET_DIR, { recursive: true });
 writeFileSync(`${ASSET_DIR}/models.json`, `${JSON.stringify({ creators }, null, 2)}\n`);
 console.log(`models.json: ${language.length} language models across ${creators.length} creators`);
+
+if (orderExisting) process.exit(0);
 
 // Bake each creator's logo (skip — with a warning — any without a CDN URL).
 mkdirSync(LOGO_DIR, { recursive: true });

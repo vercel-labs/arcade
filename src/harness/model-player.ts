@@ -255,7 +255,7 @@ export interface ModelPlayerOpts {
 // FEN + `state.toString()` (ASCII board) + the PGN move history, each included
 // only when the state exposes it. Games may additionally implement
 // `decisionContextString(player)` to provide an exact legal-action menu and neutral
-// diagnostics on the FIRST attempt (Catan does); otherwise the chess-style flow is
+// diagnostics on the FIRST attempt (Islanders does); otherwise the chess-style flow is
 // unchanged and legal moves appear only after an illegal response. Every answer is
 // parsed and validated, then ultimately falls back to a legal move so a match never
 // deadlocks. Generic over the action type; chess specifics come only from what
@@ -307,8 +307,12 @@ export class ModelPlayer<A> implements Player<A> {
   }): Promise<Communication | undefined> {
     if (!this.communication || this.communication.mode() !== 'ambient') return undefined;
     const moment = input.opportunity.moment;
+    const actorLabel = moment.actorLabel ?? (moment.actorSeat === input.opportunity.seat ? this.name : `seat ${moment.actorSeat ?? 'unknown'}`);
+    const samePlayer = moment.actorSeat === input.opportunity.seat;
     const prompt = [
       `You are a strong ${this.gameName} player reacting at a live public table.`,
+      `AUTHORITATIVE REACTION ROLES:\n- YOU ARE THE REACTING PLAYER: ${this.name}.\n- ACTION ACTOR: ${actorLabel}.\n- DIRECTLY AFFECTED PLAYERS: ${moment.affectedLabels?.join(', ') || 'none named'}.`,
+      samePlayer ? 'You performed this action.' : `${actorLabel} performed the action. You did not perform it; react only from ${this.name}'s perspective.`,
       `A ${moment.strength} public moment just occurred: ${moment.publicSummary}`,
       moment.publicFacts.length ? `Public facts:\n- ${moment.publicFacts.join('\n- ')}` : '',
       `You are receiving this opportunity because you are ${input.opportunity.reason}.`,
@@ -316,6 +320,7 @@ export class ModelPlayer<A> implements Player<A> {
       `Useful intents here: ${moment.suggestedIntents.join(', ') || 'react'}.`,
       input.gameView ? `Your current game view:\n${input.gameView}` : '',
       input.conversation,
+      this.speech,
       this.communication.guide,
     ].filter(Boolean).join('\n\n');
     try {
@@ -644,7 +649,7 @@ export class ModelPlayer<A> implements Player<A> {
     const view = typeof withExtras.informationStateString === 'function' && player >= 0 ? withExtras.informationStateString(player) : null;
     const fen = view ? null : typeof withExtras.fen === 'function' ? withExtras.fen() : null;
     const history = typeof withExtras.moveHistory === 'function' ? withExtras.moveHistory() : '';
-    // Catan-like games can expose exact executable choices with derived facts up front.
+    // Islanders-like games can expose exact executable choices with derived facts up front.
     // This remains opt-in at the state level, preserving chess's no-list benchmark.
     const decisionContext =
       player >= 0 && typeof withExtras.decisionContextString === 'function'
@@ -677,6 +682,7 @@ export class ModelPlayer<A> implements Player<A> {
     }
     return [
       `You are a strong ${this.gameName} player. It is your turn to move.`,
+      `\n\nYou are the acting player: ${this.name}.`,
       fen ? `\n\nPosition (FEN): ${fen}` : '',
       view ? `\n\nYour view of the game:\n${view}` : `\n\nBoard (uppercase = White, lowercase = Black):\n${state.toString()}`,
       history ? `\n\nThe moves played so far are: ${history}` : '',
@@ -687,7 +693,7 @@ export class ModelPlayer<A> implements Player<A> {
         : '',
       `\n\nChoose the strongest legal move.`,
       communicationMode
-        ? `\n\nCommunication mode is ${this.communication!.mode()}. ${this.communication!.guide}\nIn autoreply mode choose speak for every legal action. In ambient mode silence is a successful, preferred result for routine actions; speak only when the moment benefits from public table talk. If directly addressed in the supplied conversation, respond. Never repeat hidden thinking in text.`
+        ? `\n\nCommunication mode is ${this.communication!.mode()}. ${this.speech ? `Game-specific public speech rules: ${this.speech} ` : ''}${this.communication!.guide}\nIn autoreply mode choose speak for every legal action. In ambient mode silence is a successful, preferred result for routine actions; speak only when the moment benefits from public table talk. If directly addressed in the supplied conversation, respond. Never repeat hidden thinking in text.`
         : '',
       format,
       // Split JSON mode: reinforce keeping analysis out of the spoken line. Single-field

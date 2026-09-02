@@ -48,7 +48,7 @@ export function ArcadeSceneEmbed({
     setMode('ascii');
     let frame = 0;
     let visible = true;
-    const animated = scene === 'chess-knight' || scene.startsWith('catan-');
+    const animated = scene === 'chess-knight' || scene.startsWith('islanders-');
     const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
     let reducedMotion = motion.matches;
 

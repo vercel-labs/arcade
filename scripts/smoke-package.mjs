@@ -38,18 +38,18 @@ import { BrowserArcade as RootBrowserArcade, engine as rootEngine, tui as rootTu
 import { Surface } from '@vercel/arcade/engine';
 import { decodePng } from '@vercel/arcade/engine/png';
 import { fetchObjMesh } from '@vercel/arcade/game-visuals';
-import { tileMesh } from '@vercel/arcade/game-visuals/catan';
+import { tileMesh } from '@vercel/arcade/game-visuals/islanders';
 import { CHESS_PIECE_NAMES, parseChessPieceMeshes } from '@vercel/arcade/game-visuals/chess';
 import { playerColumns } from '@vercel/arcade/game-visuals/poker';
 import { runMatch } from '@vercel/arcade/harness';
 import { CommunicationPolicy } from '@vercel/arcade/harness/communication';
 import { CHESS_DEFAULT_MAX_PLIES, runHeadlessChessMatch } from '@vercel/arcade/harness/chess';
-import { createCatanModelPlayer, runHeadlessCatanMatch } from '@vercel/arcade/harness/catan';
+import { createIslandersModelPlayer, runHeadlessIslandersMatch } from '@vercel/arcade/harness/islanders';
 import { STARTING_STACK } from '@vercel/arcade/harness/poker';
 import { RECORD_SCHEMA_VERSION } from '@vercel/arcade/harness/records';
 import { createInputParser } from '@vercel/arcade/platform';
 import { Box, Text } from '@vercel/arcade/tui';
-import { CatanState } from '@vercel/arcade/rules/catan';
+import { IslandersState } from '@vercel/arcade/rules/islanders';
 import { ChessState } from '@vercel/arcade/rules/chess';
 import { HoldemState } from '@vercel/arcade/rules/poker';
 import { BrowserArcade, BrowserRenderShowcase, BrowserTuiShowcase, createBrowserMiniScene } from '@vercel/arcade/web';
@@ -61,14 +61,14 @@ assert.equal(typeof runMatch, 'function');
 assert.equal(typeof CommunicationPolicy, 'function');
 assert.equal(typeof runHeadlessChessMatch, 'function');
 assert.equal(CHESS_DEFAULT_MAX_PLIES, 300);
-assert.equal(typeof createCatanModelPlayer, 'function');
-assert.equal(typeof runHeadlessCatanMatch, 'function');
+assert.equal(typeof createIslandersModelPlayer, 'function');
+assert.equal(typeof runHeadlessIslandersMatch, 'function');
 assert.equal(STARTING_STACK, 1000);
 assert.equal(RECORD_SCHEMA_VERSION, 1);
 assert.equal(typeof createInputParser, 'function');
 assert.equal(Box({}, [Text({ text: 'ok' })]).children.length, 1);
 assert.equal(new ChessState().isTerminal(), false);
-assert.equal(new CatanState({ numPlayers: 2 }).isTerminal(), false);
+assert.equal(new IslandersState({ numPlayers: 2 }).isTerminal(), false);
 assert.equal(new HoldemState({ stacks: [1000, 1000], button: 0, smallBlind: 10, bigBlind: 20 }).isTerminal(), false);
 assert.ok(tileMesh('fields').vertices.length > 0);
 assert.ok(playerColumns(1000).length > 0);
@@ -80,7 +80,7 @@ assert.equal(rootTui.Box({}, [rootTui.Text({ text: 'browser safe' })]).children.
 assert.equal(new BrowserArcade().play('e4'), true);
 assert.equal(new BrowserRenderShowcase().frame(48, 26, 0).displayMode, 'ascii');
 assert.match(new BrowserTuiShowcase().frame(48, 26).status, /Selected/);
-assert.equal(createBrowserMiniScene('catan-fields').frame(48, 28, 0).displayMode, 'ascii');
+assert.equal(createBrowserMiniScene('islanders-fields').frame(48, 28, 0).displayMode, 'ascii');
 console.log('packed Arcade subpaths execute in plain Node');
 `);
   execFileSync(process.execPath, ['smoke.mjs'], { cwd: consumer, stdio: 'inherit' });
@@ -133,7 +133,7 @@ new BrowserArcade().frame();
   const version = execFileSync(process.execPath, [join(packedRoot, 'bin/arcade.mjs'), '--version'], { cwd: consumer, encoding: 'utf8' });
   if (version.trim() !== packed.version) throw new Error(`packed CLI --version printed ${JSON.stringify(version.trim())}`);
 
-  for (const subpath of ['.', './engine', './engine/png', './harness', './harness/communication', './harness/chess', './harness/catan', './harness/poker', './harness/records', './platform', './game-visuals', './game-visuals/catan', './game-visuals/chess', './game-visuals/poker', './tui', './rules', './rules/chess', './rules/catan', './rules/poker', './web']) {
+  for (const subpath of ['.', './engine', './engine/png', './harness', './harness/communication', './harness/chess', './harness/islanders', './harness/poker', './harness/records', './platform', './game-visuals', './game-visuals/islanders', './game-visuals/chess', './game-visuals/poker', './tui', './rules', './rules/chess', './rules/islanders', './rules/poker', './web']) {
     if (!packed.exports?.[subpath]) throw new Error(`packed package is missing export ${subpath}`);
   }
   for (const path of ['dist/public-api.js', 'dist/public-api.d.ts', 'docs/harness.md', 'docs/architecture/package-boundaries.md']) {

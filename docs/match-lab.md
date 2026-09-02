@@ -1,7 +1,7 @@
 # AI match lab
 
 `pnpm match:run` runs real spectate-AI matches without a TTY. It uses the same rules,
-model action parser, normalizer, and canonical Chess/Poker recorders as Arcade. Catan
+model action parser, normalizer, and canonical Chess/Poker recorders as Arcade. Islanders
 runs from its replayable rules transcript. Telemetry is forcibly disabled; every artifact
 stays under `.runs/` unless `--output` points elsewhere.
 
@@ -10,7 +10,7 @@ pnpm match:run -- --game chess \
   --models=openai/gpt-5.4-nano,anthropic/claude-haiku-4.5 \
   --games=4 --concurrency=2 --swap-seats
 
-pnpm match:run -- --game catan --games=2 --concurrency=2 --setup-only
+pnpm match:run -- --game islanders --games=2 --concurrency=2 --setup-only
 
 pnpm match:run -- --game poker \
   --models=xai/grok-4.1-fast-non-reasoning,anthropic/claude-haiku-4.5,openai/gpt-5.4-nano,google/gemini-2.5-flash \
@@ -28,7 +28,7 @@ Each run writes:
 - `events.jsonl`: merged chronological diagnostic stream
 - `matches/<id>/trace.jsonl`: one match's decisions, actions, checkpoints, and errors
 - `matches/<id>/result.json`: concise outcome plus final state
-- `matches/<id>/canonical.json`: canonical Chess/Poker records or the replayable Catan transcript
+- `matches/<id>/canonical.json`: canonical Chess/Poker records or the replayable Islanders transcript
 - `summary.json`: aggregate completion, action, winner, and per-model counts
 - `errors.jsonl`: failures only
 
@@ -51,7 +51,7 @@ metadata and separate leaderboard filtering first.
 All three games accept `--communication=autoreply` or `--communication=ambient`.
 Autoreply is the compatibility default and preserves each game's previous public-line
 behavior. Ambient uses structured speech proposals plus Arcade host-policy gating and
-explicit silence. Catan additionally detects notable game moments and may invite one
+explicit silence. Islanders additionally detects notable game moments and may invite one
 affected player to react. The mode and local decisions are persisted in the run trace;
 final checkpoints include communication rates where ambient coordination is active.
 Production telemetry still receives no chat, prompts, or private reasoning.
@@ -63,7 +63,7 @@ responses are still external and are not guaranteed deterministic. `--swap-seats
 the model list each match to reduce seat bias. Parallelism is match-level only: turns in
 one game remain sequential.
 
-Catan accepts two through four models in the lab. Two-player tables are useful for
+Islanders accepts two through four models in the lab. Two-player tables are useful for
 testing even though the published base game is normally presented for three or four.
 
 Use `--timeout`, `--max-plies`, `--max-actions`, and `--max-hands` to bound costly runs.
@@ -85,7 +85,7 @@ an attributable legal action through Arcade's real `ModelPlayer` ladder:
 
 - Chess: White's first move, followed by one opponent reply.
 - Poker: one complete heads-up hand.
-- Catan: the target's first settlement and road during initial placement.
+- Islanders: the target's first settlement and road during initial placement.
 
 ```bash
 # Inspect the size first; makes no model calls.

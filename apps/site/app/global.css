@@ -33,14 +33,16 @@ body { background: var(--site-background); color: var(--site-foreground); }
 /* Living title: the home route is one continuous Arcade canvas. */
 body:has(.living-title-page) { background: #000; }
 html:has(.living-title-page) { scroll-behavior: auto; }
-body:has(.living-title-page) header.sticky { position: fixed; inset: 0 0 auto; border-color: rgb(255 255 255 / 10%); color: #ededed; background: rgb(0 0 0 / 28%); -webkit-backdrop-filter: blur(12px) saturate(1.12); backdrop-filter: blur(12px) saturate(1.12); }
-body:has(.living-title-page) header.sticky a { color: #d7d7d7; }
+body:has(.living-title-page) header.sticky { position: fixed; inset: 0 0 auto; -webkit-backdrop-filter: blur(12px) saturate(1.12); backdrop-filter: blur(12px) saturate(1.12); }
+.dark body:has(.living-title-page) header.sticky { border-color: rgb(255 255 255 / 10%); color: #ededed; background: rgb(0 0 0 / 28%); }
+.dark body:has(.living-title-page) header.sticky a { color: #d7d7d7; }
 body:has(.living-title-page) .site-wordmark { font-family: var(--font-geist-sans), Arial, sans-serif; font-size: 18px; letter-spacing: -.02em; }
-body:has(.living-title-page) .site-terminal-trigger { border-color: rgb(255 255 255 / 28%); color: #ededed; background: rgb(0 0 0 / 36%); }
+.dark body:has(.living-title-page) .site-terminal-trigger { border-color: rgb(255 255 255 / 28%); color: #ededed; background: rgb(0 0 0 / 36%); }
 body:has(.living-title-page) .site-default-footer { display: block; position: relative; z-index: 2; min-height: 320px; color: var(--site-foreground); background: var(--site-background); border-top: 1px solid rgb(255 255 255 / 10%); }
+.site-default-footer footer > div:last-child fieldset { display: none; }
 .living-title-page { background: #000; }
 .living-title { position: relative; height: 1200vh; min-height: 7200px; color: #ededed; background: #000; }
-.living-title__stage { position: sticky; top: 0; width: 100%; height: 100svh; overflow: hidden; isolation: isolate; background: #000; }
+.living-title__stage { position: sticky; top: 0; width: 100%; height: 100vh; height: var(--arcade-visual-height, 100dvh); overflow: hidden; isolation: isolate; background: #000; }
 .living-title__canvas { position: absolute; z-index: -3; inset: 0; display: block; width: 100%; height: 100%; touch-action: pan-y; }
 .living-title__vignette { position: absolute; z-index: -2; inset: 0; pointer-events: none; background: radial-gradient(ellipse 520px 260px at 0 130px, rgb(0 0 0 / 88%) 0%, rgb(0 0 0 / 48%) 50%, transparent 80%), radial-gradient(ellipse 650px 190px at 0 100%, rgb(0 0 0 / 88%) 0%, rgb(0 0 0 / 42%) 55%, transparent 82%); }
 .living-title__copy { position: absolute; z-index: 1; left: clamp(24px, 4vw, 64px); top: 96px; width: min(340px, calc(100vw - 48px)); }
@@ -137,6 +139,8 @@ body:has(.living-title-page) .site-default-footer { display: block; position: re
 .arcade-terminal__viewport .xterm { height: 100%; }
 .arcade-terminal__viewport .xterm-viewport { scrollbar-color: #333 #000; scrollbar-width: thin; }
 .arcade-terminal.is-arcade .xterm-helper-textarea { pointer-events: none; caret-color: transparent; }
+.arcade-terminal__auth-link { position: absolute; z-index: 5; right: 18px; top: 18px; border: 1px solid rgb(255 255 255 / 24%); border-radius: 6px; padding: 9px 11px; color: #ededed; background: rgb(18 18 18 / 92%); box-shadow: 0 8px 28px rgb(0 0 0 / 45%); font: 550 11px/1 var(--font-geist-mono), monospace; }
+.arcade-terminal__auth-link:hover { border-color: rgb(255 255 255 / 42%); background: #1a1a1a; }
 .arcade-terminal__rotate-hint { position: absolute; z-index: 4; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 8px; border: 1px solid rgb(255 255 255 / 18%); border-radius: 999px; padding: 9px 12px; color: rgb(255 255 255 / 72%); background: rgb(0 0 0 / 78%); backdrop-filter: blur(10px); pointer-events: none; transform: translateX(-50%); white-space: nowrap; font: 550 10px/1 var(--font-geist-mono), monospace; }
 .arcade-terminal__rotate-hint span { color: #ededed; font-size: 14px; }
 @media (orientation: landscape) { .arcade-terminal__rotate-hint { display: none; } }

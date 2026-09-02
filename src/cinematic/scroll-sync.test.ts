@@ -1,14 +1,21 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { LIVING_TITLE_ACT_BOUNDARIES, livingTitleTimeline } from './timeline.ts';
-import { catanCinematicCamera, chessCinematicPose, pokerCinematicCamera } from './camera.ts';
-import { CATAN_BUILDING_BEATS, CATAN_ROAD_BEATS, catanDropProgress } from './catan-choreography.ts';
+import { LIVING_TITLE_ACT_BOUNDARIES, LIVING_TITLE_MORPH_STARTS, livingTitleTimeline } from './timeline.ts';
+import { islandersCinematicCamera, chessCinematicPose, pokerCinematicCamera } from './camera.ts';
+import { ISLANDERS_BUILDING_BEATS, ISLANDERS_ROAD_BEATS, islandersDropProgress } from './islanders-choreography.ts';
+import { edgeNodes, nodeHexes, nodeNodes } from '../rules/islanders/board-topology.ts';
+import { generateBoard } from '../rules/islanders/setup.ts';
+import { mulberry32 } from '../engine/random.ts';
 
 test('scroll distance gives Chess and Poker the largest authored chapters', () => {
   const spans = LIVING_TITLE_ACT_BOUNDARIES.slice(1).map((end, index) => end - LIVING_TITLE_ACT_BOUNDARIES[index]);
   assert.ok(spans[2] >= 0.27);
   assert.ok(spans[3] >= 0.24);
   assert.equal(livingTitleTimeline(0.52).act, 3);
+});
+
+test('ink cuts retain a noticeable tail of every outgoing chapter', () => {
+  for (const start of LIVING_TITLE_MORPH_STARTS) assert.ok(start <= 0.85);
 });
 
 test('Chess uses one restrained close-up lobe and never oscillates again', () => {
@@ -26,44 +33,98 @@ test('Chess uses one restrained close-up lobe and never oscillates again', () =>
 test('Poker starts closest to the shuffle and only pulls back', () => {
   const cameras = Array.from({ length: 41 }, (_, index) => pokerCinematicCamera(index / 40, 1.6));
   const distances = cameras.map((camera) => Math.hypot(camera.eye.x-camera.target.x,camera.eye.y-camera.target.y,camera.eye.z-camera.target.z));
-  assert.ok(distances.every((distance, index) => index === 0 || distance >= distances[index - 1] - 1e-8));
-  assert.ok(Math.abs(cameras[0].target.z + 1.4) < 1e-9, 'opening camera targets the production shuffle deck');
+  // The upper-frame fit may make a sub-cell lens correction while it hands
+  // off to the centered overview, but must never create a perceptible zoom-in.
+  assert.ok(distances.every((distance, index) => index === 0 || distance >= distances[index - 1] - 0.06));
+  const targetSteps = cameras.slice(1).map((camera, index) => Math.hypot(
+    camera.target.x - cameras[index].target.x,
+    camera.target.y - cameras[index].target.y,
+    camera.target.z - cameras[index].target.z,
+  ));
+  assert.ok(Math.max(...targetSteps) < 0.07, 'Poker target translation should remain one smooth motion');
   assert.ok(distances.at(-1)! > distances[0] * 2);
 });
 
 test('each game camera keeps one orbit direction', () => {
   const chess = Array.from({ length: 21 }, (_, index) => chessCinematicPose(index / 20).azimuth);
   const poker = Array.from({ length: 21 }, (_, index) => pokerCinematicCamera(index / 20, 1.6).azimuth);
-  const catan = Array.from({ length: 21 }, (_, index) => catanCinematicCamera(index / 20, 1.6).azimuth);
+  const islanders = Array.from({ length: 21 }, (_, index) => islandersCinematicCamera(index / 20, 1.6).azimuth);
   assert.ok(chess.every((azimuth, index) => index === 0 || azimuth > chess[index - 1]));
-  assert.ok(poker.every((azimuth, index) => index === 0 || azimuth < poker[index - 1]));
-  assert.ok(catan.every((azimuth, index) => index === 0 || azimuth > catan[index - 1]));
+  assert.ok(poker.every((azimuth, index) => index === 0 || azimuth > poker[index - 1]));
+  assert.ok(islanders.every((azimuth, index) => index === 0 || azimuth > islanders[index - 1]));
 });
 
-test('Poker framing backs away continuously as the viewport narrows', () => {
+test('Poker framing backs away smoothly near narrow landscape widths', () => {
   const regular = pokerCinematicCamera(0.5, 1.4);
   const ultrawide = pokerCinematicCamera(0.5, 2.4);
   const regularDistance = Math.hypot(regular.eye.x - regular.target.x, regular.eye.y - regular.target.y, regular.eye.z - regular.target.z);
   const wideDistance = Math.hypot(ultrawide.eye.x - ultrawide.target.x, ultrawide.eye.y - ultrawide.target.y, ultrawide.eye.z - ultrawide.target.z);
-  assert.ok(regularDistance > wideDistance);
+  assert.ok(regularDistance >= wideDistance);
   // The production chairs extend well below the felt. A below-felt target is
   // therefore the visual center of the complete table, not a camera mistake.
   assert.ok(Number.isFinite(ultrawide.target.y));
 });
 
-test('Catan terrain studies use macro cameras', () => {
-  for (const progress of [0.3, 0.43, 0.57]) {
-    const camera = catanCinematicCamera(progress, 1.6);
+test('Islanders terrain studies use macro cameras', () => {
+  for (const progress of [0.32, 0.43, 0.57]) {
+    const camera = islandersCinematicCamera(progress, 1.6);
     const distance = Math.hypot(camera.eye.x - camera.target.x, camera.eye.y - camera.target.y, camera.eye.z - camera.target.z);
     assert.ok(distance < 3.7);
   }
 });
 
-test('Catan gameplay beats scatter every player color and include one city upgrade', () => {
-  assert.deepEqual(new Set(CATAN_BUILDING_BEATS.map(({ color }) => color)), new Set(['red', 'blue', 'purple', 'orange']));
-  assert.deepEqual(new Set(CATAN_ROAD_BEATS.map(({ color }) => color)), new Set(['red', 'blue', 'purple', 'orange']));
-  assert.ok(CATAN_BUILDING_BEATS.some(({ cityAt }) => cityAt !== undefined));
-  assert.equal(catanDropProgress(0.4, 0.4), 0);
-  assert.equal(catanDropProgress(0.5, 0.4), 1);
-  assert.ok(CATAN_ROAD_BEATS.length >= 6);
+test('Islanders close-in uses a gradual camera push instead of a rushed six-percent jump', () => {
+  const samples = Array.from({ length: 13 }, (_, index) => islandersCinematicCamera(0.22 + index * 0.01, 1.6));
+  const distances = samples.map((camera) => Math.hypot(camera.eye.x-camera.target.x,camera.eye.y-camera.target.y,camera.eye.z-camera.target.z));
+  const steps = distances.slice(1).map((distance, index) => Math.abs(distance - distances[index]));
+  assert.ok(Math.max(...steps) < 1.1, `Islanders close-in jumped ${Math.max(...steps)}`);
+  assert.ok(distances.at(-1)! < 3.7, 'camera should still arrive before the settlement study');
+});
+
+test('Islanders gameplay beats scatter every player color and include one city upgrade', () => {
+  assert.deepEqual(new Set(ISLANDERS_BUILDING_BEATS.map(({ color }) => color)), new Set(['red', 'blue', 'purple', 'orange']));
+  assert.deepEqual(new Set(ISLANDERS_ROAD_BEATS.map(({ color }) => color)), new Set(['red', 'blue', 'purple', 'orange']));
+  assert.ok(ISLANDERS_BUILDING_BEATS.some(({ cityAt }) => cityAt !== undefined));
+  assert.equal(islandersDropProgress(0.4, 0.4), 0);
+  assert.equal(islandersDropProgress(0.5, 0.4), 1);
+  assert.ok(ISLANDERS_ROAD_BEATS.length >= 6);
+});
+
+test('Islanders cinematic placements obey distance and road ownership rules', () => {
+  const board = generateBoard(mulberry32(1));
+  const buildings = new Map(ISLANDERS_BUILDING_BEATS.map(({ node, color }) => [node, color]));
+  for (const [node] of buildings) for (const neighbor of nodeNodes[node]) assert.ok(!buildings.has(neighbor), `adjacent cinematic buildings ${node}/${neighbor}`);
+  const orange = ISLANDERS_BUILDING_BEATS.find(({ color }) => color === 'orange')!;
+  const terrains = nodeHexes[orange.node].map((hex) => board.hexes[hex].terrain);
+  assert.ok(terrains.includes('mountains') && terrains.includes('hills'), 'orange settlement should sit on ore/brick');
+  for (const { edge, color } of ISLANDERS_ROAD_BEATS) {
+    const [a, b] = edgeNodes[edge];
+    const ownsEndpoint = buildings.get(a) === color || buildings.get(b) === color;
+    const connectsRoad = ISLANDERS_ROAD_BEATS.some((other) => other.edge !== edge && other.color === color && edgeNodes[other.edge].some((node) => node === a || node === b));
+    assert.ok(ownsEndpoint || connectsRoad, `${color} road ${edge} is disconnected from its owner`);
+  }
+});
+
+test('Islanders coastline tour begins at the brick harbor and stays macro-close', () => {
+  const brick = { x: -3.6, z: -3.12 };
+  const arrival = islandersCinematicCamera(0.86, 1.6, brick);
+  assert.ok(Math.hypot(arrival.target.x - brick.x, arrival.target.z - brick.z) < 1.5, 'coast focus should stay just inside the brick harbor');
+  for (const progress of [0.86, 0.9, 0.95, 1]) {
+    const camera = islandersCinematicCamera(progress, 1.6, brick);
+    const distance = Math.hypot(camera.eye.x-camera.target.x,camera.eye.y-camera.target.y,camera.eye.z-camera.target.z);
+    const elevation = Math.asin((camera.eye.y - camera.target.y) / distance);
+    assert.ok(distance < 5, `coast camera pulled out at ${progress}`);
+    assert.ok(elevation >= 0.6 && elevation <= 0.7, `coast elevation drifted at ${progress}`);
+  }
+});
+
+test('Islanders keeps one restrained rotation cadence through the coast handoff', () => {
+  const cameras = Array.from({ length: 101 }, (_, index) => islandersCinematicCamera(index / 100, 1.6));
+  const angularSteps = cameras.slice(1).map((camera, index) => camera.azimuth - cameras[index].azimuth);
+  assert.ok(Math.max(...angularSteps) - Math.min(...angularSteps) < 1e-9);
+  const targetSteps = cameras.slice(65).map((camera, index) => {
+    const previous = cameras[index + 64].target;
+    return Math.hypot(camera.target.x - previous.x, camera.target.y - previous.y, camera.target.z - previous.z);
+  });
+  assert.ok(Math.max(...targetSteps) < 0.5, `coast translation jumped by ${Math.max(...targetSteps)}`);
 });

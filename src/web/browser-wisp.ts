@@ -8,9 +8,10 @@ import { rasterize } from '../engine/raster.ts';
 import type { Texture } from '../engine/texture-data.ts';
 import { drawWispFlame } from '../game-visuals/wisp.ts';
 
-export type CinematicCreator = 'openai' | 'anthropic' | 'google' | 'deepseek';
+export type CinematicCreator = 'xai' | 'openai' | 'anthropic' | 'google' | 'deepseek';
 
 export const CINEMATIC_CREATOR_TINT: Record<CinematicCreator, Vec3> = {
+  xai: { x: 126, y: 145, z: 176 },
   openai: { x: 16, y: 163, z: 127 },
   anthropic: { x: 217, y: 119, z: 87 },
   google: { x: 66, y: 133, z: 244 },
@@ -20,6 +21,7 @@ export const CINEMATIC_CREATOR_TINT: Record<CinematicCreator, Vec3> = {
 // Anthropic wisps intentionally use Claude's recognizable sunburst, matching
 // the terminal Arcade's production override.
 const LOGO_URLS: Record<CinematicCreator, string> = {
+  xai: new URL('../../assets/logos/xai.png', import.meta.url).toString(),
   openai: new URL('../../assets/logos/openai.png', import.meta.url).toString(),
   anthropic: new URL('../../assets/logos/claude.png', import.meta.url).toString(),
   google: new URL('../../assets/logos/google.png', import.meta.url).toString(),
@@ -46,6 +48,11 @@ export class BrowserCreatorWisps {
   draw(target: RenderTarget, vp: Mat4, camera: Camera, creator: CinematicCreator, anchor: Vec3, time: number, phase: number, scale = 1): void {
     const tint = CINEMATIC_CREATOR_TINT[creator];
     const center = project(vp, anchor, target.width, target.height);
+    // The logo rasterizer clips a billboard at the camera plane, but the flame
+    // is a screen-space effect. Never divide a behind/near-camera anchor into a
+    // giant viewport-filling flame; hide the complete wisp until its billboard
+    // is safely in front of the lens.
+    if (center.w <= scale * 3.5) return;
     const edge = project(vp, { x: anchor.x + camera.up.x * scale, y: anchor.y + camera.up.y * scale, z: anchor.z + camera.up.z * scale }, target.width, target.height);
     const radius = Math.max(7, Math.hypot(edge.x - center.x, edge.y - center.y));
     drawWispFlame(target, center.x, center.y, radius, tint, time, phase, { glow: 0.9, energy: 0.72, emphasis: 0.2 });
@@ -63,10 +70,10 @@ export class BrowserCreatorWisps {
   }
 }
 
-function project(vp: Mat4, p: Vec3, width: number, height: number): { x: number; y: number } {
+function project(vp: Mat4, p: Vec3, width: number, height: number): { x: number; y: number; w: number } {
   const c = mat4MulVec4(vp, { ...p, w: 1 });
   const w = c.w || 1e-4;
-  return { x: ((c.x / w) * 0.5 + 0.5) * width, y: (1 - ((c.y / w) * 0.5 + 0.5)) * height };
+  return { x: ((c.x / w) * 0.5 + 0.5) * width, y: (1 - ((c.y / w) * 0.5 + 0.5)) * height, w: c.w };
 }
 
 function billboard(mesh: Mesh, center: Vec3, right: Vec3, up: Vec3, halfSize: number): void {

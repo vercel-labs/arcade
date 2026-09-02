@@ -39,7 +39,7 @@ a request's rows as a single Events-API call with `wait=true`, and treats any
   back to an in-memory backstop, and **fails open** on KV errors. The platform WAF
   rate-limit rule is the hard backstop that makes fail-open acceptable.
 - IP is read from the platform-trusted `x-vercel-forwarded-for` / `x-real-ip`.
-- Request/record size caps; server-side re-run of the client's privacy guard.
+- Request/record size caps (8 MiB for canonical games); server-side re-run of the client's privacy guard.
 
 ## Layout
 

@@ -17,6 +17,7 @@ import { pokerVoiceCapable } from './poker-voice.ts';
 import type { PokerSeatView } from '../games/poker/poker-scene.ts';
 import { ARCADE_CHROME_TEXT } from '../theme.ts';
 import { createModelSeatPicker, hiddenModelSeat, modelSeatControls, modelSeatTint, mountModelSeat, setModelSeatCreators, type ModelCreator, type ModelSeatPicker } from './model-seat-picker.ts';
+import { matchSetupHeading } from './match-setup-chrome.ts';
 
 let TEXT_CREATORS: ModelCreator[] = pickerCreators();
 let REALTIME_CREATORS: ModelCreator[] = [];
@@ -213,7 +214,6 @@ export function pokerPreviewSeats(): PokerSeatView[] {
   return seats;
 }
 
-const TITLE_FG: RGB = ARCADE_CHROME_TEXT.title;
 const HERO_FG: RGB = ARCADE_CHROME_TEXT.body;
 // A settings line: a muted label gutter + the control, so the columns align.
 function row(label: string, control: Node): Node {
@@ -265,7 +265,7 @@ export function buildPokerSetupPanel(): Node {
   }
 
   return Box({ flexDirection: 'column', gap: 1, alignItems: 'start' }, [
-    Text({ text: 'new match', style: { color: TITLE_FG, bold: true } }),
+    matchSetupHeading(),
     row('mode', Slot('poker-setup-mode')),
     row('players', Slot('poker-players')),
     row('stack', stackControl()),

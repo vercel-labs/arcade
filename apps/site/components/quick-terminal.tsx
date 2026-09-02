@@ -12,8 +12,9 @@ import {
   useState,
 } from 'react';
 
+const loadArcadeTerminal = () => import('../app/[lang]/(home)/components/arcade-terminal');
 const ArcadeTerminal = dynamic(
-  () => import('../app/[lang]/(home)/components/arcade-terminal').then((module) => module.ArcadeTerminal),
+  () => loadArcadeTerminal().then((module) => module.ArcadeTerminal),
   { ssr: false },
 );
 
@@ -29,6 +30,7 @@ export function QuickTerminalProvider({ children }: { children: ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [hasOpened, setHasOpened] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
   const restoreRectRef = useRef<DOMRect | null>(null);
   const hasPositionedRef = useRef(false);
@@ -49,7 +51,18 @@ export function QuickTerminalProvider({ children }: { children: ReactNode }) {
     top: number;
   } | null>(null);
 
+  useEffect(() => {
+    const preload = () => { void loadArcadeTerminal(); };
+    const idle = window.requestIdleCallback?.(preload, { timeout: 2_000 });
+    if (idle === undefined) {
+      const timer = window.setTimeout(preload, 800);
+      return () => window.clearTimeout(timer);
+    }
+    return () => window.cancelIdleCallback?.(idle);
+  }, []);
+
   const open = () => {
+    setHasOpened(true);
     hasPositionedRef.current = false;
     setIsMinimized(false);
     setIsFullscreen(false);
@@ -220,8 +233,8 @@ export function QuickTerminalProvider({ children }: { children: ReactNode }) {
   return (
     <QuickTerminalContext.Provider value={{ close, open, isOpen }}>
       {children}
-      {isOpen ? (
-        <div className="quick-terminal-shell is-open">
+      {hasOpened ? (
+        <div className={`quick-terminal-shell${isOpen ? ' is-open' : ''}`}>
           <section
             aria-label="Arcade terminal"
             className={`quick-terminal-panel${isMinimized ? ' is-minimized' : ''}${isFullscreen ? ' is-fullscreen' : ''}`}

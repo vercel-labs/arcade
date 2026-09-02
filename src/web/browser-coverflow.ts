@@ -11,7 +11,7 @@ const ITEMS = ARCADE_CATALOGUE;
 const URLS: Record<typeof ITEMS[number]['id'], string> = {
   chess: new URL('../../assets/games/chess.png', import.meta.url).toString(),
   poker: new URL('../../assets/games/poker.png', import.meta.url).toString(),
-  catan: new URL('../../assets/games/catan.png', import.meta.url).toString(),
+  islanders: new URL('../../assets/games/islanders.png', import.meta.url).toString(),
   mahjong: new URL('../../assets/games/mahjong.png', import.meta.url).toString(),
   leaderboard: new URL('../../assets/games/leaderboard.png', import.meta.url).toString(),
   achievements: new URL('../../assets/games/achievements.png', import.meta.url).toString(),
@@ -41,7 +41,7 @@ export class BrowserCoverFlow {
     surface.fillRect(0, 0, cols, rows, [0, 0, 0]);
     shapeGlyphToSurface(surface, target, cols, rows, { color: true, contrast: 2, hybrid: false, coloredBackground: false });
     const selected = ITEMS[coverFlowIndex(pos, ITEMS.length)];
-    const displayTitle = selected.id === 'catan' ? 'Island' : selected.title;
+    const displayTitle = selected.title;
     const label = `${displayTitle}${selected.enabled ? '' : '   coming soon'}`;
     const labelX = Math.max(0, Math.floor((cols - label.length) / 2));
     surface.drawTextOver(labelX, rows - 4, displayTitle, [240, 244, 255], STYLE_BOLD);

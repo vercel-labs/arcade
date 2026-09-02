@@ -8,7 +8,7 @@ const rows = Number(process.argv[3] ?? 54);
 const json = process.argv.includes('--json');
 const results: Array<Record<string, string | number>> = [];
 const scene = new LivingTitleScene();
-const transitions = ['prism-covers', 'covers-chess', 'chess-poker', 'poker-catan'].map((name, act) => {
+const transitions = ['prism-covers', 'covers-chess', 'chess-poker', 'poker-islanders'].map((name, act) => {
   const start = LIVING_TITLE_ACT_BOUNDARIES[act];
   const end = LIVING_TITLE_ACT_BOUNDARIES[act + 1];
   const morph = start + (end - start) * LIVING_TITLE_MORPH_STARTS[act];
@@ -40,7 +40,7 @@ const context: Canvas2DContextLike & { commands: number } = {
 const canvas: CanvasLike = { width: 0, height: 0, style: { width: '', height: '' }, getContext: () => context, getBoundingClientRect: () => ({ left: 0, top: 0 }) };
 const host = new CanvasSurfaceHost(canvas, { devicePixelRatio: 1, cellAspectRatio: 0.5 });
 host.resize(cols * 6, rows * 12, cols, rows);
-for (const [name, progress] of [['prism', .04], ['covers', .17], ['chess', .38], ['poker', .62], ['catan', .86]] as const) {
+for (const [name, progress] of [['prism', .04], ['covers', .17], ['chess', .38], ['poker', .62], ['islanders', .86]] as const) {
   const frameTimes: number[] = [], drawTimes: number[] = [], commands: number[] = [];
   for (let frame = 0; frame < 40; frame++) {
     const started = performance.now();

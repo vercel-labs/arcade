@@ -3,8 +3,10 @@
 // owner-visible AI Gateway catalog and per-model availability annotations.
 import { availableRealtimeModels } from '../../voice/index.ts';
 import { includeEarlyAccessModels, pickerCreators, creatorName, type CreatorInfo } from './models.ts';
+import { orderCreatorModels } from './model-catalog-order.ts';
 
 const MODELS_URL = 'https://ai-gateway.vercel.sh/v1/models?include_availability';
+const POPULAR_MODELS_URL = 'https://ai-gateway.vercel.sh/coding-agent/v1/models';
 const DEFAULT_TIMEOUT_MS = 8_000;
 
 type EvaluatedRuntime = 'http' | 'realtime_websocket';
@@ -110,7 +112,7 @@ function isRealtimeModel(model: GatewayModel): boolean {
   return model.model_eligibility?.evaluated_runtime === 'realtime_websocket';
 }
 
-function groupCreators(models: readonly GatewayModel[]): CreatorInfo[] {
+function groupCreators(models: readonly GatewayModel[], popularityOrder: readonly string[] = []): CreatorInfo[] {
   const byCreator = new Map<string, CreatorInfo>();
   for (const model of models) {
     const idCreator = model.id.split('/')[0] || 'custom';
@@ -126,12 +128,12 @@ function groupCreators(models: readonly GatewayModel[]): CreatorInfo[] {
   return [...byCreator.values()]
     .map((creator) => ({
       ...creator,
-      models: creator.models.sort((a, b) => a.name.localeCompare(b.name)),
+      models: orderCreatorModels(creator.models, popularityOrder),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export function parseTeamModelCatalog(value: unknown): ArcadeModelCatalog | null {
+export function parseTeamModelCatalog(value: unknown, popularityOrder: readonly string[] = []): ArcadeModelCatalog | null {
   if (typeof value !== 'object' || value === null || !Array.isArray((value as CatalogResponse).data)) return null;
   const response = value as CatalogResponse;
   const models = response.data.filter(isGatewayModel);
@@ -141,8 +143,8 @@ export function parseTeamModelCatalog(value: unknown): ArcadeModelCatalog | null
   const modelsById = new Map(visible.map((model) => [model.id, model]));
   return {
     source: 'team',
-    textCreators: groupCreators(visible.filter((model) => isTextModel(model, modelsById))),
-    realtimeCreators: groupCreators(visible.filter(isRealtimeModel)),
+    textCreators: groupCreators(visible.filter((model) => isTextModel(model, modelsById)), popularityOrder),
+    realtimeCreators: groupCreators(visible.filter(isRealtimeModel), popularityOrder),
     availabilityStatus: typeof response.availability_status === 'string' ? response.availability_status : undefined,
     catalogStatus: typeof response.catalog_status === 'string' ? response.catalog_status : undefined,
     requestContextAvailability: response.request_context_availability,
@@ -153,17 +155,40 @@ export async function fetchTeamModelCatalog(key: string, opts: FetchTeamModelCat
   const fetchImpl = opts.fetchImpl ?? fetch;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  const popularityController = new AbortController();
+  let resolvePopularityTimeout: ((value: string[]) => void) | null = null;
+  const popularityTimeout = new Promise<string[]>((resolve) => { resolvePopularityTimeout = resolve; });
+  const popularityTimer = setTimeout(() => {
+    popularityController.abort();
+    resolvePopularityTimeout?.([]);
+  }, Math.min(opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, 250));
   try {
+    const popularity = fetchImpl(POPULAR_MODELS_URL, { signal: popularityController.signal })
+      .then(async (response) => {
+        if (!response.ok) return [];
+        try {
+          return ((await response.json()) as { data?: Array<{ id?: unknown }> }).data
+            ?.flatMap(({ id }) => typeof id === 'string' ? [id] : []) ?? [];
+        } catch {
+          return [];
+        }
+      })
+      .catch(() => [] as string[]);
     const response = await fetchImpl(MODELS_URL, {
       headers: { authorization: `Bearer ${key}` },
       signal: controller.signal,
     });
     if (!response.ok) return fallbackArcadeModelCatalog(`HTTP ${response.status}`);
-    const catalog = parseTeamModelCatalog(await response.json());
+    const availability = await response.json();
+    // Popularity is decorative ordering only and owns a short independent
+    // timeout, so it cannot consume the availability request's full budget.
+    const popularityOrder = await Promise.race([popularity, popularityTimeout]);
+    const catalog = parseTeamModelCatalog(availability, popularityOrder);
     return catalog ?? fallbackArcadeModelCatalog('availability annotations unavailable');
   } catch (error) {
     return fallbackArcadeModelCatalog(error instanceof Error ? error.message : String(error));
   } finally {
     clearTimeout(timer);
+    clearTimeout(popularityTimer);
   }
 }

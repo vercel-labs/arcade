@@ -13,10 +13,10 @@ by compatibility expectations:
 - `@vercel/arcade/engine` and `/engine/png`
 - `@vercel/arcade/tui`
 - `@vercel/arcade/platform`
-- `@vercel/arcade/rules`, `/rules/chess`, `/rules/catan`, and `/rules/poker`
-- `@vercel/arcade/harness`, `/harness/communication`, `/harness/catan`,
+- `@vercel/arcade/rules`, `/rules/chess`, `/rules/islanders`, and `/rules/poker`
+- `@vercel/arcade/harness`, `/harness/communication`, `/harness/islanders`,
   `/harness/chess`, `/harness/poker`, and `/harness/records`
-- `@vercel/arcade/game-visuals` and its `/catan`, `/chess`, and `/poker` subpaths
+- `@vercel/arcade/game-visuals` and its `/islanders`, `/chess`, and `/poker` subpaths
 - `@vercel/arcade/web`
 
 Consumers should import only these package subpaths—not `@vercel/arcade/src/...`.
@@ -58,7 +58,7 @@ match-lab commands are maintained in the repository but are not npm library APIs
 
 The agentic loop is reusable: a consumer can implement a `GameState`, provide one or more
 `Player` objects, and call `runMatch`. `ModelPlayer` accepts an AI SDK model or model id, so
-it works with the caller's provider and authentication choices. Catan and Poker helpers
+it works with the caller's provider and authentication choices. Islanders and Poker helpers
 package the same production prompts and headless session behavior used by Arcade.
 
 Arcade auth answers a narrower product question: which Vercel account/team should this CLI

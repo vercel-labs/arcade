@@ -57,22 +57,44 @@ export class PointerField {
 
   release(): void { this.active = false; }
 
-  /** Inject a bounded one-shot expansion, analogous to Ramp's reserve explosion pool. */
+  /** Inject a loose, expanding triangular smoke ring. */
   burst(x = this.targetX, y = this.targetY, count = 80): void {
     const cx = clamp01(x), cy = clamp01(y);
     const total = Math.max(1, Math.min(120, Math.floor(count)));
+    const burstId = this.nextTrailId;
+    const rotation = hash(burstId, 11) * Math.PI * 2;
+    const vertices = Array.from({ length: 3 }, (_, corner) => {
+      const angle = rotation - Math.PI / 2 + corner * Math.PI * 2 / 3;
+      return { x: Math.cos(angle), y: Math.sin(angle) };
+    });
     for (let index = 0; index < total; index++) {
       const id = this.nextTrailId++;
-      const angle = (index / total) * Math.PI * 2 + (hash(id, 17) - 0.5) * 1.15;
-      // A quick, short-lived impulse reaches the same restrained radius as a
-      // slow bloom, but breaks the cloud apart before it reads as one clump.
-      const speed = 0.12 + hash(id, 31) * 0.34;
-      const spreadX = 0.56 + hash(id, 37) * 0.22;
-      const spreadY = 1.05 + hash(id, 41) * 0.48;
+      // Walk the three edges instead of sampling radial angles. A little warped
+      // edge progress and normal/tangent noise keeps the outline smoky rather
+      // than reading as a perfect stamped icon.
+      const perimeter = ((index + hash(id, 17) * 0.72) / total) * 3;
+      const edge = Math.floor(perimeter) % 3;
+      const edgeT = perimeter - Math.floor(perimeter);
+      const a = vertices[edge], b = vertices[(edge + 1) % 3];
+      let dx = a.x + (b.x - a.x) * edgeT;
+      let dy = a.y + (b.y - a.y) * edgeT;
+      const length = Math.hypot(dx, dy) || 1;
+      const nx = dx / length, ny = dy / length;
+      const tx = -ny, ty = nx;
+      const normalNoise = (hash(id, 31) - 0.5) * 0.3;
+      const tangentNoise = (hash(id, 37) - 0.5) * 0.18;
+      dx += nx * normalNoise + tx * tangentNoise;
+      dy += ny * normalNoise + ty * tangentNoise;
+      const speed = 0.16 + hash(id, 41) * 0.14;
+      const initial = 0.009 + hash(id, 43) * 0.006;
       this.bursts.push({
-        id, x: clamp01(cx + (hash(id, 47) - 0.5) * 0.016), y: clamp01(cy + (hash(id, 59) - 0.5) * 0.016),
-        vx: Math.cos(angle) * speed * spreadX, vy: Math.sin(angle) * speed * spreadY - 0.06,
-        age: 0, lifetime: 0.28 + hash(id, 73) * 0.4,
+        id,
+        x: clamp01(cx + dx * initial),
+        y: clamp01(cy + dy * initial),
+        vx: dx * speed,
+        vy: dy * speed - 0.018 - hash(id, 47) * 0.012,
+        age: 0,
+        lifetime: 0.72 + hash(id, 73) * 0.58,
       });
     }
   }
@@ -119,9 +141,10 @@ export class PointerField {
       this.bursts = this.bursts.flatMap((particle) => {
         const age = particle.age + elapsed;
         if (age >= particle.lifetime) return [];
-        const drag = Math.pow(0.955 + hash(particle.id, 89) * 0.025, elapsed * 60);
-        const vx = particle.vx * drag;
-        const vy = (particle.vy + 0.018 * elapsed) * drag;
+        const drag = Math.pow(0.978 + hash(particle.id, 89) * 0.014, elapsed * 60);
+        const curl = (hash(particle.id, 97) - 0.5) * elapsed * 0.45;
+        const vx = (particle.vx - particle.vy * curl) * drag;
+        const vy = (particle.vy + particle.vx * curl - 0.008 * elapsed) * drag;
         return [{ ...particle, x: particle.x + vx * elapsed, y: particle.y + vy * elapsed, vx, vy, age }];
       });
     }

@@ -1,7 +1,7 @@
 import { cameraMatrices } from '../engine/camera.ts';
-import { catanCinematicCamera, pokerCinematicCamera } from '../cinematic/camera.ts';
-import { CATAN_BUILDING_BEATS, CATAN_ROAD_BEATS, catanDropProgress } from '../cinematic/catan-choreography.ts';
-import { catanDisplaySequence, displayModeWave, type CinematicDisplayMode } from '../cinematic/display-modes.ts';
+import { islandersCinematicCamera, pokerCinematicCamera } from '../cinematic/camera.ts';
+import { ISLANDERS_BUILDING_BEATS, ISLANDERS_ROAD_BEATS, islandersDropProgress } from '../cinematic/islanders-choreography.ts';
+import { islandersDisplaySequence, displayModeWave, type CinematicDisplayMode } from '../cinematic/display-modes.ts';
 import { pokerLoopState } from '../cinematic/scripted-games.ts';
 import type { RGB } from '../engine/color.ts';
 import { RenderTarget } from '../engine/framebuffer.ts';
@@ -12,10 +12,10 @@ import { halfBlockToSurface, shapeGlyphToSurface, ShapeGlyphSurfaceCache } from 
 import { rasterize } from '../engine/raster.ts';
 import { Surface } from '../engine/surface.ts';
 import { downsample } from '../engine/supersample.ts';
-import { AnimatedTileMeshCache, animatedTileMesh, boardHarborPoses, boardOverlayMesh, catanWaterMesh, drawCatanDiceOverlay, EDGE_ENDS, hexWorld, NODE_XZ, portMesh, tileBackMesh, tileMesh, type Die } from '../game-visuals/catan/index.ts';
+import { AnimatedTileMeshCache, animatedTileMesh, boardHarborPoses, boardOverlayMesh, cinematicDiceState, coastMesh, harborPiersMesh, islandersWaterMesh, drawIslandersDiceOverlay, EDGE_ENDS, hexWorld, NODE_XZ, portMesh, tileBackMesh, tileMesh, type Die } from '../game-visuals/islanders/index.ts';
 import { CARD_SCALE, POKER_CARD_LIFT, POKER_CHIP_AWARD_HOP, POKER_CHIP_POT_POSITION, POKER_DEAL_HOP, POKER_DECK_FULL, POKER_DECK_POSITION, POKER_DECK_THICKNESS, POKER_FELT_STIPPLE, POKER_TABLE_AMBIENT, POKER_TABLE_ASCII_CONTRAST, POKER_TABLE_LIGHT, POKER_WOOD_BROWN, TABLE_MODEL, DeckShuffle, chairModel, createPokerGatherCard, createPokerMuckCards, drawCard, drawChipStack, drawPeekCard, fetchPokerTableMeshes, flatDown, flatUp, mergeChipColumns, playerColumns, pokerBetCenter, pokerBoardCardPose, pokerCardBackTexture, pokerChipFlight, pokerGatherCardPose, pokerHoleCardPose, pokerMuckCardPose, pokerSeatAngle, pokerStackCenter, preparePokerCardTextures, takeChipColumns, type ChipColumn, type PokerGatherCard, type PokerMuckCard, type PokerTableMeshes } from '../game-visuals/poker/index.ts';
-import { HEX_COORDS } from '../rules/catan/board-topology.ts';
-import { generateBoard } from '../rules/catan/setup.ts';
+import { HEX_COORDS } from '../rules/islanders/board-topology.ts';
+import { generateBoard } from '../rules/islanders/setup.ts';
 import { mulberry32 } from '../engine/random.ts';
 import { parseCard, RANK_LABELS, type Card } from '../rules/poker/cards.ts';
 import { BrowserCreatorWisps } from './browser-wisp.ts';
@@ -42,8 +42,8 @@ export class BrowserPokerCinematic {
     [mustCard('Ac'), mustCard('9s')],
   ] as const;
   private readonly wisps = new BrowserCreatorWisps();
-  private readonly creators = ['openai', 'anthropic', 'google', 'deepseek'] as const;
-  private readonly seatCount = 5; // seat 0 is the human/private-hand camera
+  private readonly creators = ['xai', 'openai', 'anthropic', 'google', 'deepseek'] as const;
+  private readonly seatCount = 5;
   private readonly muckCards: PokerMuckCard[];
   private readonly gatherCards: PokerGatherCard[];
 
@@ -124,18 +124,20 @@ export class BrowserPokerCinematic {
       for (let round = 0; round < 2; round++) {
         const order = round * this.seatCount + seat;
         const progress = smoothstep(clamp01(hand.deal * 10.8 - order));
-        // During the hero peek, the production bent hand becomes the sole
-        // representation of seat 0; never leave a second flat pair underneath.
+        // During a scripted look, the production bent card becomes the sole
+        // representation of that card; never leave a flat duplicate underneath.
         if (gathering) continue;
-        if (seat === 0 && hand.peek > 0) continue;
+        if ((hand.seatPeeks[seat]?.[round] ?? 0) > 0) continue;
         if (hand.foldedSeats.includes(seat)) continue;
-        drawSeatDeal(target, vp, this.seatCards[seat][round], pokerHoleCardPose(seat, round, this.seatCount), progress, stockCount, hand.showdown > 0 && seat !== 0);
+        drawSeatDeal(target, vp, this.seatCards[seat][round], pokerHoleCardPose(seat, round, this.seatCount), progress, stockCount, hand.showdown > 0);
       }
     }
-    if (hand.peek > 0 && !gathering) {
-      for (let round = 0; round < 2; round++) {
-        const pose = pokerHoleCardPose(0, round, this.seatCount);
-        drawPeekCard(target, vp, { seatX: pose.x, seatZ: pose.z, reveal: hand.peek * 0.72, peek: 0.45, az: pose.yaw }, this.heroCards[round], pokerCardBackTexture(), 1.08);
+    if (!gathering) {
+      for (let seat = 0; seat < this.seatCount; seat++) for (let round = 0; round < 2; round++) {
+        const reveal = hand.seatPeeks[seat]?.[round] ?? 0;
+        if (reveal <= 0 || hand.foldedSeats.includes(seat)) continue;
+        const pose = pokerHoleCardPose(seat, round, this.seatCount);
+        drawPeekCard(target, vp, { seatX: pose.x, seatZ: pose.z, reveal, peek: 0.45, restAz: pose.yaw, az: pose.yaw }, this.seatCards[seat][round], pokerCardBackTexture(), 1.08);
       }
     }
     const boardProgress = [hand.flop, hand.flop, hand.flop, hand.turn, hand.river];
@@ -176,11 +178,10 @@ export class BrowserPokerCinematic {
     }
     // Production seat convention: seat 0 starts at +z, then proceeds clockwise.
     // Each creator wisp shares its chair's exact polar angle and outer radius.
-    for (let index = 0; index < this.creators.length; index++) {
-      const seat = index + 1;
+    for (let seat = 0; seat < this.creators.length; seat++) {
       const angle = pokerSeatAngle(seat, this.seatCount);
       const radius = 5.57 + 0.4;
-      this.wisps.draw(target, vp, camera, this.creators[index], {
+      this.wisps.draw(target, vp, camera, this.creators[seat], {
         x: Math.sin(angle) * radius, y: 2.2, z: Math.cos(angle) * radius,
       }, timeSeconds, seat * 1.3, 0.72);
     }
@@ -189,12 +190,16 @@ export class BrowserPokerCinematic {
   }
 }
 
-export class BrowserCatanCinematic {
+export class BrowserIslandersCinematic {
   private readonly glyphCache = new ShapeGlyphSurfaceCache();
   private readonly target = new RenderTarget(1, 1);
   private readonly board = generateBoard(mulberry32(1));
   private readonly harbors = boardHarborPoses(this.board.harbors);
-  private readonly water = catanWaterMesh();
+  private readonly brickHarbor = (() => {
+    const harbor = this.harbors.find(({ kind }) => kind === 'brick') ?? this.harbors[0];
+    return { x: harbor.model[12], z: harbor.model[14] };
+  })();
+  private readonly water = islandersWaterMesh();
   private readonly animatedTileCache = new AnimatedTileMeshCache();
   private readonly dice: [Die, Die] = [
     { val: 4, spinX: 2.4, spinZ: 1.8, yaw: 0.28, yawSpin: 1.7, jx: -0.08, jz: 0.06, wob: 0.22, dur: 0.96 },
@@ -214,7 +219,7 @@ export class BrowserCatanCinematic {
     const target = this.target;
     target.resize(cols * 3, rows * 6);
     target.clear();
-    const camera = catanCinematicCamera(p, target.width / target.height);
+    const camera = islandersCinematicCamera(p, target.width / target.height, this.brickHarbor);
     const focus = camera.target;
     const vp = cameraMatrices(camera, target.width / target.height).viewProjection;
     const draw = (mesh: Mesh, model: Mat4, color?: RGB, ambient = 0.36) => rasterize(target, color ? tintCached(mesh, color) : mesh, lambertMaterial, {
@@ -249,33 +254,38 @@ export class BrowserCatanCinematic {
       }
     }
 
+    // Connector endpoints are authored against the production beach apron,
+    // which extends beyond the narrower tile slab. Grow that same shoreline
+    // after the tiles settle and before the ships arrive, matching the CLI.
+    const coastProgress = smoothstep(clamp01((p - 0.13) / 0.04));
+    if (coastProgress > 0) draw(coastMesh(coastProgress), identity(), undefined, 0.72);
+
     // Only after every tile has landed do all nine rules-derived harbor ships
     // approach their real coastal slots; no arbitrary ports are stamped on land.
     const harborTimeline = clamp01((p - 0.17) / 0.08);
     for (let i = 0; i < this.harbors.length; i++) {
       const progress = smoothstep(clamp01((harborTimeline * 1.35 - i * 0.04) / 0.72));
       if (progress <= 0) continue;
+      const bridgeProgress = smoothstep(clamp01((progress - 0.62) / 0.38));
+      if (bridgeProgress > 0) draw(harborPiersMesh([this.harbors[i].connector], bridgeProgress), identity(), undefined, 0.62);
       draw(portMesh(this.harbors[i].kind, 31 + i), interpolateMatrix(this.harbors[i].startModel, this.harbors[i].model, progress), undefined, 0.62);
     }
 
-    const diceP = clamp01((p - 0.34) / 0.27);
-    if (diceP > 0 && p < 0.69) drawCatanDiceOverlay(target, this.dice, diceP * 3.25, diceP < 0.68, { preserveSceneDepth: true });
-
     // Gameplay accumulates around the terrain studies without covering their
     // focal hexes. Every piece uses the production board overlay geometry.
-    const buildings = CATAN_BUILDING_BEATS.flatMap((beat) => {
-      const drop = catanDropProgress(p, beat.start);
+    const buildings = ISLANDERS_BUILDING_BEATS.flatMap((beat) => {
+      const drop = islandersDropProgress(p, beat.start);
       if (drop <= 0) return [];
       const position = NODE_XZ[beat.node];
-      const upgrade = beat.cityAt === undefined ? 0 : catanDropProgress(p, beat.cityAt, 0.05);
+      const upgrade = beat.cityAt === undefined ? 0 : islandersDropProgress(p, beat.cityAt, 0.05);
       const city = upgrade > 0.5;
       return [{
         x: position.x, z: position.z, city, color: beat.color, hot: false,
         lift: (1 - (city ? upgrade : drop)) * 1.25,
       }];
     });
-    const roads = CATAN_ROAD_BEATS.flatMap((beat) => {
-      const drop = catanDropProgress(p, beat.start);
+    const roads = ISLANDERS_ROAD_BEATS.flatMap((beat) => {
+      const drop = islandersDropProgress(p, beat.start);
       return drop <= 0 ? [] : [{ ...EDGE_ENDS[beat.edge], color: beat.color, hot: false, lift: (1 - drop) * 1.1 }];
     });
     const overlay = boardOverlayMesh({
@@ -284,9 +294,14 @@ export class BrowserCatanCinematic {
       ghostSettlement: null, ghostRoad: null, hoverColor: [230, 150, 145],
     });
     if (buildings.length || roads.length) draw(overlay, identity(), undefined, 0.56);
-    return presentCatanModes(target, cols, rows, p, this.glyphCache);
+    // Dice are screen-space foreground: settlements and roads must never paint
+    // over them, even when a build drop overlaps their viewport rectangle.
+    const diceState = cinematicDiceState(p);
+    if (diceState.visible) drawIslandersDiceOverlay(target, this.dice, diceState.elapsed, diceState.rolling, { preserveSceneDepth: true, burnProgress: diceState.burn });
+    return presentIslandersModes(target, cols, rows, p, this.glyphCache);
   }
 }
+
 
 function drawCommunityDeal(target: RenderTarget, vp: Mat4, card: Card, destination: { x: number; z: number }, progress: number, stockCount: number): void {
   if (progress <= 0) return;
@@ -324,14 +339,17 @@ type Draw = (mesh: Mesh, model: Mat4, color: RGB, ambient?: number) => void;
 function present(target: RenderTarget, cols: number, rows: number, cache?: ShapeGlyphSurfaceCache): Surface {
   const surface = new Surface(cols, rows);
   surface.fillRect(0, 0, cols, rows, BLACK);
-  shapeGlyphToSurface(surface, target, cols, rows, { color: true, contrast: POKER_TABLE_ASCII_CONTRAST, hybrid: false, coloredBackground: false, blankOutsideDepthBounds: true }, 0, 0, cache);
+  // Wisps are additive screen-space light and intentionally do not write depth.
+  // Cropping to opaque mesh depth bounds cuts their flame caps along a flat
+  // internal line, so Poker must present the complete color target.
+  shapeGlyphToSurface(surface, target, cols, rows, { color: true, contrast: POKER_TABLE_ASCII_CONTRAST, hybrid: false, coloredBackground: false }, 0, 0, cache);
   return surface;
 }
 
-export { catanDisplaySequence } from '../cinematic/display-modes.ts';
+export { islandersDisplaySequence } from '../cinematic/display-modes.ts';
 
-function presentCatanModes(target: RenderTarget, cols: number, rows: number, progress: number, glyphCache?: ShapeGlyphSurfaceCache): Surface {
-  const sequence = catanDisplaySequence(progress);
+function presentIslandersModes(target: RenderTarget, cols: number, rows: number, progress: number, glyphCache?: ShapeGlyphSurfaceCache): Surface {
+  const sequence = islandersDisplaySequence(progress);
   const cache = new Map<CinematicDisplayMode, Surface>();
   const modeSurface = (mode: CinematicDisplayMode): Surface => {
     const found = cache.get(mode);

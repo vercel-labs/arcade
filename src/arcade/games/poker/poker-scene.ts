@@ -1000,8 +1000,7 @@ export class PokerGameScene {
   }
   orbit(dx: number, dy: number): void {
     if (this.cameraLocked()) return;
-    this.cam.orbit(dx, dy);
-    this.cam.elevation = Math.max(0.16, this.cam.elevation); // don't drop under the table
+    this.cam.orbitAbovePlane(dx, dy);
     this.dirty = true;
   }
   pan(dx: number, dy: number): void {

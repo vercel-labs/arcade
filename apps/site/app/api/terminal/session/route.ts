@@ -20,41 +20,52 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
-export async function POST(request: Request) {
-  try {
-    const size = parseTerminalSize(await request.json().catch(() => ({})));
-    const source = packageSpec();
-    const archive = await readFile(join(process.cwd(), 'app/api/terminal/session/arcade-package.tgz'));
-    const name = baseSandboxName();
-    const initialPlaceholder = randomBytes(32).toString('hex');
+let baseSandboxPromise: Promise<string> | null = null;
 
-    const base = await Sandbox.getOrCreate({
-      name,
-      runtime: 'node22',
-      persistent: true,
-      resume: false,
-      resources: { vcpus: 2 },
-      timeout: BASE_TIMEOUT_MS,
-      networkPolicy: baseNetworkPolicy(),
-      snapshotExpiration: 30 * 24 * 60 * 60 * 1000,
-      keepLastSnapshots: { count: 1, expiration: 30 * 24 * 60 * 60 * 1000 },
-      tags: { application: 'arcade-site', purpose: 'terminal-base' },
-      onCreate: async (sandbox) => {
-        await initializeBaseSandbox(sandbox, source, initialPlaceholder, archive);
-        await sandbox.snapshot();
-      },
-    });
-
-    // The placeholder belongs to the reusable base image. It is deliberately
-    // not the real credential; the session policy swaps it only on matching
-    // requests to AI Gateway.
-    const placeholderResult = await base.runCommand({
+function ensureBaseSandbox(name: string, source: string): Promise<string> {
+  if (baseSandboxPromise) return baseSandboxPromise;
+  const createdPlaceholder = randomBytes(32).toString('hex');
+  const archive = readFile(join(process.cwd(), 'app/api/terminal/session/arcade-package.tgz')).then((value) => new Uint8Array(value));
+  const pending = Sandbox.getOrCreate({
+    name,
+    runtime: 'node22',
+    persistent: true,
+    resume: false,
+    resources: { vcpus: 2 },
+    timeout: BASE_TIMEOUT_MS,
+    networkPolicy: baseNetworkPolicy(),
+    snapshotExpiration: 30 * 24 * 60 * 60 * 1000,
+    keepLastSnapshots: { count: 1, expiration: 30 * 24 * 60 * 60 * 1000 },
+    tags: { application: 'arcade-site', purpose: 'terminal-base' },
+    onCreate: async (sandbox) => {
+      await initializeBaseSandbox(sandbox, source, createdPlaceholder, await archive);
+      await sandbox.snapshot();
+    },
+  }).then(async (sandbox) => {
+    const result = await sandbox.runCommand({
       cmd: 'cat',
       args: [`${TERMINAL_CWD}/system/gateway-placeholder`],
       sudo: true,
     });
-    const placeholder = (await placeholderResult.stdout()).trim();
-    if (!placeholder) throw new Error('Hosted terminal credential placeholder is missing.');
+    const placeholder = (await result.stdout()).trim();
+    if (result.exitCode !== 0 || !placeholder) throw new Error('Hosted terminal credential placeholder is missing.');
+    return placeholder;
+  });
+  // Cache only concurrent initialization. Later requests re-enter getOrCreate,
+  // allowing its stale/deleted-base recovery logic to run before every fork.
+  baseSandboxPromise = pending;
+  void pending.finally(() => {
+    if (baseSandboxPromise === pending) baseSandboxPromise = null;
+  }).catch(() => {});
+  return pending;
+}
+
+export async function POST(request: Request) {
+  try {
+    const size = parseTerminalSize(await request.json().catch(() => ({})));
+    const source = packageSpec();
+    const name = baseSandboxName();
+    const placeholder = await ensureBaseSandbox(name, source);
 
     const session = await Sandbox.fork({
       sourceSandbox: name,

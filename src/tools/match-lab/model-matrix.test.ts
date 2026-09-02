@@ -22,7 +22,7 @@ type CapturedEvent = Omit<MatchLabEvent, 'runId' | 'matchId' | 'at'>;
 
 test('model matrix creates one target-first real-game scenario per model and game', () => {
   const cases = buildModelMatrixCases({
-    games: ['chess', 'poker', 'catan'],
+    games: ['chess', 'poker', 'islanders'],
     models: ['one/model', 'two/model'],
     opponentModel: 'baseline/model',
     seed: 42,

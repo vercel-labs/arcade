@@ -22,6 +22,7 @@ import { createGatewayKey, getUser, listTeams, type Team } from './vercel-api.ts
 
 const ENV_KEY = 'AI_GATEWAY_API_KEY';
 const HOSTED_TERMINAL_ENV = 'ARCADE_HOSTED_TERMINAL';
+const HOSTED_DEMO_KEY_ENV = 'ARCADE_HOSTED_DEMO_KEY';
 const KEY_NAME = 'Arcade';
 
 const bold = (s: string): string => `\x1b[1m${s}\x1b[0m`;
@@ -44,7 +45,7 @@ export interface EnsureResult {
 }
 
 export function isLoggedIn(): boolean {
-  return hostedTerminalKey() !== null || readAuth() !== null;
+  return readAuth() !== null || (process.env[HOSTED_TERMINAL_ENV] !== '1' && hostedTerminalKey() !== null);
 }
 
 // Non-interactive entry point for Arcade's terminal tools. Reuses the cached
@@ -66,7 +67,7 @@ export async function ensureCachedGatewayKey(): Promise<EnsureResult | null> {
 // AI gated.
 export async function ensureGatewayKey(opts: EnsureOpts = {}): Promise<EnsureResult | null> {
   const hostedKey = hostedTerminalKey();
-  if (hostedKey) return { key: hostedKey };
+  if (hostedKey && !opts.forceLogin) return { key: hostedKey };
 
   const interactive = opts.interactive ?? !!process.stdin.isTTY;
 
@@ -89,9 +90,6 @@ export async function ensureGatewayKey(opts: EnsureOpts = {}): Promise<EnsureRes
 // Force a team re-pick from inside the arcade (the in-app "switch team" action).
 // Logs in first if needed. Returns null on any failure/back-out.
 export async function switchTeam(): Promise<EnsureResult | null> {
-  const hostedKey = hostedTerminalKey();
-  if (hostedKey) return { key: hostedKey };
-
   try {
     const auth = await ensureSession(false);
     const team = await ensureTeam(auth, true);
@@ -108,7 +106,6 @@ export async function switchTeam(): Promise<EnsureResult | null> {
 // list to render — unlike switchTeam(), it neither prompts nor prints. Returns null
 // when there's no usable session (not signed in), so the caller can offer sign-in.
 export async function availableTeams(): Promise<{ teams: Team[]; current: Team | null } | null> {
-  if (hostedTerminalKey()) return null;
   if (!isLoggedIn()) return null;
   const auth = await ensureSession(false);
   const teams = await listTeams(auth.access_token);
@@ -129,10 +126,11 @@ export async function useTeam(team: Team): Promise<EnsureResult> {
 // Delete the stored session and drop the key from this process so AI re-gates.
 // Returns whether a session was actually present.
 export function signOut(): boolean {
-  if (hostedTerminalKey()) return false;
   const was = isLoggedIn();
   clearAuth();
-  delete process.env[ENV_KEY];
+  const hostedDemoKey = process.env[HOSTED_DEMO_KEY_ENV]?.trim();
+  if (hostedDemoKey) process.env[ENV_KEY] = hostedDemoKey;
+  else delete process.env[ENV_KEY];
   return was;
 }
 

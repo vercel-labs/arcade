@@ -5,13 +5,14 @@ const BLACK: RGB = [0, 0, 0];
 export type CinematicDisplayMode = 'ascii' | 'hybrid' | 'pixel';
 export interface DisplayModeTransition { from: CinematicDisplayMode; to: CinematicDisplayMode; mix: number }
 
-export function catanDisplaySequence(progress: number): DisplayModeTransition {
+export function islandersDisplaySequence(progress: number): DisplayModeTransition {
   const p = clamp01(progress);
-  if (p < 0.76) return { from: 'ascii', to: 'ascii', mix: 0 };
-  if (p < 0.82) return { from: 'ascii', to: 'hybrid', mix: (p - 0.76) / 0.06 };
-  if (p < 0.88) return { from: 'hybrid', to: 'pixel', mix: (p - 0.82) / 0.06 };
-  if (p < 0.94) return { from: 'pixel', to: 'hybrid', mix: (p - 0.88) / 0.06 };
-  return { from: 'hybrid', to: 'ascii', mix: clamp01((p - 0.94) / 0.06) };
+  if (p < 0.72) return { from: 'ascii', to: 'ascii', mix: 0 };
+  if (p < 0.78) return { from: 'ascii', to: 'hybrid', mix: (p - 0.72) / 0.06 };
+  if (p < 0.84) return { from: 'hybrid', to: 'pixel', mix: (p - 0.78) / 0.06 };
+  if (p < 0.9) return { from: 'pixel', to: 'hybrid', mix: (p - 0.84) / 0.06 };
+  if (p < 0.96) return { from: 'hybrid', to: 'ascii', mix: (p - 0.9) / 0.06 };
+  return { from: 'ascii', to: 'ascii', mix: 0 };
 }
 
 export function displayModeWave(from: Surface, to: Surface, progress: number): Surface {

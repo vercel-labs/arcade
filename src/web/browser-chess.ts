@@ -126,6 +126,7 @@ export class BrowserArcade {
   private whiteJail: Array<{ type: PieceType; color: number }> = [];
   private blackJail: Array<{ type: PieceType; color: number }> = [];
   private cinematicTime = 0;
+  private hideChrome = false;
   private readonly wisps = new BrowserCreatorWisps();
 
   prepareWisps(): Promise<void> { return this.wisps.prepare(['anthropic', 'openai']); }
@@ -169,6 +170,8 @@ export class BrowserArcade {
     this.camera.target = pose.target;
     this.openChess();
   }
+
+  setChromeVisible(visible: boolean): void { this.hideChrome = !visible; }
 
   /** Backward-compatible scroll-scrubbed behavior for standalone embeds. */
   setCinematicProgress(progress: number): void { this.setCinematicState(progress, progress); }
@@ -294,15 +297,17 @@ export class BrowserArcade {
         coloredBackground: this.displayMode === 'hybrid',
       }, 0, 0, this.glyphCache);
     }
-    surface.drawTextOver(2, 1, 'arcade / chess', [236, 238, 245], STYLE_BOLD);
-    surface.drawTextOver(this.cols - 19, 1, `[ ${this.displayMode} ]`, CYAN, STYLE_BOLD);
     const turn = this.game.board.turn === WHITE ? 'white' : 'black';
     const result = this.game.result();
     const status = result ? `${result.winner === null ? 'draw' : result.winner === WHITE ? 'white wins' : 'black wins'} · ${result.reason}` : `${turn} to move`;
-    surface.drawTextOver(2, this.rows - 3, status, result ? GOLD : [225, 227, 235], STYLE_BOLD);
-    const moves = this.moveLog.slice(-5).join('  ');
-    if (moves) surface.drawTextOver(2, this.rows - 2, moves.slice(0, this.cols - 4), MUTED);
-    surface.drawTextOver(2, this.rows - 1, 'drag orbit · scroll zoom · d display · r reset · esc launcher', MUTED, STYLE_DIM);
+    if (!this.hideChrome) {
+      surface.drawTextOver(2, 1, 'arcade / chess', [236, 238, 245], STYLE_BOLD);
+      surface.drawTextOver(this.cols - 19, 1, `[ ${this.displayMode} ]`, CYAN, STYLE_BOLD);
+      surface.drawTextOver(2, this.rows - 3, status, result ? GOLD : [225, 227, 235], STYLE_BOLD);
+      const moves = this.moveLog.slice(-5).join('  ');
+      if (moves) surface.drawTextOver(2, this.rows - 2, moves.slice(0, this.cols - 4), MUTED);
+      surface.drawTextOver(2, this.rows - 1, 'drag orbit · scroll zoom · d display · r reset · esc launcher', MUTED, STYLE_DIM);
+    }
     return { surface, screen: this.screen, displayMode: this.displayMode, status };
   }
 

@@ -8,6 +8,10 @@ export interface GameMoment {
   game: string;
   type: string;
   actorSeat?: number;
+  /** Stable model-facing identity for the actor (never the local UI label "You"). */
+  actorLabel?: string;
+  /** Stable model-facing identities for seats directly affected by the action. */
+  affectedLabels?: string[];
   affectedSeats: number[];
   relevantSeats: number[];
   strength: MomentStrength;
@@ -60,6 +64,8 @@ export function directedReplyOpportunities(
         game,
         type: 'direct_address',
         actorSeat: message.speaker.seat,
+        actorLabel: message.speakerLabel,
+        affectedLabels: ['you, the reacting player'],
         affectedSeats: [seat],
         relevantSeats: [seat],
         strength: 'notable',

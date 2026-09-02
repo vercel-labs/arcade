@@ -55,7 +55,7 @@ The caller configures the AI SDK provider and credentials. Arcade's device-login
 picker are CLI product behavior, not a requirement of the harness.
 
 Game-specific helpers are available from `@vercel/arcade/harness/chess`,
-`@vercel/arcade/harness/catan`, and `@vercel/arcade/harness/poker`. Public conversation
+`@vercel/arcade/harness/islanders`, and `@vercel/arcade/harness/poker`. Public conversation
 types, ambient/autoreply policy, and notable-moment helpers live at
 `@vercel/arcade/harness/communication`.
 
@@ -76,7 +76,7 @@ console.log(result.status, result.plies, result.state.fen());
 
 Live Arcade and match-lab share the same lower-level `runMatch` seam. Match-lab adds the
 bounded `runChessMatch` evaluator wrapper; the live driver intentionally has no evaluator
-ply cap. The default 300-ply limit is an evaluator safety bound, not a game rule. Catan and
+ply cap. The default 300-ply limit is an evaluator safety bound, not a game rule. Islanders and
 Poker expose result-based headless runners through their game-specific harness subpaths.
 
 ## Recording and telemetry

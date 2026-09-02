@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 export default function AboutPage() {
   return <InfoPage eyebrow="About the project" title="A game engine built from terminal cells.">
-    <p>Arcade is a pure-TypeScript experiment in treating a terminal as a real graphics and interaction surface. Its CPU renderer transforms meshes, shades triangles, samples frames into ASCII, pixel, or hybrid cells, and composes those cells with a retained-mode interface. Chess, Poker, and Catan use the same underlying layers rather than carrying separate renderers or UI systems.</p>
+    <p>Arcade is a pure-TypeScript experiment in treating a terminal as a real graphics and interaction surface. Its CPU renderer transforms meshes, shades triangles, samples frames into ASCII, pixel, or hybrid cells, and composes those cells with a retained-mode interface. Chess, Poker, and Islanders use the same underlying layers rather than carrying separate renderers or UI systems.</p>
     <h2>Why it exists</h2>
     <p>The project explores what happens when model-driven games are watchable, inspectable, and playful instead of hidden behind a text transcript. Humans can play directly, models act through validated game commands, and match-lab can run the same rules without the visual host while preserving detailed local traces. The browser playground demonstrates that the renderer is reusable beyond ANSI: it paints the canonical Arcade Surface into Canvas without recreating Chess rules in React.</p>
     <h2>Current status</h2>

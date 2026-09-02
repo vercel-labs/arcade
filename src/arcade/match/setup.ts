@@ -15,6 +15,7 @@ import type { Seat } from './driver.ts';
 import { ARCADE_OUTLINE_CONTROL, UI_CHROME_BG } from '../theme.ts';
 import { CHESS_PALETTE } from '../games/chess/palette.ts';
 import { createModelSeatPicker, hiddenModelSeat, modelSeatControls, modelSeatSlowBadge, modelSeatTint, mountModelSeat, selectModelSeat, setModelSeatCreators, type ModelCreator, type ModelSeatPicker } from './model-seat-picker.ts';
+import { cancelMatchButton, matchSetupHeading, matchSetupLayout, startMatchButton } from './match-setup-chrome.ts';
 
 let TEXT_CREATORS: ModelCreator[] = pickerCreators();
 let REALTIME_CREATORS: ModelCreator[] = [];
@@ -138,9 +139,7 @@ export function chessPreviewSides(): { white: string | null; black: string | nul
 }
 
 const TITLE_TINT: Record<Side['key'], RGB> = { white: CHESS_PALETTE.lightPiece, black: CHESS_PALETTE.darkPiece };
-// Rounded action colors. Green is reserved for starting a match; switching an
-// in-progress model uses the app's slate-indigo action color.
-const SETUP_GO: RGB = [120, 205, 142];
+// Switching an in-progress model uses the app's slate-indigo action color.
 const SWITCH_GO: RGB = ARCADE_OUTLINE_CONTROL.activeBorder;
 const SETUP_OFF: RGB = [110, 114, 126];
 const SETUP_NEUTRAL: RGB = ARCADE_OUTLINE_CONTROL.neutralText;
@@ -192,18 +191,11 @@ export function buildMatchSetup(region: LayoutBox, opts: { onStart: () => void; 
   // sides are ready) beside a neutral "cancel". Green matches poker's new-match button.
   // `disabled` rather than just dropping onClick: a Button is focusable by construction,
   // so without it the dead control still brightened on hover and still took Tab focus.
-  const start = RoundedButton({
-    id: 'setup-start',
-    label: 'start',
-    onClick: opts.onStart,
-    disabled: !ready,
-    color: ready ? SETUP_GO : SETUP_OFF,
-    style: ready ? undefined : { disabled: { color: SETUP_OFF, borderColor: SETUP_OFF } },
-  });
-  const cancel = RoundedButton({ id: 'setup-cancel', label: 'cancel', onClick: opts.onCancel, color: SETUP_NEUTRAL, borderColor: SETUP_NEUTRAL_BORDER });
+  const start = startMatchButton('setup-start', ready ? opts.onStart : undefined);
+  const cancel = cancelMatchButton('setup-cancel', opts.onCancel);
 
   const panel = Box({ flexDirection: 'column', gap: 1, alignItems: 'start' }, [
-    Text({ text: 'new match', style: { color: [222, 224, 234], bold: true } }),
+    matchSetupHeading(),
     row('mode', 'muted', [Slot('setup-mode')]),
     sideRow(white),
     sideRow(black),
@@ -212,11 +204,7 @@ export function buildMatchSetup(region: LayoutBox, opts: { onStart: () => void; 
   ]);
 
   // Full region: panel top-left, start/cancel bottom-left (mirrors the poker HUD layout).
-  return Box({ width: region.w, height: region.h, flexDirection: 'column' }, [
-    Box({ flexDirection: 'row', justifyContent: 'start', padding: [1, 2] }, [panel]),
-    Box({ flexGrow: 1 }),
-    Box({ flexDirection: 'row', justifyContent: 'start', gap: 2, padding: [0, 0, 1, 2] }, [start, cancel]),
-  ]);
+  return matchSetupLayout(region, panel, [start, cancel]);
 }
 
 // ── In-match model swap ─────────────────────────────────────────────────────────

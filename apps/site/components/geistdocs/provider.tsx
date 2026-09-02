@@ -13,7 +13,12 @@ type GeistdocsProviderProps = Omit<ComponentProps<typeof PackageProvider>, 'conf
 
 export const GeistdocsProvider = ({ basePath: _basePath, lang, ...props }: GeistdocsProviderProps) => (
   <>
-    <PackageProvider config={config} lang={lang} {...props} />
+    <PackageProvider
+      config={config}
+      lang={lang}
+      {...props}
+      theme={{ attribute: 'class', enableSystem: false, forcedTheme: 'dark' }}
+    />
     <Analytics />
     <SpeedInsights />
   </>

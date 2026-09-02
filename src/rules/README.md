@@ -40,23 +40,23 @@ against the legal list). Players: `0` = White, `1` = Black.
 Correctness is verified by **perft** (`src/tools/perft.ts`) against reference node
 counts for the start and "kiwipete" positions.
 
-## Catan (`rules/catan/`)
+## Islanders (`rules/islanders/`)
 
 Base 2–4 player game. The base-game flow is implemented end to end: topology and board
 setup, snake-order placement, second-settlement production, regular production, building
 and costs, domestic and maritime trades, development cards, robber/discard barriers,
 Longest Road/Largest Army, and victory. The full rules, phase model, and harness mapping are in
-[docs/catan.md](../../docs/catan.md).
+[docs/islanders.md](../../docs/islanders.md).
 
 - `types.ts` — resources, terrain, pieces, ports, dev cards, the resource **freqdeck**,
-  costs, and the `CatanAction` / `Prompt` unions.
+  costs, and the `IslandersAction` / `Prompt` unions.
 - `board-topology.ts` — the static board graph: 19 hexes / 54 nodes / 72 edges with
   canonical (float-free) dedup of shared vertices/edges, adjacency tables, and the coastal
   perimeter ring for harbors. Pure, computed once, frozen.
 - `setup.ts` — seeded "variable setup": terrain, number tokens (enforcing the 6/8-not-
   adjacent rule), and harbors; plus `nodeProduction` (expected per-roll yield per vertex).
 - `placement.ts` — shared settlement-distance, city-upgrade, and road-connectivity rules.
-- `catan.ts` — `CatanState` (implements `ImperfectInfoState`) + `catanGame` + registration.
+- `islanders.ts` — `IslandersState` (implements `ImperfectInfoState`) + `islandersGame` + registration.
   Initial placement enforces the `0..n-1,n-1..0` snake, an adjacent road after each
   settlement, and starting resources from each second settlement. Its typed placement
   options expose pips, resource diversity, ports, and road expansion frontiers to bots.

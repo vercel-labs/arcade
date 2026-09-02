@@ -121,6 +121,7 @@ export interface PeekPose {
   seatZ: number; // resting card center (world z); the far edge is pinned half a card back of it
   reveal: number; // 0 flat & face-down · `peek` fully arched · 1 upright & face-on
   peek: number; // the reveal value at which the arch is fully expressed
+  restAz?: number; // resting card yaw; defaults to the hero-seat orientation (0)
   az: number; // camera azimuth, so a lifted card yaws to keep its face to the hero
 }
 
@@ -137,10 +138,17 @@ function peekParams(pose: PeekPose): { phi: number; kappa: number; yaw: number; 
   return {
     phi: (Math.PI / 2) * liftF, // uniform stand-up: 0 flat → 90° upright
     kappa: BEND_MAX * peekF * (1 - liftF), // curl peaks at the peek, relaxes as the card stands up
-    yaw: pose.az * liftF, // face the hero once lifted
+    yaw: lerpAngle(pose.restAz ?? 0, pose.az, liftF), // keep the resting seat orientation, then face the viewer if requested
     liftY: LIFT_Y * liftF,
     liftZ: LIFT_Z * liftF,
   };
+}
+
+function lerpAngle(from: number, to: number, t: number): number {
+  let delta = (to - from) % (Math.PI * 2);
+  if (delta > Math.PI) delta -= Math.PI * 2;
+  if (delta < -Math.PI) delta += Math.PI * 2;
+  return from + delta * t;
 }
 
 // A bent-strip mesh has constant topology ((segs+1)×2 vertices, 2 triangles/segment),

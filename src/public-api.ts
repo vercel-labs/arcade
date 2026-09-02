@@ -2,8 +2,8 @@ export * as engine from './engine/index.ts';
 export * as tui from './tui/browser.ts';
 export {
   BrowserArcade,
-  BrowserCatanCinematic,
-  BrowserCatanTileShowcase,
+  BrowserIslandersCinematic,
+  BrowserIslandersTileShowcase,
   BrowserChessBoardShowcase,
   BrowserChessPieceShowcase,
   BrowserPokerChipsShowcase,
@@ -18,7 +18,7 @@ export {
 export type {
   BrowserArcadeFrame,
   BrowserArcadeScreen,
-  BrowserCatanTerrainSceneId,
+  BrowserIslandersTerrainSceneId,
   BrowserDisplayMode,
   BrowserMiniScene,
   BrowserMiniSceneFrame,

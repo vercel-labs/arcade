@@ -50,6 +50,11 @@ export interface KeyHandlers {
   closePokerMenu(): void;
   closePokerNotes(): void;
   closeChessMenu(): void;
+  openIslandersMenu(): void;
+  openIslandersGameMenu(): void;
+  closeIslandersMenu(): void;
+  closeIslandersPieceEdit(): void;
+  closeIslandersGameMenu(): void;
   escBack(): void;
   closeConfirmHome(): void;
   openShortcuts(): void;
@@ -64,6 +69,10 @@ export interface KeyHandlers {
 // nudge; pan() scales it by distance and eases the camera to the new target, so a
 // larger step pans faster while staying smooth.
 const PAN_STEP = 16;
+
+export function escapeBackRequiresConfirmation(mode: string): boolean {
+  return mode === 'chess-game' || mode === 'poker' || mode === 'islanders';
+}
 
 // Build the command surface + per-mode key bindings and return the keymap.
 export function installKeymap(h: KeyHandlers): Keymap {
@@ -118,6 +127,11 @@ export function installKeymap(h: KeyHandlers): Keymap {
     { id: 'poker.closeNotes', title: 'Close poker notes', run: h.closePokerNotes },
     { id: 'chess.openMenu', title: 'Open menu', run: h.openChessMenu },
     { id: 'chess.closeMenu', title: 'Close chess menu', run: h.closeChessMenu },
+    { id: 'islanders.openMenu', title: 'Open Islanders menu', run: h.openIslandersMenu },
+    { id: 'islanders.openGameMenu', title: 'Open Islanders game menu', run: h.openIslandersGameMenu },
+    { id: 'islanders.closeMenu', title: 'Close Islanders menu', run: h.closeIslandersMenu },
+    { id: 'islanders.closePieceEdit', title: 'Close Islanders piece editor', run: h.closeIslandersPieceEdit },
+    { id: 'islanders.closeGameMenu', title: 'Close Islanders game menu', run: h.closeIslandersGameMenu },
   ]) {
     keymap.register(c);
   }
@@ -151,6 +165,8 @@ export function installKeymap(h: KeyHandlers): Keymap {
   keymap.bind('poker', { key: '-', cmd: 'poker.betDown' });
   keymap.bind('poker', { key: '=', cmd: 'poker.betUp' }); // unshifted "+"
   keymap.bind('poker', { key: '+', cmd: 'poker.betUp' });
+  keymap.bind('islanders-tiles', { key: 'm', cmd: 'islanders.openMenu' });
+  keymap.bind('islanders', { key: 'm', cmd: 'islanders.openGameMenu' });
   // Menu hub: arrows move, Enter/Space launch, Escape returns to the prism loading
   // screen. Escape here shadows the global Escape→quit because the 'menu' base layer
   // is searched before 'global'.
@@ -169,7 +185,7 @@ export function installKeymap(h: KeyHandlers): Keymap {
   // the active scene via activeOrbit()). In 'ui', a focused component consumes
   // arrows first (Screen.handleKey runs before the keymap), so these pan only when
   // the scene — not a widget — has focus.
-  for (const layer of ['chess', 'logos', 'ui', 'cards', 'poker']) {
+  for (const layer of ['chess', 'logos', 'ui', 'cards', 'poker', 'islanders', 'islanders-tiles']) {
     for (const b of [
       { key: 'r', cmd: 'camera.resetView' },
       { key: 'left', cmd: 'camera.panLeft' },
@@ -180,11 +196,11 @@ export function installKeymap(h: KeyHandlers): Keymap {
       keymap.bind(layer, b);
     }
   }
-  // Escape = back one level on every non-menu screen. Games (chess-game / poker) open the
+  // Escape = back one level on every non-menu screen. Games open the
   // "return home?" confirm via escBack; other screens go straight to the menu. The menu's
   // own escape (→ prism) and each modal's escape (→ close) live in layers above these and
   // take precedence. (Prism's escape falls through to the global esc → quit.)
-  for (const layer of ['chess', 'cards', 'logos', 'ui', 'poker', 'audio']) keymap.bind(layer, { key: 'escape', cmd: 'nav.escBack' });
+  for (const layer of ['chess', 'cards', 'logos', 'ui', 'poker', 'audio', 'islanders', 'islanders-tiles']) keymap.bind(layer, { key: 'escape', cmd: 'nav.escBack' });
 
   // Audio screen: type-to-talk owns letters (handled before the keymap), so only the
   // non-text keys are bound here — Escape returns to the menu and the arrows pan the
@@ -230,6 +246,11 @@ export function installKeymap(h: KeyHandlers): Keymap {
   // Chess in-game menu popup: Escape closes it; the layer shadows stray keys.
   keymap.bind('chess-menu', { key: 'escape', cmd: 'chess.closeMenu' });
   keymap.bind('chess-menu', { key: 'm', cmd: 'chess.closeMenu' }); // 'm' toggles the menu shut
+  keymap.bind('islanders-menu', { key: 'escape', cmd: 'islanders.closeMenu' });
+  keymap.bind('islanders-menu', { key: 'm', cmd: 'islanders.closeMenu' });
+  keymap.bind('islanders-piece-edit', { key: 'escape', cmd: 'islanders.closePieceEdit' });
+  keymap.bind('islanders-game-menu', { key: 'escape', cmd: 'islanders.closeGameMenu' });
+  keymap.bind('islanders-game-menu', { key: 'm', cmd: 'islanders.closeGameMenu' });
   // Return-to-home confirm popup (esc in a game): Escape cancels (stay in the game); the
   // modal layer shadows stray keys. Enter on the default-focused "Return home" confirms.
   keymap.bind('confirm-home', { key: 'escape', cmd: 'nav.confirmHomeCancel' });
@@ -256,6 +277,9 @@ export function installKeymap(h: KeyHandlers): Keymap {
     'poker-menu',
     'poker-notes',
     'chess-menu',
+    'islanders-menu',
+    'islanders-piece-edit',
+    'islanders-game-menu',
     'confirm-home',
     'shortcuts',
     'confirm-quit',

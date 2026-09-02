@@ -19,11 +19,15 @@ import {
 } from '../../rules/chess/types.ts';
 import { cardLabel } from '../../rules/poker/cards.ts';
 import type { PokerAction, PokerRulesHandRecord } from '../../rules/poker/holdem.ts';
+import type { IslandersState, IslandersTranscript } from '../../rules/islanders/islanders.ts';
+import type { IslandersAction, PlayerColor } from '../../rules/islanders/types.ts';
 import {
   RECORD_SCHEMA_VERSION,
   type CanonicalAction,
   type ChessAppliedAction,
   type ChessMatchRecord,
+  type IslandersAppliedAction,
+  type IslandersMatchRecord,
   type ControllerAssignment,
   type DecisionDiagnostics,
   type ParticipantResult,
@@ -44,6 +48,15 @@ const id = (): string => randomUUID();
 // Persist a recoverable chess revision every five full moves. Normal completion,
 // navigation, and quit still emit immediately; this only bounds hard-crash loss.
 export const CHESS_CHECKPOINT_INTERVAL_PLIES = 10;
+export const ISLANDERS_CHECKPOINT_INTERVAL_ACTIONS = 25;
+
+export function isIslandersCheckpointAction(actionCount: number): boolean {
+  if (actionCount < ISLANDERS_CHECKPOINT_INTERVAL_ACTIONS || actionCount % ISLANDERS_CHECKPOINT_INTERVAL_ACTIONS !== 0) return false;
+  const bucket = Math.floor(actionCount / ISLANDERS_CHECKPOINT_INTERVAL_ACTIONS);
+  return (bucket & (bucket - 1)) === 0;
+}
+// One Islanders game is one Tinybird row. Bound live sessions so even an intentionally
+// non-progressing table remains below the existing sub-1MB canonical-record contract.
 
 function sameController(a: ControllerAssignment, b: RecorderController): boolean {
   return a.controllerKind === b.kind &&
@@ -299,6 +312,200 @@ export class ChessGameRecorder {
       },
     };
   }
+}
+
+export class IslandersGameRecorder {
+  readonly matchId = id();
+  private readonly recordId = id();
+  private readonly startedAt = now();
+  private readonly timeline: ControllerTimeline;
+  private readonly actions: Array<CanonicalAction<IslandersAppliedAction>> = [];
+  private pending: {
+    seat: number;
+    action: IslandersAction;
+    base: Omit<CanonicalAction<IslandersAppliedAction>, 'applied'>;
+  } | null = null;
+  private emitted = false;
+
+  constructor(
+    private readonly mode: 'ai_table' | 'human_table' | 'mixed',
+    initial: RecorderController[],
+    private readonly colors: PlayerColor[],
+    playerKey = '',
+  ) {
+    this.timeline = new ControllerTimeline(colors, initial, playerKey);
+  }
+
+  actionChosen(
+    seat: number,
+    player: Player<IslandersAction>,
+    choice: ActionChoice<IslandersAction>,
+    state: IslandersState,
+    human: boolean,
+    requestedModel?: string,
+  ): void {
+    const seq = state.actionRecords().length + 1;
+    const participant = this.timeline.participant(seat);
+    const assignment = this.timeline.assignmentFor(
+      seat,
+      playerController(player, human, undefined, requestedModel),
+      seq,
+    );
+    this.pending = {
+      seat,
+      action: structuredClone(choice.action),
+      base: {
+        actionId: id(),
+        seq,
+        participantId: participant.participantId,
+        assignmentId: assignment.assignmentId,
+        phase: state.currentPrompt().kind,
+        ...decisionFields(choice.diagnostics),
+        attempts: undefined,
+      },
+    };
+  }
+
+  actionApplied(state: IslandersState): void {
+    this.syncAppliedRulesActions(state);
+  }
+
+  checkpoint(state: IslandersState): IslandersMatchRecord | null {
+    if (this.emitted || !isIslandersCheckpointAction(this.actions.length)) return null;
+    return this.build(state, 'in_progress', undefined);
+  }
+
+  externalActionApplied(state: IslandersState): IslandersMatchRecord | null {
+    // The driver aborts/retries any in-flight decision before applying an out-of-turn
+    // withdrawal. That choice was never applied and must not occupy its old sequence.
+    this.pending = null;
+    this.syncAppliedRulesActions(state);
+    return this.checkpoint(state);
+  }
+
+  completed(state: IslandersState): IslandersMatchRecord | null {
+    if (this.emitted) return null;
+    this.emitted = true;
+    return this.build(state, 'completed', 'natural');
+  }
+
+  abandoned(reason: Exclude<RecordEndReason, 'natural'>, state: IslandersState): IslandersMatchRecord | null {
+    if (this.emitted) return null;
+    this.emitted = true;
+    return this.build(state, 'abandoned', reason);
+  }
+
+  private build(
+    state: IslandersState,
+    status: 'in_progress' | 'completed' | 'abandoned',
+    endReason: RecordEndReason | undefined,
+  ): IslandersMatchRecord {
+    this.syncAppliedRulesActions(state);
+    const transcript = state.transcript();
+    const winner = state.winner();
+    const scores = Array.from({ length: state.n }, (_, seat) => state.victoryPoints(seat, true));
+    const order = [...scores].sort((a, b) => b - a);
+    const results: ParticipantResult[] = this.timeline.participants.map((participant, seat) => {
+      if (status !== 'completed') return { participantId: participant.participantId, result: 'unranked', score: scores[seat] };
+      const score = scores[seat];
+      const better = order.filter((value) => value > score).length;
+      const tied = order.filter((value) => value === score).length;
+      return {
+        participantId: participant.participantId,
+        result: seat === winner ? 'win' : 'loss',
+        rank: better + 1,
+        placementMin: better + 1,
+        placementMax: better + tied,
+        score,
+        utility: seat === winner ? 1 : -1,
+      };
+    });
+    const holderId = (seat: number): string | undefined => seat >= 0 ? this.timeline.participant(seat).participantId : undefined;
+    return {
+      recordType: 'match',
+      recordSchemaVersion: RECORD_SCHEMA_VERSION,
+      recordId: this.recordId,
+      revision: this.actions.length + (status === 'in_progress' ? 0 : 1),
+      matchId: this.matchId,
+      game: 'islanders',
+      rulesVersion: 'islanders-base-1',
+      status,
+      ...(endReason ? { endReason } : {}),
+      startedAt: this.startedAt,
+      ...(status === 'in_progress' ? {} : { endedAt: now() }),
+      lastActionSeq: this.actions.length,
+      participants: this.timeline.participants.map((participant) => ({ ...participant })),
+      controllerAssignments: this.timeline.snapshot(this.actions.length),
+      actions: this.actions.map((action) => structuredClone(action)),
+      results,
+      details: {
+        mode: this.mode,
+        tableSize: state.n,
+        domesticTrade: transcript.domesticTrade,
+        ...(transcript.domesticTradeOfferLimit !== undefined ? { domesticTradeOfferLimit: transcript.domesticTradeOfferLimit } : {}),
+        replay: {
+          board: structuredClone(transcript.board),
+          initialDevelopmentDeck: transcript.initialDevelopmentDeck.slice(),
+        },
+        ...(status === 'in_progress' ? {} : { finalVictoryPoints: scores }),
+        ...(holderId(state.longestRoad()) ? { longestRoadParticipantId: holderId(state.longestRoad()) } : {}),
+        ...(holderId(state.largestArmy()) ? { largestArmyParticipantId: holderId(state.largestArmy()) } : {}),
+      },
+    };
+  }
+
+  private syncAppliedRulesActions(state: IslandersState): void {
+    const records = state.actionRecords();
+    while (this.actions.length < records.length) {
+      const rulesRecord = records[this.actions.length];
+      const seq = this.actions.length + 1;
+      const pendingMatches = this.pending?.base.seq === seq
+        && this.pending.seat === rulesRecord.player
+        && JSON.stringify(this.pending.action) === JSON.stringify(rulesRecord.action);
+      const participant = this.timeline.participant(rulesRecord.player);
+      const assignment = this.timeline.currentAssignment(rulesRecord.player);
+      this.actions.push({
+        ...(pendingMatches ? this.pending!.base : {
+          actionId: id(),
+          seq,
+          participantId: participant.participantId,
+          assignmentId: assignment.assignmentId,
+          phase: rulesRecord.action.type === 'withdrawCounterTrade' ? 'decideAcceptees' : 'external',
+        }),
+        applied: {
+          action: structuredClone(rulesRecord.action),
+          ...(rulesRecord.outcome ? { outcome: structuredClone(rulesRecord.outcome) } : {}),
+        },
+      });
+      if (pendingMatches) this.pending = null;
+    }
+    if (this.pending && this.pending.base.seq <= this.actions.length) {
+      throw new Error('Islanders recording diverged from the applied rules action');
+    }
+  }
+}
+
+/** Rebuild the rules-engine transcript carried by a canonical record, with no chat or UI state. */
+export function islandersTranscriptFromRecord(record: IslandersMatchRecord): IslandersTranscript {
+  const seatByParticipant = new Map(record.participants.map((participant, seat) => [participant.participantId, seat]));
+  return {
+    numPlayers: record.details.tableSize,
+    domesticTrade: record.details.domesticTrade,
+    ...(record.details.domesticTradeOfferLimit !== undefined ? { domesticTradeOfferLimit: record.details.domesticTradeOfferLimit } : {}),
+    board: structuredClone(record.details.replay.board),
+    initialDevelopmentDeck: record.details.replay.initialDevelopmentDeck.slice(),
+    randomTape: [],
+    initialRandomCursor: 0,
+    actions: record.actions.map((canonical) => {
+      const player = seatByParticipant.get(canonical.participantId);
+      if (player === undefined) throw new Error(`Unknown Islanders participant ${canonical.participantId}`);
+      return {
+        player,
+        action: structuredClone(canonical.applied.action),
+        ...(canonical.applied.outcome ? { outcome: structuredClone(canonical.applied.outcome) } : {}),
+      };
+    }),
+  };
 }
 
 interface PokerActionActor {

@@ -9,7 +9,7 @@ import { Surface } from '../engine/surface.ts';
 import type { PointerFieldSnapshot } from '../engine/pointer-field.ts';
 import { PrismScene } from '../prism/prism.ts';
 import { SplashScene, SPLASH_END } from '../prism/splash.ts';
-import { BrowserCatanCinematic, BrowserPokerCinematic } from './browser-game-cinematics.ts';
+import { BrowserIslandersCinematic, BrowserPokerCinematic } from './browser-game-cinematics.ts';
 import { BrowserChessBoardShowcase } from './browser-mini-scenes.ts';
 import { BrowserCoverFlow } from './browser-coverflow.ts';
 import { applySurfacePointerEffect, type SurfacePointerMode } from './surface-pointer-effects.ts';
@@ -26,7 +26,7 @@ const MATCH_CUTS = [
   { from: { x: 0.5, y: 0.5 }, to: { x: 0.5, y: 0.48 }, direction: { x: 0.76, y: 0.65 } },
   // Dark board square → cards and felt.
   { from: { x: 0.56, y: 0.49 }, to: { x: 0.5, y: 0.52 }, direction: { x: -0.72, y: 0.69 } },
-  // Poker cards/felt → Catan's central hex and water.
+  // Poker cards/felt → Islanders's central hex and water.
   { from: { x: 0.5, y: 0.5 }, to: { x: 0.5, y: 0.5 }, direction: { x: 0.84, y: 0.54 } },
 ] as const;
 
@@ -43,7 +43,7 @@ export class LivingTitleScene {
   private readonly chess = new BrowserChessBoardShowcase();
   private readonly covers = new BrowserCoverFlow();
   private readonly poker = new BrowserPokerCinematic();
-  private readonly catan = new BrowserCatanCinematic();
+  private readonly islanders = new BrowserIslandersCinematic();
   private readonly chessLoop = new ActiveSceneLoopClock();
   private readonly pokerLoop = new ActiveSceneLoopClock();
   private readonly transitionPlates = new Map<string, Partial<{ source: Surface; destination: Surface }>>();
@@ -123,9 +123,13 @@ export class LivingTitleScene {
   private scene(act: number, cols: number, rows: number, progress: number, time: number, reduced: boolean): Surface {
     if (act === 0) return this.prismSurface(cols, rows, reduced ? 0.8 : time, progress);
     if (act === 1) return this.covers.frame(cols, rows, progress);
-    if (act === 2) { this.chess.setCinematicState(progress, this.chessGameplayPhase); return stripLabels(this.chess.frame(cols, rows, reduced ? 0 : time).surface); }
+    if (act === 2) {
+      this.chess.setChromeVisible(false);
+      this.chess.setCinematicState(progress, this.chessGameplayPhase);
+      return this.chess.frame(cols, rows, reduced ? 0 : time).surface;
+    }
     if (act === 3) return this.poker.frame(cols, rows, progress, reduced ? 0 : time, this.pokerGameplayPhase);
-    return this.catan.frame(cols, rows, progress, reduced ? 0 : time);
+    return this.islanders.frame(cols, rows, progress, reduced ? 0 : time);
   }
 
   private prismSurface(cols: number, rows: number, time: number, progress: number): Surface {
@@ -152,6 +156,5 @@ export class LivingTitleScene {
   }
 }
 
-function stripLabels(surface: Surface): Surface { surface.fillRect(0, 0, surface.cols, 3, BLACK); surface.fillRect(0, surface.rows - 4, surface.cols, 4, BLACK); return surface; }
 function smoothstep(value: number): number { const t = clamp01(value); return t * t * (3 - 2 * t); }
 function clamp01(value: number): number { return Math.max(0, Math.min(1, value)); }

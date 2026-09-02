@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { ensureCachedGatewayKey } from '../auth/index.ts';
 import { MatchLabArtifacts, runWorkerPool, summarizeRun } from './match-lab/artifacts.ts';
-import { runCatanMatchLab } from './match-lab/adapters/catan.ts';
+import { runIslandersMatchLab } from './match-lab/adapters/islanders.ts';
 import { runChessMatch } from './match-lab/adapters/chess.ts';
 import { runPokerMatchLab } from './match-lab/adapters/poker.ts';
 import { buildMatchPlans, parseMatchLabConfig } from './match-lab/config.ts';
@@ -17,7 +17,7 @@ import type { MatchLabAdapter, MatchLabGame, MatchLabManifest, MatchLabResult } 
 
 const ADAPTERS: Record<MatchLabGame, MatchLabAdapter> = {
   chess: runChessMatch,
-  catan: runCatanMatchLab,
+  islanders: runIslandersMatchLab,
   poker: runPokerMatchLab,
 };
 
@@ -26,7 +26,7 @@ function usage(): void {
 
 Usage:
   pnpm match:run -- --game chess [options]
-  pnpm match:run -- --game catan [options]
+  pnpm match:run -- --game islanders [options]
   pnpm match:run -- --game poker [options]
 
 Options:
@@ -37,14 +37,14 @@ Options:
   --swap-seats           Rotate model seats between matches
   --timeout=N            Per-match timeout in seconds (default 600)
   --max-plies=N          Chess ply bound (default 300)
-  --max-actions=N        Catan/Poker action bound
+  --max-actions=N        Islanders/Poker action bound
   --max-hands=N          Poker hand bound (default 100)
   --starting-chips=N     Poker chips per player (default 1000)
   --small-blind=N        Poker initial small blind (default 10)
   --big-blind=N          Poker initial big blind (default 20)
   --hands-per-level=N    Completed hands per blind level (default 15)
-  --setup-only           Stop Catan after initial placements
-  --communication=MODE   Autoreply or ambient communication (default autoreply)
+  --setup-only           Stop Islanders after initial placements
+  --communication=MODE   Autoreply or ambient communication (Islanders defaults ambient; others autoreply)
   --output=PATH          Artifact directory (default .runs/<timestamp>-<game>)
 
 Telemetry is always disabled. Results are local files only.`);

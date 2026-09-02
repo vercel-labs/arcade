@@ -4,7 +4,7 @@
 
 Arcade is the first build-out of **Vercel Arcade**: play classic games against frontier models through the [Vercel AI Gateway](https://vercel.com/ai-gateway), or sit back and watch two models play each other. It all runs inside a terminal, drawn with truecolor half-blocks. Everything here is pure TypeScript with **zero native dependencies**: the 3D renderer, the UI layer, and the game rules are all written from scratch.
 
-**Chess, poker, and Catan are playable today.** Real 3D pieces, a felt poker table, and a full Catan board are lit and rasterized in software, then presented as ASCII/half-blocks. Play a model yourself, or watch models play each other.
+**Chess, poker, and Islanders are playable today.** Real 3D pieces, a felt poker table, and a full Islanders board are lit and rasterized in software, then presented as ASCII/half-blocks. Play a model yourself, or watch models play each other.
 
 > This README covers the codebase and how to run it. Internal product context lives in the Vercel Arcade Notion.
 
@@ -69,9 +69,9 @@ src/
   tui/        retained-mode TUI: flexbox layout + Box/Text/Button, hover/focus/press,
               hit-testing, paints to a Surface
   platform/   terminal control (alt-screen, raw mode, SGR mouse) + input parsing
-  rules/      UI-independent chess, poker, and Catan rules states
+  rules/      UI-independent chess, poker, and Islanders rules states
   harness/    Player/ModelPlayer + communication + live/headless match orchestration
-  game-visuals/ reusable renderer-only Catan, Chess, and Poker primitives
+  game-visuals/ reusable renderer-only Islanders, Chess, and Poker primitives
   prism/      the animated prism screen (self-contained), also the curl-able stream behind api/
   auth/       Vercel sign-in (OAuth device flow) + AI Gateway key resolution
   voice/      realtime speech-to-speech session + mic/speaker I/O + echo cancellation
@@ -100,7 +100,7 @@ Rendering is **unified**: the 3D scene paints into the same `Surface` as the UI,
 
 The rules use an extensible, **AI-ready** state contract modeled on DeepMind OpenSpiel (a `Game`/`State` split) and Kaggle Game Arena (a player is just `observation → action`). A `State` exposes `legalActions`, `applyAction`, `isTerminal`, `returns`, `clone`, and notation conversion. The public `harness/` layer connects those states to interchangeable model, human, or custom players without owning credentials or telemetry.
 
-The **chess rules engine** is written from scratch (0x88 board, full legal move generation, castling/en passant/promotion, checkmate/stalemate, the 50-move/threefold/insufficient-material draws, SAN + UCI notation), proven by **perft** against reference node counts (`pnpm exec tsx src/tools/perft.ts`). Poker implements no-limit Texas Hold'em, and Catan implements setup, production, building, trading, development cards, robber/discards, awards, and victory.
+The **chess rules engine** is written from scratch (0x88 board, full legal move generation, castling/en passant/promotion, checkmate/stalemate, the 50-move/threefold/insufficient-material draws, SAN + UCI notation), proven by **perft** against reference node counts (`pnpm exec tsx src/tools/perft.ts`). Poker implements no-limit Texas Hold'em, and Islanders implements setup, production, building, trading, development cards, robber/discards, awards, and victory.
 
 See [the harness guide](docs/harness.md), [repository map](docs/architecture/repository-map.md), and [package boundary policy](docs/architecture/package-boundaries.md) for the reusable API and complete app/library/deployment layout.
 

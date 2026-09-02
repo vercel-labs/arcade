@@ -35,7 +35,10 @@ const FORBIDDEN_KEYS = new Set([
 ]);
 
 // Product transport ceiling, deliberately kept out of the public harness contract.
-export const MAX_RECORD_BYTES = 900 * 1024;
+// Vercel Functions reject request bodies around 4.5 MiB before application
+// validation. Keep the complete one-row NDJSON request comfortably below it.
+export const MAX_RECORD_ROW_BYTES = 4 * 1024 * 1024;
+export const MAX_RECORD_BYTES = MAX_RECORD_ROW_BYTES - 128 * 1024;
 
 export function isPrivacySafeRecord(value: unknown, seen = new Set<object>()): boolean {
   if (value === undefined || value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return true;
@@ -64,7 +67,7 @@ export function toCanonicalRecordRow(
     if (Buffer.byteLength(payload) > MAX_RECORD_BYTES) return null;
     const hand = record.recordType === 'poker_hand' ? record : null;
     const hasHuman = record.participants.some((participant) => participant.kind === 'human');
-    return {
+    const row: CanonicalRecordRow = {
       emittedAt: envelope.emittedAt ?? new Date().toISOString(),
       sessionId: envelope.session,
       playerKey: hasHuman ? (envelope.playerKey ?? '') : '',
@@ -87,6 +90,7 @@ export function toCanonicalRecordRow(
       actionCount: record.actions.length,
       payloadJson: payload,
     };
+    return Buffer.byteLength(JSON.stringify(row)) <= MAX_RECORD_ROW_BYTES ? row : null;
   } catch {
     return null;
   }

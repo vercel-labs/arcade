@@ -39,6 +39,16 @@ test('Poker autopilot reaches every street and folds deterministic seats', () =>
   assert.ok(pokerLoopState(shiftedPhase(0.9)).gatherElapsed !== null);
 });
 
+test('Poker seats use varied production peek and full-lift choreography', () => {
+  const samples = Array.from({ length: 201 }, (_, index) => pokerLoopState(index / 200).seatPeeks);
+  for (let seat = 0; seat < 5; seat++) {
+    assert.ok(samples.some((peeks) => peeks[seat].some((reveal) => reveal > 0)), `seat ${seat} never looks at its cards`);
+  }
+  assert.ok(samples.every((peeks) => peeks[1][1] === 0), 'one player should inspect only one card');
+  assert.ok(samples.some((peeks) => peeks[2][1] > 0.9), 'one player should lift a card fully face-on');
+  assert.ok(samples.some((peeks) => peeks[3][1] > 0 && peeks[3][0] === 0), 'one player should peek out of order');
+});
+
 function shiftedPhase(original: number): number { return (original * 18 + 3.48) / POKER_LOOP_SECONDS; }
 
 test('Poker bets keep immutable chip values and only animate travel', () => {

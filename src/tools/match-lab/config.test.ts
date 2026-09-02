@@ -13,19 +13,20 @@ test('parses models, bounds, and rotates seats deterministically', () => {
   assert.equal(new Set(plans.map((plan) => plan.seed)).size, 3);
 });
 
-test('Catan match lab accepts two through four models and rejects other table sizes', () => {
-  assert.equal(parseMatchLabConfig(['--game=catan', '--models=a,b']).models.length, 2);
-  assert.equal(parseMatchLabConfig(['--game=catan', '--models=a,b,c']).models.length, 3);
-  assert.equal(parseMatchLabConfig(['--game=catan', '--models=a,b,c,d']).models.length, 4);
-  assert.throws(() => parseMatchLabConfig(['--game=catan', '--models=a']), /2 through 4 models/);
-  assert.throws(() => parseMatchLabConfig(['--game=catan', '--models=a,b,c,d,e']), /2 through 4 models/);
+test('Islanders match lab accepts two through four models and rejects other table sizes', () => {
+  assert.equal(parseMatchLabConfig(['--game=islanders', '--models=a,b']).models.length, 2);
+  assert.equal(parseMatchLabConfig(['--game=islanders', '--models=a,b,c']).models.length, 3);
+  assert.equal(parseMatchLabConfig(['--game=islanders', '--models=a,b,c,d']).models.length, 4);
+  assert.throws(() => parseMatchLabConfig(['--game=islanders', '--models=a']), /2 through 4 models/);
+  assert.throws(() => parseMatchLabConfig(['--game=islanders', '--models=a,b,c,d,e']), /2 through 4 models/);
 });
 
-test('all match-lab games default to autoreply and accept ambient', () => {
+test('Islanders defaults to ambient while other match-lab games retain autoreply', () => {
   assert.equal(parseMatchLabConfig(['--game=chess', '--models=a,b']).communicationMode, 'autoreply');
   assert.equal(parseMatchLabConfig(['--game=poker', '--models=a,b', '--communication=ambient']).communicationMode, 'ambient');
-  assert.equal(parseMatchLabConfig(['--game=catan', '--models=a,b', '--communication=ambient']).communicationMode, 'ambient');
-  assert.throws(() => parseMatchLabConfig(['--game=catan', '--models=a,b', '--communication=noisy']), /autoreply or ambient/);
+  assert.equal(parseMatchLabConfig(['--game=islanders', '--models=a,b']).communicationMode, 'ambient');
+  assert.equal(parseMatchLabConfig(['--game=islanders', '--models=a,b', '--communication=autoreply']).communicationMode, 'autoreply');
+  assert.throws(() => parseMatchLabConfig(['--game=islanders', '--models=a,b', '--communication=noisy']), /autoreply or ambient/);
 });
 
 test('uses live Poker tournament defaults and accepts explicit overrides', () => {

@@ -65,7 +65,7 @@ is not exported remains package implementation. See `docs/architecture/package-b
 - `pnpm snapshot:png …` — same, then convert the `.ppm` to a `.png` in one step
 - `pnpm type-check` — `tsc --noEmit`
 - `pnpm test` — unit tests via `node:test` under `tsx` (auto-discovers `src/**/*.test.ts`; no extra deps)
-- `pnpm catan:check capture` then `pnpm catan:check` — fingerprint 24 Catan views before a refactor
+- `pnpm islanders:check capture` then `pnpm islanders:check` — fingerprint 24 Islanders views before a refactor
   and compare after, to prove a move of mesh or scene code doesn't change what's drawn. A pass means
   the `.ppm` snapshots are byte-identical too. The baseline is local (gitignored), not a committed
   golden file, so intended visual changes don't fight it — just re-`capture`.

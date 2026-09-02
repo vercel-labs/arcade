@@ -21,12 +21,12 @@ test('shared Cover Flow renders carousel and launch without platform APIs', () =
 });
 
 test('production catalogue retains exact CLI and browser ordering', () => {
-  assert.deepEqual(ARCADE_CATALOGUE.map(({ id }) => id), ['chess', 'poker', 'catan', 'mahjong', 'leaderboard', 'achievements']);
+  assert.deepEqual(ARCADE_CATALOGUE.map(({ id }) => id), ['chess', 'poker', 'islanders', 'mahjong', 'leaderboard', 'achievements']);
 });
 
 test('cinematic Cover Flow settles on Chess, flips, and holds before the cut', () => {
-  assert.equal(coverFlowCinematicState(0.64, ARCADE_CATALOGUE.length).pos, ARCADE_CATALOGUE.length);
-  assert.equal(coverFlowIndex(coverFlowCinematicState(0.64, ARCADE_CATALOGUE.length).pos, ARCADE_CATALOGUE.length), 0);
+  assert.equal(coverFlowCinematicState(0.58, ARCADE_CATALOGUE.length).pos, ARCADE_CATALOGUE.length);
+  assert.equal(coverFlowIndex(coverFlowCinematicState(0.58, ARCADE_CATALOGUE.length).pos, ARCADE_CATALOGUE.length), 0);
   assert.equal(coverFlowCinematicState(0.68, ARCADE_CATALOGUE.length).launch, 0);
   assert.ok(coverFlowCinematicState(0.77, ARCADE_CATALOGUE.length).launch > 0.4);
   assert.equal(coverFlowCinematicState(0.84, ARCADE_CATALOGUE.length).launch, 1);
@@ -40,7 +40,17 @@ test('Cover Flow wraps virtual slots in both directions without duplicating cata
   assert.equal(coverFlowIndex(count, count), 0);
   assert.equal(coverFlowIndex(count + 1, count), 1);
   assert.equal(coverFlowCinematicState(0, count).pos, 0);
-  assert.equal(coverFlowCinematicState(0.63, count).pos, count);
+  assert.equal(coverFlowCinematicState(0.58, count).pos, count);
+});
+
+test('cinematic Cover Flow accelerates, then brakes into its returning Chess cover', () => {
+  const count = ARCADE_CATALOGUE.length;
+  const positions = Array.from({ length: 30 }, (_, index) => coverFlowCinematicState(index * 0.58 / 29, count).pos);
+  const steps = positions.slice(1).map((position, index) => position - positions[index]);
+  const peak = Math.max(...steps);
+  assert.ok(steps[0] < peak * 0.2, 'menu should ease away from Chess');
+  assert.ok(steps.at(-1)! < peak * 0.2, 'menu should brake into Chess');
+  assert.ok(steps[Math.floor(steps.length / 2)] > peak * 0.9, 'menu should move briskly through its middle');
 });
 
 test('wrapped Chess renders with the final catalogue covers immediately to its left', () => {
@@ -53,6 +63,15 @@ test('wrapped Chess renders with the final catalogue covers immediately to its l
   const previous = renderer.coverScreenRect(-1, 80, 36);
   assert.ok(Number.isFinite(previous.x));
   assert.ok(previous.x < renderer.coverScreenRect(0, 80, 36).x);
+});
+
+test('no hover does not light the negative slot to the left of Chess', () => {
+  const renderer = new CoverFlowRenderer(ARCADE_CATALOGUE, () => texture);
+  const resting = new RenderTarget(240, 216);
+  renderer.renderScene(resting, 0, null);
+  const hoveredPrevious = new RenderTarget(240, 216);
+  renderer.renderScene(hoveredPrevious, 0, -1);
+  assert.notDeepEqual(resting.color, hoveredPrevious.color, 'negative slots remain hoverable but are not the empty-hover sentinel');
 });
 
 test('website title hold keeps a coherent card on an ultrawide terminal grid', () => {

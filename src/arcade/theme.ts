@@ -54,3 +54,5 @@ export const UI_CHROME_PILL: Style = {
   focus: { background: 'controlFocusBg', color: 'controlFocusFg' },
   pressed: { background: 'controlPressedBg', color: 'controlPressedFg' },
 };
+
+export const MENU_BUTTON_LABEL = '☰ menu';

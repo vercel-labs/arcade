@@ -43,6 +43,15 @@ test('click burst adds expanding VERCEL fragments without clearing the scene',()
   assert.ok(countGlyphs(output)>countGlyphs(source));
 });
 
+test('click smoke remains a loose ring instead of filling one compact blob',()=>{
+  const source=new Surface(72,30);source.fillRect(0,0,72,30,[0,0,0]);
+  const particles=Array.from({length:30},(_,id)=>{const edge=id%3,t=(Math.floor(id/3)%10)/9;const points=[[0,-1],[.866,.5],[-.866,.5]];const a=points[edge],b=points[(edge+1)%3];return{id:id+100,x:.5+(a[0]+(b[0]-a[0])*t)*.12,y:.5+(a[1]+(b[1]-a[1])*t)*.12,vx:0,vy:0,age:.42,lifetime:1.1}});
+  const output=applySurfacePointerTrail(source,{...pointer(0),trail:[],bursts:particles});
+  let center=0,ring=0;
+  for(let y=0;y<output.rows;y++)for(let x=0;x<output.cols;x++){if(!output.getCell(x,y)?.ch?.trim())continue;const d=Math.hypot(x/(output.cols-1)-.5,y/(output.rows-1)-.5);if(d<.035)center++;if(d>.07&&d<.18)ring++;}
+  assert.ok(ring>center*4,'triangle perimeter should outweigh its hollow center');
+});
+
 test('trail contains visible blended light and dim residue without pure white',()=>{
   const source=new Surface(60,24);source.fillRect(0,0,60,24,[0,0,0]);
   const output=applySurfacePointerTrail(source,pointer());

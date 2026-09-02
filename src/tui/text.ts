@@ -2,7 +2,7 @@
 // word wrapping.
 //
 // Four call sites had each grown their own copy of this (the dropdown and select
-// lists, the chess chat, the Catan history row), and three of them measured with
+// lists, the chess chat, the Islanders history row), and three of them measured with
 // `.length` — which counts a wide glyph or an emoji as a single cell and so broke
 // the line a column or two late.
 //

@@ -36,7 +36,7 @@ export class TableCommunicationCoordinator {
     if (decision.communication.mode === 'speak') {
       this.spoken++;
       this.words += decision.communication.text.trim().split(/\s+/).filter(Boolean).length;
-      this.conversation.appendModel(seat, this.labels[seat] ?? `P${seat + 1}`, decision.communication.text, decision.communication.addressedSeats);
+      this.conversation.appendModel(seat, this.labels[seat] ?? `player ${seat + 1}`, decision.communication.text, decision.communication.addressedSeats);
       this.conversation.consumeResponseFor(seat);
     }
     return decision;

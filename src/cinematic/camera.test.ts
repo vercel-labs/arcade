@@ -27,7 +27,18 @@ test('Poker camera remains finite across the cinematic orbit', () => {
   }
 });
 
-test('every Poker creator wisp stays fully inside once the close-up reveals the table', () => {
+test('Poker camera path remains outside every creator wisp volume', () => {
+  for (let step = 0; step <= 160; step++) {
+    const camera = pokerCinematicCamera(step / 160, 16 / 9);
+    for (let seat = 0; seat < 5; seat++) {
+      const angle = pokerSeatAngle(seat, 5);
+      const anchor = { x: Math.sin(angle) * 5.97, y: 2.2, z: Math.cos(angle) * 5.97 };
+      assert.ok(Math.hypot(camera.eye.x - anchor.x, camera.eye.y - anchor.y, camera.eye.z - anchor.z) > 3, `camera intersects wisp ${seat} at ${step / 160}`);
+    }
+  }
+});
+
+test('every Poker creator wisp stays visible once the close-up reveals the table', () => {
   for (let aspect = 0.55; aspect <= 2.2; aspect += 0.05) {
     for (let step = 34; step <= 40; step++) {
       const camera = pokerCinematicCamera(step / 40, aspect);
@@ -39,7 +50,8 @@ test('every Poker creator wisp stays fully inside once the close-up reveals the 
         const edge = project(vp, { ...anchor, y: anchor.y + 0.72 });
         const radius = Math.hypot(edge.x - center.x, edge.y - center.y);
         assert.ok(Math.abs(center.x) + radius < 0.97, `wisp ${seat} clipped horizontally at aspect ${aspect}, progress ${step / 40}`);
-        assert.ok(Math.abs(center.y) + radius < 0.97, `wisp ${seat} clipped vertically at aspect ${aspect}, progress ${step / 40}`);
+        assert.ok(center.y - radius > -0.97, `wisp ${seat} billboard clipped below the viewport at aspect ${aspect}, progress ${step / 40}`);
+        assert.ok(center.y + radius < 0.99, `wisp ${seat} billboard clipped above the viewport at aspect ${aspect}, progress ${step / 40}`);
       }
     }
   }
@@ -49,8 +61,49 @@ test('Poker endpoint settles the felt near screen center across aspect ratios', 
   for (const aspect of [390 / 844, 4 / 3, 16 / 9, 2.2]) {
     const camera = pokerCinematicCamera(1, aspect);
     const table = project(cameraMatrices(camera, aspect).viewProjection, { x: 0, y: 0, z: 0 });
-    const desired = aspect < 1.05 ? 0.18 : 0.08;
+    const desired = -0.01;
     assert.ok(Math.abs(table.y - desired) < 1e-6, `table center ${table.y} at aspect ${aspect}`);
+  }
+});
+
+test('Poker keeps the felt centered throughout its rotation and pullback', () => {
+  for (const aspect of [390 / 844, 4 / 3, 16 / 9, 2.2]) {
+    const ys = Array.from({ length: 41 }, (_, step) => project(cameraMatrices(pokerCinematicCamera(step / 40, aspect), aspect).viewProjection, { x: 0, y: 0, z: 0 }).y);
+    const velocity = ys.slice(1).map((y, index) => y - ys[index]);
+    const maxStep = aspect < 1.05 ? 0.065 : 0.045;
+    assert.ok(Math.max(...velocity.map(Math.abs)) < maxStep, `table framing jumped at aspect ${aspect}`);
+    assert.ok(Math.abs(ys.at(-1)! + 0.01) < 1e-6, `ending table center ${ys.at(-1)} at aspect ${aspect}`);
+  }
+});
+
+test('Poker keeps late creator billboards within the frame', () => {
+  for (const aspect of [4 / 3, 16 / 9, 2.2]) {
+    for (let step = 26; step <= 40; step++) {
+      const camera = pokerCinematicCamera(step / 40, aspect);
+      const vp = cameraMatrices(camera, aspect).viewProjection;
+      for (let seat = 1; seat < 5; seat++) {
+        const angle = pokerSeatAngle(seat, 5);
+        const anchor = { x: Math.sin(angle) * 5.97, y: 2.2, z: Math.cos(angle) * 5.97 };
+        const center = project(vp, anchor);
+        const edge = project(vp, { ...anchor, y: anchor.y + 0.82 });
+        const radius = Math.hypot(edge.x - center.x, edge.y - center.y);
+        assert.ok(Math.abs(center.x) + radius < 0.97, `wisp ${seat} clipped horizontally at aspect ${aspect}, progress ${step / 40}`);
+        assert.ok(center.y - radius > -0.97, `wisp ${seat} billboard clipped below the viewport at aspect ${aspect}, progress ${step / 40}`);
+        assert.ok(center.y + radius < 0.99, `wisp ${seat} billboard clipped above the viewport at aspect ${aspect}, progress ${step / 40}`);
+      }
+    }
+  }
+});
+
+test('Poker endpoint retains the preferred closer table scale', () => {
+  for (const [aspect, maximum] of [[1, 18.1], [16 / 9, 13.6], [2.2, 13.6]] as const) {
+    const camera = pokerCinematicCamera(1, aspect);
+    const distance = Math.hypot(
+      camera.eye.x - camera.target.x,
+      camera.eye.y - camera.target.y,
+      camera.eye.z - camera.target.z,
+    );
+    assert.ok(distance <= maximum, `Poker endpoint pulled back too far at aspect ${aspect}: ${distance}`);
   }
 });
 

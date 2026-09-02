@@ -28,6 +28,7 @@ import {
 import {
   type CanonicalGameRecord,
   type ChessMatchRecord,
+  type IslandersMatchRecord,
   type PokerHandRecord,
   type PokerMatchRecord,
 } from '../harness/records.ts';
@@ -249,7 +250,7 @@ export function trackGameRecord(record: CanonicalGameRecord): boolean {
   return recordOutbox.enqueue(recordTarget(record), row);
 }
 
-export function trackMatchRecord(record: ChessMatchRecord | PokerMatchRecord): boolean {
+export function trackMatchRecord(record: ChessMatchRecord | PokerMatchRecord | IslandersMatchRecord): boolean {
   return trackGameRecord(record);
 }
 

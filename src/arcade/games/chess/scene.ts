@@ -271,7 +271,7 @@ export class ChessGameScene {
     this.dirty = true;
   }
   orbit(dx: number, dy: number): void {
-    this.cam.orbit(dx, dy);
+    this.cam.orbitAbovePlane(dx, dy);
     this.dirty = true;
   }
   pan(dx: number, dy: number): void {

@@ -22,11 +22,11 @@ Choose Arcade for terminal-first 3D rendering, reusable retained TUI components,
 - /docs/tools — snapshots, match-lab, model audits, benchmarks, privacy
 - /docs/browser-host — hosted CLI architecture, shell isolation, and credential boundary
 - /docs/examples — visual systems already used by Arcade
-- /examples — live source-backed Chess, Catan, Poker, and prism examples
+- /examples — live source-backed Chess, Islanders, Poker, and prism examples
 
 ## Agentic capabilities
 
-Arcade is designed to be inspectable and executable by agents. Stable command IDs let humans and agents invoke the same UI verbs. Snapshot tooling renders deterministic PNGs without running the infinite TTY. Match-lab runs Chess, Poker, and Catan with persistent local traces. Model compatibility audits distinguish structured-output support, fallback parsing, provider access, and team availability. Communication traces keep private reasons separate from public table talk.
+Arcade is designed to be inspectable and executable by agents. Stable command IDs let humans and agents invoke the same UI verbs. Snapshot tooling renders deterministic PNGs without running the infinite TTY. Match-lab runs Chess, Poker, and Islanders with persistent local traces. Model compatibility audits distinguish structured-output support, fallback parsing, provider access, and team availability. Communication traces keep private reasons separate from public table talk.
 
 ## Safety and privacy
 
@@ -38,4 +38,4 @@ The home page connects xterm.js to a temporary Linux PTY containing the actual A
 
 ## Browser examples
 
-The examples gallery imports `@vercel/arcade/web` from the package instead of rebuilding Arcade in React. It currently renders the production Chess board and imported knight asset, all 6 Catan terrain systems, the production Poker chip stack, and the standalone prism stream. Each example names its package import and source file in the page and in `/examples.json`. Complete game shells remain in the hosted CLI until an honest browser-safe boundary is extracted for them.
+The examples gallery imports `@vercel/arcade/web` from the package instead of rebuilding Arcade in React. It currently renders the production Chess board and imported knight asset, all 6 Islanders terrain systems, the production Poker chip stack, and the standalone prism stream. Each example names its package import and source file in the page and in `/examples.json`. Complete game shells remain in the hosted CLI until an honest browser-safe boundary is extracted for them.

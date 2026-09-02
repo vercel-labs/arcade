@@ -61,7 +61,7 @@ function isWide(cp: number): boolean {
 // Width of a single codepoint in cells (0, 1, or 2).
 export function cellWidth(cp: number): number {
   if (isZeroWidth(cp)) return 0;
-  // Unicode die faces (⚀–⚉) are text-presentation symbols in terminals. Treating the Catan
+  // Unicode die faces (⚀–⚉) are text-presentation symbols in terminals. Treating the Islanders
   // roll icon as wide writes a continuation sentinel into the following cell even though the
   // terminal advances only one column, leaving a vertical hole in the button's hover fill.
   if (cp >= 0x2680 && cp <= 0x2689) return 1;

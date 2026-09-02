@@ -20,12 +20,12 @@ test('card suit pips are single-cell', () => {
 test('other special-cased single-cell glyphs stay narrow', () => {
   assert.equal(cellWidth('♞'.codePointAt(0)!), 1); // chess knight (U+265E)
   assert.equal(cellWidth('✕'.codePointAt(0)!), 1); // close cross (U+2715)
-  assert.equal(cellWidth('•'.codePointAt(0)!), 1); // Catan production pip (U+2022)
+  assert.equal(cellWidth('•'.codePointAt(0)!), 1); // Islanders production pip (U+2022)
 });
 
 test('emoji-presentation singletons outside the emoji blocks are wide', () => {
   // Their blocks are otherwise text-presentation, so these two need naming explicitly.
-  assert.equal(cellWidth('🃏'.codePointAt(0)!), 2); // joker (U+1F0CF), Catan player card count
+  assert.equal(cellWidth('🃏'.codePointAt(0)!), 2); // joker (U+1F0CF), Islanders player card count
   assert.equal(cellWidth('🀄'.codePointAt(0)!), 2); // mahjong red dragon (U+1F004)
   assert.equal(cellWidth('🂡'.codePointAt(0)!), 1); // ace of spades stays text-presentation
 });

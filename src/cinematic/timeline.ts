@@ -2,10 +2,10 @@
 // chapters so their gameplay and camera studies remain legible at a natural
 // wheel/trackpad pace; transitions occupy the tail of each chapter.
 export const LIVING_TITLE_ACT_BOUNDARIES = [0, 0.1, 0.25, 0.52, 0.76, 1] as const;
-export const LIVING_TITLE_MORPH_STARTS = [0.62, 0.84, 0.88, 0.88] as const;
+export const LIVING_TITLE_MORPH_STARTS = [0.6, 0.82, 0.85, 0.85] as const;
 
-export type LivingTitleAct = 'prism' | 'covers' | 'chess' | 'poker' | 'catan';
-export const LIVING_TITLE_ACTS: readonly LivingTitleAct[] = ['prism', 'covers', 'chess', 'poker', 'catan'];
+export type LivingTitleAct = 'prism' | 'covers' | 'chess' | 'poker' | 'islanders';
+export const LIVING_TITLE_ACTS: readonly LivingTitleAct[] = ['prism', 'covers', 'chess', 'poker', 'islanders'];
 
 export function livingTitleTimeline(progress: number): { act: number; local: number } {
   const p = clamp01(progress);

@@ -3,8 +3,9 @@ import type { NetworkPolicy } from '@vercel/sandbox';
 export const TERMINAL_CWD = '/vercel/sandbox/arcade';
 export const TERMINAL_TIMEOUT_MS = 20 * 60 * 1000;
 export const BASE_TIMEOUT_MS = 10 * 60 * 1000;
-export const TERMINAL_BASE_VERSION = 15;
+export const TERMINAL_BASE_VERSION = 16;
 export const GATEWAY_HOST = 'ai-gateway.vercel.sh';
+export const VERCEL_API_HOST = 'api.vercel.com';
 
 export interface TerminalSize {
   cols: number;
@@ -63,23 +64,28 @@ export function sessionNetworkPolicy(
   placeholder: string,
   credential: HostedGatewayCredential | null,
 ): NetworkPolicy {
-  if (!credential) return 'deny-all';
   return {
     allow: {
-      [GATEWAY_HOST]: [{
-        match: {
-          headers: [{
-            key: { exact: 'authorization' },
-            value: { exact: `Bearer ${placeholder}` },
-          }],
-        },
-        transform: [{
-          headers: {
-            authorization: `Bearer ${credential.token}`,
-            'ai-gateway-auth-method': credential.authMethod,
+      [VERCEL_API_HOST]: [],
+      [GATEWAY_HOST]: [
+        ...(credential ? [{
+          match: {
+            headers: [{
+              key: { exact: 'authorization' },
+              value: { exact: `Bearer ${placeholder}` },
+            }],
           },
-        }],
-      }],
+          transform: [{
+            headers: {
+              authorization: `Bearer ${credential.token}`,
+              'ai-gateway-auth-method': credential.authMethod,
+            },
+          }],
+        }] : []),
+        // Personal keys minted by the device flow pass through unchanged. The
+        // demo placeholder above always matches first and is never forwarded.
+        { match: {}, transform: [] },
+      ],
     },
   };
 }
@@ -96,7 +102,7 @@ export function terminalFiles(packageSource: string, placeholder: string): Array
     },
     {
       path: `${TERMINAL_CWD}/docs/README.md`,
-      content: `# Documentation\n\n- engine.md — CPU 3D renderer, scenes, cameras, materials, and output modes\n- tui.md — retained terminal UI, layout, focus, input, and Surface compositing\n- games.md — Chess, Poker, Catan, rules, and presentation layers\n- agents.md — model harness, tools, communication, self-play, and traces\n\nThe complete documentation is available on the website at /docs.\n`,
+      content: `# Documentation\n\n- engine.md — CPU 3D renderer, scenes, cameras, materials, and output modes\n- tui.md — retained terminal UI, layout, focus, input, and Surface compositing\n- games.md — Chess, Poker, Islanders, rules, and presentation layers\n- agents.md — model harness, tools, communication, self-play, and traces\n\nThe complete documentation is available on the website at /docs.\n`,
     },
     {
       path: `${TERMINAL_CWD}/docs/engine.md`,
@@ -108,7 +114,7 @@ export function terminalFiles(packageSource: string, placeholder: string): Array
     },
     {
       path: `${TERMINAL_CWD}/docs/games.md`,
-      content: `# Games\n\nArcade currently includes Chess, Poker, and Catan. Rules and legal actions live below presentation. Game-specific scenes and HUDs consume the shared engine and TUI libraries.\n\nRun the application with:\n\n    arcade\n`,
+      content: `# Games\n\nArcade currently includes Chess, Poker, and Islanders. Rules and legal actions live below presentation. Game-specific scenes and HUDs consume the shared engine and TUI libraries.\n\nRun the application with:\n\n    arcade\n`,
     },
     {
       path: `${TERMINAL_CWD}/docs/agents.md`,
@@ -124,7 +130,7 @@ export function terminalFiles(packageSource: string, placeholder: string): Array
     },
     {
       path: `${TERMINAL_CWD}/examples/self-play.md`,
-      content: `# Self-play example\n\nMatch Lab runs Chess, Poker, or Catan with persistent local artifacts and telemetry disabled. Runs contain manifests, intermediate state, actions, model attempts, and final summaries.\n`,
+      content: `# Self-play example\n\nMatch Lab runs Chess, Poker, or Islanders with persistent local artifacts and telemetry disabled. Runs contain manifests, intermediate state, actions, model attempts, and final summaries.\n`,
     },
     {
       path: `${TERMINAL_CWD}/examples/prism.md`,
@@ -141,7 +147,7 @@ export function terminalFiles(packageSource: string, placeholder: string): Array
     },
     {
       path: `${TERMINAL_CWD}/system/arcade-demo`,
-      content: `#!/bin/sh\nset -eu\nexport HOME=/home/arcade\nexport PATH=/usr/local/bin:/usr/bin:/bin\nexport ARCADE_HOSTED_TERMINAL=1\nexport ARCADE_TELEMETRY=0\nexport AI_GATEWAY_API_KEY="$(cat ${TERMINAL_CWD}/system/gateway-placeholder)"\nexec /usr/local/bin/arcade "$@"\n`,
+      content: `#!/bin/sh\nset -eu\nexport HOME=/home/arcade\nexport PATH=/usr/local/bin:/usr/bin:/bin\nexport ARCADE_HOSTED_TERMINAL=1\nexport ARCADE_TELEMETRY=0\nexport AI_GATEWAY_API_KEY="$(cat ${TERMINAL_CWD}/system/gateway-placeholder)"\nexport ARCADE_HOSTED_DEMO_KEY="$AI_GATEWAY_API_KEY"\nexec /usr/local/bin/arcade "$@"\n`,
       mode: 0o755,
     },
     {

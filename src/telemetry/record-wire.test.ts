@@ -106,7 +106,7 @@ test('playerKey tags the envelope only when a human participated', () => {
 });
 
 test('an oversized canonical record is rejected rather than enqueued', () => {
-  const big = { ...hand(), filler: 'x'.repeat(1_000_000) } as unknown as PokerHandRecord;
+  const big = { ...hand(), filler: 'x'.repeat(4_100_000) } as unknown as PokerHandRecord;
   assert.equal(
     toCanonicalRecordRow(big, { session: 's', env: 'prod', appVersion: 'v' }),
     null,

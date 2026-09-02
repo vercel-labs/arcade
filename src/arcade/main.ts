@@ -23,14 +23,14 @@ import { CoverFlowWheelInput } from './shell/coverflow-input.ts';
 import { MENU_ITEMS } from './shell/menu.ts';
 import { ChessGameScene } from './games/chess/scene.ts';
 import { CardsScene } from './games/poker/cards-scene.ts';
-import { type TileScene } from './games/catan/tile-scene.ts';
-import { CatanController } from './games/catan/catan-controller.ts';
-import { CATAN_RAIL_W, catanRailVisible } from './games/catan/card-hud.ts';
-import { CatanGameScene } from './games/catan/game-scene.ts';
-import { buildCatanGameRoot, mountCatanGameHud } from './games/catan/game-hud.ts';
-import { CatanDriver } from './match/catan-driver.ts';
+import { type TileScene } from './games/islanders/tile-scene.ts';
+import { IslandersController } from './games/islanders/islanders-controller.ts';
+import { ISLANDERS_RAIL_W, islandersRailVisible } from './games/islanders/card-hud.ts';
+import { IslandersGameScene } from './games/islanders/game-scene.ts';
+import { buildIslandersGameRoot, mountIslandersGameHud } from './games/islanders/game-hud.ts';
+import { IslandersDriver } from './match/islanders-driver.ts';
 import type { CommunicationMode } from '../harness/communication/types.ts';
-import { catanSetupCommunicationMode, catanSetupSelection, setCatanSetupChanged, setCatanSetupModelCatalog } from './match/catan-setup-panel.ts';
+import { islandersSetupCommunicationMode, islandersSetupSelection, setIslandersSetupChanged, setIslandersSetupModelCatalog } from './match/islanders-setup-panel.ts';
 import { buildPokerRoot, mountPokerHud, pokerMode, setPokerHandlers } from './games/poker/hud.ts';
 import { PokerGameScene } from './games/poker/poker-scene.ts';
 import { buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, type HeroContext, mountPokerGameHud, nudgePokerBet, pushPokerChat, setNotesObserverPick, setPokerGameHandlers, setPokerVoiceStage } from './games/poker/poker-hud.ts';
@@ -55,8 +55,8 @@ import { evaluate } from '../rules/chess/eval.ts';
 import type { ChessResult } from '../rules/chess/chess.ts';
 import type { RGB, RGBA } from '../engine/index.ts';
 import { Box, Button, insetSceneViewport, pointerNdcInSceneViewport, Renderer, Screen, type LayoutBox, type Node } from '../tui/index.ts';
-import { ARCADE_THEME, UI_CHROME_PILL } from './theme.ts';
-import { installKeymap } from './shell/keybindings.ts';
+import { ARCADE_THEME, MENU_BUTTON_LABEL, UI_CHROME_PILL } from './theme.ts';
+import { escapeBackRequiresConfirmation, installKeymap } from './shell/keybindings.ts';
 import { buildTeamSwitch, markSwitchSucceeded, mountTeamSwitch, setTeamSwitchHandlers, setTeamSwitchTeams, type TeamSwitchView } from './shell/team-switch.ts';
 import * as term from '../platform/terminal.ts';
 import { availableTeams, ensureGatewayKey, isLoggedIn, loadEnv, signOut as signOutVercel, switchTeam, type EnsureResult, type Team, useTeam } from '../auth/index.ts';
@@ -123,16 +123,16 @@ const pokerScene = new PokerGameScene();
 pokerScene.setEventSink((text) => pushPokerChat({ text, model: '', event: true }));
 // The 2D UI overlay (button bar). Lays out + paints over the scene each frame.
 const ui = new Screen(cols, rows, ARCADE_THEME);
-const catanGlyphCache = new ShapeGlyphSurfaceCache();
+const islandersGlyphCache = new ShapeGlyphSurfaceCache();
 const sceneGlyphCache = new ShapeGlyphSurfaceCache();
 // Render-on-demand loop. Animating screens hold a live lease; static screens
 // (chess turntable) render only when an interaction requests it.
 const r = new Renderer({ maxFps: MAX_FPS, minFps: MIN_FPS });
 
-// The Catan test-bed facade: owns its scene, menu/modal state, HUD wiring, UI roots, pointer,
+// The Islanders test-bed facade: owns its scene, menu/modal state, HUD wiring, UI roots, pointer,
 // and render/dirty. main.ts only wires it into the shared mode/render/mouse plumbing below.
 // (Shell callbacks are lazy so they can reference handlers declared later in this file.)
-const catan = new CatanController({
+const islanders = new IslandersController({
   ui,
   requestRender: () => r.requestRender(),
   requestFrame: () => {
@@ -151,29 +151,29 @@ const catan = new CatanController({
   },
 });
 
-// The Catan GAME (distinct from the catan-test bed above): the played board plus the driver
+// The Islanders GAME (distinct from the islanders-test bed above): the played board plus the driver
 // that runs the seats through the rules engine. The scene wraps the same TileScene the test
 // bed uses, so both screens share one renderer.
-const catanGameScene = new CatanGameScene();
-catanGameScene.setActionPreviewDuration(260);
-catanGameScene.setActionAnimationSynchronization(true);
-const catanDriver = new CatanDriver({
-  scene: catanGameScene,
+const islandersGameScene = new IslandersGameScene();
+islandersGameScene.setActionPreviewDuration(260);
+islandersGameScene.setActionAnimationSynchronization(true);
+const islandersDriver = new IslandersDriver({
+  scene: islandersGameScene,
   syncLive: () => {
     forceFrame = true;
     r.requestRender();
   },
 });
-catanGameScene.setOnChange(() => {
+islandersGameScene.setOnChange(() => {
   forceFrame = true;
   r.requestRender();
 });
-let catanGameTimer: ReturnType<typeof setInterval> | null = null;
+let islandersGameTimer: ReturnType<typeof setInterval> | null = null;
 // ~11 fps for the island's ambient motion (water, blades, livestock) — the same cadence the
 // test bed runs at, and far cheaper than repainting the board at the full frame rate.
-const CATAN_ANIMATION_FRAME_MS = 90;
-let catanGameMenuOpen = false;
-let catanCommunicationMode: CommunicationMode = 'ambient';
+const ISLANDERS_ANIMATION_FRAME_MS = 90;
+let islandersGameMenuOpen = false;
+let islandersCommunicationMode: CommunicationMode = 'ambient';
 
 // Bar geometry: a band of pills composited over the scene, lifted off the very
 // bottom edge by a margin so it doesn't hug it. BAR_HEIGHT must match the pill
@@ -201,8 +201,8 @@ function activeOrbit(): { resetView(): void; pan(dx: number, dy: number): void; 
   if (mode === 'logos') return logosScene;
   if (mode === 'audio') return audioScene;
   if (mode === 'cards') return cardsScene;
-  if (mode === 'catan-tiles') return catan.scene;
-  if (mode === 'catan') return catanGameScene.scene;
+  if (mode === 'islanders-tiles') return islanders.scene;
+  if (mode === 'islanders') return islandersGameScene.scene;
   if (mode === 'poker') return pokerScene;
   if (mode === 'ui') return chessGame;
   return orbitScene();
@@ -366,12 +366,12 @@ function activeSceneViewport(): LayoutBox {
       ? CHAT_WIDTH
       : mode === 'poker' && pokerChatOpen && pokerScene.isActive()
         ? CHAT_WIDTH
-        : mode === 'catan-tiles' && catan.scene.currentMode() === 'boardCards' && catanRailVisible(cols, rows)
-          ? CATAN_RAIL_W
+        : mode === 'islanders-tiles' && islanders.scene.currentMode() === 'boardCards' && islandersRailVisible(cols, rows)
+          ? ISLANDERS_RAIL_W
           : // The game reserves the rail only once a session exists — the setup panel owns the
             // whole board area before that.
-            mode === 'catan' && catanDriver.state() !== null && catanRailVisible(cols, rows)
-            ? CATAN_RAIL_W
+            mode === 'islanders' && islandersDriver.state() !== null && islandersRailVisible(cols, rows)
+            ? ISLANDERS_RAIL_W
             : 0;
   return insetSceneViewport(cols, rows, { right: reservedRight });
 }
@@ -476,6 +476,7 @@ function finalizeAndExit(reason: Exclude<RecordEndReason, 'natural'>, code: numb
   finalizing = true;
   try { aiMatch.stop(reason); } catch {}
   try { pokerMatch.stop(reason); } catch {}
+  try { islandersDriver.stop(reason); } catch {}
   try { r.destroy(); } catch {}
   try { term.leave(); } catch {}
   if (err !== undefined) console.error(err); // after leaving the alt-screen so it's readable
@@ -510,7 +511,7 @@ async function refreshTeamModelCatalog(auth: EnsureResult | null): Promise<void>
     : fallbackArcadeModelCatalog('not signed in');
   setMatchSetupModelCatalog(catalog.textCreators, catalog.realtimeCreators);
   setPokerSetupModelCatalog(catalog.textCreators, catalog.realtimeCreators);
-  setCatanSetupModelCatalog(catalog.textCreators);
+  setIslandersSetupModelCatalog(catalog.textCreators);
 }
 
 // In-app "switch team": re-pick the billing team (logging in first if needed)
@@ -623,7 +624,7 @@ setTeamSwitchHandlers({ onPick: pickTeamChoice });
 // The hub's one menu button is pinned top-right over Cover Flow. The root is
 // transparent so clicks off the pill fall through to the carousel.
 function buildMenuOverlay(): Node {
-  const menuButton = Button({ id: 'menu-button', label: '☰ menu', onClick: openHomeMenu, style: UI_CHROME_PILL });
+  const menuButton = Button({ id: 'menu-button', label: MENU_BUTTON_LABEL, onClick: openHomeMenu, style: UI_CHROME_PILL });
   // Inset from the top-right corner by a row / a couple of columns so it breathes.
   return Box({ width: cols, height: rows }, [Box({ position: 'absolute', top: 1, right: 2 }, [menuButton])]);
 }
@@ -939,11 +940,11 @@ setPokerSetupChanged(() => {
   r.requestRender();
 });
 
-// Catan's setup panel has no scene preview to drive — the island looks the same whoever is
+// Islanders's setup panel has no scene preview to drive — the island looks the same whoever is
 // about to sit at it — but the panel itself has to repaint, because a committed change can
 // add or remove a seat row and re-tint the seat labels.
-setCatanSetupChanged(() => {
-  if (mode !== 'catan') return;
+setIslandersSetupChanged(() => {
+  if (mode !== 'islanders') return;
   forceFrame = true;
   r.requestRender();
 });
@@ -1047,12 +1048,12 @@ function closeChessMenu(): void {
   r.requestRender();
 }
 
-// Esc = back one level. Inside a game (chess-game / poker) it opens the "return home?"
+// Esc = back one level. Inside a game it opens the "return home?"
 // confirm so a stray keypress can't drop a match; every other non-menu screen goes straight
 // back to the menu. (The menu's own esc → prism and each modal's esc → close are handled by
 // higher keymap layers, so they never reach here.)
 function escBack(): void {
-  if (mode === 'chess-game' || mode === 'poker') openConfirmHome();
+  if (escapeBackRequiresConfirmation(mode)) openConfirmHome();
   else enterMenu();
 }
 function openConfirmHome(): void {
@@ -1232,84 +1233,89 @@ function enterCards(): void {
   fullRepaint();
 }
 
-// The Catan tile test bed: a single 3D hex tile on a turntable, switchable between terrains
+// The Islanders tile test bed: a single 3D hex tile on a turntable, switchable between terrains
 // from the top-left dropdown. No game rules — a place to dial in the tile look.
-function enterCatanTiles(): void {
+function enterIslandersTiles(): void {
   stopAiMatch();
   audioScene.deactivate();
-  mode = 'catan-tiles';
+  mode = 'islanders-tiles';
   draggingCamera = false;
-  catan.enter();
+  islanders.enter();
   fullRepaint();
 }
 
-// The Catan game screen: the played board. Entering shows the setup panel (mode / players /
+// The Islanders game screen: the played board. Entering shows the setup panel (mode / players /
 // your color / a model per AI seat) over an idle island; "start game" builds the state and
-// runs the complete rules-authoritative match. Distinct from catan-tiles, which stays a
+// runs the complete rules-authoritative match. Distinct from islanders-tiles, which stays a
 // free-placement graphics bed with no rules attached.
-function enterCatanGame(): void {
+function enterIslandersGame(): void {
   stopAiMatch();
   audioScene.deactivate();
-  mode = 'catan';
+  mode = 'islanders';
   draggingCamera = false;
-  mountCatanGameHud(ui);
-  catanGameScene.scene.resetView();
-  catanGameScene.prepareBoard();
+  mountIslandersGameHud(ui);
+  islandersGameScene.scene.resetView();
+  islandersGameScene.prepareBoard();
   // The island animates (water, blades, livestock) on its own timer, like the test bed's.
-  if (catanGameTimer === null) {
-    catanGameTimer = setInterval(() => {
-      catanGameScene.requestAnimationFrame();
-      if (catanGameScene.needsRender()) r.requestRender();
-    }, CATAN_ANIMATION_FRAME_MS);
+  if (islandersGameTimer === null) {
+    islandersGameTimer = setInterval(() => {
+      islandersGameScene.requestAnimationFrame();
+      if (islandersGameScene.needsRender()) r.requestRender();
+    }, ISLANDERS_ANIMATION_FRAME_MS);
   }
   fullRepaint();
 }
 
 // Begin a session from the setup panel's committed choices.
-function startCatanGame(): void {
-  const seats = catanSetupSelection();
+function startIslandersGame(): void {
+  const seats = islandersSetupSelection();
   if (!seats) return;
-  catanCommunicationMode = catanSetupCommunicationMode();
-  const board = catanGameScene.preparedBoard();
-  catanDriver.start(seats, { communicationMode: catanCommunicationMode, ...(board ? { board } : {}) });
+  islandersCommunicationMode = islandersSetupCommunicationMode();
+  const board = islandersGameScene.preparedBoard();
+  islandersDriver.start(seats, { communicationMode: islandersCommunicationMode, ...(board ? { board } : {}) });
   fullRepaint();
 }
 
 // Tear the session down and return to the setup panel.
-function newCatanGame(): void {
-  catanDriver.reset();
-  catanGameScene.prepareBoard();
+function newIslandersGame(): void {
+  islandersDriver.reset();
+  islandersGameScene.prepareBoard();
   fullRepaint();
 }
 
-// The Catan game's ☰ popup — the same shell menu every game screen uses.
-function buildCatanGameMenu(): Node {
-  const closeMenu = (): void => {
-    catanGameMenuOpen = false;
-    fullRepaint();
-  };
+// The Islanders game's ☰ popup — the same shell menu every game screen uses.
+function buildIslandersGameMenu(): Node {
   const groups: MenuItem[][] = [
-    [{ id: 'catan-game-menu-home', label: 'home', onClick: () => enterMenu() }],
+    [{ id: 'islanders-game-menu-home', label: 'home', onClick: () => enterMenu() }],
     [
-      { id: 'catan-game-menu-new', label: 'new game', onClick: () => { newCatanGame(); closeMenu(); } },
-      { id: 'catan-game-menu-reset', label: 'reset camera', onClick: () => { catanGameScene.scene.resetView(); closeMenu(); } },
-      { id: 'catan-game-menu-mode', label: 'display', value: renderMode, onClick: () => cycleMode() },
-      { id: 'catan-game-menu-color', label: 'color', value: colorMode, onClick: () => cycleColor() },
+      { id: 'islanders-game-menu-new', label: 'new game', onClick: () => { newIslandersGame(); closeIslandersGameMenu(); } },
+      { id: 'islanders-game-menu-reset', label: 'reset camera', onClick: () => { islandersGameScene.scene.resetView(); closeIslandersGameMenu(); } },
+      { id: 'islanders-game-menu-mode', label: 'display', value: renderMode, onClick: () => cycleMode() },
+      { id: 'islanders-game-menu-color', label: 'color', value: colorMode, onClick: () => cycleColor() },
     ],
     [
-      { id: 'catan-game-menu-shortcuts', label: 'controls', onClick: () => openShortcuts() },
-      { id: 'catan-game-menu-quit', label: 'quit', onClick: () => quit() },
+      { id: 'islanders-game-menu-shortcuts', label: 'controls', onClick: () => openShortcuts() },
+      { id: 'islanders-game-menu-quit', label: 'quit', onClick: () => quit() },
     ],
   ];
-  return buildGameMenu({ groups, onClose: closeMenu, valueColW: MENU_VALUE_W });
+  return buildGameMenu({ groups, onClose: closeIslandersGameMenu, valueColW: MENU_VALUE_W });
+}
+function closeIslandersGameMenu(): void {
+  islandersGameMenuOpen = false;
+  fullRepaint();
+}
+function openIslandersGameMenu(): void {
+  if (mode !== 'islanders') return;
+  islandersGameMenuOpen = true;
+  fullRepaint();
 }
 
-// Leaving the Catan game screen entirely.
-function leaveCatanGame(): void {
-  catanDriver.reset();
-  if (catanGameTimer !== null) {
-    clearInterval(catanGameTimer);
-    catanGameTimer = null;
+// Leaving the Islanders game screen entirely.
+function leaveIslandersGame(): void {
+  islandersDriver.reset();
+  if (islandersGameTimer !== null) {
+    clearInterval(islandersGameTimer);
+    islandersGameTimer = null;
   }
 }
 
@@ -1418,8 +1424,8 @@ function enterGame(id: string): void {
   else if (id === 'audio') enterAudio();
   else if (id === 'poker') enterPoker();
   else if (id === 'poker-test') enterCards();
-  else if (id === 'catan') enterCatanGame();
-  else if (id === 'catan-test') enterCatanTiles();
+  else if (id === 'islanders') enterIslandersGame();
+  else if (id === 'islanders-test') enterIslandersTiles();
   else if (id === 'ui') enterUi();
 }
 
@@ -1522,6 +1528,11 @@ const keymap = installKeymap({
   closePokerMenu,
   closePokerNotes,
   closeChessMenu,
+  openIslandersMenu: () => islanders.openMenu(),
+  openIslandersGameMenu,
+  closeIslandersMenu: () => islanders.closeMenu(),
+  closeIslandersPieceEdit: () => islanders.closePieceModal(),
+  closeIslandersGameMenu,
   openChessMenu,
   openPokerMenu,
   togglePokerChat,
@@ -1584,12 +1595,12 @@ function syncBar(): void {
   if (mode !== 'poker') pokerMenuOpen = false; // the in-game menu only lives in the poker view
   if (mode !== 'poker') pokerNotesOpen = false; // ditto for the notes modal
   if (mode !== 'chess-game') chessMenuOpen = false; // ditto for the chess menu
-  if (mode !== 'catan-tiles') catan.reset(); // drop the catan menu + piece-edit modal state
-  if (mode !== 'catan') {
-    catanGameMenuOpen = false;
-    leaveCatanGame(); // abort a running placement session and stop its animation timer
+  if (mode !== 'islanders-tiles') islanders.reset(); // drop the islanders menu + piece-edit modal state
+  if (mode !== 'islanders') {
+    islandersGameMenuOpen = false;
+    leaveIslandersGame(); // abort a running placement session and stop its animation timer
   }
-  if (mode !== 'chess-game' && mode !== 'poker') confirmHomeOpen = false; // the confirm only lives in a game
+  if (mode !== 'chess-game' && mode !== 'poker' && mode !== 'islanders') confirmHomeOpen = false; // the confirm only lives in a game
   if (mode !== 'menu') {
     homeMenuOpen = false;
     teamModalOpen = false;
@@ -1601,6 +1612,9 @@ function syncBar(): void {
   if (!pokerNotesOpen && keymap.hasContext('poker-notes')) keymap.popContext('poker-notes');
   if (!pokerNotesOpen) pokerNotesFocused = false; // re-focus the scroll body on the next open
   if (!chessMenuOpen && keymap.hasContext('chess-menu')) keymap.popContext('chess-menu');
+  if (!islanders.isMenuOpen() && keymap.hasContext('islanders-menu')) keymap.popContext('islanders-menu');
+  if (!islanders.hasPieceEdit() && keymap.hasContext('islanders-piece-edit')) keymap.popContext('islanders-piece-edit');
+  if (!islandersGameMenuOpen && keymap.hasContext('islanders-game-menu')) keymap.popContext('islanders-game-menu');
   if (!confirmHomeOpen && keymap.hasContext('confirm-home')) keymap.popContext('confirm-home');
   if (!confirmHomeOpen) confirmHomeFocused = false; // re-focus "Return home" on the next open
   if (!shortcutsOpen && keymap.hasContext('shortcuts')) keymap.popContext('shortcuts');
@@ -1903,59 +1917,61 @@ function syncBar(): void {
     // Slots), then build the control panel + bar over the scene.
     mountPokerHud(ui);
     ui.setRoot(buildPokerRoot({ x: 0, y: 0, w: cols, h: rows }, buildBar('cards', renderMode, actions)), { x: 0, y: 0, w: cols, h: rows });
-  } else if (catan.isMenuOpen()) {
+  } else if (islanders.isMenuOpen()) {
     popGameOver();
     popSetup();
     popSwap();
-    ui.setRoot(catan.buildMenuRoot(cols, rows), { x: 0, y: 0, w: cols, h: rows });
-  } else if (mode === 'catan-tiles' && catan.hasPieceEdit()) {
+    if (!keymap.hasContext('islanders-menu')) keymap.pushContext('islanders-menu', true);
+    ui.setRoot(islanders.buildMenuRoot(cols, rows), { x: 0, y: 0, w: cols, h: rows });
+  } else if (mode === 'islanders-tiles' && islanders.hasPieceEdit()) {
     popGameOver();
     popSetup();
     popSwap();
+    if (!keymap.hasContext('islanders-piece-edit')) keymap.pushContext('islanders-piece-edit', true);
     // The piece-edit modal over the board (null if the piece went stale — then the next frame
     // falls through to the normal root).
-    const root = catan.buildPieceModalRoot();
+    const root = islanders.buildPieceModalRoot();
     if (root) ui.setRoot(root, { x: 0, y: 0, w: cols, h: rows });
-  } else if (mode === 'catan-tiles') {
+  } else if (mode === 'islanders-tiles') {
     popGameOver();
     popSetup();
     popSwap();
-    ui.setRoot(catan.buildRoot(cols, rows, activeSceneViewport().w), { x: 0, y: 0, w: cols, h: rows });
-  } else if (mode === 'catan' && catanGameMenuOpen) {
+    ui.setRoot(islanders.buildRoot(cols, rows, activeSceneViewport().w), { x: 0, y: 0, w: cols, h: rows });
+  } else if (mode === 'islanders' && islandersGameMenuOpen) {
     popGameOver();
     popSetup();
     popSwap();
-    ui.setRoot(buildCatanGameMenu(), { x: 0, y: 0, w: cols, h: rows });
-  } else if (mode === 'catan') {
+    if (!keymap.hasContext('islanders-game-menu')) keymap.pushContext('islanders-game-menu', true);
+    ui.setRoot(buildIslandersGameMenu(), { x: 0, y: 0, w: cols, h: rows });
+  } else if (mode === 'islanders') {
     popGameOver();
     popSetup();
     popSwap();
     // Re-mount the setup dropdowns + history scrollbox (a prior modal root may have dropped
     // their Slots), then build whichever face the session state calls for.
-    mountCatanGameHud(ui);
-    const catanRegion = { x: 0, y: 0, w: cols, h: rows };
-    if (catanDriver.state()) {
-      catanGameScene.setResourceFlightLayout(
-        catanRegion,
-        catanDriver.seatCount(),
-        catanRailVisible(cols, rows),
+    mountIslandersGameHud(ui);
+    const islandersRegion = { x: 0, y: 0, w: cols, h: rows };
+    if (islandersDriver.state()) {
+      islandersGameScene.setResourceFlightLayout(
+        islandersRegion,
+        islandersDriver.seatCount(),
+        islandersRailVisible(cols, rows),
       );
     }
     ui.setRoot(
-      buildCatanGameRoot(
-        catanRegion,
+      buildIslandersGameRoot(
+        islandersRegion,
         {
-          driver: catanDriver,
-          scene: catanGameScene,
-          tokens: catanGameScene.scene.boardTokens(activeSceneViewport().w, rows),
-          sails: catanGameScene.scene.boardPortLabels(activeSceneViewport().w, rows),
-          resourceFlights: catanGameScene.activeResourceFlights(),
-          resourceAdjustments: catanGameScene.resourceViewAdjustments(),
+          driver: islandersDriver,
+          scene: islandersGameScene,
+          tokens: islandersGameScene.scene.boardTokens(activeSceneViewport().w, rows),
+          sails: islandersGameScene.scene.boardPortLabels(activeSceneViewport().w, rows),
+          resourceFlights: islandersGameScene.activeResourceFlights(),
+          resourceAdjustments: islandersGameScene.resourceViewAdjustments(),
           onOpenMenu: () => {
-            catanGameMenuOpen = true;
-            fullRepaint();
+            openIslandersGameMenu();
           },
-          onStart: startCatanGame,
+          onStart: startIslandersGame,
         },
       ),
       { x: 0, y: 0, w: cols, h: rows },
@@ -2087,7 +2103,7 @@ function syncBar(): void {
 // white. Give only the menu a lower exposure and a restrained highlight bloom.
 // ASCII bypasses this path entirely, preserving its existing contrast.
 function preparePixelDisplay(withBloom: boolean): RenderTarget {
-  // Catan's dice are composited twice from the same rendered target: once as part of the full
+  // Islanders's dice are composited twice from the same rendered target: once as part of the full
   // scene, then as a sparse foreground layer above projected HUD labels. Reuse the prepared
   // pixel frame for that second pass instead of repeating the full gamma-correct downsample.
   if (pixelDisplayPrepared && pixelDisplayBloom === withBloom && display) return display;
@@ -2125,9 +2141,9 @@ function presentScene(withBloom = true, hybridShadow = false): string {
 // `surf` (the bottom layer) instead of returning a string. Same display logic.
 function presentSceneInto(surf: Surface, withBloom = true, hybridShadow = false): void {
   const viewport = activeSceneViewport();
-  const catanForegroundActive =
-    (mode === 'catan-tiles' && catan.scene.hasForegroundSceneLayer()) ||
-    (mode === 'catan' && catanGameScene.scene.hasForegroundSceneLayer());
+  const islandersForegroundActive =
+    (mode === 'islanders-tiles' && islanders.scene.hasForegroundSceneLayer()) ||
+    (mode === 'islanders' && islandersGameScene.scene.hasForegroundSceneLayer());
   const reservedX = viewport.x + viewport.w;
   if (reservedX < surf.cols) {
     // The UI rail is translucent. Paint its reserved area black so opening it
@@ -2146,11 +2162,11 @@ function presentSceneInto(surf: Surface, withBloom = true, hybridShadow = false)
         coloredBackground: renderMode === 'hybrid',
         // Dice deliberately replace depth with a sparse foreground mask. During that phase the
         // color buffer still contains the board, but depth bounds describe only the dice.
-        blankOutsideDepthBounds: (mode === 'catan' || mode === 'catan-tiles') && !catanForegroundActive,
+        blankOutsideDepthBounds: (mode === 'islanders' || mode === 'islanders-tiles') && !islandersForegroundActive,
       },
       viewport.x,
       viewport.y,
-      mode === 'catan' || mode === 'catan-tiles' ? catanGlyphCache : sceneGlyphCache,
+      mode === 'islanders' || mode === 'islanders-tiles' ? islandersGlyphCache : sceneGlyphCache,
     );
     return;
   }
@@ -2158,7 +2174,7 @@ function presentSceneInto(surf: Surface, withBloom = true, hybridShadow = false)
 }
 
 // Sparse scene layer inserted by Screen between ordinary projected UI and portal chrome.
-// RenderTarget depth is the transparency mask: Catan clears it immediately before drawing its
+// RenderTarget depth is the transparency mask: Islanders clears it immediately before drawing its
 // dice, so finite pixels are dice and infinite pixels leave the already-painted TUI untouched.
 function presentSceneForegroundInto(surf: Surface, withBloom = true, hybridShadow = false): void {
   const viewport = activeSceneViewport();
@@ -2297,7 +2313,7 @@ function onMouseImpl(e: MouseEvent): void {
   // setup panels (chess AND poker) are NOT here — they're non-modal, so pointer input
   // falls through the orbit branch: UI hits go to the panel/pickers, misses rotate/zoom/
   // pan the board/table behind it.
-  if (isPromoting() || gameOver || wispSwap || catan.hasPieceEdit()) {
+  if (isPromoting() || gameOver || wispSwap || islanders.hasPieceEdit()) {
     if (e.type === 'move') ui.hover(e.x, e.y);
     else if (e.type === 'down') ui.pointerDown(e.x, e.y);
     else if (e.type === 'drag') ui.drag(e.x, e.y); // e.g. dragging a dropdown's scrollbar
@@ -2327,15 +2343,15 @@ function onMouseImpl(e: MouseEvent): void {
       } else if (mode === 'poker') {
         const { ndcX, ndcY, aspect } = pointerNdc(e.x, e.y);
         pokerScene.hoverCard(ndcX, ndcY, aspect);
-      } else if (mode === 'catan-tiles') {
+      } else if (mode === 'islanders-tiles') {
         // Board mode: highlight the vertex/edge under the cursor.
         const { ndcX, ndcY } = pointerNdc(e.x, e.y);
-        catan.hoverAt(ndcX, ndcY);
-      } else if (mode === 'catan') {
+        islanders.hoverAt(ndcX, ndcY);
+      } else if (mode === 'islanders') {
         // Only the current prompt's legal spots highlight; everything else reads as water.
         const { ndcX, ndcY } = pointerNdc(e.x, e.y);
-        catanGameScene.hoverAt(ndcX, ndcY);
-        if (catanGameScene.needsRender()) r.requestRender();
+        islandersGameScene.hoverAt(ndcX, ndcY);
+        if (islandersGameScene.needsRender()) r.requestRender();
       }
       return;
     }
@@ -2345,8 +2361,8 @@ function onMouseImpl(e: MouseEvent): void {
       // a click). The button goes along so an onMouse can tell left from right.
       if (!ui.pointerDown(e.x, e.y, e.button)) {
         draggingCamera = true;
-        if (mode === 'catan-tiles') catan.scene.setCameraInteracting(true);
-        else if (mode === 'catan') catanGameScene.scene.setCameraInteracting(true);
+        if (mode === 'islanders-tiles') islanders.scene.setCameraInteracting(true);
+        else if (mode === 'islanders') islandersGameScene.scene.setCameraInteracting(true);
         lastMouseX = downX = e.x;
         lastMouseY = downY = e.y;
       }
@@ -2401,19 +2417,19 @@ function onMouseImpl(e: MouseEvent): void {
         const seat = pokerScene.wispAt(ndcX, ndcY, aspect);
         if (seat !== null) openPokerWispSwap(seat);
         else pokerScene.clickCard(ndcX, ndcY, aspect);
-      } else if (isClick && mode === 'catan-tiles') {
+      } else if (isClick && mode === 'islanders-tiles') {
         // Board mode: place a piece on an empty vertex/edge, or open the edit modal on a piece.
         const { ndcX, ndcY } = pointerNdc(e.x, e.y);
-        catan.clickAt(ndcX, ndcY);
-      } else if (isClick && mode === 'catan') {
+        islanders.clickAt(ndcX, ndcY);
+      } else if (isClick && mode === 'islanders') {
         // A click on a highlighted spot commits the awaiting human placement; anything else
         // is ignored, since the gate already excluded every illegal target.
         const { ndcX, ndcY } = pointerNdc(e.x, e.y);
-        catanGameScene.clickAt(ndcX, ndcY);
+        islandersGameScene.clickAt(ndcX, ndcY);
       }
       draggingCamera = false;
-      if (mode === 'catan-tiles') catan.scene.setCameraInteracting(false);
-      else if (mode === 'catan') catanGameScene.scene.setCameraInteracting(false);
+      if (mode === 'islanders-tiles') islanders.scene.setCameraInteracting(false);
+      else if (mode === 'islanders') islandersGameScene.scene.setCameraInteracting(false);
       return;
     }
     return;
@@ -2468,7 +2484,7 @@ function tick(dt: number): void {
     prism.renderScene(target, t);
     if (prismToMenu.active()) {
       const source = sceneSurface((surface) => drawPrismPrompt(surface, cols, rows, t));
-      coverflow.renderScene(target, 0, -1);
+      coverflow.renderScene(target, 0, null);
       const destination = sceneSurface((surface) => drawCoverChrome(surface, cols, rows, 0));
       const complete = prismToMenu.step(step);
       const composed = prismToMenu.compose(source, destination);
@@ -2508,7 +2524,7 @@ function tick(dt: number): void {
     // frameComposited paints it above the chrome.
     coverPos += (menuSel - coverPos) * (1 - Math.exp(-MENU_EASE_RATE * step));
     if (Math.abs(menuSel - coverPos) < 0.0015) coverPos = menuSel;
-    coverflow.renderScene(target, coverPos, menuHover ? menuSel : -1);
+    coverflow.renderScene(target, coverPos, menuHover ? menuSel : null);
     syncBar();
     writeFrame(
       UNIFIED
@@ -2580,14 +2596,14 @@ function tick(dt: number): void {
     return;
   }
 
-  if (mode === 'catan-tiles') {
+  if (mode === 'islanders-tiles') {
     // The tile test bed: static + on-demand like the chess turntable — renders only when the
     // camera moves or the tile changes, then the loop idles.
     syncBar();
-    const sceneDirty = forceFrame || catan.needsRender();
-    if (sceneDirty) catan.renderScene(target, t);
+    const sceneDirty = forceFrame || islanders.needsRender();
+    if (sceneDirty) islanders.renderScene(target, t);
     // Hybrid shading off for the board: it replaces the shape matcher's "empty cell" verdict with
-    // a luminance-ramp glyph, which speckles the space around the island with faint dots. Catan
+    // a luminance-ramp glyph, which speckles the space around the island with faint dots. Islanders
     // wants that space plain black so the board and the rail both have a clean edge against it.
     if (UNIFIED) {
       if (sceneDirty || ui.dirty()) {
@@ -2595,7 +2611,7 @@ function tick(dt: number): void {
           ui.frameComposited(
             (s) => presentSceneInto(s, false, false),
             sceneDirty,
-            catan.scene.hasForegroundSceneLayer() ? (s) => presentSceneForegroundInto(s, false, false) : undefined,
+            islanders.scene.hasForegroundSceneLayer() ? (s) => presentSceneForegroundInto(s, false, false) : undefined,
           ),
         );
       }
@@ -2605,24 +2621,24 @@ function tick(dt: number): void {
       writeFrame(ui.frame());
     }
     forceFrame = false;
-    if (catan.needsRender()) r.requestRender();
+    if (islanders.needsRender()) r.requestRender();
     return;
   }
 
-  if (mode === 'catan') {
+  if (mode === 'islanders') {
     // The played board renders on the same on-demand terms as the test bed, and with the same
     // hybrid-shading choice — plain black around the island so the board and rail keep a clean
     // edge against it.
     syncBar();
-    const sceneDirty = forceFrame || catanGameScene.needsRender();
-    if (sceneDirty) catanGameScene.renderScene(target, t);
+    const sceneDirty = forceFrame || islandersGameScene.needsRender();
+    if (sceneDirty) islandersGameScene.renderScene(target, t);
     if (UNIFIED) {
       if (sceneDirty || ui.dirty()) {
         writeFrame(
           ui.frameComposited(
             (s) => presentSceneInto(s, false, false),
             sceneDirty,
-            catanGameScene.scene.hasForegroundSceneLayer() ? (s) => presentSceneForegroundInto(s, false, false) : undefined,
+            islandersGameScene.scene.hasForegroundSceneLayer() ? (s) => presentSceneForegroundInto(s, false, false) : undefined,
           ),
         );
       }
@@ -2632,7 +2648,7 @@ function tick(dt: number): void {
       writeFrame(ui.frame());
     }
     forceFrame = false;
-    if (catanGameScene.needsRender()) r.requestRender();
+    if (islandersGameScene.needsRender()) r.requestRender();
     return;
   }
 

@@ -51,6 +51,13 @@ export class OrbitCamera {
     this.elevation = clamp(this.elevation + dy * 0.02, -1.4, 1.4);
   }
 
+  // Shared playable-table orbit: nearly edge-on through nearly overhead, but
+  // never below the board/table plane or through the vertical pole.
+  orbitAbovePlane(dx: number, dy: number): void {
+    this.azimuth -= dx * 0.012;
+    this.elevation = clamp(this.elevation + dy * 0.02, 0.02, Math.PI / 2 - 0.02);
+  }
+
   pan(dx: number, dy: number): void {
     const { right, up } = this.basis();
     const k = this.distance * 0.0016;

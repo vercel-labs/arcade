@@ -11,7 +11,7 @@
 // shown when expanded) to toggle.
 import { Box, Button, CloseButton, type Row, ScrollBox, Slot, Text, type LayoutBox, type Node, type Screen, type Style } from '../../../tui/index.ts';
 import type { RGB } from '../../../engine/index.ts';
-import { UI_CHROME_BG, UI_CHROME_PILL, uiChromeBg } from '../../theme.ts';
+import { MENU_BUTTON_LABEL, UI_CHROME_BG, UI_CHROME_PILL, uiChromeBg } from '../../theme.ts';
 import type { ChessResult } from '../../../rules/chess/chess.ts';
 import { WHITE } from '../../../rules/chess/types.ts';
 import { CHAT_WIDTH, type ChatMessage, chatBox, mountChat } from '../../match/chat.ts';
@@ -317,7 +317,7 @@ export function buildChessGameRoot(
   // the eval rail too, when it's showing).
   const railW = (opts.chatVisible ? CHAT_WIDTH : 0) + (opts.evalVisible ? EVAL_COL_W : 0);
   const cluster = hudTopRight([
-    Button({ id: 'chess-menu', label: '☰ menu', onClick: opts.onOpenMenu, style: UI_CHROME_PILL }),
+    Button({ id: 'chess-menu', label: MENU_BUTTON_LABEL, onClick: opts.onOpenMenu, style: UI_CHROME_PILL }),
     ...(opts.chatVisible ? [] : [Button({ id: 'chat-open', label: 'chat', onClick: opts.onToggleChat, style: UI_CHROME_PILL })]),
   ], { railWidth: opts.chatVisible ? railW - 1 : 0 });
   // The match banner floats at the top, centered in the space to the LEFT of the right

@@ -1,13 +1,13 @@
 import type { Surface } from '../engine/surface.ts';
 import type { ChessPieceName } from '../game-visuals/chess/index.ts';
-import type { Terrain } from '../rules/catan/types.ts';
+import type { Terrain } from '../rules/islanders/types.ts';
 import type { BrowserDisplayMode } from './browser-chess.ts';
 
-export type BrowserCatanTerrainSceneId = `catan-${Terrain}`;
+export type BrowserIslandersTerrainSceneId = `islanders-${Terrain}`;
 export type BrowserMiniSceneId =
   | 'chess-board'
   | 'chess-knight'
-  | BrowserCatanTerrainSceneId
+  | BrowserIslandersTerrainSceneId
   | 'poker-chips';
 
 export interface BrowserMiniSceneOptions {

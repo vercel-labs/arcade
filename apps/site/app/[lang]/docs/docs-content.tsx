@@ -114,7 +114,7 @@ rasterize(target, flatShade(cube()), lambertMaterial, {
     sections: [
       {
         heading: '1. Transform and near-plane clip',
-        body: <><p>The material vertex function produces clip-space position plus world position, normal, UV, and color varyings. Triangles fully in front of <code>w = 1e-4</code> take a fast path. Intersecting triangles use Sutherland–Hodgman clipping, then fan-triangulate the resulting polygon.</p><Note>Clipping against <code>w</code> prevents geometry behind the camera from projecting through the perspective singularity. The allocation-free common path matters for dense Catan scenes.</Note><Source path="src/engine/raster.ts" /></>,
+        body: <><p>The material vertex function produces clip-space position plus world position, normal, UV, and color varyings. Triangles fully in front of <code>w = 1e-4</code> take a fast path. Intersecting triangles use Sutherland–Hodgman clipping, then fan-triangulate the resulting polygon.</p><Note>Clipping against <code>w</code> prevents geometry behind the camera from projecting through the perspective singularity. The allocation-free common path matters for dense Islanders scenes.</Note><Source path="src/engine/raster.ts" /></>,
       },
       {
         heading: '2. Rasterize and shade',
@@ -245,7 +245,7 @@ const hud = Box({
       },
       {
         heading: 'Perfect and imperfect information',
-        body: <><p>Chess can expose the whole position. Poker implements <code>ImperfectInfoState</code>, which adds chance nodes and per-player information strings so another player’s hole cards never enter the prompt. Catan supplies parameterized legal-action examples and player-safe resource and trade context.</p><p>The rule engine remains authoritative. Model output is parsed, normalized, validated, retried where appropriate, and only then applied. Presentation renders the resulting state; it does not define legality.</p></>,
+        body: <><p>Chess can expose the whole position. Poker implements <code>ImperfectInfoState</code>, which adds chance nodes and per-player information strings so another player’s hole cards never enter the prompt. Islanders supplies parameterized legal-action examples and player-safe resource and trade context.</p><p>The rule engine remains authoritative. Model output is parsed, normalized, validated, retried where appropriate, and only then applied. Presentation renders the resulting state; it does not define legality.</p></>,
       },
       {
         heading: 'Model decision ladder',
@@ -258,8 +258,8 @@ const hud = Box({
       {
         heading: 'Self-play and persistent traces',
         body: <><Code>{`ARCADE_TELEMETRY=0 pnpm match:run -- \
-  --game catan --players 4 --communication ambient \
-  --output .runs/catan-4p`}</Code><p>Runs write a manifest, chronological events, per-match JSONL traces, result, canonical record or replay transcript, summary, and failures. Files appear while a match is active, enabling <code>tail -f</code> and mid-run inspection. Run directories are durable but gitignored. Read <a href="/docs/tools">Tools and self-play</a> for commands and privacy boundaries.</p></>,
+  --game islanders --players 4 --communication ambient \
+  --output .runs/islanders-4p`}</Code><p>Runs write a manifest, chronological events, per-match JSONL traces, result, canonical record or replay transcript, summary, and failures. Files appear while a match is active, enabling <code>tail -f</code> and mid-run inspection. Run directories are durable but gitignored. Read <a href="/docs/tools">Tools and self-play</a> for commands and privacy boundaries.</p></>,
       },
     ],
   },
@@ -272,24 +272,24 @@ const hud = Box({
       {
         heading: 'Visual snapshots',
         body: <><Code>{`pnpm snapshot:png 140 50 0.7
-pnpm snapshot:png catan 180 70 0.7
+pnpm snapshot:png islanders 180 70 0.7
 pnpm snapshot:png shortcuts chess`}</Code><p>Snapshot commands render one bounded frame instead of starting the infinite raw-mode app. They are the normal path for code review, regression checks, and agent visual QA. Outputs live under <code>.snapshots/</code>.</p></>,
       },
       {
         heading: 'Match lab',
         body: <><Code>{`pnpm match:run -- --game chess --games=4 --concurrency=2 --swap-seats
 pnpm match:run -- --game poker --players=4 --starting-chips=1000
-pnpm match:run -- --game catan --players=4 --communication=ambient`}</Code><p>The lab reuses real rules, action parsers, normalizers, model catalog and authentication selection, game defaults, and canonical recorders. Random seeds are stored; external model calls remain nondeterministic. Concurrency is match-level, never within one game turn.</p><Source path="docs/match-lab.md">Complete match-lab guide</Source></>,
+pnpm match:run -- --game islanders --players=4 --communication=ambient`}</Code><p>The lab reuses real rules, action parsers, normalizers, model catalog and authentication selection, game defaults, and canonical recorders. Random seeds are stored; external model calls remain nondeterministic. Concurrency is match-level, never within one game turn.</p><Source path="docs/match-lab.md">Complete match-lab guide</Source></>,
       },
       {
         heading: 'Model compatibility',
-        body: <><p><code>pnpm models:audit</code> probes provider and structured-output compatibility. <code>pnpm models:game-audit</code> combines the team-aware catalog with real Chess, Poker, and Catan adapters and classifies structured, text, normalized, fallback, access, timeout, error, and no-action outcomes.</p><p>The audit targets each model in a bounded scenario rather than assuming a static hard-coded list remains compatible forever.</p></>,
+        body: <><p><code>pnpm models:audit</code> probes provider and structured-output compatibility. <code>pnpm models:game-audit</code> combines the team-aware catalog with real Chess, Poker, and Islanders adapters and classifies structured, text, normalized, fallback, access, timeout, error, and no-action outcomes.</p><p>The audit targets each model in a bounded scenario rather than assuming a static hard-coded list remains compatible forever.</p></>,
       },
       {
         heading: 'Benchmarks and game-specific checks',
         body: <Api rows={[
           ['pnpm bench', 'Renderer and presenter timing for high-resolution performance work.'],
-          ['pnpm catan:check', 'Bounded Catan render and performance correctness check.'],
+          ['pnpm islanders:check', 'Bounded Islanders render and performance correctness check.'],
           ['src/tools/wisp-audit.ts', 'Inspects speech-wisp behavior without manual terminal play.'],
           ['src/tools/edge-check.ts', 'Validates geometry edge behavior.'],
           ['src/tools/perft.ts', 'Counts Chess rule-tree nodes for move-generation correctness.'],
@@ -340,7 +340,7 @@ $ arcade
     sections: [
       {
         heading: 'Run the live gallery',
-        body: <><p><a href="/examples">Open interactive examples</a> for the complete Chess board, an imported Chess asset, all 6 Catan terrain systems, the production Poker chip stack, and the prism stream. The gallery is deliberately organized around things Arcade actually ships—not generic renderer demos.</p><div className="example-grid"><Example glyph="♞" title="Chess" text="The complete board plus an isolated imported knight asset." /><Example glyph="⬡" title="Catan" text="Fields, forest, pasture, hills, mountains, and desert terrain." /><Example glyph="●" title="Poker" text="The real chip geometry, denomination model, and pile layout." /><Example glyph="◢" title="Prism" text="The standalone ANSI stream rendered with terminal semantics." /></div></>,
+        body: <><p><a href="/examples">Open interactive examples</a> for the complete Chess board, an imported Chess asset, all 6 Islanders terrain systems, the production Poker chip stack, and the prism stream. The gallery is deliberately organized around things Arcade actually ships—not generic renderer demos.</p><div className="example-grid"><Example glyph="♞" title="Chess" text="The complete board plus an isolated imported knight asset." /><Example glyph="⬡" title="Islanders" text="Fields, forest, pasture, hills, mountains, and desert terrain." /><Example glyph="●" title="Poker" text="The real chip geometry, denomination model, and pile layout." /><Example glyph="◢" title="Prism" text="The standalone ANSI stream rendered with terminal semantics." /></div></>,
       },
       {
         heading: 'Embed a focused Arcade scene',
@@ -349,7 +349,7 @@ $ arcade
   createBrowserMiniScene
 } from '@vercel/arcade/web'
 
-const scene = createBrowserMiniScene('catan-fields')
+const scene = createBrowserMiniScene('islanders-fields')
 const host = new CanvasSurfaceHost(canvas)
 const frame = scene.frame(58, 34, performance.now() / 1000)
 
@@ -358,7 +358,7 @@ host.draw(frame.surface)`}</Code><p>Use one host component for resize, visibilit
       },
       {
         heading: 'Production systems to study',
-        body: <><p>Some systems are documented before they are exposed as browser mini-scenes. Keep these app-level until a browser-safe, reusable boundary can be extracted without importing the terminal shell or game controller.</p><div className="example-grid"><Example glyph="⬡" title="Catan board" text="Island assembly, number tokens, ports, cached water, and projected labels." /><Example glyph="▤" title="Cards" text="Peek, reveal, parabolic flight, shuffle geometry, and retained hit targets." /><Example glyph="↔" title="Cover flow" text="Projected hit bounds, horizontal and vertical wheel input, and launch flip." /><Example glyph="⇅" title="Trade and discard" text="Resource rows, constraints, animated transfers, and model playback." /></div></>,
+        body: <><p>Some systems are documented before they are exposed as browser mini-scenes. Keep these app-level until a browser-safe, reusable boundary can be extracted without importing the terminal shell or game controller.</p><div className="example-grid"><Example glyph="⬡" title="Islanders board" text="Island assembly, number tokens, ports, cached water, and projected labels." /><Example glyph="▤" title="Cards" text="Peek, reveal, parabolic flight, shuffle geometry, and retained hit targets." /><Example glyph="↔" title="Cover flow" text="Projected hit bounds, horizontal and vertical wheel input, and launch flip." /><Example glyph="⇅" title="Trade and discard" text="Resource rows, constraints, animated transfers, and model playback." /></div></>,
       },
       {
         heading: 'Example standard',

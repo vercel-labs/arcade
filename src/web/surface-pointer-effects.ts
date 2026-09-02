@@ -66,9 +66,18 @@ function stampBurstParticle(field: Float32Array, width: number, height: number, 
   const life = Math.max(0, 1 - particle.age / particle.lifetime);
   if (life <= 0.01) return;
   const speed = Math.min(1, Math.hypot(particle.vx, particle.vy) * 2.8);
-  const sizeNoise = 0.68 + hash(particle.id, 101) * 0.7;
-  const fade = life * life;
-  stamp(field, width, height, protectedTop, particle.x * (width - 1), particle.y * (height - 1), (0.95 + (1 - life) * 1.15) * sizeNoise, (1.05 + (1 - life) * 1.55) * sizeNoise, fade * (0.3 + speed * 0.34), particle.id);
+  const age = 1 - life;
+  const sizeNoise = 0.72 + hash(particle.id, 101) * 0.52;
+  const fade = Math.pow(life, 1.35);
+  const x = particle.x * (width - 1), y = particle.y * (height - 1);
+  // Small anisotropic wisps keep the ring porous; sparse secondary puffs peel
+  // away from the perimeter without merging into one large blob.
+  stamp(field, width, height, protectedTop, x, y, (0.68 + age * 0.72) * sizeNoise, (0.78 + age * 0.95) * sizeNoise, fade * (0.26 + speed * 0.3), particle.id);
+  if (particle.id % 5 === 0) {
+    const angle = hash(particle.id, 109) * Math.PI * 2;
+    const drift = 1.2 + age * (1.5 + hash(particle.id, 113) * 2.2);
+    stamp(field, width, height, protectedTop, x + Math.cos(angle) * drift, y + Math.sin(angle) * drift * 0.65, 0.62 + age * 0.8, 0.72 + age, fade * 0.18, particle.id + 211);
+  }
 }
 
 function stamp(field: Float32Array, width: number, height: number, protectedTop: number, cx: number, cy: number, radiusX: number, radiusY: number, gain: number, seed: number): void {

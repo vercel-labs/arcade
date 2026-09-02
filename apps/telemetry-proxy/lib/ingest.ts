@@ -57,6 +57,7 @@ export async function ingest(req: IngestRequest, deps: IngestDeps): Promise<Inge
       return reject(400, 'invalid_json');
     }
     const reason = validateRow(req.kind, parsed);
+    if (reason === 'record_too_large') return reject(413, reason);
     if (reason) return reject(400, reason);
     rows.push(parsed);
   }

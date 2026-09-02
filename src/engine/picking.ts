@@ -195,7 +195,7 @@ function projectedCapsuleHit(
 ): ProjectedShapeHit {
   const segment = raycaster.projectedSegmentDistance(start, end, true);
   // Treat thickness as constant across the projected segment, sampled at its authored start.
-  // Besides matching the established Catan hit areas, this avoids a perspective-near endpoint
+  // Besides matching the established Islanders hit areas, this avoids a perspective-near endpoint
   // inflating the complete capsule into an overly grabby target at close camera distances.
   const radius = projectedMetricRadius(raycaster, start, radiusOffsets, minimumRadius);
   const distance = segment?.distance ?? Infinity;

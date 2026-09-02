@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  BrowserCatanTileShowcase,
+  BrowserIslandersTileShowcase,
   BrowserChessBoardShowcase,
   BrowserChessPieceShowcase,
   BrowserPokerChipsShowcase,
@@ -37,19 +37,19 @@ test('Chess mini scene can prepare imported production-style OBJ assets asynchro
   assert.ok(visibleGlyphs(scene) > 100);
 });
 
-test('Catan mini scene renders the shared production terrain mesh', () => {
-  const scene = createBrowserMiniScene('catan-fields');
-  assert.ok(scene instanceof BrowserCatanTileShowcase);
+test('Islanders mini scene renders the shared production terrain mesh', () => {
+  const scene = createBrowserMiniScene('islanders-fields');
+  assert.ok(scene instanceof BrowserIslandersTileShowcase);
   assert.ok(visibleGlyphs(scene) > 40);
   assert.equal(scene.cycleDisplayMode(), 'pixel');
   assert.equal(scene.cycleDisplayMode(), 'hybrid');
   assert.equal(scene.cycleDisplayMode(), 'ascii');
 });
 
-test('all production Catan terrain mini scenes render through one contract', () => {
+test('all production Islanders terrain mini scenes render through one contract', () => {
   for (const terrain of ['fields', 'forest', 'pasture', 'hills', 'mountains', 'desert'] as const) {
-    const scene = createBrowserMiniScene(`catan-${terrain}`);
-    assert.ok(scene instanceof BrowserCatanTileShowcase);
+    const scene = createBrowserMiniScene(`islanders-${terrain}`);
+    assert.ok(scene instanceof BrowserIslandersTileShowcase);
     assert.ok(visibleGlyphs(scene) > 30, terrain);
   }
 });
@@ -73,7 +73,7 @@ test('Poker chip mini scene renders the production starting stack', () => {
 
 test('mini-scene factory rejects unknown JavaScript input with a useful error', () => {
   assert.throws(
-    () => createBrowserMiniScene('catan-volcano' as never),
-    /Unknown browser mini scene: catan-volcano/,
+    () => createBrowserMiniScene('islanders-volcano' as never),
+    /Unknown browser mini scene: islanders-volcano/,
   );
 });

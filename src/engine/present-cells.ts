@@ -29,7 +29,7 @@ interface CellBounds {
   lastRow: number;
 }
 
-// Retained native-grid shape matches. Bounded scenes such as Catan repaint animated water
+// Retained native-grid shape matches. Bounded scenes such as Islanders repaint animated water
 // around a large amount of unchanged terrain; comparing the 3x6 source samples is much cheaper
 // than running the full glyph search again for those stable cells.
 export class ShapeGlyphSurfaceCache {

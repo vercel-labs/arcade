@@ -4,6 +4,7 @@ import { CanvasSurfaceHost, LIVING_TITLE_MORPH_STARTS, LivingTitleScene, Pointer
 import { QuickTerminalButton } from '@/components/quick-terminal';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
+import { visibleViewportHeight } from './hero-viewport';
 
 const INSTALL_COMMANDS = {
   npm: 'npm i -g @vercel/arcade',
@@ -88,9 +89,23 @@ export const Hero = () => {
       root.appendChild(diagnostics.element);
     }
 
+    const viewportHeight = () => visibleViewportHeight(window.visualViewport?.height, window.innerHeight);
+    let fittedViewportHeight = 0;
+    const fitVisibleViewport = () => {
+      const nextHeight = viewportHeight();
+      if (Math.abs(nextHeight - fittedViewportHeight) >= 0.5) {
+        fittedViewportHeight = nextHeight;
+        root.style.setProperty('--arcade-visual-height', `${nextHeight}px`);
+        canvas.style.height = `${nextHeight}px`;
+        primedGrid = '';
+        primedTransitions.clear();
+      }
+      measureProgress();
+    };
+
     const measureProgress = () => {
       const rect = root.getBoundingClientRect();
-      const distance = Math.max(1, root.offsetHeight - window.innerHeight);
+      const distance = Math.max(1, root.offsetHeight - viewportHeight());
       progressRef.current = Math.max(0, Math.min(1, -rect.top / distance));
       tour.style.setProperty('--tour-progress', `${progressRef.current * 100}%`);
     };
@@ -118,7 +133,7 @@ export const Hero = () => {
         const elapsed = tourLastTime ? Math.min(0.1, (time - tourLastTime) / 1000) : 0;
         tourLastTime = time;
         const progress = advanceAutoTourProgress(progressRef.current, elapsed);
-        const distance = Math.max(1, root.offsetHeight - window.innerHeight);
+        const distance = Math.max(1, root.offsetHeight - viewportHeight());
         window.scrollTo({ top: root.offsetTop + progress * distance, behavior: 'instant' });
         measureProgress();
         if (progress >= 1) {
@@ -244,9 +259,11 @@ export const Hero = () => {
     };
     const onPointerCapability = () => { pointerEffects = precisePointer.matches && !reducedMotion; if (!pointerEffects) clearPointer(); };
 
-    measureProgress();
+    fitVisibleViewport();
     window.addEventListener('scroll', measureProgress, { passive: true });
-    window.addEventListener('resize', measureProgress);
+    window.addEventListener('resize', fitVisibleViewport);
+    window.visualViewport?.addEventListener('resize', fitVisibleViewport);
+    window.visualViewport?.addEventListener('scroll', fitVisibleViewport);
     canvas.addEventListener('pointermove', onPointerMove);
     canvas.addEventListener('pointerleave', clearPointer);
     canvas.addEventListener('click', onCanvasClick);
@@ -268,7 +285,9 @@ export const Hero = () => {
     return () => {
       cancelAnimationFrame(frame);
       window.removeEventListener('scroll', measureProgress);
-      window.removeEventListener('resize', measureProgress);
+      window.removeEventListener('resize', fitVisibleViewport);
+      window.visualViewport?.removeEventListener('resize', fitVisibleViewport);
+      window.visualViewport?.removeEventListener('scroll', fitVisibleViewport);
       canvas.removeEventListener('pointermove', onPointerMove);
       canvas.removeEventListener('pointerleave', clearPointer);
       canvas.removeEventListener('click', onCanvasClick);
@@ -283,6 +302,8 @@ export const Hero = () => {
       if (autoStartHandle) window.clearTimeout(autoStartHandle);
       for (const handle of idleHandles) window.clearTimeout(handle);
       diagnostics?.element.remove();
+      root.style.removeProperty('--arcade-visual-height');
+      canvas.style.removeProperty('height');
     };
   }, []);
 

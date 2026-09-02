@@ -39,6 +39,13 @@ describe('ensureGatewayKey precedence', () => {
     assert.deepEqual(res, { key: 'hosted-placeholder' });
   });
 
+  test('explicit hosted login does not silently reuse the demo credential', async () => {
+    process.env.ARCADE_HOSTED_TERMINAL = '1';
+    process.env.AI_GATEWAY_API_KEY = 'hosted-demo';
+    const result = await ensureGatewayKey({ forceLogin: true, interactive: false });
+    assert.equal(result, null);
+  });
+
   test('does not accept the hosted key unless the explicit adapter flag is set', async () => {
     process.env.ARCADE_HOSTED_TERMINAL = '0';
     process.env.AI_GATEWAY_API_KEY = 'hosted-placeholder';

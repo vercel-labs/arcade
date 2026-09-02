@@ -1,6 +1,6 @@
 import type { CommunicationMode } from '../../harness/communication/types.ts';
 
-export type MatchLabGame = 'chess' | 'catan' | 'poker';
+export type MatchLabGame = 'chess' | 'islanders' | 'poker';
 
 export interface MatchLabLimits {
   timeoutMs: number;
