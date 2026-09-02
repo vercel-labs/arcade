@@ -279,6 +279,63 @@ test('the workbench controller turns a played knight into robber-targeting mode'
   resetIslandersWorkbenchCards();
 });
 
+test('the workbench controller animates confirmed discards from the staged row into the bank', () => {
+  resetIslandersWorkbenchCards();
+  for (let i = 0; i < 5; i++) adjustIslandersWorkbenchHand('brick', 1);
+  for (let i = 0; i < 4; i++) adjustIslandersWorkbenchHand('grain', 1);
+  assert.equal(beginIslandersWorkbenchDiscard(), true);
+  for (let i = 0; i < 3; i++) assert.equal(adjustIslandersWorkbenchDiscard('brick', 1), true);
+  assert.equal(adjustIslandersWorkbenchDiscard('grain', 1), true);
+
+  const region = { x: 0, y: 0, w: 140, h: 50 };
+  const screen = new Screen(region.w, region.h);
+  const controller = new IslandersController({
+    ui: screen,
+    requestRender: () => {},
+    requestFrame: () => {},
+    shell: {
+      renderMode: () => 'ascii',
+      colorMode: () => 'truecolor',
+      onHome: () => {},
+      onCycleDisplay: () => {},
+      onCycleColor: () => {},
+      onControls: () => {},
+      onQuit: () => {},
+      menuValueColW: 10,
+    },
+  });
+  controller.scene.setMode('boardCards');
+  controller.scene.settle();
+  const before = islandersWorkbenchView();
+  const bankBefore = { ...before.bank };
+  screen.setRoot(controller.buildRoot(region.w, region.h), region);
+  findNode(controller.buildRoot(region.w, region.h), 'islanders-discard-confirm')?.onClick?.();
+
+  assert.equal(islandersWorkbenchDiscardOpen(), false, 'confirming closes the discard panel');
+  assert.equal(controller.needsRender(), true, 'the controller keeps rendering while discarded cards fly');
+  assert.equal(islandersWorkbenchView().hand.brick, 5, 'staged cards stay in hand until departure');
+  assert.equal(islandersWorkbenchView().bank.brick, bankBefore.brick, 'the bank waits for each landing');
+
+  const target = new RenderTarget(region.w, region.h * 2);
+  controller.renderScene(target, 0);
+  const flyingRoot = controller.buildRoot(region.w, region.h);
+  const departure = islandersDiscardDepartureCell(region, 'brick');
+  const projected = (function all(node: Node): Node[] {
+    return [node, ...(node.children ?? []).flatMap(all)];
+  })(flyingRoot).find((node) => node.style.left === departure.col - 2 && node.style.top === departure.row);
+  assert.ok(projected, 'the first discarded card is drawn at its staged-row departure cell');
+
+  for (let frame = 1; frame <= 28; frame++) controller.renderScene(target, frame * 0.25);
+  assert.equal(controller.needsRender(), false);
+  assert.equal(islandersWorkbenchView().hand.brick, 2);
+  assert.equal(islandersWorkbenchView().hand.grain, 3);
+  assert.equal(islandersWorkbenchView().bank.brick, bankBefore.brick + 3);
+  assert.equal(islandersWorkbenchView().bank.grain, bankBefore.grain + 1);
+  assert.equal(controller.scene.isMovingRobber(), true, 'robber choice starts after the cards land');
+  controller.reset();
+  resetIslandersWorkbenchCards();
+});
+
 test('workbench bank trade exchanges four matching cards for one bank card', () => {
   resetIslandersWorkbenchCards();
   for (let i = 0; i < 4; i++) assert.equal(adjustIslandersWorkbenchHand('brick', 1), true);

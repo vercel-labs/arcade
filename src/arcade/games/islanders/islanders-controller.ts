@@ -22,6 +22,7 @@ import {
   islandersBankDepartureCell,
   islandersDevDeckDepartureCell,
   islandersDevHandLandingCell,
+  islandersDiscardDepartureCell,
   islandersHandLandingCell,
   islandersRailVisible,
   islandersWorkbenchDiscardOpen,
@@ -38,12 +39,14 @@ import {
   logIslandersRobberMove,
   logIslandersRoll,
   logIslandersWorkbenchDevPurchase,
+  logIslandersWorkbenchDiscard,
   logIslandersWorkbenchMaritimeTrade,
   finishIslandersWorkbenchDevelopmentPlay,
   resetIslandersWorkbenchCards,
-  submitIslandersWorkbenchDiscard,
+  reserveIslandersWorkbenchDiscard,
 } from './card-hud.ts';
 import { type IslandersWorkbenchMaritimeTrade, type IslandersWorkbenchMaritimeTradeVia } from './card-workbench.ts';
+import { RESOURCE_ORDER } from './palette.ts';
 import { ResourceFlights } from './scene/resource-flight.ts';
 import { buildIslandersPieceModal, buildIslandersTileRoot, islandersTileTerrain, mountIslandersTileHud, setIslandersTileHandlers, setIslandersTileMode } from './tile-hud.ts';
 import { TileScene } from './tile-scene.ts';
@@ -84,8 +87,10 @@ export class IslandersController {
   private readonly tradeFlights = new ResourceFlights();
   private readonly tradeOfferFlights = new ResourceFlights();
   private readonly developmentFlights = new ResourceFlights<DevCardType>();
+  private readonly discardFlights = new ResourceFlights();
   private pendingMaritimeTrade: { trade: IslandersWorkbenchMaritimeTrade; via: IslandersWorkbenchMaritimeTradeVia } | null = null;
   private readonly pendingDevelopmentCards: DevCardType[] = [];
+  private pendingDiscardCount = 0;
   // Cards banked since the current roll's first arrival, held so the log can report the whole
   // haul in one entry once the last one is down.
   private arrived: Resource[] = [];
@@ -143,8 +148,28 @@ export class IslandersController {
   }
 
   private finishWorkbenchDiscard(): boolean {
-    if (!submitIslandersWorkbenchDiscard()) return false;
-    this.scene.beginRobberMove();
+    if (this.discardFlights.busy()) return false;
+    const resources = reserveIslandersWorkbenchDiscard();
+    if (!resources?.length) return false;
+    const region = this.region(this.lastCols, this.lastRows);
+    const railVisible = islandersRailVisible(this.lastCols, this.lastRows);
+    const playerCount = islandersWorkbenchView().opponents.length + 1;
+    this.pendingDiscardCount = resources.length;
+    let order = 0;
+    for (const resource of RESOURCE_ORDER) {
+      const count = resources.filter((item) => item === resource).length;
+      if (!count) continue;
+      this.discardFlights.spawn(
+        resource,
+        count,
+        islandersDiscardDepartureCell(region, resource),
+        islandersBankDepartureCell(region, resource, playerCount, railVisible),
+        order,
+        undefined,
+        false,
+      );
+      order += count;
+    }
     this.requestFrame();
     return true;
   }
@@ -319,8 +344,10 @@ export class IslandersController {
     this.tradeFlights.drain();
     this.tradeOfferFlights.drain();
     this.developmentFlights.drain();
+    this.discardFlights.drain();
     this.pendingMaritimeTrade = null;
     this.pendingDevelopmentCards.length = 0;
+    this.pendingDiscardCount = 0;
     this.arrived = [];
     this.scene.setPlacementGate(null);
     this.scene.cancelRobberMove();
@@ -359,6 +386,7 @@ export class IslandersController {
     }
     this.settleTradeFlights();
     this.settleDevelopmentFlights();
+    this.settleDiscardFlights();
     if (this.animationTimer !== null) {
       clearInterval(this.animationTimer);
       this.animationTimer = null;
@@ -436,7 +464,8 @@ export class IslandersController {
       || this.flights.busy()
       || this.tradeFlights.busy()
       || this.tradeOfferFlights.busy()
-      || this.developmentFlights.busy();
+      || this.developmentFlights.busy()
+      || this.discardFlights.busy();
   }
   renderScene(target: RenderTarget, t: number): void {
     this.scene.renderScene(target, t);
@@ -446,6 +475,7 @@ export class IslandersController {
     const landed = this.flights.advance(t);
     this.advanceTradeFlights(t);
     this.advanceDevelopmentFlights(t);
+    this.advanceDiscardFlights(t);
     if (!landed.length) return;
     for (const resource of landed) bankIslandersResource(resource);
     this.arrived.push(...landed);
@@ -493,6 +523,34 @@ export class IslandersController {
     if (departed.length || landed.length) this.requestFrame();
   }
 
+  private advanceDiscardFlights(t: number): void {
+    const { departed, landed } = this.discardFlights.advanceWithDepartures(t);
+    for (const resource of departed) {
+      if (!departIslandersWorkbenchHandResource(resource)) {
+        throw new Error(`Islanders hand ran out of ${resource} during a reserved discard`);
+      }
+    }
+    for (const resource of landed) landIslandersWorkbenchBankResource(resource);
+    if (this.pendingDiscardCount && !this.discardFlights.busy()) {
+      logIslandersWorkbenchDiscard(this.pendingDiscardCount);
+      this.pendingDiscardCount = 0;
+      this.scene.beginRobberMove();
+    }
+    if (departed.length || landed.length) this.requestFrame();
+  }
+
+  private settleDiscardFlights(): void {
+    if (!this.pendingDiscardCount) return;
+    for (const flight of this.discardFlights.drainPending()) {
+      if (!flight.departed && !departIslandersWorkbenchHandResource(flight.resource)) {
+        throw new Error(`Islanders hand ran out of ${flight.resource} during a reserved discard`);
+      }
+      landIslandersWorkbenchBankResource(flight.resource);
+    }
+    logIslandersWorkbenchDiscard(this.pendingDiscardCount);
+    this.pendingDiscardCount = 0;
+  }
+
   // ── UI roots ─────────────────────────────────────────────────────────────────
   // The normal Islanders control panel + ☰ menu button over the scene.
   // `sceneCols` is the width the scene actually renders into — narrower than `cols` while the
@@ -528,6 +586,7 @@ export class IslandersController {
         ...this.tradeOfferFlights.active(),
         ...this.tradeFlights.active(),
         ...this.developmentFlights.active(),
+        ...this.discardFlights.active(),
       ],
       this.scene.isMovingRobber(),
       cardsView,
