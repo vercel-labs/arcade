@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Node } from '../../tui/index.ts';
-import { buildIslandersSetupPanel, islandersSeatColors, islandersSetupCommunicationMode, islandersSetupSelection, communicationDropdown, modeDropdown, seatsDropdown } from './islanders-setup-panel.ts';
+import { buildIslandersSetupPanel, islandersSeatColors, islandersSetupCommunicationMode, islandersSetupSelection, communicationDropdown, modeDropdown, seatsDropdown, setIslandersSetupCommunicationMode } from './islanders-setup-panel.ts';
 
 function collectNodes(root: Node): Node[] {
   return [root, ...(root.children ?? []).flatMap(collectNodes)];
@@ -11,6 +11,12 @@ test('Islanders setup defaults to a four-player table', () => {
   assert.equal(seatsDropdown.index, 2);
   assert.equal(islandersSeatColors().length, 4);
   assert.equal(islandersSetupSelection()?.length, 4);
+});
+
+test('Islanders setup renders a persistent failed health row', () => {
+  const panel = buildIslandersSetupPanel({ lines: ['gpt failed health check.'], failed: true });
+  const status = collectNodes(panel).find((node) => node.text?.includes('failed health check'));
+  assert.equal(status?.style.color, 'danger');
 });
 
 test('Islanders setup defaults to ambient communication on one stable-width explained row', () => {
@@ -38,6 +44,13 @@ test('Islanders setup defaults to ambient communication on one stable-width expl
   collect(alternate);
   assert.ok(texts.includes('chat after every action'));
   communicationDropdown.pick(0);
+});
+
+test('the in-game menu can update the next-match communication default', () => {
+  setIslandersSetupCommunicationMode('autoreply');
+  assert.equal(islandersSetupCommunicationMode(), 'autoreply');
+  setIslandersSetupCommunicationMode('ambient');
+  assert.equal(islandersSetupCommunicationMode(), 'ambient');
 });
 
 test('color selection is visible only when the human is playing', () => {

@@ -51,7 +51,7 @@ export interface DecisionDiagnostics {
     phase: 'structured' | 'text' | 'normalize';
     result: 'accepted' | 'rejected' | 'error';
     rejectionReason?: 'illegal' | 'unparseable';
-    failureKind?: 'access' | 'schema' | 'timeout' | 'transient' | 'unknown';
+    failureKind?: import('./player.ts').DecisionFailureKind;
     latencyMs: number;
     inputTokens?: number;
     outputTokens?: number;

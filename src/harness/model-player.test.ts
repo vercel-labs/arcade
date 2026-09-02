@@ -74,6 +74,22 @@ function accessError(): unknown {
   return Object.assign(new Error('Your team has restricted access to this provider.'), { name: 'GatewayInternalServerError', statusCode: 403, cause });
 }
 
+function billingError(): unknown {
+  const cause = Object.assign(new Error('out of credit'), {
+    name: 'AI_APICallError', statusCode: 402,
+    responseBody: JSON.stringify({ error: { type: 'insufficient_funds', message: 'Add credits at https://provider.invalid' } }),
+  });
+  return Object.assign(new Error('out of credit'), { name: 'GatewayInternalServerError', statusCode: 402, cause });
+}
+
+function transientError(): unknown {
+  return Object.assign(new Error('temporarily unavailable'), {
+    name: 'AI_APICallError',
+    statusCode: 503,
+    responseBody: JSON.stringify({ error: { type: 'service_unavailable', message: 'try again' } }),
+  });
+}
+
 const legalMove = (state: ChessState, action: Move): boolean =>
   state.legalActions().some((m) => m.from === action.from && m.to === action.to && m.promotion === action.promotion);
 
@@ -108,20 +124,40 @@ test('marker-based communication fallback never treats unmarked private prose as
   });
 });
 
-test('access error: skips the futile text retry and returns the "unavailable" diagnosis', async () => {
+test('access error: skips the futile text retry and surfaces a notice instead of fallback chat', async () => {
   const state = new ChessState();
   const { model, calls } = throwingModel(accessError());
-  const player = new ModelPlayer<Move>({ model, name: 'inkling-mock', gameName: 'chess', maxRetries: 3 });
-  const { action, rationale, diagnostics } = await player.chooseAction(state);
-  assert.equal(rationale, FALLBACK_RATIONALE.unavailable, 'diagnosed as unavailable, not a generic fallback');
+  const notices: unknown[] = [];
+  const player = new ModelPlayer<Move>({ model, name: 'inkling-mock', gameName: 'chess', maxRetries: 3, onFailureNotice: (notice) => notices.push(notice) });
+  await assert.rejects(() => player.chooseAction(state), { name: 'NotifiedModelFailure' });
   assert.equal(calls(), 1, 'exactly one call — no schema retries, no wasted text-fallback call');
-  assert.ok(legalMove(state, action), 'still returns a legal move so the match never deadlocks');
-  assert.equal(diagnostics?.resolution, 'random-fallback');
-  assert.equal(diagnostics?.fallbackReason, 'unavailable');
-  assert.deepEqual(diagnostics?.attempts.map(({ phase, result, failureKind }) => ({ phase, result, failureKind })), [
-    { phase: 'structured', result: 'error', failureKind: 'access' },
-  ]);
-  assert.ok(!JSON.stringify(diagnostics).includes('restricted access'), 'diagnostics contain no raw provider error text');
+  assert.equal(notices.length, 1);
+});
+
+test('Gateway billing failure emits an actionable notice without generic fallback chat', async () => {
+  const state = new ChessState();
+  const { model, calls } = throwingModel(billingError());
+  const notices: unknown[] = [];
+  const player = new ModelPlayer<Move>({ model, name: 'openai/test', maxRetries: 3, onFailureNotice: (notice) => notices.push(notice) });
+  await assert.rejects(() => player.chooseAction(state), { name: 'NotifiedModelFailure' });
+  assert.equal(calls(), 1);
+  assert.deepEqual(notices, [{
+    code: 'insufficient_funds', severity: 'error', title: 'out of credit',
+    body: 'buy AI Gateway credit to resume model requests.', persistent: true,
+    action: { label: 'buy AI Gateway credit', url: 'https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai%3Fmodal%3Dtop-up' },
+  }]);
+});
+
+test('temporary Gateway failure notifies and continues with a legal fallback', async () => {
+  const state = new ChessState();
+  const { model } = throwingModel(transientError());
+  const notices: unknown[] = [];
+  const player = new ModelPlayer<Move>({ model, name: 'temporary-model', gameName: 'chess', maxRetries: 0, fallbackRng: () => 0, onFailureNotice: (notice) => notices.push(notice) });
+  const choice = await player.chooseAction(state);
+  assert.equal(legalMove(state, choice.action), true);
+  assert.equal(choice.diagnostics?.resolution, 'random-fallback');
+  assert.equal(notices.length, 1);
+  assert.equal((notices[0] as { persistent: boolean }).persistent, false);
 });
 
 test('schema error: falls through to the plain-text soft-parse and plays a legal move', async () => {
@@ -151,7 +187,8 @@ test('exhausted (legal JSON but always illegal move): diagnosed generic fallback
       return okResult(JSON.stringify({ move: 'zz99', rationale: 'always nonsense' }));
     },
   });
-  const player = new ModelPlayer<Move>({ model, name: 'illegal-mock', gameName: 'chess', maxRetries: 2 });
+  const notices: unknown[] = [];
+  const player = new ModelPlayer<Move>({ model, name: 'illegal-mock', gameName: 'chess', maxRetries: 2, onFailureNotice: (notice) => notices.push(notice) });
   const { action, rationale, diagnostics } = await player.chooseAction(state);
   assert.equal(rationale, FALLBACK_RATIONALE.exhausted, 'generic "no valid reply" fallback, not "unavailable"');
   assert.ok(legalMove(state, action), 'random legal move played');
@@ -165,6 +202,7 @@ test('exhausted (legal JSON but always illegal move): diagnosed generic fallback
     { phase: 'structured', result: 'rejected', rejectionReason: 'illegal' },
     { phase: 'structured', result: 'rejected', rejectionReason: 'illegal' },
   ]);
+  assert.deepEqual(notices, []);
 });
 
 test('last-resort fallback uses the injected RNG', async () => {

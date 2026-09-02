@@ -2,12 +2,19 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { POKER_TABLE_ASSET_URLS, parsePokerTableMeshes } from '../game-visuals/poker/table.ts';
-import { BrowserIslandersCinematic, BrowserPokerCinematic } from './browser-game-cinematics.ts';
+import { BrowserIslandersCinematic, BrowserPokerCinematic, islandersPortraitDiceScale } from './browser-game-cinematics.ts';
 
 const table = parsePokerTableMeshes(
   readFileSync(new URL(POKER_TABLE_ASSET_URLS.table), 'utf8'),
   readFileSync(new URL(POKER_TABLE_ASSET_URLS.chair), 'utf8'),
 );
+
+test('browser Islanders shrinks dice only for narrow portrait framing', () => {
+  assert.ok(islandersPortraitDiceScale(390 / 844) < 0.8);
+  assert.equal(islandersPortraitDiceScale(0.8), 1);
+  assert.equal(islandersPortraitDiceScale(844 / 390), 1);
+  assert.equal(islandersPortraitDiceScale(16 / 9), 1);
+});
 
 test('production Poker table occupies the full desktop viewport without a dead top band', () => {
   const poker = new BrowserPokerCinematic({ table });

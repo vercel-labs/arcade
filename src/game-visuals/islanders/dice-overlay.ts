@@ -10,6 +10,8 @@ export interface IslandersDiceOverlayOptions {
   preserveSceneDepth?: boolean;
   /** Erase the settled pair through the shared cold-ink treatment; 0 is intact and 1 is gone. */
   burnProgress?: number;
+  /** Scale the complete screen-space pair around its authored center. */
+  scale?: number;
 }
 
 /** Production screen-space dice pass shared by the terminal game and web film. */
@@ -19,14 +21,14 @@ export function drawIslandersDiceOverlay(target: RenderTarget, dice: readonly [D
     const layer = diceLayerFor(target);
     layer.resize(target.width, target.height);
     layer.clear();
-    drawDice(layer, dice, elapsed, rolling);
+    drawDice(layer, dice, elapsed, rolling, options.scale);
     if (!options.preserveSceneDepth) target.depth.fill(Infinity);
     compositeBurningDice(target, layer, burn);
     return;
   }
   const previousDepth = options.preserveSceneDepth ? target.depth.slice() : null;
   target.depth.fill(Infinity);
-  drawDice(target, dice, elapsed, rolling);
+  drawDice(target, dice, elapsed, rolling, options.scale);
   if (previousDepth) {
     for (let index = 0; index < target.depth.length; index++) {
       if (!Number.isFinite(target.depth[index])) target.depth[index] = previousDepth[index];
@@ -41,13 +43,13 @@ function diceLayerFor(target: RenderTarget): RenderTarget {
   return layer;
 }
 
-function drawDice(target: RenderTarget, dice: readonly [Die, Die], elapsed: number, rolling: boolean): void {
+function drawDice(target: RenderTarget, dice: readonly [Die, Die], elapsed: number, rolling: boolean, scale = 1): void {
   const aspect = (DICE_BOX.sx / DICE_BOX.sy) * (target.width / target.height);
   const dist = Math.hypot(DICE_EYE.y - DICE_TARGET.y, DICE_EYE.z - DICE_TARGET.z);
   const halfW = dist * Math.tan(DICE_FOVY / 2) * aspect;
   const camX = DIE_RIGHT - halfW * 0.82;
   const camera: Camera = { eye: { x: camX, y: DICE_EYE.y, z: DICE_EYE.z }, target: { x: camX, y: DICE_TARGET.y, z: DICE_TARGET.z }, up: { x: 0, y: 1, z: 0 }, fovy: DICE_FOVY, near: 0.05, far: 100 };
-  const vp = mat4Multiply(diceViewport(), cameraMatrices(camera, aspect).viewProjection);
+  const vp = mat4Multiply(diceViewport(scale), cameraMatrices(camera, aspect).viewProjection);
   const forwardY = DICE_TARGET.y - DICE_EYE.y;
   const forwardZ = DICE_TARGET.z - DICE_EYE.z;
   const forwardLength = Math.hypot(forwardY, forwardZ) || 1;
@@ -70,20 +72,20 @@ function drawDice(target: RenderTarget, dice: readonly [Die, Die], elapsed: numb
 
 function compositeBurningDice(target: RenderTarget, layer: RenderTarget, progress: number): void {
   const W = target.width, H = target.height;
-  let minField = Infinity, maxField = -Infinity;
+  const columns = new Array<number>(W).fill(0);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const pixel = y * W + x;
     if (!Number.isFinite(layer.depth[pixel])) continue;
-    const field = diceBurnField(x / Math.max(1, W - 1), y / Math.max(1, H - 1));
-    minField = Math.min(minField, field); maxField = Math.max(maxField, field);
+    columns[x]++;
   }
-  const front = minField - 0.1 + (maxField - minField + 0.2) * progress;
+  const groups = occupiedColumnGroups(columns).map(([minX, maxX], seed) => diceBurnGroup(layer, minX, maxX, seed));
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const pixel = y * W + x;
     if (!Number.isFinite(layer.depth[pixel])) continue;
-    const u = x / Math.max(1, W - 1), v = y / Math.max(1, H - 1);
-    const field = diceBurnField(u, v);
-    const handoff = progress <= 0 ? 0 : progress >= 1 ? 1 : smoothstep((front - field + 0.09) / 0.18);
+    const group = groups.find(({ minX, maxX }) => x >= minX && x <= maxX)!;
+    const field = diceBurnField(x, y, group);
+    const normalized = (field - group.minField) / Math.max(1e-6, group.maxField - group.minField);
+    const handoff = progress <= 0 ? 0 : progress >= 1 ? 1 : smoothstep((progress - normalized + 0.08) / 0.16);
     if (handoff >= 0.5) continue;
     const seam = 1 - Math.min(1, Math.abs(handoff - 0.5) * 3.4);
     const colorIndex = pixel * 3;
@@ -93,8 +95,40 @@ function compositeBurningDice(target: RenderTarget, layer: RenderTarget, progres
   }
 }
 
-function diceBurnField(u: number, v: number): number {
-  return (u - 0.72) * 0.82 + (v - 0.48) * 0.58 + inkNoise(u * 4.2, v * 4.2) * 0.24;
+interface DiceBurnGroup { minX: number; maxX: number; minY: number; maxY: number; seed: number; minField: number; maxField: number }
+
+function occupiedColumnGroups(columns: readonly number[]): Array<[number, number]> {
+  const groups: Array<[number, number]> = [];
+  let start = -1;
+  for (let x = 0; x <= columns.length; x++) {
+    if ((columns[x] ?? 0) > 0 && start < 0) start = x;
+    if ((columns[x] ?? 0) === 0 && start >= 0) { groups.push([start, x - 1]); start = -1; }
+  }
+  return groups;
+}
+
+function diceBurnGroup(layer: RenderTarget, minX: number, maxX: number, seed: number): DiceBurnGroup {
+  let minY = layer.height, maxY = 0;
+  for (let y = 0; y < layer.height; y++) for (let x = minX; x <= maxX; x++) {
+    if (!Number.isFinite(layer.depth[y * layer.width + x])) continue;
+    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+  }
+  const group: DiceBurnGroup = { minX, maxX, minY, maxY, seed, minField: Infinity, maxField: -Infinity };
+  for (let y = minY; y <= maxY; y++) for (let x = minX; x <= maxX; x++) {
+    if (!Number.isFinite(layer.depth[y * layer.width + x])) continue;
+    const field = diceBurnField(x, y, group);
+    group.minField = Math.min(group.minField, field); group.maxField = Math.max(group.maxField, field);
+  }
+  return group;
+}
+
+function diceBurnField(x: number, y: number, group: DiceBurnGroup): number {
+  const u = (x - group.minX) / Math.max(1, group.maxX - group.minX);
+  const v = (y - group.minY) / Math.max(1, group.maxY - group.minY);
+  const seed = group.seed * 7.31;
+  const coarse = inkNoise(u * 3.2 + seed, v * 3.2 - seed);
+  const fibers = Math.sin((u * 0.72 - v * 0.58) * 34 + coarse * 9 + seed) * 0.055;
+  return u * 0.34 + v * 0.24 + coarse * 0.52 + fibers;
 }
 
 function clamp01(value: number): number { return Math.max(0, Math.min(1, value)); }

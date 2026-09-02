@@ -35,7 +35,7 @@ export const POKER_PERSONA =
 
 export type PokerTextPlayerOpts = Pick<
   ModelPlayerOpts,
-  'model' | 'name' | 'normalizer' | 'normalizerName' | 'fallbackRng' | 'onAttempt'
+  'model' | 'name' | 'normalizer' | 'normalizerName' | 'fallbackRng' | 'onAttempt' | 'onFailureNotice'
 > & {
   contextProvider?: () => string;
   communication?: ModelPlayerOpts['communication'];

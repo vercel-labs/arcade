@@ -492,7 +492,7 @@ export function shapeGlyphLayerToSurface(
         const lum = (0.299 * cr + 0.587 * cg + 0.114 * cb) / cc / 255;
         ch = LUMINANCE_RAMP[Math.min(rampMax, Math.max(0, Math.round(lum * rampMax)))];
       }
-      if (ch === ' ' || !color) continue;
+      if (!color) continue;
       fg[0] = cr / cc;
       fg[1] = cg / cc;
       fg[2] = cb / cc;
@@ -503,6 +503,10 @@ export function shapeGlyphLayerToSurface(
         coloredBg[2] = shapeGlyphBackgroundChannel(fg[2]);
         bg = coloredBg;
       }
+      // Finite depth is ownership, not merely brightness. A black 3D detail such as a die pip
+      // legitimately matches the space glyph; skipping it would reveal the old scene glyph and
+      // make the foreground look transparent. Untouched infinite-depth cells were already
+      // rejected by cc === 0, so painting this space preserves sparse-layer transparency.
       surf.setCell(x0 + cx, y0 + cy, ch, fg, bg, 0);
     }
   }

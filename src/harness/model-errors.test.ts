@@ -57,8 +57,68 @@ test('classify: 503 with no schema/access markers → transient', () => {
 });
 
 test('classify: unrecognized error → unknown', () => {
-  assert.equal(classifyModelError(new Error('something odd happened')).kind, 'unknown');
+  const failure = classifyModelError(new Error('something odd happened'));
+  assert.equal(failure.kind, 'unknown');
+  assert.equal(failure.gatewayFailure, false);
 });
+
+test('classify: Gateway billing and quota types remain actionable', () => {
+  assert.equal(classifyModelError(gatewayError(402, 'insufficient_funds')).kind, 'billing');
+  assert.equal(classifyModelError(gatewayError(403, 'customer_verification_required')).kind, 'billing');
+  assert.equal(classifyModelError(gatewayError(429, 'quota_for_entity_exceeded')).kind, 'quota');
+  assert.equal(classifyModelError(gatewayError(401, 'authentication_error')).kind, 'authentication');
+});
+
+test('classify: typed AI SDK Gateway errors preserve their direct type', () => {
+  assert.deepEqual(
+    classifyModelError(Object.assign(new Error('Authentication failed'), {
+      name: 'GatewayAuthenticationError',
+      type: 'authentication_error',
+      statusCode: 401,
+    })),
+    {
+      kind: 'authentication',
+      status: 401,
+      gatewayType: 'authentication_error',
+      gatewayFailure: true,
+      message: 'Authentication failed',
+    },
+  );
+  assert.equal(classifyModelError(Object.assign(new Error('Model not found'), {
+    name: 'GatewayModelNotFoundError',
+    type: 'model_not_found',
+    statusCode: 404,
+  })).kind, 'model');
+});
+
+test('classify: bare HTTP 401 remains a persistent authentication failure', () => {
+  const classified = classifyModelError(Object.assign(new Error('Unauthorized'), { statusCode: 401 }));
+  assert.equal(classified.kind, 'authentication');
+  assert.equal(classified.gatewayFailure, true);
+});
+
+test('classify: a specific nested Gateway type overrides a generic SDK wrapper', () => {
+  const cause = Object.assign(new Error('out of credit'), {
+    name: 'AI_APICallError',
+    statusCode: 402,
+    responseBody: JSON.stringify({ error: { type: 'insufficient_funds', message: 'out of credit' } }),
+  });
+  const error = Object.assign(new Error('Gateway request failed'), {
+    name: 'GatewayInternalServerError',
+    type: 'internal_server_error',
+    statusCode: 402,
+    cause,
+  });
+  const failure = classifyModelError(error);
+  assert.equal(failure.gatewayType, 'insufficient_funds');
+  assert.equal(failure.kind, 'billing');
+});
+
+function gatewayError(statusCode: number, type: string): unknown {
+  const responseBody = JSON.stringify({ error: { type, message: type } });
+  const cause = Object.assign(new Error(type), { name: 'AI_APICallError', statusCode, responseBody });
+  return Object.assign(new Error(type), { name: 'GatewayInternalServerError', statusCode, cause });
+}
 
 test('classify: message is single-line and redacts key-shaped tokens', () => {
   const e = new Error('bad request with key vck_abcdEFGH12345678 in\nheader');

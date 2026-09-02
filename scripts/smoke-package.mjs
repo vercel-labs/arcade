@@ -24,6 +24,9 @@ try {
 
   const packedRoot = join(temp, 'package');
   const packed = JSON.parse(readFileSync(join(packedRoot, 'package.json'), 'utf8'));
+  if (packed.dependencies?.speaker || packed.optionalDependencies?.speaker) {
+    throw new Error('packed Arcade must not install the optional native speaker dependency');
+  }
   const consumer = join(temp, 'consumer');
   mkdirSync(join(consumer, 'node_modules', '@vercel'), { recursive: true });
   symlinkSync(packedRoot, join(consumer, 'node_modules', '@vercel', 'arcade'), 'dir');
@@ -116,8 +119,9 @@ tui.Box({}, [tui.Text({ text: 'browser safe' })]);
     'browser-entry.mjs', '--bundle', '--platform=browser', '--format=esm', '--outfile=browser-bundle.mjs',
   ], { cwd: consumer, stdio: 'inherit' });
   const rootBrowserBundle = readFileSync(join(consumer, 'browser-bundle.mjs'), 'utf8');
-  if (/process\.stdout|node:/.test(rootBrowserBundle)) {
-    throw new Error('root browser bundle retained a Node-only global or builtin');
+  const nodeOnlyToken = rootBrowserBundle.match(/process\.stdout|node:[A-Za-z0-9_./-]+/);
+  if (nodeOnlyToken) {
+    throw new Error(`root browser bundle retained a Node-only global or builtin: ${nodeOnlyToken[0]}`);
   }
 
   writeFileSync(join(consumer, 'web-browser-entry.mjs'), `

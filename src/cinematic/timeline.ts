@@ -1,8 +1,16 @@
-// Scroll distance is cinematic time. Chess and Poker receive the largest
-// chapters so their gameplay and camera studies remain legible at a natural
-// wheel/trackpad pace; transitions occupy the tail of each chapter.
-export const LIVING_TITLE_ACT_BOUNDARIES = [0, 0.1, 0.25, 0.52, 0.76, 1] as const;
-export const LIVING_TITLE_MORPH_STARTS = [0.6, 0.82, 0.85, 0.85] as const;
+// Scroll distance is cinematic time: 3s Prism, 5s Cover Flow, 9s Chess,
+// 11s Poker, and 10s Islanders in the constant-speed 38s tour. Poker gets the
+// extra time its first hand needs to complete the flop before the outgoing cut.
+// Each ink cut occupies the same 1.5 / 38 of total scroll, so manual and
+// automatic pacing share one timeline.
+export const LIVING_TITLE_ACT_BOUNDARIES = [0, 3 / 38, 8 / 38, 17 / 38, 28 / 38, 1] as const;
+const INK_SCROLL_DISTANCE = 1.5 / 38;
+export const LIVING_TITLE_MORPH_STARTS = [
+  1 - INK_SCROLL_DISTANCE / (3 / 38),
+  1 - INK_SCROLL_DISTANCE / (5 / 38),
+  1 - INK_SCROLL_DISTANCE / (9 / 38),
+  1 - INK_SCROLL_DISTANCE / (11 / 38),
+] as const;
 
 export type LivingTitleAct = 'prism' | 'covers' | 'chess' | 'poker' | 'islanders';
 export const LIVING_TITLE_ACTS: readonly LivingTitleAct[] = ['prism', 'covers', 'chess', 'poker', 'islanders'];

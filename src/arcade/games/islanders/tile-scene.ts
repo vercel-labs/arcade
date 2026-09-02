@@ -53,8 +53,10 @@ import {
   type MaritimeTradeRates,
 } from '../../../rules/islanders/maritime-trade.ts';
 import { type PlayerColor, RED_NUMBERS, type Resource, type Terrain, TOKEN_DOTS } from '../../../rules/islanders/types.ts';
-import { AnimatedTileMeshCache, animatedTileMesh, boardOverlayMesh, coastMesh, harborPiersMesh, hoverColorFor, type OverlaySpec, piecesMesh, PORT_SAIL_CENTER, type PortKind, portMesh, robberMarkerMesh, surfMesh, swashMesh, tileBackMesh, tileMesh } from './mesh/index.ts';
+import { AnimatedTileMeshCache, animatedTileMesh, boardOverlayMesh, coastMesh, harborPiersMesh, hoverColorFor, type OverlaySpec, piecesMesh, PORT_SAIL_CENTER, type PortKind, portMesh, robberMarkerMesh, robberMesh, surfMesh, swashMesh, tileBackMesh, tileMesh } from './mesh/index.ts';
 import { drawIslandersDiceOverlay } from '../../../game-visuals/islanders/dice-overlay.ts';
+import { ROBBER_MOVE_DURATION, robberFlightPoint } from '../../../game-visuals/islanders/robber-motion.ts';
+import { ISLANDERS_BOARD_BUILD_END, ISLANDERS_TILE_PLACE_HOP, ISLANDERS_TILE_STACK_BASE_Y, ISLANDERS_TILE_STACK_THICKNESS, ISLANDERS_TILE_STACK_X, ISLANDERS_TILE_STACK_Z, islandersCoastProgress, islandersHarborProgress, islandersTilePlacementProgress } from '../../../game-visuals/islanders/setup-choreography.ts';
 import { islandersPieceMaterial, type IslandersPieceUniforms } from './mesh/piece-material.ts';
 import { EDGE_ENDS, hexRing, hexWorld, NODE_XZ } from './scene/board-layout.ts';
 import { DICE_BURN_DUR, DICE_HOLD, DICE_ROLL_DUR, DICE_STAGGER, type Die, type DicePhase, freshDie } from './scene/dice.ts';
@@ -206,25 +208,11 @@ const EMPTY_MESH: Mesh = { vertices: [], indices: [] };
 
 // Board placement animation: hexes start stacked face-down off the board, then fly in one by
 // one — arcing over, flipping face-up, and dropping onto their spot (center-out).
-const PLACE_STEP = 0.12; // stagger between successive tiles launching (s)
-const PLACE_FLY = 0.55; // time one tile spends in flight (s)
-const PLACE_HOP = 1.1; // peak arc height
 // The deck sits beyond the water hex's left point; even its nearest tile edge remains off the
 // sea, so it reads as a separate source stack rather than a tower floating on the water.
 // Keep the full-radius tile deck beyond the water's northwest edge, but close enough to the
 // settled framing that its source is still visible without moving or zooming the camera.
-const STACK_POS = { x: -5, z: 4.15 };
-const STACK_THICK = 0.11; // vertical spacing of tiles in the deck
-const STACK_BASE_Y = 0.1;
-const TILE_PLACE_END = (NUM_HEXES - 1) * PLACE_STEP + PLACE_FLY;
-const COAST_GROW_START = TILE_PLACE_END + 0.12;
-const COAST_GROW_DUR = 0.72;
-const COAST_GROW_END = COAST_GROW_START + COAST_GROW_DUR;
-const HARBOR_ENTRY_START = COAST_GROW_END + 0.14;
-const HARBOR_ENTRY_STEP = 0.09;
-const HARBOR_ENTRY_DUR = 0.82;
 const HARBOR_ENTRY_MAX_DISTANCE = 2.4;
-const BOARD_BUILD_END = HARBOR_ENTRY_START + 8 * HARBOR_ENTRY_STEP + HARBOR_ENTRY_DUR;
 
 // Number-token reveal after the tiles land: every chip spins through random numbers, then
 // locks onto its real value ring-by-ring. Its final pips grow in only after the number settles,
@@ -309,7 +297,7 @@ function poseMatrix(x: number, y: number, z: number, rotX: number): Mat4 {
 }
 
 function harborEntryProgress(clock: number, index: number): number {
-  return Math.max(0, Math.min(1, (clock - HARBOR_ENTRY_START - index * HARBOR_ENTRY_STEP) / HARBOR_ENTRY_DUR));
+  return islandersHarborProgress(clock, index);
 }
 
 function projectedHexFootprint(vp: Mat4, x: number, z: number, cols: number, rows: number): number {
@@ -389,6 +377,9 @@ export class TileScene {
   // Board mode: where the robber actually stands. Seeded from the board's desert and then moved
   // by a rolled 7, so production and the tile mesh both read this rather than board.robberHex.
   private robberHex = -1;
+  private robberFlight: { from: number; to: number } | null = null;
+  private readonly robberClock = new FrameClock();
+  private robberCompletion: (() => void) | null = null;
   // While moving the robber, the old piece remains baked into `robberHex`; hovering another
   // legal tile draws a brighter preview robber there. The destination is committed only on click.
   private robberGate: Set<number> | null = null;
@@ -614,26 +605,50 @@ export class TileScene {
   }
   moveRobberTo(hex: number): boolean {
     if (!this.robberGate?.has(hex) || hex === this.robberHex) return false;
-    this.robberHex = hex;
-    this.robberGate = null;
-    this.hoverHex = null;
-    this.tokensDirty = true;
-    this.staticBoardDirty = true;
-    this.dirty = true;
+    void this.startRobberFlight(hex);
     return true;
   }
   // Synchronize a move that the rules engine already validated (AI or replay path).
-  syncRobberHex(hex: number): void {
+  syncRobberHex(hex: number, animate = true): Promise<void> {
     if (hex < 0 || hex >= NUM_HEXES || hex === this.robberHex) {
       this.cancelRobberMove();
-      return;
+      return Promise.resolve();
     }
+    if (animate) return this.startRobberFlight(hex);
     this.robberHex = hex;
     this.robberGate = null;
     this.hoverHex = null;
     this.tokensDirty = true;
     this.staticBoardDirty = true;
     this.dirty = true;
+    return Promise.resolve();
+  }
+  private startRobberFlight(hex: number): Promise<void> {
+    this.finishRobberFlight(false);
+    this.robberFlight = { from: this.robberHex, to: hex };
+    this.robberClock.reset();
+    this.robberGate = null;
+    this.hoverHex = null;
+    this.tokensDirty = true;
+    this.staticBoardDirty = true;
+    this.dirty = true;
+    return new Promise<void>((resolve) => { this.robberCompletion = resolve; });
+  }
+  private finishRobberFlight(commit = true): void {
+    if (!this.robberFlight) return;
+    if (commit) this.robberHex = this.robberFlight.to;
+    this.robberFlight = null;
+    this.robberClock.reset();
+    this.staticBoardDirty = true;
+    this.tokensDirty = true;
+    const complete = this.robberCompletion;
+    this.robberCompletion = null;
+    complete?.();
+  }
+  robberMotion(): { from: number; to: number; progress: number } | null {
+    return this.robberFlight
+      ? { ...this.robberFlight, progress: Math.min(1, this.robberClock.elapsed / ROBBER_MOVE_DURATION) }
+      : null;
   }
   private gateAllows(target: BoardPickTarget | null): boolean {
     if (!target) return false;
@@ -1017,6 +1032,7 @@ export class TileScene {
     finishRoll?.();
     this.finishDrop();
     this.finishNumberReveal();
+    this.finishRobberFlight();
     this.dicePhase = 'idle';
     this.rolledSum = null;
     this.tokensDirty = true;
@@ -1088,7 +1104,7 @@ export class TileScene {
   needsRender(): boolean {
     // `rolledSum` keeps frames coming after the dice leave, so the tick that expires the chip
     // highlight is guaranteed to run. It is self-limiting: that tick clears the flag.
-    return this.dirty || this.placing || this.revealing || this.tokensDirty || this.dicePhase !== 'idle' || this.rolledSum !== null || this.dropping !== null;
+    return this.dirty || this.placing || this.revealing || this.tokensDirty || this.dicePhase !== 'idle' || this.rolledSum !== null || this.dropping !== null || this.robberFlight !== null;
   }
 
   // The dice are rendered after clearing depth, so finite depth now identifies exactly their
@@ -1367,9 +1383,13 @@ export class TileScene {
   private renderBoard(t: number, eye: Vec3, optimizeWater: boolean): void {
     if (!this.board) this.regenerate(false);
     const board = this.board!;
+    if (this.robberFlight) {
+      this.robberClock.tick(t);
+      if (this.robberClock.elapsed >= ROBBER_MOVE_DURATION) this.finishRobberFlight();
+    }
     if (this.placing) {
       this.placementClock.tick(t);
-      if (this.placementClock.elapsed > BOARD_BUILD_END) {
+      if (this.placementClock.elapsed > ISLANDERS_BOARD_BUILD_END) {
         this.placing = false;
         if (this.numberRevealRequested) {
           this.revealing = true; // hand off to the number-token slot-settle
@@ -1380,7 +1400,7 @@ export class TileScene {
     }
     this.queueWater(optimizeWater && !this.placing ? SETTLED_WATER_MESH : WATER_MESH, t, eye);
     const coastProgress = this.placing
-      ? Math.max(0, Math.min(1, (this.placementClock.elapsed - COAST_GROW_START) / COAST_GROW_DUR))
+      ? islandersCoastProgress(this.placementClock.elapsed)
       : 1;
     if (coastProgress > 0) {
       const coast = coastProgress >= 1 ? COAST_MESH : coastMesh(coastProgress);
@@ -1400,28 +1420,28 @@ export class TileScene {
       const hex = this.order[oi];
       const { q, r } = HEX_COORDS[hex];
       const dest = hexWorld(q, r);
-      const p = this.placing ? Math.max(0, Math.min(1, (this.placementClock.elapsed - oi * PLACE_STEP) / PLACE_FLY)) : 1;
-      const slotY = STACK_BASE_Y + (NUM_HEXES - 1 - oi) * STACK_THICK;
+      const p = this.placing ? islandersTilePlacementProgress(this.placementClock.elapsed, oi) : 1;
+      const slotY = ISLANDERS_TILE_STACK_BASE_Y + (NUM_HEXES - 1 - oi) * ISLANDERS_TILE_STACK_THICKNESS;
       let model: Mat4;
       let faceUp: boolean;
       if (p <= 0) {
-        model = poseMatrix(STACK_POS.x, slotY, STACK_POS.z, Math.PI); // face-down in the deck
+        model = poseMatrix(ISLANDERS_TILE_STACK_X, slotY, ISLANDERS_TILE_STACK_Z, Math.PI); // face-down in the deck
         faceUp = false;
       } else if (p >= 1) {
         model = mat4Translate(dest.x, 0, dest.z); // landed
         faceUp = true;
       } else {
         const e = smoothstep(p);
-        const x = STACK_POS.x + (dest.x - STACK_POS.x) * e;
-        const z = STACK_POS.z + (dest.z - STACK_POS.z) * e;
-        const y = slotY * (1 - e) + Math.sin(Math.PI * p) * PLACE_HOP;
+        const x = ISLANDERS_TILE_STACK_X + (dest.x - ISLANDERS_TILE_STACK_X) * e;
+        const z = ISLANDERS_TILE_STACK_Z + (dest.z - ISLANDERS_TILE_STACK_Z) * e;
+        const y = slotY * (1 - e) + Math.sin(Math.PI * p) * ISLANDERS_TILE_PLACE_HOP;
         const flip = Math.PI * (1 - smoothstep(Math.min(1, p / 0.8))); // face-up by 80% of the flight
         model = poseMatrix(x, y, z, flip);
         faceUp = flip <= Math.PI / 2;
       }
       const terrain = board.hexes[hex].terrain;
       const seed = this.boardSeed * NUM_HEXES + hex;
-      const mesh = faceUp ? tileMesh(terrain, seed, hex === this.robberHex) : tileBackMesh();
+      const mesh = faceUp ? tileMesh(terrain, seed, this.robberFlight === null && hex === this.robberHex) : tileBackMesh();
       this.queueLambert(mesh, model);
       if (faceUp) {
         const animated = animatedTileMesh(terrain, seed, t, dest, this.animatedTileCache);
@@ -1447,6 +1467,16 @@ export class TileScene {
         ? harborEntryModel(harbor, entry, i, this.harborEntryDistances[i] ?? 0)
         : harbor.model;
       this.queueLambert(portMesh(harbor.kind, this.boardSeed * 31 + i), harborModel, LIGHT, 1, 0.62);
+    }
+    if (this.robberFlight) {
+      const fromCoord = HEX_COORDS[this.robberFlight.from];
+      const toCoord = HEX_COORDS[this.robberFlight.to];
+      const from = hexWorld(fromCoord.q, fromCoord.r);
+      const to = hexWorld(toCoord.q, toCoord.r);
+      const at = robberFlightPoint(from, to, Math.min(1, this.robberClock.elapsed / ROBBER_MOVE_DURATION));
+      const terrain = board.hexes[this.robberFlight.from].terrain;
+      const seed = this.boardSeed * NUM_HEXES + this.robberFlight.from;
+      this.queueAnimatedLambert(robberMesh(terrain, seed), mat4Translate(at.x, at.y, at.z));
     }
     if (!this.placing) this.renderOverlay(t); // placed pieces + hover marker (once tiles are down)
   }

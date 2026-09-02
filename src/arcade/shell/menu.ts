@@ -1,4 +1,4 @@
-import { ARCADE_CATALOGUE } from '../../cinematic/catalogue.ts';
+import { ARCADE_CATALOGUE, ARCADE_WEBSITE_URL } from '../../cinematic/catalogue.ts';
 
 // The arcade's game catalogue: the ordered list of games shown in the Cover Flow
 // menu. Functional games come first, then "coming soon" placeholders. This is
@@ -10,7 +10,11 @@ export interface MenuItem {
   title: string;
   enabled: boolean; // false → placeholder (dimmed, no-op)
   dev?: boolean; // dev-only surface — hidden from the shipped build (see MENU_ITEMS below)
+  externalUrl?: string; // opens immediately; never enters the cover launch animation
 }
+export type MenuItemAction = { kind: 'launch' } | { kind: 'external'; url: string } | null;
+
+export { ARCADE_WEBSITE_URL };
 
 // The full catalogue. `dev: true` marks internal-only surfaces — the poker-test sandbox
 // and the ambient logos / audio / UI-showcase screens — which are development tools, not
@@ -31,3 +35,8 @@ const ALL_ITEMS: MenuItem[] = [
 // launch handler) reads this filtered list, so indices stay consistent.
 const DEV = process.env.ARCADE_DEV === '1';
 export const MENU_ITEMS: MenuItem[] = ALL_ITEMS.filter((item) => DEV || !item.dev);
+
+export function menuItemAction(item: MenuItem | undefined): MenuItemAction {
+  if (!item?.enabled) return null;
+  return item.externalUrl ? { kind: 'external', url: item.externalUrl } : { kind: 'launch' };
+}

@@ -7,6 +7,10 @@ import { APICallError } from 'ai';
 // this walks the whole cause chain. Shared by `ModelPlayer` (to route the fallback)
 // and `src/tools/model-probe.ts` (to report it). See AIG-181/AIG-183.
 export type FailureKind =
+  | 'billing'
+  | 'quota'
+  | 'authentication'
+  | 'model'
   // The team/key can't reach this provider at all (403 / no_providers_available).
   // A text retry hits the SAME provider and fails identically — don't bother.
   | 'access'
@@ -27,6 +31,8 @@ export interface ClassifiedError {
   status?: number;
   /** The Gateway error `type` from the JSON body (e.g. "no_providers_available"). */
   gatewayType?: string;
+  /** True when the failure came from a Gateway HTTP response, not model output parsing. */
+  gatewayFailure: boolean;
   /** A compact, single-line, credential-free description for logs/reports. */
   message: string;
 }
@@ -67,34 +73,49 @@ export function classifyModelError(e: unknown): ClassifiedError {
     const b = (n.responseBody as string) ?? (APICallError.isInstance(n) ? (n as { responseBody?: string }).responseBody : undefined);
     if (!body && typeof b === 'string' && b) body = b;
   }
-  let gatewayType: string | undefined;
+  // @ai-sdk/gateway typed errors expose the canonical Gateway reason directly
+  // on `.type`; older/wrapped APICallErrors retain it only in responseBody JSON.
+  // Prefer the typed surface, then fill from the raw response when available.
+  const typedGatewayType = nodes
+    .map((node) => node.type)
+    .find((type): type is string => typeof type === 'string' && type.length > 0);
+  let bodyGatewayType: string | undefined;
   if (body) {
     try {
-      gatewayType = (JSON.parse(body) as { error?: { type?: string } })?.error?.type;
+      bodyGatewayType = (JSON.parse(body) as { error?: { type?: string } })?.error?.type;
     } catch {
       /* body wasn't JSON — leave gatewayType undefined */
     }
   }
+  // Generic SDK wrapper classes intentionally collapse newer Gateway types to
+  // internal_server_error/response_error while preserving the specific server
+  // reason in the nested response body. Prefer that specific reason when present.
+  const gatewayType = bodyGatewayType ?? typedGatewayType;
   const detail = redact(compact(`${topMsg} ${body}`));
   const haystack = `${name} ${detail} ${gatewayType ?? ''}`;
   const message = topMsg || redact(compact(body)) || String(e);
+  const result = (kind: FailureKind): ClassifiedError => ({ kind, status, gatewayType, gatewayFailure: status !== undefined || gatewayType !== undefined, message });
 
   // Cancellation / deadline first: an aborted call names itself, regardless of status.
   if (name === 'TimeoutError' || name === 'AbortError' || /timeout|aborted/i.test(name)) {
-    return { kind: 'timeout', status, gatewayType, message: message || 'timed out' };
+    return { ...result('timeout'), message: message || 'timed out' };
   }
+  if (gatewayType === 'insufficient_funds' || gatewayType === 'customer_verification_required' || gatewayType === 'byok_requires_paid_credits') return result('billing');
+  if (gatewayType === 'quota_for_entity_exceeded') return result('quota');
+  if (status === 401 || gatewayType === 'authentication_error') return result('authentication');
+  if (gatewayType === 'model_not_found' || gatewayType === 'model_unavailable_in_region') return result('model');
   // Access / provider availability: the defining signals are HTTP 403 and the
   // gateway type `no_providers_available`; the prose is a fallback for older bodies.
   if (status === 403 || gatewayType === 'no_providers_available' || /restricted access|no_providers_available|not authorized|access profile|forbidden/i.test(haystack)) {
-    return { kind: 'access', status, gatewayType, message };
+    return result('access');
   }
   // Structured-output / schema: the model ran but couldn't emit the JSON schema.
   if (/Object/.test(name) || /could not parse the response|response did not match schema|responseformat|structuredoutputs|json_object|jsonparse|no object generated/i.test(haystack)) {
-    return { kind: 'schema', status, gatewayType, message };
+    return result('schema');
   }
   // Transient serving failures: 5xx or the usual retryable prose.
   if ((status !== undefined && status >= 500) || /rate.?limit|overloaded|temporarily|service unavailable|econnreset|etimedout|network error/i.test(haystack)) {
-    return { kind: 'transient', status, gatewayType, message };
+    return result('transient');
   }
-  return { kind: 'unknown', status, gatewayType, message };
+  return result('unknown');
 }

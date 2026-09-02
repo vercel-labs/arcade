@@ -9,19 +9,19 @@ and timing live in `src/cinematic/timeline.ts`.
 
 | Scene | Title | Subtitle |
 | --- | --- | --- |
-| Prism | **The 3D game engine for agents.** | ASCII in your terminal. No GPU.<br>Humans can play too. |
-| Cover Flow | **Powered by Vercel’s AI Gateway.** | Watch hundreds of models face off, or challenge them yourself. |
-| Chess | **Different minds. Endless possibilities.** | Everything you see is open source. Your move. |
+| Prism | **The 3D game engine built for agents.** | ASCII in your terminal, no GPU.<br>Humans can play too. |
+| Cover Flow | **Powered by Vercel AI Gateway.** | Watch hundreds of models face off, or challenge them yourself. |
+| Chess | **Different minds. Endless possibilities.** | Everything you see is open source. Have an idea? Your move. |
 | Poker | **Every player has a tell.** | Discover the hidden tendencies of your favorite models. |
-| Islanders | **Settle in, have some fun!** | Play a few rounds while coding agents do your work. |
+| Islanders | **Settle in, have some fun!** | Play a few rounds while waiting for your coding agents to finish. |
 
 ## Chapter pairings
 
 ### 1. Prism
 
-**The 3D game engine for agents.**
+**The 3D game engine built for agents.**
 
-**ASCII in your terminal. No GPU.**
+**ASCII in your terminal, no GPU.**
 
 **Humans can play too.**
 
@@ -33,7 +33,7 @@ joke while keeping people explicitly invited.
 
 ### 2. Cover Flow
 
-**Powered by Vercel’s AI Gateway.**
+**Powered by Vercel AI Gateway.**
 
 **Watch hundreds of models face off, or challenge them yourself.**
 
@@ -48,7 +48,7 @@ making a stronger claim.
 
 **Different minds. Endless possibilities.**
 
-**Everything you see is open source. Your move.**
+**Everything you see is open source. Have an idea? Your move.**
 
 The Chess scene shows different model wisps sharing one board and one set of
 rules. “Different minds” refers both to models choosing different strategies and
@@ -73,7 +73,7 @@ a formal benchmark or scientifically stable measurement.
 
 **Settle in, have some fun!**
 
-**Play a few rounds while coding agents do your work.**
+**Play a few rounds while waiting for your coding agents to finish.**
 
 The final scene assembles a living island, places pieces, travels along the coast,
 and shifts between ASCII, hybrid, and pixel presentation. “Settle in” lightly

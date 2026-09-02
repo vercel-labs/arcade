@@ -305,6 +305,8 @@ export interface IslandersGameHudDeps {
   resourceAdjustments?: IslandersResourceViewAdjustments;
   onOpenMenu: () => void;
   onStart: () => void;
+  healthStatus?: { lines: string[]; failed: boolean };
+  notice?: string;
 }
 
 function liveActionButton(id: string, label: string, onClick: () => void, disabled = false, active = false): Node {
@@ -720,8 +722,8 @@ export function buildIslandersGameRoot(region: LayoutBox, deps: IslandersGameHud
   ];
 
   if (!playing) {
-    const setup = matchSetupLayout(region, buildIslandersSetupPanel(), [
-      newMatchButton('islanders-start', deps.onStart, !islandersSetupReady()),
+    const setup = matchSetupLayout(region, buildIslandersSetupPanel(deps.healthStatus), [
+      newMatchButton('islanders-start', deps.onStart, !islandersSetupReady() || deps.healthStatus?.failed === false),
     ]);
     return Box({ width: region.w, height: region.h }, [setup, ...chrome]);
   }
@@ -772,6 +774,9 @@ export function buildIslandersGameRoot(region: LayoutBox, deps: IslandersGameHud
       viewerSeat,
       driver.humanSeat() < 0 ? (seat) => { deps.scene.setViewedSeat(seat); } : undefined,
     ),
+    ...(deps.notice ? [Box({ position: 'absolute', left: 0, bottom: 1, width: region.w, justifyContent: 'center' }, [
+      Text({ text: deps.notice, style: { color: 'warning', bold: true } }),
+    ])] : []),
     ...chrome,
   ]);
 }

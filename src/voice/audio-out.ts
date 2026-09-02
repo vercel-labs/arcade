@@ -82,9 +82,20 @@ export class AudioPlayer {
 // node-speaker is an OPTIONAL native dependency: if its addon isn't built we leave
 // the sink unavailable and callers fall back to the file-based AudioPlayer.
 const nodeRequire = createRequire(import.meta.url);
-let SpeakerCtor: typeof import('speaker') | null = null;
+interface SpeakerSink {
+  on(event: 'error', handler: () => void): void;
+  write(chunk: Buffer): void;
+  end(): void;
+  close(flush?: boolean): void;
+}
+
+interface SpeakerConstructor {
+  new(options: { channels: number; bitDepth: number; sampleRate: number; signed: boolean }): SpeakerSink;
+}
+
+let SpeakerCtor: SpeakerConstructor | null = null;
 try {
-  SpeakerCtor = nodeRequire('speaker') as typeof import('speaker');
+  SpeakerCtor = nodeRequire('speaker') as SpeakerConstructor;
 } catch {
   SpeakerCtor = null; // native addon missing → available() is false, file fallback used
 }
@@ -94,7 +105,7 @@ try {
 const PRIME_BYTES = Math.round((SAMPLE_RATE * 2 * 60) / 1000);
 
 export class StreamPlayer {
-  private speaker: InstanceType<typeof import('speaker')> | null = null;
+  private speaker: SpeakerSink | null = null;
   // Wall-clock estimate of when the buffered audio finishes playing. node-speaker
   // plays at realtime, so each write pushes this out by the chunk's duration; it
   // decays back to "now" as the device drains. Lets callers (the hands-free echo
@@ -111,14 +122,13 @@ export class StreamPlayer {
     return Math.max(0, this.playUntil - Date.now());
   }
 
-  private ensure(): InstanceType<typeof import('speaker')> | null {
+  private ensure(): SpeakerSink | null {
     if (!SpeakerCtor) return null;
     if (!this.speaker) {
       try {
         // signed:true is REQUIRED — at 16-bit node-speaker defaults to UNSIGNED, which
-        // would render OpenAI's signed PCM16 as noise. The cast carries `signed`, which
-        // the runtime honors but the bundled Options type omits.
-        const sp = new SpeakerCtor({ channels: 1, bitDepth: 16, sampleRate: SAMPLE_RATE, signed: true } as import('speaker').Options);
+        // would render OpenAI's signed PCM16 as noise.
+        const sp = new SpeakerCtor({ channels: 1, bitDepth: 16, sampleRate: SAMPLE_RATE, signed: true });
         sp.on('error', () => {
           if (this.speaker === sp) this.speaker = null; // device error → next write reopens
         });

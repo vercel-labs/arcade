@@ -89,7 +89,7 @@ export class BrowserChessBoardShowcase implements BrowserMiniScene {
   }
 
   setCinematicProgress(progress: number): void { this.arcade.setCinematicProgress(progress); }
-  setCinematicState(cameraProgress: number, gameplayPhase: number): void { this.arcade.setCinematicState(cameraProgress, gameplayPhase); }
+  setCinematicState(cameraProgress: number, gameplayPhase: number, cameraDistanceScale = 1): void { this.arcade.setCinematicState(cameraProgress, gameplayPhase, cameraDistanceScale); }
 
   cycleDisplayMode(): BrowserDisplayMode { return this.arcade.cycleDisplayMode(); }
   orbit(dx: number, dy: number): void { this.arcade.orbit(dx, dy); }

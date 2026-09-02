@@ -40,7 +40,7 @@ export interface MatchLabResult {
   stopReason: string;
   canonical?: unknown;
   finalState?: unknown;
-  error?: { name: string; message: string; stack?: string };
+  error?: { name: string; message: string; code?: string; stack?: string };
 }
 
 export interface MatchLabEvent {

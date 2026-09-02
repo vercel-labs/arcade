@@ -7,7 +7,7 @@ import type { CommunicationOpportunity } from './communication/moments.ts';
 // object as game telemetry without accidentally recording model/user text.
 export type DecisionAttemptPhase = 'structured' | 'text' | 'normalize';
 export type DecisionAttemptResult = 'accepted' | 'rejected' | 'error';
-export type DecisionFailureKind = 'access' | 'schema' | 'timeout' | 'transient' | 'unknown';
+export type DecisionFailureKind = 'billing' | 'quota' | 'authentication' | 'model' | 'access' | 'schema' | 'timeout' | 'transient' | 'unknown';
 
 export interface DecisionAttempt {
   phase: DecisionAttemptPhase;

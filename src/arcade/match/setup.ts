@@ -185,13 +185,14 @@ function sideRow(side: Side): Node {
 // The new-match setup: a top-left settings panel floating over the board (no modal, no
 // scrim — the board stays visible behind, like the poker setup over the felt), with the
 // start/cancel controls bottom-left. `onStart` is wired only when both sides are ready.
-export function buildMatchSetup(region: LayoutBox, opts: { onStart: () => void; onCancel: () => void }): Node {
+export function buildMatchSetup(region: LayoutBox, opts: { onStart: () => void; onCancel: () => void; healthStatus?: { lines: string[]; failed: boolean } }): Node {
   const ready = matchSetupReady();
   // Rounded (outlined) controls over the board: a green "start" (dim + inert until both
   // sides are ready) beside a neutral "cancel". Green matches poker's new-match button.
   // `disabled` rather than just dropping onClick: a Button is focusable by construction,
   // so without it the dead control still brightened on hover and still took Tab focus.
-  const start = startMatchButton('setup-start', ready ? opts.onStart : undefined);
+  const checking = opts.healthStatus?.failed === false;
+  const start = startMatchButton('setup-start', ready && !checking ? opts.onStart : undefined);
   const cancel = cancelMatchButton('setup-cancel', opts.onCancel);
 
   const panel = Box({ flexDirection: 'column', gap: 1, alignItems: 'start' }, [
@@ -201,10 +202,14 @@ export function buildMatchSetup(region: LayoutBox, opts: { onStart: () => void; 
     sideRow(black),
     row('eval bar', 'muted', [booleanControl('setup-eval', setupEvalBar, (value) => { setupEvalBar = value; })]),
     row('illegal moves', 'muted', [booleanControl('setup-illegal', setupIllegalMoves, (value) => { setupIllegalMoves = value; })]),
+    ...(opts.healthStatus ? opts.healthStatus.lines.map((text) => Text({ text, style: { color: opts.healthStatus!.failed ? 'danger' : 'muted' } })) : []),
   ]);
 
   // Full region: panel top-left, start/cancel bottom-left (mirrors the poker HUD layout).
-  return matchSetupLayout(region, panel, [start, cancel]);
+  return matchSetupLayout(region, panel, [
+    start,
+    cancel,
+  ]);
 }
 
 // ── In-match model swap ─────────────────────────────────────────────────────────

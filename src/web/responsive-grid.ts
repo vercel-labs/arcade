@@ -1,6 +1,7 @@
 import { TERMINAL_CELL_ASPECT_RATIO } from './canvas-surface-host.ts';
 
 export const CINEMATIC_CELL_HEIGHT = 12;
+export const MOBILE_CINEMATIC_CELL_HEIGHT = 10;
 
 /**
  * Terminal resize semantics for the browser host: the cell size stays fixed and

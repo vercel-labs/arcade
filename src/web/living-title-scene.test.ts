@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { anchoredInkMatchCut, LIVING_TITLE_ACT_BOUNDARIES, LIVING_TITLE_MORPH_STARTS, LivingTitleScene } from './living-title-scene.ts';
+import { anchoredInkMatchCut, earlyScenePortraitScale, LIVING_TITLE_ACT_BOUNDARIES, LIVING_TITLE_MORPH_STARTS, LivingTitleScene } from './living-title-scene.ts';
 import { Surface } from '../engine/surface.ts';
 import { inkNoise } from '../cinematic/transitions/ink-match-cut.ts';
+import { ARCADE_CATALOGUE } from '../cinematic/catalogue.ts';
 
 test('living title renders prism, Cover Flow, chess, poker, and Islanders acts at one grid size', () => {
   const scene = new LivingTitleScene();
@@ -31,7 +32,18 @@ test('living title maps scroll progress to the expected game act', () => {
   assert.equal(scene.actAt(0.77), 'islanders');
 });
 
-test('Chess and Poker gameplay continue while scroll and camera remain still', () => {
+test('browser Cover Flow uses the complete shared production catalogue', () => {
+  assert.equal(ARCADE_CATALOGUE.at(-1)?.id, 'website');
+});
+
+test('opening scenes pull back only in narrow portrait framing', () => {
+  assert.equal(earlyScenePortraitScale(1), 1);
+  assert.equal(earlyScenePortraitScale(16 / 9), 1);
+  assert.ok(earlyScenePortraitScale(390 / 844) < 0.88);
+  assert.ok(earlyScenePortraitScale(0.7) > earlyScenePortraitScale(390 / 844));
+});
+
+test('Chess, Poker, and Islanders gameplay continue while scroll and camera remain still', () => {
   const scene = new LivingTitleScene();
   const chessA = scene.frame({ cols: 80, rows: 36, timeSeconds: 10, progress: 0.36 });
   const chessB = scene.frame({ cols: 80, rows: 36, timeSeconds: 12, progress: 0.36 });
@@ -39,6 +51,25 @@ test('Chess and Poker gameplay continue while scroll and camera remain still', (
   const pokerA = scene.frame({ cols: 80, rows: 36, timeSeconds: 20, progress: 0.6 });
   const pokerB = scene.frame({ cols: 80, rows: 36, timeSeconds: 24.8, progress: 0.6 });
   assert.notEqual(surfaceSignature(pokerA), surfaceSignature(pokerB));
+  const islandersA = scene.frame({ cols: 100, rows: 44, timeSeconds: 30, progress: 0.82 });
+  const islandersB = scene.frame({ cols: 100, rows: 44, timeSeconds: 38, progress: 0.82 });
+  assert.notEqual(surfaceSignature(islandersA), surfaceSignature(islandersB));
+});
+
+test('Islanders camera and display remain scroll-driven at one active scene time', () => {
+  const scene = new LivingTitleScene();
+  scene.frame({ cols: 100, rows: 44, timeSeconds: 50, progress: 0.78 });
+  const near = scene.frame({ cols: 100, rows: 44, timeSeconds: 58, progress: 0.82 });
+  const coast = scene.frame({ cols: 100, rows: 44, timeSeconds: 58, progress: 0.96 });
+  assert.notEqual(surfaceSignature(near), surfaceSignature(coast));
+});
+
+test('reduced motion presents a settled Islanders board instead of a frozen setup stack', () => {
+  const reduced = new LivingTitleScene().frame({ cols: 100, rows: 44, timeSeconds: 0, progress: 0.82, reducedMotion: true });
+  const reducedLater = new LivingTitleScene().frame({ cols: 100, rows: 44, timeSeconds: 100, progress: 0.82, reducedMotion: true });
+  const initial = new LivingTitleScene().frame({ cols: 100, rows: 44, timeSeconds: 0, progress: 0.82 });
+  assert.notEqual(surfaceSignature(reduced), surfaceSignature(initial));
+  assert.equal(surfaceSignature(reducedLater), surfaceSignature(reduced), 'reduced motion should not advance the settled board');
 });
 
 test('opening splash advances on wall clock while scroll leaves its core animation alone', () => {
@@ -94,7 +125,9 @@ test('Chess and Poker ink cuts begin from the exact last live frame', () => {
     const end = LIVING_TITLE_ACT_BOUNDARIES[act + 1];
     const boundary = start + (end - start) * LIVING_TITLE_MORPH_STARTS[act];
     const before = scene.frame({ cols: 120, rows: 50, timeSeconds: 9, progress: boundary - 1e-8 });
-    const firstCut = scene.frame({ cols: 120, rows: 50, timeSeconds: 9, progress: boundary });
+    // Cross the boundary by a sub-pixel amount so floating-point reconstruction of local
+    // progress cannot leave this sample on the live-scene side of the comparison.
+    const firstCut = scene.frame({ cols: 120, rows: 50, timeSeconds: 9, progress: boundary + 1e-12 });
     assert.equal(surfaceSignature(firstCut), surfaceSignature(before), `transition ${act} replaced its outgoing plate`);
   }
 });

@@ -21,7 +21,10 @@ test('shared Cover Flow renders carousel and launch without platform APIs', () =
 });
 
 test('production catalogue retains exact CLI and browser ordering', () => {
-  assert.deepEqual(ARCADE_CATALOGUE.map(({ id }) => id), ['chess', 'poker', 'islanders', 'mahjong', 'leaderboard', 'achievements']);
+  assert.deepEqual(ARCADE_CATALOGUE.map(({ id }) => id), ['chess', 'poker', 'islanders', 'mahjong', 'leaderboard', 'achievements', 'website']);
+  const website = ARCADE_CATALOGUE.find((item) => item.id === 'website');
+  assert.ok(website);
+  assert.equal(website.externalUrl, 'https://vercel-arcade.vercel.app');
 });
 
 test('cinematic Cover Flow settles on Chess, flips, and holds before the cut', () => {

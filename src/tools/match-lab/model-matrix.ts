@@ -148,7 +148,8 @@ export function classifyModelGameAudit(
   else if (resolutions.includes('normalized')) status = 'NORMALIZED';
   else if (resolutions.includes('random-fallback')) {
     status = events.some((event) => fallbackReason(event) === 'unavailable') ? 'ACCESS' : 'FALLBACK';
-  } else if (result.status === 'failed') status = 'ERROR';
+  } else if (result.status === 'failed' && result.error?.name === 'NotifiedModelFailure') status = 'ACCESS';
+  else if (result.status === 'failed') status = 'ERROR';
   else if (result.stopReason === 'timeout') status = 'TIMEOUT';
   else status = 'NO_ACTION';
   return {

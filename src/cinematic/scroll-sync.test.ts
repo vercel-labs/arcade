@@ -2,20 +2,19 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { LIVING_TITLE_ACT_BOUNDARIES, LIVING_TITLE_MORPH_STARTS, livingTitleTimeline } from './timeline.ts';
 import { islandersCinematicCamera, chessCinematicPose, pokerCinematicCamera } from './camera.ts';
-import { ISLANDERS_BUILDING_BEATS, ISLANDERS_ROAD_BEATS, islandersDropProgress } from './islanders-choreography.ts';
-import { edgeNodes, nodeHexes, nodeNodes } from '../rules/islanders/board-topology.ts';
-import { generateBoard } from '../rules/islanders/setup.ts';
-import { mulberry32 } from '../engine/random.ts';
+import { ISLANDERS_CINEMATIC_PLACEMENTS, islandersCinematicGameplay } from './islanders-choreography.ts';
 
-test('scroll distance gives Chess and Poker the largest authored chapters', () => {
+test('scroll distance maps to the content-driven 3s, 5s, 9s, 11s, and 10s chapters', () => {
   const spans = LIVING_TITLE_ACT_BOUNDARIES.slice(1).map((end, index) => end - LIVING_TITLE_ACT_BOUNDARIES[index]);
-  assert.ok(spans[2] >= 0.27);
-  assert.ok(spans[3] >= 0.24);
-  assert.equal(livingTitleTimeline(0.52).act, 3);
+  assert.deepEqual(spans.map((span) => Math.round(span * 38)), [3, 5, 9, 11, 10]);
+  assert.equal(livingTitleTimeline(17 / 38).act, 3);
 });
 
-test('ink cuts retain a noticeable tail of every outgoing chapter', () => {
-  for (const start of LIVING_TITLE_MORPH_STARTS) assert.ok(start <= 0.85);
+test('every ink cut occupies the same 1.5-second-equivalent scroll distance', () => {
+  for (let act = 0; act < LIVING_TITLE_MORPH_STARTS.length; act++) {
+    const span = LIVING_TITLE_ACT_BOUNDARIES[act + 1] - LIVING_TITLE_ACT_BOUNDARIES[act];
+    assert.ok(Math.abs(span * (1 - LIVING_TITLE_MORPH_STARTS[act]) - 1.5 / 38) < 1e-12);
+  }
 });
 
 test('Chess uses one restrained close-up lobe and never oscillates again', () => {
@@ -81,28 +80,12 @@ test('Islanders close-in uses a gradual camera push instead of a rushed six-perc
   assert.ok(distances.at(-1)! < 3.7, 'camera should still arrive before the settlement study');
 });
 
-test('Islanders gameplay beats scatter every player color and include one city upgrade', () => {
-  assert.deepEqual(new Set(ISLANDERS_BUILDING_BEATS.map(({ color }) => color)), new Set(['red', 'blue', 'purple', 'orange']));
-  assert.deepEqual(new Set(ISLANDERS_ROAD_BEATS.map(({ color }) => color)), new Set(['red', 'blue', 'purple', 'orange']));
-  assert.ok(ISLANDERS_BUILDING_BEATS.some(({ cityAt }) => cityAt !== undefined));
-  assert.equal(islandersDropProgress(0.4, 0.4), 0);
-  assert.equal(islandersDropProgress(0.5, 0.4), 1);
-  assert.ok(ISLANDERS_ROAD_BEATS.length >= 6);
-});
-
-test('Islanders cinematic placements obey distance and road ownership rules', () => {
-  const board = generateBoard(mulberry32(1));
-  const buildings = new Map(ISLANDERS_BUILDING_BEATS.map(({ node, color }) => [node, color]));
-  for (const [node] of buildings) for (const neighbor of nodeNodes[node]) assert.ok(!buildings.has(neighbor), `adjacent cinematic buildings ${node}/${neighbor}`);
-  const orange = ISLANDERS_BUILDING_BEATS.find(({ color }) => color === 'orange')!;
-  const terrains = nodeHexes[orange.node].map((hex) => board.hexes[hex].terrain);
-  assert.ok(terrains.includes('mountains') && terrains.includes('hills'), 'orange settlement should sit on ore/brick');
-  for (const { edge, color } of ISLANDERS_ROAD_BEATS) {
-    const [a, b] = edgeNodes[edge];
-    const ownsEndpoint = buildings.get(a) === color || buildings.get(b) === color;
-    const connectsRoad = ISLANDERS_ROAD_BEATS.some((other) => other.edge !== edge && other.color === color && edgeNodes[other.edge].some((node) => node === a || node === b));
-    assert.ok(ownsEndpoint || connectsRoad, `${color} road ${edge} is disconnected from its owner`);
-  }
+test('Islanders gameplay choreography is wall-clock data, not scroll data', () => {
+  assert.deepEqual(new Set(ISLANDERS_CINEMATIC_PLACEMENTS.map(({ color }) => color)), new Set(['red', 'blue', 'purple', 'orange']));
+  assert.equal(ISLANDERS_CINEMATIC_PLACEMENTS.filter(({ action }) => action.type === 'initialSettlement').length, 8);
+  assert.equal(ISLANDERS_CINEMATIC_PLACEMENTS.filter(({ action }) => action.type === 'initialRoad').length, 8);
+  assert.notDeepEqual(islandersCinematicGameplay(8), islandersCinematicGameplay(12));
+  assert.deepEqual(islandersCinematicGameplay(12), islandersCinematicGameplay(12));
 });
 
 test('Islanders coastline tour begins at the brick harbor and stays macro-close', () => {

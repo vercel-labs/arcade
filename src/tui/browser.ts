@@ -10,7 +10,7 @@ export {
   type RoundedButtonStyleOpts,
   type FilledButtonStyleOpts,
 } from './button.ts';
-export { Modal } from './components/modal.ts';
+export { Modal, type ModalOpts } from './components/modal.ts';
 export { Dialog, CloseButton, type DialogOpts } from './components/dialog.ts';
 export {
   resolveColumns,
@@ -46,6 +46,7 @@ export { Select, type SelectOpts } from './components/select.ts';
 export { type Row, ScrollBox, type ScrollBoxOpts } from './components/scrollbox.ts';
 export { Slider, type SliderOpts } from './components/slider.ts';
 export { Tooltip, type TooltipOpts } from './components/tooltip.ts';
+export { NoticeToast, noticeToastHeight, type NoticeToastOpts, type NoticeToastView } from './components/notice-toast.ts';
 export { type Component, Registry } from './component.ts';
 export { Screen } from './screen.ts';
 export { Keymap, eventToChord, type Command, type Binding } from './keymap.ts';

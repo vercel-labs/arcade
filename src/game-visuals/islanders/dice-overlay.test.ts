@@ -22,6 +22,14 @@ test('CLI foreground dice mode retains its sparse depth mask', () => {
   assert.ok(target.depth.some(Number.isFinite), 'dice themselves remain present');
 });
 
+test('optional screen-space scale shrinks the complete dice pair', () => {
+  const full = new RenderTarget(240, 144); full.clear();
+  const compact = new RenderTarget(240, 144); compact.clear();
+  drawIslandersDiceOverlay(full, dice, 3.25, false);
+  drawIslandersDiceOverlay(compact, dice, 3.25, false, { scale: 0.78 });
+  assert.ok(compact.depth.filter(Number.isFinite).length < full.depth.filter(Number.isFinite).length * 0.7);
+});
+
 test('CLI burn phase keeps only surviving dice in its sparse foreground mask', () => {
   const target = seededTarget();
   drawIslandersDiceOverlay(target, dice, 3.25, false, { burnProgress: 0.5 });
@@ -59,6 +67,56 @@ test('shared dice overlay erodes through a cold silver edge before disappearing'
   assert.equal(counts[3], 0);
   assert.ok(silver > 0, 'dice burn should retain the shared silver edge');
 });
+
+test('each die burns organically instead of one being cut away before the other', () => {
+  const baseline = renderedColumns(0);
+  const split = baseline.findIndex((column, index) => index > 0 && column > baseline[index - 1] + 1);
+  assert.ok(split > 0, 'the settled pair should render as two separate silhouettes');
+  const bounds = [
+    [baseline[0], baseline[split - 1]],
+    [baseline[split], baseline.at(-1)!],
+  ] as const;
+  const full = bounds.map(([minX, maxX]) => countFinitePixels(0, minX, maxX));
+  const middle = bounds.map(([minX, maxX]) => countFinitePixels(0.5, minX, maxX));
+  for (let index = 0; index < 2; index++) {
+    const fraction = middle[index] / full[index];
+    assert.ok(fraction > 0.18 && fraction < 0.82, `die ${index} should be partially burned at the midpoint, got ${fraction}`);
+  }
+});
+
+test('independent dice burn regions survive compact and wide render targets', () => {
+  for (const [width, height] of [[120, 72], [240, 144], [480, 288]] as const) {
+    const baseline = renderedColumns(0, width, height);
+    const split = baseline.findIndex((column, index) => index > 0 && column > baseline[index - 1] + 1);
+    assert.ok(split > 0, `${width}x${height} should keep two distinct dice silhouettes`);
+    const bounds = [[baseline[0], baseline[split - 1]], [baseline[split], baseline.at(-1)!]] as const;
+    const full = bounds.map(([minX, maxX]) => countFinitePixels(0, minX, maxX, width, height));
+    const middle = bounds.map(([minX, maxX]) => countFinitePixels(0.5, minX, maxX, width, height));
+    assert.ok(middle.every((count, index) => count > full[index] * 0.15 && count < full[index] * 0.85), `${width}x${height} should partially retain both dice at midpoint`);
+  }
+});
+
+function renderedColumns(burnProgress: number, width = 240, height = 144): number[] {
+  const target = renderBurn(burnProgress, width, height);
+  return Array.from({ length: target.width }, (_, x) => x).filter((x) => {
+    for (let y = 0; y < target.height; y++) if (Number.isFinite(target.depth[y * target.width + x])) return true;
+    return false;
+  });
+}
+
+function countFinitePixels(burnProgress: number, minX: number, maxX: number, width = 240, height = 144): number {
+  const target = renderBurn(burnProgress, width, height);
+  let count = 0;
+  for (let y = 0; y < target.height; y++) for (let x = minX; x <= maxX; x++) if (Number.isFinite(target.depth[y * target.width + x])) count++;
+  return count;
+}
+
+function renderBurn(burnProgress: number, width = 240, height = 144): RenderTarget {
+  const target = new RenderTarget(width, height);
+  target.clear();
+  drawIslandersDiceOverlay(target, dice, 3.25, false, { burnProgress });
+  return target;
+}
 
 function seededTarget(): RenderTarget {
   const target = new RenderTarget(160, 96);

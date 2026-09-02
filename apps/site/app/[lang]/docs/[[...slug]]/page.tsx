@@ -1,22 +1,56 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { DOCS, findDoc } from '../docs-content';
+import { CopyPageButton, MobileDocsNav, type DocsNavItem } from '../docs-client';
+import { CORE_DOCS, type DocPage } from '../docs-content';
+import { GUIDE_DOCS, REFERENCE_DOCS } from '../docs-reference';
+
+const hrefFor = (slug: string) => `/docs${slug ? `/${slug}` : ''}`;
+const DOCS = [...CORE_DOCS, ...GUIDE_DOCS, ...REFERENCE_DOCS];
+const findDoc = (slug: string) => DOCS.find((page) => page.slug === slug);
+const CORE_NAV: DocsNavItem[] = [...CORE_DOCS.map((page) => ({ href: hrefFor(page.slug), label: page.label })), { href: '/docs/guides', label: 'Guides', drillIn: true }, { href: '/docs/reference', label: 'API Reference', drillIn: true }];
 
 export function generateStaticParams() { return DOCS.map((page) => ({ slug: page.slug ? page.slug.split('/') : [] })); }
 
 export async function generateMetadata({ params }: PageProps<'/[lang]/docs/[[...slug]]'>): Promise<Metadata> {
   const { slug = [] } = await params;
   const page = findDoc(slug.join('/'));
-  return page ? { title: page.title, description: page.summary } : {};
+  if (!page) return {};
+  const canonical = hrefFor(page.slug);
+  return { title: page.title, description: page.summary, alternates: { canonical, types: { 'text/markdown': '/llms-full.txt' } }, openGraph: { type: 'article', title: page.title, description: page.summary, url: canonical } };
 }
 
 export default async function DocsPage({ params }: PageProps<'/[lang]/docs/[[...slug]]'>) {
   const { slug = [] } = await params;
   const page = findDoc(slug.join('/'));
   if (!page) notFound();
-  return <main className="doc-layout mt-(--fd-nav-height)">
-    <aside className="doc-nav"><p>Arcade docs</p>{DOCS.map((entry) => <Link className={entry.slug === page.slug ? 'active' : ''} href={`/docs${entry.slug ? `/${entry.slug}` : ''}`} key={entry.slug || 'index'}>{entry.slug || 'overview'}</Link>)}</aside>
-    <article className="doc-article"><header><span>{page.eyebrow}</span><h1>{page.title}</h1><p>{page.summary}</p></header>{page.sections.map((section) => <section key={section.heading}><h2>{section.heading}</h2><div>{section.body}</div></section>)}</article>
+  const activeHref = hrefFor(page.slug);
+  const nestedMode = page.slug === 'reference' || page.navParent === 'reference' ? 'reference' : page.slug === 'guides' || page.navParent === 'guides' ? 'guides' : null;
+  const navItems = nestedMode === 'reference' ? nestedNavItems(REFERENCE_DOCS, 'reference') : nestedMode === 'guides' ? nestedNavItems(GUIDE_DOCS, 'guides') : CORE_NAV;
+  const sectionIds = page.sections.map((section) => slugify(section.heading));
+  const index = DOCS.findIndex((entry) => entry.slug === page.slug);
+  const previous = index > 0 ? DOCS[index - 1] : null;
+  const next = index < DOCS.length - 1 ? DOCS[index + 1] : null;
+
+  return <main className="doc-shell mt-(--fd-nav-height)">
+    <MobileDocsNav active={activeHref} items={navItems} />
+    <aside aria-label="Documentation navigation" className="doc-sidebar"><nav className="doc-sidebar__scroll">{nestedMode ? <Link className="doc-sidebar__back" href="/docs"><span aria-hidden="true">←</span><span>All documentation</span></Link> : null}{navItems.map((item) => item.group ? <span className="doc-sidebar__group" key={`group-${item.group}`}>{item.group}</span> : <Link aria-current={item.href === activeHref ? 'page' : undefined} href={item.href} key={item.href}><span>{item.label}</span>{item.drillIn ? <span aria-hidden="true">›</span> : null}</Link>)}</nav></aside>
+    <article className="doc-article" data-doc-article>
+      <header className="doc-page-header"><nav aria-label="Breadcrumb" className="doc-breadcrumbs"><Link href="/docs">Docs</Link>{page.navParent ? <><span>/</span><Link href={`/docs/${page.navParent}`}>{page.navParent === 'reference' ? 'Reference' : 'Guides'}</Link></> : null}{page.slug ? <><span>/</span><span>{page.label}</span></> : null}</nav><h1>{page.title}</h1><p>{page.summary}</p><div className="doc-actions"><CopyPageButton /></div></header>
+      {page.sections.map((section, sectionIndex) => { const id = sectionIds[sectionIndex]; return <section id={id} key={section.heading}><h2><a aria-label={`Link to ${section.heading}`} href={`#${id}`}>{section.heading}</a></h2><div>{section.body}</div></section>; })}
+      <nav aria-label="Documentation pagination" className="doc-pagination">{previous ? <Link href={hrefFor(previous.slug)}><span>Previous</span><strong>← {previous.label}</strong></Link> : <span />}{next ? <Link href={hrefFor(next.slug)}><span>Next</span><strong>{next.label} →</strong></Link> : <span />}</nav>
+    </article>
   </main>;
+}
+
+function slugify(value: string): string { return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }
+
+function nestedNavItems(pages: DocPage[], root: string): DocsNavItem[] {
+  const items: DocsNavItem[] = [{ href: `/docs/${root}`, label: 'Overview' }];
+  let group = '';
+  for (const page of pages.filter((entry) => entry.navParent === root)) {
+    if (page.navGroup && page.navGroup !== group) { group = page.navGroup; items.push({ href: '', label: '', group }); }
+    items.push({ href: hrefFor(page.slug), label: page.label });
+  }
+  return items;
 }

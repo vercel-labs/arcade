@@ -38,8 +38,8 @@ function smooth(x: number): number {
 export class SplashScene {
   private prism = new PrismScene();
 
-  renderScene(target: RenderTarget, t: number): void {
-    this.prism.renderScene(target, t, this.buildIntro(t));
+  renderScene(target: RenderTarget, t: number, sceneScale = 1): void {
+    this.prism.renderScene(target, t, this.buildIntro(t), sceneScale);
   }
 
   done(t: number): boolean {

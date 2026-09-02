@@ -29,6 +29,7 @@ const BUILDERS: Record<Terrain, (seed: number) => Build> = {
 // Cache one baked static mesh per (terrain, seed); animated props live in a separate overlay.
 const cache = new ResourceCache<string, Mesh>({ maxEntries: 24 });
 const robberMarkerCache = new ResourceCache<string, Mesh>({ maxEntries: 24 });
+const robberCache = new ResourceCache<string, Mesh>({ maxEntries: 24 });
 // `robberOn` bakes the robber (seated on the tile's centre surface) into the returned mesh —
 // the robber is available on every terrain and toggled from the HUD, never part of the tile.
 export function tileMesh(terrain: Terrain, seed = 0, robberOn = false): Mesh {
@@ -51,6 +52,21 @@ export function robberMarkerMesh(terrain: Terrain, seed = 0): Mesh {
     const firstIndex = built.indices.length;
     const preview: RGB = [210, 214, 224];
     placeRobber(built, preview);
+    return new BufferGeometry(
+      built.vertices.slice(firstVertex),
+      built.indices.slice(firstIndex).map((index) => index - firstVertex),
+    );
+  });
+}
+
+/** The production robber as a standalone mesh, used while it travels between tiles. */
+export function robberMesh(terrain: Terrain, seed = 0): Mesh {
+  const key = `${terrain}:${seed}`;
+  return robberCache.getOrCreate(key, () => {
+    const built = BUILDERS[terrain](seed);
+    const firstVertex = built.vertices.length;
+    const firstIndex = built.indices.length;
+    placeRobber(built);
     return new BufferGeometry(
       built.vertices.slice(firstVertex),
       built.indices.slice(firstIndex).map((index) => index - firstVertex),

@@ -41,8 +41,9 @@ The following remain implementation details:
   Canonical record shapes are public under `harness/records`; consumers decide whether
   to store, transform, or publish them. The Node-specific hashing, UUID generation,
   serialization envelope, and upload transport stay in `telemetry/`.
-- `voice/`: used by the CLI, but not exported while browser/terminal platform coverage,
-  native speaker behavior, and echo cancellation remain launch decisions.
+- `voice/`: source remains for experimental realtime sessions, but the shipped package
+  intentionally declares no native `speaker` dependency. Playback requires an externally
+  provisioned compatible sink; voice is not a supported npm library boundary.
 - `arcade/`: the concrete product UI and lifecycle.
 - `cinematic/`: shared implementation used by CLI and browser, but not a supported package
   subpath yet. Its compatibility surface is exposed through `/web` where needed; a dedicated

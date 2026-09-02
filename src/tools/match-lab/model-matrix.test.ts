@@ -70,3 +70,16 @@ test('model audit distinguishes unavailable random fallback and retries only sof
   assert.equal(shouldRetryModelGameAudit(noAction), true);
   assert.equal(betterModelGameAudit(noAction, access), noAction);
 });
+
+test('model audit preserves persistent Gateway failures as access failures', () => {
+  const [auditCase] = buildModelMatrixCases({ games: ['chess'], models: ['target/model'], opponentModel: 'opponent/model', seed: 1, timeoutMs: 1_000 });
+  const failed: MatchLabResult = {
+    ...result,
+    status: 'failed',
+    stopReason: 'NotifiedModelFailure',
+    error: { name: 'NotifiedModelFailure', message: 'out of credit', code: 'insufficient_funds' },
+  };
+  const row = classifyModelGameAudit(auditCase, failed, []);
+  assert.equal(row.status, 'ACCESS');
+  assert.equal(shouldRetryModelGameAudit(row), false);
+});

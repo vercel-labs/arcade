@@ -48,10 +48,10 @@ export function faceAngles(value: number): { ax: number; az: number } {
   }
 }
 
-export function diceViewport(): Mat4 {
+export function diceViewport(scale = 1): Mat4 {
   const viewport = mat4Identity();
-  viewport[0] = DICE_BOX.sx;
-  viewport[5] = DICE_BOX.sy;
+  viewport[0] = DICE_BOX.sx * scale;
+  viewport[5] = DICE_BOX.sy * scale;
   viewport[12] = DICE_BOX.tx;
   viewport[13] = DICE_BOX.ty;
   return viewport;

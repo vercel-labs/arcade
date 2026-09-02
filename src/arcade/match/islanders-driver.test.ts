@@ -148,6 +148,11 @@ test('driver installs the scene before models run a complete rules-authoritative
   assert.ok(driver.history().length >= scene.actions.length * 2);
   assert.equal(driver.history().filter((entry) => entry.chat).length, scene.actions.length);
   assert.ok(driver.history().some((entry) => entry.message.includes('🏠 placed a settlement')));
+  for (const entry of driver.history()) {
+    if (/placed a (?:road|settlement|city)/.test(entry.message)) {
+      assert.doesNotMatch(entry.message, /\b(?:node|edge) \d+\b/);
+    }
+  }
   assert.ok(driver.history().some((entry) => entry.message.startsWith('rolled ') && entry.message.includes(' = ')));
   assert.ok(driver.latestAction());
   assert.match(islandersStatusLine(driver)?.narration ?? '', /^wins · 10 victory points$/);

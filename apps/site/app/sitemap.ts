@@ -1,10 +1,17 @@
 import type { MetadataRoute } from 'next';
 
 const ORIGIN = 'https://vercel-arcade.vercel.app';
-const paths = ['', '/docs', '/docs/engine', '/docs/tui', '/docs/game-harness', '/docs/browser-host', '/docs/renderer-pipeline', '/docs/components', '/docs/tools', '/about', '/privacy', '/contact'];
+const paths = ['', '/docs', '/docs/getting-started', '/docs/package-api', '/docs/engine', '/docs/renderer-pipeline', '/docs/tui', '/docs/components', '/docs/game-visuals', '/docs/rules', '/docs/game-harness', '/docs/tools', '/docs/web', '/docs/platform', '/docs/browser-host', '/about', '/privacy', '/contact'];
+const docsPaths = [
+  '/docs/guides', '/docs/guides/render-scene', '/docs/guides/terminal-app', '/docs/guides/custom-game', '/docs/guides/visual-testing',
+  '/docs/reference', '/docs/reference/engine/render-target', '/docs/reference/engine/material', '/docs/reference/engine/surface', '/docs/reference/engine/camera-resources',
+  '/docs/reference/tui/screen', '/docs/reference/tui/layout-nodes', '/docs/reference/tui/renderer-keymap',
+  '/docs/reference/components/input', '/docs/reference/components/select-dropdown', '/docs/reference/components/slider', '/docs/reference/components/table-scrollbox', '/docs/reference/components/overlays',
+  '/docs/reference/symbols',
+];
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  return paths.map((path, index) => ({
+  return [...paths, ...docsPaths].map((path, index) => ({
     url: `${ORIGIN}${path}`,
     changeFrequency: index === 0 ? 'weekly' : 'monthly',
     priority: index === 0 ? 1 : path === '/docs' ? 0.9 : 0.75,

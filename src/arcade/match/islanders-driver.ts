@@ -25,12 +25,14 @@ import { normalizerModel } from './models.ts';
 import { IslandersCommunicationCoordinator } from '../../harness/games/islanders/islanders-communication.ts';
 import { detectIslandersMoments } from '../../harness/games/islanders/islanders-moments.ts';
 import { directedReplyOpportunities, primaryMoment, reactionOpportunities } from '../../harness/communication/moments.ts';
+import type { ModelFailureNotice } from '../../harness/model-failure-notice.ts';
 import {
   isTelemetryEnabled,
   localPlayerKey,
   trackMatchEnded,
   trackMatchRecord,
   trackMatchStarted,
+  trackModelFallback,
 } from '../../telemetry/index.ts';
 
 // One seat in the session: you, or an AI model (a Gateway slug). The color is the seat's
@@ -54,6 +56,8 @@ export interface IslandersDriverDeps {
   syncLive: () => void;
   /** Optional player factory for alternate controllers and deterministic tests. */
   createPlayer?: (spec: IslandersSeatSpec, seat: number, label: string) => Player<IslandersAction>;
+  onFailureNotice?(notice: ModelFailureNotice, model: string): void;
+  onBlocked?(): void;
 }
 
 // One entry in the public action/chat log the rail shows.
@@ -248,6 +252,7 @@ export class IslandersDriver {
       normalizer: normalizerModel(),
       communication: this.communication?.modelConfig(),
       contextProvider: (player) => this.communication?.contextFor(player) ?? '',
+      onFailureNotice: (notice) => this.deps.onFailureNotice?.(notice, spec.model),
     });
   }
 
@@ -271,6 +276,9 @@ export class IslandersDriver {
         },
         onActionChosen: (info) => {
           const seatSpec = this.seats[info.playerIndex];
+          if (seatSpec?.kind === 'ai' && info.choice.diagnostics?.resolution === 'random-fallback') {
+            trackModelFallback({ game: 'islanders', model: seatSpec.model, reason: info.choice.diagnostics.fallbackReason ?? 'exhausted' });
+          }
           this.recordTelemetry(() => this.recorder?.actionChosen(
             info.playerIndex,
             info.player,
@@ -375,7 +383,10 @@ export class IslandersDriver {
     } catch (err) {
       // An abort is the expected way a session ends early (leaving the screen, a new game),
       // so it is not a failure worth surfacing.
-      if (!signal?.aborted) this.failure = err instanceof Error ? err.message : String(err);
+      if (!signal?.aborted && (err as { name?: string })?.name === 'NotifiedModelFailure') {
+        this.running = false;
+        this.deps.onBlocked?.();
+      } else if (!signal?.aborted) this.failure = err instanceof Error ? err.message : String(err);
     } finally {
       if (signal?.aborted && this.restartAfterAbort && this.live && !this.live.isTerminal()) {
         this.restartAfterAbort = false;
@@ -388,6 +399,13 @@ export class IslandersDriver {
         this.deps.syncLive();
       }
     }
+  }
+
+  resumeAfterFailure(): void {
+    if (this.running || !this.live || this.live.isTerminal() || this.players.length === 0) return;
+    this.abort = new AbortController();
+    this.running = true;
+    void this.run();
   }
 
   withdrawHumanCounter(): boolean {
@@ -453,15 +471,15 @@ export class IslandersDriver {
     const victim = 'victim' in action && action.victim !== null ? other(action.victim) : null;
     const outcome = this.live?.actionRecords().at(-1)?.outcome;
     const message = action.type === 'initialSettlement'
-      ? `${SETTLEMENT_ICON} placed a settlement on node ${action.node}`
+      ? `${SETTLEMENT_ICON} placed a settlement`
       : action.type === 'initialRoad'
-        ? `${ROAD_ICON} placed a road on edge ${action.edge}`
+        ? `${ROAD_ICON} placed a road`
         : action.type === 'buildRoad'
-          ? `${ROAD_ICON} placed a road on edge ${action.edge}`
+          ? `${ROAD_ICON} placed a road`
           : action.type === 'buildSettlement'
-            ? `${SETTLEMENT_ICON} placed a settlement on node ${action.node}`
+            ? `${SETTLEMENT_ICON} placed a settlement`
             : action.type === 'buildCity'
-              ? `${SETTLEMENT_ICON} upgraded the settlement on node ${action.node} to a city`
+              ? `${SETTLEMENT_ICON} placed a city`
               : action.type === 'roll'
                 ? `rolled ${(outcome?.dice ?? this.live?.dice() ?? []).join(' + ')} = ${(outcome?.dice ?? this.live?.dice() ?? []).reduce((sum, die) => sum + die, 0)}`
                 : action.type === 'endTurn'

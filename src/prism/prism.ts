@@ -11,6 +11,7 @@ import {
   mat4MulVec4,
   mat4RotX,
   mat4RotY,
+  mat4Scale,
   mat4Translate,
   normalize3,
   rasterize,
@@ -63,7 +64,7 @@ export class PrismScene {
   // Draws the prism + beam + rainbow into the (supersampled) render target.
   // `intro` (splash only) ramps the look up from a flat white triangle; omitting
   // it renders the live steady prism.
-  renderScene(target: RenderTarget, t: number, intro?: PrismIntro): void {
+  renderScene(target: RenderTarget, t: number, intro?: PrismIntro, sceneScale = 1): void {
     target.clear(0, 0, 0);
     const W = target.width;
     const H = target.height;
@@ -73,8 +74,9 @@ export class PrismScene {
     const dispF = intro?.disp ?? 1;
     const rainbowF = intro?.rainbow ?? 1;
     const { view, viewProjection } = cameraMatrices(camera, aspect);
-    const model =
+    const baseModel =
       intro?.model ?? mat4Multiply(mat4Translate(0, PLACE_Y, 0), mat4Multiply(mat4RotY(t * ROT_SPEED), mat4RotX(TILT)));
+    const model = sceneScale === 1 ? baseModel : mat4Multiply(baseModel, mat4Scale(sceneScale, sceneScale, sceneScale));
     const mvp = mat4Multiply(viewProjection, model);
 
     const project = (p: Vec3): P2 => {

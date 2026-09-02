@@ -101,6 +101,9 @@ export const communicationDropdown = new Dropdown({
 export function islandersSetupCommunicationMode(): CommunicationMode {
   return communicationDropdown.index === 1 ? 'autoreply' : 'ambient';
 }
+export function setIslandersSetupCommunicationMode(mode: CommunicationMode): void {
+  communicationDropdown.pick(mode === 'autoreply' ? 1 : 0);
+}
 function communicationDescription(): string {
   return islandersSetupCommunicationMode() === 'ambient' ? 'chat after key moments' : 'chat after every action';
 }
@@ -176,7 +179,7 @@ function seatRow(side: ModelSeatPicker, seatNo: number, color: PlayerColor): Nod
 // background — the rows float over the scene and only the controls carry their own pill
 // fills. Configs not currently shown keep their Slots mounted (hidden in a 0×0 box) so the
 // Screen doesn't unmount them. Starting is the bottom-left "new match" button, not here.
-export function buildIslandersSetupPanel(): Node {
+export function buildIslandersSetupPanel(healthStatus?: { lines: string[]; failed: boolean }): Node {
   const shownIdx = shownIndices();
   const colors = islandersSeatColors();
   const seatRows: Node[] = [];
@@ -206,6 +209,7 @@ export function buildIslandersSetupPanel(): Node {
       ? [row('your color', Slot('islanders-setup-color'))]
       : [Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot('islanders-setup-color')])]),
     ...seatRows,
+    ...(healthStatus ? healthStatus.lines.map((text) => Text({ text, style: { color: healthStatus.failed ? 'danger' : 'muted' } })) : []),
     ...hidden,
   ]);
 }

@@ -204,7 +204,7 @@ test('all parity combinations use regular bullets centered with left-biased ties
   assert.equal(findText(onePip, '12')?.layout?.x, findText(onePip, '•')?.layout?.x);
 });
 
-test('moving the robber keeps the old tile occupied until a different tile is committed', () => {
+test('moving the robber keeps the old tile authoritative until the parabolic flight lands', () => {
   const scene = new TileScene();
   scene.setMode('board');
   scene.settle();
@@ -218,7 +218,16 @@ test('moving the robber keeps the old tile occupied until a different tile is co
   assert.equal(scene.moveRobberTo(start), false, 'the current tile is not a legal destination');
   assert.equal(scene.currentRobberHex(), start);
   assert.equal(scene.moveRobberTo(destination), true);
+  assert.equal(scene.currentRobberHex(), start);
+  const target = new RenderTarget(240, 144);
+  scene.renderScene(target, 0);
+  scene.renderScene(target, 0.45);
+  const motion = scene.robberMotion();
+  assert.ok(motion && motion.progress > 0 && motion.progress < 1);
+  assert.equal(scene.currentRobberHex(), start);
+  scene.renderScene(target, 1);
   assert.equal(scene.currentRobberHex(), destination);
+  assert.equal(scene.robberMotion(), null);
   assert.equal(scene.isMovingRobber(), false);
 });
 
@@ -230,6 +239,9 @@ test('a rolled number is gray-blocked on the robber tile while its other hexes r
   const number = scene.numberAtHex(destination)!;
   scene.beginRobberMove();
   assert.equal(scene.moveRobberTo(destination), true);
+  const moveTarget = new RenderTarget(240, 144);
+  scene.renderScene(moveTarget, 0);
+  scene.renderScene(moveTarget, 1);
 
   const first = Math.max(1, number - 6);
   const second = number - first;

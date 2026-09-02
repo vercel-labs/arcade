@@ -20,7 +20,7 @@ import { PrismScene, SplashScene } from '../prism/index.ts';
 import { coverFlowIndex } from '../cinematic/scenes/cover-flow.ts';
 import { CoverFlowScene, LAUNCH_TOTAL } from './shell/coverflow.ts';
 import { CoverFlowWheelInput } from './shell/coverflow-input.ts';
-import { MENU_ITEMS } from './shell/menu.ts';
+import { MENU_ITEMS, menuItemAction } from './shell/menu.ts';
 import { ChessGameScene } from './games/chess/scene.ts';
 import { CardsScene } from './games/poker/cards-scene.ts';
 import { type TileScene } from './games/islanders/tile-scene.ts';
@@ -30,7 +30,7 @@ import { IslandersGameScene } from './games/islanders/game-scene.ts';
 import { buildIslandersGameRoot, mountIslandersGameHud } from './games/islanders/game-hud.ts';
 import { IslandersDriver } from './match/islanders-driver.ts';
 import type { CommunicationMode } from '../harness/communication/types.ts';
-import { islandersSetupCommunicationMode, islandersSetupSelection, setIslandersSetupChanged, setIslandersSetupModelCatalog } from './match/islanders-setup-panel.ts';
+import { islandersSetupCommunicationMode, islandersSetupSelection, setIslandersSetupChanged, setIslandersSetupCommunicationMode, setIslandersSetupModelCatalog } from './match/islanders-setup-panel.ts';
 import { buildPokerRoot, mountPokerHud, pokerMode, setPokerHandlers } from './games/poker/hud.ts';
 import { PokerGameScene } from './games/poker/poker-scene.ts';
 import { buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, type HeroContext, mountPokerGameHud, nudgePokerBet, pushPokerChat, setNotesObserverPick, setPokerGameHandlers, setPokerVoiceStage } from './games/poker/poker-hud.ts';
@@ -54,7 +54,7 @@ import { BLACK, type Color, WHITE } from '../rules/chess/types.ts';
 import { evaluate } from '../rules/chess/eval.ts';
 import type { ChessResult } from '../rules/chess/chess.ts';
 import type { RGB, RGBA } from '../engine/index.ts';
-import { Box, Button, insetSceneViewport, pointerNdcInSceneViewport, Renderer, Screen, type LayoutBox, type Node } from '../tui/index.ts';
+import { Box, Button, NoticeToast, Text, wrapText, insetSceneViewport, pointerNdcInSceneViewport, Renderer, Screen, type LayoutBox, type Node } from '../tui/index.ts';
 import { ARCADE_THEME, MENU_BUTTON_LABEL, UI_CHROME_PILL } from './theme.ts';
 import { escapeBackRequiresConfirmation, installKeymap } from './shell/keybindings.ts';
 import { buildTeamSwitch, markSwitchSucceeded, mountTeamSwitch, setTeamSwitchHandlers, setTeamSwitchTeams, type TeamSwitchView } from './shell/team-switch.ts';
@@ -64,6 +64,9 @@ import { AiMatch, type Seat } from './match/driver.ts';
 import { disambiguateLabels } from '../harness/labels.ts';
 import { flushTelemetry, initTelemetry, isTelemetryEnabled, setTelemetryEnabled, telemetryStatus, trackSessionStart, type RecordEndReason } from '../telemetry/index.ts';
 import { supersampleForMode, supersampleForViewport } from './render-quality.ts';
+import { openBrowser } from '../platform/open-browser.ts';
+import type { ModelFailureNotice } from '../harness/model-failure-notice.ts';
+import { checkModelHealth } from '../harness/model-health.ts';
 
 // Populate process.env from .env.local before anything reads AI_GATEWAY_API_KEY.
 loadEnv();
@@ -83,6 +86,7 @@ const COLOR_ORDER: TerminalColorMode[] = ['truecolor', '256-color'];
 const MENU_VALUE_W = Math.max(
   ...MODE_ORDER.map((m) => m.length),
   ...COLOR_ORDER.map((m) => m.length),
+  'autoreply'.length,
 );
 
 // Unified compositing (OpenTUI keystone): the scene paints into the same Surface
@@ -163,6 +167,8 @@ const islandersDriver = new IslandersDriver({
     forceFrame = true;
     r.requestRender();
   },
+  onFailureNotice: showFailureNotice,
+  onBlocked: () => blockForFailure(() => islandersDriver.resumeAfterFailure()),
 });
 islandersGameScene.setOnChange(() => {
   forceFrame = true;
@@ -173,7 +179,6 @@ let islandersGameTimer: ReturnType<typeof setInterval> | null = null;
 // test bed runs at, and far cheaper than repainting the board at the full frame rate.
 const ISLANDERS_ANIMATION_FRAME_MS = 90;
 let islandersGameMenuOpen = false;
-let islandersCommunicationMode: CommunicationMode = 'ambient';
 
 // Bar geometry: a band of pills composited over the scene, lifted off the very
 // bottom edge by a margin so it doesn't hug it. BAR_HEIGHT must match the pill
@@ -286,6 +291,180 @@ let teamView: TeamSwitchView = { kind: 'loading' };
 // `t` passes `until` (model dialogue now flows to the chat threads, not the toast).
 // `matchSetupOpen` shows the model picker; `setupFocused` is its focus-once edge.
 let commentary: Commentary | null = null;
+interface ShellFailureNotice extends ModelFailureNotice { model: string; key: string }
+let failureNotice: ShellFailureNotice | null = null;
+let failureResume: (() => void) | null = null;
+
+type SetupGame = 'chess' | 'poker' | 'islanders';
+let modelHealthCheck: { game: SetupGame; controller: AbortController; id: number } | null = null;
+let modelHealthFailure: { game: SetupGame; models: string[] } | null = null;
+let nextModelHealthCheckId = 1;
+let modelHealthAnimation: ReturnType<typeof setInterval> | null = null;
+
+interface ModelHealthStatus { lines: string[]; failed: boolean }
+function modelHealthStatus(game: SetupGame): ModelHealthStatus | undefined {
+  const width = Math.max(24, Math.min(72, cols - 4));
+  if (modelHealthCheck?.game === game) {
+    const dots = '.'.repeat(1 + Math.floor(t * 2.5) % 3);
+    return { lines: [`checking model health ${dots}`], failed: false };
+  }
+  if (modelHealthFailure?.game === game) {
+    const names = modelHealthFailure.models.map(shortModel).join(', ');
+    return { lines: wrapText(`${names} failed health check.`, width), failed: true };
+  }
+  return undefined;
+}
+
+function cancelModelHealthCheck(game?: SetupGame): void {
+  if (modelHealthCheck && (!game || modelHealthCheck.game === game)) {
+    modelHealthCheck.controller.abort();
+    modelHealthCheck = null;
+  }
+  if (!game || modelHealthFailure?.game === game) modelHealthFailure = null;
+  if (modelHealthAnimation) clearInterval(modelHealthAnimation);
+  modelHealthAnimation = null;
+  forceFrame = true;
+  r.requestRender();
+}
+
+async function preflightModels(game: SetupGame, models: readonly string[]): Promise<boolean> {
+  if (modelHealthCheck) return false;
+  modelHealthFailure = null;
+  const controller = new AbortController();
+  const id = nextModelHealthCheckId++;
+  modelHealthCheck = { game, controller, id };
+  modelHealthAnimation = setInterval(() => r.requestRender(), 250);
+  forceFrame = true;
+  r.requestRender();
+  try {
+    const failures = await checkModelHealth(models, { signal: controller.signal });
+    if (modelHealthCheck?.id !== id) return false;
+    modelHealthCheck = null;
+    if (modelHealthAnimation) clearInterval(modelHealthAnimation);
+    modelHealthAnimation = null;
+    if (failures.length) {
+      modelHealthFailure = { game, models: failures.map((failure) => failure.model) };
+      // Keep the modal bounded to one concrete failure. The persistent setup row
+      // below names every failed model, but the first failed model in selector
+      // order owns the error-specific explanation and resolver action.
+      const failure = failures[0];
+      showFailureNotice(failure.notice, failure.model, true);
+      return false;
+    }
+    modelHealthFailure = null;
+    return true;
+  } catch {
+    return false;
+  } finally {
+    if (modelHealthCheck?.id === id) modelHealthCheck = null;
+    if (!modelHealthCheck && modelHealthAnimation) clearInterval(modelHealthAnimation);
+    if (!modelHealthCheck) modelHealthAnimation = null;
+    forceFrame = true;
+    r.requestRender();
+  }
+}
+
+function showFailureNotice(notice: ModelFailureNotice, model: string, forceModal = false): void {
+  if (!notice.persistent && !forceModal) {
+    commentary = { text: `${notice.title}. ${notice.body}`, model: '', until: t + 6 };
+    forceFrame = true;
+    r.requestRender();
+    return;
+  }
+  const key = `${notice.code}:${model}`;
+  if (failureNotice?.key === key) return;
+  failureNotice = { ...notice, model, key };
+  refreshFailureNoticeOverlay();
+  forceFrame = true;
+  r.requestRender();
+}
+
+function dismissFailureNotice(): void {
+  failureNotice = null;
+  refreshFailureNoticeOverlay();
+  if (failureResume) ui.setFocus('gateway-failure-retry');
+  forceFrame = true;
+  r.requestRender();
+}
+
+function retryFailedTurn(): void {
+  const resume = failureResume;
+  failureResume = null;
+  refreshFailureNoticeOverlay();
+  forceFrame = true;
+  r.requestRender();
+  resume?.();
+}
+
+function clearFailureState(): void {
+  failureNotice = null;
+  failureResume = null;
+  refreshFailureNoticeOverlay();
+}
+
+function blockForFailure(resume: () => void): void {
+  failureResume = resume;
+  refreshFailureNoticeOverlay();
+  ui.setFocus(failureNotice?.action ? 'gateway-failure-action' : 'gateway-failure-close');
+  forceFrame = true;
+  r.requestRender();
+}
+
+function pausedFailureStatus(): Node {
+  return Box({ position: 'absolute', left: 0, bottom: 0, width: cols, justifyContent: 'center' }, [
+    Box({ flexDirection: 'row', alignItems: 'center', gap: 2 }, [
+      Text({ text: 'game paused, model request failed.', style: { color: 'danger', bold: true } }),
+      Button({
+        id: 'gateway-failure-retry',
+        label: 'retry request  ↻',
+        onClick: retryFailedTurn,
+        style: {
+          padding: 0,
+          color: 'textPrimary',
+          hover: { color: 'textStrong', bold: true },
+          focus: { color: 'textStrong', bold: true },
+          pressed: { color: 'textMuted' },
+        },
+      }),
+    ]),
+  ]);
+}
+
+function refreshFailureNoticeOverlay(): void {
+  const notice = failureNotice;
+  if (!notice && !failureResume) {
+    ui.setGlobalOverlay(null);
+    return;
+  }
+  if (!notice) {
+    ui.setGlobalOverlay(Box({ width: cols, height: rows, position: 'relative' }, [pausedFailureStatus()]));
+    return;
+  }
+  const modal = NoticeToast({
+    id: 'gateway-failure',
+    severity: notice.severity,
+    title: notice.title,
+    body: notice.body,
+    width: Math.min(48, Math.max(30, cols - 4)),
+    actionColor: 'textStrong',
+    actionBorderColor: 'textStrong',
+    onDismiss: dismissFailureNotice,
+    ...(notice.action ? { action: { label: notice.action.label, onClick: () => {
+      copyToClipboard(notice.action!.url);
+      openBrowser(notice.action!.url);
+      failureNotice = { ...notice, body: `${notice.body} The URL was also copied to your clipboard.` };
+      refreshFailureNoticeOverlay();
+    } } } : {}),
+  });
+  // During a live persistent failure, retain the paused state beneath the modal.
+  // Preflight failures have no game to pause, so they show only the modal.
+  ui.setGlobalOverlay(failureResume
+    ? Box({ width: cols, height: rows, position: 'relative' }, [
+        pausedFailureStatus(),
+        { ...modal, style: { ...modal.style, position: 'absolute', top: 0, left: 0, width: cols, height: rows } },
+      ])
+    : modal);
+}
 let matchSetupOpen = false;
 let setupFocused = false;
 // The seat per side while a match is live (null when idle) — human, or an AI model.
@@ -510,7 +689,7 @@ async function refreshTeamModelCatalog(auth: EnsureResult | null): Promise<void>
     ? await fetchTeamModelCatalog(auth.key)
     : fallbackArcadeModelCatalog('not signed in');
   setMatchSetupModelCatalog(catalog.textCreators, catalog.realtimeCreators);
-  setPokerSetupModelCatalog(catalog.textCreators, catalog.realtimeCreators);
+  setPokerSetupModelCatalog(catalog.textCreators);
   setIslandersSetupModelCatalog(catalog.textCreators);
 }
 
@@ -690,6 +869,8 @@ const aiMatch = new AiMatch({
     pushChatMessage({ text, model, label });
     r.requestRender();
   },
+  onFailureNotice: showFailureNotice,
+  onBlocked: () => blockForFailure(() => aiMatch.resume()),
   allowIllegal: () => illegalAllowed,
 });
 
@@ -700,6 +881,8 @@ const aiMatch = new AiMatch({
 // chess is a fresh start, not a stale, matchless transcript. (A match that ends
 // while you STAY on the board is left intact — this only fires on leave/reset.)
 function stopAiMatch(): void {
+  cancelModelHealthCheck('chess');
+  clearFailureState();
   aiMatch.stop();
   commentary = null;
   matchSeats = null;
@@ -726,6 +909,7 @@ function openMatchSetup(): void {
 }
 
 function closeMatchSetup(): void {
+  cancelModelHealthCheck('chess');
   matchSetupOpen = false;
   setupFocused = false;
   chessGame.setPreview(null);
@@ -734,9 +918,12 @@ function closeMatchSetup(): void {
 
 // Start button: only fires when both sides are ready (human, or a committed model),
 // so the selection is guaranteed.
-function confirmMatchSetup(): void {
+async function confirmMatchSetup(): Promise<void> {
   const sel = matchSetupSelection();
   if (!sel) return;
+  const models = [sel.white, sel.black].flatMap((seat) => seat.kind === 'ai' ? [seat.model] : []);
+  if (!await preflightModels('chess', models)) return;
+  if (!matchSetupOpen) return;
   const options = matchSetupOptions();
   evalBarVisible = options.evalBar;
   illegalAllowed = options.illegalMoves;
@@ -831,6 +1018,8 @@ const pokerMatch = new PokerMatch({
     pushPokerChat({ text, model, label });
     r.requestRender();
   },
+  onFailureNotice: showFailureNotice,
+  onBlocked: () => blockForFailure(() => pokerMatch.resume()),
   onHandOver: () => {
     forceFrame = true;
     r.requestRender();
@@ -892,6 +1081,8 @@ function pokerBetStep(dir: number): void {
 
 // Stop the poker session (navigating away / new match). Safe when idle.
 function stopPokerMatch(): void {
+  cancelModelHealthCheck('poker');
+  clearFailureState();
   pokerMatch.stop(); // scene.endSession() returns the felt to its idle framing
   if (wispSwap?.game === 'poker') closeWispSwap();
   commentary = null;
@@ -917,6 +1108,7 @@ function openPokerSetup(): void {
 }
 
 function closePokerSetup(): void {
+  cancelModelHealthCheck('poker');
   pokerSetupOpen = false;
   pokerSetupFocused = false;
   pokerScene.setPreview(null); // back to the bare idle ring
@@ -934,6 +1126,7 @@ function cancelPokerSetup(): void {
 // Any committed settings change (players / mode / provider / model) reshapes the idle
 // table live: the chair ring follows the player count, the wisps follow the providers.
 setPokerSetupChanged(() => {
+  cancelModelHealthCheck('poker');
   if (!pokerSetupOpen) return;
   pokerScene.setPreview(pokerPreviewSeats(), pokerStartingStack());
   forceFrame = true;
@@ -944,6 +1137,7 @@ setPokerSetupChanged(() => {
 // about to sit at it — but the panel itself has to repaint, because a committed change can
 // add or remove a seat row and re-tint the seat labels.
 setIslandersSetupChanged(() => {
+  cancelModelHealthCheck('islanders');
   if (mode !== 'islanders') return;
   forceFrame = true;
   r.requestRender();
@@ -953,6 +1147,7 @@ setIslandersSetupChanged(() => {
 // king-wisp preview behind the panel — each side's wisp follows its chosen creator,
 // a human side shows none.
 setMatchSetupChanged(() => {
+  cancelModelHealthCheck('chess');
   if (!matchSetupOpen) return;
   chessGame.setPreview(chessPreviewSides());
   forceFrame = true;
@@ -960,9 +1155,12 @@ setMatchSetupChanged(() => {
 });
 
 // Start-match button: begin a session with the chosen seats (guaranteed present).
-function confirmPokerSetup(): void {
+async function confirmPokerSetup(): Promise<void> {
   const seats = pokerSetupSelection();
   if (!seats) return;
+  const models = seats.flatMap((seat) => seat.kind === 'ai' && seat.runtime === 'text' ? [seat.model] : []);
+  if (!await preflightModels('poker', models)) return;
+  if (!pokerSetupOpen) return;
   closePokerSetup();
   clearPokerChat(); // fresh chat thread for the new session
   pokerChatOpen = false; // the chat starts collapsed (just the pill) each new match
@@ -983,7 +1181,8 @@ function pokerButton(): void {
   if (!pokerMatch.isRunning()) {
     if (pokerSetupOpen) confirmPokerSetup();
     else pokerNewMatch();
-  } else if (pokerMatch.isPaused()) pokerMatch.resume();
+  } else if (pokerMatch.isPaused() && failureResume) retryFailedTurn();
+  else if (pokerMatch.isPaused()) pokerMatch.resume();
   else pokerMatch.pause();
   r.requestRender();
 }
@@ -992,7 +1191,8 @@ function pokerButton(): void {
 // start handling — the button only exists while a match is running or paused).
 function togglePokerPause(): void {
   if (!pokerMatch.isRunning()) return;
-  if (pokerMatch.isPaused()) pokerMatch.resume();
+  if (pokerMatch.isPaused() && failureResume) retryFailedTurn();
+  else if (pokerMatch.isPaused()) pokerMatch.resume();
   else pokerMatch.pause();
   forceFrame = true;
   r.requestRender();
@@ -1191,6 +1391,7 @@ function toggleTelemetry(): void {
 function aiButton(): void {
   if (mode !== 'chess-game') enterChessGame();
   if (!chessGame.isMatchActive()) openMatchSetup();
+  else if (aiMatch.isPaused() && failureResume) retryFailedTurn();
   else if (aiMatch.isPaused()) aiMatch.resume();
   else aiMatch.pause();
   r.requestRender();
@@ -1267,10 +1468,13 @@ function enterIslandersGame(): void {
 }
 
 // Begin a session from the setup panel's committed choices.
-function startIslandersGame(): void {
+async function startIslandersGame(): Promise<void> {
   const seats = islandersSetupSelection();
   if (!seats) return;
-  islandersCommunicationMode = islandersSetupCommunicationMode();
+  const models = seats.flatMap((seat) => seat.kind === 'ai' ? [seat.model] : []);
+  if (!await preflightModels('islanders', models)) return;
+  if (mode !== 'islanders' || islandersDriver.state()) return;
+  const islandersCommunicationMode = islandersSetupCommunicationMode();
   const board = islandersGameScene.preparedBoard();
   islandersDriver.start(seats, { communicationMode: islandersCommunicationMode, ...(board ? { board } : {}) });
   fullRepaint();
@@ -1278,8 +1482,17 @@ function startIslandersGame(): void {
 
 // Tear the session down and return to the setup panel.
 function newIslandersGame(): void {
+  cancelModelHealthCheck('islanders');
+  clearFailureState();
   islandersDriver.reset();
   islandersGameScene.prepareBoard();
+  fullRepaint();
+}
+
+function cycleIslandersCommunicationMode(): void {
+  const next: CommunicationMode = islandersSetupCommunicationMode() === 'ambient' ? 'autoreply' : 'ambient';
+  setIslandersSetupCommunicationMode(next);
+  islandersDriver.setCommunicationMode(next);
   fullRepaint();
 }
 
@@ -1290,6 +1503,7 @@ function buildIslandersGameMenu(): Node {
     [
       { id: 'islanders-game-menu-new', label: 'new game', onClick: () => { newIslandersGame(); closeIslandersGameMenu(); } },
       { id: 'islanders-game-menu-reset', label: 'reset camera', onClick: () => { islandersGameScene.scene.resetView(); closeIslandersGameMenu(); } },
+      { id: 'islanders-game-menu-communication', label: 'communication', value: islandersSetupCommunicationMode(), onClick: cycleIslandersCommunicationMode },
       { id: 'islanders-game-menu-mode', label: 'display', value: renderMode, onClick: () => cycleMode() },
       { id: 'islanders-game-menu-color', label: 'color', value: colorMode, onClick: () => cycleColor() },
     ],
@@ -1312,6 +1526,9 @@ function openIslandersGameMenu(): void {
 
 // Leaving the Islanders game screen entirely.
 function leaveIslandersGame(): void {
+  const wasActive = islandersDriver.state() !== null || islandersGameTimer !== null;
+  cancelModelHealthCheck('islanders');
+  if (wasActive) clearFailureState();
   islandersDriver.reset();
   if (islandersGameTimer !== null) {
     clearInterval(islandersGameTimer);
@@ -1410,7 +1627,12 @@ function startPrismToMenu(): void {
 function launchSelected(): void {
   if (launching) return;
   const item = MENU_ITEMS[coverFlowIndex(menuSel, MENU_ITEMS.length)];
-  if (!item?.enabled) return;
+  const action = menuItemAction(item);
+  if (!action) return;
+  if (action.kind === 'external') {
+    openBrowser(action.url);
+    return;
+  }
   launching = true;
   launchT = 0;
   launchSel = menuSel;
@@ -1738,7 +1960,7 @@ function syncBar(): void {
     popSwap();
     promoFocused = false;
     if (!keymap.hasContext('setup')) keymap.pushContext('setup', true);
-    ui.setRoot(buildMatchSetup({ x: 0, y: 0, w: cols, h: rows }, { onStart: confirmMatchSetup, onCancel: closeMatchSetup }), {
+    ui.setRoot(buildMatchSetup({ x: 0, y: 0, w: cols, h: rows }, { onStart: () => { void confirmMatchSetup(); }, onCancel: closeMatchSetup, healthStatus: modelHealthStatus('chess') }), {
       x: 0,
       y: 0,
       w: cols,
@@ -1971,7 +2193,9 @@ function syncBar(): void {
           onOpenMenu: () => {
             openIslandersGameMenu();
           },
-          onStart: startIslandersGame,
+          onStart: () => { void startIslandersGame(); },
+          healthStatus: modelHealthStatus('islanders'),
+          notice: commentary && t < commentary.until ? commentary.text : undefined,
         },
       ),
       { x: 0, y: 0, w: cols, h: rows },
@@ -2049,7 +2273,7 @@ function syncBar(): void {
     // disabled until every shown seat has a model), "new match" whenever no session is
     // running, nothing mid-session.
     const matchControls = pokerSetupOpen
-      ? { setup: true, onPrimary: pokerSetupReady() ? confirmPokerSetup : undefined, onCancel: cancelPokerSetup }
+      ? { setup: true, onPrimary: pokerSetupReady() && modelHealthCheck?.game !== 'poker' ? () => { void confirmPokerSetup(); } : undefined, onCancel: cancelPokerSetup }
       : !pokerMatch.isRunning()
         ? { setup: false, onPrimary: pokerNewMatch }
         : null;
@@ -2069,7 +2293,7 @@ function syncBar(): void {
         onToggleChat: togglePokerChat,
         onOpenMenu: openPokerMenu,
         onOpenNotes: openPokerNotes,
-        setup: pokerSetupOpen ? buildPokerSetupPanel() : null,
+        setup: pokerSetupOpen ? buildPokerSetupPanel(modelHealthStatus('poker')) : null,
         matchControls,
         pauseControl:
           pokerScene.isActive() && pokerMatch.isRunning()
@@ -2206,6 +2430,16 @@ function onKeyImpl(ev: KeyEvent): void {
     quit();
     return;
   }
+  if (failureNotice) {
+    if (ev.name === 'escape') dismissFailureNotice();
+    else ui.handleKey(ev);
+    return;
+  }
+  if (failureResume) {
+    if (ev.name === 'escape') keymap.handle(ev);
+    else ui.handleKey(ev);
+    return;
+  }
   // Any key skips the boot splash straight to the live prism (the wrapper requests
   // a render, so the next tick falls through to the prism branch).
   if (splashing) {
@@ -2250,6 +2484,18 @@ function onKeyImpl(ev: KeyEvent): void {
 function onMouseImpl(e: MouseEvent): void {
   hoverX = e.x; // track the cursor so scroll keys can target what's under it
   hoverY = e.y;
+  // A Gateway failure is a blocking modal: all pointer input belongs to its
+  // action, close control, or scrim. Never let a click fall through to a board
+  // move, poker action, or camera gesture while the failed turn is paused.
+  if (failureNotice || failureResume) {
+    if (e.type === 'move') ui.hover(e.x, e.y);
+    else if (e.type === 'down') ui.pointerDown(e.x, e.y, e.button);
+    else if (e.type === 'drag') ui.drag(e.x, e.y);
+    else if (e.type === 'wheel' && e.wheelAxis !== 'horizontal')
+      ui.wheel(e.x, e.y, e.wheel === -1 ? -1 : 1);
+    else if (e.type === 'up') ui.pointerUp();
+    return;
+  }
   // A click also skips the boot splash to the live prism.
   if (splashing && e.type === 'down') {
     splashing = false;

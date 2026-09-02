@@ -18,6 +18,8 @@ export interface CanvasSurfaceHostOptions {
   cellAspectRatio?: number;
   /** Glyph height relative to a cell. Terminals commonly overfill slightly. */
   fontScale?: number;
+  /** Let layout own the CSS box while this host updates only backing pixels. */
+  manageCssSize?: boolean;
 }
 
 export interface Canvas2DContextLike {
@@ -53,6 +55,7 @@ export class CanvasSurfaceHost {
   private readonly dpr: number;
   private readonly cellAspectRatio?: number;
   private readonly fontScale: number;
+  private readonly manageCssSize: boolean;
   private cellWidth = 9;
   private cellHeight = 18;
   private originX = 0;
@@ -78,6 +81,7 @@ export class CanvasSurfaceHost {
     this.dpr = options.devicePixelRatio ?? 1;
     this.cellAspectRatio = options.cellAspectRatio;
     this.fontScale = options.fontScale ?? 0.92;
+    this.manageCssSize = options.manageCssSize ?? true;
   }
 
   /** Resize the backing store and return the cell metrics used for input mapping. */
@@ -89,8 +93,8 @@ export class CanvasSurfaceHost {
     const height = Math.max(1, Math.floor(cssHeight * this.dpr));
     if (this.canvas.width !== width) this.canvas.width = width;
     if (this.canvas.height !== height) this.canvas.height = height;
-    if (cssWidth !== this.lastCssWidth) this.canvas.style.width = `${cssWidth}px`;
-    if (cssHeight !== this.lastCssHeight) this.canvas.style.height = `${cssHeight}px`;
+    if (this.manageCssSize && cssWidth !== this.lastCssWidth) this.canvas.style.width = `${cssWidth}px`;
+    if (this.manageCssSize && cssHeight !== this.lastCssHeight) this.canvas.style.height = `${cssHeight}px`;
     if (this.cellAspectRatio) {
       this.cellHeight = Math.min(
         height / Math.max(1, rows),

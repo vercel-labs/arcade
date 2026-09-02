@@ -2,6 +2,7 @@ import { generateText, type LanguageModel, Output } from 'ai';
 import { z } from 'zod';
 import type { GameState } from '../rules/game.ts';
 import { classifyModelError } from './model-errors.ts';
+import { modelFailureNotice, NotifiedModelFailure, type ModelFailureNotice } from './model-failure-notice.ts';
 import type { Communication, CommunicationMode } from './communication/types.ts';
 import type { CommunicationOpportunity } from './communication/moments.ts';
 import type {
@@ -223,6 +224,8 @@ export interface ModelPlayerOpts {
    * string / reply / error message; `result` is how it resolved.
    */
   onAttempt?: (info: { phase: 'structured' | 'text' | 'normalize'; raw: string; result: 'legal' | 'illegal' | 'error' }) => void;
+  /** Actionable Gateway failure surfaced by the app shell; never model/provider prose. */
+  onFailureNotice?: (notice: ModelFailureNotice) => void;
   /**
    * When this returns true, illegal moves are ALLOWED: the model's move is parsed
    * loosely (piece + destination, no rules) via the state's `actionFromStringLoose`
@@ -272,6 +275,7 @@ export class ModelPlayer<A> implements Player<A> {
   private communication?: ModelPlayerOpts['communication'];
   private contextProvider?: (player: number) => string;
   private onAttempt?: ModelPlayerOpts['onAttempt'];
+  private onFailureNotice?: ModelPlayerOpts['onFailureNotice'];
   private allowIllegal?: () => boolean;
   private normalizer?: LanguageModel;
   private normalizerName?: string;
@@ -291,6 +295,7 @@ export class ModelPlayer<A> implements Player<A> {
     this.communication = opts.communication;
     this.contextProvider = opts.contextProvider;
     this.onAttempt = opts.onAttempt;
+    this.onFailureNotice = opts.onFailureNotice;
     this.allowIllegal = opts.allowIllegal;
     this.normalizer = opts.normalizer;
     this.normalizerName = opts.normalizerName ?? (typeof opts.normalizer === 'string' ? opts.normalizer : undefined);
@@ -398,6 +403,7 @@ export class ModelPlayer<A> implements Player<A> {
     let feedback = '';
     let structuredErrored = false;
     let unavailable = false;
+    let gatewayFailureNotice: ModelFailureNotice | null = null;
     // The most recent answer the model actually produced (a rejected move string or
     // a prose reply) and the best PUBLIC rationale seen — fed to the normalizer rung
     // if every deterministic rung fails. In split mode `lastRationale` is only ever
@@ -427,6 +433,11 @@ export class ModelPlayer<A> implements Player<A> {
       } catch (err) {
         if (signal?.aborted) throw err; // cancellation — let it propagate
         const failure = classifyModelError(err);
+        const notice = modelFailureNotice(failure, this.name);
+        if (notice) {
+          gatewayFailureNotice = notice;
+          this.onFailureNotice?.(notice);
+        }
         attempts.push({
           phase: 'structured',
           sequence: attempts.length,
@@ -435,9 +446,9 @@ export class ModelPlayer<A> implements Player<A> {
           latencyMs: elapsedMs(attemptStarted),
         });
         this.onAttempt?.({ phase: 'structured', raw: (err as Error).message ?? String(err), result: 'error' });
-        if (failure.kind === 'access') {
+        if (failure.gatewayFailure && failure.kind !== 'schema') {
           unavailable = true;
-          break; // provider unreachable on this team — the text path fails identically
+          break; // Gateway-level failure: a prose retry hits the same blocked request.
         }
         structuredErrored = true;
         break; // schema unsupported → try the text fallback instead of re-trying
@@ -480,11 +491,18 @@ export class ModelPlayer<A> implements Player<A> {
           usage = r.usage;
         } catch (err) {
           if (signal?.aborted) throw err;
+          const failure = classifyModelError(err);
+          const notice = modelFailureNotice(failure, this.name);
+          if (notice) {
+            gatewayFailureNotice = notice;
+            this.onFailureNotice?.(notice);
+            if (notice.persistent) unavailable = true;
+          }
           attempts.push({
             phase: 'text',
             sequence: attempts.length,
             result: 'error',
-            failureKind: classifyModelError(err).kind,
+            failureKind: failure.kind,
             latencyMs: elapsedMs(attemptStarted),
           });
           this.onAttempt?.({ phase: 'text', raw: (err as Error).message ?? String(err), result: 'error' });
@@ -523,6 +541,7 @@ export class ModelPlayer<A> implements Player<A> {
 
     // Exhausted everything — play a legal move so a match never deadlocks, tagged
     // with WHY so the fallback is visibly diagnosed rather than a silent random move.
+    if (gatewayFailureNotice?.persistent) throw new NotifiedModelFailure(gatewayFailureNotice);
     const sample = this.fallbackRng();
     const fallbackIndex = Number.isFinite(sample)
       ? Math.min(legal.length - 1, Math.max(0, Math.floor(sample * legal.length)))
@@ -570,11 +589,12 @@ export class ModelPlayer<A> implements Player<A> {
       return action;
     } catch (err) {
       if (signal?.aborted) throw err; // cancellation — let it propagate
+      const failure = classifyModelError(err);
       attempts.push({
         phase: 'normalize',
         sequence: attempts.length,
         result: 'error',
-        failureKind: classifyModelError(err).kind,
+        failureKind: failure.kind,
         latencyMs: elapsedMs(attemptStarted),
       });
       this.onAttempt?.({ phase: 'normalize', raw: (err as Error).message ?? String(err), result: 'error' });

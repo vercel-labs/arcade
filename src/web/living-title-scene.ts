@@ -10,6 +10,7 @@ import type { PointerFieldSnapshot } from '../engine/pointer-field.ts';
 import { PrismScene } from '../prism/prism.ts';
 import { SplashScene, SPLASH_END } from '../prism/splash.ts';
 import { BrowserIslandersCinematic, BrowserPokerCinematic } from './browser-game-cinematics.ts';
+import { ISLANDERS_CINEMATIC_LOOP_SECONDS, ISLANDERS_REDUCED_MOTION_TIME } from '../cinematic/islanders-choreography.ts';
 import { BrowserChessBoardShowcase } from './browser-mini-scenes.ts';
 import { BrowserCoverFlow } from './browser-coverflow.ts';
 import { applySurfacePointerEffect, type SurfacePointerMode } from './surface-pointer-effects.ts';
@@ -19,6 +20,7 @@ const ACTS = LIVING_TITLE_ACTS.length;
 const MATCH_CUT_SOURCE_PROGRESS = [LIVING_TITLE_MORPH_STARTS[0], 0.9, LIVING_TITLE_MORPH_STARTS[2], LIVING_TITLE_MORPH_STARTS[3]] as const;
 const ZOOM_DETAIL_SCALE = 2;
 const MAX_TRANSITION_PLATES = 8;
+const COVER_FLOW_SETTLED_PROGRESS = 0.9;
 const MATCH_CUTS = [
   // Prism beam → selected cover bezel.
   { from: { x: 0.62, y: 0.43 }, to: { x: 0.5, y: 0.5 }, direction: { x: -0.82, y: 0.57 } },
@@ -34,6 +36,11 @@ export { anchoredInkMatchCut, LIVING_TITLE_ACT_BOUNDARIES, LIVING_TITLE_MORPH_ST
 export type { LivingTitleAct };
 export interface LivingTitleFrameOptions { cols: number; rows: number; timeSeconds: number; progress: number; pointer?: { x: number; y: number } | null; pointerField?: PointerFieldSnapshot | null; pointerMode?: SurfacePointerMode; reducedMotion?: boolean; }
 
+/** A restrained phone-portrait pullback for the compact opening scenes. */
+export function earlyScenePortraitScale(aspect: number): number {
+  return aspect >= 0.8 ? 1 : 0.86 + 0.14 * smoothstep((aspect - 0.45) / 0.35);
+}
+
 /** Scroll-scrubbed Arcade launch film: long game acts joined by short cell morphs. */
 export class LivingTitleScene {
   private readonly prismTarget = new RenderTarget(1, 1);
@@ -46,10 +53,12 @@ export class LivingTitleScene {
   private readonly islanders = new BrowserIslandersCinematic();
   private readonly chessLoop = new ActiveSceneLoopClock();
   private readonly pokerLoop = new ActiveSceneLoopClock();
+  private readonly islandersLoop = new ActiveSceneLoopClock();
   private readonly transitionPlates = new Map<string, Partial<{ source: Surface; destination: Surface }>>();
   private prismStartedAt: number | null = null;
   private chessGameplayPhase = 0;
   private pokerGameplayPhase = 0;
+  private pokerGameplayIteration = 0;
 
   prepare(): Promise<void> {
     return Promise.all([this.covers.prepare(), this.chess.prepare(), this.poker.prepare()]).then(() => {
@@ -78,10 +87,16 @@ export class LivingTitleScene {
     const { cols, rows, timeSeconds, pointer = null, pointerField = null, pointerMode = 'off', reducedMotion = false } = options;
     const { act, local } = livingTitleTimeline(options.progress);
     this.chessGameplayPhase = this.chessLoop.sample(timeSeconds, act === 2 && !reducedMotion, CHESS_LOOP_SECONDS).phase;
-    this.pokerGameplayPhase = this.pokerLoop.sample(timeSeconds, act === 3 && !reducedMotion, POKER_LOOP_SECONDS).phase;
+    const pokerClock = this.pokerLoop.sample(timeSeconds, act === 3 && !reducedMotion, POKER_LOOP_SECONDS);
+    this.pokerGameplayPhase = pokerClock.phase;
+    this.pokerGameplayIteration = pokerClock.iteration;
+    const islandersClock = this.islandersLoop.sample(timeSeconds, act === 4 && !reducedMotion, ISLANDERS_CINEMATIC_LOOP_SECONDS);
+    const islandersGameplay = reducedMotion
+      ? ISLANDERS_REDUCED_MOTION_TIME
+      : islandersClock.iteration * ISLANDERS_CINEMATIC_LOOP_SECONDS + islandersClock.elapsed;
     const morphStart = LIVING_TITLE_MORPH_STARTS[act];
     if (act === ACTS - 1 || local < morphStart || reducedMotion) {
-      const rendered = this.scene(act, cols, rows, local, timeSeconds, reducedMotion);
+      const rendered = this.scene(act, cols, rows, local, timeSeconds, reducedMotion, islandersGameplay);
       // The outgoing scene is the sheet of paper being burned. Retain the
       // actual last live frame so entering the ink cut cannot swap to a stale
       // gameplay phase, camera pose, or differently sampled high-res plate.
@@ -120,25 +135,33 @@ export class LivingTitleScene {
     return plate as { source: Surface; destination: Surface };
   }
 
-  private scene(act: number, cols: number, rows: number, progress: number, time: number, reduced: boolean): Surface {
-    if (act === 0) return this.prismSurface(cols, rows, reduced ? 0.8 : time, progress);
-    if (act === 1) return this.covers.frame(cols, rows, progress);
+  private scene(act: number, cols: number, rows: number, progress: number, time: number, reduced: boolean, islandersGameplay = 0): Surface {
+    const aspect = cols / Math.max(1, rows * 2);
+    const portraitScale = earlyScenePortraitScale(aspect);
+    if (act === 0) return this.prismSurface(cols, rows, reduced ? 0.8 : time, progress, portraitScale);
+    if (act === 1) {
+      // Cover Flow's authored 0..0.9 sequence includes one full carousel loop,
+      // Chess selection, the complete flip, and its hold. Fit that sequence into
+      // the stable portion of the chapter so the ink cut can never interrupt it.
+      const coverProgress = Math.min(COVER_FLOW_SETTLED_PROGRESS, progress / LIVING_TITLE_MORPH_STARTS[1] * COVER_FLOW_SETTLED_PROGRESS);
+      return this.covers.frame(cols, rows, coverProgress, 1 / portraitScale);
+    }
     if (act === 2) {
       this.chess.setChromeVisible(false);
-      this.chess.setCinematicState(progress, this.chessGameplayPhase);
+      this.chess.setCinematicState(progress, this.chessGameplayPhase, 1 / portraitScale);
       return this.chess.frame(cols, rows, reduced ? 0 : time).surface;
     }
-    if (act === 3) return this.poker.frame(cols, rows, progress, reduced ? 0 : time, this.pokerGameplayPhase);
-    return this.islanders.frame(cols, rows, progress, reduced ? 0 : time);
+    if (act === 3) return this.poker.frame(cols, rows, progress, reduced ? 0 : time, this.pokerGameplayPhase, this.pokerGameplayIteration);
+    return this.islanders.frame(cols, rows, progress, reduced ? 0 : time, islandersGameplay);
   }
 
-  private prismSurface(cols: number, rows: number, time: number, progress: number): Surface {
+  private prismSurface(cols: number, rows: number, time: number, progress: number, sceneScale: number): Surface {
     const target = this.prismTarget;
     target.resize(cols * 3, rows * 6);
     this.prismStartedAt ??= time;
     const elapsed = Math.max(0, time - this.prismStartedAt);
-    if (elapsed < SPLASH_END) this.splash.renderScene(target, elapsed);
-    else this.prism.renderScene(target, elapsed);
+    if (elapsed < SPLASH_END) this.splash.renderScene(target, elapsed, sceneScale);
+    else this.prism.renderScene(target, elapsed, undefined, sceneScale);
     const surface = new Surface(cols, rows);
     surface.fillRect(0, 0, cols, rows, BLACK);
     shapeGlyphToSurface(surface, target, cols, rows, { color: true, contrast: 2.2, hybrid: false, coloredBackground: false }, 0, 0, this.prismGlyphCache);

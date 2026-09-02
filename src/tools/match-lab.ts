@@ -14,6 +14,7 @@ import { runChessMatch } from './match-lab/adapters/chess.ts';
 import { runPokerMatchLab } from './match-lab/adapters/poker.ts';
 import { buildMatchPlans, parseMatchLabConfig } from './match-lab/config.ts';
 import type { MatchLabAdapter, MatchLabGame, MatchLabManifest, MatchLabResult } from './match-lab/types.ts';
+import { NotifiedModelFailure } from '../harness/model-failure-notice.ts';
 
 const ADAPTERS: Record<MatchLabGame, MatchLabAdapter> = {
   chess: runChessMatch,
@@ -73,7 +74,12 @@ function failure(plan: ReturnType<typeof buildMatchPlans>[number], startedAt: st
     actionCount: 0,
     winnerSeats: [],
     stopReason: cause.name,
-    error: { name: cause.name, message: cause.message, ...(cause.stack ? { stack: cause.stack } : {}) },
+    error: {
+      name: cause.name,
+      message: cause.message,
+      ...(error instanceof NotifiedModelFailure ? { code: error.notice.code } : {}),
+      ...(cause.stack ? { stack: cause.stack } : {}),
+    },
   };
 }
 

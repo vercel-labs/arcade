@@ -51,8 +51,8 @@ test('cinematic wisps retain production brand and placement semantics', () => {
   assert.ok(poker.includes('drawIslandersDiceOverlay'));
   assert.ok(!poker.includes('draw(dieMesh()'));
   assert.ok(poker.includes('gameplayPhase = cameraProgress'));
-  assert.ok(poker.includes('hand.shuffle * this.shuffle.loop * 2'));
-  assert.ok(poker.includes('pokerLoopState(gameplayPhase)'));
+  assert.ok(poker.includes('hand.shuffle * this.shuffle.loop * hand.shuffleCycles'));
+  assert.ok(poker.includes('pokerLoopState(gameplayPhase, gameplayIteration)'));
   assert.ok(poker.includes('createPokerMuckCards'));
   assert.ok(poker.includes('pokerMuckCardPose'));
   assert.ok(poker.includes('createPokerGatherCard'));
@@ -79,15 +79,23 @@ test('terminal and browser share the exact production Islanders dice overlay', (
   const cinematic = readFileSync(new URL('./browser-game-cinematics.ts', import.meta.url), 'utf8');
   const game = readFileSync(new URL('../arcade/games/islanders/tile-scene.ts', import.meta.url), 'utf8');
   const overlay = readFileSync(new URL('../game-visuals/islanders/dice-overlay.ts', import.meta.url), 'utf8');
-  assert.ok(cinematic.includes('preserveSceneDepth: true'));
+  assert.ok(cinematic.includes('drawIslandersDiceOverlay(diceTarget, this.dice'));
+  assert.ok(cinematic.includes('shapeGlyphLayerToSurface'));
+  assert.ok(!cinematic.includes('halfBlockLayerToSurface'));
   assert.ok(game.includes('drawIslandersDiceOverlay(target, this.dice'));
   assert.ok(overlay.includes('target.depth.fill(Infinity)'));
-  assert.ok(overlay.includes('diceViewport()'));
+  assert.ok(overlay.includes('diceViewport(scale)'));
 });
 
-test('Islanders cinematic draws dice after settlements so pieces cannot cover them', () => {
+test('Islanders cinematic composites sparse dice after settlements without number pips', () => {
   const cinematic = readFileSync(new URL('./browser-game-cinematics.ts', import.meta.url), 'utf8');
   const overlay = cinematic.indexOf('if (buildings.length || roads.length) draw(overlay');
-  const dice = cinematic.indexOf('drawIslandersDiceOverlay(target, this.dice');
-  assert.ok(overlay >= 0 && dice > overlay, 'dice must be the final board-space layer');
+  const dice = cinematic.indexOf('paintIslandersDiceLayer(surface');
+  assert.ok(overlay >= 0 && dice > overlay, 'dice must be the final visual layer above pieces');
+  assert.ok(!cinematic.includes('drawIslandersNumberTokens'));
+  assert.ok(!cinematic.includes('TOKEN_DOTS'));
+  assert.ok(cinematic.includes('drawIslandersDiceOverlay(diceTarget, this.dice'));
+  assert.ok(cinematic.includes('shapeGlyphLayerToSurface(surface, target'));
+  assert.ok(cinematic.includes('presentIslandersAscii(target, cols, rows'));
+  assert.ok(!cinematic.includes('presentIslandersModes'));
 });

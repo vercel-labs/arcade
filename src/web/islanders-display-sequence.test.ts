@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { islandersCinematicCamera } from '../cinematic/camera.ts';
-import { BrowserIslandersCinematic, islandersDisplaySequence } from './browser-game-cinematics.ts';
+import { islandersDisplaySequence } from '../cinematic/display-modes.ts';
+import { BrowserIslandersCinematic } from './browser-game-cinematics.ts';
 
 test('Islanders display study flows ASCII to hybrid to pixel and back to ASCII', () => {
   assert.deepEqual(islandersDisplaySequence(0.7), { from: 'ascii', to: 'ascii', mix: 0 });
@@ -31,6 +32,7 @@ test('Islanders dice and display-mode windows retain island coverage in every qu
     for (let y = 0; y < frame.rows; y++) for (let x = 0; x < frame.cols; x++) {
       const cell = frame.getCell(x, y);
       if (cell?.opaque && cell.ch !== ' ') quadrants[(y >= frame.rows / 2 ? 2 : 0) + (x >= frame.cols / 2 ? 1 : 0)]++;
+      if (cell?.opaque) assert.deepEqual(cell.bg, [0, 0, 0], `website Islanders must remain ASCII-only at ${progress}`);
     }
     assert.ok(quadrants.every((count) => count > 250), `progress ${progress} collapsed quadrants: ${quadrants.join(',')}`);
   }

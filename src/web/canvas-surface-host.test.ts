@@ -34,6 +34,16 @@ test('canvas host sizes, paints, and maps pointer coordinates without DOM global
   assert.ok(calls.some((call) => call.startsWith('text:A:')));
 });
 
+test('responsive canvas hosts leave CSS sizing to layout while resizing backing pixels', () => {
+  const context: Canvas2DContextLike = { fillStyle: '', font: '', globalAlpha: 1, textAlign: '', textBaseline: '', fillRect() {}, fillText() {} };
+  const canvas: CanvasLike = { width: 0, height: 0, style: { width: '100%', height: '100%' }, getContext: () => context, getBoundingClientRect: () => ({ left: 0, top: 0 }) };
+  const host = new CanvasSurfaceHost(canvas, { devicePixelRatio: 2, manageCssSize: false });
+  host.resize(390, 844, 65, 70);
+  assert.equal(canvas.width, 780);
+  assert.equal(canvas.height, 1688);
+  assert.deepEqual(canvas.style, { width: '100%', height: '100%' });
+});
+
 test('canvas host preserves terminal cell geometry and centers the grid', () => {
   const calls: string[] = [];
   const context: Canvas2DContextLike = {

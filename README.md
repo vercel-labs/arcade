@@ -41,7 +41,7 @@ On first launch it signs you into Vercel with a browser-based device login (like
 
 - **Any 3D scene:** **left-drag** orbits, **scroll** zooms, **arrow keys** pan. `q` / `Esc` quits.
 - **Chess:** click a piece to highlight its legal moves, click a dot to slide it there. Start a match from the bar (play as White or Black, or watch AI vs AI).
-- **Poker:** hover your hole cards to peek, click to lift them; drag the slider to size a bet. Pause/resume or deal a new match from the bar. _In heads-up human-vs-AI you can pick a realtime voice model for your opponent (in poker setup) and talk table-talk with it out loud._
+- **Poker:** hover your hole cards to peek, click to lift them; drag the slider to size a bet. Pause/resume or deal a new match from the bar. Shipped matches use text models; realtime voice remains experimental source and is not offered in setup.
 
 Telemetry: Arcade sends anonymous usage counts (which models get played, match/hand outcomes). It never sends prompts or game content. Opt out with `ARCADE_TELEMETRY=0`.
 
@@ -111,7 +111,7 @@ See [the harness guide](docs/harness.md), [repository map](docs/architecture/rep
 - [x] Chess: 3D board, interactive play, and a verified rules engine
 - [x] **AI Gateway + AI SDK integration**: play **you vs AI** and **AI vs AI**, with mid-match model swaps
 - [x] **Poker**: no-limit Texas Hold'em, human-vs-AI and AI-vs-AI
-- [x] **Realtime audio "table talk"**: give a heads-up poker opponent a realtime voice model
+- [ ] **Realtime audio "table talk"**: experimental source exists, but setup and native playback are not shipped
 - [ ] **Model leaderboard**: per-model play-style stats from game telemetry
 - [ ] **More games and public-beta hardening** across the CLI, docs, and examples
 

@@ -345,7 +345,7 @@ export class IslandersGameScene {
     else if (action.type === 'playRoadBuilding') {
       for (const edge of action.edges) presentationCompletions.push(this.scene.placePiece('road', edge, this.colorOf(seat)));
     }
-    else if (action.type === 'moveRobber' || action.type === 'playKnight') this.scene.syncRobberHex(action.hex);
+    else if (action.type === 'moveRobber' || action.type === 'playKnight') presentationCompletions.push(this.scene.syncRobberHex(action.hex, this.synchronizeActionAnimations));
     const refreshAfterAnimation = this.synchronizeActionAnimations && action.type === 'roll';
     if (!refreshAfterAnimation) this.refreshGate();
     this.onChange();

@@ -34,7 +34,7 @@ export { LIVING_TITLE_ACT_BOUNDARIES, LIVING_TITLE_MORPH_STARTS, LivingTitleScen
 export type { LivingTitleAct } from './living-title-scene.ts';
 export { BrowserIslandersCinematic, BrowserPokerCinematic } from './browser-game-cinematics.ts';
 export { BrowserCoverFlow } from './browser-coverflow.ts';
-export { CINEMATIC_CELL_HEIGHT, responsiveTerminalGrid } from './responsive-grid.ts';
+export { CINEMATIC_CELL_HEIGHT, MOBILE_CINEMATIC_CELL_HEIGHT, responsiveTerminalGrid } from './responsive-grid.ts';
 export { LIVING_TITLE_TOUR_SECONDS, advanceAutoTourProgress, interruptsAutoTourKey } from '../cinematic/auto-tour.ts';
 export { ActiveSceneLoopClock, type CinematicLoopSample } from '../cinematic/scene-loop.ts';
 export { SPLASH_END } from '../prism/splash.ts';

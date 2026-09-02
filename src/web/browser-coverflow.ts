@@ -7,7 +7,7 @@ import type { Texture } from '../engine/texture-data.ts';
 
 const ITEMS = ARCADE_CATALOGUE;
 
-// Static URLs let browser bundlers emit six distinct assets.
+// Static URLs let browser bundlers emit distinct assets for the shared catalogue.
 const URLS: Record<typeof ITEMS[number]['id'], string> = {
   chess: new URL('../../assets/games/chess.png', import.meta.url).toString(),
   poker: new URL('../../assets/games/poker.png', import.meta.url).toString(),
@@ -15,6 +15,7 @@ const URLS: Record<typeof ITEMS[number]['id'], string> = {
   mahjong: new URL('../../assets/games/mahjong.png', import.meta.url).toString(),
   leaderboard: new URL('../../assets/games/leaderboard.png', import.meta.url).toString(),
   achievements: new URL('../../assets/games/achievements.png', import.meta.url).toString(),
+  website: new URL('../../assets/games/website.png', import.meta.url).toString(),
 };
 
 /** Browser image adapter around Arcade's shared production Cover Flow. */
@@ -29,13 +30,13 @@ export class BrowserCoverFlow {
     return Promise.all(ITEMS.map(async ({ id }) => this.textures.set(id, await loadTexture(URLS[id])))).then(() => undefined);
   }
 
-  frame(cols: number, rows: number, progress: number): Surface {
+  frame(cols: number, rows: number, progress: number, cameraDistanceScale = 1): Surface {
     const target = this.target;
     target.resize(cols * 3, rows * 6);
     target.clear();
     const { pos, launch } = coverFlowCinematicState(progress, ITEMS.length);
     const launchSlot = ITEMS.length;
-    this.renderer.renderCinematic(target, pos, launchSlot, launch);
+    this.renderer.renderCinematic(target, pos, launchSlot, launch, cameraDistanceScale);
 
     const surface = new Surface(cols, rows);
     surface.fillRect(0, 0, cols, rows, [0, 0, 0]);

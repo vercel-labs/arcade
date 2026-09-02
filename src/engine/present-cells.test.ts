@@ -65,6 +65,21 @@ test('shape glyph foreground layer leaves untouched cells transparent', () => {
   assert.deepEqual(surface.getCell(0, 0)?.bg, [10, 20, 30], 'foreground glyph preserves the existing cell background');
 });
 
+test('shape glyph foreground layer paints finite-depth black pixels instead of revealing old glyphs', () => {
+  const target = new RenderTarget(3, 6);
+  target.clear();
+  for (let y = 0; y < target.height; y++) for (let x = 0; x < target.width; x++) {
+    target.plot(x, y, 0.1, { r: 0, g: 0, b: 0, a: 1 }, 'opaque');
+  }
+  const surface = new Surface(1, 1);
+  surface.setCell(0, 0, 'W', [220, 160, 40], [0, 0, 0]);
+
+  shapeGlyphLayerToSurface(surface, target, 1, 1);
+
+  assert.equal(surface.getCell(0, 0)?.ch, ' ', 'an opaque black foreground sample must erase the glyph beneath it');
+  assert.deepEqual(surface.getCell(0, 0)?.fg, [0, 0, 0]);
+});
+
 test('shape glyph foreground layer can paint its dimmed scene background', () => {
   const target = solidTarget(16, 16, { r: 200, g: 100, b: 50 });
   const surface = new Surface(1, 1);

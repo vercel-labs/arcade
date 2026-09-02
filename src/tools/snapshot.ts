@@ -70,9 +70,10 @@ import { buildPokerSetupPanel, modeDropdown as pokerModeDropdown, mountPokerSetu
 import { HoldemState } from '../rules/poker/holdem.ts';
 import { RANK_LABELS, type Suit, SUIT_LETTERS } from '../rules/poker/cards.ts';
 import type { Color } from '../rules/chess/types.ts';
-import { Box, Button, Dropdown, insetSceneViewport, layout, paint, Screen, type PaintState } from '../tui/index.ts';
+import { Box, Button, Dropdown, NoticeToast, insetSceneViewport, layout, paint, Screen, Text, type PaintState } from '../tui/index.ts';
 import { buildTeamSwitch, markSwitchSucceeded, mountTeamSwitch, setTeamSwitchTeams } from '../arcade/shell/team-switch.ts';
 import { UI_CHROME_PILL } from '../arcade/theme.ts';
+import { modelFailureNotice } from '../harness/model-failure-notice.ts';
 
 type Rgb = [number, number, number];
 // Terminal cells are roughly twice as tall as they are wide. Rasterize each
@@ -301,6 +302,77 @@ function uiSnapshot(): void {
   surfaceToPpm(surf, cols, rows, out);
 }
 
+function noticeSnapshot(): void {
+  const args = process.argv.slice(3);
+  const cols = Number(args[0]) || 110;
+  const rows = Number(args[1]) || 44;
+  const out = args.find((a) => a.endsWith('.ppm')) ?? '.snapshots/notice.ppm';
+  const focused = args.includes('focus');
+  const kind = args.find((arg) => arg.startsWith('kind='))?.slice(5) ?? 'insufficient_funds';
+  const fixtures: Record<string, { status: number; type?: string; failureKind?: 'timeout' | 'transient' | 'schema' }> = {
+    insufficient_funds: { status: 402, type: 'insufficient_funds' },
+    customer_verification_required: { status: 403, type: 'customer_verification_required' },
+    byok_requires_paid_credits: { status: 403, type: 'byok_requires_paid_credits' },
+    quota_for_entity_exceeded: { status: 429, type: 'quota_for_entity_exceeded' },
+    authentication_error: { status: 401, type: 'authentication_error' },
+    model_not_found: { status: 404, type: 'model_not_found' },
+    model_unavailable_in_region: { status: 403, type: 'model_unavailable_in_region' },
+    rate_limit_exceeded: { status: 429, type: 'rate_limit_exceeded' },
+    no_providers_available: { status: 403, type: 'no_providers_available' },
+    timeout: { status: 504, failureKind: 'timeout' },
+    service_unavailable: { status: 503, failureKind: 'transient' },
+  };
+  const fixture = fixtures[kind] ?? fixtures.service_unavailable;
+  const notice = modelFailureNotice({ kind: fixture.failureKind ?? 'unknown', status: fixture.status, gatewayType: fixture.type, gatewayFailure: true, message: kind }, 'anthropic/claude-haiku-4.5');
+  if (!notice) throw new Error(`notice fixture ${kind} produced no notice`);
+  const screen = new Screen(cols, rows);
+  screen.setRoot(Box({ width: cols, height: rows }), { x: 0, y: 0, w: cols, h: rows });
+  screen.setGlobalOverlay(NoticeToast({
+    id: 'gateway-failure', severity: notice.severity, title: notice.title,
+    body: notice.body,
+    width: Math.min(48, Math.max(30, cols - 4)),
+    actionColor: 'textStrong',
+    actionBorderColor: 'textStrong',
+    ...(notice.action ? { action: { label: notice.action.label, onClick: () => {} } } : {}), onDismiss: () => {},
+  }));
+  if (focused) screen.setFocus('gateway-failure-action');
+  const surf = screen.snapshot((surface) => surface.fillRect(0, 0, cols, rows, [5, 7, 11]));
+  surfaceToPpm(surf, cols, rows, out);
+}
+
+function gatewayStatusSnapshot(): void {
+  const args = process.argv.slice(3);
+  const cols = Number(args[0]) || 100;
+  const rows = Number(args[1]) || 32;
+  const out = args.find((a) => a.endsWith('.ppm')) ?? '.snapshots/gateway-status.ppm';
+  const checking = args.includes('checking');
+  const withModal = args.includes('modal');
+  const root = checking
+    ? Box({ width: cols, height: rows, flexDirection: 'column' }, [
+        Box({ flexGrow: 1 }),
+        Box({ flexDirection: 'row', alignItems: 'center', gap: 2, padding: [0, 0, 1, 2] }, [
+          Button({ id: 'start', label: 'new match', style: { border: 'round', padding: [0, 3], color: [110, 114, 126], borderColor: [110, 114, 126] } }),
+          Text({ text: 'checking model health ...', style: { color: 'muted' } }),
+        ]),
+      ])
+    : Box({ width: cols, height: rows, position: 'relative' }, [
+        Box({ position: 'absolute', left: 0, bottom: 0, width: cols, justifyContent: 'center' }, [
+          Box({ flexDirection: 'row', alignItems: 'center', gap: 2 }, [
+            Text({ text: 'game paused, model request failed.', style: { color: 'danger', bold: true } }),
+            Button({ id: 'retry', label: 'retry request  ↻', onClick: () => {}, style: { padding: 0, color: 'textPrimary', hover: { color: 'textStrong', bold: true }, focus: { color: 'textStrong', bold: true } } }),
+          ]),
+        ]),
+        ...(withModal ? [{ ...NoticeToast({
+          id: 'failure', severity: 'error', title: 'out of credit', body: 'buy AI Gateway credit to resume model requests.',
+          action: { label: 'buy AI Gateway credit', onClick: () => {} }, onDismiss: () => {},
+        }), style: { position: 'absolute' as const, top: 0, left: 0, width: cols, height: rows, justifyContent: 'center' as const, alignItems: 'center' as const, scrim: 'scrim' as const } }] : []),
+      ]);
+  const screen = new Screen(cols, rows);
+  screen.setRoot(root, { x: 0, y: 0, w: cols, h: rows });
+  const surf = screen.snapshot((surface) => surface.fillRect(0, 0, cols, rows, [5, 7, 11]));
+  surfaceToPpm(surf, cols, rows, out);
+}
+
 function sceneSnapshot(): void {
   const a0 = process.argv[2];
   const scene = a0 === 'chess-game' || a0 === 'logos' ? a0 : null;
@@ -346,6 +418,8 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
       (chess-game also accepts 'match' to play a few opening plies first)
 
   pnpm snapshot ui [cols] [rows] [hover=<id>|focus=<id>|pressed=<id>] [out]   button bar
+  pnpm snapshot notice [cols] [rows] [focus] [out]   actionable Gateway failure toast
+  pnpm snapshot gateway-status [cols] [rows] [checking|modal] [out]   paused model-failure recovery state
   pnpm snapshot overlay [chess-game|prism] [cols] [rows] [out]   bar over a scene
   pnpm snapshot unified [prism|chess|chess-game|logos] [cols] [rows] [out]   unified compositing path
   pnpm snapshot showcase [cols] [rows] [focus=<id>] [query=<text>] [blur] [out]   the UI component playground
@@ -387,6 +461,10 @@ if (process.argv[2] === 'help' || process.argv[2] === '--help' || process.argv[2
   console.log(HELP);
 } else if (process.argv[2] === 'ui') {
   uiSnapshot();
+} else if (process.argv[2] === 'notice') {
+  noticeSnapshot();
+} else if (process.argv[2] === 'gateway-status') {
+  gatewayStatusSnapshot();
 } else if (process.argv[2] === 'overlay') {
   overlaySnapshot();
 } else if (process.argv[2] === 'unified') {
@@ -954,8 +1032,8 @@ function pokerSnapshot(): void {
         onToggleChat: noop,
         onOpenMenu: noop,
         onOpenNotes: noop,
-        setup: buildPokerSetupPanel(),
-        matchControls: { setup: true, onPrimary: noop, onCancel: noop },
+        setup: buildPokerSetupPanel(args.includes('checking') ? { lines: ['checking model health ...'], failed: false } : args.includes('health-failed') ? { lines: ['claude-haiku-4.5, gpt-5.4-nano failed health check.'], failed: true } : undefined),
+        matchControls: { setup: true, onPrimary: args.includes('checking') || args.includes('health-failed') ? undefined : noop, onCancel: noop },
         pauseControl: null,
         hideHud: false,
         cineLabel: null,
@@ -1845,7 +1923,7 @@ function setupSnapshot(): void {
   chess.setPreview(chessPreviewSides());
   chess.renderScene(target, 0.6);
   const region = { x: 0, y: 0, w: cols, h: rows };
-  screen.setRoot(buildMatchSetup(region, { onStart: noop, onCancel: noop }), region);
+  screen.setRoot(buildMatchSetup(region, { onStart: noop, onCancel: noop, healthStatus: process.argv.includes('checking') ? { lines: ['checking model health ...'], failed: false } : process.argv.includes('health-failed') ? { lines: ['claude-haiku-4.5, gpt-5.4-nano failed health check.'], failed: true } : undefined }), region);
   const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
   surfaceToPpm(surf, cols, rows, out);
 }

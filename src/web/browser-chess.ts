@@ -139,7 +139,7 @@ export class BrowserArcade {
   }
 
   /** Scroll authors the camera; an independent active-scene clock authors play. */
-  setCinematicState(cameraProgress: number, gameplayPhase: number): void {
+  setCinematicState(cameraProgress: number, gameplayPhase: number, cameraDistanceScale = 1): void {
     const moves = EVERGREEN_GAME_MOVES;
     const p = Math.max(0, Math.min(1, cameraProgress));
     const elapsed = Math.max(0, Math.min(0.999999, gameplayPhase)) * CHESS_LOOP_SECONDS;
@@ -166,7 +166,7 @@ export class BrowserArcade {
     const pose = chessCinematicPose(p);
     this.camera.azimuth = pose.azimuth;
     this.camera.elevation = pose.elevation;
-    this.camera.distance = pose.distance;
+    this.camera.distance = pose.distance * cameraDistanceScale;
     this.camera.target = pose.target;
     this.openChess();
   }

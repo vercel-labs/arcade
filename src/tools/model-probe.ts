@@ -29,6 +29,7 @@ import { ChessState } from '../rules/chess/chess.ts';
 import type { Move } from '../rules/chess/types.ts';
 import { isFallbackRationale, ModelPlayer, FALLBACK_RATIONALE } from '../harness/model-player.ts';
 import { classifyModelError, type FailureKind } from '../harness/model-errors.ts';
+import { NotifiedModelFailure } from '../harness/model-failure-notice.ts';
 import { creators, modelsFor } from '../arcade/match/models.ts';
 import { availableTeams, ensureCachedGatewayKey, useTeam } from '../auth/index.ts';
 
@@ -175,6 +176,10 @@ async function probeStream(id: string, verbose: boolean): Promise<Result> {
 // the gateway's cause chain, so an access error surfaces its real HTTP 403 +
 // `no_providers_available` type instead of being lumped into a generic ERROR.
 const KIND_STATUS: Record<FailureKind, Status> = {
+  billing: 'ACCESS',
+  quota: 'ACCESS',
+  authentication: 'ACCESS',
+  model: 'ACCESS',
   timeout: 'TIMEOUT',
   access: 'ACCESS',
   schema: 'MALFORMED',
@@ -182,6 +187,9 @@ const KIND_STATUS: Record<FailureKind, Status> = {
   unknown: 'ERROR',
 };
 function classifyError(id: string, e: unknown, ms: number): Result {
+  if (e instanceof NotifiedModelFailure) {
+    return { id, status: 'ACCESS', detail: `[${e.notice.code}] ${e.notice.title}`, ms };
+  }
   const c = classifyModelError(e);
   if (c.kind === 'timeout') return { id, status: 'TIMEOUT', detail: `${TIMEOUT_MS / 1000}s`, ms };
   const http = c.status ? `HTTP ${c.status} ` : '';

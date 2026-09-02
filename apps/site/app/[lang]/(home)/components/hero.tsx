@@ -1,27 +1,23 @@
 'use client';
 
-import { CanvasSurfaceHost, LIVING_TITLE_MORPH_STARTS, LivingTitleScene, PointerField, SPLASH_END, TERMINAL_CELL_ASPECT_RATIO, advanceAutoTourProgress, interruptsAutoTourKey, livingTitleTimeline, responsiveTerminalGrid, type CanvasLike } from '@vercel/arcade/web';
+import { CanvasSurfaceHost, LIVING_TITLE_MORPH_STARTS, LivingTitleScene, MOBILE_CINEMATIC_CELL_HEIGHT, PointerField, TERMINAL_CELL_ASPECT_RATIO, advanceAutoTourProgress, interruptsAutoTourKey, livingTitleTimeline, responsiveTerminalGrid, type CanvasLike } from '@vercel/arcade/web';
 import { QuickTerminalButton } from '@/components/quick-terminal';
 import { useEffect, useRef, useState } from 'react';
-import { visibleViewportHeight } from './hero-viewport';
 import { InstallCommand } from './install-command';
 const CHAPTERS = [
-  { title: 'The 3D game engine for agents.', body: 'ASCII in your terminal. No GPU.\nHumans can play too.' },
-  { title: 'Powered by Vercel’s AI Gateway.', body: 'Watch hundreds of models face off, or challenge them yourself.' },
-  { title: 'Different minds. Endless possibilities.', body: 'Everything you see is open source. Your move.' },
-  { title: 'Every player has a tell.', body: 'Discover the hidden tendencies of your favorite models.' },
-  { title: 'Settle in, have some fun!', body: 'Play a few rounds while coding agents do your work.' },
+  { title: ['The 3D game engine', 'built for agents.'], body: ['ASCII in your terminal, no GPU.', 'Humans can play too.'] },
+  { title: ['Powered by', 'Vercel AI Gateway.'], body: ['Watch hundreds of models face off,', 'or challenge them yourself.'] },
+  { title: ['Different minds.', 'Endless possibilities.'], body: ['Everything you see is open source.', 'Have an idea? Your move.'] },
+  { title: ['Every player', 'has a tell.'], body: ['Discover the hidden tendencies', 'of your favorite models.'] },
+  { title: ['Settle in,', 'have some fun!'], body: ['Play a few rounds while waiting for', 'your coding agents to finish.'] },
 ] as const;
-const AUTO_START_DELAY_MS = SPLASH_END * 1_000;
-
 export const Hero = () => {
   const rootRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const tourRef = useRef<HTMLButtonElement>(null);
   const progressRef = useRef(0);
   const pointerRef = useRef<{ x: number; y: number } | null>(null);
   const [chapter, setChapter] = useState(0);
-  const [tourState, setTourState] = useState<'idle' | 'playing' | 'interrupted' | 'complete'>('idle');
+  const [tourState, setTourState] = useState<'idle' | 'playing'>('idle');
   const tourStateRef = useRef(tourState);
 
   const updateTourState = (state: typeof tourState) => {
@@ -31,8 +27,9 @@ export const Hero = () => {
   useEffect(() => {
     const root = rootRef.current;
     const canvas = canvasRef.current;
-    const tour = tourRef.current;
-    if (!root || !canvas || !tour) return;
+    if (!root || !canvas) return;
+    const header = document.querySelector<HTMLElement>('header.sticky');
+    const footer = document.querySelector<HTMLElement>('.site-default-footer');
     const resolvedMono = getComputedStyle(document.documentElement).getPropertyValue('--font-geist-mono').trim();
     const scene = new LivingTitleScene();
     void scene.prepare().catch((error) => console.error('Unable to prepare cinematic assets', error));
@@ -41,12 +38,15 @@ export const Hero = () => {
       devicePixelRatio: window.devicePixelRatio,
       fontFamily: resolvedMono || 'ui-monospace, SFMono-Regular, Menlo, monospace',
       fontScale: 0.96,
+      manageCssSize: false,
     });
     const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
     const precisePointer = window.matchMedia('(hover: hover) and (pointer: fine)');
+    const coarsePointer = window.matchMedia('(pointer: coarse)');
     const pointerField = new PointerField({ response: 52, velocityResponse: 18, trailLifetime: 1.05, trailSpacing: 0.0045, maxTrail: 52, idleDelay: 0.18, fadeRate: 7 });
     let reducedMotion = motion.matches;
     let pointerEffects = precisePointer.matches && !reducedMotion;
+    let cinematicVisible = true;
     let activePointerId: number | null = null;
     let pressX = 0;
     let pressY = 0;
@@ -59,8 +59,8 @@ export const Hero = () => {
     const idleHandles = new Set<number>();
     let tourFrame = 0;
     let tourLastTime = 0;
+    let tourProgress = progressRef.current;
     let previousFrameTime = 0;
-    let autoStartHandle = 0;
     const diagnostics = typeof window !== 'undefined' && (
       new URLSearchParams(window.location.search).has('arcadeDebug') ||
       window.location.hash === '#arcadeDebug'
@@ -73,65 +73,64 @@ export const Hero = () => {
       root.appendChild(diagnostics.element);
     }
 
-    const viewportHeight = () => visibleViewportHeight(window.visualViewport?.height, window.innerHeight);
-    let fittedViewportHeight = 0;
-    const fitVisibleViewport = () => {
-      const nextHeight = viewportHeight();
-      if (Math.abs(nextHeight - fittedViewportHeight) >= 0.5) {
-        fittedViewportHeight = nextHeight;
-        root.style.setProperty('--arcade-visual-height', `${nextHeight}px`);
-        canvas.style.height = `${nextHeight}px`;
-        primedGrid = '';
-        primedTransitions.clear();
-      }
-      measureProgress();
+    const viewportHeight = () => canvas.parentElement?.clientHeight || window.innerHeight;
+    const fitViewport = () => {
+      primedGrid = '';
+      primedTransitions.clear();
+      if (tourStateRef.current === 'playing') {
+        const distance = Math.max(1, root.offsetHeight - viewportHeight());
+        window.scrollTo({ top: root.offsetTop + tourProgress * distance, behavior: 'instant' });
+        progressRef.current = tourProgress;
+      } else measureProgress();
     };
 
     const measureProgress = () => {
       const rect = root.getBoundingClientRect();
       const distance = Math.max(1, root.offsetHeight - viewportHeight());
       progressRef.current = Math.max(0, Math.min(1, -rect.top / distance));
-      tour.style.setProperty('--tour-progress', `${progressRef.current * 100}%`);
+      if (header && footer) header.classList.toggle('is-over-footer', footer.getBoundingClientRect().top <= viewportHeight());
     };
     const stopTour = () => {
       if (tourStateRef.current !== 'playing') return;
       cancelAnimationFrame(tourFrame);
       tourFrame = 0;
       tourLastTime = 0;
-      updateTourState('interrupted');
+      updateTourState('idle');
     };
     const onTourRequest = () => {
-      if (autoStartHandle) window.clearTimeout(autoStartHandle);
-      autoStartHandle = 0;
       if (tourStateRef.current === 'playing') {
         stopTour();
         return;
       }
       if (reducedMotion) return;
-      if (progressRef.current >= 0.999) window.scrollTo({ top: root.offsetTop, behavior: 'instant' });
-      measureProgress();
-      updateTourState('playing');
-      tourLastTime = 0;
+      const start = () => {
+        measureProgress();
+        tourProgress = progressRef.current;
+        updateTourState('playing');
+        tourLastTime = 0;
+        tourFrame = requestAnimationFrame(advance);
+      };
       const advance = (time: number) => {
         if (tourStateRef.current !== 'playing') return;
         const elapsed = tourLastTime ? Math.min(0.1, (time - tourLastTime) / 1000) : 0;
         tourLastTime = time;
-        const progress = advanceAutoTourProgress(progressRef.current, elapsed);
+        tourProgress = advanceAutoTourProgress(tourProgress, elapsed);
         const distance = Math.max(1, root.offsetHeight - viewportHeight());
-        window.scrollTo({ top: root.offsetTop + progress * distance, behavior: 'instant' });
+        window.scrollTo({ top: root.offsetTop + tourProgress * distance, behavior: 'instant' });
         measureProgress();
-        if (progress >= 1) {
-          updateTourState('complete');
+        // The tour's film clock is authoritative. Scroll geometry is only its
+        // presentation mechanism and can change while mobile browser bars move.
+        progressRef.current = tourProgress;
+        if (tourProgress >= 1) {
+          updateTourState('idle');
           tourFrame = 0;
           return;
         }
         tourFrame = requestAnimationFrame(advance);
       };
-      tourFrame = requestAnimationFrame(advance);
+      start();
     };
     const interruptTour = () => {
-      if (autoStartHandle) window.clearTimeout(autoStartHandle);
-      autoStartHandle = 0;
       stopTour();
     };
     const onTourInterruptKey = (event: KeyboardEvent) => {
@@ -149,7 +148,7 @@ export const Hero = () => {
     };
     const draw = (time: number) => {
       frame = requestAnimationFrame(draw);
-      if (document.hidden) return;
+      if (document.hidden || !cinematicVisible) return;
       // Scroll distance is the film clock. No wall-clock checkpoints or
       // catch-up queue: the scrollbar, narration, and canvas always agree.
       displayedProgress = progressRef.current;
@@ -160,9 +159,13 @@ export const Hero = () => {
       }
       const rect = canvas.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return;
-      // Match terminal resize behavior: font/cell size is stable; resizing adds
-      // columns and rows, so wider windows reveal more of the rendered frame.
-      const { cols, rows } = responsiveTerminalGrid(rect.width, rect.height);
+      // Match terminal resize behavior: mobile browser chrome revealing more
+      // space adds rows, while orientation changes replace both dimensions.
+      const { cols, rows } = responsiveTerminalGrid(
+        rect.width,
+        rect.height,
+        coarsePointer.matches ? MOBILE_CINEMATIC_CELL_HEIGHT : undefined,
+      );
       const gridKey = `${cols}:${rows}`;
       if (gridKey !== primedGrid) {
         primedGrid = gridKey;
@@ -265,11 +268,13 @@ export const Hero = () => {
     };
     const onPointerCapability = () => { pointerEffects = precisePointer.matches && !reducedMotion; if (!pointerEffects) clearPointer(); };
 
-    fitVisibleViewport();
+    fitViewport();
     window.addEventListener('scroll', measureProgress, { passive: true });
-    window.addEventListener('resize', fitVisibleViewport);
-    window.visualViewport?.addEventListener('resize', fitVisibleViewport);
-    window.visualViewport?.addEventListener('scroll', fitVisibleViewport);
+    window.addEventListener('resize', fitViewport);
+    window.addEventListener('orientationchange', fitViewport);
+    window.visualViewport?.addEventListener('resize', fitViewport);
+    const viewportObserver = new ResizeObserver(fitViewport);
+    viewportObserver.observe(canvas.parentElement ?? canvas);
     canvas.addEventListener('pointerdown', onPointerDown);
     canvas.addEventListener('pointermove', onPointerMove);
     canvas.addEventListener('pointerup', onPointerUp);
@@ -281,20 +286,17 @@ export const Hero = () => {
     window.addEventListener('keydown', onTourInterruptKey);
     motion.addEventListener('change', onMotion);
     precisePointer.addEventListener('change', onPointerCapability);
+    coarsePointer.addEventListener('change', fitViewport);
+    const cinematicObserver = new IntersectionObserver(([entry]) => { cinematicVisible = entry.isIntersecting; }, { threshold: 0 });
+    cinematicObserver.observe(root);
     frame = requestAnimationFrame(draw);
-    if (!reducedMotion && progressRef.current <= 0.001) {
-      autoStartHandle = window.setTimeout(() => {
-        autoStartHandle = 0;
-        measureProgress();
-        if (progressRef.current <= 0.001 && tourStateRef.current === 'idle') onTourRequest();
-      }, AUTO_START_DELAY_MS);
-    }
     return () => {
       cancelAnimationFrame(frame);
       window.removeEventListener('scroll', measureProgress);
-      window.removeEventListener('resize', fitVisibleViewport);
-      window.visualViewport?.removeEventListener('resize', fitVisibleViewport);
-      window.visualViewport?.removeEventListener('scroll', fitVisibleViewport);
+      window.removeEventListener('resize', fitViewport);
+      window.removeEventListener('orientationchange', fitViewport);
+      window.visualViewport?.removeEventListener('resize', fitViewport);
+      viewportObserver.disconnect();
       canvas.removeEventListener('pointerdown', onPointerDown);
       canvas.removeEventListener('pointermove', onPointerMove);
       canvas.removeEventListener('pointerup', onPointerUp);
@@ -306,34 +308,33 @@ export const Hero = () => {
       window.removeEventListener('keydown', onTourInterruptKey);
       motion.removeEventListener('change', onMotion);
       precisePointer.removeEventListener('change', onPointerCapability);
+      coarsePointer.removeEventListener('change', fitViewport);
+      cinematicObserver.disconnect();
+      header?.classList.remove('is-over-footer');
       if (tourFrame) cancelAnimationFrame(tourFrame);
-      if (autoStartHandle) window.clearTimeout(autoStartHandle);
       for (const handle of idleHandles) window.clearTimeout(handle);
       diagnostics?.element.remove();
-      root.style.removeProperty('--arcade-visual-height');
-      canvas.style.removeProperty('height');
     };
   }, []);
 
   return (
     <section className="living-title" ref={rootRef}>
       <span aria-hidden="true" className="living-title__legacy-anchor" id="system" style={{ top: '0' }} />
-      <span aria-hidden="true" className="living-title__legacy-anchor" id="chess" style={{ top: 'calc((100% - var(--arcade-visual-height, 100dvh)) * .25 + 1px)' }} />
-      <span aria-hidden="true" className="living-title__legacy-anchor" id="poker" style={{ top: 'calc((100% - var(--arcade-visual-height, 100dvh)) * .52 + 1px)' }} />
-      <span aria-hidden="true" className="living-title__legacy-anchor" id="islanders" style={{ top: 'calc((100% - var(--arcade-visual-height, 100dvh)) * .76 + 1px)' }} />
+      <span aria-hidden="true" className="living-title__legacy-anchor" id="chess" style={{ top: 'calc((100% - var(--arcade-viewport-height)) * .2105263158 + 1px)' }} />
+      <span aria-hidden="true" className="living-title__legacy-anchor" id="poker" style={{ top: 'calc((100% - var(--arcade-viewport-height)) * .4473684211 + 1px)' }} />
+      <span aria-hidden="true" className="living-title__legacy-anchor" id="islanders" style={{ top: 'calc((100% - var(--arcade-viewport-height)) * .7368421053 + 1px)' }} />
       <div className="living-title__stage">
         <canvas aria-label="Arcade scenes transforming from a glass prism into games" className="living-title__canvas" ref={canvasRef} />
         <div aria-hidden="true" className="living-title__vignette" />
         <div className="living-title__copy" aria-live="polite">
-          <div className="living-title__chapter" key={CHAPTERS[chapter].title}>
-            <h1>{CHAPTERS[chapter].title}</h1>
-            <p>{CHAPTERS[chapter].body}</p>
+          <div className={`living-title__chapter ${chapter === 0 ? 'is-initial' : ''}`} key={CHAPTERS[chapter].title.join(' ')}>
+            <h1>{CHAPTERS[chapter].title.map((line) => <span key={line}>{line}</span>)}</h1>
+            <p>{CHAPTERS[chapter].body.map((line) => <span key={line}>{line}</span>)}</p>
           </div>
           <button
             aria-label={tourState === 'playing' ? 'Pause auto-scroll' : 'Start auto-scroll'}
             className={`living-title__tour ${tourState === 'playing' ? 'is-playing' : ''}`}
             onClick={() => rootRef.current?.dispatchEvent(new Event('arcade-tour-request'))}
-            ref={tourRef}
             type="button"
           >
             <span aria-hidden="true">{tourState === 'playing' ? 'Ⅱ' : '▶'}</span>

@@ -17,7 +17,7 @@ import {
   type Vec3,
 } from '../../engine/index.ts';
 
-export interface CoverFlowItem { id: string; title: string; backTitle?: string; enabled: boolean }
+export interface CoverFlowItem { id: string; title: string; backTitle?: string; enabled: boolean; externalUrl?: string }
 export type CoverTextureProvider = (id: string) => Texture | null;
 export interface CoverFlowCinematicState { pos: number; launch: number }
 
@@ -95,9 +95,10 @@ export class CoverFlowRenderer {
   }
 
   /** Website choreography: keep the surrounding fan while the selected cover flips. */
-  renderCinematic(target: RenderTarget, pos: number, launchIndex: number, launchProgress: number): void {
+  renderCinematic(target: RenderTarget, pos: number, launchIndex: number, launchProgress: number, cameraDistanceScale = 1): void {
     drawBackdrop(target);
-    const { viewProjection } = cameraMatrices(CAMERA, target.width / target.height);
+    const fittedCamera = cameraDistanceScale === 1 ? CAMERA : { ...CAMERA, eye: { ...CAMERA.eye, z: CAMERA.eye.z * cameraDistanceScale } };
+    const { viewProjection } = cameraMatrices(fittedCamera, target.width / target.height);
     if (this.items.length === 0) return;
     const lo = Math.ceil(pos - VISIBLE);
     const hi = Math.floor(pos + VISIBLE);

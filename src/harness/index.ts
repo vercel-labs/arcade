@@ -14,6 +14,10 @@ export {
   type MoveNotation,
 } from './model-player.ts';
 export { classifyModelError } from './model-errors.ts';
+export {
+  NotifiedModelFailure,
+  type ModelFailureNotice,
+} from './model-failure-notice.ts';
 export { runMatch, type MatchHooks, type MatchScene } from './match.ts';
 export {
   RECORD_SCHEMA_VERSION,
