@@ -13,7 +13,18 @@ export const metadata: Metadata = {
   title: { absolute: 'Arcade — worlds painted in terminal light' },
   description: 'A pure-TypeScript 3D engine for games that live in your terminal.',
   alternates: { canonical: '/' },
-  openGraph: { type: 'website', title: 'Arcade — worlds painted in terminal light', description: 'Play CPU-rendered 3D ASCII games with people and frontier AI models.', images: ['/opengraph-image'] },
+  openGraph: {
+    type: 'website',
+    title: 'arcade',
+    description: 'The 3D game engine built for agents.',
+    images: [{ url: '/opengraph-image.png', width: 1200, height: 630, alt: 'Arcade — the 3D game engine built for agents' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'arcade',
+    description: 'The 3D game engine built for agents.',
+    images: ['/opengraph-image.png'],
+  },
 };
 
 const HomePage = () => <main className="living-title-page">
