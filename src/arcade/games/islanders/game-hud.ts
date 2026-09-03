@@ -183,14 +183,32 @@ function previewActionText(driver: IslandersDriver, preview: IslandersActionPrev
             : action.type === 'playRoadBuilding' ? ongoing('playing road building')
               : action.type === 'playYearOfPlenty' ? ongoing('choosing year-of-plenty resources')
                 : action.type === 'playMonopoly' ? ongoing('declaring a monopoly')
-                  : action.type === 'moveRobber' ? 'moved the robber'
+                  : action.type === 'moveRobber' ? ongoing('moving the robber')
                     : action.type === 'discard' ? ongoing(`discarding ${action.resources.length} cards`)
-                      : action.type === 'acceptTrade' ? 'accepted the trade'
-                        : action.type === 'rejectTrade' ? 'rejected the trade'
-                          : action.type === 'confirmTrade' ? 'completed the trade'
-                            : action.type === 'cancelTrade' ? 'cancelled the trade'
-                              : action.type === 'endTurn' ? 'ended the turn'
+                      : action.type === 'acceptTrade' ? ongoing('accepting the trade')
+                        : action.type === 'rejectTrade' ? ongoing('rejecting the trade')
+                          : action.type === 'confirmTrade' ? ongoing('completing the trade')
+                            : action.type === 'cancelTrade' ? ongoing('cancelling the trade')
+                              : action.type === 'endTurn' ? ongoing('ending the turn')
                                 : ongoing('taking an action');
+}
+
+function pendingInstruction(state: IslandersState, human: boolean): string {
+  const prompt = state.currentPrompt();
+  if (prompt.kind === 'initialSettlement') {
+    const round = state.initialSettlementCount(prompt.player) === 0 ? 'first' : 'second';
+    return human ? `place your ${round} settlement` : 'choosing a settlement';
+  }
+  if (prompt.kind === 'initialRoad') return human ? 'place a road beside it' : 'choosing a road';
+  if (prompt.kind === 'roll') return human ? 'roll or play a development card' : 'preparing to roll';
+  if (prompt.kind === 'playTurn') return human ? 'build, trade, or end turn' : 'considering the next move';
+  if (prompt.kind === 'discard') {
+    const count = state.legalActionFamilies().find((family) => family.type === 'discard')?.count ?? 0;
+    return human ? `discard ${count} cards` : `discarding ${count} cards`;
+  }
+  if (prompt.kind === 'moveRobber') return human ? 'move the robber' : 'choosing where to move the robber';
+  if (prompt.kind === 'respondTrade') return human ? 'respond to the trade' : 'considering the trade';
+  return human ? 'choose a trade partner' : 'choosing a trade partner';
 }
 
 export interface IslandersStatusLine {
@@ -223,21 +241,11 @@ export function islandersStatusLine(
   };
   const prompt = state.currentPrompt();
   const seat = prompt.player;
-  const discarding = state.discardingPlayerCount();
-  const rolledSeven = prompt.kind === 'discard' && state.dice()?.reduce((sum, die) => sum + die, 0) === 7;
-  const narration = rolledSeven
-    ? `· ${discarding} player${discarding === 1 ? '' : 's'} discarding`
-    : 'turn';
+  const human = seat === driver.humanSeat();
   return {
-    actor: rolledSeven
-      ? '7 rolled'
-      : narration === 'turn'
-      ? seat === driver.humanSeat()
-        ? 'Your'
-        : `${driver.labelOf(seat)}${driver.labelOf(seat).endsWith('s') ? "'" : "'s"}`
-      : driver.labelOf(seat),
-    narration,
-    color: rolledSeven ? STATUS_FG : PLAYER_LOOK[driver.colorOf(seat)],
+    actor: human ? 'Your turn' : driver.labelOf(seat),
+    narration: `· ${pendingInstruction(state, human)}`,
+    color: PLAYER_LOOK[driver.colorOf(seat)],
   };
 }
 
@@ -247,12 +255,17 @@ function statusPanel(driver: IslandersDriver, scene: IslandersGameScene, region:
   const status = islandersStatusLine(driver, preview, scene.setupPresentationComplete());
   if (!status) return [];
   const rail = islandersRailVisible(region.w, region.h) ? ISLANDERS_RAIL_W : 0;
+  const content = { ...Box({ flexDirection: 'row', alignItems: 'center', padding: [0, 2] }, [
+    Text({ text: status.actor, style: { color: status.color, bold: true } }),
+    Text({ text: `${status.narration.startsWith('·') ? ' ' : '  '}${status.narration}`, style: { color: STATUS_MUTED } }),
+  ]), id: 'islanders-status-banner' };
+  if (region.w < 120) {
+    const left = Math.min(region.w, PLAYER_LEGEND_W + 3);
+    const right = 11 + rail;
+    return [Box({ position: 'absolute', top: 1, left, width: Math.max(0, region.w - left - right), flexDirection: 'row', justifyContent: 'center' }, [content])];
+  }
   return [
-    hudTopCenter(
-      { ...Box({ flexDirection: 'row', alignItems: 'center', padding: [0, 2] }, [
-        Text({ text: status.actor, style: { color: status.color, bold: true } }),
-        Text({ text: status.narration === 'turn' ? ' turn' : `  ${status.narration}`, style: { color: STATUS_MUTED } }),
-      ]), id: 'islanders-status-banner' }, region.w, { railWidth: rail }),
+    hudTopCenter(content, region.w, { railWidth: rail }),
   ];
 }
 
