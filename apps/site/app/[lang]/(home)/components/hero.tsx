@@ -32,7 +32,10 @@ export const Hero = () => {
     const footer = document.querySelector<HTMLElement>('.site-default-footer');
     const resolvedMono = getComputedStyle(document.documentElement).getPropertyValue('--font-geist-mono').trim();
     const scene = new LivingTitleScene();
-    void scene.prepare().catch((error) => console.error('Unable to prepare cinematic assets', error));
+    let assetsReady = false;
+    void scene.prepare()
+      .catch((error) => console.error('Unable to prepare cinematic assets', error))
+      .finally(() => { assetsReady = true; });
     const host = new CanvasSurfaceHost(canvas as unknown as CanvasLike, {
       cellAspectRatio: TERMINAL_CELL_ASPECT_RATIO,
       devicePixelRatio: window.devicePixelRatio,
@@ -88,6 +91,7 @@ export const Hero = () => {
       const rect = root.getBoundingClientRect();
       const distance = Math.max(1, root.offsetHeight - viewportHeight());
       progressRef.current = Math.max(0, Math.min(1, -rect.top / distance));
+      root.style.setProperty('--tour-progress', `${progressRef.current}`);
       if (header && footer) header.classList.toggle('is-over-footer', footer.getBoundingClientRect().top <= viewportHeight());
     };
     const stopTour = () => {
@@ -159,6 +163,13 @@ export const Hero = () => {
       }
       const rect = canvas.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return;
+      // A restored deep-scroll position can render before the cover PNGs and
+      // game meshes finish decoding. Keep the canvas clean instead of briefly
+      // exposing procedural cover art or fallback chess geometry.
+      if (!assetsReady && displayedChapter > 0 && displayedChapter < 4) {
+        canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
+        return;
+      }
       // Match terminal resize behavior: mobile browser chrome revealing more
       // space adds rows, while orientation changes replace both dimensions.
       const { cols, rows } = responsiveTerminalGrid(
@@ -317,6 +328,27 @@ export const Hero = () => {
     };
   }, []);
 
+  const tourControl = <button
+    aria-label={tourState === 'playing' ? 'Pause auto-scroll' : 'Start auto-scroll'}
+    className={`living-title__tour ${tourState === 'playing' ? 'is-playing' : ''}`}
+    onClick={() => rootRef.current?.dispatchEvent(new Event('arcade-tour-request'))}
+    title={tourState === 'playing' ? 'Pause auto-scroll' : 'Start auto-scroll'}
+    type="button"
+  >
+    <svg aria-hidden="true" className="living-title__tour-ring" viewBox="0 0 44 44">
+      <circle className="living-title__tour-ring-track" cx="22" cy="22" pathLength="100" r="21" />
+      <circle className="living-title__tour-ring-value" cx="22" cy="22" pathLength="100" r="21" />
+    </svg>
+    {tourState === 'playing' ?
+      <svg aria-hidden="true" className="living-title__tour-media" viewBox="0 0 16 16">
+        <rect height="10" rx="1" width="3" x="4" y="3" />
+        <rect height="10" rx="1" width="3" x="9" y="3" />
+      </svg> :
+      <svg aria-hidden="true" className="living-title__tour-media is-play" viewBox="0 0 16 16">
+        <path d="M5 3.6v8.8a.8.8 0 0 0 1.22.68l6.6-4.4a.82.82 0 0 0 0-1.36l-6.6-4.4A.8.8 0 0 0 5 3.6Z" />
+      </svg>}
+  </button>;
+
   return (
     <section className="living-title" ref={rootRef}>
       <span aria-hidden="true" className="living-title__legacy-anchor" id="system" style={{ top: '0' }} />
@@ -331,19 +363,12 @@ export const Hero = () => {
             <h1>{CHAPTERS[chapter].title.map((line) => <span key={line}>{line}</span>)}</h1>
             <p>{CHAPTERS[chapter].body.map((line) => <span key={line}>{line}</span>)}</p>
           </div>
-          <button
-            aria-label={tourState === 'playing' ? 'Pause auto-scroll' : 'Start auto-scroll'}
-            className={`living-title__tour ${tourState === 'playing' ? 'is-playing' : ''}`}
-            onClick={() => rootRef.current?.dispatchEvent(new Event('arcade-tour-request'))}
-            type="button"
-          >
-            <span aria-hidden="true">{tourState === 'playing' ? 'Ⅱ' : '▶'}</span>
-            {tourState === 'playing' ? 'Pause' : 'Auto-scroll'}
-          </button>
         </div>
+        <div className="living-title__tour-desktop">{tourControl}</div>
         <div className="living-title__actions">
           <QuickTerminalButton className="living-title__primary"><span aria-hidden="true">›_</span>Play</QuickTerminalButton>
           <InstallCommand />
+          <div className="living-title__tour-mobile">{tourControl}</div>
         </div>
       </div>
     </section>
