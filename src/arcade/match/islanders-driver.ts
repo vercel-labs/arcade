@@ -516,6 +516,7 @@ export class IslandersDriver {
     const trade = before?.trade;
     const other = (target: number): string => this.labelOf(target);
     const object = (target: number): string => this.seats[target]?.kind === 'human' ? 'you' : other(target);
+    const isNext = (target: number): string => this.seats[target]?.kind === 'human' ? 'you are next' : `${other(target)} is next`;
     const possessive = (target: number): string => {
       if (this.seats[target]?.kind === 'human') return 'your';
       const label = other(target);
@@ -524,7 +525,7 @@ export class IslandersDriver {
     const deck = (counts: readonly number[]): string => RESOURCES
       .flatMap((resource, index) => counts[index] > 0 ? [`${RESOURCE_LOOK[resource].emoji} x${counts[index]}`] : [])
       .join(' ');
-    const victim = 'victim' in action && action.victim !== null ? other(action.victim) : null;
+    const victim = 'victim' in action && action.victim !== null ? object(action.victim) : null;
     const outcome = this.live?.actionRecords().at(-1)?.outcome;
     const message = action.type === 'initialSettlement'
       ? `${SETTLEMENT_ICON} placed a settlement`
@@ -539,7 +540,7 @@ export class IslandersDriver {
               : action.type === 'roll'
                 ? `rolled ${(outcome?.dice ?? this.live?.dice() ?? []).join(' + ')} = ${(outcome?.dice ?? this.live?.dice() ?? []).reduce((sum, die) => sum + die, 0)}`
                 : action.type === 'endTurn'
-                  ? `ended the turn; ${other(this.live?.currentPlayer() ?? seat)} is next`
+                  ? `ended the turn; ${isNext(this.live?.currentPlayer() ?? seat)}`
                   : action.type === 'buyDevCard'
                     ? `${DEV_CARD_ICON} bought a development card`
                     : action.type === 'playKnight'
