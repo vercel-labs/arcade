@@ -554,14 +554,16 @@ function playerScore(player: IslandersCardsPlayerView): string {
   return `${player.publicVp}${hidden}`;
 }
 
+// Whose turn it is shows as a quiet band behind the whole row rather than a marker column, so
+// every name starts where the "players" header does.
 function playerRow(player: IslandersCardsPlayerView): Node {
   const seat = PLAYER_LOOK[player.color];
   const name = Box({ gap: 0, overflow: 'hidden' }, [
-    Text({ text: `${player.active ? '▸ ' : '  '}${player.name}`, style: { color: seat, bold: true, textOverflow: 'ellipsis' } }),
+    Text({ text: player.name, style: { color: seat, bold: true, textOverflow: 'ellipsis' } }),
     Text({ text: ' · ', style: { color: RAIL_MUTED } }),
     Text({ text: playerScore(player), style: { color: RAIL_TEXT, bold: true } }),
   ]);
-  return TableRow({}, [
+  return TableRow({ style: player.active ? { background: ISLANDERS_CARD.turnRowBg } : {} }, [
     TableCell(name),
     // Supporting detail stays muted until a flag promotes it.
     ...STAT_COLUMNS.map((c) => {

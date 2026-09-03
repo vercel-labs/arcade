@@ -315,24 +315,28 @@ export function islandersPlayerLegend(
     gap: 0,
   }, [
     Text({ text: 'players', style: { width: textWidth, color: STATUS_MUTED, bold: true } }),
-    // ▸ means whose turn it is, here and in the rail's players table alike. The seat whose cards
-    // are on screen is bold, with "viewing" spelled out when a spectator can switch seats.
+    // Rows sit flush with the label: whose turn it is shows as a quiet band behind the row (the
+    // same band the rail's players table uses), never as a glyph column that would indent every
+    // name. The seat whose cards are on screen is bold, tagged (pov) when a spectator can switch.
     ...Array.from({ length: driver.seatCount() }, (_, seat) => {
       const active = driver.state()?.currentPlayer() === seat;
       const viewing = seat === viewerSeat;
-      const suffix = viewing && onSelect ? ' · viewing' : '';
+      const suffix = viewing && onSelect ? ' (pov)' : '';
+      const band = active ? { background: ISLANDERS_CARD.turnRowBg } : {};
       return Button({
         id: `islanders-view-seat-${seat}`,
-        label: `${active ? '▸ ' : '  '}■ ${driver.labelOf(seat)}${suffix}`,
+        label: `■ ${driver.labelOf(seat)}${suffix}`,
         disabled: onSelect === undefined,
         onClick: () => onSelect?.(seat),
         style: {
           width: textWidth,
           padding: 0,
+          ...band,
           color: PLAYER_LOOK[driver.colorOf(seat)],
           bold: viewing,
           textOverflow: 'ellipsis',
           disabled: {
+            ...band,
             color: PLAYER_LOOK[driver.colorOf(seat)],
             bold: viewing,
           },
