@@ -21,12 +21,12 @@ test('Chess uses one restrained close-up lobe and never oscillates again', () =>
   const opening = chessCinematicPose(0);
   const samples = Array.from({ length: 41 }, (_, index) => chessCinematicPose(index / 40).distance);
   const middle = samples[20];
-  assert.ok(middle < opening.distance * 0.5);
-  assert.ok(middle >= 4.9 - 1e-9);
+  assert.ok(middle < opening.distance * 0.75);
+  assert.ok(middle >= 8 - 1e-9);
   assert.ok(samples.slice(1, 21).every((distance, index) => distance <= samples[index]));
   assert.ok(samples.slice(21).every((distance, index) => distance >= samples[index + 20]));
   const close = chessCinematicPose(0.5);
-  assert.ok(Math.hypot(close.target.x - opening.target.x, close.target.z - opening.target.z) > 0.6);
+  assert.ok(Math.hypot(close.target.x - opening.target.x, close.target.z - opening.target.z) > 0.2);
 });
 
 test('Poker starts closest to the shuffle and only pulls back', () => {

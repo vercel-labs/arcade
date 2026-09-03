@@ -3,7 +3,29 @@ import test from 'node:test';
 import { cameraMatrices } from '../engine/camera.ts';
 import { mat4MulVec4 } from '../engine/math.ts';
 import { pokerSeatAngle } from '../game-visuals/poker/layout.ts';
-import { pokerCinematicCamera } from './camera.ts';
+import { chessCinematicPose, pokerCinematicCamera } from './camera.ts';
+
+test('Chess camera keeps the Claude king wisp in frame throughout its close orbit', () => {
+  const anchor = { x: 0.525, y: 2.7, z: 3.675 };
+  for (let step = 0; step <= 160; step++) {
+    const pose = chessCinematicPose(step / 160);
+    const ce = Math.cos(pose.elevation);
+    const camera = {
+      eye: {
+        x: pose.target.x + ce * Math.sin(pose.azimuth) * pose.distance,
+        y: pose.target.y + Math.sin(pose.elevation) * pose.distance,
+        z: pose.target.z + ce * Math.cos(pose.azimuth) * pose.distance,
+      },
+      target: pose.target, up: { x: 0, y: 1, z: 0 }, fovy: 48 * Math.PI / 180, near: 0.05, far: 100,
+    };
+    const vp = cameraMatrices(camera, 16 / 9).viewProjection;
+    const center = project(vp, anchor);
+    const edge = project(vp, { ...anchor, y: anchor.y + 0.58 });
+    const radius = Math.hypot(edge.x - center.x, edge.y - center.y);
+    assert.ok(Math.abs(center.x) + radius < 1, `Claude wisp clipped horizontally at ${step / 160}`);
+    assert.ok(Math.abs(center.y) + radius < 1, `Claude wisp clipped vertically at ${step / 160}`);
+  }
+});
 
 // Conservative production-table envelope: outer chairs, chair feet, and wisps.
 // This is deliberately a little larger than the rasterized meshes but follows

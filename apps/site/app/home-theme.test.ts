@@ -102,12 +102,13 @@ test('the hero advertises one canonical npm command with a full-row copy target'
 });
 
 test('the opening hero leads with the agent engine proposition in Geist Pixel', async () => {
-  const [css, hero] = await Promise.all([
+  const [css, hero, copy] = await Promise.all([
     readFile(new URL('./global.css', import.meta.url), 'utf8'),
     readFile(new URL('./[lang]/(home)/components/hero.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../../../src/cinematic/copy.ts', import.meta.url), 'utf8'),
   ]);
-  assert.match(hero, /title: \['The 3D game engine', 'built for agents\.'\]/);
-  assert.match(hero, /body: \['ASCII in your terminal, no GPU\.', 'Humans can play too\.'\]/);
+  assert.match(copy, /title: \['The 3D game engine', 'built for agents\.'\]/);
+  assert.match(copy, /body: \['ASCII in your terminal, no GPU\.', 'Humans can play too\.'\]/);
   assert.match(hero, /title\.map\(\(line\) => <span/);
   assert.match(hero, /body\.map\(\(line\) => <span/);
   assert.match(css, /\.living-title__chapter h1[^\n]*var\(--font-site-display\)/);
@@ -125,15 +126,19 @@ test('the opening hero leads with the agent engine proposition in Geist Pixel', 
 });
 
 test('the cinematic chapters explain Gateway, the harness, model behavior, and play', async () => {
-  const hero = await readFile(new URL('./[lang]/(home)/components/hero.tsx', import.meta.url), 'utf8');
-  assert.match(hero, /title: \['Powered by', 'Vercel AI Gateway\.'\]/);
-  assert.match(hero, /body: \['Watch hundreds of models face off,', 'or challenge them yourself\.'\]/);
-  assert.match(hero, /title: \['Different minds\.', 'Endless possibilities\.'\]/);
-  assert.match(hero, /body: \['Everything you see is open source\.', 'Have an idea\? Your move\.'\]/);
-  assert.match(hero, /title: \['Every player', 'has a tell\.'\]/);
-  assert.match(hero, /body: \['Discover the hidden tendencies', 'of your favorite models\.'\]/);
-  assert.match(hero, /title: \['Settle in,', 'have some fun!'\]/);
-  assert.match(hero, /body: \['Play a few rounds while waiting for', 'your coding agents to finish\.'\]/);
+  const [hero, copy] = await Promise.all([
+    readFile(new URL('./[lang]/(home)/components/hero.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../../../src/cinematic/copy.ts', import.meta.url), 'utf8'),
+  ]);
+  assert.match(hero, /CINEMATIC_CHAPTERS\[chapter\]/);
+  assert.match(copy, /title: \['Powered by', 'Vercel AI Gateway\.'\]/);
+  assert.match(copy, /body: \['Watch hundreds of models face off,', 'or challenge them yourself\.'\]/);
+  assert.match(copy, /title: \['Different minds\.', 'Endless possibilities\.'\]/);
+  assert.match(copy, /body: \['Everything you see is open source\.', 'Have an idea\? Your move\.'\]/);
+  assert.match(copy, /title: \['Every player', 'has a tell\.'\]/);
+  assert.match(copy, /body: \['Discover the hidden tendencies', 'of your favorite models\.'\]/);
+  assert.match(copy, /title: \['Settle in,', 'have some fun!'\]/);
+  assert.match(copy, /body: \['Play a few rounds while waiting for', 'your coding agents to finish\.'\]/);
 });
 
 test('the pointer effect is discovered through click and drag without a settings control', async () => {

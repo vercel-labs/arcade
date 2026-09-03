@@ -30,12 +30,13 @@ export type {
   BrowserMiniSceneId,
   BrowserMiniSceneOptions,
 } from './mini-scene.ts';
-export { LIVING_TITLE_ACT_BOUNDARIES, LIVING_TITLE_MORPH_STARTS, LivingTitleScene, livingTitleTimeline, type LivingTitleFrameOptions } from './living-title-scene.ts';
+export { LIVING_TITLE_ACT_BOUNDARIES, LIVING_TITLE_MORPH_STARTS, LivingTitleScene, livingTitleTimeline, type LivingTitleFrameOptions, type LivingTitleSceneOptions } from './living-title-scene.ts';
 export type { LivingTitleAct } from './living-title-scene.ts';
 export { BrowserIslandersCinematic, BrowserPokerCinematic } from './browser-game-cinematics.ts';
 export { BrowserCoverFlow } from './browser-coverflow.ts';
 export { CINEMATIC_CELL_HEIGHT, MOBILE_CINEMATIC_CELL_HEIGHT, responsiveTerminalGrid } from './responsive-grid.ts';
 export { LIVING_TITLE_TOUR_SECONDS, advanceAutoTourProgress, interruptsAutoTourKey } from '../cinematic/auto-tour.ts';
+export { CINEMATIC_CHAPTERS, type CinematicChapterCopy } from '../cinematic/copy.ts';
 export { ActiveSceneLoopClock, type CinematicLoopSample } from '../cinematic/scene-loop.ts';
 export { SPLASH_END } from '../prism/splash.ts';
 export { applySurfacePointerEffect, applySurfacePointerTrail, type SurfacePointerEffectOptions, type SurfacePointerMode } from './surface-pointer-effects.ts';

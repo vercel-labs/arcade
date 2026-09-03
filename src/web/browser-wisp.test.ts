@@ -3,6 +3,7 @@ import test from 'node:test';
 import { cameraMatrices, type Camera } from '../engine/camera.ts';
 import { RenderTarget } from '../engine/framebuffer.ts';
 import { BrowserCreatorWisps } from './browser-wisp.ts';
+import type { Texture } from '../engine/texture-data.ts';
 
 const CAMERA: Camera = {
   eye: { x: 0, y: 0, z: 0 }, target: { x: 0, y: 0, z: -1 }, up: { x: 0, y: 1, z: 0 },
@@ -18,4 +19,13 @@ test('browser wisps do not paint when their billboard intersects or sits behind 
   wisps.draw(target, vp, CAMERA, 'openai', { x: 0, y: 0, z: -0.3 }, 0.4, 0, 0.72);
   wisps.draw(target, vp, CAMERA, 'openai', { x: 0, y: 0, z: -2.4 }, 0.4, 0, 0.72);
   assert.ok(target.color.every((channel) => channel === 0));
+});
+
+test('non-browser hosts can inject a decoded creator mark', () => {
+  const mark: Texture = { width: 2, height: 2, data: new Uint8Array([
+    255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255,
+  ]) };
+  assert.equal(new BrowserCreatorWisps().hasTexture('openai'), false);
+  assert.equal(new BrowserCreatorWisps({ openai: mark }).hasTexture('openai'), true);
 });

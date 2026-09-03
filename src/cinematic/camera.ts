@@ -7,18 +7,18 @@ export interface ChessCinematicPose { azimuth: number; elevation: number; distan
 
 export function chessCinematicPose(progress: number): ChessCinematicPose {
   const p = clamp01(progress);
-  // One restrained sine-shaped lens move: establish, approach e4 once, then
-  // pull back once. The former 3.55-unit dive crossed the black-king wisp's
-  // volume; 4.9 retains a real piece close-up without entering the model mark.
+  // One restrained sine-shaped lens move: establish, approach the center once,
+  // then pull back once. Keep enough altitude and distance that the orbit never
+  // drives through either king's creator wisp or throws it beyond the viewport.
   const close = Math.sin(Math.PI * smoothstep(p));
   // e4 in the production board's world coordinates.
   const e4 = { x: 0.525, y: 0.68, z: 0.525 };
   return {
     // One uninterrupted counterclockwise orbit: no sine-driven reversals.
     azimuth: -0.72 + p * Math.PI * 1.28,
-    elevation: lerp(0.76, 0.42, close),
-    distance: lerp(11.2, 4.9, close),
-    target: { x: e4.x * close, y: lerp(0.28, e4.y - 0.38, close), z: e4.z * close },
+    elevation: lerp(0.76, 0.54, close),
+    distance: lerp(11.2, 8, close),
+    target: { x: e4.x * close * 0.3, y: lerp(0.28, e4.y - 0.38, close), z: e4.z * close * 0.3 },
   };
 }
 
