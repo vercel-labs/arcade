@@ -674,6 +674,23 @@ test('the outlook states what each build still needs and where the awards stand,
   assert.equal(quiet.informationStateString(0).includes('Your outlook'), false);
 });
 
+test('ending the turn and building read on equal terms: what is kept, what is spent, what the next build then needs', () => {
+  const s = fresh();
+  finishSetup(s);
+  s.applyAction({ type: 'roll' }, { dice: [1, 1] });
+  setHand(s, 0, { lumber: 1, brick: 1, grain: 1 });
+  const ctx = s.decisionContextString(0);
+  assert.match(ctx, /Building spends cards now; ending the turn keeps every card in hand/);
+  assert.match(ctx, /- end \[keeps 1 brick, 1 wheat, 1 wood in hand; a settlement (at [^;]+|\(once a road reaches an open spot\)) needs 1 sheep; a city needs 1 wheat, 3 ore\]/);
+  const road = ctx.split('\n').find((line) => line.startsWith('- road '));
+  assert.ok(road);
+  assert.match(road, /spends 1 brick, 1 wood; a settlement (at [^;]+|\(once a road reaches an open spot\)) then needs 1 brick, 1 wood, 1 sheep\]/);
+  assert.doesNotMatch(road, /a city then/, 'a wood+brick spend does not touch the city cost');
+  assert.match(s.informationStateString(0), /- Trading for what you lack: bank 4:1 \(you hold no 4 of a kind\); your ports: /);
+  setHand(s, 0, {});
+  assert.match(s.decisionContextString(0), /- end \[keeps an empty hand\]/);
+});
+
 test('a held development card explains why it cannot be played yet', () => {
   const s = mainPhaseWithDev('knight');
   assert.equal(s.developmentCardHold(0, 'knight'), null);

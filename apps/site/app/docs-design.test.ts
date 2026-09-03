@@ -35,6 +35,22 @@ test('guides and reference use real child routes with generated symbol coverage'
   assert.match(script, /packageJson\.exports/);
 });
 
+test('games are a drill-in chapter with rules, graphics, and model case studies', async () => {
+  const [page, games, sitemap] = await Promise.all([
+    readFile(new URL('./[lang]/docs/[[...slug]]/page.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('./[lang]/docs/docs-games.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('./sitemap.ts', import.meta.url), 'utf8'),
+  ]);
+  for (const slug of ['games/chess', 'games/poker', 'games/islanders']) {
+    assert.match(games, new RegExp(`slug: '${slug}'`));
+    assert.match(sitemap, new RegExp(`/docs/${slug}`));
+  }
+  for (const topic of ['Rules at a glance', 'What the model sees', 'What each model sees', 'What an Islanders model sees', 'From OBJ files to terminal pieces', 'A shuffle is a physical timeline', 'The island is generated, not imported']) assert.match(games, new RegExp(topic));
+  assert.match(page, /GAME_DOCS/);
+  assert.match(page, /href: '\/docs\/games', label: 'Games', drillIn: true/);
+  assert.match(page, /nestedMode === 'games'/);
+});
+
 test('the generated public symbol index is current', async () => {
   const { execFileSync } = await import('node:child_process');
   const { resolve } = await import('node:path');
