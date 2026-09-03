@@ -667,7 +667,7 @@ function workbenchActionButton(
   // longer before centering. The card is an odd number of cells wide, so odd-width rows center
   // exactly and even-width rows cannot; a trailing space makes those odd and settles them one
   // cell left of center, where a wide glyph reads as placed rather than nudged right.
-  const wordy = stringWidth(icon) === icon.length;
+  const wordy = !/\p{Emoji_Presentation}/u.test(icon);
   const block = wordy ? Math.max(stringWidth(icon), stringWidth(label)) : 0;
   const settle = (text: string): string => {
     const padded = text.padEnd(Math.max(block, text.length));
@@ -1431,7 +1431,7 @@ function handPanel(
             'Costs 🐑 🌾 🪨.',
           ],
           maxWidth: 36,
-        }, workbenchActionButton('islanders-buy-dev', `💰 ${DEV_CARD_ICON}`, 'buy dev', actionController.canBuyDevelopmentCard, () => {
+        }, workbenchActionButton('islanders-buy-dev', `💲 ${DEV_CARD_ICON}`, 'buy dev', actionController.canBuyDevelopmentCard, () => {
           actionController.onBuyDevelopmentCard();
         }, {
           background: DEV_LOOK.fill,
