@@ -326,8 +326,8 @@ export const Hero = () => {
     type="button"
   >
     <svg aria-hidden="true" className="living-title__tour-ring" viewBox="0 0 44 44">
-      <circle className="living-title__tour-ring-track" cx="22" cy="22" r="18" />
-      <circle className="living-title__tour-ring-value" cx="22" cy="22" r="18" />
+      <circle className="living-title__tour-ring-track" cx="22" cy="22" pathLength="100" r="21" />
+      <circle className="living-title__tour-ring-value" cx="22" cy="22" pathLength="100" r="21" />
     </svg>
     {tourState === 'playing' ?
       <svg aria-hidden="true" className="living-title__tour-media" viewBox="0 0 16 16">
@@ -353,12 +353,12 @@ export const Hero = () => {
             <h1>{CHAPTERS[chapter].title.map((line) => <span key={line}>{line}</span>)}</h1>
             <p>{CHAPTERS[chapter].body.map((line) => <span key={line}>{line}</span>)}</p>
           </div>
-          <div className="living-title__tour-mobile">{tourControl}</div>
         </div>
         <div className="living-title__tour-desktop">{tourControl}</div>
         <div className="living-title__actions">
           <QuickTerminalButton className="living-title__primary"><span aria-hidden="true">›_</span>Play</QuickTerminalButton>
           <InstallCommand />
+          <div className="living-title__tour-mobile">{tourControl}</div>
         </div>
       </div>
     </section>

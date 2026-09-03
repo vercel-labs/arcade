@@ -11,6 +11,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { resizeTerminalRect, type ResizeDirection } from './quick-terminal-resize';
 
 const loadArcadeTerminal = () => import('../app/[lang]/(home)/components/arcade-terminal');
 const ArcadeTerminal = dynamic(
@@ -23,6 +24,8 @@ interface QuickTerminalContextValue {
   open: () => void;
   isOpen: boolean;
 }
+
+const RESIZE_DIRECTIONS: ResizeDirection[] = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
 
 const QuickTerminalContext = createContext<QuickTerminalContextValue | null>(null);
 
@@ -43,6 +46,7 @@ export function QuickTerminalProvider({ children }: { children: ReactNode }) {
     height: number;
   } | null>(null);
   const resizeRef = useRef<{
+    direction: ResizeDirection;
     pointerX: number;
     pointerY: number;
     width: number;
@@ -192,8 +196,11 @@ export function QuickTerminalProvider({ children }: { children: ReactNode }) {
 
   const beginResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || !panelRef.current || isFullscreen || isMinimized) return;
+    const direction = event.currentTarget.dataset.resizeDirection as ResizeDirection | undefined;
+    if (!direction) return;
     const rect = panelRef.current.getBoundingClientRect();
     resizeRef.current = {
+      direction,
       pointerX: event.clientX,
       pointerY: event.clientY,
       width: rect.width,
@@ -215,10 +222,19 @@ export function QuickTerminalProvider({ children }: { children: ReactNode }) {
     const margin = 8;
     const minWidth = Math.min(520, window.innerWidth - margin * 2);
     const minHeight = Math.min(360, window.innerHeight - margin * 2);
-    const maxWidth = window.innerWidth - origin.left - margin;
-    const maxHeight = window.innerHeight - origin.top - margin;
-    const width = Math.min(maxWidth, Math.max(minWidth, origin.width + event.clientX - origin.pointerX));
-    const height = Math.min(maxHeight, Math.max(minHeight, origin.height + event.clientY - origin.pointerY));
+    const { left, top, width, height } = resizeTerminalRect(
+      origin,
+      origin.direction,
+      event.clientX - origin.pointerX,
+      event.clientY - origin.pointerY,
+      window.innerWidth,
+      window.innerHeight,
+      minWidth,
+      minHeight,
+      margin,
+    );
+    panel.style.left = `${left}px`;
+    panel.style.top = `${top}px`;
     panel.style.width = `${width}px`;
     panel.style.height = `${height}px`;
   };
@@ -256,35 +272,51 @@ export function QuickTerminalProvider({ children }: { children: ReactNode }) {
                   onClick={close}
                   onPointerDown={(event) => event.stopPropagation()}
                   type="button"
-                />
+                >
+                  <svg aria-hidden="true" className="quick-terminal-control-icon" viewBox="0 0 8 8">
+                    <path d="m2 2 4 4M6 2 2 6" />
+                  </svg>
+                </button>
                 <button
                   aria-label={isMinimized ? 'Restore Arcade terminal' : 'Minimize Arcade terminal'}
                   className="quick-terminal-control quick-terminal-control--minimize"
                   onClick={toggleMinimize}
                   onPointerDown={(event) => event.stopPropagation()}
                   type="button"
-                />
+                >
+                  <svg aria-hidden="true" className="quick-terminal-control-icon" viewBox="0 0 8 8">
+                    <path d="M1.5 4h5" />
+                  </svg>
+                </button>
                 <button
                   aria-label={isFullscreen ? 'Restore Arcade terminal window' : 'Maximize Arcade terminal window'}
                   className="quick-terminal-control quick-terminal-control--maximize"
                   onClick={toggleFullscreen}
                   onPointerDown={(event) => event.stopPropagation()}
                   type="button"
-                />
+                >
+                  <svg aria-hidden="true" className="quick-terminal-control-icon" viewBox="0 0 8 8">
+                    <path d="M1.5 3.5v-2h2M6.5 4.5v2h-2M3.5 1.5l-2 2M4.5 6.5l2-2" />
+                  </svg>
+                </button>
               </div>
               <strong>arcade — terminal</strong>
             </header>
             <div aria-hidden={isMinimized} className="quick-terminal-content">
               <ArcadeTerminal />
             </div>
-            <div
-              aria-hidden="true"
-              className="quick-terminal-resize-handle"
-              onPointerCancel={endResize}
-              onPointerDown={beginResize}
-              onPointerMove={resize}
-              onPointerUp={endResize}
-            />
+            {RESIZE_DIRECTIONS.map((direction) => (
+              <div
+                aria-hidden="true"
+                className="quick-terminal-resize-handle"
+                data-resize-direction={direction}
+                key={direction}
+                onPointerCancel={endResize}
+                onPointerDown={beginResize}
+                onPointerMove={resize}
+                onPointerUp={endResize}
+              />
+            ))}
           </section>
         </div>
       ) : null}
