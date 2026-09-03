@@ -721,7 +721,7 @@ export function buildIslandersGameRoot(region: LayoutBox, deps: IslandersGameHud
   const { driver } = deps;
   const state = driver.state();
   const playing = state !== null;
-  const railVisible = islandersRailVisible(region.w, region.h);
+  const railVisible = playing && islandersRailVisible(region.w, region.h);
   const rail = railVisible ? ISLANDERS_RAIL_W : 0;
   const canShowRail = islandersCardsLayout(region).showPublicRail;
 

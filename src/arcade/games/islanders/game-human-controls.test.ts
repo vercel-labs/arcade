@@ -5,7 +5,7 @@ import { DEV_CARD_TYPES, RESOURCES, resourceIndex, type IslandersAction, type Pr
 import { Screen, type Node } from '../../../tui/index.ts';
 import { IslandersDriver, type IslandersSeatSpec } from '../../match/islanders-driver.ts';
 import { buildIslandersGameRoot, islandersLiveView, islandersStatusLine } from './game-hud.ts';
-import { islandersSidebarPlayers } from './card-hud.ts';
+import { islandersSidebarOpen, islandersSidebarPlayers, toggleIslandersSidebar } from './card-hud.ts';
 import { IslandersGameScene, islandersActionPlaybackFrames } from './game-scene.ts';
 import { PLAYER_LOOK } from './palette.ts';
 import { ARCADE_OUTLINE_CONTROL } from '../../theme.ts';
@@ -65,6 +65,25 @@ test('Islanders setup uses the shared rounded new-match CTA', () => {
   assert.equal(start?.text, 'new match');
   assert.equal(start?.style.border, 'round');
   assert.equal(start?.style.color, ARCADE_OUTLINE_CONTROL.neutralText);
+});
+
+test('setup menu stays at the true top-right even when a previous sidebar remains open', () => {
+  const scene = new IslandersGameScene();
+  const driver = new IslandersDriver({ scene, syncLive: () => {} });
+  if (!islandersSidebarOpen()) toggleIslandersSidebar();
+  const region = { x: 0, y: 0, w: 140, h: 50 };
+  const root = buildIslandersGameRoot(region, {
+    driver,
+    scene,
+    onOpenMenu: () => {},
+    onStart: () => {},
+  });
+  const screen = new Screen(region.w, region.h);
+  screen.setRoot(root, region);
+  const menu = findNode(root, 'islanders-game-menu');
+  assert.ok(menu?.layout);
+  assert.equal(menu.layout.x + menu.layout.w, region.w - 2, 'no ghost rail shifts setup chrome left');
+  if (islandersSidebarOpen()) toggleIslandersSidebar();
 });
 
 test('live status is one borderless row with color confined to the actor', () => {
