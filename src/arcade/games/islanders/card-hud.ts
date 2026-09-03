@@ -1242,6 +1242,32 @@ function playerTradeOffer(offer: IslandersPlayerTradeOffer, controller: Islander
 // square where the crowd was (the cards come from them), the counterer's square on the give
 // line. Only the poster decides — accept completes the trade with the counterer — and the
 // counterer can withdraw it.
+// A decision slot that only reports: the poster is still weighing this counter. Same square as
+// the buttons beside it, in the poster's color, so the row reads "waiting on orange".
+function decisionStatus(id: string, glyph: string, background: Rgb, tooltip: string): Node {
+  const chip = Button({
+    id,
+    label: '',
+    disabled: true,
+    style: {
+      width: PLAYER_TRADE_DECISION_W,
+      height: PLAYER_TRADE_DECISION_H,
+      padding: 0,
+      alignItems: 'center',
+      justifyContent: 'center',
+      background,
+      color: ISLANDERS_CARD.actionInk,
+      bold: true,
+      disabled: { background, color: ISLANDERS_CARD.actionInk, bold: true },
+    },
+  });
+  chip.children = [Text({ text: glyph, style: { color: ISLANDERS_CARD.actionInk, bold: true } })];
+  return Tooltip({ id: `${id}-help`, content: [{ text: tooltip, bold: true }], maxWidth: 34 }, chip);
+}
+
+// A counter is answered by the poster alone: they take it (✓, when the viewer posted the offer)
+// or let it lapse by taking another or cancelling, which removes every card at once. So a counter
+// never carries a reject of its own; when someone else posted, the slot shows that they decide.
 function playerCounterOffer(
   offer: IslandersPlayerTradeOffer,
   reaction: IslandersPlayerTradeOffer['reactions'][number],
@@ -1255,7 +1281,7 @@ function playerCounterOffer(
       ? [decisionButton(`${idBase}-accept`, '✓', PLAYER_LOOK[counterer.color], () => {
           if (controller.onComplete?.(offer.id, counterer.name)) controller.onChange?.();
         }, `Trade with ${counterer.name}`)]
-      : []),
+      : [decisionStatus(`${idBase}-pending`, '...', PLAYER_LOOK[offer.offerer.color], `${isYou(offer.offerer) ? 'You decide' : `${offer.offerer.name} decides`}.`)]),
     ...(isYou(counterer) && controller.onWithdrawCounter
       ? [decisionButton(`${idBase}-withdraw`, 'x', ISLANDERS_CARD.cancelBg, () => {
           if (controller.onWithdrawCounter?.(counterer.name)) controller.onChange?.();
