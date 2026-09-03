@@ -39,6 +39,7 @@ import {
   beginIslandersWorkbenchDiscard,
   beginStagedIslandersWorkbenchBankTrade,
   ISLANDERS_LOCAL_COLOR,
+  ISLANDERS_RAIL_W,
   islandersBankDepartureCell,
   islandersDevDeckDepartureCell,
   islandersDevHandLandingCell,
@@ -849,21 +850,24 @@ function islandersGameSnapshot(): void {
   }
   gameScene.scene.settle();
 
-  const target = new RenderTarget(cols * SS, rows * SS);
+  // The open rail insets the 3D viewport exactly as main.ts does, so the board, its labels, and
+  // any hex-sourced flight all agree on where the hexes are.
+  const sceneViewport = insetSceneViewport(cols, rows, { right: islandersRailVisible(cols, rows) ? ISLANDERS_RAIL_W : 0 });
+  const target = new RenderTarget(sceneViewport.w * SS, sceneViewport.h * SS);
   gameScene.renderScene(target, 0.7);
   const screen = new Screen(cols, rows);
   mountIslandersGameHud(screen);
   screen.setRoot(buildIslandersGameRoot(region, {
     driver,
     scene: gameScene,
-    tokens: gameScene.scene.boardTokens(cols, rows),
-    sails: gameScene.scene.boardPortLabels(cols, rows),
+    tokens: gameScene.scene.boardTokens(sceneViewport.w, rows),
+    sails: gameScene.scene.boardPortLabels(sceneViewport.w, rows),
     resourceFlights: gameScene.activeResourceFlights(),
     resourceAdjustments: gameScene.resourceViewAdjustments(),
     onOpenMenu: noop,
     onStart: noop,
   }), region);
-  const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: false }));
+  const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, sceneViewport.w, rows, { color: true, hybrid: false }));
   surfaceToPpm(surf, cols, rows, out);
 }
 
