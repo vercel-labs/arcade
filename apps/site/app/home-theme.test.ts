@@ -110,11 +110,12 @@ test('the opening hero leads with the agent engine proposition in Geist Pixel', 
   assert.match(hero, /body\.map\(\(line\) => <span/);
   assert.match(css, /\.living-title__chapter h1[^\n]*var\(--font-site-display\)/);
   assert.match(css, /\.living-title__chapter p[^\n]*var\(--font-geist-sans\)/);
-  assert.match(css, /\.living-title__chapter h1[^\n]*text-shadow: 0 1px 2px #000, 0 0 10px/);
-  assert.match(css, /\.living-title__chapter p[^\n]*text-shadow: 0 1px 2px #000, 0 0 8px/);
-  assert.match(css, /\.living-title__tour[^\n]*text-shadow: 0 1px 2px #000, 0 0 7px #000/);
+  assert.match(css, /\.living-title__chapter h1[^\n]*text-shadow: 0 1px 2px #000, 0 0 14px/);
+  assert.match(css, /\.living-title__chapter p[^\n]*text-shadow: 0 1px 2px #000, 0 0 12px/);
+  assert.match(css, /\.living-title__tour[^\n]*background: rgb\(0 0 0 \/ 58%\)[^\n]*backdrop-filter: blur\(8px\)/);
+  assert.match(css, /\.site-nav__inner > a, \.site-nav__desktop[^\n]*drop-shadow\(0 0 10px rgb\(0 0 0 \/ 96%\)\)/);
   assert.match(css, /\.living-title__chapter h1[^\n]*clamp\(44px, 4vw, 56px\)\/\.96/);
-  assert.match(css, /\.living-title__chapter p[^\n]*68%[^\n]*18px\/1\.5/);
+  assert.match(css, /\.living-title__chapter p[^\n]*80%[^\n]*18px\/1\.5/);
   assert.match(css, /\.living-title__chapter h1 span, \.living-title__chapter p span[^\n]*white-space: nowrap/);
   assert.match(css, /\.living-title__chapter p \{ max-width: 100%; font-size: clamp\(13px, 4vw, 16px\); line-height: 1\.5; \}/);
   assert.match(css, /\.living-title__install-command code[^\n]*var\(--font-geist-mono\)/);
@@ -184,13 +185,28 @@ test('coarse-pointer mobile canvases use denser ASCII cells without changing UI 
   assert.match(hero, /coarsePointer\.addEventListener\('change', fitViewport\)/);
 });
 
-test('the tour control stays minimal without a duplicate progress rail', async () => {
+test('the progress-ring tour control is responsive and tracks real scroll progress', async () => {
   const [css, hero] = await Promise.all([
     readFile(new URL('./global.css', import.meta.url), 'utf8'),
     readFile(new URL('./[lang]/(home)/components/hero.tsx', import.meta.url), 'utf8'),
   ]);
-  assert.doesNotMatch(css, /living-title__tour::before|living-title__tour::after|--tour-progress/);
-  assert.doesNotMatch(hero, /--tour-progress/);
+  assert.doesNotMatch(css, /living-title__tour::before|living-title__tour::after/);
+  assert.doesNotMatch(hero, /tourPrototype|URLSearchParams\(window\.location\.search\).*tourPrototype/);
+  assert.match(css, /\.living-title \{ --tour-progress: 0;/);
+  assert.match(hero, /root\.style\.setProperty\('--tour-progress'/);
+  assert.match(css, /\.living-title__tour-ring-value[^{]*\{[^}]*stroke-dashoffset: calc\(113\.1 \* \(1 - var\(--tour-progress\)\)\)/);
+  assert.match(css, /\.living-title__tour \{[^}]*width: 44px;[^}]*height: 44px;[^}]*background: rgb\(0 0 0 \/ 58%\);[^}]*backdrop-filter: blur\(8px\)/);
+  assert.match(hero, /className="living-title__tour-media(?: is-play)?" viewBox="0 0 16 16"/);
+  assert.match(hero, /className="living-title__tour-mobile"/);
+  assert.match(hero, /className="living-title__tour-desktop"/);
+  assert.match(css, /\.living-title__tour-mobile \{ display: none; \}/);
+  assert.match(css, /@media \(max-width: 760px\) and \(orientation: portrait\) \{[\s\S]*\.living-title__tour-desktop \{ display: none; \}[\s\S]*\.living-title__tour-mobile \{ display: block; margin-top: 18px; \}/);
+  assert.doesNotMatch(css, /living-title__tour-mouse|arcade-scroll-cue/);
+});
+
+test('cinematic subtitles retain hierarchy while staying legible over ASCII', async () => {
+  const css = await readFile(new URL('./global.css', import.meta.url), 'utf8');
+  assert.match(css, /\.living-title__chapter p \{[^}]*color: rgb\(255 255 255 \/ 80%\);[^}]*text-shadow: 0 1px 2px #000, 0 0 12px rgb\(0 0 0 \/ 96%\)/);
 });
 
 test('the transparent cinematic header gains an opaque surface at the footer boundary', async () => {

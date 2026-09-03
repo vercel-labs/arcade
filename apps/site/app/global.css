@@ -38,7 +38,7 @@ body:has(.living-title-page) { background: #000; }
 html:has(.living-title-page) { scroll-behavior: auto; }
 body:has(.living-title-page) header.sticky { position: fixed; inset: 0 0 auto; background-color: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; transition: background-color 200ms ease; }
 .site-nav__inner { max-width: none; padding-inline: var(--arcade-shell-gutter); }
-.site-nav__inner > a, .site-nav__desktop { filter: drop-shadow(0 1px 2px #000) drop-shadow(0 0 7px rgb(0 0 0 / 92%)); }
+.site-nav__inner > a, .site-nav__desktop { filter: drop-shadow(0 1px 2px #000) drop-shadow(0 0 10px rgb(0 0 0 / 96%)); }
 .dark body:has(.living-title-page) header.sticky { color: #ededed; background-color: transparent; }
 .dark body:has(.living-title-page) header.sticky.is-over-footer { background-color: #000; }
 .dark body:has(.living-title-page) header.sticky a { color: #d7d7d7; }
@@ -52,7 +52,7 @@ body:has(.living-title-page) .site-wordmark { font-family: var(--font-site-displ
 body:has(.living-title-page) .site-default-footer { display: block; position: relative; z-index: 2; min-height: 320px; color: var(--site-foreground); background: var(--site-background); }
 .site-default-footer footer > div:last-child fieldset { display: none; }
 .living-title-page { background: #000; }
-.living-title { position: relative; height: 1200vh; min-height: 7200px; color: #ededed; background: #000; }
+.living-title { --tour-progress: 0; position: relative; height: 1200vh; min-height: 7200px; color: #ededed; background: #000; }
 .living-title__legacy-anchor { position: absolute; left: 0; width: 1px; height: 1px; pointer-events: none; }
 .living-title__stage { position: sticky; top: 0; width: 100%; height: 100vh; height: var(--arcade-viewport-height); overflow: hidden; isolation: isolate; background: #000; }
 .living-title__canvas { position: absolute; z-index: -3; inset: 0; display: block; width: 100%; height: 100%; touch-action: pan-y; }
@@ -60,13 +60,20 @@ body:has(.living-title-page) .site-default-footer { display: block; position: re
 .living-title__copy { position: absolute; z-index: 1; left: var(--arcade-shell-inset); top: 96px; width: min(600px, calc(100vw - 2 * var(--arcade-shell-inset))); }
 .living-title__chapter { width: 100%; pointer-events: none; animation: living-title-copy-in 320ms cubic-bezier(.2,.8,.2,1) both; }
 .living-title__chapter.is-initial { animation: none; }
-.living-title__chapter h1 { max-width: 600px; margin: 0 0 17px; font: 400 clamp(44px, 4vw, 56px)/.96 var(--font-site-display), var(--font-geist-mono), monospace; letter-spacing: -.012em; text-shadow: 0 1px 2px #000, 0 0 10px rgb(0 0 0 / 88%); }
-.living-title__chapter p { max-width: 430px; margin: 0; color: rgb(255 255 255 / 68%); font: 400 18px/1.5 var(--font-geist-sans), Arial, sans-serif; letter-spacing: -.01em; text-shadow: 0 1px 2px #000, 0 0 8px rgb(0 0 0 / 92%); }
+.living-title__chapter h1 { max-width: 600px; margin: 0 0 17px; font: 400 clamp(44px, 4vw, 56px)/.96 var(--font-site-display), var(--font-geist-mono), monospace; letter-spacing: -.012em; text-shadow: 0 1px 2px #000, 0 0 14px rgb(0 0 0 / 94%); }
+.living-title__chapter p { max-width: 430px; margin: 0; color: rgb(255 255 255 / 80%); font: 400 18px/1.5 var(--font-geist-sans), Arial, sans-serif; letter-spacing: -.01em; text-shadow: 0 1px 2px #000, 0 0 12px rgb(0 0 0 / 96%); }
 .living-title__chapter h1 span, .living-title__chapter p span { display: block; width: max-content; max-width: 100%; white-space: nowrap; }
-.living-title__tour { position: relative; display: inline-flex; min-height: 28px; align-items: center; gap: 7px; margin-top: 18px; border: 0; padding: 0 2px; color: rgb(255 255 255 / 48%); background: transparent; cursor: pointer; font: 550 11px/1 var(--font-geist-mono), monospace; letter-spacing: .07em; text-shadow: 0 1px 2px #000, 0 0 7px #000; text-transform: uppercase; transition: color 180ms ease; }
+.living-title__tour { position: absolute; z-index: 2; right: var(--arcade-shell-inset); bottom: clamp(28px, 5vh, 48px); display: inline-flex; width: 44px; height: 44px; align-items: center; justify-content: center; border: 0; border-radius: 999px; padding: 0; color: rgb(255 255 255 / 58%); background: rgb(0 0 0 / 58%); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); cursor: pointer; transition: color 180ms ease, background-color 180ms ease; }
+.living-title__tour-ring { position: absolute; inset: 0; width: 44px; height: 44px; overflow: visible; transform: rotate(-90deg); }
+.living-title__tour-ring circle { fill: none; stroke-width: 1.5; }
+.living-title__tour-ring-track { stroke: rgb(255 255 255 / 18%); }
+.living-title__tour-ring-value { stroke: rgb(255 255 255 / 74%); stroke-linecap: round; stroke-dasharray: 113.1; stroke-dashoffset: calc(113.1 * (1 - var(--tour-progress))); }
+.living-title__tour-media { position: relative; width: 16px; height: 16px; color: rgb(255 255 255 / 88%); fill: currentColor; }
+.living-title__tour-media.is-play { translate: 1px 0; }
 .living-title__tour:hover { color: rgb(255 255 255 / 86%); }
-.living-title__tour > span { color: rgb(255 255 255 / 68%); font-size: 8px; }
+.living-title__tour:focus-visible { outline: 1px solid currentColor; outline-offset: 4px; }
 .living-title__tour.is-playing { color: rgb(255 255 255 / 68%); }
+.living-title__tour-mobile { display: none; }
 .living-title__actions { position: absolute; z-index: 1; left: var(--arcade-shell-inset); bottom: clamp(28px, 5vh, 48px); display: flex; align-items: center; gap: 14px; }
 .living-title__actions button, .living-title__actions a { font: 550 13px/1 var(--font-geist-sans), Arial, sans-serif; }
 .living-title__primary { box-sizing: border-box; display: inline-flex; height: 40px; align-items: center; gap: 9px; border: 1px solid #ededed; border-radius: 6px; padding: 0 15px; color: #000; background: #ededed; cursor: pointer; transition: background 150ms ease; }
@@ -99,9 +106,14 @@ body:has(.living-title-page) .site-default-footer { display: block; position: re
   .living-title__copy { top: 92px; }
   .living-title__chapter h1 { max-width: 100%; font-size: clamp(26px, 8.7vw, 42px); }
   .living-title__chapter p { max-width: 100%; font-size: clamp(13px, 4vw, 16px); line-height: 1.5; }
-  .living-title__tour { margin-top: 14px; }
   .living-title__actions { right: 24px; bottom: 28px; flex-wrap: wrap; }
   .living-title__install-command { order: 3; width: max-content; max-width: 100%; }
+}
+
+@media (max-width: 760px) and (orientation: portrait) {
+  .living-title__tour-desktop { display: none; }
+  .living-title__tour-mobile { display: block; margin-top: 18px; }
+  .living-title__tour-mobile .living-title__tour { position: relative; right: auto; bottom: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {
