@@ -17,7 +17,7 @@ Emoji come in two classes:
 | Default look | colour emoji | monochrome text glyph |
 | `East_Asian_Width` | Wide | Neutral |
 | Terminal advances | **2 cells** | **1 cell** |
-| Examples | 🪵 🧱 🐑 🎲 🤖 🏰 🔨 💂 | 🛡 🛠 🏘 ⚔ ⚒ ⚙ 🗺 |
+| Examples | 🪵 🧱 🐑 🎲 🤖 🏢 🔨 💂 | 🛡 🛠 🏘 ⚔ ⚒ ⚙ 🗺 |
 
 A text-default emoji only *looks* like an emoji when followed by U+FE0F (variation selector-16):
 `🛡️` is `U+1F6E1 U+FE0F`. The catch is that **the selector changes how it is drawn but not how it

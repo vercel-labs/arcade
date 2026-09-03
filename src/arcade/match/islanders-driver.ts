@@ -19,7 +19,7 @@ import { IslandersState } from '../../rules/islanders/islanders.ts';
 import { NUM_NODES, nodeHexes } from '../../rules/islanders/board-topology.ts';
 import type { BoardSetup } from '../../rules/islanders/setup.ts';
 import { RESOURCES, resourceIndex, type IslandersAction, type PlayerColor, type Resource } from '../../rules/islanders/types.ts';
-import { DEV_CARD_ICON, KNIGHT_ICON, RESOURCE_LOOK, ROAD_ICON, SETTLEMENT_ICON } from '../games/islanders/palette.ts';
+import { CITY_ICON, DEV_CARD_ICON, KNIGHT_ICON, RESOURCE_LOOK, ROAD_ICON, SETTLEMENT_ICON } from '../games/islanders/palette.ts';
 import { createIslandersModelPlayer, runIslandersMatch } from '../../harness/games/islanders/islanders-setup.ts';
 import { disambiguateLabels } from '../../harness/labels.ts';
 import { shortModel } from '../../harness/model-label.ts';
@@ -548,7 +548,7 @@ export class IslandersDriver {
           : action.type === 'buildSettlement'
             ? `${SETTLEMENT_ICON} placed a settlement`
             : action.type === 'buildCity'
-              ? `${SETTLEMENT_ICON} placed a city`
+              ? `${CITY_ICON} placed a city`
               : action.type === 'roll'
                 ? `rolled ${(outcome?.dice ?? this.live?.dice() ?? []).join(' + ')} = ${(outcome?.dice ?? this.live?.dice() ?? []).reduce((sum, die) => sum + die, 0)}`
                 : action.type === 'endTurn'

@@ -18,7 +18,7 @@ export const DEV_CARD_ICON = '🔨';
 export const KNIGHT_ICON = '💂';
 export const ROAD_ICON = '➖';
 export const SETTLEMENT_ICON = '🏠';
-export const CITY_ICON = '🏰';
+export const CITY_ICON = '🏢';
 
 export const RESOURCE_ORDER: Resource[] = ['lumber', 'brick', 'wool', 'grain', 'ore'];
 export const RESOURCE_LOOK: Record<Resource, IslandersCardLook> = {
