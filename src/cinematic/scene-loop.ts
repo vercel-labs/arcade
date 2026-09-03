@@ -29,4 +29,9 @@ export class ActiveSceneLoopClock {
     const elapsed = total - iteration * duration;
     return { elapsed, phase: elapsed / duration, iteration };
   }
+
+  reset(): void {
+    this.active = false;
+    this.enteredAt = 0;
+  }
 }

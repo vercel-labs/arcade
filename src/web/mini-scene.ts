@@ -2,6 +2,8 @@ import type { Surface } from '../engine/surface.ts';
 import type { ChessPieceName } from '../game-visuals/chess/index.ts';
 import type { Terrain } from '../rules/islanders/types.ts';
 import type { BrowserDisplayMode } from './browser-chess.ts';
+import type { CinematicCreator } from './browser-wisp.ts';
+import type { Texture } from '../engine/texture-data.ts';
 
 export type BrowserIslandersTerrainSceneId = `islanders-${Terrain}`;
 export type BrowserMiniSceneId =
@@ -11,12 +13,16 @@ export type BrowserMiniSceneId =
   | 'poker-chips';
 
 export interface BrowserMiniSceneOptions {
+  /** Internal raster samples per terminal-cell width; defaults to production 3x6. */
+  rasterScale?: number;
   /** Browser-visible directory containing pawn.obj, knight.obj, and the other production pieces. */
   chessPieceAssetBaseUrl?: string;
   /** Exact per-piece URLs override the package-owned model URLs. */
   chessPieceAssetUrls?: Record<ChessPieceName, string>;
   /** Optional transport override for tests, authenticated assets, or custom hosts. */
   chessPieceFetchText?: (url: string) => Promise<string>;
+  /** Already-decoded marks for non-browser hosts. */
+  wispTextures?: Partial<Record<CinematicCreator, Texture>>;
 }
 
 export interface BrowserMiniSceneFrame {

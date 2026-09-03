@@ -43,6 +43,7 @@ import { PokerMatch } from './match/poker-driver.ts';
 import { buildPokerSetupPanel, mountPokerSetup, pokerPreviewSeats, pokerSetupReady, pokerSetupSelection, pokerStartingStack, setPokerSetupChanged, setPokerSetupModelCatalog } from './match/poker-setup.ts';
 import { LogosScene } from './scenes/logos-scene.ts';
 import { AudioScene } from './scenes/audio-scene.ts';
+import { buildTrailerOverlay, TrailerScene } from './scenes/trailer-scene.ts';
 import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/input.ts';
 import { detectTerminalColorMode } from '../platform/terminal-color-detection.ts';
 import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, buildUpdateModal, mouseControlsFor, type BarActions, type MenuItem, type Mode, type RenderMode } from './shell/bars.ts';
@@ -128,6 +129,9 @@ const chessGame = new ChessGameScene();
 chessGame.onEvent = (event) => tutorial.signal(`chess.${event}`);
 const logosScene = new LogosScene();
 const audioScene = new AudioScene();
+let trailerScene: TrailerScene | null = null;
+let trailerStartedAt = 0;
+function currentTrailerScene(): TrailerScene { return trailerScene ??= new TrailerScene(); }
 const cardsScene = new CardsScene();
 const pokerScene = new PokerGameScene();
 // Game events (new hand, flop/turn/river, who won) go into the table-talk thread as grey
@@ -688,6 +692,7 @@ function syncLive(): void {
     mode === 'prism' ||
     prismToMenu.active() ||
     mode === 'menu' ||
+    mode === 'trailer' ||
     mode === 'logos' ||
     mode === 'audio' ||
     (mode === 'chess-game' && chessGame.isMatchActive()) ||
@@ -1740,6 +1745,17 @@ function enterMenu(clear = true): void {
   }
 }
 
+function enterTrailer(): void {
+  stopAiMatch();
+  stopPokerMatch();
+  audioScene.deactivate();
+  mode = 'trailer';
+  currentTrailerScene().start();
+  trailerStartedAt = performance.now();
+  ui.setRoot(null);
+  fullRepaint();
+}
+
 // The CLI owns only the trigger and wall-clock lifecycle. The actual transition
 // is the same platform-neutral Surface compositor used by browser cinematics.
 function startPrismToMenu(): void {
@@ -1763,6 +1779,7 @@ function launchSelected(): void {
     openBrowser(action.url);
     return;
   }
+  if (item?.id === 'trailer') void currentTrailerScene().prepare();
   launching = true;
   launchT = 0;
   launchSel = menuSel;
@@ -1779,6 +1796,7 @@ function enterGame(id: string): void {
   else if (id === 'poker-test') enterCards();
   else if (id === 'islanders') enterIslandersGame();
   else if (id === 'islanders-test') enterIslandersTiles();
+  else if (id === 'trailer') enterTrailer();
   else if (id === 'ui') enterUi();
 }
 
@@ -2249,6 +2267,11 @@ function syncBar(): void {
       wispSwapFocused = true;
       forceFrame = true;
     }
+  } else if (mode === 'trailer') {
+    popGameOver();
+    popSetup();
+    popSwap();
+    ui.setRoot(buildTrailerOverlay(cols, rows, enterMenu));
   } else if (mode === 'menu') {
     popGameOver();
     popSetup();
@@ -2615,6 +2638,7 @@ function preparePixelDisplay(withBloom: boolean): RenderTarget {
   } else if (withBloom) {
     bloom(display, { threshold: 65, intensity: 0.85, radius: 2, passes: 2 });
   }
+
   pixelDisplayPrepared = true;
   pixelDisplayBloom = withBloom;
   return display;
@@ -2702,6 +2726,13 @@ function onKeyImpl(ev: KeyEvent): void {
   // type-to-talk screen can swallow it (in raw mode ctrl+c arrives as a keypress, not SIGINT).
   if (ev.ctrl && ev.name === 'c') {
     quit();
+    return;
+  }
+  // Trailer is an uninterrupted film surface. Its sole visible control is Menu;
+  // suppress global display/shortcuts/quit actions until playback returns home.
+  if (mode === 'trailer') {
+    if (ev.name === 'escape' || ev.name === 'm') enterMenu();
+    else ui.handleKey(ev);
     return;
   }
   if (failureNotice) {
@@ -2828,6 +2859,12 @@ function onMouseImpl(e: MouseEvent): void {
     } else if (e.type === 'up') {
       ui.pointerUp();
     }
+    return;
+  }
+  if (mode === 'trailer') {
+    if (e.type === 'move') ui.hover(e.x, e.y);
+    else if (e.type === 'down') ui.pointerDown(e.x, e.y, e.button);
+    else if (e.type === 'up') ui.pointerUp();
     return;
   }
   // Modal popups (promotion picker, game-over result, wisp model swap): clicks/hover go
@@ -2984,7 +3021,7 @@ const parse = createInputParser({
   },
 });
 
-function tick(dt: number): void {
+function tick(dt: number, now = performance.now()): void {
   // Prepared pixel output may be reused by multiple compositor phases within this tick, never
   // across rendered frames whose source target may have changed.
   pixelDisplayPrepared = false;
@@ -3066,6 +3103,16 @@ function tick(dt: number): void {
           })
         : presentScene() + ui.frame(),
     );
+    return;
+  }
+
+  if (mode === 'trailer') {
+    const trailer = currentTrailerScene();
+    trailer.seek((now - trailerStartedAt) / 1000);
+    syncBar();
+    const frame = trailer.frame(cols, rows);
+    writeFrame(ui.frameComposited((surface) => frame.copyInto(surface)));
+    if (trailer.done()) enterMenu();
     return;
   }
 

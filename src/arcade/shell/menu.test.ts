@@ -14,3 +14,8 @@ test('the CLI catalogue ends with a stable production website action', () => {
   assert.deepEqual(menuItemAction(MENU_ITEMS.find(({ id }) => id === 'chess')), { kind: 'launch' });
   assert.equal(menuItemAction(MENU_ITEMS.find(({ id }) => id === 'mahjong')), null);
 });
+
+test('the CLI catalogue includes the Trailer as a playable cover', () => {
+  assert.deepEqual(MENU_ITEMS.find(({ id }) => id === 'trailer'), { id: 'trailer', title: 'Trailer', enabled: true });
+  assert.deepEqual(menuItemAction(MENU_ITEMS.find(({ id }) => id === 'trailer')), { kind: 'launch' });
+});

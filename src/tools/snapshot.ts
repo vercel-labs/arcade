@@ -73,9 +73,11 @@ import { RANK_LABELS, type Suit, SUIT_LETTERS } from '../rules/poker/cards.ts';
 import type { Color } from '../rules/chess/types.ts';
 import { Box, Button, Dropdown, NoticeToast, insetSceneViewport, layout, paint, Screen, Text, type PaintState } from '../tui/index.ts';
 import { buildTeamSwitch, markSwitchSucceeded, mountTeamSwitch, setTeamSwitchTeams } from '../arcade/shell/team-switch.ts';
-import { UI_CHROME_PILL } from '../arcade/theme.ts';
+import { ARCADE_THEME, UI_CHROME_PILL } from '../arcade/theme.ts';
 import { TUTORIAL_CHAPTERS, TUTORIAL_PULSE, TutorialController, tutorialRailWidth } from '../arcade/tutorial/tutorial.ts';
 import { modelFailureNotice } from '../harness/model-failure-notice.ts';
+import { TrailerScene } from '../arcade/scenes/trailer-scene.ts';
+import { buildTrailerOverlay } from '../arcade/scenes/trailer-scene.ts';
 
 type Rgb = [number, number, number];
 // Terminal cells are roughly twice as tall as they are wide. Rasterize each
@@ -438,6 +440,7 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot audio [cols] [rows] [out]          realtime audio scene (creator wisp)
   pnpm snapshot splash [cols] [rows] [t] [out]     boot splash at time t
   pnpm snapshot coverflow|menu [cols] [rows] [pos] [hover] [out]   Cover Flow carousel
+  pnpm snapshot trailer [cols] [rows] [seconds] [out]   terminal Trailer at wall-clock seconds
   pnpm snapshot settings [cols] [rows] [open|account [dropdown|loading|switched|error|long]] [out]   home menu button, popup, or account modal
   pnpm snapshot launch [cols] [rows] [index] [t] [out]   Cover Flow flip-to-title splash
   pnpm snapshot prism-prompt [cols] [rows] [t] [out]    prism loading screen + press-any-key marquee
@@ -503,6 +506,8 @@ if (process.argv[2] === 'help' || process.argv[2] === '--help' || process.argv[2
   coverflowSnapshot();
 } else if (process.argv[2] === 'launch') {
   launchSnapshot();
+} else if (process.argv[2] === 'trailer') {
+  await trailerSnapshot();
 } else if (process.argv[2] === 'prism-prompt') {
   prismPromptSnapshot();
 } else if (process.argv[2] === 'prism-menu-ink') {
@@ -1489,6 +1494,20 @@ function coverflowSnapshot(): void {
   }
   surfaceToPpm(surf, cols, rows, out);
   console.log(`wrote ${out} (${cols}x${rows})`);
+}
+
+async function trailerSnapshot(): Promise<void> {
+  const cols = Number(process.argv[3]) || 140;
+  const rows = Number(process.argv[4]) || 44;
+  const seconds = Number(process.argv[5]) || 0;
+  const out = process.argv.find((arg) => arg.endsWith('.ppm')) ?? '.snapshots/trailer.ppm';
+  const trailer = new TrailerScene();
+  await trailer.prepare();
+  trailer.step(seconds);
+  const scene = trailer.frame(cols, rows);
+  const screen = new Screen(cols, rows, ARCADE_THEME);
+  screen.setRoot(buildTrailerOverlay(cols, rows, () => {}), { x: 0, y: 0, w: cols, h: rows });
+  surfaceToPpm(screen.snapshot((surface) => scene.copyInto(surface)), cols, rows, out);
 }
 
 // The home menu button over Cover Flow; `open` shows its menu and `account`

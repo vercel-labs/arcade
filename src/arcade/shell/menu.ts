@@ -26,6 +26,7 @@ const ALL_ITEMS: MenuItem[] = [
   // its right (see shell/first-run.ts). Same ring either way, just a different starting slot.
   { id: 'tutorial', title: 'Tutorial', enabled: true },
   ...ARCADE_CATALOGUE.slice(0, 3),
+  { id: 'trailer', title: 'Trailer', enabled: true },
   { id: 'islanders-test', title: 'Islanders-Test', enabled: true, dev: true },
   ...ARCADE_CATALOGUE.slice(3),
   { id: 'poker-test', title: 'Poker-Test', enabled: true, dev: true },

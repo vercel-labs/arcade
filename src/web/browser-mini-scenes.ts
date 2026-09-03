@@ -63,11 +63,12 @@ function loadChessMeshes(options: BrowserMiniSceneOptions): Promise<ChessPieceMe
 
 /** Board-only adapter around Arcade's browser-safe Chess rules and renderer. */
 export class BrowserChessBoardShowcase implements BrowserMiniScene {
-  private readonly arcade = new BrowserArcade();
+  private readonly arcade: BrowserArcade;
   private readonly loadPieceMeshes: () => Promise<void>;
   private preparation: Promise<void> | null = null;
 
   constructor(options: BrowserMiniSceneOptions = {}) {
+    this.arcade = new BrowserArcade(options.wispTextures, options.rasterScale);
     this.arcade.openChess();
     this.loadPieceMeshes = async () => this.arcade.setPieceMeshes(await loadChessMeshes(options));
   }

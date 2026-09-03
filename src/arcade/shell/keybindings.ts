@@ -204,7 +204,8 @@ export function installKeymap(h: KeyHandlers): Keymap {
   // "return home?" confirm via escBack; other screens go straight to the menu. The menu's
   // own escape (→ prism) and each modal's escape (→ close) live in layers above these and
   // take precedence. (Prism's escape falls through to the global esc → quit.)
-  for (const layer of ['chess', 'cards', 'logos', 'ui', 'poker', 'audio', 'islanders', 'islanders-tiles']) keymap.bind(layer, { key: 'escape', cmd: 'nav.escBack' });
+  for (const layer of ['trailer', 'chess', 'cards', 'logos', 'ui', 'poker', 'audio', 'islanders', 'islanders-tiles']) keymap.bind(layer, { key: 'escape', cmd: 'nav.escBack' });
+  keymap.bind('trailer', { key: 'm', cmd: 'nav.back' });
 
   // Audio screen: type-to-talk owns letters (handled before the keymap), so only the
   // non-text keys are bound here — Escape returns to the menu and the arrows pan the

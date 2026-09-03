@@ -30,9 +30,15 @@ const LOGO_URLS: Record<CinematicCreator, string> = {
 
 /** Browser counterpart to Arcade's creator Wisp: production flame + masked logo. */
 export class BrowserCreatorWisps {
-  private readonly textures = new Map<CinematicCreator, Texture>();
+  private readonly textures: Map<CinematicCreator, Texture>;
   private preparation: Promise<void> | null = null;
   private readonly mark: Mesh = quad(1);
+
+  constructor(textures: Partial<Record<CinematicCreator, Texture>> = {}) {
+    this.textures = new Map(Object.entries(textures) as Array<[CinematicCreator, Texture]>);
+  }
+
+  hasTexture(creator: CinematicCreator): boolean { return this.textures.has(creator); }
 
   prepare(creators: readonly CinematicCreator[]): Promise<void> {
     const runtime = globalThis as unknown as Partial<BrowserImageRuntime>;

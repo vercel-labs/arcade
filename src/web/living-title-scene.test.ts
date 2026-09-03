@@ -4,6 +4,7 @@ import { anchoredInkMatchCut, earlyScenePortraitScale, LIVING_TITLE_ACT_BOUNDARI
 import { Surface } from '../engine/surface.ts';
 import { inkNoise } from '../cinematic/transitions/ink-match-cut.ts';
 import { ARCADE_CATALOGUE } from '../cinematic/catalogue.ts';
+import { POKER_LOOP_SECONDS } from '../cinematic/scripted-games.ts';
 
 test('living title renders prism, Cover Flow, chess, poker, and Islanders acts at one grid size', () => {
   const scene = new LivingTitleScene();
@@ -21,6 +22,19 @@ test('living title renders prism, Cover Flow, chess, poker, and Islanders acts a
     assert.ok(countPaintedCells(frame) > 20);
     assert.ok(allCellBackgroundsAreBlack(frame), 'living title should default to plain ASCII, not hybrid cells');
   }
+});
+
+test('scene readiness becomes explicit when asynchronous browser assets finish', async () => {
+  let resolveText!: (value: string) => void;
+  const pending = new Promise<string>((resolve) => { resolveText = resolve; });
+  const scene = new LivingTitleScene({ chess: { chessPieceFetchText: () => pending }, poker: { fetchTableText: () => pending } });
+  assert.equal(scene.ready(), false);
+  const triangle = 'v -0.5 0 0\nv 0.5 0 0\nv 0 1 0\nf 1 2 3';
+  const prepared = scene.prepare();
+  resolveText(triangle);
+  await prepared;
+  assert.equal(scene.ready(), true);
+  assert.ok(countPaintedCells(scene.frame({ cols: 80, rows: 36, timeSeconds: 1, progress: 0.35 })) > 20);
 });
 
 test('living title maps scroll progress to the expected game act', () => {
@@ -132,6 +146,22 @@ test('Chess and Poker ink cuts begin from the exact last live frame', () => {
   }
 });
 
+test('browser ink cuts keep both scene clocks alive while alternating live plate refreshes', () => {
+  const scene = new LivingTitleScene();
+  const act = 2;
+  const start = LIVING_TITLE_ACT_BOUNDARIES[act], end = LIVING_TITLE_ACT_BOUNDARIES[act + 1];
+  const morph = LIVING_TITLE_MORPH_STARTS[act];
+  const progress = (local: number) => start + (end - start) * local;
+  const first = scene.frame({ cols: 100, rows: 40, timeSeconds: 20, progress: progress(morph + 0.025) });
+  scene.frame({ cols: 100, rows: 40, timeSeconds: 20.2, progress: progress(morph + 0.05) });
+  const third = scene.frame({ cols: 100, rows: 40, timeSeconds: 20.4, progress: progress(morph + 0.075) });
+  assert.notEqual(surfaceSignature(first), surfaceSignature(third), 'the burn should not reuse one frozen composite');
+  const refreshes = (scene as unknown as { transitionRefreshSource: Map<string, boolean> }).transitionRefreshSource;
+  assert.equal(refreshes.get('2:100:40'), false, 'source and destination refresh ownership should alternate');
+  const pokerLoop = (scene as unknown as { pokerLoop: { sample(total: number, active: boolean, duration: number): { elapsed: number } } }).pokerLoop;
+  assert.ok(pokerLoop.sample(20.5, true, POKER_LOOP_SECONDS).elapsed > 0, 'incoming Poker gameplay should already be moving beneath the burn');
+});
+
 test('anchored ink match cut preserves exact endpoints and returns a cold silver seam', () => {
   const from = solidSurface(20, 10, 'A', [220, 120, 50]);
   const to = solidSurface(20, 10, 'B', [40, 210, 120]);
@@ -240,7 +270,9 @@ test('transition plate cache stays bounded across repeated viewport resizes', ()
   const scene = new LivingTitleScene();
   for (let index = 0; index < 14; index++) scene.prepareTransitionPart(0, 80 + index, 36, 'destination', 1);
   const plates = (scene as unknown as { transitionPlates: Map<string, unknown> }).transitionPlates;
+  const refreshes = (scene as unknown as { transitionRefreshSource: Map<string, boolean> }).transitionRefreshSource;
   assert.equal(plates.size, 8);
+  assert.ok(refreshes.size <= 8);
   assert.ok(!plates.has('0:80:36'));
   assert.ok(plates.has('0:93:36'));
 });

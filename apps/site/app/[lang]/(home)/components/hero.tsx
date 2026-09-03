@@ -1,16 +1,9 @@
 'use client';
 
-import { CanvasSurfaceHost, LIVING_TITLE_MORPH_STARTS, LivingTitleScene, MOBILE_CINEMATIC_CELL_HEIGHT, PointerField, TERMINAL_CELL_ASPECT_RATIO, advanceAutoTourProgress, interruptsAutoTourKey, livingTitleTimeline, responsiveTerminalGrid, type CanvasLike } from '@vercel/arcade/web';
+import { CanvasSurfaceHost, CINEMATIC_CHAPTERS, LIVING_TITLE_MORPH_STARTS, LivingTitleScene, MOBILE_CINEMATIC_CELL_HEIGHT, PointerField, TERMINAL_CELL_ASPECT_RATIO, advanceAutoTourProgress, interruptsAutoTourKey, livingTitleTimeline, responsiveTerminalGrid, type CanvasLike } from '@vercel/arcade/web';
 import { QuickTerminalButton } from '@/components/quick-terminal';
 import { useEffect, useRef, useState } from 'react';
 import { InstallCommand } from './install-command';
-const CHAPTERS = [
-  { title: ['The 3D game engine', 'built for agents.'], body: ['ASCII in your terminal, no GPU.', 'Humans can play too.'] },
-  { title: ['Powered by', 'Vercel AI Gateway.'], body: ['Watch hundreds of models face off,', 'or challenge them yourself.'] },
-  { title: ['Different minds.', 'Endless possibilities.'], body: ['Everything you see is open source.', 'Have an idea? Your move.'] },
-  { title: ['Every player', 'has a tell.'], body: ['Discover the hidden tendencies', 'of your favorite models.'] },
-  { title: ['Settle in,', 'have some fun!'], body: ['Play a few rounds while waiting for', 'your coding agents to finish.'] },
-] as const;
 export const Hero = () => {
   const rootRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -359,9 +352,9 @@ export const Hero = () => {
         <canvas aria-label="Arcade scenes transforming from a glass prism into games" className="living-title__canvas" ref={canvasRef} />
         <div aria-hidden="true" className="living-title__vignette" />
         <div className="living-title__copy" aria-live="polite">
-          <div className={`living-title__chapter ${chapter === 0 ? 'is-initial' : ''}`} key={CHAPTERS[chapter].title.join(' ')}>
-            <h1>{CHAPTERS[chapter].title.map((line) => <span key={line}>{line}</span>)}</h1>
-            <p>{CHAPTERS[chapter].body.map((line) => <span key={line}>{line}</span>)}</p>
+          <div className={`living-title__chapter ${chapter === 0 ? 'is-initial' : ''}`} key={CINEMATIC_CHAPTERS[chapter].title.join(' ')}>
+            <h1>{CINEMATIC_CHAPTERS[chapter].title.map((line) => <span key={line}>{line}</span>)}</h1>
+            <p>{CINEMATIC_CHAPTERS[chapter].body.map((line) => <span key={line}>{line}</span>)}</p>
           </div>
         </div>
         <div className="living-title__tour-desktop">{tourControl}</div>

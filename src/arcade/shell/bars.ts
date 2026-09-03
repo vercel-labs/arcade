@@ -9,7 +9,7 @@ import type { RGB } from '../../engine/index.ts';
 import { ARCADE_CHROME_TEXT, ARCADE_OUTLINE_CONTROL, UI_CHROME_BG, UI_CHROME_PILL } from '../theme.ts';
 import { CHESS_PALETTE } from '../games/chess/palette.ts';
 
-export type Mode = 'prism' | 'menu' | 'chess-game' | 'logos' | 'ui' | 'audio' | 'cards' | 'poker' | 'islanders' | 'islanders-tiles';
+export type Mode = 'prism' | 'menu' | 'trailer' | 'chess-game' | 'logos' | 'ui' | 'audio' | 'cards' | 'poker' | 'islanders' | 'islanders-tiles';
 export type RenderMode = 'ascii' | 'pixels' | 'hybrid';
 
 export interface BarActions {

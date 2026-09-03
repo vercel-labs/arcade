@@ -21,8 +21,15 @@ const URLS: Record<typeof ITEMS[number]['id'], string> = {
 /** Browser image adapter around Arcade's shared production Cover Flow. */
 export class BrowserCoverFlow {
   private readonly target = new RenderTarget(1, 1);
-  private readonly textures = new Map<string, Texture>(ITEMS.map(({ id }, index) => [id, fallbackCover(index)]));
+  private readonly textures: Map<string, Texture>;
   private readonly renderer = new CoverFlowRenderer(ITEMS, (id) => this.textures.get(id) ?? null);
+
+  constructor(
+    textures: Partial<Record<typeof ITEMS[number]['id'], Texture>> = {},
+    private readonly showLabels = true,
+  ) {
+    this.textures = new Map(ITEMS.map(({ id }, index) => [id, textures[id] ?? fallbackCover(index)]));
+  }
 
   prepare(): Promise<void> {
     const runtime = globalThis as unknown as { createImageBitmap?: unknown };
@@ -41,6 +48,7 @@ export class BrowserCoverFlow {
     const surface = new Surface(cols, rows);
     surface.fillRect(0, 0, cols, rows, [0, 0, 0]);
     shapeGlyphToSurface(surface, target, cols, rows, { color: true, contrast: 2, hybrid: false, coloredBackground: false });
+    if (!this.showLabels) return surface;
     const selected = ITEMS[coverFlowIndex(pos, ITEMS.length)];
     const displayTitle = selected.title;
     const label = `${displayTitle}${selected.enabled ? '' : '   coming soon'}`;

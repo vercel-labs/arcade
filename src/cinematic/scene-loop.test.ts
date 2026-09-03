@@ -15,6 +15,14 @@ test('active scene clock starts on entry, loops, and resets after exit', () => {
   assert.equal(clock.sample(90, true, 10).phase, 0);
 });
 
+test('active scene clock can restart explicitly for a replaying host', () => {
+  const clock = new ActiveSceneLoopClock();
+  clock.sample(10, true, 4);
+  assert.equal(clock.sample(12, true, 4).elapsed, 2);
+  clock.reset();
+  assert.equal(clock.sample(12, true, 4).elapsed, 0);
+});
+
 test('Evergreen sequence is a legal complete game with a loop hold', () => {
   const game = new ChessState();
   for (const notation of EVERGREEN_GAME_MOVES) {

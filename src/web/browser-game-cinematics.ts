@@ -1,5 +1,5 @@
 import { cameraMatrices } from '../engine/camera.ts';
-import { islandersCinematicCamera, pokerCinematicCamera } from '../cinematic/camera.ts';
+import { islandersCinematicCamera, pokerCinematicCamera, type CinematicOrbitCamera } from '../cinematic/camera.ts';
 import { ISLANDERS_SETUP_END, islandersCinematicGameplay, islandersSetupCoastProgress, islandersSetupHarborProgress, islandersSetupTileProgress } from '../cinematic/islanders-choreography.ts';
 import { POKER_CINEMATIC_HANDS, pokerLoopState } from '../cinematic/scripted-games.ts';
 import type { RGB } from '../engine/color.ts';
@@ -18,6 +18,8 @@ import type { BoardSetup } from '../rules/islanders/setup.ts';
 import { mulberry32 } from '../engine/random.ts';
 import { parseCard, RANK_LABELS, type Card } from '../rules/poker/cards.ts';
 import { BrowserCreatorWisps } from './browser-wisp.ts';
+import type { CinematicCreator } from './browser-wisp.ts';
+import type { Texture } from '../engine/texture-data.ts';
 
 const BLACK: RGB = [0, 0, 0];
 const RED: RGB = [196, 54, 62];
@@ -61,30 +63,37 @@ export class BrowserPokerCinematic {
   private table: PokerTableMeshes | null = null;
   private preparation: Promise<void> | null = null;
   private readonly hands: readonly PokerHandAssets[];
-  private readonly wisps = new BrowserCreatorWisps();
+  private readonly wisps: BrowserCreatorWisps;
   private readonly creators = ['xai', 'openai', 'anthropic', 'google', 'deepseek'] as const;
   private readonly seatCount = 5;
 
-  constructor(options: { table?: PokerTableMeshes } = {}) {
+  private readonly fetchTableText?: (url: string) => Promise<string>;
+  private readonly rasterScale: number;
+
+  constructor(options: { table?: PokerTableMeshes; fetchTableText?: (url: string) => Promise<string>; wispTextures?: Partial<Record<CinematicCreator, Texture>>; rasterScale?: number } = {}) {
     this.table = options.table ?? null;
+    this.fetchTableText = options.fetchTableText;
+    this.wisps = new BrowserCreatorWisps(options.wispTextures);
+    this.rasterScale = options.rasterScale ?? 3;
     this.hands = POKER_CINEMATIC_HANDS.map((script, handIndex) => createPokerHandAssets(script, handIndex, this.seatCount));
   }
 
   prepare(): Promise<void> {
     this.preparation ??= Promise.all([
-      this.table ? Promise.resolve() : fetchPokerTableMeshes().then((meshes) => { this.table = meshes; }),
+      this.table ? Promise.resolve() : fetchPokerTableMeshes(this.fetchTableText).then((meshes) => { this.table = meshes; }),
       this.wisps.prepare(this.creators),
       preparePokerCardTextures(),
     ]).then(() => undefined);
     return this.preparation;
   }
 
+
   frame(cols: number, rows: number, cameraProgress: number, timeSeconds: number, gameplayPhase = cameraProgress, gameplayIteration = 0): Surface {
     const p = clamp01(cameraProgress);
     const hand = pokerLoopState(gameplayPhase, gameplayIteration);
     const assets = this.hands[hand.handIndex];
     const target = this.target;
-    target.resize(cols * 3, rows * 6);
+    target.resize(cols * this.rasterScale, rows * this.rasterScale * 2);
     target.clear();
     const camera = pokerCinematicCamera(p, target.width / target.height);
     const vp = cameraMatrices(camera, target.width / target.height).viewProjection;
@@ -221,13 +230,18 @@ export class BrowserIslandersCinematic {
     return Math.atan2(aw.z, aw.x) - Math.atan2(bw.z, bw.x);
   });
 
+  constructor(
+    private readonly cameraFor: (progress: number, aspect: number, brickHarbor: { x: number; z: number }) => CinematicOrbitCamera = islandersCinematicCamera,
+    private readonly rasterScale = 3,
+  ) {}
+
   frame(cols: number, rows: number, progress: number, timeSeconds: number, gameplayElapsed = timeSeconds): Surface {
     const p = clamp01(progress);
     const gameplay = islandersCinematicGameplay(gameplayElapsed);
     const target = this.target;
-    target.resize(cols * 3, rows * 6);
+    target.resize(cols * this.rasterScale, rows * this.rasterScale * 2);
     target.clear();
-    const camera = islandersCinematicCamera(p, target.width / target.height, this.brickHarbor);
+    const camera = this.cameraFor(p, target.width / target.height, this.brickHarbor);
     const focus = camera.target;
     const vp = cameraMatrices(camera, target.width / target.height).viewProjection;
     const draw = (mesh: Mesh, model: Mat4, color?: RGB, ambient = 0.36) => rasterize(target, color ? tintCached(mesh, color) : mesh, lambertMaterial, {

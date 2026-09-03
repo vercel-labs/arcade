@@ -12,6 +12,9 @@ import { SplashScene, SPLASH_END } from '../prism/splash.ts';
 import { BrowserIslandersCinematic, BrowserPokerCinematic } from './browser-game-cinematics.ts';
 import { ISLANDERS_CINEMATIC_LOOP_SECONDS, ISLANDERS_REDUCED_MOTION_TIME } from '../cinematic/islanders-choreography.ts';
 import { BrowserChessBoardShowcase } from './browser-mini-scenes.ts';
+import type { BrowserMiniSceneOptions } from './mini-scene.ts';
+import type { Texture } from '../engine/texture-data.ts';
+import type { CoverFlowItem } from '../cinematic/scenes/cover-flow.ts';
 import { BrowserCoverFlow } from './browser-coverflow.ts';
 import { applySurfacePointerEffect, type SurfacePointerMode } from './surface-pointer-effects.ts';
 
@@ -35,6 +38,12 @@ const MATCH_CUTS = [
 export { anchoredInkMatchCut, LIVING_TITLE_ACT_BOUNDARIES, LIVING_TITLE_MORPH_STARTS, livingTitleTimeline };
 export type { LivingTitleAct };
 export interface LivingTitleFrameOptions { cols: number; rows: number; timeSeconds: number; progress: number; pointer?: { x: number; y: number } | null; pointerField?: PointerFieldSnapshot | null; pointerMode?: SurfacePointerMode; reducedMotion?: boolean; }
+export interface LivingTitleSceneOptions {
+  chess?: BrowserMiniSceneOptions;
+  poker?: ConstructorParameters<typeof BrowserPokerCinematic>[0];
+  covers?: Partial<Record<CoverFlowItem['id'], Texture>>;
+  coverLabels?: boolean;
+}
 
 /** A restrained phone-portrait pullback for the compact opening scenes. */
 export function earlyScenePortraitScale(aspect: number): number {
@@ -47,23 +56,48 @@ export class LivingTitleScene {
   private readonly prismGlyphCache = new ShapeGlyphSurfaceCache();
   private readonly prism = new PrismScene();
   private readonly splash = new SplashScene();
-  private readonly chess = new BrowserChessBoardShowcase();
-  private readonly covers = new BrowserCoverFlow();
-  private readonly poker = new BrowserPokerCinematic();
+  private readonly chess: BrowserChessBoardShowcase;
+  private readonly covers: BrowserCoverFlow;
+  private readonly poker: BrowserPokerCinematic;
   private readonly islanders = new BrowserIslandersCinematic();
   private readonly chessLoop = new ActiveSceneLoopClock();
   private readonly pokerLoop = new ActiveSceneLoopClock();
   private readonly islandersLoop = new ActiveSceneLoopClock();
   private readonly transitionPlates = new Map<string, Partial<{ source: Surface; destination: Surface }>>();
+  private readonly transitionRefreshSource = new Map<string, boolean>();
   private prismStartedAt: number | null = null;
   private chessGameplayPhase = 0;
   private pokerGameplayPhase = 0;
   private pokerGameplayIteration = 0;
+  private prepared = false;
+
+  constructor(options: LivingTitleSceneOptions = {}) {
+    this.chess = new BrowserChessBoardShowcase(options.chess);
+    this.poker = new BrowserPokerCinematic(options.poker);
+    this.covers = new BrowserCoverFlow(options.covers, options.coverLabels);
+  }
 
   prepare(): Promise<void> {
     return Promise.all([this.covers.prepare(), this.chess.prepare(), this.poker.prepare()]).then(() => {
       this.transitionPlates.clear();
+      this.transitionRefreshSource.clear();
+      this.prepared = true;
     });
+  }
+
+  ready(): boolean { return this.prepared; }
+
+  /** Restart host-driven playback without discarding prepared scene assets. */
+  reset(): void {
+    this.prismStartedAt = null;
+    this.chessGameplayPhase = 0;
+    this.pokerGameplayPhase = 0;
+    this.pokerGameplayIteration = 0;
+    this.transitionPlates.clear();
+    this.transitionRefreshSource.clear();
+    this.chessLoop.reset();
+    this.pokerLoop.reset();
+    this.islandersLoop.reset();
   }
 
   /** Pre-render an expensive 3D handoff once; hosts can call this during idle time. */
@@ -86,15 +120,16 @@ export class LivingTitleScene {
   frame(options: LivingTitleFrameOptions): Surface {
     const { cols, rows, timeSeconds, pointer = null, pointerField = null, pointerMode = 'off', reducedMotion = false } = options;
     const { act, local } = livingTitleTimeline(options.progress);
-    this.chessGameplayPhase = this.chessLoop.sample(timeSeconds, act === 2 && !reducedMotion, CHESS_LOOP_SECONDS).phase;
-    const pokerClock = this.pokerLoop.sample(timeSeconds, act === 3 && !reducedMotion, POKER_LOOP_SECONDS);
+    const morphStart = LIVING_TITLE_MORPH_STARTS[act];
+    const inTransition = act < ACTS - 1 && local >= morphStart && !reducedMotion;
+    this.chessGameplayPhase = this.chessLoop.sample(timeSeconds, (act === 2 || inTransition && act === 1) && !reducedMotion, CHESS_LOOP_SECONDS).phase;
+    const pokerClock = this.pokerLoop.sample(timeSeconds, (act === 3 || inTransition && act === 2) && !reducedMotion, POKER_LOOP_SECONDS);
     this.pokerGameplayPhase = pokerClock.phase;
     this.pokerGameplayIteration = pokerClock.iteration;
-    const islandersClock = this.islandersLoop.sample(timeSeconds, act === 4 && !reducedMotion, ISLANDERS_CINEMATIC_LOOP_SECONDS);
+    const islandersClock = this.islandersLoop.sample(timeSeconds, (act === 4 || inTransition && act === 3) && !reducedMotion, ISLANDERS_CINEMATIC_LOOP_SECONDS);
     const islandersGameplay = reducedMotion
       ? ISLANDERS_REDUCED_MOTION_TIME
       : islandersClock.iteration * ISLANDERS_CINEMATIC_LOOP_SECONDS + islandersClock.elapsed;
-    const morphStart = LIVING_TITLE_MORPH_STARTS[act];
     if (act === ACTS - 1 || local < morphStart || reducedMotion) {
       const rendered = this.scene(act, cols, rows, local, timeSeconds, reducedMotion, islandersGameplay);
       // The outgoing scene is the sheet of paper being burned. Retain the
@@ -110,7 +145,7 @@ export class LivingTitleScene {
     }
     // Render denser transition plates so local ink fibers stay crisp. The shared
     // compositor preserves each plate's authored position and scale.
-    const { source: detailedScene, destination: next } = this.transitionPlate(act, cols, rows, timeSeconds);
+    const { source: detailedScene, destination: next } = this.movingTransitionPlate(act, cols, rows, local, timeSeconds, islandersGameplay);
     const transition = anchoredInkMatchCut(
       detailedScene,
       next,
@@ -133,6 +168,17 @@ export class LivingTitleScene {
     if (!plate?.destination) this.prepareTransitionPart(act, cols, rows, 'destination', time);
     plate = this.transitionPlates.get(key)!;
     return plate as { source: Surface; destination: Surface };
+  }
+
+  private movingTransitionPlate(act: number, cols: number, rows: number, local: number, time: number, islandersGameplay: number): { source: Surface; destination: Surface } {
+    const key = `${act}:${cols}:${rows}`;
+    const plate = this.transitionPlate(act, cols, rows, time);
+    const refreshSource = this.transitionRefreshSource.get(key) ?? true;
+    if (refreshSource) plate.source = this.scene(act, cols, rows, local, time, false, islandersGameplay);
+    else plate.destination = this.scene(act + 1, cols * ZOOM_DETAIL_SCALE, rows * ZOOM_DETAIL_SCALE, 0, time, false, islandersGameplay);
+    this.transitionRefreshSource.set(key, !refreshSource);
+    this.setTransitionPlate(key, plate);
+    return plate;
   }
 
   private scene(act: number, cols: number, rows: number, progress: number, time: number, reduced: boolean, islandersGameplay = 0): Surface {
@@ -175,6 +221,7 @@ export class LivingTitleScene {
       const oldest = this.transitionPlates.keys().next().value;
       if (oldest === undefined) break;
       this.transitionPlates.delete(oldest);
+      this.transitionRefreshSource.delete(oldest);
     }
   }
 }

@@ -45,6 +45,8 @@ import {
 } from '../game-visuals/chess/index.ts';
 import { ChessState } from '../rules/chess/chess.ts';
 import { BrowserCreatorWisps } from './browser-wisp.ts';
+import type { CinematicCreator } from './browser-wisp.ts';
+import type { Texture } from '../engine/texture-data.ts';
 import {
   BLACK,
   BISHOP,
@@ -127,7 +129,11 @@ export class BrowserArcade {
   private blackJail: Array<{ type: PieceType; color: number }> = [];
   private cinematicTime = 0;
   private hideChrome = false;
-  private readonly wisps = new BrowserCreatorWisps();
+  private readonly wisps: BrowserCreatorWisps;
+
+  constructor(wispTextures: Partial<Record<CinematicCreator, Texture>> = {}, private readonly rasterScale = 3) {
+    this.wisps = new BrowserCreatorWisps(wispTextures);
+  }
 
   prepareWisps(): Promise<void> { return this.wisps.prepare(['anthropic', 'openai']); }
 
@@ -313,7 +319,7 @@ export class BrowserArcade {
 
   private renderTarget(): RenderTarget {
     const target = this.displayMode === 'pixel' ? this.pixelTarget : this.asciiTarget;
-    target.resize(this.displayMode === 'pixel' ? this.cols : this.cols * 3, this.displayMode === 'pixel' ? this.rows * 2 : this.rows * 6);
+    target.resize(this.displayMode === 'pixel' ? this.cols : this.cols * this.rasterScale, this.displayMode === 'pixel' ? this.rows * 2 : this.rows * this.rasterScale * 2);
     target.clear(0, 0, 0);
     const camera = this.camera.toCamera({ fovy: (48 * Math.PI) / 180, near: 0.05, far: 100 });
     const { viewProjection } = cameraMatrices(camera, target.width / target.height);
