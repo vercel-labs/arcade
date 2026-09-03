@@ -15,7 +15,7 @@ import { ChessGameScene } from '../arcade/games/chess/scene.ts';
 import { LogosScene } from '../arcade/scenes/logos-scene.ts';
 import { AudioScene } from '../arcade/scenes/audio-scene.ts';
 import { CoverFlowScene } from '../arcade/shell/coverflow.ts';
-import { MENU_ITEMS } from '../arcade/shell/menu.ts';
+import { HOME_MENU_INDEX, MENU_ITEMS } from '../arcade/shell/menu.ts';
 import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, mouseControlsFor, type Mode } from '../arcade/shell/bars.ts';
 import { installKeymap } from '../arcade/shell/keybindings.ts';
 import { buildShowcase, mountShowcase } from '../arcade/scenes/ui-showcase.ts';
@@ -58,6 +58,7 @@ import {
   setIslandersWorkbenchTradeSelection,
   toggleIslandersSidebar,
 } from '../arcade/games/islanders/card-hud.ts';
+import { islandersChatComposerRows } from '../arcade/games/islanders/chat-composer.ts';
 import { type FlyingResource, ResourceFlights } from '../arcade/games/islanders/scene/resource-flight.ts';
 import { IslandersGameScene } from '../arcade/games/islanders/game-scene.ts';
 import { buildIslandersGameRoot, mountIslandersGameHud } from '../arcade/games/islanders/game-hud.ts';
@@ -73,6 +74,7 @@ import type { Color } from '../rules/chess/types.ts';
 import { Box, Button, Dropdown, NoticeToast, insetSceneViewport, layout, paint, Screen, Text, type PaintState } from '../tui/index.ts';
 import { buildTeamSwitch, markSwitchSucceeded, mountTeamSwitch, setTeamSwitchTeams } from '../arcade/shell/team-switch.ts';
 import { UI_CHROME_PILL } from '../arcade/theme.ts';
+import { TUTORIAL_CHAPTERS, TUTORIAL_PULSE, TutorialController, tutorialRailWidth } from '../arcade/tutorial/tutorial.ts';
 import { modelFailureNotice } from '../harness/model-failure-notice.ts';
 
 type Rgb = [number, number, number];
@@ -425,6 +427,8 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot showcase [cols] [rows] [focus=<id>] [query=<text>] [blur] [out]   the UI component playground
   pnpm snapshot modal [cols] [rows] [out]          promotion modal over chess
   pnpm snapshot chess-overlay [cols] [rows] [min|empty|illegal|short] [eval] [chat] [menu] [out]   match HUD + moves panel (menu → ☰ popup)
+  pnpm snapshot tutorial [cols] [rows] [<chapter id>] [done=N] [menu] [signed-out] [t=<s>] [out]   the tutorial rail over the chess screen
+      (done=N ticks the first N steps · menu opens the ☰ popup, pulsing its target · signed-out dims the gateway steps · t is the pulse clock)
   pnpm snapshot setup [cols] [rows] [out] [open|models|thinking]   AI match setup modal
   pnpm snapshot gameover [cols] [rows] [out]       result popup over a finished board
   pnpm snapshot confirm-home [cols] [rows] [out]   "return to home screen?" confirm over a game
@@ -481,6 +485,8 @@ if (process.argv[2] === 'help' || process.argv[2] === '--help' || process.argv[2
   showcaseSnapshot();
 } else if (process.argv[2] === 'chess-overlay') {
   chessOverlaySnapshot();
+} else if (process.argv[2] === 'tutorial') {
+  tutorialSnapshot();
 } else if (process.argv[2] === 'gameover') {
   gameOverSnapshot();
 } else if (process.argv[2] === 'setup') {
@@ -775,7 +781,7 @@ function islandersGameSnapshot(): void {
     const state = driver.start(specs, { autoRun: false, rng: mulberry32(seed) });
     const pov = Number(args.find((arg) => arg.startsWith('pov='))?.slice(4) ?? 0);
     if (spectate && pov > 0 && pov < seats) gameScene.setViewedSeat(pov);
-    gameScene.setResourceFlightLayout(region, seats, islandersRailVisible(cols, rows));
+    gameScene.setResourceFlightLayout(region, seats, islandersRailVisible(cols, rows), !spectate && islandersRailVisible(cols, rows) ? islandersChatComposerRows() : 0);
     if (aiTrade || postedTrade) {
       while (!state.initialPlacementComplete()) void gameScene.playMove(state.legalActions()[0]);
       void gameScene.playMove({ type: 'roll' });
@@ -1634,10 +1640,10 @@ function prismMenuInkSnapshot(): void {
   source.drawTextOver(Math.max(0, Math.floor((cols - prompt.length) / 2)), rows - 2, prompt, [205, 210, 230]);
 
   const coverflow = new CoverFlowScene();
-  coverflow.renderScene(target, 0, null);
+  coverflow.renderScene(target, HOME_MENU_INDEX, null);
   const destination = new Surface(cols, rows);
   shapeGlyphToSurface(destination, target, cols, rows, { color: true });
-  const item = MENU_ITEMS[0];
+  const item = MENU_ITEMS[HOME_MENU_INDEX];
   destination.drawTextOver(Math.max(0, Math.floor((cols - item.title.length) / 2)), rows - 4, item.title, [240, 244, 255], STYLE_BOLD);
 
   const transition = new TimedInkTransition({ duration: 1, cut: { from: { x: 0.62, y: 0.43 }, to: { x: 0.5, y: 0.5 }, direction: { x: -0.82, y: 0.57 } } });
@@ -1853,6 +1859,100 @@ function chessOverlaySnapshot(): void {
       sceneViewport.y,
     ),
   );
+  surfaceToPpm(surf, cols, rows, out);
+}
+
+// The tutorial rail docked over the chess screen — the same composition main.ts builds: the
+// scene viewport and the HUD region inset by the rail, the rail as the Screen's global overlay,
+// the current step's targets pulsing. `menu` opens the chess ☰ popup (the Menu chapter's
+// surface) so a pulsing menu item can be checked.
+//   pnpm exec tsx src/tools/snapshot.ts tutorial [cols] [rows] [<chapter id>] [done=N] [menu] [t=<s>] [out.ppm]
+function tutorialSnapshot(): void {
+  const args = process.argv.slice(3);
+  const cols = Number(args[0]) || 140;
+  const rows = Number(args[1]) || 50;
+  const out = args.find((a) => a.endsWith('.ppm')) ?? '.snapshots/tutorial.ppm';
+  const chapterId = args.find((a) => TUTORIAL_CHAPTERS.some((c) => c.id === a)) ?? 'camera';
+  const done = Number(args.find((a) => a.startsWith('done='))?.slice(5) ?? 0);
+  const t = Number(args.find((a) => a.startsWith('t='))?.slice(2) ?? 0.8);
+  const SS = 3;
+
+  // `signed-out` renders the match steps as a signed-out player sees them (dimmed, not counted).
+  const tutorial = new TutorialController({
+    show: noop,
+    exit: noop,
+    requestRender: noop,
+    stepAvailable: (step) => step.requires !== 'gateway' || !args.includes('signed-out'),
+  });
+  tutorial.start();
+  while (tutorial.chapter().id !== chapterId) tutorial.next();
+  for (const step of tutorial.chapter().steps.slice(0, done)) {
+    tutorial.signal(typeof step.signal === 'string' ? step.signal : step.signal[0]);
+  }
+
+  const rail = tutorialRailWidth(cols, tutorial.chapter().screen);
+  const region = { x: 0, y: 0, w: cols - rail, h: rows };
+  const sceneViewport = insetSceneViewport(cols, rows, { right: rail });
+  const cg = new ChessGameScene();
+  const target = new RenderTarget(sceneViewport.w * SS, sceneViewport.h * 2 * SS);
+  cg.renderScene(target, 0);
+
+  const screen = new Screen(cols, rows);
+  screen.setTime(t);
+  screen.setAttention(tutorial.attentionIds(), TUTORIAL_PULSE);
+  screen.setGlobalOverlay(tutorial.build(cols, rows));
+  mountChessHud(screen);
+  refreshMoveHistory([], []);
+  if (args.includes('menu')) {
+    screen.setRoot(
+      buildGameMenu({
+        groups: [
+          [
+            { id: 'chess-menu-home', label: 'home', onClick: noop },
+            { id: 'chess-menu-new', label: 'reset board', onClick: noop },
+          ],
+          [
+            { id: 'chess-menu-reset', label: 'reset camera', onClick: noop },
+            { id: 'chess-menu-mode', label: 'display', value: 'ascii', onClick: noop },
+            { id: 'chess-menu-color', label: 'color', value: 'truecolor', onClick: noop },
+            { id: 'chess-menu-eval', label: 'eval bar', value: 'off', onClick: noop },
+            { id: 'chess-menu-illegal', label: 'illegal moves', value: 'off', onClick: noop },
+          ],
+          [
+            { id: 'chess-menu-shortcuts', label: 'controls', onClick: noop },
+            { id: 'chess-menu-quit', label: 'quit', onClick: noop },
+          ],
+        ],
+        valueColW: 9,
+        onClose: noop,
+      }),
+      region,
+    );
+  } else {
+    screen.setRoot(
+      buildChessGameRoot(region, buildBar('chess-game', 'ascii', barActions), {
+        minimized: false,
+        onToggle: noop,
+        onCopy: noop,
+        commentary: null,
+        t,
+        evalVisible: false,
+        evalCp: 0,
+        evalResult: null,
+        chatVisible: false,
+        onToggleChat: noop,
+        onOpenMenu: noop,
+        chatActive: false,
+        illegalOn: false,
+        matchup: null,
+      }),
+      region,
+    );
+  }
+  const surf = screen.snapshot((s) => {
+    s.fillRect(0, 0, cols, rows, [0, 0, 0]);
+    shapeGlyphToSurface(s, target, sceneViewport.w, sceneViewport.h, { color: true, hybrid: true }, sceneViewport.x, sceneViewport.y);
+  });
   surfaceToPpm(surf, cols, rows, out);
 }
 

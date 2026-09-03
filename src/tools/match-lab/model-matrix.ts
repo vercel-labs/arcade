@@ -93,6 +93,8 @@ export function buildModelMatrixCases(opts: BuildModelMatrixOpts): ModelGameAudi
           handsPerLevel: DEFAULT_HANDS_PER_LEVEL,
           setupOnly: game === 'islanders',
           communicationMode: 'autoreply',
+          harness: 'current',
+          captureThinking: false,
         },
       });
       index++;

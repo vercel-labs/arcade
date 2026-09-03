@@ -7,6 +7,7 @@
 
 import { runMatch } from '../../harness/match.ts';
 import { HumanPlayer } from '../../harness/human-player.ts';
+import { PolicyPlayer } from '../../harness/policy-player.ts';
 import { isTelemetryEnabled, localPlayerKey, trackHandEnded, trackMatchRecord, trackMatchStarted, trackModelFallback, trackPokerHandRecord } from '../../telemetry/index.ts';
 import type { Player } from '../../harness/player.ts';
 import { type HandPublicRecord, HoldemState, type PokerAction } from '../../rules/poker/holdem.ts';
@@ -28,14 +29,52 @@ import {
 } from '../../harness/games/poker/poker-session.ts';
 
 export { BIG_BLIND };
+// A `bot` is a local practice opponent (a PolicyPlayer — no model, no network): it checks
+// or calls, never raises or folds, so a hand always reaches a decision for the human. A
+// table with any bot seat is a practice table and is never recorded or tracked.
 export type PokerSeatSpec =
   | { kind: 'human' }
+  | { kind: 'bot' }
   | { kind: 'ai'; model: string; runtime: 'text' }
   | { kind: 'ai'; model: string; runtime: 'realtime' };
 // Chip amounts read as money in the winner banner: a "$" prefix + thousands separators.
 const money = (n: number): string => `$${n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
 
 const creatorOf = (slug: string): string => slug.split('/')[0] ?? slug;
+
+// What a practice bot says as it acts — one line per action, rotating through the pool for
+// that action so the chat thread fills the way a model table's does. Kept honest about what
+// it is, so the lines read as a demonstration of the thread, never as a model's voice.
+const BOT_TABLE_TALK: Record<'check' | 'call' | 'other', readonly string[]> = {
+  check: [
+    'Check. Practice bot; I never bet first.',
+    "Checking. You'll have to make the moves at this table.",
+    'Check to you.',
+    'No bet from me. Bots like me only check and call.',
+    "Check. If you're waiting for me to bluff, keep waiting.",
+  ],
+  call: [
+    "Call. I'll see it.",
+    'Calling. I call everything, so bet what you mean.',
+    "Call. A model would have a read on you by now; I just pay.",
+    'I call. Show me.',
+    "Calling again. Yes, that's my whole strategy.",
+  ],
+  other: ["Practice bot here. I check when I can and call when I can't."],
+};
+
+// Sample reads for the practice table, so the reads pill shows what a model's private notes
+// look like before any model has played. Written the way models write them: patterns,
+// sizing, what a player folds to.
+const BOT_READS_ON_HUMAN = [
+  'Raises preflop from the button when it folds to them; limps from the blinds.',
+  'Checked the flop with top pair, then bet the turn: slow-plays strong hands.',
+  'Folds to a raise more often than it calls; three-bets are rare.',
+];
+const BOT_READS_ON_BOT = [
+  'Never bets or raises; calls down with any pair.',
+  'Checks every street it can. Pressure does nothing, but it will pay to see a river.',
+];
 
 export interface PokerMatchDeps {
   scene: PokerGameScene;
@@ -70,6 +109,7 @@ export class PokerMatch {
   // realtime runtime and duplex audio is available. Null for standard text seats.
   private voice: PokerVoice | null = null;
   private recorder: PokerSessionRecorder | null = null;
+  private practice = false; // a bot is seated → nothing is recorded or tracked
   private recordingHandOpen = false;
   private completedHands = 0;
   private blindStructure: PokerBlindStructure = {};
@@ -103,15 +143,28 @@ export class PokerMatch {
   }
 
   // ── Opponent notes, for the HUD notes modal ────────────────────────────────────
-  // The AI seats that keep notes (the observers the picker switches between), with
-  // their labels + creator (for the picker's brand tint).
+  // The seats that keep notes (the observers the picker switches between), with their
+  // labels + creator (for the picker's brand tint): AI seats, and practice bots showing
+  // their sample reads.
   noteObservers(): { seat: number; label: string; creator: string }[] {
     const out: { seat: number; label: string; creator: string }[] = [];
     for (let s = 0; s < this.seats.length; s++) {
       const spec = this.seats[s];
       if (spec.kind === 'ai') out.push({ seat: s, label: this.labelOf(s), creator: creatorOf(spec.model) });
+      else if (spec.kind === 'bot') out.push({ seat: s, label: this.labelOf(s), creator: 'bot' });
     }
     return out;
+  }
+
+  // Each bot's book opens with sample notes on every other seat (see BOT_READS_*).
+  private seedPracticeReads(): void {
+    for (let observer = 0; observer < this.seats.length; observer++) {
+      if (this.seats[observer].kind !== 'bot') continue;
+      for (let subject = 0; subject < this.seats.length; subject++) {
+        if (subject === observer) continue;
+        this.memory.seed(observer, subject, this.seats[subject].kind === 'bot' ? BOT_READS_ON_BOT : BOT_READS_ON_HUMAN);
+      }
+    }
   }
   // One observer's reads on every OTHER seat at the table (label + its notes), for the
   // modal body. Includes seats with no notes yet so the whole table is shown.
@@ -140,14 +193,17 @@ export class PokerMatch {
     this.currentBlinds = pokerBlindState(0, this.blindStructure);
     this.memory.reset();
     this.computeLabels();
+    // A bot seat draws as an AI seat with a neutral (unbranded) wisp.
     const views: PokerSeatView[] = seats.map((s, seat) =>
-      s.kind === 'human' ? { kind: 'human', label: 'You' } : { kind: 'ai', label: this.labelOf(seat), creator: creatorOf(s.model) },
+      s.kind === 'human' ? { kind: 'human', label: 'You' } : { kind: 'ai', label: this.labelOf(seat), creator: s.kind === 'ai' ? creatorOf(s.model) : 'bot' },
     );
     this.deps.scene.beginSession(views);
+    this.practice = seats.some((s) => s.kind === 'bot');
+    if (this.practice) this.seedPracticeReads();
     const mode = seats.every((s) => s.kind === 'ai') ? 'ai_table' : seats.some((s) => s.kind === 'human') && seats.some((s) => s.kind === 'ai') ? 'mixed' : 'human_table';
     const controller = (seat: PokerSeatSpec): RecorderController =>
-      seat.kind === 'human' ? { kind: 'human' } : { kind: 'model', model: seat.model, runtime: seat.runtime };
-    this.recorder = isTelemetryEnabled()
+      seat.kind === 'ai' ? { kind: 'model', model: seat.model, runtime: seat.runtime } : { kind: 'human' };
+    this.recorder = isTelemetryEnabled() && !this.practice
       ? new PokerSessionRecorder(
           mode,
           seats.map(controller),
@@ -157,13 +213,15 @@ export class PokerMatch {
           localPlayerKey(),
         )
       : null;
-    trackMatchStarted({
-      game: 'poker',
-      mode,
-      models: seats.map((s) => (s.kind === 'ai' ? s.model : 'human')),
-      humans: seats.filter((s) => s.kind === 'human').length,
-      stack: opts?.stack ?? STARTING_STACK,
-    });
+    if (!this.practice) {
+      trackMatchStarted({
+        game: 'poker',
+        mode,
+        models: seats.map((s) => (s.kind === 'ai' ? s.model : 'human')),
+        humans: seats.filter((s) => s.kind === 'human').length,
+        stack: opts?.stack ?? STARTING_STACK,
+      });
+    }
     this.setupVoice(); // may set this.voice for a 2-seat human-vs-AI match — before makePlayer
     this.players = seats.map((s, i) => this.makePlayer(s, i));
     this.running = true;
@@ -214,6 +272,15 @@ export class PokerMatch {
     if (seat.kind === 'human') {
       return new HumanPlayer<PokerAction>({ name: 'you', awaitMove: (_s, ctx) => this.deps.scene.requestHumanMove(ctx?.signal) });
     }
+    if (seat.kind === 'bot') {
+      let spoken = index; // offset per seat so two bots don't say the same line together
+      return new PolicyPlayer<PokerAction>(this.labelOf(index), (legal) => {
+        const action = legal.find((a) => a.type === 'check') ?? legal.find((a) => a.type === 'call') ?? legal[0];
+        const pool = BOT_TABLE_TALK[action.type === 'check' || action.type === 'call' ? action.type : 'other'];
+        this.deps.onCommentary(pool[spoken++ % pool.length], this.labelOf(index), this.labelOf(index));
+        return action;
+      });
+    }
     if (seat.runtime === 'realtime') {
       if (!this.voice) throw new Error('Realtime poker seat started without a voice session.');
       return this.voice.player();
@@ -252,7 +319,9 @@ export class PokerMatch {
       this.seats.map((seat, index) =>
         seat.kind === 'human'
           ? { key: `human:${index}`, label: 'the human' }
-          : { key: seat.model, label: shortModel(seat.model) },
+          : seat.kind === 'bot'
+            ? { key: `bot:${index}`, label: `bot ${index}` }
+            : { key: seat.model, label: shortModel(seat.model) },
       ),
     );
     this.deps.scene.setSeatLabels(
@@ -358,11 +427,13 @@ export class PokerMatch {
         const by = new Map<number, number>();
         for (const a of state.awards()) by.set(a.seat, (by.get(a.seat) ?? 0) + a.amount);
         const won = [...by.entries()].filter(([, amt]) => amt > 0);
-        trackHandEnded({
-          game: 'poker',
-          winners: won.map(([seat]) => (this.seats[seat]?.kind === 'ai' ? (this.seats[seat] as { model: string }).model : 'human')),
-          pot: won.reduce((sum, [, amt]) => sum + amt, 0),
-        });
+        if (!this.practice) {
+          trackHandEnded({
+            game: 'poker',
+            winners: won.map(([seat]) => (this.seats[seat]?.kind === 'ai' ? (this.seats[seat] as { model: string }).model : 'human')),
+            pot: won.reduce((sum, [, amt]) => sum + amt, 0),
+          });
+        }
         // Recording is isolated: a fault here must not skip the gameplay continuation
         // below (button rotation, onHandOver, next hand), or the table would hang.
         this.record(() => {
@@ -543,11 +614,13 @@ export class PokerMatch {
 
   // Swap one seat's model mid-session (the wisp-swap popup): rebuild that seat's
   // ModelPlayer + wisp. Takes effect on its next turn.
+  // Also the tutorial's bridge from practice to the real thing: a bot seat swaps to a text
+  // model the same way (the table stays a practice table — still never recorded).
   setSeatModel(seat: number, model: string): void {
     if (seat < 0 || seat >= this.players.length) return;
     const current = this.seats[seat];
-    if (current?.kind !== 'ai') return;
-    const runtime = current.runtime;
+    if (current?.kind !== 'ai' && current?.kind !== 'bot') return;
+    const runtime = current.kind === 'ai' ? current.runtime : 'text';
 
     // A realtime model owns the live voice session, so changing it must rebuild
     // that session instead of leaving the old model speaking for the new wisp.

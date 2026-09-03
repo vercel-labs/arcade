@@ -9,6 +9,9 @@ export interface IslandersCardsPlayerView {
   name: string;
   color: PlayerColor;
   publicVp: number;
+  // The seat's real score including hidden victory-point cards, when the viewer may know it:
+  // your own seat, or every seat while spectating. Undefined for an opponent's hidden hand.
+  actualVp?: number;
   resourceCards: number;
   developmentCards: number;
   knights: number;
@@ -59,6 +62,8 @@ export interface IslandersCardsView {
   pendingDevelopmentCards?: DevCardType[];
   /** Playable now for the local live seat; purchased-this-turn and post-play cards are absent. */
   playableDevelopmentCards?: Exclude<DevCardType, 'victoryPoint'>[];
+  // One muted tooltip line per held card that cannot be played right now.
+  developmentCardHolds?: Partial<Record<DevCardType, string>>;
   // A workbench card has been committed and is waiting for its board/resource choices.
   // The live rules engine represents the same state through legal actions instead.
   developmentPlay?: IslandersDevelopmentPlayView;

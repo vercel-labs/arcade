@@ -13,6 +13,8 @@ import type { LayoutBox, Node } from '../types.ts';
 export interface InputOpts {
   id: string;
   width?: number; // visible cell width, default 24
+  /** Cells of the field's own background left empty at each side; text, wrapping, and the caret all stay inside. Default 0. */
+  padding?: number;
   /** Grow by visually wrapping until this many rows, then vertically scroll. Default 1. */
   maxRows?: number;
   value?: string;
@@ -28,6 +30,7 @@ export class Input implements Component {
   value: string;
   caret: number;
   private width: number;
+  private readonly padding: number;
   private maxRows: number;
   private scroll = 0;
   private rowScroll = 0;
@@ -40,7 +43,18 @@ export class Input implements Component {
     this.value = opts.value ?? '';
     this.caret = this.value.length;
     this.width = opts.width ?? 24;
+    this.padding = Math.max(0, Math.floor(opts.padding ?? 0));
     this.maxRows = Math.max(1, Math.floor(opts.maxRows ?? 1));
+  }
+
+  // Resize the field (the caller lays it out to fit a panel). Content reflows at the next paint.
+  setWidth(width: number): void {
+    this.width = Math.max(1 + 2 * this.padding, Math.floor(width));
+  }
+
+  // The cells text can occupy on a row: the field less its side padding.
+  private textWidth(): number {
+    return Math.max(1, this.width - 2 * this.padding);
   }
 
   onFocus(): void {
@@ -75,8 +89,9 @@ export class Input implements Component {
 
   // Keep the caret inside the visible window [scroll, scroll+width).
   private reflow(): void {
+    const width = this.textWidth();
     if (this.caret < this.scroll) this.scroll = this.caret;
-    else if (this.caret >= this.scroll + this.width) this.scroll = this.caret - this.width + 1;
+    else if (this.caret >= this.scroll + width) this.scroll = this.caret - width + 1;
   }
 
   private flow(text: string): { rows: string[]; caretRow: number; caretCol: number } {
@@ -93,7 +108,7 @@ export class Input implements Component {
     while (index < text.length) {
       const ch = String.fromCodePoint(text.codePointAt(index)!);
       const width = Math.max(1, stringWidth(ch));
-      if (col > 0 && col + width > this.width) {
+      if (col > 0 && col + width > this.textWidth()) {
         rows.push('');
         row++;
         col = 0;
@@ -157,12 +172,14 @@ export class Input implements Component {
     }
   }
 
+  // The node is the full field; `draw` receives the content box inside the padding, so the
+  // painters below never see the padding cells (the node's background fills them).
   build(): Node {
     return {
       kind: 'box',
       id: this.id,
       focusable: true,
-      style: { width: this.width, height: this.visibleRows(), background: 'surfaceControl' },
+      style: { width: this.width, height: this.visibleRows(), padding: [0, this.padding], background: 'surfaceControl' },
       onKey: (ev) => this.onKey(ev),
       draw: (surf, b, theme) => this.paint(surf, b, theme),
     };

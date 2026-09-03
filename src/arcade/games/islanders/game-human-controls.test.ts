@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { IslandersState } from '../../../rules/islanders/islanders.ts';
-import { DEV_CARD_TYPES, RESOURCES, resourceIndex, type IslandersAction } from '../../../rules/islanders/types.ts';
+import { DEV_CARD_TYPES, RESOURCES, resourceIndex, type IslandersAction, type Prompt } from '../../../rules/islanders/types.ts';
 import { Screen, type Node } from '../../../tui/index.ts';
+import type { KeyEvent } from '../../../platform/input.ts';
 import { IslandersDriver, type IslandersSeatSpec } from '../../match/islanders-driver.ts';
 import { buildIslandersGameRoot, islandersLiveView, islandersStatusLine } from './game-hud.ts';
-import { islandersSidebarPlayers } from './card-hud.ts';
+import { islandersSidebarOpen, islandersSidebarPlayers, toggleIslandersSidebar } from './card-hud.ts';
 import { IslandersGameScene, islandersActionPlaybackFrames } from './game-scene.ts';
 import { PLAYER_LOOK } from './palette.ts';
 import { ARCADE_OUTLINE_CONTROL } from '../../theme.ts';
@@ -67,6 +68,25 @@ test('Islanders setup uses the shared rounded new-match CTA', () => {
   assert.equal(start?.style.color, ARCADE_OUTLINE_CONTROL.neutralText);
 });
 
+test('setup menu stays at the true top-right even when a previous sidebar remains open', () => {
+  const scene = new IslandersGameScene();
+  const driver = new IslandersDriver({ scene, syncLive: () => {} });
+  if (!islandersSidebarOpen()) toggleIslandersSidebar();
+  const region = { x: 0, y: 0, w: 140, h: 50 };
+  const root = buildIslandersGameRoot(region, {
+    driver,
+    scene,
+    onOpenMenu: () => {},
+    onStart: () => {},
+  });
+  const screen = new Screen(region.w, region.h);
+  screen.setRoot(root, region);
+  const menu = findNode(root, 'islanders-game-menu');
+  assert.ok(menu?.layout);
+  assert.equal(menu.layout.x + menu.layout.w, region.w - 2, 'no ghost rail shifts setup chrome left');
+  if (islandersSidebarOpen()) toggleIslandersSidebar();
+});
+
 test('live status is one borderless row with color confined to the actor', () => {
   const scene = new IslandersGameScene();
   const driver = new IslandersDriver({ scene, syncLive: () => {} });
@@ -86,10 +106,94 @@ test('live status is one borderless row with color confined to the actor', () =>
   assert.equal(banner.style.flexDirection, 'row');
   assert.equal(banner.style.background, undefined);
   assert.equal(banner.children?.length, 2);
-  assert.equal(banner.children?.[0]?.text, 'Your');
+  assert.equal(banner.children?.[0]?.text, 'Your turn');
   assert.equal(banner.children?.[0]?.style.color, PLAYER_LOOK.red);
-  assert.equal(banner.children?.[1]?.text, ' turn');
+  assert.equal(banner.children?.[1]?.text, ' · place your first settlement');
   assert.notEqual(banner.children?.[1]?.style.color, PLAYER_LOOK.red);
+});
+
+test('pending status names every required human action and the exact discard count', async () => {
+  const scene = new IslandersGameScene();
+  const driver = new IslandersDriver({ scene, syncLive: () => {} });
+  const state = driver.start([
+    { kind: 'human', color: 'red' },
+    { kind: 'ai', color: 'blue', model: 'test/claude' },
+  ], { autoRun: false, rng: () => 0.5 });
+  const internals = state as unknown as { prompt: Prompt; discardRemaining: number[] };
+  const status = (prompt: Prompt): string => {
+    internals.prompt = prompt;
+    const line = islandersStatusLine(driver);
+    return `${line?.actor} ${line?.narration}`;
+  };
+
+  assert.equal(status({ kind: 'initialSettlement', player: 0 }), 'Your turn · place your first settlement');
+  await scene.playMove(state.legalActions()[0]);
+  assert.equal(status({ kind: 'initialRoad', player: 0 }), 'Your turn · place a road beside it');
+  while (state.initialSettlementCount(0) < 1) state.applyAction(state.legalActions()[0]);
+  assert.equal(status({ kind: 'initialSettlement', player: 0 }), 'Your turn · place your second settlement');
+  assert.equal(status({ kind: 'roll', player: 0 }), 'Your turn · roll or play a development card');
+  assert.equal(status({ kind: 'playTurn', player: 0 }), 'Your turn · build, trade, or end turn');
+  internals.discardRemaining[0] = 4;
+  assert.equal(status({ kind: 'discard', player: 0 }), 'Your turn · discard 4 cards');
+  assert.equal(status({ kind: 'moveRobber', player: 0 }), 'Your turn · move the robber');
+  assert.equal(status({ kind: 'respondTrade', player: 0 }), 'Your turn · respond to the trade');
+  assert.equal(status({ kind: 'decideAcceptees', player: 0 }), 'Your turn · choose a trade partner');
+});
+
+test('pending status gives concise phase context while a model is deciding', () => {
+  const scene = new IslandersGameScene();
+  const driver = new IslandersDriver({ scene, syncLive: () => {} });
+  const state = driver.start([
+    { kind: 'human', color: 'red' },
+    { kind: 'ai', color: 'blue', model: 'test/claude' },
+  ], { autoRun: false, rng: () => 0.5 });
+  const internals = state as unknown as { prompt: Prompt; discardRemaining: number[] };
+  const status = (prompt: Prompt): string => {
+    internals.prompt = prompt;
+    const line = islandersStatusLine(driver);
+    return `${line?.actor} ${line?.narration}`;
+  };
+
+  assert.equal(status({ kind: 'initialSettlement', player: 1 }), 'claude · choosing where to place a settlement');
+  assert.equal(status({ kind: 'initialRoad', player: 1 }), 'claude · choosing where to build a road');
+  assert.equal(status({ kind: 'roll', player: 1 }), 'claude · starting their turn');
+  assert.equal(status({ kind: 'playTurn', player: 1 }), 'claude · considering their next move');
+  internals.discardRemaining[1] = 4;
+  assert.equal(status({ kind: 'discard', player: 1 }), 'claude · discarding 4 cards');
+  assert.equal(status({ kind: 'moveRobber', player: 1 }), 'claude · choosing where to move the robber');
+  assert.equal(status({ kind: 'respondTrade', player: 1 }), 'claude · considering the trade');
+  assert.equal(status({ kind: 'decideAcceptees', player: 1 }), 'claude · choosing a trade partner');
+});
+
+test('compact status stays between the player legend and top-right controls', () => {
+  const scene = new IslandersGameScene();
+  const driver = new IslandersDriver({ scene, syncLive: () => {} });
+  driver.start([
+    { kind: 'human', color: 'red' },
+    { kind: 'ai', color: 'blue', model: 'test/claude' },
+  ], { autoRun: false, rng: () => 0.5 });
+  (scene as unknown as { setupComplete: boolean }).setupComplete = true;
+  const root = buildIslandersGameRoot({ x: 0, y: 0, w: 100, h: 36 }, {
+    driver,
+    scene,
+    onOpenMenu: () => {},
+    onStart: () => {},
+  });
+  const screen = new Screen(100, 36);
+  screen.setRoot(root, { x: 0, y: 0, w: 100, h: 36 });
+  const banner = findNode(root, 'islanders-status-banner');
+  assert.ok(banner);
+  const statusHost = (function parentOf(node: Node): Node | undefined {
+    if (node.children?.includes(banner)) return node;
+    for (const child of node.children ?? []) {
+      const parent = parentOf(child);
+      if (parent) return parent;
+    }
+    return undefined;
+  })(root);
+  assert.ok(statusHost?.layout);
+  assert.ok(statusHost.layout.x >= 33);
+  assert.ok(statusHost.layout.x + statusHost.layout.w <= 89);
 });
 
 test('status narration agrees with human and model actor labels', () => {
@@ -101,6 +205,8 @@ test('status narration agrees with human and model actor labels', () => {
   ], { autoRun: false });
   assert.equal(islandersStatusLine(driver, { seat: 0, action: { type: 'roll' }, phase: 'pressing' })?.narration, 'are rolling dice');
   assert.equal(islandersStatusLine(driver, { seat: 1, action: { type: 'roll' }, phase: 'pressing' })?.narration, 'is rolling dice');
+  assert.equal(islandersStatusLine(driver, { seat: 0, action: { type: 'moveRobber', hex: 1, victim: null }, phase: 'pressing' })?.narration, 'are moving the robber');
+  assert.equal(islandersStatusLine(driver, { seat: 1, action: { type: 'acceptTrade' }, phase: 'pressing' })?.narration, 'is accepting the trade');
 });
 
 test('the live hand owns the shared trade and buy-dev cards while new game stays in the menu', async () => {
@@ -138,7 +244,7 @@ test('the live hand owns the shared trade and buy-dev cards while new game stays
   await pending;
 });
 
-test('the hovered roll button paints one continuous background across its die icon and label', async () => {
+test('the roll card sits in the hand action row, sized like the other action cards', async () => {
   const scene = new IslandersGameScene();
   const driver = new IslandersDriver({ scene, syncLive: () => {} });
   const state = driver.start([
@@ -158,14 +264,16 @@ test('the hovered roll button paints one continuous background across its die ic
   const screen = new Screen(140, 50);
   screen.setRoot(root, { x: 0, y: 0, w: 140, h: 50 });
   const roll = findNode(root, 'islanders-live-roll');
-  assert.ok(roll?.layout);
-  screen.setHover('islanders-live-roll');
-  const surface = screen.snapshot(() => {});
-  const backgrounds = Array.from({ length: roll.layout.w }, (_, offset) =>
-    surface.getCell(roll.layout!.x + offset, roll.layout!.y)?.bg.join(','));
-  assert.equal(new Set(backgrounds).size, 1);
-  assert.equal(surface.getCell(roll.layout.x + 1, roll.layout.y)?.ch, '⚄');
-  assert.equal(surface.getCell(roll.layout.x + 2, roll.layout.y)?.ch, ' ');
+  const buyDev = findNode(root, 'islanders-buy-dev');
+  assert.ok(roll?.layout && buyDev?.layout);
+  // The turn's required action is a card in the hand's action row, right after buy dev and the
+  // same size, in its own color; end turn is not offered until the dice have been rolled.
+  assert.equal(roll.layout.w, buyDev.layout.w);
+  assert.equal(roll.layout.h, buyDev.layout.h);
+  assert.equal(roll.layout.y, buyDev.layout.y);
+  assert.ok(roll.layout.x > buyDev.layout.x);
+  assert.notDeepEqual(roll.style.background, buyDev.style.background);
+  assert.equal(findNode(root, 'islanders-live-end'), undefined);
 });
 
 test('spectators can click a player to inspect that seat hand and development cards', () => {
@@ -651,4 +759,58 @@ test('a submitted human counteroffer renders separately and can be withdrawn', a
   assert.equal(state.activeTrade()?.counters.length, 0);
   root = buildIslandersGameRoot({ x: 0, y: 0, w: 140, h: 50 }, { driver, scene, onOpenMenu: () => {}, onStart: () => {} });
   assert.equal(allText(root).some((text) => text.includes('your counteroffer')), false);
+});
+
+test('the robber victim picker is a legend-styled column that arrow keys walk and Enter commits', async () => {
+  const scene = new IslandersGameScene();
+  const driver = new IslandersDriver({ scene, syncLive: () => {} });
+  const state = driver.start([
+    { kind: 'human', color: 'red' },
+    { kind: 'ai', color: 'blue', model: 'test/blue' },
+    { kind: 'ai', color: 'orange', model: 'test/orange' },
+  ], { autoRun: false, rng: () => 0.5 });
+  while (!state.initialPlacementComplete()) state.applyAction(state.legalActions()[0]);
+  // Stage a hex the robber can move to with two robbable neighbours, then pick it: the scene
+  // holds the candidates and asks who to steal from.
+  const hands = (state as unknown as { hands: number[][] }).hands;
+  hands.forEach((hand) => hand.fill(1));
+  state.applyAction({ type: 'roll' }, { dice: [3, 4] });
+  assert.equal(state.currentPrompt().kind, 'moveRobber');
+  const pending = scene.requestHumanMove();
+  const byHex = new Map<number, number>();
+  for (const action of state.legalActions()) if (action.type === 'moveRobber' && action.victim !== null) byHex.set(action.hex, (byHex.get(action.hex) ?? 0) + 1);
+  const hex = [...byHex.entries()].find(([, count]) => count >= 2)?.[0];
+  assert.notEqual(hex, undefined, 'a hex with two robbable neighbours');
+  const internals = scene as unknown as { robberVictims: IslandersAction[] };
+  internals.robberVictims = state.legalActions().filter((action) => action.type === 'moveRobber' && action.hex === hex);
+  const victims = scene.robberVictimSeats();
+  assert.ok(victims.length >= 2);
+
+  const screen = new Screen(140, 50);
+  const region = { x: 0, y: 0, w: 140, h: 50 };
+  const build = (): Node => buildIslandersGameRoot(region, { driver, scene, onOpenMenu: () => {}, onStart: () => {} });
+  const { mountIslandersGameHud } = await import('./game-hud.ts');
+  mountIslandersGameHud(screen);
+  let root = build();
+  screen.setRoot(root, region);
+  const rows = victims.map((victim) => findNode(root, `islanders-live-victim-${victim ?? 'none'}`)!);
+  assert.ok(rows.every(Boolean));
+  // A column, not a row: each victim sits below the previous, colored like the legend.
+  for (let i = 1; i < rows.length; i++) {
+    assert.ok(rows[i].layout!.y > rows[i - 1].layout!.y);
+    assert.equal(rows[i].layout!.x, rows[i - 1].layout!.x);
+  }
+  assert.deepEqual(rows[0].style.color, PLAYER_LOOK[driver.colorOf(victims[0]!)]);
+  assert.ok(rows[0].text?.startsWith('■ '));
+  // Focus opens on the first row; ↓ moves it; Enter steals from the focused seat.
+  const focused = (): string | null => (screen as unknown as { state: { focusId: string | null } }).state.focusId;
+  assert.equal(focused(), rows[0].id);
+  const key = (name: string): KeyEvent => ({ name, raw: '', sequence: '', ctrl: false, meta: false, shift: false, eventType: 'press' });
+  screen.handleKey(key('down'));
+  root = build();
+  screen.setRoot(root, region);
+  assert.equal(focused(), rows[1].id);
+  screen.handleKey(key('enter'));
+  const chosen = await pending;
+  assert.deepEqual(chosen, { type: 'moveRobber', hex, victim: victims[1] });
 });

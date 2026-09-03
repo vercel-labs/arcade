@@ -18,13 +18,51 @@ import {
 import { cellWidth, stringWidth } from '../engine/width.ts';
 
 import { clipText, truncate } from './text.ts';
-import { defaultTheme, resolveColor, type Theme } from './theme.ts';
-import type { LayoutBox, Node, Padding, Style, TooltipSpec, TooltipText } from './types.ts';
+import { type ColorToken, defaultTheme, resolveColor, type Theme } from './theme.ts';
+import type { LayoutBox, Node, Padding, PulseStyle, Style, TooltipSpec, TooltipText } from './types.ts';
 
 export interface PaintState {
   hoverId: string | null;
   focusId: string | null;
   pressedId: string | null;
+  // The clock (seconds) pulses breathe against; omitted → pulses paint at rest.
+  time?: number;
+  // Runtime attention pulses by node id, layered under a node's own `style.pulse`.
+  attention?: ReadonlyMap<string, PulseStyle>;
+}
+
+const PULSE_PERIOD = 1.6;
+
+// Where a pulse is in its breath: 0 at rest, 1 at the peak, on a raised cosine so it
+// eases in and out rather than snapping.
+export function pulsePhase(pulse: PulseStyle, time: number): number {
+  const period = pulse.period ?? PULSE_PERIOD;
+  const strength = pulse.strength ?? 1;
+  return strength * (0.5 - 0.5 * Math.cos((2 * Math.PI * time) / period));
+}
+
+function mixColor(from: ColorToken, to: ColorToken, k: number, theme: Theme): RGBA {
+  const a = resolveColor(from, theme);
+  const b = resolveColor(to, theme);
+  const lerp = (x: number, y: number): number => x + (y - x) * k;
+  return [Math.round(lerp(a[0], b[0])), Math.round(lerp(a[1], b[1])), Math.round(lerp(a[2], b[2])), lerp(a[3], b[3])];
+}
+
+// Breathe the base style toward the pulse targets. Only channels the node already paints
+// move (see PulseStyle): a background needs a real fill to mix from, a border needs a
+// border, and the label falls back to the theme's primary ink.
+function applyPulse(e: Style, pulse: PulseStyle, time: number, theme: Theme): Style {
+  const k = pulsePhase(pulse, time);
+  if (k <= 0) return e;
+  const out: Style = { ...e };
+  if (pulse.background != null && e.background != null && e.background !== 'transparent') {
+    out.background = mixColor(e.background, pulse.background, k, theme);
+  }
+  if (pulse.color != null) out.color = mixColor(e.color ?? theme.textPrimary, pulse.color, k, theme);
+  if (pulse.borderColor != null && e.border && e.border !== 'none') {
+    out.borderColor = mixColor(e.borderColor ?? e.color ?? theme.textPrimary, pulse.borderColor, k, theme);
+  }
+  return out;
 }
 
 // A non-TUI layer painted between ordinary UI and portal overlays. This is the seam for
@@ -43,13 +81,16 @@ function styleBits(s: Style): number {
 }
 
 // Base style with the active state overlays (hover, then focus, then pressed)
-// shallow-merged on top. Later overlays win, so pressed beats hover.
-function effective(node: Node, st: PaintState): Style {
+// shallow-merged on top. Later overlays win, so pressed beats hover. An attention
+// pulse breathes the resting colors underneath all of them.
+function effective(node: Node, st: PaintState, theme: Theme): Style {
   const s = node.style;
   let e: Style = { ...s };
   // Disabled replaces the interaction states rather than layering under them: the
   // control is inert, so reacting to the pointer would be a lie.
   if (node.disabled) return s.disabled ? { ...e, ...s.disabled } : e;
+  const pulse = s.pulse ?? (node.id ? st.attention?.get(node.id) : undefined);
+  if (pulse && st.time !== undefined) e = applyPulse(e, pulse, st.time, theme);
   if (node.id) {
     if (node.id === st.hoverId && s.hover) e = { ...e, ...s.hover };
     if (node.id === st.focusId && s.focus) e = { ...e, ...s.focus };
@@ -102,7 +143,7 @@ function paintNode(node: Node, surf: Surface, st: PaintState, theme: Theme, inhe
   const lb = node.layout;
   if (lb && lb.w > 0 && lb.h > 0) {
     surf.setClip(node.clip ?? null); // overflow clipping from an ancestor
-    const e = effective(node, st);
+    const e = effective(node, st, theme);
     // Scrim: dim the cells already in the Surface (the scene) under this node,
     // keeping their glyphs, before painting this node's own bg/content on top.
     if (e.scrim != null) surf.blendRect(lb.x, lb.y, lb.w, lb.h, resolveColor(e.scrim, theme));

@@ -48,6 +48,7 @@ src/
     match/          AI-vs-AI plumbing (driver, setup modal, model catalog)
     scenes/         ambient / idle-loop visuals (prism aside): logos, audio, wisp
     shell/          launcher + window chrome (cover flow, menu, bars, keybindings)
+    tutorial/       the interactive walkthrough (chapters + guide rail; see docs/tutorial.md)
   tools/      snapshot.ts (render a frame to an image) + dev scripts
 ```
 

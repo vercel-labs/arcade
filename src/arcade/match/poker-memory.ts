@@ -78,6 +78,12 @@ export class PokerMemory {
     else this.book(observer).delete(subject);
   }
 
+  // Install notes an observer didn't write itself — the practice table's sample reads, so
+  // the reads modal has something real-looking to show before any model has reflected.
+  seed(observer: number, subject: number, notes: string[]): void {
+    this.set(observer, subject, notes);
+  }
+
   // Observer's notes on the given subjects, in seat order, for the UI modal. Every
   // subject is included (even with no notes yet) so the modal can show the full table.
   view(observer: number, subjects: number[]): { subject: number; notes: string[] }[] {

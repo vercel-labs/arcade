@@ -46,6 +46,8 @@ Options:
   --hands-per-level=N    Completed hands per blind level (default 15)
   --setup-only           Stop Islanders after initial placements
   --communication=MODE   Autoreply or ambient communication (Islanders defaults ambient; others autoreply)
+  --harness=MODE         Islanders: current (offer policy + notebooks, default) or legacy (neither) for A/B runs
+  --capture-thinking     Record each model's private reasoning, retry feedback, and decision context (model_attempt events)
   --output=PATH          Artifact directory (default .runs/<timestamp>-<game>)
 
 Telemetry is always disabled. Results are local files only.`);
@@ -108,6 +110,8 @@ async function main(): Promise<void> {
     swapSeats: config.swapSeats,
     setupOnly: config.setupOnly,
     communicationMode: config.communicationMode,
+    harness: config.harness,
+    captureThinking: config.captureThinking,
     startingChips: config.startingChips,
     smallBlind: config.smallBlind,
     bigBlind: config.bigBlind,

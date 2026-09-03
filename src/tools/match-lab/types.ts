@@ -22,6 +22,12 @@ export interface MatchLabPlan {
   handsPerLevel: number;
   setupOnly: boolean;
   communicationMode: CommunicationMode;
+  // Islanders: 'current' runs the shipped negotiation harness (per-seat offer policy + turn-end
+  // notebooks); 'legacy' runs without either, as the baseline for A/B runs.
+  harness: 'current' | 'legacy';
+  // Record each model's private reasoning, retry feedback, and decision context in
+  // model_attempt events. Evaluation artifacts only; never the arcade or telemetry.
+  captureThinking: boolean;
 }
 
 export type MatchLabStatus = 'completed' | 'bounded' | 'failed';
@@ -53,6 +59,7 @@ export interface MatchLabEvent {
     | 'match_started'
     | 'decision_started'
     | 'model_attempt'
+    | 'reflection'
     | 'commentary'
     | 'communication_decision'
     | 'moment_detected'
@@ -94,6 +101,8 @@ export interface MatchLabManifest {
   swapSeats: boolean;
   setupOnly: boolean;
   communicationMode: CommunicationMode;
+  harness: 'current' | 'legacy';
+  captureThinking: boolean;
   limits: MatchLabLimits;
   startingChips: number;
   smallBlind: number;

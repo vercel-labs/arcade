@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mulberry32, RenderTarget } from '../../../engine/index.ts';
+import { DICE_RESULT_REVEAL_DELAY, DICE_ROLL_DUR, DICE_STAGGER, type Die } from '../../../game-visuals/islanders/dice-choreography.ts';
 import { type Node, Screen } from '../../../tui/index.ts';
 import { maritimePortTradeRates, maritimeTradeRates } from '../../../rules/islanders/maritime-trade.ts';
 import { generateBoard } from '../../../rules/islanders/setup.ts';
@@ -26,7 +27,10 @@ import {
   islandersWorkbenchPlayerTradeOffers,
   islandersBankDepartureCell,
   islandersDevDeckDepartureCell,
+  islandersRailPlan,
+  islandersCardsLayout,
   islandersDevHandLandingCell,
+  islandersDiscardDepartureCell,
   islandersHandLandingCell,
   islandersHistoryRows,
   islandersWorkbenchDiscardOpen,
@@ -183,10 +187,32 @@ test('resource flights land on cards after the hand tray side padding', () => {
   assert.deepEqual(islandersHandLandingCell({ x: 0, y: 0, w: 140, h: 50 }, 'lumber'), { col: 7, row: 44 });
 });
 
+test('discard flights leave the staged resource row', () => {
+  const region = { x: 0, y: 0, w: 140, h: 50 };
+  assert.deepEqual(islandersDiscardDepartureCell(region, 'lumber'), { col: 7, row: 40 });
+  assert.notDeepEqual(islandersDiscardDepartureCell(region, 'lumber'), islandersHandLandingCell(region, 'lumber'));
+});
+
 test('trade flights leave the visible bank card or the hidden right edge at the same height', () => {
   const region = { x: 0, y: 0, w: 140, h: 50 };
-  assert.deepEqual(islandersBankDepartureCell(region, 'ore', 4, true), { col: 126, row: 34 });
+  assert.deepEqual(islandersBankDepartureCell(region, 'ore', 4, true), { col: 126, row: 36 });
   assert.deepEqual(islandersBankDepartureCell(region, 'ore', 4, false), { col: 143, row: 33 });
+});
+
+test('the rail gives up rows in order as the terminal gets shorter, and never hides for height', () => {
+  const at = (h: number) => islandersRailPlan({ x: 0, y: 0, w: 140, h }, 4, 0);
+  assert.ok(islandersCardsLayout({ x: 0, y: 0, w: 140, h: 12 }).showPublicRail);
+  assert.deepEqual(at(50), { logH: 29, compactBank: false, playerRowGap: 1, bankTop: 31 + 4 });
+  // Fewer seats: the log takes the freed rows, so the bank and players stay at the bottom.
+  assert.deepEqual(islandersRailPlan({ x: 0, y: 0, w: 140, h: 50 }, 2, 0).bankTop, 39);
+  // Tight: the log is at its minimum, so the players table drops its row gaps first.
+  assert.deepEqual(at(24), { logH: 7, compactBank: false, playerRowGap: 0, bankTop: 13 });
+  // Tighter: the bank folds to one line and the log gets the rows back.
+  assert.deepEqual(at(20), { logH: 8, compactBank: true, playerRowGap: 0, bankTop: 12 });
+  // Too short for any log: the hint takes its place and the bank line and players stay.
+  assert.deepEqual(at(12), { logH: 0, compactBank: true, playerRowGap: 0, bankTop: 5 });
+  // Flights leave the folded bank line at the pile's glyph.
+  assert.deepEqual(islandersBankDepartureCell({ x: 0, y: 0, w: 140, h: 20 }, 'lumber', 4, true), { col: 99, row: 12 });
 });
 
 test('development flights leave the dev pile and land on a responsive dev-hand slot', () => {
@@ -194,7 +220,7 @@ test('development flights leave the dev pile and land on a responsive dev-hand s
   const view = islandersWorkbenchView();
   assert.equal(view.source, 'workbench');
   view.pendingDevelopmentCards = ['knight'];
-  assert.deepEqual(islandersDevDeckDepartureCell(region, 4, true), { col: 134, row: 34 });
+  assert.deepEqual(islandersDevDeckDepartureCell(region, 4, true), { col: 134, row: 36 });
   assert.deepEqual(islandersDevDeckDepartureCell(region, 4, false), { col: 143, row: 33 });
   assert.deepEqual(islandersDevHandLandingCell(region, 'knight', true, view), { col: 49, row: 44 });
   assert.deepEqual(islandersDevHandLandingCell(region, 'knight', false, view), { col: 49, row: 44 });
@@ -268,6 +294,98 @@ test('the workbench controller turns a played knight into robber-targeting mode'
 
   assert.equal(controller.scene.isMovingRobber(), true);
   assert.equal(islandersWorkbenchView().devHand.knight, 0);
+  controller.reset();
+  resetIslandersWorkbenchCards();
+});
+
+test('the workbench controller animates confirmed discards from the staged row into the bank', () => {
+  resetIslandersWorkbenchCards();
+  for (let i = 0; i < 5; i++) adjustIslandersWorkbenchHand('brick', 1);
+  for (let i = 0; i < 4; i++) adjustIslandersWorkbenchHand('grain', 1);
+  assert.equal(beginIslandersWorkbenchDiscard(), true);
+  for (let i = 0; i < 3; i++) assert.equal(adjustIslandersWorkbenchDiscard('brick', 1), true);
+  assert.equal(adjustIslandersWorkbenchDiscard('grain', 1), true);
+
+  const region = { x: 0, y: 0, w: 140, h: 50 };
+  const screen = new Screen(region.w, region.h);
+  const controller = new IslandersController({
+    ui: screen,
+    requestRender: () => {},
+    requestFrame: () => {},
+    shell: {
+      renderMode: () => 'ascii',
+      colorMode: () => 'truecolor',
+      onHome: () => {},
+      onCycleDisplay: () => {},
+      onCycleColor: () => {},
+      onControls: () => {},
+      onQuit: () => {},
+      menuValueColW: 10,
+    },
+  });
+  controller.scene.setMode('boardCards');
+  controller.scene.settle();
+  const before = islandersWorkbenchView();
+  const bankBefore = { ...before.bank };
+  screen.setRoot(controller.buildRoot(region.w, region.h), region);
+  findNode(controller.buildRoot(region.w, region.h), 'islanders-discard-confirm')?.onClick?.();
+
+  assert.equal(islandersWorkbenchDiscardOpen(), false, 'confirming closes the discard panel');
+  assert.equal(controller.needsRender(), true, 'the controller keeps rendering while discarded cards fly');
+  assert.equal(islandersWorkbenchView().hand.brick, 5, 'staged cards stay in hand until departure');
+  assert.equal(islandersWorkbenchView().bank.brick, bankBefore.brick, 'the bank waits for each landing');
+
+  const target = new RenderTarget(region.w, region.h * 2);
+  controller.renderScene(target, 0);
+  const flyingRoot = controller.buildRoot(region.w, region.h);
+  const departure = islandersDiscardDepartureCell(region, 'brick');
+  const projected = (function all(node: Node): Node[] {
+    return [node, ...(node.children ?? []).flatMap(all)];
+  })(flyingRoot).find((node) => node.style.left === departure.col - 2 && node.style.top === departure.row);
+  assert.ok(projected, 'the first discarded card is drawn at its staged-row departure cell');
+
+  for (let frame = 1; frame <= 28; frame++) controller.renderScene(target, frame * 0.25);
+  assert.equal(controller.needsRender(), false);
+  assert.equal(islandersWorkbenchView().hand.brick, 2);
+  assert.equal(islandersWorkbenchView().hand.grain, 3);
+  assert.equal(islandersWorkbenchView().bank.brick, bankBefore.brick + 3);
+  assert.equal(islandersWorkbenchView().bank.grain, bankBefore.grain + 1);
+  assert.equal(controller.scene.isMovingRobber(), true, 'robber choice starts after the cards land');
+  controller.reset();
+  resetIslandersWorkbenchCards();
+});
+
+test('the workbench waits for settled dice before opening discard or robber interaction', () => {
+  resetIslandersWorkbenchCards();
+  for (let i = 0; i < 8; i++) adjustIslandersWorkbenchHand('brick', 1);
+  const region = { x: 0, y: 0, w: 140, h: 50 };
+  const screen = new Screen(region.w, region.h);
+  const controller = new IslandersController({
+    ui: screen,
+    requestRender: () => {},
+    requestFrame: () => {},
+    shell: {
+      renderMode: () => 'ascii', colorMode: () => 'truecolor', onHome: () => {},
+      onCycleDisplay: () => {}, onCycleColor: () => {}, onControls: () => {}, onQuit: () => {}, menuValueColW: 10,
+    },
+  });
+  controller.scene.setMode('boardCards');
+  controller.scene.settle();
+  void controller.scene.rollDice([3, 4]);
+  const dice = (controller.scene as unknown as { dice: [Die, Die] }).dice;
+  dice[0].dur = 1;
+  dice[1].dur = 1;
+  const target = new RenderTarget(region.w, region.h * 2);
+  const physicalLanding = DICE_STAGGER + DICE_ROLL_DUR;
+
+  controller.renderScene(target, 0);
+  controller.renderScene(target, physicalLanding);
+  assert.equal(islandersWorkbenchDiscardOpen(), false, 'discard stays closed while final faces settle');
+  assert.equal(controller.scene.isMovingRobber(), false);
+
+  controller.renderScene(target, physicalLanding + DICE_RESULT_REVEAL_DELAY);
+  assert.equal(islandersWorkbenchDiscardOpen(), true, 'the exact discard opens only after result publication');
+  assert.equal(controller.scene.isMovingRobber(), false, 'robber selection waits for the required discard');
   controller.reset();
   resetIslandersWorkbenchCards();
 });

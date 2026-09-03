@@ -4,6 +4,7 @@ import {
   downsample,
   halfBlockLayerToSurface,
   halfBlockToSurface,
+  mulberry32,
   RenderTarget,
   shapeGlyphToSurface,
   ShapeGlyphSurfaceCache,
@@ -20,7 +21,8 @@ import { PrismScene, SplashScene } from '../prism/index.ts';
 import { coverFlowIndex } from '../cinematic/scenes/cover-flow.ts';
 import { CoverFlowScene, LAUNCH_TOTAL } from './shell/coverflow.ts';
 import { CoverFlowWheelInput } from './shell/coverflow-input.ts';
-import { MENU_ITEMS, menuItemAction } from './shell/menu.ts';
+import { HOME_MENU_INDEX, MENU_ITEMS, menuItemAction, TUTORIAL_MENU_INDEX } from './shell/menu.ts';
+import { isFirstRun, markFirstRunSeen } from './shell/first-run.ts';
 import { ChessGameScene } from './games/chess/scene.ts';
 import { CardsScene } from './games/poker/cards-scene.ts';
 import { type TileScene } from './games/islanders/tile-scene.ts';
@@ -28,12 +30,15 @@ import { IslandersController } from './games/islanders/islanders-controller.ts';
 import { ISLANDERS_RAIL_W, islandersRailVisible } from './games/islanders/card-hud.ts';
 import { IslandersGameScene } from './games/islanders/game-scene.ts';
 import { buildIslandersGameRoot, mountIslandersGameHud } from './games/islanders/game-hud.ts';
+import { islandersChatComposerRows } from './games/islanders/chat-composer.ts';
 import { IslandersDriver } from './match/islanders-driver.ts';
+import { RESOURCES } from '../rules/islanders/types.ts';
 import type { CommunicationMode } from '../harness/communication/types.ts';
 import { islandersSetupCommunicationMode, islandersSetupSelection, setIslandersSetupChanged, setIslandersSetupCommunicationMode, setIslandersSetupModelCatalog } from './match/islanders-setup-panel.ts';
 import { buildPokerRoot, mountPokerHud, pokerMode, setPokerHandlers } from './games/poker/hud.ts';
 import { PokerGameScene } from './games/poker/poker-scene.ts';
 import { buildPokerGameRoot, buildPokerNotesModal, clearPokerChat, type HeroContext, mountPokerGameHud, nudgePokerBet, pushPokerChat, setNotesObserverPick, setPokerGameHandlers, setPokerVoiceStage } from './games/poker/poker-hud.ts';
+import { mountPokerNotes } from './games/poker/poker-notes.ts';
 import { PokerMatch } from './match/poker-driver.ts';
 import { buildPokerSetupPanel, mountPokerSetup, pokerPreviewSeats, pokerSetupReady, pokerSetupSelection, pokerStartingStack, setPokerSetupChanged, setPokerSetupModelCatalog } from './match/poker-setup.ts';
 import { LogosScene } from './scenes/logos-scene.ts';
@@ -57,6 +62,8 @@ import type { RGB, RGBA } from '../engine/index.ts';
 import { Box, Button, NoticeToast, Text, wrapText, insetSceneViewport, pointerNdcInSceneViewport, Renderer, Screen, type LayoutBox, type Node } from '../tui/index.ts';
 import { ARCADE_THEME, MENU_BUTTON_LABEL, UI_CHROME_PILL } from './theme.ts';
 import { escapeBackRequiresConfirmation, installKeymap } from './shell/keybindings.ts';
+import { TUTORIAL_PULSE, TutorialController, tutorialRailWidth, type TutorialChapter } from './tutorial/tutorial.ts';
+import { eventToChord } from '../tui/index.ts';
 import { buildTeamSwitch, markSwitchSucceeded, mountTeamSwitch, setTeamSwitchHandlers, setTeamSwitchTeams, type TeamSwitchView } from './shell/team-switch.ts';
 import * as term from '../platform/terminal.ts';
 import { availableTeams, ensureGatewayKey, isLoggedIn, loadEnv, signOut as signOutVercel, switchTeam, type EnsureResult, type Team, useTeam } from '../auth/index.ts';
@@ -118,6 +125,7 @@ const prismToMenu = new TimedInkTransition({
   cut: { from: { x: 0.62, y: 0.43 }, to: { x: 0.5, y: 0.5 }, direction: { x: -0.82, y: 0.57 } },
 });
 const chessGame = new ChessGameScene();
+chessGame.onEvent = (event) => tutorial.signal(`chess.${event}`);
 const logosScene = new LogosScene();
 const audioScene = new AudioScene();
 const cardsScene = new CardsScene();
@@ -179,6 +187,44 @@ let islandersGameTimer: ReturnType<typeof setInterval> | null = null;
 // test bed runs at, and far cheaper than repainting the board at the full frame rate.
 const ISLANDERS_ANIMATION_FRAME_MS = 90;
 let islandersGameMenuOpen = false;
+// The Islanders reads modal (the `reads` pill → each model's private plan + notes), the same
+// modal poker uses; `islandersNotesIdx` picks the observer, `islandersNotesFocused` is the
+// one-shot focus of its scroll body.
+let islandersNotesOpen = false;
+let islandersNotesIdx = 0;
+let islandersNotesFocused = false;
+
+// The interactive tutorial: a guide rail docked on the right over the real game screens.
+// The controller owns progress; main stages each chapter's screen (showTutorialChapter),
+// narrows the scene viewport + HUD region by the rail, and emits the signals its steps
+// wait for from the places the real features fire. Any route home ends it.
+const tutorial = new TutorialController({
+  show: (chapter, previous) => showTutorialChapter(chapter, previous),
+  // Match steps need the Gateway key the normal match setup needs; the tutorial never
+  // gates the screen itself — a real match, and its real health-check popups, run as usual.
+  stepAvailable: (step) => step.requires !== 'gateway' || Boolean(process.env.AI_GATEWAY_API_KEY),
+  exit: () => enterMenu(),
+  requestRender: () => {
+    forceFrame = true;
+    r.requestRender();
+  },
+});
+// Width the rail takes from the right edge while the tutorial runs (0 otherwise).
+function tutorialRailW(): number {
+  return tutorial.active() ? tutorialRailWidth(cols, tutorial.chapter().screen) : 0;
+}
+// The region game HUDs and popups lay out into: the whole screen, less the tutorial rail.
+function hudRegion(): LayoutBox {
+  return { x: 0, y: 0, w: cols - tutorialRailW(), h: rows };
+}
+// Islanders' hand/log rail hides itself when the board area is too narrow for it.
+function islandersRailShown(): boolean {
+  return islandersRailVisible(hudRegion().w, rows);
+}
+// Poll-based tutorial detectors (state the games expose without events): which Islanders
+// action records the tutorial has already seen, and whether the stocked opening hand landed.
+let tutorialIslandersSeen = 0;
+let tutorialIslandersStocked = false;
 
 // Bar geometry: a band of pills composited over the scene, lifted off the very
 // bottom edge by a margin so it doesn't hug it. BAR_HEIGHT must match the pill
@@ -261,6 +307,15 @@ let liveHeld = false;
 let splashing = true;
 // Wii-menu hub state: selected tile index + horizontal pan (cells). Reset on entry.
 let menuSel = 0;
+// The carousel opens on Chess. The very first launch of an install opens on the Tutorial cover
+// (the slot just left of Chess) instead, and its title carries a "new here?" tail for the whole
+// session. The landing happens once (the first time the menu opens); returning from a game
+// lands on Chess as usual.
+const firstLaunch = isFirstRun();
+let firstMenuPending = firstLaunch;
+function initialMenuSel(): number {
+  return firstMenuPending && TUTORIAL_MENU_INDEX >= 0 ? TUTORIAL_MENU_INDEX : HOME_MENU_INDEX;
+}
 // Continuous Cover Flow carousel position, eased toward menuSel each frame (the
 // snap-to-slot). Integer = that cover centred head-on.
 let coverPos = 0;
@@ -430,14 +485,30 @@ function pausedFailureStatus(): Node {
   ]);
 }
 
+// The Screen has one global overlay slot; the Gateway-failure modal and the tutorial rail
+// share it. The failure modal paints last so it stays on top.
+let failureOverlay: Node | null = null;
+function applyGlobalOverlay(): void {
+  const layers = [tutorial.active() ? tutorial.build(cols, rows) : null, failureOverlay].filter((l): l is Node => l !== null);
+  if (layers.length === 0) ui.setGlobalOverlay(null);
+  else if (layers.length === 1) ui.setGlobalOverlay(layers[0]);
+  else {
+    ui.setGlobalOverlay(
+      Box({ width: cols, height: rows, position: 'relative' }, layers.map((l) => ({ ...l, style: { ...l.style, position: 'absolute', top: 0, left: 0, width: cols, height: rows } }))),
+    );
+  }
+}
+
 function refreshFailureNoticeOverlay(): void {
   const notice = failureNotice;
   if (!notice && !failureResume) {
-    ui.setGlobalOverlay(null);
+    failureOverlay = null;
+    applyGlobalOverlay();
     return;
   }
   if (!notice) {
-    ui.setGlobalOverlay(Box({ width: cols, height: rows, position: 'relative' }, [pausedFailureStatus()]));
+    failureOverlay = Box({ width: cols, height: rows, position: 'relative' }, [pausedFailureStatus()]);
+    applyGlobalOverlay();
     return;
   }
   const modal = NoticeToast({
@@ -458,12 +529,13 @@ function refreshFailureNoticeOverlay(): void {
   });
   // During a live persistent failure, retain the paused state beneath the modal.
   // Preflight failures have no game to pause, so they show only the modal.
-  ui.setGlobalOverlay(failureResume
+  failureOverlay = failureResume
     ? Box({ width: cols, height: rows, position: 'relative' }, [
         pausedFailureStatus(),
         { ...modal, style: { ...modal.style, position: 'absolute', top: 0, left: 0, width: cols, height: rows } },
       ])
-    : modal);
+    : modal;
+  applyGlobalOverlay();
 }
 let matchSetupOpen = false;
 let setupFocused = false;
@@ -545,14 +617,14 @@ function activeSceneViewport(): LayoutBox {
       ? CHAT_WIDTH
       : mode === 'poker' && pokerChatOpen && pokerScene.isActive()
         ? CHAT_WIDTH
-        : mode === 'islanders-tiles' && islanders.scene.currentMode() === 'boardCards' && islandersRailVisible(cols, rows)
+        : mode === 'islanders-tiles' && islanders.scene.currentMode() === 'boardCards' && islandersRailShown()
           ? ISLANDERS_RAIL_W
           : // The game reserves the rail only once a session exists — the setup panel owns the
             // whole board area before that.
-            mode === 'islanders' && islandersDriver.state() !== null && islandersRailVisible(cols, rows)
+            mode === 'islanders' && islandersDriver.state() !== null && islandersRailShown()
             ? ISLANDERS_RAIL_W
             : 0;
-  return insetSceneViewport(cols, rows, { right: reservedRight });
+  return insetSceneViewport(cols, rows, { right: reservedRight + tutorialRailW() });
 }
 
 // The engine target is pixel-sized while the viewport is terminal-cell-sized.
@@ -619,7 +691,8 @@ function syncLive(): void {
     mode === 'logos' ||
     mode === 'audio' ||
     (mode === 'chess-game' && chessGame.isMatchActive()) ||
-    (mode === 'poker' && pokerScene.isActive());
+    (mode === 'poker' && pokerScene.isActive()) ||
+    tutorial.active(); // the rail's attention pulses animate
   if (want === liveHeld) return;
   if (want) r.requestLive();
   else r.dropLive();
@@ -805,22 +878,26 @@ setTeamSwitchHandlers({ onPick: pickTeamChoice });
 function buildMenuOverlay(): Node {
   const menuButton = Button({ id: 'menu-button', label: MENU_BUTTON_LABEL, onClick: openHomeMenu, style: UI_CHROME_PILL });
   // Inset from the top-right corner by a row / a couple of columns so it breathes.
-  return Box({ width: cols, height: rows }, [Box({ position: 'absolute', top: 1, right: 2 }, [menuButton])]);
+  const region = hudRegion();
+  return Box({ width: region.w, height: region.h }, [Box({ position: 'absolute', top: 1, right: 2 }, [menuButton])]);
 }
 
 function cycleMode(): void {
   renderMode = MODE_ORDER[(MODE_ORDER.indexOf(renderMode) + 1) % MODE_ORDER.length];
+  tutorial.signal('ui.display');
   fullRepaint();
 }
 
 function cycleColor(): void {
   colorMode = COLOR_ORDER[(COLOR_ORDER.indexOf(colorMode) + 1) % COLOR_ORDER.length];
+  tutorial.signal('ui.color');
   fullRepaint();
 }
 
 function enterChessGame(): void {
   mode = 'chess-game';
   draggingCamera = false;
+  evalBarVisible = false; // a fresh entry shows the default board; the bar insets the viewport, so a stale one reframes the scene
   mountChessHud(ui); // (re)register the move-history panel for its Slot
   fullRepaint();
 }
@@ -829,6 +906,7 @@ function enterChessGame(): void {
 // header/✕ buttons call this too).
 function toggleHistory(): void {
   historyMinimized = !historyMinimized;
+  tutorial.signal('chess.history');
   forceFrame = true;
 }
 
@@ -842,6 +920,7 @@ function toggleChat(): void {
 // Expand/collapse the poker table-talk panel (its ✕ and the collapsed reopen pill).
 function togglePokerChat(): void {
   pokerChatOpen = !pokerChatOpen;
+  tutorial.signal('poker.chat');
   forceFrame = true;
   r.requestRender();
 }
@@ -895,6 +974,7 @@ function stopAiMatch(): void {
 // Open the setup modal to pick the two models (needs a Gateway key). The four
 // selects are (re)mounted for their Slots; pickers retain their last selection.
 function openMatchSetup(): void {
+  tutorial.signal('chess.setup'); // the tutorial's "open new match" counts even when signed out
   if (!process.env.AI_GATEWAY_API_KEY) {
     commentary = { text: 'to sign in, go home, open the menu, then choose account', model: '', until: t + 6 };
     r.requestRender();
@@ -932,6 +1012,7 @@ async function confirmMatchSetup(): Promise<void> {
   clearChat(); // fresh thread for the new game
   chessChatPly = 0;
   aiMatch.start(sel.white, sel.black);
+  tutorial.signal('chess.matchStarted');
 }
 
 // ── In-match model swap (click a wisp) ─────────────────────────────────────────
@@ -949,21 +1030,30 @@ function openWispSwap(color: Color): void {
   if (!wasPaused) aiMatch.pause();
   wispSwap = { game: 'chess', color, wasPaused };
   wispSwapFocused = false;
+  tutorial.signal('chess.swap');
   mountSwapSetup(ui);
   openSwapSetup(key, seat.model);
   forceFrame = true;
   r.requestRender();
 }
 
+// A practice bot's flame opens the same picker with no seeded model — replacing the bot with
+// a real model, which needs the Gateway key like any match does.
 function openPokerWispSwap(seat: number): void {
   const spec = pokerMatch.seatSpecs()[seat];
-  if (spec?.kind !== 'ai') return;
+  if (spec?.kind !== 'ai' && spec?.kind !== 'bot') return;
+  if (spec.kind === 'bot' && !process.env.AI_GATEWAY_API_KEY) {
+    commentary = { text: 'to sign in, go home, open the menu, then choose account', model: '', until: t + 6 };
+    r.requestRender();
+    return;
+  }
   const wasPaused = pokerMatch.isPaused();
   if (!wasPaused) pokerMatch.pause();
   wispSwap = { game: 'poker', seat, wasPaused };
   wispSwapFocused = false;
   mountSwapSetup(ui);
-  openSwapSetup('white', spec.model, spec.runtime);
+  if (spec.kind === 'ai') openSwapSetup('white', spec.model, spec.runtime);
+  else openSwapSetup('white', null);
   forceFrame = true;
   r.requestRender();
 }
@@ -1044,6 +1134,7 @@ const pokerMatch = new PokerMatch({
 setPokerGameHandlers({
   onFold: () => {
     pokerScene.commitHumanAction({ type: 'fold' });
+    tutorial.signal('poker.fold');
     forceFrame = true;
     r.requestRender();
   },
@@ -1051,16 +1142,19 @@ setPokerGameHandlers({
     const st = pokerScene.state();
     const action = st.toCall(st.toActSeat()) > 0 ? ({ type: 'call' } as const) : ({ type: 'check' } as const);
     pokerScene.commitHumanAction(action);
+    tutorial.signal('poker.checkCall');
     forceFrame = true;
     r.requestRender();
   },
   onBetRaise: (amount) => {
     pokerScene.commitHumanAction({ type: 'raise', to: amount });
+    tutorial.signal('poker.raise');
     forceFrame = true;
     r.requestRender();
   },
   onAllin: () => {
     pokerScene.commitHumanAction({ type: 'allin' });
+    tutorial.signal('poker.raise');
     forceFrame = true;
     r.requestRender();
   },
@@ -1202,10 +1296,12 @@ function togglePokerPause(): void {
 function openPokerMenu(): void {
   if (mode !== 'poker') return;
   pokerMenuOpen = true;
+  tutorial.signal('ui.menuOpen');
   forceFrame = true;
   r.requestRender();
 }
 function closePokerMenu(): void {
+  if (pokerMenuOpen) tutorial.signal('ui.menuClose');
   pokerMenuOpen = false;
   forceFrame = true;
   r.requestRender();
@@ -1219,6 +1315,7 @@ function openPokerNotes(): void {
   if (!observers.length) return; // no AI seats → nothing to show
   if (pokerNotesIdx >= observers.length) pokerNotesIdx = 0;
   pokerNotesOpen = true;
+  tutorial.signal('poker.reads');
   forceFrame = true;
   r.requestRender();
 }
@@ -1228,21 +1325,42 @@ function closePokerNotes(): void {
   forceFrame = true;
   r.requestRender();
 }
-// The observer dropdown picks which AI seat's reads to show.
+// The observer dropdown picks which seat's reads to show (the modal is shared by poker and
+// Islanders; whichever screen is up owns the pick).
 setNotesObserverPick((i) => {
-  pokerNotesIdx = i;
+  if (mode === 'islanders') islandersNotesIdx = i;
+  else pokerNotesIdx = i;
   forceFrame = true;
   r.requestRender();
 });
+
+// The Islanders reads modal: every model seat's notebook (its plan and its reads on the others).
+function openIslandersNotes(): void {
+  if (mode !== 'islanders' || !islandersDriver.state()) return;
+  const observers = islandersDriver.noteObservers();
+  if (!observers.length) return;
+  if (islandersNotesIdx >= observers.length) islandersNotesIdx = 0;
+  islandersNotesOpen = true;
+  forceFrame = true;
+  r.requestRender();
+}
+function closeIslandersNotes(): void {
+  islandersNotesOpen = false;
+  islandersNotesFocused = false;
+  forceFrame = true;
+  r.requestRender();
+}
 
 // The chess ☰ in-game menu popup (home / new game / display / eval bar / illegal / quit).
 function openChessMenu(): void {
   if (mode !== 'chess-game') return;
   chessMenuOpen = true;
+  tutorial.signal('ui.menuOpen');
   forceFrame = true;
   r.requestRender();
 }
 function closeChessMenu(): void {
+  if (chessMenuOpen) tutorial.signal('ui.menuClose');
   chessMenuOpen = false;
   forceFrame = true;
   r.requestRender();
@@ -1276,6 +1394,7 @@ function confirmHomeYes(): void {
 // The shortcuts overlay: '?' anywhere (or a ☰ menu item) opens it; '?'/esc/✕ close it.
 function openShortcuts(): void {
   shortcutsOpen = true;
+  tutorial.signal('ui.controls');
   forceFrame = true;
   r.requestRender();
 }
@@ -1374,6 +1493,7 @@ function toggleIllegal(): void {
 // Show/hide the right-edge eval bar (bar button / 'e' key).
 function toggleEvalBar(): void {
   evalBarVisible = !evalBarVisible;
+  tutorial.signal('chess.evalBar');
   forceFrame = true;
   r.requestRender();
 }
@@ -1461,7 +1581,8 @@ function enterIslandersGame(): void {
   if (islandersGameTimer === null) {
     islandersGameTimer = setInterval(() => {
       islandersGameScene.requestAnimationFrame();
-      if (islandersGameScene.needsRender()) r.requestRender();
+      // The tutorial's attention pulses need frames too, even on a still island.
+      if (islandersGameScene.needsRender() || ui.animating()) r.requestRender();
     }, ISLANDERS_ANIMATION_FRAME_MS);
   }
   fullRepaint();
@@ -1515,12 +1636,14 @@ function buildIslandersGameMenu(): Node {
   return buildGameMenu({ groups, onClose: closeIslandersGameMenu, valueColW: MENU_VALUE_W });
 }
 function closeIslandersGameMenu(): void {
+  if (islandersGameMenuOpen) tutorial.signal('ui.menuClose');
   islandersGameMenuOpen = false;
   fullRepaint();
 }
 function openIslandersGameMenu(): void {
   if (mode !== 'islanders') return;
   islandersGameMenuOpen = true;
+  tutorial.signal('ui.menuOpen');
   fullRepaint();
 }
 
@@ -1577,6 +1700,7 @@ setPokerHandlers({
 });
 
 function toPrism(): void {
+  stopTutorial();
   stopAiMatch();
   stopPokerMatch();
   audioScene.deactivate(); // tear down any open voice session when leaving
@@ -1587,7 +1711,9 @@ function toPrism(): void {
 
 // The Wii-style menu hub. Reached from the prism loading screen (any key) and
 // returned to by a game's "back". No bar — the tiles are the navigation surface.
+// Going home is how every route out of the tutorial ends it.
 function enterMenu(clear = true): void {
+  stopTutorial();
   stopAiMatch();
   stopPokerMatch();
   audioScene.deactivate(); // tear down any open voice session when leaving
@@ -1595,8 +1721,12 @@ function enterMenu(clear = true): void {
   homeMenuOpen = false;
   teamModalOpen = false;
   teamModalFocused = false;
-  menuSel = 0;
-  coverPos = 0;
+  menuSel = initialMenuSel();
+  coverPos = menuSel;
+  if (firstMenuPending) {
+    firstMenuPending = false;
+    markFirstRunSeen();
+  }
   menuHover = false;
   coverFlowWheelInput.reset();
   launching = false;
@@ -1641,7 +1771,8 @@ function launchSelected(): void {
 
 // Open the actual game screen for a cover id (the destinations the splash hands off to).
 function enterGame(id: string): void {
-  if (id === 'chess') enterChessGame();
+  if (id === 'tutorial') tutorial.start();
+  else if (id === 'chess') enterChessGame();
   else if (id === 'logos') enterLogos();
   else if (id === 'audio') enterAudio();
   else if (id === 'poker') enterPoker();
@@ -1663,10 +1794,11 @@ function menuWheelNav(e: MouseEvent): void {
 }
 
 // The Cover Flow chrome over the 3D covers: the focused game's title centred below
-// the carousel, with a dim "coming soon" tail for placeholders.
+// the carousel, with a dim tail: "coming soon" for placeholders, and on an install's first
+// launch a nudge under the Tutorial.
 function drawCoverChrome(surf: Surface, cols: number, rows: number, sel: number): void {
   const item = MENU_ITEMS[coverFlowIndex(sel, MENU_ITEMS.length)];
-  const suffix = item.enabled ? '' : '   coming soon';
+  const suffix = !item.enabled ? '   coming soon' : item.id === 'tutorial' && firstLaunch ? '   new here? start with this' : '';
   const tx = Math.max(0, Math.floor((cols - (item.title.length + suffix.length)) / 2));
   const ty = rows - 4;
   surf.drawTextOver(tx, ty, item.title, [240, 244, 255], STYLE_BOLD);
@@ -1690,6 +1822,110 @@ function drawPrismPrompt(surf: Surface, cols: number, rows: number, t: number): 
   }
 }
 
+// ── Tutorial staging ─────────────────────────────────────────────────────────────
+// Open a chapter's screen. Chapters that share a screen keep it as-is (the board position
+// carries from Chess into Menu); a change of screen enters the game the normal way, then
+// seats the practice bots. The previous chapter's session is torn down first — the shell's
+// enter* functions only stop chess on their own.
+function showTutorialChapter(chapter: TutorialChapter, previous: TutorialChapter | null): void {
+  if (previous?.screen === 'poker' && chapter.screen !== 'poker') stopPokerMatch();
+  closeTutorialPopups();
+  tutorialIslandersSeen = 0;
+  tutorialIslandersStocked = false;
+  if (chapter.screen === 'chess') {
+    if (mode !== 'chess-game') enterChessGame();
+    if (previous?.screen !== 'chess') chessGame.resetGame();
+    fullRepaint();
+  } else if (chapter.screen === 'poker') {
+    // Consecutive poker chapters (poker → keyboard) keep the same table and hand running.
+    if (previous?.screen !== 'poker' || !pokerMatch.isRunning()) {
+      enterPoker();
+      pokerMatch.start([{ kind: 'human' }, { kind: 'bot' }, { kind: 'bot' }]);
+      pokerChatOpen = false;
+      pushPokerChat({ text: 'Practice table: the bots only check and call. In a real game each model talks here between actions, in character.', model: '', event: true });
+    }
+    fullRepaint();
+  } else {
+    // Consecutive island chapters (islanders → done) keep the same game going.
+    if (previous?.screen !== 'islanders' || !islandersDriver.state()) {
+      enterIslandersGame();
+      // A fixed seed makes the dice and dev deck replay identically every time the chapter is
+      // played; the island itself is the freshly prepared preview board.
+      const board = islandersGameScene.preparedBoard();
+      islandersDriver.start(
+        [
+          { kind: 'human', color: 'red' },
+          { kind: 'bot', color: 'blue' },
+          { kind: 'bot', color: 'orange' },
+        ],
+        { rng: mulberry32(0x7a7e), communicationMode: islandersSetupCommunicationMode(), ...(board ? { board } : {}) },
+      );
+    }
+    fullRepaint();
+  }
+}
+
+// Dismiss whatever popup a chapter left open (its menu, the controls overlay, the match
+// picker, a confirm) so the next chapter starts on a clean screen.
+function closeTutorialPopups(): void {
+  if (matchSetupOpen) closeMatchSetup();
+  chessMenuOpen = false;
+  pokerMenuOpen = false;
+  islandersGameMenuOpen = false;
+  homeMenuOpen = false;
+  shortcutsOpen = false;
+  confirmHomeOpen = false;
+  confirmQuitOpen = false;
+}
+
+// End the tutorial in place: drop the rail, its pulses, and the live lease it held. Callers
+// repaint. Every route home (enterMenu / toPrism / launching a cover) runs through here.
+function stopTutorial(): void {
+  if (!tutorial.active()) return;
+  tutorial.stop();
+  ui.setAttention([], TUTORIAL_PULSE);
+  applyGlobalOverlay();
+  syncLive();
+}
+
+// Detectors for steps the games don't announce: the poker peek/lift (scene state) and the
+// human's Islanders actions (the rules' action records). Runs once per frame while active.
+function tutorialPoll(): void {
+  if (mode === 'poker' && pokerScene.isActive()) {
+    const hero = pokerScene.tableView()?.seats[0];
+    if (hero?.cards.some((c) => c !== null)) tutorial.signal('poker.peek');
+    if (pokerScene.heroCardLifted()) tutorial.signal('poker.lift');
+  }
+  if (mode === 'islanders') {
+    const state = islandersDriver.state();
+    if (!state) return;
+    const human = islandersDriver.humanSeat();
+    const records = state.actionRecords();
+    for (; tutorialIslandersSeen < records.length; tutorialIslandersSeen++) {
+      const record = records[tutorialIslandersSeen];
+      if (record.player !== human) continue;
+      const type = record.action.type;
+      if (type === 'initialSettlement') tutorial.signal('islanders.settlement');
+      else if (type === 'initialRoad') tutorial.signal('islanders.road');
+      else if (type === 'roll') tutorial.signal('islanders.roll');
+      else if (type === 'buildRoad' || type === 'buildSettlement' || type === 'buildCity') tutorial.signal('islanders.build');
+      else if (type === 'maritimeTrade' || type === 'maritimeBulkTrade') tutorial.signal('islanders.trade');
+      else if (type === 'endTurn') tutorial.signal('islanders.endTurn');
+    }
+    if (state.initialPlacementComplete()) {
+      tutorial.signal('islanders.setupDone');
+      // Stock the opening hand once so every build and a 4:1 trade are possible on the first
+      // turn, whatever order they're tried in. The chapter's fixed seed opens with a non-7 roll,
+      // so the big hand isn't hit by a discard before it can be spent.
+      if (!tutorialIslandersStocked && human >= 0) {
+        tutorialIslandersStocked = true;
+        state.grantResources(human, RESOURCES.map(() => 6));
+        forceFrame = true;
+      }
+    }
+  }
+}
+
 // The component playground. (Re)mount the showcase instances each entry — the
 // set-diff unmounts them on leave, but the module-level instances persist, so
 // their state survives across visits.
@@ -1705,7 +1941,10 @@ function enterUi(): void {
 // way the old onMouse id→action branch did.
 const actions: BarActions = {
   back: enterMenu,
-  reset: () => activeOrbit()?.resetView(),
+  reset: () => {
+    activeOrbit()?.resetView();
+    tutorial.signal('camera.reset');
+  },
   mode: cycleMode,
   quit,
   aiMatch: aiButton,
@@ -1734,7 +1973,22 @@ const keymap = installKeymap({
   audioCycleModel: () => audioScene.cycleModel(),
   enterChessGame,
   enterUi,
-  activeOrbit,
+  // The keyboard camera commands report to the tutorial (the pointer path reports from
+  // onMouseImpl), so "arrow keys pan" and "r resets" can be ticked separately.
+  activeOrbit: () => {
+    const orbit = activeOrbit();
+    if (!orbit || !tutorial.active()) return orbit;
+    return {
+      resetView: () => {
+        orbit.resetView();
+        tutorial.signal('camera.reset');
+      },
+      pan: (dx: number, dy: number) => {
+        orbit.pan(dx, dy);
+        tutorial.signal('camera.panKey');
+      },
+    };
+  },
   cancelPromotion,
   aiButton,
   toggleHistory,
@@ -1755,6 +2009,7 @@ const keymap = installKeymap({
   closeIslandersMenu: () => islanders.closeMenu(),
   closeIslandersPieceEdit: () => islanders.closePieceModal(),
   closeIslandersGameMenu,
+  closeIslandersNotes,
   openChessMenu,
   openPokerMenu,
   togglePokerChat,
@@ -1798,6 +2053,13 @@ let promoFocused = false;
 // hover/focus state by id across rebuilds). While a promotion is pending the
 // overlay becomes the centered, full-screen picker instead of the bottom bar.
 function syncBar(): void {
+  // Everything below lays out into the HUD region — the screen, less the tutorial rail. The
+  // rail itself is the global overlay, refreshed here so it tracks progress every frame.
+  const region = hudRegion();
+  if (tutorial.active()) {
+    ui.setAttention(tutorial.attentionIds(), TUTORIAL_PULSE);
+    applyGlobalOverlay();
+  }
   // Game-over detection (chess-game only): open the result popup once the board is
   // terminal — for both human and AI games — until dismissed (Close) or a new game
   // leaves the terminal state. Cleared when in any other mode.
@@ -1820,6 +2082,7 @@ function syncBar(): void {
   if (mode !== 'islanders-tiles') islanders.reset(); // drop the islanders menu + piece-edit modal state
   if (mode !== 'islanders') {
     islandersGameMenuOpen = false;
+    islandersNotesOpen = false;
     leaveIslandersGame(); // abort a running placement session and stop its animation timer
   }
   if (mode !== 'chess-game' && mode !== 'poker' && mode !== 'islanders') confirmHomeOpen = false; // the confirm only lives in a game
@@ -1837,6 +2100,8 @@ function syncBar(): void {
   if (!islanders.isMenuOpen() && keymap.hasContext('islanders-menu')) keymap.popContext('islanders-menu');
   if (!islanders.hasPieceEdit() && keymap.hasContext('islanders-piece-edit')) keymap.popContext('islanders-piece-edit');
   if (!islandersGameMenuOpen && keymap.hasContext('islanders-game-menu')) keymap.popContext('islanders-game-menu');
+  if (!islandersNotesOpen && keymap.hasContext('islanders-notes')) keymap.popContext('islanders-notes');
+  if (!islandersNotesOpen) islandersNotesFocused = false;
   if (!confirmHomeOpen && keymap.hasContext('confirm-home')) keymap.popContext('confirm-home');
   if (!confirmHomeOpen) confirmHomeFocused = false; // re-focus "Return home" on the next open
   if (!shortcutsOpen && keymap.hasContext('shortcuts')) keymap.popContext('shortcuts');
@@ -1875,7 +2140,7 @@ function syncBar(): void {
         onCopy: copyUpdateCommand,
         onClose: closeUpdateModal,
       }),
-      { x: 0, y: 0, w: cols, h: rows },
+      region,
     );
     if (!updateModalFocused) {
       ui.setFocus('update-quit'); // default highlight so Enter quits to update
@@ -1891,7 +2156,7 @@ function syncBar(): void {
     if (!keymap.hasContext('shortcuts')) keymap.pushContext('shortcuts', true);
     // activeBindings() skips modal layers, so it reports the screen beneath this overlay.
     // Mouse rows are per-screen (orbit drag/zoom, menu browse/launch, chess click-to-move).
-    ui.setRoot(buildShortcuts(keymap.activeBindings(), closeShortcuts, { mouse: mouseControlsFor(mode) }), { x: 0, y: 0, w: cols, h: rows });
+    ui.setRoot(buildShortcuts(keymap.activeBindings(), closeShortcuts, { mouse: mouseControlsFor(mode) }), region);
   } else if (confirmQuitOpen) {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     popGameOver();
@@ -1899,7 +2164,7 @@ function syncBar(): void {
     popSwap();
     promoFocused = false;
     if (!keymap.hasContext('confirm-quit')) keymap.pushContext('confirm-quit', true);
-    ui.setRoot(buildConfirm({ prompt: 'quit arcade?', confirmLabel: 'quit', idPrefix: 'confirm-quit', onConfirm: quit, onCancel: closeConfirmQuit }), { x: 0, y: 0, w: cols, h: rows });
+    ui.setRoot(buildConfirm({ prompt: 'quit arcade?', confirmLabel: 'quit', idPrefix: 'confirm-quit', onConfirm: quit, onCancel: closeConfirmQuit }), region);
     if (!confirmQuitFocused) {
       ui.setFocus('confirm-quit-yes'); // default highlight so Enter quits
       confirmQuitFocused = true;
@@ -1912,7 +2177,7 @@ function syncBar(): void {
     popSwap();
     promoFocused = false;
     if (!keymap.hasContext('confirm-home')) keymap.pushContext('confirm-home', true);
-    ui.setRoot(buildConfirm({ prompt: 'return to home screen?', confirmLabel: 'return', idPrefix: 'confirm-home', onConfirm: confirmHomeYes, onCancel: closeConfirmHome }), { x: 0, y: 0, w: cols, h: rows });
+    ui.setRoot(buildConfirm({ prompt: 'return to home screen?', confirmLabel: 'return', idPrefix: 'confirm-home', onConfirm: confirmHomeYes, onCancel: closeConfirmHome }), region);
     if (!confirmHomeFocused) {
       ui.setFocus('confirm-home-yes'); // default highlight so Enter returns home
       confirmHomeFocused = true;
@@ -1934,7 +2199,7 @@ function syncBar(): void {
         },
         cancelPromotion,
       ),
-      { x: 0, y: 0, w: cols, h: rows },
+      region,
     );
     if (!promoFocused) {
       ui.setFocus('promo-queen'); // default highlight so Enter promotes to queen
@@ -1948,7 +2213,7 @@ function syncBar(): void {
     promoFocused = false;
     if (!keymap.hasContext('gameover')) keymap.pushContext('gameover', true);
     const { title, subtitle, tint } = gameOverText(gameOver);
-    ui.setRoot(buildGameOver({ title, subtitle, tint }, resetGame, closeGameOver), { x: 0, y: 0, w: cols, h: rows });
+    ui.setRoot(buildGameOver({ title, subtitle, tint }, resetGame, closeGameOver), region);
     if (!gameOverFocused) {
       ui.setFocus('over-newgame'); // default highlight so Enter starts a new game
       gameOverFocused = true;
@@ -1960,12 +2225,7 @@ function syncBar(): void {
     popSwap();
     promoFocused = false;
     if (!keymap.hasContext('setup')) keymap.pushContext('setup', true);
-    ui.setRoot(buildMatchSetup({ x: 0, y: 0, w: cols, h: rows }, { onStart: () => { void confirmMatchSetup(); }, onCancel: closeMatchSetup, healthStatus: modelHealthStatus('chess') }), {
-      x: 0,
-      y: 0,
-      w: cols,
-      h: rows,
-    });
+    ui.setRoot(buildMatchSetup(region, { onStart: () => { void confirmMatchSetup(); }, onCancel: closeMatchSetup, healthStatus: modelHealthStatus('chess') }), region);
     if (!setupFocused) {
       ui.setFocus('setup-mode'); // start on the mode picker (the human side has no creator list)
       setupFocused = true;
@@ -1983,12 +2243,7 @@ function syncBar(): void {
     const title = wispSwap.game === 'chess'
       ? (wispSwap.color === WHITE ? 'white' : 'black')
       : 'seat ' + (wispSwap.seat + 1);
-    ui.setRoot(buildSwapSetup({ x: 0, y: 0, w: cols, h: rows }, { title, onConfirm: confirmWispSwap, onCancel: cancelWispSwap }), {
-      x: 0,
-      y: 0,
-      w: cols,
-      h: rows,
-    });
+    ui.setRoot(buildSwapSetup(region, { title, onConfirm: confirmWispSwap, onCancel: cancelWispSwap }), region);
     if (!wispSwapFocused) {
       ui.setFocus('setup-swap-creator'); // start in the creator list
       wispSwapFocused = true;
@@ -2002,7 +2257,6 @@ function syncBar(): void {
     // Account modal replace the overlay in turn. Keep the account dropdown mounted
     // so its committed selection and search interaction survive rebuilds.
     mountTeamSwitch(ui);
-    const region = { x: 0, y: 0, w: cols, h: rows };
     if (teamModalOpen) {
       if (!keymap.hasContext('teamswitch')) keymap.pushContext('teamswitch', true);
       ui.setRoot(
@@ -2048,12 +2302,7 @@ function syncBar(): void {
     popSwap();
     // The component playground: a full-screen tree (centered panel + the standard
     // bar) laid out over the scene, so Tab/typing reach the mounted components.
-    ui.setRoot(buildShowcase({ x: 0, y: 0, w: cols, h: rows }, buildBar('ui', renderMode, actions)), {
-      x: 0,
-      y: 0,
-      w: cols,
-      h: rows,
-    });
+    ui.setRoot(buildShowcase(region, buildBar('ui', renderMode, actions)), region);
   } else if (chessMenuOpen) {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     popGameOver();
@@ -2081,7 +2330,7 @@ function syncBar(): void {
         { id: 'chess-menu-quit', label: 'quit', onClick: quit },
       ],
     ];
-    ui.setRoot(buildGameMenu({ groups, onClose: closeChessMenu, valueColW: MENU_VALUE_W }), { x: 0, y: 0, w: cols, h: rows });
+    ui.setRoot(buildGameMenu({ groups, onClose: closeChessMenu, valueColW: MENU_VALUE_W }), region);
   } else if (mode === 'chess-game') {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     popGameOver();
@@ -2113,7 +2362,7 @@ function syncBar(): void {
     // White-POV centipawns for the eval bar (cheap 64-square scan; only when shown).
     const evalCp = evalBarVisible ? evaluate(chessGame.state().board) : 0;
     ui.setRoot(
-      buildChessGameRoot({ x: 0, y: 0, w: cols, h: rows }, buildBar(mode, renderMode, actions, ai), {
+      buildChessGameRoot(region, buildBar(mode, renderMode, actions, ai), {
         minimized: historyMinimized,
         onToggle: toggleHistory,
         onCopy: copyMoves,
@@ -2129,7 +2378,7 @@ function syncBar(): void {
         illegalOn: illegalAllowed,
         matchup: matchSeats ? chessMatchupLabels(matchSeats) : null,
       }),
-      { x: 0, y: 0, w: cols, h: rows },
+      region,
     );
   } else if (mode === 'cards') {
     popGameOver();
@@ -2138,13 +2387,13 @@ function syncBar(): void {
     // Re-mount the poker dropdowns (a prior modal root may have dropped their
     // Slots), then build the control panel + bar over the scene.
     mountPokerHud(ui);
-    ui.setRoot(buildPokerRoot({ x: 0, y: 0, w: cols, h: rows }, buildBar('cards', renderMode, actions)), { x: 0, y: 0, w: cols, h: rows });
+    ui.setRoot(buildPokerRoot(region, buildBar('cards', renderMode, actions)), region);
   } else if (islanders.isMenuOpen()) {
     popGameOver();
     popSetup();
     popSwap();
     if (!keymap.hasContext('islanders-menu')) keymap.pushContext('islanders-menu', true);
-    ui.setRoot(islanders.buildMenuRoot(cols, rows), { x: 0, y: 0, w: cols, h: rows });
+    ui.setRoot(islanders.buildMenuRoot(cols, rows), region);
   } else if (mode === 'islanders-tiles' && islanders.hasPieceEdit()) {
     popGameOver();
     popSetup();
@@ -2153,18 +2402,42 @@ function syncBar(): void {
     // The piece-edit modal over the board (null if the piece went stale — then the next frame
     // falls through to the normal root).
     const root = islanders.buildPieceModalRoot();
-    if (root) ui.setRoot(root, { x: 0, y: 0, w: cols, h: rows });
+    if (root) ui.setRoot(root, region);
   } else if (mode === 'islanders-tiles') {
     popGameOver();
     popSetup();
     popSwap();
-    ui.setRoot(islanders.buildRoot(cols, rows, activeSceneViewport().w), { x: 0, y: 0, w: cols, h: rows });
+    ui.setRoot(islanders.buildRoot(cols, rows, activeSceneViewport().w), region);
+  } else if (mode === 'islanders' && islandersNotesOpen) {
+    popGameOver();
+    popSetup();
+    popSwap();
+    if (!keymap.hasContext('islanders-notes')) keymap.pushContext('islanders-notes', true);
+    mountPokerNotes(ui); // the reads modal (its observer dropdown + scroll body) is shared with poker
+    const observers = islandersDriver.noteObservers();
+    const activeIdx = Math.min(islandersNotesIdx, observers.length - 1);
+    const observer = observers[activeIdx];
+    const notebook = observer ? islandersDriver.notesView(observer.seat) : { plan: '', reads: [] };
+    ui.setRoot(
+      buildPokerNotesModal({
+        observers,
+        activeIndex: activeIdx,
+        entries: [{ label: 'plan', notes: notebook.plan ? [notebook.plan] : [] }, ...notebook.reads],
+        onClose: closeIslandersNotes,
+      }),
+      region,
+    );
+    if (!islandersNotesFocused) {
+      ui.setFocus('poker-notes-scroll');
+      islandersNotesFocused = true;
+      forceFrame = true;
+    }
   } else if (mode === 'islanders' && islandersGameMenuOpen) {
     popGameOver();
     popSetup();
     popSwap();
     if (!keymap.hasContext('islanders-game-menu')) keymap.pushContext('islanders-game-menu', true);
-    ui.setRoot(buildIslandersGameMenu(), { x: 0, y: 0, w: cols, h: rows });
+    ui.setRoot(buildIslandersGameMenu(), region);
   } else if (mode === 'islanders') {
     popGameOver();
     popSetup();
@@ -2172,17 +2445,17 @@ function syncBar(): void {
     // Re-mount the setup dropdowns + history scrollbox (a prior modal root may have dropped
     // their Slots), then build whichever face the session state calls for.
     mountIslandersGameHud(ui);
-    const islandersRegion = { x: 0, y: 0, w: cols, h: rows };
     if (islandersDriver.state()) {
       islandersGameScene.setResourceFlightLayout(
-        islandersRegion,
+        region,
         islandersDriver.seatCount(),
-        islandersRailVisible(cols, rows),
+        islandersRailShown(),
+        islandersDriver.humanSeat() >= 0 && islandersRailShown() ? islandersChatComposerRows() : 0,
       );
     }
     ui.setRoot(
       buildIslandersGameRoot(
-        islandersRegion,
+        region,
         {
           driver: islandersDriver,
           scene: islandersGameScene,
@@ -2193,12 +2466,13 @@ function syncBar(): void {
           onOpenMenu: () => {
             openIslandersGameMenu();
           },
+          onOpenNotes: openIslandersNotes,
           onStart: () => { void startIslandersGame(); },
           healthStatus: modelHealthStatus('islanders'),
           notice: commentary && t < commentary.until ? commentary.text : undefined,
         },
       ),
-      { x: 0, y: 0, w: cols, h: rows },
+      region,
     );
   } else if (pokerNotesOpen) {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
@@ -2219,7 +2493,7 @@ function syncBar(): void {
         entries: observer ? pokerMatch.notesView(observer.seat) : [],
         onClose: closePokerNotes,
       }),
-      { x: 0, y: 0, w: cols, h: rows },
+      region,
     );
     if (!pokerNotesFocused) {
       ui.setFocus('poker-notes-scroll'); // so ↑/↓/PageUp scroll the reads immediately
@@ -2253,7 +2527,7 @@ function syncBar(): void {
         { id: 'poker-menu-quit', label: 'quit', onClick: quit },
       ],
     ];
-    ui.setRoot(buildGameMenu({ groups, onClose: closePokerMenu, valueColW: MENU_VALUE_W }), { x: 0, y: 0, w: cols, h: rows });
+    ui.setRoot(buildGameMenu({ groups, onClose: closePokerMenu, valueColW: MENU_VALUE_W }), region);
   } else if (mode === 'poker') {
     popGameOver();
     popSetup();
@@ -2278,7 +2552,7 @@ function syncBar(): void {
         ? { setup: false, onPrimary: pokerNewMatch }
         : null;
     ui.setRoot(
-      buildPokerGameRoot({ x: 0, y: 0, w: cols, h: rows }, buildBar('poker', renderMode, actions), {
+      buildPokerGameRoot(region, buildBar('poker', renderMode, actions), {
         hero: pokerHero(),
         blinds: (() => {
           const level = pokerMatch.tournamentState();
@@ -2305,7 +2579,7 @@ function syncBar(): void {
         awaitingContinue: pokerScene.awaitingContinue(),
         continueIn: pokerScene.continueCountdown(),
       }),
-      { x: 0, y: 0, w: cols, h: rows },
+      region,
     );
     if (pokerSetupOpen && !pokerSetupFocused) {
       ui.setFocus('poker-players'); // start on the player-count picker
@@ -2471,6 +2745,8 @@ function onKeyImpl(ev: KeyEvent): void {
     keymap.handle(ev);
     return;
   }
+  // The tutorial's keyboard chapter ticks on the key itself, whatever it ends up doing.
+  tutorial.signal(`key.${eventToChord(ev)}`);
   // Focused widget first (the promotion picker's Tab/Enter/Space; future Inputs),
   // then a hovered scrollable (so ↑/↓/PageUp/PageDown scroll the move panel under
   // the cursor without a click to focus it), then the layered keymap. The keymap
@@ -2578,6 +2854,7 @@ function onMouseImpl(e: MouseEvent): void {
       // otherwise it zooms the scene.
       if (ui.wheel(e.x, e.y, e.wheel === -1 ? -1 : 1)) return;
       orbit.zoomBy(e.wheel === -1 ? 0.9 : 1.1);
+      tutorial.signal('camera.zoom');
       return;
     }
     if (e.type === 'move') {
@@ -2622,8 +2899,13 @@ function onMouseImpl(e: MouseEvent): void {
         lastMouseY = e.y;
         // Pan with a modifier (⌘/Option/Shift/Ctrl) or right-drag; orbit otherwise.
         // Right-click usually pops the terminal menu, so the modifier is primary.
-        if (e.meta || e.shift || e.ctrl || e.button === 2) orbit.pan(dx * POINTER_PAN_SCALE, dy * POINTER_PAN_SCALE);
-        else orbit.orbit(dx, dy);
+        if (e.meta || e.shift || e.ctrl || e.button === 2) {
+          orbit.pan(dx * POINTER_PAN_SCALE, dy * POINTER_PAN_SCALE);
+          tutorial.signal('camera.pan');
+        } else {
+          orbit.orbit(dx, dy);
+          tutorial.signal('camera.orbit');
+        }
         return;
       }
       // Not a camera drag → route to a component that captured the down (a Slider
@@ -2708,6 +2990,9 @@ function tick(dt: number): void {
   pixelDisplayPrepared = false;
   const step = Math.min(dt, MAX_STEP); // real seconds since the last rendered frame, clamped
   t += step;
+  ui.setTime(t);
+  // Before the mode dispatch, so the detectors read game state that settled last frame.
+  if (tutorial.active()) tutorialPoll();
   ensureSceneTarget();
 
   if (splashing) {
@@ -2729,9 +3014,10 @@ function tick(dt: number): void {
     if (updateModalOpen) syncBar();
     prism.renderScene(target, t);
     if (prismToMenu.active()) {
+      // The wipe reveals the slot the menu will land on (the Tutorial, on a first launch).
       const source = sceneSurface((surface) => drawPrismPrompt(surface, cols, rows, t));
-      coverflow.renderScene(target, 0, null);
-      const destination = sceneSurface((surface) => drawCoverChrome(surface, cols, rows, 0));
+      coverflow.renderScene(target, initialMenuSel(), null);
+      const destination = sceneSurface((surface) => drawCoverChrome(surface, cols, rows, initialMenuSel()));
       const complete = prismToMenu.step(step);
       const composed = prismToMenu.compose(source, destination);
       writeFrame(ui.frameComposited((surface) => composed.copyInto(surface)));
@@ -2961,9 +3247,28 @@ function sceneSurface(overlay?: (surface: Surface) => void): Surface {
   return surface;
 }
 
+// The tutorial's font-size steps watch the cell grid, since the terminal keeps the ⌘−/⌘+
+// chord to itself: a resize that adds cells is one "smaller" step, one that removes cells a
+// "bigger" step. Some terminals report a couple of intermediate sizes per keypress, so
+// events inside a short window fold into the step that began it.
+const RESIZE_STEP_COALESCE_MS = 200;
+let lastResizeAt = 0;
+let lastResizeDirection = 0;
+function signalResizeStep(before: number, after: number): void {
+  if (!tutorial.active() || after === before) return;
+  const direction = after > before ? 1 : -1;
+  const now = Date.now();
+  const sameStep = direction === lastResizeDirection && now - lastResizeAt < RESIZE_STEP_COALESCE_MS;
+  lastResizeAt = now;
+  lastResizeDirection = direction;
+  if (!sameStep) tutorial.signal(direction > 0 ? 'terminal.denser' : 'terminal.coarser');
+}
+
 process.stdout.on('resize', () => {
+  const cellsBefore = cols * rows;
   cols = process.stdout.columns ?? 80;
   rows = process.stdout.rows ?? 24;
+  signalResizeStep(cellsBefore, cols * rows);
   const viewport = activeSceneViewport();
   const supersample = supersampleForViewport(renderMode, cols, rows);
   target = new RenderTarget(viewport.w * supersample, viewport.h * SCENE_CELL_PIXEL_ASPECT * supersample);

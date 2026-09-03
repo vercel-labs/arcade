@@ -3,6 +3,7 @@
 // the game instead of leaking into the shared TUI theme.
 
 import type { DevCardType, PlayerColor, Resource } from '../../../rules/islanders/types.ts';
+import { POKER_PALETTE } from '../poker/palette.ts';
 
 export type IslandersRgb = [number, number, number];
 
@@ -17,6 +18,7 @@ export const DEV_CARD_ICON = '🔨';
 export const KNIGHT_ICON = '💂';
 export const ROAD_ICON = '➖';
 export const SETTLEMENT_ICON = '🏠';
+export const CITY_ICON = '🏢';
 
 export const RESOURCE_ORDER: Resource[] = ['lumber', 'brick', 'wool', 'grain', 'ore'];
 export const RESOURCE_LOOK: Record<Resource, IslandersCardLook> = {
@@ -55,6 +57,12 @@ export const ISLANDERS_CARD = {
   actionPressedInk: [19, 48, 54] as IslandersRgb,
   devActionHover: [149, 109, 190] as IslandersRgb,
   devActionPressed: [205, 181, 229] as IslandersRgb,
+  // Roll and end turn commit the turn without spending cards, so they wear the arcade's
+  // committing-action indigo, the same fill as poker's bet / raise button: neither a card fill
+  // nor trade's teal, and clearly above the disabled charcoal.
+  turnActionBg: POKER_PALETTE.actionRaiseBg,
+  turnActionHover: POKER_PALETTE.actionRaiseHoverBg,
+  turnActionPressed: [214, 218, 240] as IslandersRgb,
   tradeBg: [20, 23, 31, 0.96] as [number, number, number, number],
   tradeAccent: [78, 167, 177] as IslandersRgb,
   tradeInk: [13, 36, 41] as IslandersRgb,

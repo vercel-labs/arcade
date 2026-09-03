@@ -559,7 +559,7 @@ export function buildPokerGameRoot(
   const menuPill = Button({ id: 'poker-menu', label: MENU_BUTTON_LABEL, onClick: opts.onOpenMenu, style: UI_CHROME_PILL });
   // The notes pill sits between menu and chat, shown whenever a session is live (both when
   // the human plays and when spectating an all-AI table).
-  const notesPill = opts.active ? Button({ id: 'poker-notes', label: 'reads', onClick: opts.onOpenNotes, style: UI_CHROME_PILL }) : null;
+  const notesPill = opts.active ? Button({ id: 'poker-notes', label: 'notes', onClick: opts.onOpenNotes, style: UI_CHROME_PILL }) : null;
   const chatPill =
     opts.active && !opts.chatOpen ? Button({ id: 'poker-chat-open', label: 'chat', onClick: opts.onToggleChat, style: UI_CHROME_PILL }) : null;
   const rightCluster = Box({ flexDirection: 'row', gap: 1, alignItems: 'center' }, [menuPill, ...(notesPill ? [notesPill] : []), ...(chatPill ? [chatPill] : [])]);

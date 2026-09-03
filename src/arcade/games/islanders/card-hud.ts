@@ -70,9 +70,11 @@ import {
   landIslandersWorkbenchBankResource,
   landIslandersWorkbenchDevCard,
   logIslandersWorkbenchDevPurchase,
+  logIslandersWorkbenchDiscard,
   logIslandersWorkbenchMaritimeTrade,
   performStagedIslandersWorkbenchBankTrade,
   performStagedIslandersWorkbenchPortTrade,
+  reserveIslandersWorkbenchDiscard,
   setIslandersTradeEditorOpen,
   stagedIslandersBankTrade,
   stagedIslandersPortTrade,
@@ -120,6 +122,7 @@ export {
   logIslandersRobberMove,
   logIslandersRoll,
   logIslandersWorkbenchDevPurchase,
+  logIslandersWorkbenchDiscard,
   logIslandersWorkbenchMaritimeTrade,
   performIslandersWorkbenchBankTrade,
   performIslandersWorkbenchPortTrade,
@@ -128,6 +131,7 @@ export {
   chooseIslandersWorkbenchDevelopmentResource,
   finishIslandersWorkbenchDevelopmentPlay,
   resetIslandersWorkbenchCards,
+  reserveIslandersWorkbenchDiscard,
   resolveIslandersWorkbenchPlayerTradeOffer,
   setIslandersTradeEditorOpen,
   setIslandersWorkbenchTradeSelection,
@@ -192,11 +196,17 @@ const HAND_ACTION_W = 9;
 // needs more air from the taller hand tray so their different silhouettes feel deliberate.
 const HAND_ACTION_GAP = 2;
 const ACTION_BUTTON_GAP = 2;
-const ACTIONS_W = HAND_ACTION_W * 2 + ACTION_BUTTON_GAP;
+// trade, buy dev, and the turn card (roll / end) sit in one row by the hand.
+const ACTIONS_W = HAND_ACTION_W * 3 + ACTION_BUTTON_GAP * 2;
 const ACTION_BG = ISLANDERS_CARD.actionBg;
 const ACTION_HOVER = ISLANDERS_CARD.actionHover;
 const ACTION_DISABLED = ISLANDERS_CARD.actionDisabled;
 const ACTION_DISABLED_INK = ISLANDERS_CARD.actionDisabledInk;
+const TURN_ACTION_COLORS = {
+  background: ISLANDERS_CARD.turnActionBg,
+  hover: ISLANDERS_CARD.turnActionHover,
+  pressed: ISLANDERS_CARD.turnActionPressed,
+};
 
 interface DevCardHelp {
   title: string;
@@ -277,27 +287,59 @@ const RAIL_W = ISLANDERS_RAIL_W;
 // that edge by BODY_PAD_R so text is not jammed against it.
 const CONTENT_W = RAIL_W - SIDEBAR_PAD_L - SIDEBAR_PAD_R;
 const RAIL_INNER = CONTENT_W - BODY_PAD_R;
+// The width a full-row control in the sidebar body spans (the chat composer): the same margin
+// on the right as the panel's left inset.
+export const ISLANDERS_RAIL_INNER_W = RAIL_INNER;
 // Rows stop two columns short of the ScrollBox: one for the bar, one blank beside it, so text can
 // never sit flush against the bar. Mirrors the chat's SCROLLBAR_W + RIGHT_GAP reservation.
 const HISTORY_ROW_W = CONTENT_W - 2;
-// The history claims half the panel and keeps it whether or not there are entries to fill it —
-// a log that grows into reserved space beats one that shoves the bank and the table down the
-// panel as the game runs. On a short terminal there is less than half to give, so it takes
-// whatever the fixed sections leave and scrolls the rest.
-const HISTORY_SHARE = 0.5;
+// The log takes every row the fixed sections leave, so the bank and the players table sit at
+// the panel's bottom whatever the seat count, and an empty log at game start is just room the
+// entries grow into. Below this many rows the other sections start giving ground.
 const HISTORY_MIN_H = 4;
 
-// Every row of the sidebar that is not the history viewport: the panel's insets and header, the
-// two section labels, the bank row, the players table, and the gap under each of those.
-function sidebarFixedH(playerCount: number): number {
-  const rows = 1 /* history label */ + 1 /* bank label */ + CARD_H /* bank row */ + 1 /* players header */ + playerCount;
-  const gaps = 4 + playerCount; // one under every body child except the last
-  return SIDEBAR_PAD_V * 2 + SIDEBAR_HEADER_H + rows + gaps;
+// The bank and the players table are the rail's reason to exist, so the rail never hides for
+// lack of height. As rows run out the sections give ground in order: the log shrinks to its
+// minimum, the players table drops the air between its rows, the bank folds from a row of cards
+// to one line of counts, and last the log gives up its remaining rows for a one-line hint.
+export interface IslandersRailPlan {
+  // Rows of the log block (viewport plus composer); 0 means the hint stands in for it.
+  logH: number;
+  compactBank: boolean;
+  playerRowGap: 0 | 1;
+  // Offset from the rail's top row to the first row of the bank (cards or line).
+  bankTop: number;
 }
 
-function islandersHistoryHeight(region: LayoutBox, playerCount: number): number {
-  const spare = region.h - sidebarFixedH(playerCount);
-  return Math.max(HISTORY_MIN_H, Math.min(Math.floor(region.h * HISTORY_SHARE), spare));
+// The chat composer rides inside the log block, so the block's minimum grows with it:
+// `composerRows` is the Input's current height (0 with no human seated), which the HUD build reads
+// off the node and the flight geometry is handed by its caller, so both see the same rail.
+// Every row of the rail that is not the log block: the panel's insets and header, the bank
+// (label + cards, or one line), the players table, and the gap under each body child but the last.
+function railFixedH(playerCount: number, compactBank: boolean, playerRowGap: 0 | 1): number {
+  const bank = compactBank ? 1 : 1 /* label */ + 1 /* gap */ + CARD_H;
+  const players = 1 /* header */ + playerCount + playerCount * playerRowGap;
+  const gaps = 2; // under the log block and under the bank
+  return SIDEBAR_PAD_V * 2 + SIDEBAR_HEADER_H + bank + gaps + players;
+}
+
+export function islandersRailPlan(region: LayoutBox, playerCount: number, composerRows: number): IslandersRailPlan {
+  const composer = composerRows ? composerRows + 1 : 0;
+  const logMin = HISTORY_MIN_H + composer;
+  const tiers: [boolean, 0 | 1][] = [[false, 1], [false, 0], [true, 0]];
+  for (const [compactBank, playerRowGap] of tiers) {
+    const spare = region.h - railFixedH(playerCount, compactBank, playerRowGap);
+    if (spare >= logMin) return { logH: spare, compactBank, playerRowGap, bankTop: railBankTop(spare, compactBank) };
+  }
+  // Even the tightest layout leaves the log short: keep whatever rows remain (at least one line
+  // beside the composer), or swap in the hint when not even that fits.
+  const spare = region.h - railFixedH(playerCount, true, 0);
+  const logH = spare >= 1 + composer ? spare : 0;
+  return { logH, compactBank: true, playerRowGap: 0, bankTop: railBankTop(Math.max(logH, 1), true) };
+}
+
+function railBankTop(logH: number, compactBank: boolean): number {
+  return SIDEBAR_PAD_V + SIDEBAR_HEADER_H + logH + 1 /* gap */ + (compactBank ? 0 : 1 /* label */ + 1 /* gap */);
 }
 
 // Player colors are font colors here, never fills — a seat's color reads as its name's ink the
@@ -348,7 +390,9 @@ export function islandersCardsLayout(region: LayoutBox): IslandersCardsLayout {
   const compact = region.w < 96 || region.h < 34;
   return {
     compact,
-    showPublicRail: region.w >= 112 && region.h >= 40,
+    // Width alone decides: the rail is 51 columns and the board needs the rest. Height only
+    // changes how the rail lays itself out (see islandersRailPlan).
+    showPublicRail: region.w >= 112,
     railWidth: RAIL_W,
     // No title: the cards are self-evident. Just the row of faces, a row of air above it, and
     // the panel's bottom pad.
@@ -359,8 +403,11 @@ export function islandersCardsLayout(region: LayoutBox): IslandersCardsLayout {
 // A deliberately flat rectangle like the reference cards: one uninterrupted color field, the
 // glyph over its name, and a plain white count in the top-right. No frame. `dim` swaps in the
 // spent-slot colors without touching the geometry, so an empty card holds its place in the row.
-function card(look: ResourceLook, count: number | null, height = CARD_H, dim = false, selected = false): Node {
-  const fill = dim ? EMPTY_FILL : look.fill;
+// `hoverable` hands the fill to the wrapper `clickable` builds around the face, so the whole
+// card can lighten under the pointer (a hover style only paints on the hovered node, and the
+// tooltip trigger is that wrapper). The face's text then sits on the wrapper's fill.
+function card(look: ResourceLook, count: number | null, height = CARD_H, dim = false, selected = false, hoverable = false): Node {
+  const fill = hoverable ? 'transparent' : dim ? EMPTY_FILL : look.fill;
   const ink = dim ? EMPTY_INK : look.ink;
   const countInk = dim ? EMPTY_INK : COUNT_INK;
   // Glyph and name read as one block, so center the pair rather than each row; the count keeps
@@ -439,6 +486,25 @@ function bankRow(view: IslandersCardsView): Node {
   ]);
 }
 
+// The bank folded to one line when the terminal is short: the section label, then each pile as
+// its glyph and count. Every pile occupies BANK_LINE_PILE_W cells so the flight geometry can find
+// a pile by index the same way it finds a card.
+const BANK_LINE_LABEL = 'bank';
+const BANK_LINE_PILE_W = 7;
+function bankLine(view: IslandersCardsView): Node {
+  const piles = [
+    ...RESOURCE_ORDER.map((resource) => ({ look: RESOURCE_LOOK[resource], count: view.bank[resource] })),
+    { look: DEV_LOOK, count: view.developmentDeck },
+  ];
+  return Box({ gap: 0 }, [
+    sectionTitle(BANK_LINE_LABEL),
+    ...piles.map(({ look, count }) => Box({ width: BANK_LINE_PILE_W, justifyContent: 'end' }, [
+      Text({ text: `${look.emoji} ` }),
+      Text({ text: `${count}`, style: { color: RAIL_TEXT, bold: true } }),
+    ])),
+  ]);
+}
+
 // ── Players table ───────────────────────────────────────────────────────────────────────────
 // Model slugs are long enough (claude-haiku-4.5 is 16 cells) that a per-row "2 vp  cards: 3" label
 // run no longer fits beside them. The labels move to a header instead and the stats become
@@ -446,9 +512,10 @@ function bankRow(view: IslandersCardsView): Node {
 // be compared down a column.
 // Each column is only as wide as its own header or widest value, so the name column keeps
 // everything left over — a uniform width clipped the longest slug by a single cell.
-// vp sits at the far right, the column a reader scans to for the standings; the supporting counts
-// run from `cards` on the left. `strong` is the score's emphasis, carried on the column rather
-// than its position so the order can change without moving the styling with it.
+// The score rides on the name (`name · 6`, or `name · 6 (7)` when hidden victory-point cards the
+// viewer may know about raise the real total) rather than in a column: a seat's true score is
+// private information, so the two numbers can't line up as one comparable column anyway. The
+// supporting counts run from `cards` on the left.
 const STAT_GAP = 1;
 // `flag` promotes a value out of the muted default when the game state says it matters: gold for
 // the seat that HOLDS an award, red for a hand the robber would force a discard from. Both are
@@ -459,7 +526,6 @@ const STAT_GAP = 1;
 interface StatColumn {
   head: string;
   col: ColumnDef;
-  strong?: boolean;
   read: (p: IslandersCardsPlayerView) => number;
   flag?: (p: IslandersCardsPlayerView) => Rgb | null;
 }
@@ -468,7 +534,6 @@ const STAT_COLUMNS: StatColumn[] = [
   { head: DEV_CARD_ICON, col: { width: 3, align: 'end' }, read: (p) => p.developmentCards },
   { head: KNIGHT_ICON, col: { width: 3, align: 'end' }, read: (p) => p.knights, flag: (p) => (p.hasLargestArmy ? AWARD : null) },
   { head: ROAD_ICON, col: { width: 3, align: 'end' }, read: (p) => p.longestRoad, flag: (p) => (p.hasLongestRoad ? AWARD : null) },
-  { head: 'vp', col: { width: 2, align: 'end' }, strong: true, read: (p) => p.publicVp },
 ];
 // The name column takes whatever the stats leave, down to a floor that keeps a seat
 // identifiable rather than letting it collapse to nothing on a narrow terminal.
@@ -483,23 +548,33 @@ function playersHeader(): Node {
   ]);
 }
 
+// `name · 6`, with the real total in parentheses when it differs from the public one.
+function playerScore(player: IslandersCardsPlayerView): string {
+  const hidden = player.actualVp !== undefined && player.actualVp !== player.publicVp ? ` (${player.actualVp})` : '';
+  return `${player.publicVp}${hidden}`;
+}
+
 function playerRow(player: IslandersCardsPlayerView): Node {
   const seat = PLAYER_LOOK[player.color];
+  const name = Box({ gap: 0, overflow: 'hidden' }, [
+    Text({ text: `${player.active ? '▸ ' : '  '}${player.name}`, style: { color: seat, bold: true, textOverflow: 'ellipsis' } }),
+    Text({ text: ' · ', style: { color: RAIL_MUTED } }),
+    Text({ text: playerScore(player), style: { color: RAIL_TEXT, bold: true } }),
+  ]);
   return TableRow({}, [
-    TableCell(`${player.active ? '▸ ' : '  '}${player.name}`, { style: { color: seat, bold: true } }),
-    // vp is the score, so it keeps the reading white; the rest are supporting detail until a
-    // flag promotes them.
+    TableCell(name),
+    // Supporting detail stays muted until a flag promotes it.
     ...STAT_COLUMNS.map((c) => {
       const flag = c.flag?.(player) ?? null;
       return TableCell(`${c.read(player)}`, {
-        style: { color: flag ?? (c.strong ? RAIL_TEXT : RAIL_MUTED), bold: flag !== null || c.strong },
+        style: { color: flag ?? RAIL_MUTED, bold: flag !== null },
       });
     }),
   ]);
 }
 
-function playersTable(players: IslandersCardsPlayerView[]): Node {
-  return Table({ columns: PLAYER_COLUMNS, width: RAIL_INNER, gap: STAT_GAP, rowGap: 1 }, [
+function playersTable(players: IslandersCardsPlayerView[], rowGap: 0 | 1): Node {
+  return Table({ columns: PLAYER_COLUMNS, width: RAIL_INNER, gap: STAT_GAP, rowGap }, [
     playersHeader(),
     ...players.map(playerRow),
   ]);
@@ -514,31 +589,36 @@ export function islandersSidebarPlayers(view: IslandersCardsView): IslandersCard
 // One continuous dark panel owning the full right strip — the same width the scene viewport is
 // inset by, so the rail sits beside the board rather than over it. Its ✕ collapses it back to the
 // reopen pill, mirroring the poker chat rail.
-function sidebar(view: IslandersCardsView, onClose: () => void, historyH: number, logComposer?: Node): Node {
+// The panel is titled for what sits directly under its header, the log; the bank and the players
+// table follow as labelled sections, so no row is spent on a second title.
+export const ISLANDERS_RAIL_TITLE = 'game log';
+const LOG_HINT = 'taller terminal shows the log';
+
+function sidebar(view: IslandersCardsView, onClose: () => void, plan: IslandersRailPlan, logComposer?: Node): Node {
   const players = islandersSidebarPlayers(view);
   // Only the ScrollBox reaches the panel edge; the rest is inset so it clears the scrollbar column.
   const inset = (child: Node): Node => Box({ width: { pct: 100 }, padding: [0, BODY_PAD_R, 0, 0] }, [child]);
   const composerH = typeof logComposer?.style.height === 'number' ? logComposer.style.height : 0;
-  const logViewportH = Math.max(1, historyH - composerH - (logComposer ? 1 : 0));
+  const logViewportH = Math.max(1, plan.logH - composerH - (logComposer ? 1 : 0));
   islandersHistoryScroll.setHeight(logViewportH);
-  const log = Box({
-    flexDirection: 'column',
-    gap: logComposer ? 1 : 0,
-    height: historyH,
-    overflow: 'visible',
-  }, [
-    Slot('islanders-history'),
-    ...(logComposer ? [inset(logComposer)] : []),
-  ]);
+  const log = plan.logH === 0
+    ? inset(Text({ text: LOG_HINT, style: { color: RAIL_MUTED } }))
+    : Box({
+        flexDirection: 'column',
+        gap: logComposer ? 1 : 0,
+        height: plan.logH,
+        overflow: 'visible',
+      }, [
+        Slot('islanders-history'),
+        ...(logComposer ? [inset(logComposer)] : []),
+      ]);
   const body = Box({ flexDirection: 'column', gap: 1, overflow: 'hidden' }, [
-    inset(sectionTitle('game log')),
     log,
-    inset(sectionTitle('bank')),
-    inset(bankRow(view)),
-    inset(playersTable(players)),
+    ...(plan.compactBank ? [inset(bankLine(view))] : [inset(sectionTitle('bank')), inset(bankRow(view))]),
+    inset(playersTable(players, plan.playerRowGap)),
   ]);
   return Box({ position: 'absolute', top: 0, right: 0, bottom: 0, width: RAIL_W, overflow: 'hidden' }, [
-    Sidebar({ width: RAIL_W, height: { pct: 100 }, title: 'sidebar', closeId: 'islanders-sidebar-close', onClose, background: uiChromeBg(0.9), titleColor: ARCADE_CHROME_TEXT.title }, [body]),
+    Sidebar({ width: RAIL_W, height: { pct: 100 }, title: ISLANDERS_RAIL_TITLE, closeId: 'islanders-sidebar-close', onClose, background: uiChromeBg(0.9), titleColor: ARCADE_CHROME_TEXT.title }, [body]),
   ]);
 }
 
@@ -583,9 +663,19 @@ function workbenchActionButton(
   active = false,
 ): Node {
   const ink: Rgb = enabled ? ISLANDERS_CARD.actionInk : ACTION_DISABLED_INK;
+  // Two words (no glyph row) read as one left-aligned block, so the shorter is padded to the
+  // longer before centering. The card is an odd number of cells wide, so odd-width rows center
+  // exactly and even-width rows cannot; a trailing space makes those odd and settles them one
+  // cell left of center, where a wide glyph reads as placed rather than nudged right.
+  const wordy = !/\p{Emoji_Presentation}/u.test(icon);
+  const block = wordy ? Math.max(stringWidth(icon), stringWidth(label)) : 0;
+  const settle = (text: string): string => {
+    const padded = text.padEnd(Math.max(block, text.length));
+    return stringWidth(padded) % 2 === 0 ? `${padded} ` : padded;
+  };
   const content = (): Node[] => [
-    Text({ text: icon, style: { color: ink, bold: true } }),
-    Text({ text: label, style: { color: ink, bold: true } }),
+    Text({ text: settle(icon), style: { color: ink, bold: true } }),
+    Text({ text: settle(label), style: { color: ink, bold: true } }),
   ];
   const button = Button({
     id,
@@ -698,6 +788,11 @@ function tradeBankSourceRow(
   }));
 }
 
+// A shade lighter, for a hover on a filled card.
+function lighten(color: Rgb, amount: number): Rgb {
+  return [0, 1, 2].map((i) => Math.round(color[i] + (255 - color[i]) * amount)) as Rgb;
+}
+
 function tradeActionButton(
   id: string,
   icon: string,
@@ -764,11 +859,6 @@ function isYou(player: IslandersCardsPlayerView): boolean {
 
 function playerIs(player: IslandersCardsPlayerView, phrase: string): string {
   return isYou(player) ? `You are ${phrase}` : `${player.name} is ${phrase}`;
-}
-
-function playerPossessive(player: IslandersCardsPlayerView): string {
-  if (isYou(player)) return 'your';
-  return `${player.name}${player.name.endsWith('s') ? "'" : "'s"}`;
 }
 
 function workbenchTradeController(
@@ -958,9 +1048,13 @@ function playerTradeDecision(
   const detail = pending
     ? `${playerIs(reaction.player, 'deciding')}.`
     : accepted
-      ? `Complete the trade with ${isYou(reaction.player) ? 'you' : reaction.player.name}.`
+      ? isYou(reaction.player)
+        ? `You accepted. ${isYou(offer.offerer) ? 'Complete the trade.' : `${offer.offerer.name} decides.`}`
+        : isYou(offer.offerer)
+          ? `Complete the trade with ${reaction.player.name}.`
+          : `${reaction.player.name} accepted. ${offer.offerer.name} decides.`
       : countered
-        ? `See ${playerPossessive(reaction.player)} separate counteroffer.`
+        ? `${isYou(reaction.player) ? 'You' : reaction.player.name} countered (the card below).`
       : `${isYou(reaction.player) ? 'You rejected' : `${reaction.player.name} rejected`} the offer.`;
   const button = Button({
     id: `islanders-player-trade-${offer.id}-${reaction.player.name}`,
@@ -1039,6 +1133,59 @@ function playerTradeResponseButton(
   }, button);
 }
 
+// One exchange line of a trade card: who (the crowd, or a seat's color square), which way the
+// cards flow for the card's owner (↓ incoming, ↑ outgoing), and the cards.
+function exchangeRow(mark: { glyph: string; color: Rgb }, arrow: '↓' | '↑', counts: Record<Resource, number>): Node {
+  return Box({ height: PLAYER_TRADE_ROW_H, gap: 1, alignItems: 'center' }, [
+    Box({ width: PLAYER_TRADE_IDENTITY_W, height: PLAYER_TRADE_ROW_H, gap: 1, alignItems: 'center' }, [
+      Text({ text: mark.glyph, style: { color: mark.color, bold: true } }),
+      Text({ text: arrow, style: { color: mark.color, bold: true } }),
+    ]),
+    playerTradeCards(counts),
+  ]);
+}
+
+// The trade card's frame: the incoming line, then the outgoing line with the decisions at its
+// right. A posted offer and a counter to it are the same object, so they share this.
+function tradeCard(incoming: Node, outgoing: Node, decisions: Node): Node {
+  return Box({
+    height: PLAYER_TRADE_H,
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    padding: [0, 1, 1, 1],
+    background: TRADE_BG,
+    overflow: 'hidden',
+  }, [
+    incoming,
+    Box({ height: PLAYER_TRADE_ROW_H, alignItems: 'end', justifyContent: 'between', gap: 2 }, [outgoing, decisions]),
+  ]);
+}
+
+// A decision-slot button (the ✓ / X / ... squares at a trade card's right edge).
+function decisionButton(id: string, glyph: string, background: Rgb, onClick: () => void, tooltip: string, hover?: Rgb): Node {
+  const button = Button({
+    id,
+    label: '',
+    onClick,
+    style: {
+      width: PLAYER_TRADE_DECISION_W,
+      height: PLAYER_TRADE_DECISION_H,
+      padding: 0,
+      alignItems: 'center',
+      justifyContent: 'center',
+      background,
+      color: ISLANDERS_CARD.actionInk,
+      bold: true,
+      hover: { background: hover ?? ISLANDERS_CARD.actionHover, color: ISLANDERS_CARD.actionHoverInk },
+      pressed: { background: ISLANDERS_CARD.actionPressed, color: ISLANDERS_CARD.actionPressedInk },
+    },
+  });
+  button.children = [Box({ width: PLAYER_TRADE_DECISION_W, height: PLAYER_TRADE_DECISION_H, alignItems: 'center', justifyContent: 'center' }, [
+    Text({ text: glyph, style: { color: ISLANDERS_CARD.actionInk, bold: true } }),
+  ])];
+  return Tooltip({ id: `${id}-help`, content: [{ text: tooltip, bold: true }], maxWidth: 34 }, button);
+}
+
 function playerTradeOffer(offer: IslandersPlayerTradeOffer, controller: IslandersPlayerTradeOffersController): Node {
   const cancelButton = Button({
     id: `islanders-player-trade-${offer.id}-cancel`,
@@ -1072,32 +1219,6 @@ function playerTradeOffer(offer: IslandersPlayerTradeOffer, controller: Islander
     content: [{ text: 'Cancel player trade', bold: true }, 'Withdraw this offer from every player.'],
     maxWidth: 34,
   }, cancelButton);
-  const exchangeIdentity = (crowd: boolean): Node => Box({
-    width: PLAYER_TRADE_IDENTITY_W,
-    height: PLAYER_TRADE_ROW_H,
-    gap: 1,
-    alignItems: 'center',
-  }, [
-    Text({
-      text: crowd ? '👥' : '■',
-      style: { color: crowd ? ISLANDERS_CARD.tradeAccent : PLAYER_LOOK[offer.offerer.color], bold: true },
-    }),
-    Text({
-      text: crowd ? '↓' : '↑',
-      style: {
-        color: crowd ? ISLANDERS_CARD.tradeAccent : PLAYER_LOOK[offer.offerer.color],
-        bold: true,
-      },
-    }),
-  ]);
-  const exchangeRow = (crowd: boolean, counts: Record<Resource, number>): Node => Box({
-    height: PLAYER_TRADE_ROW_H,
-    gap: 1,
-    alignItems: 'center',
-  }, [
-    exchangeIdentity(crowd),
-    playerTradeCards(counts),
-  ]);
   const decisions = Box({
     height: PLAYER_TRADE_DECISION_H,
     gap: 1,
@@ -1109,83 +1230,43 @@ function playerTradeOffer(offer: IslandersPlayerTradeOffer, controller: Islander
     ...(!controller.onAccept && controller.activeResponse ? [playerTradeResponseButton(offer, controller, controller.activeResponse)] : []),
     ...(controller.onCancel || controller.activeCancel ? [cancel] : []),
   ]);
-  return Box({
-    height: PLAYER_TRADE_H,
-    flexDirection: 'column',
-    alignItems: 'stretch',
-    padding: [0, 1, 1, 1],
-    background: TRADE_BG,
-    overflow: 'hidden',
-  }, [
-    exchangeRow(true, offer.get),
-    Box({
-      height: PLAYER_TRADE_ROW_H,
-      alignItems: 'end',
-      justifyContent: 'between',
-      gap: 2,
-    }, [
-      exchangeRow(false, offer.give),
-      decisions,
-    ]),
-  ]);
+  const offerer = { glyph: '■', color: PLAYER_LOOK[offer.offerer.color] };
+  return tradeCard(
+    exchangeRow({ glyph: '👥', color: ISLANDERS_CARD.tradeAccent }, '↓', offer.get),
+    exchangeRow(offerer, '↑', offer.give),
+    decisions,
+  );
 }
 
+// A counter is drawn as a trade card of its own, from the counterer's side: the poster's color
+// square where the crowd was (the cards come from them), the counterer's square on the give
+// line. Only the poster decides — accept completes the trade with the counterer — and the
+// counterer can withdraw it.
 function playerCounterOffer(
   offer: IslandersPlayerTradeOffer,
   reaction: IslandersPlayerTradeOffer['reactions'][number],
   controller: IslandersPlayerTradeOffersController,
 ): Node | null {
   if (reaction.status !== 'countered' || !reaction.counterGive || !reaction.counterGet) return null;
-  const canAccept = controller.onComplete !== undefined;
-  const canWithdraw = isYou(reaction.player) && controller.onWithdrawCounter !== undefined;
-  const actions = Box({ height: PLAYER_TRADE_DECISION_H, gap: 1 }, [
-    ...(canAccept ? [Tooltip({
-      id: `islanders-player-trade-${offer.id}-${reaction.player.name}-counter-accept-help`,
-      content: [{ text: `Accept ${playerPossessive(reaction.player)} counteroffer`, bold: true }],
-    }, Button({
-      id: `islanders-player-trade-${offer.id}-${reaction.player.name}-counter-accept`,
-      label: ' ✓ ',
-      onClick: () => {
-        if (controller.onComplete?.(offer.id, reaction.player.name)) controller.onChange?.();
-      },
-      style: { background: PLAYER_LOOK[reaction.player.color], color: ISLANDERS_CARD.actionInk, bold: true },
-    }))] : []),
-    ...(canWithdraw ? [Tooltip({
-      id: `islanders-player-trade-${offer.id}-${reaction.player.name}-counter-withdraw-help`,
-      content: [{ text: 'Withdraw your counteroffer', bold: true }],
-    }, Button({
-      id: `islanders-player-trade-${offer.id}-${reaction.player.name}-counter-withdraw`,
-      label: ' × ',
-      onClick: () => {
-        if (controller.onWithdrawCounter?.(reaction.player.name)) controller.onChange?.();
-      },
-      style: { background: ISLANDERS_CARD.cancelBg, color: ISLANDERS_CARD.actionInk, bold: true },
-    }))] : []),
+  const counterer = reaction.player;
+  const idBase = `islanders-player-trade-${offer.id}-${counterer.name}-counter`;
+  const decisions = Box({ height: PLAYER_TRADE_DECISION_H, gap: 1 }, [
+    ...(controller.onComplete
+      ? [decisionButton(`${idBase}-accept`, '✓', PLAYER_LOOK[counterer.color], () => {
+          if (controller.onComplete?.(offer.id, counterer.name)) controller.onChange?.();
+        }, `Trade with ${counterer.name}`)]
+      : []),
+    ...(isYou(counterer) && controller.onWithdrawCounter
+      ? [decisionButton(`${idBase}-withdraw`, 'x', ISLANDERS_CARD.cancelBg, () => {
+          if (controller.onWithdrawCounter?.(counterer.name)) controller.onChange?.();
+        }, 'Withdraw your counter', ISLANDERS_CARD.cancelHover)]
+      : []),
   ]);
-  return Box({
-    height: PLAYER_TRADE_H,
-    flexDirection: 'column',
-    alignItems: 'stretch',
-    padding: [0, 1, 1, 1],
-    background: TRADE_BG,
-    overflow: 'hidden',
-  }, [
-    Box({ height: 1, gap: 1, alignItems: 'center' }, [
-      Text({ text: '↗', style: { color: PLAYER_LOOK[reaction.player.color], bold: true } }),
-      Text({ text: `${playerPossessive(reaction.player)} counteroffer`, style: { color: PLAYER_LOOK[reaction.player.color], bold: true } }),
-    ]),
-    Box({ height: PLAYER_TRADE_ROW_H, gap: 1, alignItems: 'center' }, [
-      Text({ text: 'give', style: { color: RAIL_MUTED } }),
-      playerTradeCards(reaction.counterGive),
-    ]),
-    Box({ height: PLAYER_TRADE_ROW_H, alignItems: 'end', justifyContent: 'between', gap: 2 }, [
-      Box({ gap: 1, alignItems: 'center' }, [
-        Text({ text: 'get', style: { color: RAIL_MUTED } }),
-        playerTradeCards(reaction.counterGet),
-      ]),
-      actions,
-    ]),
-  ]);
+  return tradeCard(
+    exchangeRow({ glyph: '■', color: PLAYER_LOOK[offer.offerer.color] }, '↓', reaction.counterGet),
+    exchangeRow({ glyph: '■', color: PLAYER_LOOK[counterer.color] }, '↑', reaction.counterGive),
+    decisions,
+  );
 }
 
 function playerTradeOffers(right: number, controller: IslandersPlayerTradeOffersController): Node | null {
@@ -1221,6 +1302,9 @@ export interface IslandersHandActionController {
   activeAction?: 'trade' | 'buyDev';
   onTrade(): boolean;
   onBuyDevelopmentCard(): boolean;
+  // The turn's spine, shown as a third card beside trade and buy dev: roll while the dice are
+  // due, end turn once the turn is open. Absent (the workbench, a model's turn) → no card.
+  turn?: { kind: 'roll' | 'end'; onClick(): boolean };
 }
 
 function handPanel(
@@ -1262,12 +1346,13 @@ function handPanel(
   // A card is wrapped in its own click target only in the workbench view. In the live game
   // the wrapper is skipped entirely, so the hit-test finds nothing interactive over the hand and
   // a click falls through to the board exactly as it did before the cards existed.
-  const clickable = (face: Node, onMouse: (ev: PointerHit) => boolean, enabled = true, allowLive = false): Node => {
+  const clickable = (face: Node, onMouse: (ev: PointerHit) => boolean, enabled = true, allowLive = false, fill?: Rgb): Node => {
     if ((view.source !== 'workbench' && !allowLive) || !enabled) return face;
     // The wrapper carries the handler so `card` stays presentational. The hit-test takes the
     // innermost INTERACTIVE node and the face has none, so it never competes; `Box` has no
-    // handler slot, hence attaching it to the node.
-    const hit = Box({ width: CARD_W, height }, [face]);
+    // handler slot, hence attaching it to the node. With `fill` the wrapper also paints the
+    // card's color and lightens it a touch under the pointer (see `card`'s `hoverable`).
+    const hit = Box({ width: CARD_W, height, ...(fill ? { background: fill, hover: { background: lighten(fill, 0.12) } } : {}) }, [face]);
     hit.onMouse = onMouse;
     return hit;
   };
@@ -1277,29 +1362,41 @@ function handPanel(
         // A pending purchase can add this type to a narrow hand solely to reserve its landing
         // slot. Keep that zero-count slot in the normal disabled treatment for the entire flight;
         // it becomes a purple held card only when landing credits the hand count.
+        const held = view.devHand[type] > 0 || view.developmentPlay?.type === type;
+        const hold = held ? view.developmentCardHolds?.[type] : undefined;
         return Tooltip({
           id: `islanders-dev-${type}`,
           content: [
             { text: DEV_CARD_HELP[type].title, bold: true },
             DEV_CARD_HELP[type].effect,
+            ...(hold ? [{ text: hold, color: RAIL_MUTED }] : []),
           ],
           maxWidth: 46,
-        }, clickable(
-          card(
-            DEV_HAND_LOOK[type],
-            view.devHand[type],
-            height,
-            view.devHand[type] === 0 && view.developmentPlay?.type !== type,
-            view.developmentPlay?.type === type,
-          ),
-          (ev) => playDevHand(type, ev, onPlayDevelopmentCard),
-          view.devHand[type] > 0
+          // A touch lighter purple under the pointer, never the tooltip's default white pill.
+          hover: { background: lighten(held ? DEV_HAND_LOOK[type].fill : EMPTY_FILL, 0.12), color: undefined, bold: false },
+        }, (() => {
+          const playable = view.devHand[type] > 0
             && type !== 'victoryPoint'
             && view.maritimeTradeBusy !== true
             && view.developmentPlay === undefined
-            && (view.source === 'workbench' || view.playableDevelopmentCards?.includes(type as Exclude<DevCardType, 'victoryPoint'>) === true),
-          onPlayDevelopmentCard !== undefined,
-        ));
+            && (view.source === 'workbench' || view.playableDevelopmentCards?.includes(type as Exclude<DevCardType, 'victoryPoint'>) === true);
+          const live = onPlayDevelopmentCard !== undefined;
+          const hoverable = playable && (view.source === 'workbench' || live);
+          return clickable(
+            card(
+              DEV_HAND_LOOK[type],
+              view.devHand[type],
+              height,
+              view.devHand[type] === 0 && view.developmentPlay?.type !== type,
+              view.developmentPlay?.type === type,
+              hoverable,
+            ),
+            (ev) => playDevHand(type, ev, onPlayDevelopmentCard),
+            playable,
+            live,
+            hoverable ? DEV_HAND_LOOK[type].fill : undefined,
+          );
+        })());
       });
   const cards = RESOURCE_ORDER.map((resource) => clickable(
     card(RESOURCE_LOOK[resource], view.hand[resource], height, view.hand[resource] === 0),
@@ -1338,13 +1435,18 @@ function handPanel(
             'Costs 🐑 🌾 🪨.',
           ],
           maxWidth: 36,
-        }, workbenchActionButton('islanders-buy-dev', DEV_CARD_ICON, 'buy dev', actionController.canBuyDevelopmentCard, () => {
+        }, workbenchActionButton('islanders-buy-dev', `💲 ${DEV_CARD_ICON}`, 'buy dev', actionController.canBuyDevelopmentCard, () => {
           actionController.onBuyDevelopmentCard();
         }, {
           background: DEV_LOOK.fill,
           hover: ISLANDERS_CARD.devActionHover,
           pressed: ISLANDERS_CARD.devActionPressed,
         }, actionController.activeAction === 'buyDev')),
+        ...(actionController.turn
+          ? [actionController.turn.kind === 'roll'
+              ? workbenchActionButton('islanders-live-roll', 'roll', 'dice', true, () => { actionController.turn?.onClick(); }, TURN_ACTION_COLORS)
+              : workbenchActionButton('islanders-live-end', 'end', 'turn', true, () => { actionController.turn?.onClick(); }, TURN_ACTION_COLORS)]
+          : []),
       ];
   const tray = Box({ height: layout.handHeight, gap: HAND_SPLIT_GAP, padding: [HAND_PAD_T, HAND_PAD_X, HAND_PAD_B, HAND_PAD_X], background: uiChromeBg(0.9) }, [
     Box({ gap: 1 }, cards),
@@ -1396,6 +1498,18 @@ export function islandersHandLandingCell(region: LayoutBox, resource: Resource):
   return { col: left + Math.floor(CARD_W / 2), row: panelTop + HAND_PAD_T };
 }
 
+// A confirmed discard closes its editor before the rules action is applied, but the cards should
+// still visibly leave the staged row the player just submitted. Restate that row's anchored
+// geometry so playback can start at the selected resource card after the panel disappears.
+export function islandersDiscardDepartureCell(region: LayoutBox, resource: Resource): { col: number; row: number } {
+  const panelTop = region.y + region.h - 1 - DISCARD_PANEL_H;
+  const left = region.x + HAND_PANEL_LEFT + 2 + RESOURCE_ORDER.indexOf(resource) * (CARD_W + 1);
+  return {
+    col: left + Math.floor(CARD_W / 2),
+    row: panelTop + TRADE_PANEL_PAD_V + Math.floor((CARD_H - 2) / 2),
+  };
+}
+
 // Where an animated bank card leaves its pile. With the sidebar open this is the exact center of
 // that resource or dev card. With it hidden, the whole four-cell flight chip starts one cell beyond
 // the terminal's right edge at the same roughly two-thirds-down height occupied by the bank row.
@@ -1405,6 +1519,7 @@ function islandersBankPileDepartureCell(
   glyphWidth: number,
   playerCount: number,
   railVisible: boolean,
+  composerRows: number,
 ): { col: number; row: number } {
   if (!railVisible) {
     const flightChipWidth = glyphWidth + 2;
@@ -1414,14 +1529,16 @@ function islandersBankPileDepartureCell(
     };
   }
   const railLeft = region.x + region.w - RAIL_W;
+  const plan = islandersRailPlan(region, playerCount, composerRows);
+  if (plan.compactBank) {
+    // The glyph sits two cells before the right edge of its pile slot on the bank line.
+    const pileRight = railLeft + SIDEBAR_PAD_L + BANK_LINE_LABEL.length + (cardIndex + 1) * BANK_LINE_PILE_W;
+    return { col: pileRight - 3, row: region.y + plan.bankTop };
+  }
   const cardLeft = railLeft + SIDEBAR_PAD_L + cardIndex * (CARD_W + 1);
-  const bankCardTop = region.y + SIDEBAR_PAD_V + SIDEBAR_HEADER_H
-    + 1 + 1 // game-log label and its following gap
-    + islandersHistoryHeight(region, playerCount)
-    + 1 + 1 + 1; // gap, bank label, gap
   return {
     col: cardLeft + Math.floor(CARD_W / 2),
-    row: bankCardTop + Math.floor((CARD_H - 2) / 2),
+    row: region.y + plan.bankTop + Math.floor((CARD_H - 2) / 2),
   };
 }
 
@@ -1430,6 +1547,7 @@ export function islandersBankDepartureCell(
   resource: Resource,
   playerCount: number,
   railVisible: boolean,
+  composerRows = 0,
 ): { col: number; row: number } {
   return islandersBankPileDepartureCell(
     region,
@@ -1437,6 +1555,7 @@ export function islandersBankDepartureCell(
     stringWidth(RESOURCE_LOOK[resource].emoji),
     playerCount,
     railVisible,
+    composerRows,
   );
 }
 
@@ -1444,6 +1563,7 @@ export function islandersDevDeckDepartureCell(
   region: LayoutBox,
   playerCount: number,
   railVisible: boolean,
+  composerRows = 0,
 ): { col: number; row: number } {
   return islandersBankPileDepartureCell(
     region,
@@ -1451,6 +1571,7 @@ export function islandersDevDeckDepartureCell(
     stringWidth(DEV_CARD_ICON),
     playerCount,
     railVisible,
+    composerRows,
   );
 }
 
@@ -1499,11 +1620,11 @@ export function buildIslandersCardsOverlay(
 ): Node {
   const layout = islandersCardsLayout(region);
   const showSidebar = sidebarOpen && layout.showPublicRail;
-  if (showSidebar) {
+  const composerH = typeof logComposer?.style.height === 'number' ? logComposer.style.height : 0;
+  const plan = islandersRailPlan(region, view.opponents.length + 1, showSidebar ? composerH : 0);
+  if (showSidebar && plan.logH > 0) {
     // Follow-to-bottom: stay pinned to the newest entry unless the reader has scrolled up.
-    const historyH = islandersHistoryHeight(region, view.opponents.length + 1);
-    const composerH = typeof logComposer?.style.height === 'number' ? logComposer.style.height : 0;
-    const viewportH = Math.max(1, historyH - composerH - (logComposer ? 1 : 0));
+    const viewportH = Math.max(1, plan.logH - composerH - (logComposer ? 1 : 0));
     const rows: Row[] = view.history.flatMap(islandersHistoryRows);
     const atBottom = islandersHistoryScroll.scroll >= Math.max(0, islandersHistoryScroll.rows.length - viewportH);
     islandersHistoryScroll.setHeight(viewportH);
@@ -1524,7 +1645,7 @@ export function buildIslandersCardsOverlay(
   const discardController = liveDiscardController
     ?? (workbench ? workbenchDiscardController(onWorkbenchChange, onWorkbenchDiscard) : undefined);
   return Box({ position: 'absolute', top: 0, left: 0, width: region.w, height: region.h }, [
-    ...(showSidebar ? [sidebar(view, onCloseSidebar, islandersHistoryHeight(region, view.opponents.length + 1), logComposer)] : []),
+    ...(showSidebar ? [sidebar(view, onCloseSidebar, plan, logComposer)] : []),
     // The hand shares the bottom row with the board, and the rail eats into it. Hand it the
     // width actually left over so it can drop its optional half instead of sliding under the rail.
     ...(discardController

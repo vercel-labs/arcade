@@ -27,6 +27,8 @@ export interface MatchLabConfig {
   swapSeats: boolean;
   setupOnly: boolean;
   communicationMode: CommunicationMode;
+  harness: 'current' | 'legacy';
+  captureThinking: boolean;
   startingChips: number;
   smallBlind: number;
   bigBlind: number;
@@ -58,6 +60,8 @@ export function parseMatchLabConfig(args: readonly string[]): MatchLabConfig {
   const output = value(args, 'output');
   const communicationMode = (value(args, 'communication') ?? (game === 'islanders' ? 'ambient' : 'autoreply')) as CommunicationMode;
   if (!['autoreply', 'ambient'].includes(communicationMode)) throw new Error('--communication must be autoreply or ambient');
+  const harness = (value(args, 'harness') ?? 'current') as 'current' | 'legacy';
+  if (!['current', 'legacy'].includes(harness)) throw new Error('--harness must be current or legacy');
   return {
     game,
     models,
@@ -68,6 +72,8 @@ export function parseMatchLabConfig(args: readonly string[]): MatchLabConfig {
     swapSeats: args.includes('--swap-seats') || args.includes('--rotate-seats'),
     setupOnly: args.includes('--setup-only'),
     communicationMode,
+    harness,
+    captureThinking: args.includes('--capture-thinking'),
     startingChips: positiveInt(args, 'starting-chips', STARTING_STACK),
     smallBlind: positiveInt(args, 'small-blind', DEFAULT_SMALL_BLIND),
     bigBlind: positiveInt(args, 'big-blind', DEFAULT_BIG_BLIND),
@@ -100,5 +106,7 @@ export function buildMatchPlans(config: MatchLabConfig): MatchLabPlan[] {
     handsPerLevel: config.handsPerLevel,
     setupOnly: config.setupOnly,
     communicationMode: config.communicationMode,
+    harness: config.harness,
+    captureThinking: config.captureThinking,
   }));
 }

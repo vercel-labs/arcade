@@ -20,6 +20,11 @@ export { ARCADE_WEBSITE_URL };
 // and the ambient logos / audio / UI-showcase screens — which are development tools, not
 // games a private-beta user should see.
 const ALL_ITEMS: MenuItem[] = [
+  // The interactive walkthrough — a cover like any game, shelved immediately LEFT of Chess in
+  // the ring. The carousel opens on Chess (HOME_MENU_INDEX), so the tutorial is one press left
+  // every launch; an install's very first launch opens on the tutorial instead, with Chess to
+  // its right (see shell/first-run.ts). Same ring either way, just a different starting slot.
+  { id: 'tutorial', title: 'Tutorial', enabled: true },
   ...ARCADE_CATALOGUE.slice(0, 3),
   { id: 'islanders-test', title: 'Islanders-Test', enabled: true, dev: true },
   ...ARCADE_CATALOGUE.slice(3),
@@ -35,6 +40,9 @@ const ALL_ITEMS: MenuItem[] = [
 // launch handler) reads this filtered list, so indices stay consistent.
 const DEV = process.env.ARCADE_DEV === '1';
 export const MENU_ITEMS: MenuItem[] = ALL_ITEMS.filter((item) => DEV || !item.dev);
+export const TUTORIAL_MENU_INDEX = MENU_ITEMS.findIndex((item) => item.id === 'tutorial');
+// The slot the carousel opens on: Chess, the flagship.
+export const HOME_MENU_INDEX = MENU_ITEMS.findIndex((item) => item.id === 'chess');
 
 export function menuItemAction(item: MenuItem | undefined): MenuItemAction {
   if (!item?.enabled) return null;

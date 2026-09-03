@@ -98,6 +98,31 @@ export interface IslandersOpts {
   domesticTrade?: boolean;
   /** Optional controller policy used by AI-only tables to prevent unchanged offer loops. */
   domesticTradeOfferLimit?: number;
+  /**
+   * Per-seat controller policy for domestic offers (index = seat; a missing entry means no
+   * policy). Lets a table cap and de-duplicate the offers of its model seats while a human
+   * negotiates freely. A policy shapes legality (`isLegalAction`, the parameterized menu) but
+   * never the recorded game: `applyAction` doesn't consult it, so transcripts replay without it.
+   */
+  domesticTradePolicy?: readonly (IslandersSeatOfferPolicy | undefined)[];
+}
+
+export interface IslandersSeatOfferPolicy {
+  /** Offers this seat may post in one of its turns. */
+  maxOffersPerTurn?: number;
+  /** Refuse an offer identical (both sides) to one this seat already posted this turn that didn't complete. */
+  noRepeatRefused?: boolean;
+}
+
+/** One domestic offer posted during the current turn and how the table answered it. */
+export interface IslandersTurnOffer {
+  give: FreqDeck;
+  receive: FreqDeck;
+  accepted: number[];
+  countered: number[];
+  rejected: number[];
+  outcome: 'open' | 'completed' | 'cancelled';
+  completedWith?: number;
 }
 
 export interface IslandersActionOutcome {
@@ -258,6 +283,9 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
   private domesticTradeEnabled: boolean;
   private domesticTradeOfferLimit: number;
   private domesticOffersThisTurn = 0;
+  private offerPolicy: (IslandersSeatOfferPolicy | undefined)[];
+  // The current turn owner's offers so far, newest last; reset when the turn ends.
+  private turnOffers: IslandersTurnOffer[] = [];
   private lastDice: [number, number] | null = null;
   private records: IslandersActionRecord[] = [];
   private winnerSeat = -1;
@@ -275,6 +303,11 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
     this.domesticTradeOfferLimit = opts.domesticTradeOfferLimit ?? Number.POSITIVE_INFINITY;
     if (this.domesticTradeOfferLimit < 0 || (!Number.isInteger(this.domesticTradeOfferLimit) && this.domesticTradeOfferLimit !== Number.POSITIVE_INFINITY)) {
       throw new RangeError(`domesticTradeOfferLimit must be a nonnegative integer; received ${this.domesticTradeOfferLimit}`);
+    }
+    this.offerPolicy = Array.from({ length: this.n }, (_, seat) => opts.domesticTradePolicy?.[seat]);
+    for (const policy of this.offerPolicy) {
+      const max = policy?.maxOffersPerTurn;
+      if (max !== undefined && (!Number.isInteger(max) || max < 0)) throw new RangeError(`maxOffersPerTurn must be a nonnegative integer; received ${max}`);
     }
 
     this.board = opts.board ?? generateBoard(() => this.random());
@@ -372,6 +405,8 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
     s.domesticTradeEnabled = this.domesticTradeEnabled;
     s.domesticTradeOfferLimit = this.domesticTradeOfferLimit;
     s.domesticOffersThisTurn = this.domesticOffersThisTurn;
+    s.offerPolicy = this.offerPolicy.slice();
+    s.turnOffers = this.turnOffers.map((offer) => ({ ...offer, give: offer.give.slice(), receive: offer.receive.slice(), accepted: [...offer.accepted], countered: [...offer.countered], rejected: [...offer.rejected] }));
     s.lastDice = this.lastDice ? [...this.lastDice] : null;
     s.records = this.records.map((record) => ({
       player: record.player,
@@ -595,6 +630,7 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
         responseIndex: 0,
       };
       this.domesticOffersThisTurn++;
+      this.turnOffers.push({ give: action.give.slice(), receive: action.receive.slice(), accepted: [], countered: [], rejected: [], outcome: 'open' });
       this.prompt = { kind: 'respondTrade', player: responders[0] };
       this.record(actor, action);
       return;
@@ -605,6 +641,8 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
       if (action.type === 'counterTrade') {
         this.trade.counters.push({ from: actor, give: action.give.slice(), receive: action.receive.slice() });
       }
+      const turnOffer = this.turnOffers.at(-1);
+      if (turnOffer) (action.type === 'acceptTrade' ? turnOffer.accepted : action.type === 'counterTrade' ? turnOffer.countered : turnOffer.rejected).push(actor);
       this.trade.responseIndex++;
       if (this.trade.responseIndex < this.trade.responders.length) {
         this.prompt = { kind: 'respondTrade', player: this.trade.responders[this.trade.responseIndex] };
@@ -624,12 +662,19 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
         transferDeck(this.hands[this.trade.from], this.hands[action.with], this.trade.give);
         transferDeck(this.hands[action.with], this.hands[this.trade.from], this.trade.receive);
       }
+      const completed = this.turnOffers.at(-1);
+      if (completed) {
+        completed.outcome = 'completed';
+        completed.completedWith = action.with;
+      }
       this.trade = null;
       this.prompt = { kind: 'playTurn', player: this.turnOwner };
       this.record(actor, action);
       return;
     }
     if (action.type === 'cancelTrade' && this.prompt.kind === 'decideAcceptees') {
+      const cancelled = this.turnOffers.at(-1);
+      if (cancelled) cancelled.outcome = 'cancelled';
       this.trade = null;
       this.prompt = { kind: 'playTurn', player: this.turnOwner };
       this.record(actor, action);
@@ -641,6 +686,7 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
       this.turnOwner = (this.turnOwner + 1) % this.n;
       this.playedDevCardThisTurn = false;
       this.domesticOffersThisTurn = 0;
+      this.turnOffers = [];
       this.boughtDevThisTurn[actor].fill(0);
       this.prompt = { kind: 'roll', player: this.turnOwner };
       this.maybeFinish(this.turnOwner);
@@ -704,12 +750,10 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
     if (this.prompt.kind === 'playTurn' && action.type === 'maritimeBulkTrade') {
       return this.validMaritimeBulkTrade(this.prompt.player, action);
     }
-    if (
-      this.prompt.kind === 'playTurn' &&
-      action.type === 'offerTrade' &&
-      this.domesticTradeEnabled &&
-      this.domesticOffersThisTurn < this.domesticTradeOfferLimit
-    ) return this.validTradeOffer(this.prompt.player, action.give, action.receive);
+    if (this.prompt.kind === 'playTurn' && action.type === 'offerTrade' && this.offersOpen(this.prompt.player)) {
+      return this.validTradeOffer(this.prompt.player, action.give, action.receive)
+        && !this.isRepeatOfRefusedOffer(this.prompt.player, action.give, action.receive);
+    }
     if (this.prompt.kind === 'respondTrade' && action.type === 'counterTrade' && this.trade) {
       return this.validTradeOffer(this.prompt.player, action.give, action.receive)
         && hasCards(this.hands[this.trade.from], action.receive);
@@ -733,7 +777,7 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
         available: this.hands[this.prompt.player].slice(),
       }];
     }
-    if (this.prompt.kind === 'playTurn' && this.domesticTradeEnabled && this.domesticOffersThisTurn < this.domesticTradeOfferLimit) {
+    if (this.prompt.kind === 'playTurn' && this.offersOpen(this.prompt.player)) {
       return [{ type: 'offerTrade', player: this.prompt.player, resourceOrder: RESOURCES }];
     }
     if (this.prompt.kind === 'respondTrade' && this.trade) {
@@ -751,7 +795,7 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
       };
       return this.isLegalAction(action) ? [action] : [];
     }
-    if (this.prompt.kind !== 'playTurn' || !this.domesticTradeEnabled || this.domesticOffersThisTurn >= this.domesticTradeOfferLimit) return [];
+    if (this.prompt.kind !== 'playTurn' || !this.offersOpen(this.prompt.player)) return [];
     const giveIndex = this.hands[this.prompt.player].findIndex((count) => count > 0);
     if (giveIndex < 0) return [];
     const receiveIndex = RESOURCES.findIndex((_, index) => index !== giveIndex);
@@ -945,8 +989,8 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
     );
     lines.push(`Buildings: ${this.publicBuildings()}. Roads: ${this.publicRoads()}.`);
     lines.push(`Awards: Longest Road=${this.longestRoadHolder < 0 ? 'none' : this.seatName(this.longestRoadHolder)}; Largest Army=${this.largestArmyHolder < 0 ? 'none' : this.seatName(this.largestArmyHolder)}.`);
-    const recentActions = this.records.slice(-8).map((record) => `${this.seatName(record.player)}: ${this.publicActionSummary(record.action)}`);
-    lines.push(`Recent public actions: ${recentActions.length ? recentActions.join('; ') : '(none)'}.`);
+    lines.push(...this.recentTurnsSummary());
+    lines.push(...this.dealingsDigest(player));
     lines.push(`Your portfolio: production pips ${this.productionStr(portfolio.production)}; numbers [${portfolio.numberCoverage.join(',')}]; ports ${this.portsStr(portfolio.ports)}; pieces left roads=${portfolio.roadsLeft}, settlements=${portfolio.settlementsLeft}, cities=${portfolio.citiesLeft}.`);
     lines.push(`Private rules vocabulary maps to public table talk as follows: ${PUBLIC_RESOURCE_ORDER}. Keep canonical IDs and pip calculations in private thinking; public speech uses the supplied public labels and player names.`);
     if (this.trade) {
@@ -1011,10 +1055,11 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
         lines.push(`- ${this.actionToString(action)}${hint ? ` [${hint}]` : ''}`);
       }
     }
-    if (this.prompt.kind === 'playTurn' && this.domesticTradeEnabled && this.domesticOffersThisTurn < this.domesticTradeOfferLimit) {
+    if (this.prompt.kind === 'playTurn' && this.offersOpen(player)) {
       lines.push('- Domestic offer (parameterized): offer b/g/l/o/w for b/g/l/o/w, using five nonnegative counts in brick/grain/lumber/ore/wool order.');
       lines.push('  Example: offer 1/0/0/0/0 for 0/1/0/0/0 means I give 1 brick and receive 1 wheat from another player. Offers are validated against your hand and cannot request the same resource they give.');
     }
+    if (this.prompt.kind === 'playTurn' && this.domesticTradeEnabled) lines.push(...this.turnOfferAccount(player));
     if (this.prompt.kind === 'respondTrade' && this.trade) {
       lines.push('- Counteroffer (parameterized): counter b/g/l/o/w for b/g/l/o/w, from your perspective: what you give, then what you receive.');
       lines.push(`  The posted offer reversed into your perspective is: counter ${this.trade.receive.join('/')} for ${this.trade.give.join('/')}. That means you give ${this.publicDeckPhrase(this.trade.receive)} and receive ${this.publicDeckPhrase(this.trade.give)}. You may revise either side.`);
@@ -1022,7 +1067,81 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
     return lines.join('\n');
   }
 
+  // Whether `seat` may post another domestic offer this turn: trade enabled, under the table
+  // cap, and under the seat's own policy cap.
+  private offersOpen(seat: number): boolean {
+    return this.domesticTradeEnabled && this.domesticOffersThisTurn < this.offerCap(seat);
+  }
+
+  private offerCap(seat: number): number {
+    return Math.min(this.domesticTradeOfferLimit, this.offerPolicy[seat]?.maxOffersPerTurn ?? Number.POSITIVE_INFINITY);
+  }
+
+  // A seat under `noRepeatRefused` may not re-post, unchanged, an offer this turn already turned
+  // down (anything the offerer didn't complete counts as refused).
+  private isRepeatOfRefusedOffer(seat: number, give: readonly number[], receive: readonly number[]): boolean {
+    if (!this.offerPolicy[seat]?.noRepeatRefused) return false;
+    return this.turnOffers.some((offer) =>
+      offer.outcome !== 'completed'
+      && offer.give.every((count, i) => count === give[i])
+      && offer.receive.every((count, i) => count === receive[i]));
+  }
+
+  // The model-facing account of this turn's offers: what was asked, how each seat answered,
+  // how many offers remain, and the standing instruction not to repeat a refused one. Empty
+  // before the first offer, so a quiet turn's prompt stays short.
+  private turnOfferAccount(player: number): string[] {
+    if (!this.turnOffers.length) return [];
+    const cap = this.offerCap(player);
+    const left = Number.isFinite(cap) ? Math.max(0, cap - this.domesticOffersThisTurn) : null;
+    const lines = [`Offers you made this turn${Number.isFinite(cap) ? ` (${this.domesticOffersThisTurn} of ${cap} used)` : ''}:`];
+    for (const offer of this.turnOffers) {
+      const answers: string[] = [];
+      if (offer.accepted.length) answers.push(`accepted by ${offer.accepted.map((s) => this.seatName(s)).join(', ')}`);
+      if (offer.countered.length) answers.push(`countered by ${offer.countered.map((s) => this.seatName(s)).join(', ')}`);
+      if (offer.rejected.length) answers.push(`rejected by ${offer.rejected.map((s) => this.seatName(s)).join(', ')}`);
+      const outcome = offer.outcome === 'completed'
+        ? `completed with ${this.seatName(offer.completedWith ?? -1)}`
+        : offer.outcome === 'cancelled' ? 'no deal' : 'pending';
+      lines.push(`- you offered ${this.publicDeckPhrase(offer.give)} for ${this.publicDeckPhrase(offer.receive)}: ${answers.join('; ') || 'no answers yet'} → ${outcome}.`);
+    }
+    const refused = this.turnOffers.filter((offer) => offer.outcome === 'cancelled').length;
+    if (refused > 0) {
+      lines.push(
+        refused === 1
+          ? 'That offer was turned down. Do not post the same offer again; if you still want a trade, change what you give or ask for, or ask a different way in table talk. Otherwise build, trade with the bank, or end your turn.'
+          : `${refused} offers have been turned down this turn. Repeating terms the table has refused wastes everyone's turn: change the terms materially, or stop trading and build, use the bank, or end your turn.`,
+      );
+    }
+    if (left !== null) lines.push(left === 0 ? 'You have no offers left this turn.' : `You have ${left} offer${left === 1 ? '' : 's'} left this turn.`);
+    return lines;
+  }
+
+  // Why a reply the harness could not accept was refused, when the rules can say more than
+  // "not legal": a domestic offer that repeats one this turn already refused, or one past the
+  // seat's budget. The harness quotes it in the retry prompt. Null for anything else.
+  actionRejectionNote(text: string): string | null {
+    const match = text.trim().toLowerCase().match(/^offer\s+([\d/]+)\s+for\s+([\d/]+)$/);
+    if (!match || this.prompt.kind !== 'playTurn') return null;
+    const player = this.prompt.player;
+    if (!this.offersOpen(player)) return 'You have used every domestic offer you may make this turn. Build, trade with the bank or a port, play a card, or end your turn.';
+    const give = match[1].split('/').map(Number);
+    const receive = match[2].split('/').map(Number);
+    if (validDeck(give) && validDeck(receive) && this.isRepeatOfRefusedOffer(player, give, receive)) {
+      return 'That exact offer was already refused this turn, so it cannot be posted again. Change what you give or what you ask for, or do something else.';
+    }
+    return null;
+  }
+
   // ── Read accessors for presentation, heuristic players, and recording ───────────
+  /** The current turn owner's domestic offers so far this turn (public information). */
+  turnOfferHistory(): readonly IslandersTurnOffer[] {
+    return this.turnOffers;
+  }
+  /** Domestic offers `seat` may still post this turn under the table and seat caps (Infinity = uncapped). */
+  offersRemainingThisTurn(seat: number): number {
+    return Math.max(0, this.offerCap(seat) - this.domesticOffersThisTurn);
+  }
   boardSetup(): BoardSetup {
     return this.board;
   }
@@ -1039,6 +1158,18 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
   }
   handOf(seat: number): readonly number[] {
     return this.hands[seat];
+  }
+  // Move cards from the bank into a seat's hand outside the action stream — an authoring seam
+  // for staged positions (a stocked opening hand in the tutorial), not a game action: it is
+  // not recorded, so a transcript replay won't reproduce it. Conserves cards: a resource the
+  // bank has run short of grants only what is left.
+  grantResources(seat: number, deck: readonly number[]): void {
+    if (!validDeck(deck) || !this.hands[seat]) throw new Error('grantResources: invalid seat or deck');
+    for (let i = 0; i < RESOURCES.length; i++) {
+      const count = Math.min(deck[i], this.bank[i]);
+      this.bank[i] -= count;
+      this.hands[seat][i] += count;
+    }
   }
   buildingAt(node: number): Building | undefined {
     return this.buildings.get(node);
@@ -1102,6 +1233,15 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
   }
   developmentCardCount(seat: number, type: DevCardType): number {
     return this.devHand[seat][DEV_CARD_TYPES.indexOf(type)] ?? 0;
+  }
+  // Why a held development card cannot be played right now, or null when it can (or when the
+  // seat holds none). Cards bought this turn wait a turn; one play per turn; only on your turn.
+  developmentCardHold(seat: number, type: Exclude<DevCardType, 'victoryPoint'>): 'boughtThisTurn' | 'alreadyPlayed' | 'notYourTurn' | null {
+    if (this.developmentCardCount(seat, type) <= 0) return null;
+    if (this.playableDevCount(seat, type) <= 0) return 'boughtThisTurn';
+    if (this.playedDevCardThisTurn && this.turnOwner === seat) return 'alreadyPlayed';
+    if (this.prompt.player !== seat || (this.prompt.kind !== 'playTurn' && this.prompt.kind !== 'roll')) return 'notYourTurn';
+    return null;
   }
   playedKnightCount(seat: number): number {
     return this.playedKnights[seat] ?? 0;
@@ -1795,6 +1935,113 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
       `adjacent rival roads: ${rivals.length ? rivals.join(', ') : 'none'}`,
       'frontier sites are settlement opportunities, not city upgrades',
     ].join('; ');
+  }
+
+  // The last full round of turns plus the one in progress, one line per turn, with each
+  // domestic offer and its answers collapsed into a single clause. Replaces a raw action list:
+  // a model reads "offered 1 ore for 1 brick (rejected by everyone → no deal)" far better than
+  // the same story spread over four separate records. Public: the same lines feed a seat's
+  // between-turn reflection.
+  recentTurnsSummary(): string[] {
+    interface Turn { owner: number; clauses: string[]; open: { from: number; text: string; answers: string[] } | null }
+    const turns: Turn[] = [];
+    let current: Turn | null = null;
+    const closeOffer = (turn: Turn, outcome: string): void => {
+      if (!turn.open) return;
+      const answers = turn.open.answers.length ? turn.open.answers.join(', ') : 'no answers';
+      turn.clauses.push(`${turn.open.text} (${answers} → ${outcome})`);
+      turn.open = null;
+    };
+    for (const record of this.records) {
+      const action = record.action;
+      if (action.type === 'initialSettlement' || action.type === 'initialRoad') continue; // setup is on the board already
+      if (!current || (action.type === 'roll' && current.owner !== record.player) || (current.clauses.at(-1) === 'ended the turn')) {
+        current = { owner: record.player, clauses: [], open: null };
+        turns.push(current);
+      }
+      switch (action.type) {
+        case 'roll': {
+          const dice = record.outcome?.dice;
+          current.clauses.push(dice ? `rolled ${dice[0] + dice[1]}` : 'rolled');
+          break;
+        }
+        case 'offerTrade':
+          current.open = { from: record.player, text: `offered ${this.publicDeckPhrase(action.give)} for ${this.publicDeckPhrase(action.receive)}`, answers: [] };
+          break;
+        case 'acceptTrade': current.open?.answers.push(`accepted by ${this.seatName(record.player)}`); break;
+        case 'rejectTrade': current.open?.answers.push(`rejected by ${this.seatName(record.player)}`); break;
+        case 'counterTrade': current.open?.answers.push(`countered by ${this.seatName(record.player)} with ${this.publicDeckPhrase(action.give)} for ${this.publicDeckPhrase(action.receive)}`); break;
+        case 'withdrawCounterTrade': current.open?.answers.push(`${this.seatName(action.player)} withdrew the counter`); break;
+        case 'confirmTrade': closeOffer(current, `completed with ${this.seatName(action.with)}`); break;
+        case 'cancelTrade': closeOffer(current, 'no deal'); break;
+        case 'discard':
+          // A discard belongs to whoever discards, mid another player's turn.
+          current.clauses.push(`${this.seatName(record.player)} discarded ${action.resources.length}`);
+          break;
+        default:
+          current.clauses.push(this.publicActionSummary(action));
+      }
+    }
+    if (current?.open) closeOffer(current, 'pending');
+    const recent = turns.slice(-(this.n + 1));
+    if (!recent.length) return ['Recent turns: (none yet).'];
+    return [
+      'Recent turns (oldest first; the last line is the turn in progress unless it ended):',
+      ...recent.map((turn) => `- ${this.seatName(turn.owner)}: ${turn.clauses.length ? turn.clauses.join('; ') : '(nothing yet)'}.`),
+    ];
+  }
+
+  // How every other seat has dealt with `player` over the whole game — offers each way and how
+  // they were answered, and robber hits in each direction. Direct, first-person reciprocity
+  // facts: the material a model needs to hold a grudge or return a favour without being told to.
+  private dealingsDigest(player: number): string[] {
+    interface Tally { offeredToThem: number; theyAccepted: number; theyRejected: number; theyCountered: number; completedByYou: number; theyOffered: number; youAccepted: number; youRejected: number; youCountered: number; completedByThem: number; robbedYou: number; youRobbed: number }
+    const tallies = new Map<number, Tally>();
+    for (let seat = 0; seat < this.n; seat++) {
+      if (seat !== player) tallies.set(seat, { offeredToThem: 0, theyAccepted: 0, theyRejected: 0, theyCountered: 0, completedByYou: 0, theyOffered: 0, youAccepted: 0, youRejected: 0, youCountered: 0, completedByThem: 0, robbedYou: 0, youRobbed: 0 });
+    }
+    let offerer = -1;
+    for (const record of this.records) {
+      const action = record.action;
+      switch (action.type) {
+        case 'offerTrade':
+          offerer = record.player;
+          if (offerer === player) for (const tally of tallies.values()) tally.offeredToThem++;
+          else tallies.get(offerer)!.theyOffered++;
+          break;
+        case 'acceptTrade':
+        case 'rejectTrade':
+        case 'counterTrade': {
+          if (offerer < 0) break;
+          const kind = action.type === 'acceptTrade' ? 'Accepted' : action.type === 'rejectTrade' ? 'Rejected' : 'Countered';
+          if (offerer === player) tallies.get(record.player)![`they${kind}` as 'theyAccepted' | 'theyRejected' | 'theyCountered']++;
+          else if (record.player === player) tallies.get(offerer)![`you${kind}` as 'youAccepted' | 'youRejected' | 'youCountered']++;
+          break;
+        }
+        case 'confirmTrade':
+          if (offerer === player) tallies.get(action.with)!.completedByYou++;
+          else if (action.with === player) tallies.get(offerer)!.completedByThem++;
+          offerer = -1;
+          break;
+        case 'cancelTrade': offerer = -1; break;
+        case 'moveRobber':
+        case 'playKnight':
+          if (action.victim === player && record.player !== player) tallies.get(record.player)!.robbedYou++;
+          else if (record.player === player && action.victim !== null) tallies.get(action.victim)!.youRobbed++;
+          break;
+        default: break;
+      }
+    }
+    const lines = ['Your dealings with each player this game:'];
+    for (const [seat, t] of tallies) {
+      const parts: string[] = [];
+      if (t.offeredToThem) parts.push(`you offered them ${t.offeredToThem} trade${t.offeredToThem === 1 ? '' : 's'} (accepted ${t.theyAccepted}, countered ${t.theyCountered}, rejected ${t.theyRejected}; ${t.completedByYou} completed)`);
+      if (t.theyOffered) parts.push(`they offered ${t.theyOffered} (you accepted ${t.youAccepted}, countered ${t.youCountered}, rejected ${t.youRejected}; ${t.completedByThem} completed)`);
+      if (t.robbedYou) parts.push(`they robbed you ${t.robbedYou} time${t.robbedYou === 1 ? '' : 's'}`);
+      if (t.youRobbed) parts.push(`you robbed them ${t.youRobbed} time${t.youRobbed === 1 ? '' : 's'}`);
+      lines.push(`- ${this.seatName(seat)}: ${parts.length ? parts.join('; ') : 'no trades or robber contact yet'}.`);
+    }
+    return lines;
   }
 
   private publicActionSummary(action: IslandersAction): string {

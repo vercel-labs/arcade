@@ -118,6 +118,8 @@ function travel(a: Vec3, b: Vec3, e: number, motion: Motion): Vec3 {
 // Hover a piece for a pastel-yellow glow; click it to reveal legal-move dots;
 // click a dot to slide the piece there (rules enforced by the harness). Orbit /
 // pan / zoom are inherited from the shared turntable camera.
+export type ChessSceneEvent = 'select' | 'move' | 'capture';
+
 export class ChessGameScene {
   private game = new ChessState();
   private meshByType: Mesh[] = []; // indexed by PieceType (1..6)
@@ -208,6 +210,9 @@ export class ChessGameScene {
   // While the match-setup panel is open (before any match), preview the two sides'
   // creator wisps over the kings — the chess analogue of poker's seat-wisp preview.
   private previewActive = false;
+  // Interaction events for an observer (the tutorial): a piece was selected, a move
+  // settled, and whether that move captured. Presentation-only; the rules never see it.
+  onEvent: ((event: ChessSceneEvent) => void) | null = null;
 
   // Whether the visible scene has changed since the last render. Starts true so the
   // first frame always paints; an active match — or an open setup preview — animates
@@ -568,6 +573,7 @@ export class ChessGameScene {
       if (m.promotion && m.promotion !== QUEEN) continue; // auto-queen; one dot per square
       this.targets.set(m.to, m);
     }
+    this.onEvent?.('select');
   }
 
   private deselect(): void {
@@ -700,6 +706,7 @@ export class ChessGameScene {
           const done = this.settleResolve; // wake playMove's awaiter
           this.settleResolve = null;
           done?.();
+          this.onEvent?.(A.jail ? 'capture' : 'move');
         }
       }
     }

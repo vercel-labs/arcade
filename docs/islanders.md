@@ -455,7 +455,28 @@ type IslandersAction =
   relationships. Setup roads include their reachable expansion frontiers. Keeping this
   separate lets chess retain its no-legal-list evaluation flow.
 - `actionToString` / `actionFromString` — canonical notation + a lenient parser for model
-  answers (re-prompt on `null`), mirroring poker.
+  answers (re-prompt on `null`), mirroring poker. `actionRejectionNote(text)` explains a
+  refusal the rules can name (a repeated or over-budget domestic offer); `ModelPlayer`
+  quotes it in the retry prompt so the model changes course instead of re-reading the menu.
+- **History the model can act on.** The observation carries `recentTurnsSummary()` — the
+  last full round plus the turn in progress, one line per turn with each domestic offer and
+  its answers collapsed into a clause ("offered 1 ore for 1 brick (rejected by everyone →
+  no deal)") — and a per-opponent *dealings* tally for the whole game (offers each way and
+  how they were answered, robber hits in each direction). These replace a raw last-8-action
+  list: direct, first-person reciprocity facts are what a model turns into a grudge or a
+  favour returned. Table talk in the prompt is bounded to the recent window.
+- **Domestic offers per seat.** `domesticTradePolicy` gives model seats a per-turn offer
+  budget (the arcade uses 3) and refuses re-posting an offer the table already turned down
+  that turn; the human seat carries no policy. On a `playTurn` the decision context lists
+  this turn's offers, how each seat answered, how many remain, and tells the model not to
+  repeat refused terms. A policy shapes legality only — `applyAction` ignores it, so
+  transcripts replay without it.
+- **Notebooks.** Each model seat keeps a private notebook (`arcade/match/islanders-memory.ts`,
+  the poker "reads" design at turn boundaries): a one-line plan and up to three reads per
+  opponent, rewritten by its own model after each of its turns from the public round digest
+  and recent talk, then injected into its next decision prompt. Facts in, reads out; the
+  `reads` pill in the game HUD shows every model's notebook. Deals made in talk are notes,
+  never rules.
 - **Bot ladder** (recommended order, per islandersatron's benchmarks): (1) random (respecting
   the mask — also the fuzz-tester); (2) heuristic greedy on a `nodeProduction`-based value
   function; (3) flat value function + shallow **2-ply** search — the best strength per

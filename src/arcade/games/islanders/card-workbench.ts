@@ -117,6 +117,20 @@ export function submitIslandersWorkbenchDiscard(): boolean {
   return true;
 }
 
+/** Close a valid discard editor and reserve its cards for animated transfer. */
+export function reserveIslandersWorkbenchDiscard(): Resource[] | null {
+  if (!canSubmitIslandersWorkbenchDiscard()) return null;
+  const resources = RESOURCE_ORDER.flatMap((resource) =>
+    Array.from({ length: workbenchDiscardSelection[resource] }, () => resource));
+  discardRequired = 0;
+  clearDiscardStaging();
+  return resources;
+}
+
+export function logIslandersWorkbenchDiscard(total: number): void {
+  liveHistory.push({ actor: 'You', color: ISLANDERS_LOCAL_COLOR, message: `discarded ${total} cards` });
+}
+
 export function adjustIslandersWorkbenchHand(resource: Resource, delta: number): boolean {
   const next = liveHand[resource] + delta;
   if (next < 0) return false;

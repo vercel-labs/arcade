@@ -1037,6 +1037,12 @@ export class PokerGameScene {
     if (!this.heroPeekable()) return;
     if (this.heroPeek.click(this.cam, ndcX, ndcY, aspect)) this.dirty = true;
   }
+  // Whether the hero has clicked a hole card fully face-up this hand (a peek is a hover;
+  // a lift is a click). What the tutorial's "click to lift" step watches.
+  heroCardLifted(): boolean {
+    for (let i = 0; i < this.heroPeek.count(); i++) if (this.heroPeek.lifted(i)) return true;
+    return false;
+  }
 
   // ── Geometry ───────────────────────────────────────────────────────────────────
   // No session running (before the first match, and between sessions) → show the

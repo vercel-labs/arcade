@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { RenderTarget } from '../../../engine/index.ts';
-import { COSTS, DEV_CARD_TYPES, RESOURCES, resourceIndex } from '../../../rules/islanders/types.ts';
+import { COSTS, DEV_CARD_TYPES, RESOURCES, resourceIndex, type IslandersAction } from '../../../rules/islanders/types.ts';
 import { IslandersDriver, type IslandersSeatSpec } from '../../match/islanders-driver.ts';
+import { islandersDiscardDepartureCell, islandersHandLandingCell } from './card-hud.ts';
 import { islandersLiveView } from './game-hud.ts';
 import { IslandersGameScene } from './game-scene.ts';
 import { TileScene } from './tile-scene.ts';
+import { DICE_RESULT_REVEAL_DELAY, DICE_ROLL_DUR, DICE_STAGGER, type Die } from '../../../game-visuals/islanders/dice-choreography.ts';
 
 const total = (counts: Record<(typeof RESOURCES)[number], number>): number =>
   RESOURCES.reduce((sum, resource) => sum + counts[resource], 0);
@@ -49,10 +51,23 @@ test('live roll playback waits for dice landing and its visible production fligh
   await Promise.resolve();
   assert.equal(game.activeResourceFlights().length, 0, 'production waits for the dice to land');
   assert.equal(resolved, false);
+  // The live HUD re-publishes the flight layout every frame; that must not release the roll's
+  // production early.
+  game.setResourceFlightLayout(region, 2, false);
+  game.renderScene(target, 5.75);
+  assert.equal(game.activeResourceFlights().length, 0, 'a layout refresh mid-roll keeps production in the bank');
 
-  game.renderScene(target, 8);
+  const liveDice = (game.scene as unknown as { dice: [Die, Die] }).dice;
+  liveDice[0].dur = 1;
+  liveDice[1].dur = 1;
+  const physicalLanding = 5 + DICE_STAGGER + DICE_ROLL_DUR;
+  game.renderScene(target, physicalLanding);
+  assert.equal(game.activeResourceFlights().length, 0, 'the final-face settle beat still has no production flight');
+  assert.equal(resolved, false, 'the game does not publish the roll on the physical landing frame');
+
+  game.renderScene(target, physicalLanding + DICE_RESULT_REVEAL_DELAY);
   await Promise.resolve();
-  game.renderScene(target, 8);
+  game.renderScene(target, physicalLanding + DICE_RESULT_REVEAL_DELAY);
   assert.ok(game.activeResourceFlights().length > 0, 'production launches after the dice land');
   assert.equal(resolved, false, 'the next decision waits for the cards to reach the hand');
 
@@ -72,6 +87,93 @@ test('headless roll playback stays immediate when render synchronization is disa
   ], { autoRun: false, rng: () => 0.5 });
   await finishSetupWithProductionOnEight(game, state);
   await game.playMove({ type: 'roll' });
+});
+
+test('dice visibly settle before publishing highlights, payouts, or seven handling', () => {
+  const scene = new TileScene();
+  scene.setMode('board');
+  scene.settle();
+  const landed: number[] = [];
+  scene.onRollLanded = (sum) => landed.push(sum);
+  void scene.rollDice([4, 5]);
+  const dice = (scene as unknown as { dice: [Die, Die] }).dice;
+  dice[0].dur = 1;
+  dice[1].dur = 1;
+  const target = new RenderTarget(100, 64);
+  const physicalLanding = DICE_STAGGER + DICE_ROLL_DUR;
+
+  scene.renderScene(target, 0);
+  scene.renderScene(target, physicalLanding);
+  assert.deepEqual(landed, [], 'no result-dependent callback fires on the physical landing frame');
+  assert.equal((scene as unknown as { dicePhase: string }).dicePhase, 'hold', 'the final dice remain visibly at rest');
+  assert.equal((scene as unknown as { rolledSum: number | null }).rolledSum, null, 'matching number tokens stay unlit');
+  void scene.rollDice([1, 1]);
+  assert.equal((scene as unknown as { dice: [Die, Die] }).dice[0].val, 4, 'a second roll cannot replace an unpublished result');
+
+  scene.renderScene(target, physicalLanding + DICE_RESULT_REVEAL_DELAY - 0.001);
+  assert.deepEqual(landed, []);
+  assert.equal((scene as unknown as { rolledSum: number | null }).rolledSum, null);
+
+  scene.renderScene(target, physicalLanding + DICE_RESULT_REVEAL_DELAY);
+  assert.deepEqual(landed, [9]);
+  assert.equal((scene as unknown as { rolledSum: number | null }).rolledSum, 9);
+});
+
+test('a confirmed human discard closes its panel and flies the staged cards to the bank', async () => {
+  const game = new IslandersGameScene();
+  const driver = new IslandersDriver({ scene: game, syncLive: () => {} });
+  const state = driver.start([
+    { kind: 'human', color: 'red' },
+    { kind: 'ai', color: 'blue', model: 'test/blue' },
+  ], { autoRun: false, rng: () => 0.5 });
+  const region = { x: 0, y: 0, w: 140, h: 50 };
+  game.setResourceFlightLayout(region, 2, true);
+  await finishSetupWithProductionOnEight(game, state);
+  const target = new RenderTarget(region.w, region.h * 2);
+  game.renderScene(target, 0);
+  game.renderScene(target, 5);
+  assert.equal(game.activeResourceFlights().length, 0, 'initial-placement grants are settled before the discard');
+
+  const hands = (state as unknown as { hands: number[][] }).hands;
+  hands[0].fill(0);
+  hands[0][resourceIndex('brick')] = 5;
+  hands[0][resourceIndex('grain')] = 4;
+  state.applyAction({ type: 'roll' }, { dice: [3, 4] });
+
+  const pending = game.requestHumanMove();
+  assert.equal(game.humanMenuKind(), 'discard');
+  for (let count = 0; count < 3; count++) assert.equal(game.pickHumanMenuResource('brick'), true);
+  assert.equal(game.pickHumanMenuResource('grain'), true);
+  assert.equal(game.submitHumanMenu(), true);
+  assert.equal(game.humanMenuKind(), null, 'confirming closes the discard panel before playback');
+
+  const action = await pending;
+  assert.deepEqual(action, { type: 'discard', resources: ['brick', 'brick', 'brick', 'grain'] });
+  void game.playMove(action);
+  assert.equal(total(game.resourceViewAdjustments().handPendingDeparture ?? {} as Record<(typeof RESOURCES)[number], number>), 4);
+
+  game.renderScene(target, 5);
+  const active = game.activeResourceFlights();
+  const brick = active.find((flight) => flight.resource === 'brick');
+  assert.ok(brick);
+  assert.deepEqual(
+    { col: brick.col, row: brick.row },
+    islandersDiscardDepartureCell(region, 'brick'),
+    'the first discarded card leaves its staged slot',
+  );
+  assert.notDeepEqual(
+    { col: brick.col, row: brick.row },
+    islandersHandLandingCell(region, 'brick'),
+    'the discard does not launch from the normal hand row',
+  );
+  const waitingToDepart = total(game.resourceViewAdjustments().handPendingDeparture
+    ?? {} as Record<(typeof RESOURCES)[number], number>);
+  assert.ok(waitingToDepart > 0 && waitingToDepart < 4, 'the stagger removes cards as each one leaves the panel');
+
+  for (let frame = 21; frame <= 40; frame++) game.renderScene(target, frame * 0.25);
+  assert.equal(game.activeResourceFlights().length, 0);
+  assert.equal(total(game.resourceViewAdjustments().handPendingDeparture ?? {} as Record<(typeof RESOURCES)[number], number>), 0);
+  assert.equal(total(game.resourceViewAdjustments().bankPendingArrival ?? {} as Record<(typeof RESOURCES)[number], number>), 0);
 });
 
 test('the next legal roll can replace the previous dice hold', async () => {
@@ -239,4 +341,51 @@ test('a bought development card stays in flight until it lands in the live hand'
   assert.equal(game.activeResourceFlights().length, 0);
   assert.equal(view.devHand[type], 1);
   assert.equal(view.developmentDeck, deckBefore - 1);
+});
+
+test('a human monopoly flies the collected cards into the hand, staggered, and the log reports the haul', async () => {
+  const game = new IslandersGameScene();
+  const driver = new IslandersDriver({ scene: game, syncLive: () => {}, reflectionModel: () => null });
+  const state = driver.start([
+    { kind: 'human', color: 'red' },
+    { kind: 'ai', color: 'blue', model: 'test/blue' },
+    { kind: 'ai', color: 'orange', model: 'test/orange' },
+  ], { autoRun: false, rng: () => 0.5 });
+  const region = { x: 0, y: 0, w: 140, h: 50 };
+  game.setResourceFlightLayout(region, 3, true);
+  while (!state.initialPlacementComplete()) await game.playMove(state.legalActions()[0]);
+  const target = new RenderTarget(region.w, region.h * 2);
+  game.renderScene(target, 0);
+  game.renderScene(target, 5);
+  assert.equal(game.activeResourceFlights().length, 0);
+
+  // Roll, then stage a monopoly card the human may play and wool across the other hands.
+  state.applyAction({ type: 'roll' }, { dice: [3, 3] });
+  const internals = state as unknown as { hands: number[][]; devHand: number[][] };
+  internals.devHand[0][DEV_CARD_TYPES.indexOf('monopoly')] = 1;
+  internals.hands[0][resourceIndex('wool')] = 0;
+  internals.hands[1][resourceIndex('wool')] = 2;
+  internals.hands[2][resourceIndex('wool')] = 1;
+  assert.ok(state.legalActions().some((action) => action.type === 'playMonopoly' && action.resource === 'wool'));
+
+  // The driver's record hook sees the hands before the play, like the live loop does.
+  const before = { hands: internals.hands.map((hand) => hand.slice()), trade: state.activeTrade(), state: state.clone() };
+  void game.playMove({ type: 'playMonopoly', resource: 'wool' });
+  (driver as unknown as { record: (seat: number, action: IslandersAction, before: unknown) => void }).record(0, { type: 'playMonopoly', resource: 'wool' }, before);
+  assert.equal(state.handOf(0)[resourceIndex('wool')], 3, 'the rules move every wool to the monopolist');
+  assert.equal(state.handOf(1)[resourceIndex('wool')], 0);
+
+  game.renderScene(target, 5);
+  game.renderScene(target, 5.2);
+  const wool = game.activeResourceFlights().filter((flight) => flight.resource === 'wool');
+  assert.ok(wool.length > 0, 'the collected wool is in flight toward the hand');
+  const pending = total(game.resourceViewAdjustments().handPending);
+  assert.ok(pending > 0 && pending <= 3, 'cards are still landing one by one');
+  for (let frame = 21; frame <= 40; frame++) game.renderScene(target, frame * 0.25);
+  assert.equal(game.activeResourceFlights().length, 0);
+  assert.equal(total(game.resourceViewAdjustments().handPending), 0);
+
+  const entry = driver.history().find((line) => line.message.includes('monopoly'));
+  assert.ok(entry);
+  assert.match(entry.message, /played monopoly on 🐑 wool and collected 🐑 x3 \(2 from blue, 1 from orange\)/);
 });

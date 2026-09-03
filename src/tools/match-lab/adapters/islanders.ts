@@ -19,6 +19,10 @@ import { IslandersState } from '../../../rules/islanders/islanders.ts';
 import { DEV_CARD_TYPES, PLAYER_COLORS, RESOURCES, resourceIndex, type IslandersAction, type Resource } from '../../../rules/islanders/types.ts';
 import { mulberry32 } from '../random.ts';
 import type { MatchLabAdapter } from '../types.ts';
+import { IslandersMemory } from '../../../arcade/match/islanders-memory.ts';
+
+// Domestic offers a model seat may post per turn under the current harness (matches the arcade).
+const MODEL_OFFERS_PER_TURN = 3;
 
 export const DEFAULT_ISLANDERS_MODELS = ISLANDERS_DEFAULT_AI_SEATS.map((seat) => seat.model);
 
@@ -70,14 +74,39 @@ export const runIslandersMatchLab: MatchLabAdapter = async ({ plan, signal, emit
   const rng = mulberry32(plan.seed);
   const normalizer = normalizerModel();
   const labels = islandersMatchLabLabels(plan.models);
+  const current = plan.harness === 'current';
   const state = new IslandersState({
     numPlayers: plan.models.length,
     seatNames: labels,
     domesticTrade: true,
     domesticTradeOfferLimit: 3,
+    ...(current ? { domesticTradePolicy: plan.models.map(() => ({ maxOffersPerTurn: MODEL_OFFERS_PER_TURN, noRepeatRefused: true })) } : {}),
     rng,
   });
   const communication = new IslandersCommunicationCoordinator(plan.communicationMode, labels);
+  // Turn-end notebooks, as the arcade driver keeps them; legacy runs go without.
+  const memory = current ? new IslandersMemory() : null;
+  const reflecting = new Map<number, Promise<void>>();
+  const talkSeen = new Map<number, number>();
+  const others = (seat: number): number[] => plan.models.map((_, s) => s).filter((s) => s !== seat);
+  const reflect = (seat: number): void => {
+    if (!memory || reflecting.has(seat) || signal.aborted) return;
+    const messages = communication.messages();
+    const seen = talkSeen.get(seat) ?? 0;
+    talkSeen.set(seat, messages.length);
+    const job = memory.reflect({
+      model: plan.models[seat],
+      observer: seat,
+      subjects: others(seat),
+      digest: state.recentTurnsSummary(),
+      talk: messages.slice(seen).map((message) => `${message.speakerLabel}: ${message.text}`),
+      labelOf: (s) => labels[s],
+      signal,
+    }).then(() => {
+      emit({ type: 'reflection', game: 'islanders', seat, model: plan.models[seat], action: state.actionRecords().length, data: { plan: memory.plan(seat), reads: memory.view(seat, others(seat)).map(({ subject, notes }) => ({ player: labels[subject], notes })) } });
+    }).finally(() => reflecting.delete(seat));
+    reflecting.set(seat, job);
+  };
   const makePlayer = plan.setupOnly ? createIslandersSetupModelPlayer : createIslandersModelPlayer;
   const players: Player<IslandersAction>[] = plan.models.map((model, seat) => makePlayer({
     model,
@@ -85,8 +114,9 @@ export const runIslandersMatchLab: MatchLabAdapter = async ({ plan, signal, emit
     normalizer,
     fallbackRng: rng,
     communication: communication.modelConfig(),
-    contextProvider: (player) => communication.contextFor(player),
+    contextProvider: (player) => [memory?.renderForPrompt(player, others(player), (s) => labels[s]) ?? '', communication.contextFor(player)].filter(Boolean).join('\n\n'),
     onAttempt: (attempt) => emit({ type: 'model_attempt', game: 'islanders', seat, model, data: attempt }),
+    captureThinking: plan.captureThinking,
   }));
   let stopReason = plan.setupOnly ? 'setup complete' : 'game complete';
   let pendingAction = '';
@@ -112,6 +142,7 @@ export const runIslandersMatchLab: MatchLabAdapter = async ({ plan, signal, emit
     onActionApplied: async ({ playerIndex, choice }: { playerIndex: number; choice: Awaited<ReturnType<Player<IslandersAction>['chooseAction']>> }) => {
       const actionNumber = state.actionRecords().length;
       emit({ type: 'action_applied', game: 'islanders', seat: playerIndex, model: plan.models[playerIndex], action: actionNumber, data: { move: pendingAction, outcome: state.actionRecords().at(-1)?.outcome, checkpoint: checkpoint(state) } });
+      if (choice.action.type === 'endTurn') reflect(playerIndex);
       if (plan.communicationMode !== 'ambient') return;
       if (actorMessage?.addressedSeats.length) {
         for (const opportunity of directedReplyOpportunities(actorMessage, 'islanders', plan.models.length)) {

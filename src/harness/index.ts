@@ -6,10 +6,12 @@
  * custom Player), a rules state, and an optional scene that settles actions.
  */
 export { HumanPlayer } from './human-player.ts';
+export { PolicyPlayer } from './policy-player.ts';
 export {
   FALLBACK_RATIONALE,
   ModelPlayer,
   isFallbackRationale,
+  type ModelAttemptInfo,
   type ModelPlayerOpts,
   type MoveNotation,
 } from './model-player.ts';

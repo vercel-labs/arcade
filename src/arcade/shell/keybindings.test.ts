@@ -116,6 +116,6 @@ test('Islanders shares game menu and camera keyboard controls with the other 3D 
     assert.deepEqual(calls, ['resetView']);
     calls.length = 0;
     assert.equal(keymap.handle({ ...D_KEY, name: 'left', raw: '', sequence: '\x1b[D' }), true);
-    assert.deepEqual(calls, ['pan:16:0']);
+    assert.deepEqual(calls, ['pan:-16:0']);
   }
 });
