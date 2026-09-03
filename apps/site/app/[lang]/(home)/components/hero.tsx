@@ -32,7 +32,10 @@ export const Hero = () => {
     const footer = document.querySelector<HTMLElement>('.site-default-footer');
     const resolvedMono = getComputedStyle(document.documentElement).getPropertyValue('--font-geist-mono').trim();
     const scene = new LivingTitleScene();
-    void scene.prepare().catch((error) => console.error('Unable to prepare cinematic assets', error));
+    let assetsReady = false;
+    void scene.prepare()
+      .catch((error) => console.error('Unable to prepare cinematic assets', error))
+      .finally(() => { assetsReady = true; });
     const host = new CanvasSurfaceHost(canvas as unknown as CanvasLike, {
       cellAspectRatio: TERMINAL_CELL_ASPECT_RATIO,
       devicePixelRatio: window.devicePixelRatio,
@@ -160,6 +163,13 @@ export const Hero = () => {
       }
       const rect = canvas.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return;
+      // A restored deep-scroll position can render before the cover PNGs and
+      // game meshes finish decoding. Keep the canvas clean instead of briefly
+      // exposing procedural cover art or fallback chess geometry.
+      if (!assetsReady && displayedChapter > 0 && displayedChapter < 4) {
+        canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
+        return;
+      }
       // Match terminal resize behavior: mobile browser chrome revealing more
       // space adds rows, while orientation changes replace both dimensions.
       const { cols, rows } = responsiveTerminalGrid(
