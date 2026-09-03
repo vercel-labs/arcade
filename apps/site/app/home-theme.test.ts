@@ -252,3 +252,11 @@ test('the expensive cinematic renderer pauses after its section leaves the viewp
   assert.match(hero, /cinematicObserver\.observe\(root\)/);
   assert.match(hero, /cinematicObserver\.disconnect\(\)/);
 });
+
+test('deep-scroll refresh waits for real cinematic assets instead of painting placeholders', async () => {
+  const hero = await readFile(new URL('./[lang]/(home)/components/hero.tsx', import.meta.url), 'utf8');
+  assert.match(hero, /let assetsReady = false/);
+  assert.match(hero, /scene\.prepare\(\)[\s\S]+\.finally\(\(\) => \{ assetsReady = true; \}\)/);
+  assert.match(hero, /!assetsReady && displayedChapter > 0 && displayedChapter < 4/);
+  assert.match(hero, /clearRect\(0, 0, canvas\.width, canvas\.height\)/);
+});
