@@ -16,6 +16,7 @@ import {
   type RecorderController,
 } from '../../harness/recording/game-recorders.ts';
 import { IslandersState } from '../../rules/islanders/islanders.ts';
+import { NUM_NODES, nodeHexes } from '../../rules/islanders/board-topology.ts';
 import type { BoardSetup } from '../../rules/islanders/setup.ts';
 import { RESOURCES, resourceIndex, type IslandersAction, type PlayerColor, type Resource } from '../../rules/islanders/types.ts';
 import { DEV_CARD_ICON, KNIGHT_ICON, RESOURCE_LOOK, ROAD_ICON, SETTLEMENT_ICON } from '../games/islanders/palette.ts';
@@ -526,6 +527,17 @@ export class IslandersDriver {
       .flatMap((resource, index) => counts[index] > 0 ? [`${RESOURCE_LOOK[resource].emoji} x${counts[index]}`] : [])
       .join(' ');
     const victim = 'victim' in action && action.victim !== null ? object(action.victim) : null;
+    // A robber move without a victim: say whether nobody was there or the neighbours had empty hands.
+    const robbed = (hex: number): string => {
+      if (victim) return ` and stole 1 card from ${victim}`;
+      const neighbours = new Set<number>();
+      for (let node = 0; node < NUM_NODES; node++) {
+        const building = nodeHexes[node].includes(hex) ? this.live?.buildingAt(node) : undefined;
+        if (building && building.player !== seat) neighbours.add(building.player);
+      }
+      if (neighbours.size === 0) return ', with no one to rob';
+      return `; ${[...neighbours].map(object).join(' and ')} had no cards to steal`;
+    };
     const outcome = this.live?.actionRecords().at(-1)?.outcome;
     const message = action.type === 'initialSettlement'
       ? `${SETTLEMENT_ICON} placed a settlement`
@@ -544,9 +556,9 @@ export class IslandersDriver {
                   : action.type === 'buyDevCard'
                     ? `${DEV_CARD_ICON} bought a development card`
                     : action.type === 'playKnight'
-                      ? `${KNIGHT_ICON} played a knight, moved the robber to hex ${action.hex}${victim ? `, and stole 1 card from ${victim}` : ''}`
+                      ? `${KNIGHT_ICON} played a knight, moved the robber to hex ${action.hex}${robbed(action.hex)}`
                       : action.type === 'moveRobber'
-                        ? `${KNIGHT_ICON} moved the robber to hex ${action.hex}${victim ? ` and stole 1 card from ${victim}` : ''}`
+                        ? `${KNIGHT_ICON} moved the robber to hex ${action.hex}${robbed(action.hex)}`
                         : action.type === 'playRoadBuilding'
                           ? `${ROAD_ICON} played road building on edges ${action.edges.join(' and ')}`
                           : action.type === 'playYearOfPlenty'

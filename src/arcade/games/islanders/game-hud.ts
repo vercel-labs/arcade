@@ -350,6 +350,10 @@ export interface IslandersGameHudDeps {
   notice?: string;
 }
 
+// The hand's small prompt pills lighten a step under the pointer and keep their ink, rather than
+// flipping to the chrome pill's white: these sit over the board, where a white flash pulls the eye.
+const LIVE_PILL_HOVER_BG: [number, number, number] = [52, 56, 70];
+
 function liveActionButton(id: string, label: string, onClick: () => void, disabled = false, active = false): Node {
   return Button({
     id: `islanders-live-${id}`,
@@ -358,6 +362,7 @@ function liveActionButton(id: string, label: string, onClick: () => void, disabl
     disabled,
     style: {
       ...UI_CHROME_PILL,
+      hover: { background: LIVE_PILL_HOVER_BG },
       padding: [0, 1],
       ...(active ? { background: ISLANDERS_CARD.actionPressed, color: ISLANDERS_CARD.actionPressedInk, bold: true } : {}),
       disabled: active
