@@ -37,6 +37,7 @@ export const runChessMatch: MatchLabAdapter = async ({ plan, signal, emit }) => 
       contextProvider: () => communication.contextFor(seat),
     } : {}),
     onAttempt: (attempt) => emit({ type: 'model_attempt', game: 'chess', seat, model, data: attempt }),
+    captureThinking: plan.captureThinking,
   }));
   let plies = 0;
   let pendingSan = '';

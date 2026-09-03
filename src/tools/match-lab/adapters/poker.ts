@@ -21,6 +21,7 @@ export const runPokerMatchLab: MatchLabAdapter = async ({ plan, signal, emit }) 
     signal,
     communicationMode: plan.communicationMode,
     onAttempt: (seat, attempt) => emit({ type: 'model_attempt', game: 'poker', seat, model: plan.models[seat], data: attempt }),
+    captureThinking: plan.captureThinking,
     onEvent: (event) => {
       const type = event.type === 'hand_started' ? 'hand_started'
         : event.type === 'hand_finished' ? 'hand_finished'
