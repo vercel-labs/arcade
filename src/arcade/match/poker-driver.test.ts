@@ -40,3 +40,21 @@ test('duplicate poker slugs reach the live player-strip view with visible indice
   );
   match.stop();
 });
+
+test('practice bots seat as neutral AI views and the table never records', () => {
+  const scene = new PokerGameScene();
+  const match = new PokerMatch({
+    scene,
+    syncLive() {},
+    requestRender() {},
+    onCommentary() {},
+    onHandOver() {},
+  });
+  match.start([{ kind: 'human' }, { kind: 'bot' }, { kind: 'bot' }]);
+  assert.deepEqual(scene.tableView()?.seats.map((seat) => seat.name), ['You', 'bot 1', 'bot 2']);
+  assert.deepEqual(scene.tableView()?.seats.map((seat) => seat.kind), ['human', 'ai', 'ai']);
+  assert.deepEqual(match.noteObservers().map((o) => o.seat), [1, 2]); // bots show sample reads
+  assert.ok(match.notesView(1).every((entry) => entry.notes.length > 0));
+  assert.ok(match.isRunning());
+  match.stop();
+});

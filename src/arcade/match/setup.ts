@@ -240,17 +240,19 @@ export function mountSwapSetup(ui: Screen): void {
 // then the model reproduces the exact state a manual pick would leave — with the
 // current model pre-selected, so Switch is enabled immediately. `swap.creator`
 // is cleared first so re-picking the same creator still repopulates the list.
+// `slug` seeds the picker with the seat's current model; a seat with none (a practice bot
+// being replaced by a real model) opens on the first creator with no model committed.
 export function openSwapSetup(
   color: 'white' | 'black',
-  slug: string,
+  slug: string | null,
   runtime: 'text' | 'realtime' = 'text',
 ): void {
   swapRuntime = runtime;
   const creators = runtime === 'realtime' ? REALTIME_CREATORS : TEXT_CREATORS;
   setModelSeatCreators(swap, creators);
   swap.key = color;
-  const creator = slug.split('/')[0] ?? slug;
-  selectModelSeat(swap, creator, slug);
+  if (slug) selectModelSeat(swap, slug.split('/')[0] ?? slug, slug);
+  else selectModelSeat(swap, creators[0]?.slug ?? '');
 }
 
 // The swap popup's chosen model slug, or null when no model is committed yet.

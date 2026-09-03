@@ -18,6 +18,7 @@ const artSource = (id: string, cp: string): string =>
 // Menu item id → Noto emoji codepoint. Chosen to read as the game at a glance.
 const ART: Record<string, string> = {
   chess: '265f', // ♟ chess pawn
+  tutorial: '1f393', // 🎓 graduation cap
   logos: '1f916', // 🤖 robot
   audio: '1f3a4', // 🎤 microphone
   ui: '1f3a8', // 🎨 artist palette

@@ -55,6 +55,7 @@ export interface KeyHandlers {
   closeIslandersMenu(): void;
   closeIslandersPieceEdit(): void;
   closeIslandersGameMenu(): void;
+  closeIslandersNotes(): void;
   escBack(): void;
   closeConfirmHome(): void;
   openShortcuts(): void;
@@ -67,7 +68,9 @@ export interface KeyHandlers {
 // Cells-equivalent the arrow keys pan the camera per press (held keys repeat) —
 // shared by every orbit screen (chess, poker, logos, ui, cards, audio). A firm
 // nudge; pan() scales it by distance and eases the camera to the new target, so a
-// larger step pans faster while staying smooth.
+// larger step pans faster while staying smooth. The sign matches a pointer drag: the
+// right arrow slides the scene right, the way dragging right does (the camera itself
+// moves the other way) — one gesture vocabulary for keys and mouse.
 const PAN_STEP = 16;
 
 export function escapeBackRequiresConfirmation(mode: string): boolean {
@@ -104,10 +107,10 @@ export function installKeymap(h: KeyHandlers): Keymap {
     { id: 'nav.poker', title: 'Open poker', run: h.enterPoker }, // agent-only (no user key)
     { id: 'nav.cards', title: 'Open cards (poker-test)', run: h.enterCards }, // agent-only (no user key)
     { id: 'camera.resetView', title: 'Reset camera', run: () => h.activeOrbit()?.resetView() },
-    { id: 'camera.panLeft', title: 'Pan left', run: () => h.activeOrbit()?.pan(PAN_STEP, 0) },
-    { id: 'camera.panRight', title: 'Pan right', run: () => h.activeOrbit()?.pan(-PAN_STEP, 0) },
-    { id: 'camera.panUp', title: 'Pan up', run: () => h.activeOrbit()?.pan(0, PAN_STEP) },
-    { id: 'camera.panDown', title: 'Pan down', run: () => h.activeOrbit()?.pan(0, -PAN_STEP) },
+    { id: 'camera.panLeft', title: 'Pan left', run: () => h.activeOrbit()?.pan(-PAN_STEP, 0) },
+    { id: 'camera.panRight', title: 'Pan right', run: () => h.activeOrbit()?.pan(PAN_STEP, 0) },
+    { id: 'camera.panUp', title: 'Pan up', run: () => h.activeOrbit()?.pan(0, -PAN_STEP) },
+    { id: 'camera.panDown', title: 'Pan down', run: () => h.activeOrbit()?.pan(0, PAN_STEP) },
     { id: 'chess.cancelPromotion', title: 'Cancel promotion', run: h.cancelPromotion },
     { id: 'chess.toggleAI', title: 'Play / pause AI', run: h.aiButton },
     { id: 'chess.toggleHistory', title: 'Toggle move history', run: h.toggleHistory },
@@ -132,6 +135,7 @@ export function installKeymap(h: KeyHandlers): Keymap {
     { id: 'islanders.closeMenu', title: 'Close Islanders menu', run: h.closeIslandersMenu },
     { id: 'islanders.closePieceEdit', title: 'Close Islanders piece editor', run: h.closeIslandersPieceEdit },
     { id: 'islanders.closeGameMenu', title: 'Close Islanders game menu', run: h.closeIslandersGameMenu },
+    { id: 'islanders.closeNotes', title: 'Close Islanders reads', run: h.closeIslandersNotes },
   ]) {
     keymap.register(c);
   }
@@ -251,6 +255,7 @@ export function installKeymap(h: KeyHandlers): Keymap {
   keymap.bind('islanders-piece-edit', { key: 'escape', cmd: 'islanders.closePieceEdit' });
   keymap.bind('islanders-game-menu', { key: 'escape', cmd: 'islanders.closeGameMenu' });
   keymap.bind('islanders-game-menu', { key: 'm', cmd: 'islanders.closeGameMenu' });
+  keymap.bind('islanders-notes', { key: 'escape', cmd: 'islanders.closeNotes' });
   // Return-to-home confirm popup (esc in a game): Escape cancels (stay in the game); the
   // modal layer shadows stray keys. Enter on the default-focused "Return home" confirms.
   keymap.bind('confirm-home', { key: 'escape', cmd: 'nav.confirmHomeCancel' });
@@ -264,9 +269,10 @@ export function installKeymap(h: KeyHandlers): Keymap {
   // Startup update popup: Escape dismisses ("not now"); the modal layer shadows stray keys.
   // Enter on the default-focused "quit to update" button quits so the user can upgrade.
   keymap.bind('update', { key: 'escape', cmd: 'app.closeUpdateModal' });
-  // Display style is presentation-only, so it remains safe and useful while a popup is open —
-  // including the controls popup where the binding is documented. Focused text components still
-  // receive printable input before the keymap, preserving normal typing behavior.
+  // Display style and the controls overlay are presentation-only, so they remain safe and
+  // useful while a popup is open (the controls popup itself maps '?' to close, so it toggles).
+  // Focused text components still receive printable input before the keymap, preserving
+  // normal typing behavior.
   for (const layer of [
     'promoting',
     'gameover',
@@ -280,12 +286,14 @@ export function installKeymap(h: KeyHandlers): Keymap {
     'islanders-menu',
     'islanders-piece-edit',
     'islanders-game-menu',
+    'islanders-notes',
     'confirm-home',
     'shortcuts',
     'confirm-quit',
     'update',
   ]) {
     keymap.bind(layer, { key: 'd', cmd: 'view.cycleRenderMode' });
+    if (layer !== 'shortcuts') keymap.bind(layer, { key: '?', cmd: 'app.shortcuts' });
   }
   return keymap;
 }

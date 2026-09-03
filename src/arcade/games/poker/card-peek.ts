@@ -103,6 +103,10 @@ export class HandPeek {
   reveal(i: number): number | undefined {
     return this.cards[i]?.reveal.value;
   }
+  // Whether card i has been clicked fully face-up (as opposed to bent up by a hover).
+  lifted(i: number): boolean {
+    return this.cards[i]?.up ?? false;
+  }
 
   // Draw every card bent to its current reveal.
   draw(target: RenderTarget, vp: Mat4, az: number, back: Texture): void {
