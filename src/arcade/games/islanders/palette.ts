@@ -56,11 +56,12 @@ export const ISLANDERS_CARD = {
   actionPressedInk: [19, 48, 54] as IslandersRgb,
   devActionHover: [149, 109, 190] as IslandersRgb,
   devActionPressed: [205, 181, 229] as IslandersRgb,
-  // The roll card: the one action a turn cannot proceed without, in its own warm tone so it
-  // stands apart from the teal trade and purple dev tiles beside it.
-  rollActionBg: [176, 112, 52] as IslandersRgb,
-  rollActionHover: [206, 142, 78] as IslandersRgb,
-  rollActionPressed: [244, 222, 190] as IslandersRgb,
+  // Roll and end turn move the game along without touching the hand, so they take a slate that
+  // belongs to neither the card fills nor the teal trade tile, and stays clearly above the
+  // disabled charcoal.
+  turnActionBg: [92, 100, 118] as IslandersRgb,
+  turnActionHover: [118, 127, 146] as IslandersRgb,
+  turnActionPressed: [222, 226, 236] as IslandersRgb,
   tradeBg: [20, 23, 31, 0.96] as [number, number, number, number],
   tradeAccent: [78, 167, 177] as IslandersRgb,
   tradeInk: [13, 36, 41] as IslandersRgb,

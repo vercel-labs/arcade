@@ -202,6 +202,11 @@ const ACTION_BG = ISLANDERS_CARD.actionBg;
 const ACTION_HOVER = ISLANDERS_CARD.actionHover;
 const ACTION_DISABLED = ISLANDERS_CARD.actionDisabled;
 const ACTION_DISABLED_INK = ISLANDERS_CARD.actionDisabledInk;
+const TURN_ACTION_COLORS = {
+  background: ISLANDERS_CARD.turnActionBg,
+  hover: ISLANDERS_CARD.turnActionHover,
+  pressed: ISLANDERS_CARD.turnActionPressed,
+};
 
 interface DevCardHelp {
   title: string;
@@ -658,13 +663,19 @@ function workbenchActionButton(
   active = false,
 ): Node {
   const ink: Rgb = enabled ? ISLANDERS_CARD.actionInk : ACTION_DISABLED_INK;
-  // The card is an odd number of cells wide, so odd-width rows center exactly and even-width
-  // rows cannot; a trailing space makes those odd and settles them one cell left of center,
-  // where a wide glyph reads as placed rather than nudged right.
-  const leanLeft = (text: string): string => (stringWidth(text) % 2 === 0 ? `${text} ` : text);
+  // Two words (no glyph row) read as one left-aligned block, so the shorter is padded to the
+  // longer before centering. The card is an odd number of cells wide, so odd-width rows center
+  // exactly and even-width rows cannot; a trailing space makes those odd and settles them one
+  // cell left of center, where a wide glyph reads as placed rather than nudged right.
+  const wordy = stringWidth(icon) === icon.length;
+  const block = wordy ? Math.max(stringWidth(icon), stringWidth(label)) : 0;
+  const settle = (text: string): string => {
+    const padded = text.padEnd(Math.max(block, text.length));
+    return stringWidth(padded) % 2 === 0 ? `${padded} ` : padded;
+  };
   const content = (): Node[] => [
-    Text({ text: leanLeft(icon), style: { color: ink, bold: true } }),
-    Text({ text: leanLeft(label), style: { color: ink, bold: true } }),
+    Text({ text: settle(icon), style: { color: ink, bold: true } }),
+    Text({ text: settle(label), style: { color: ink, bold: true } }),
   ];
   const button = Button({
     id,
@@ -1420,7 +1431,7 @@ function handPanel(
             'Costs 🐑 🌾 🪨.',
           ],
           maxWidth: 36,
-        }, workbenchActionButton('islanders-buy-dev', `$${DEV_CARD_ICON}`, 'buy dev', actionController.canBuyDevelopmentCard, () => {
+        }, workbenchActionButton('islanders-buy-dev', `💰 ${DEV_CARD_ICON}`, 'buy dev', actionController.canBuyDevelopmentCard, () => {
           actionController.onBuyDevelopmentCard();
         }, {
           background: DEV_LOOK.fill,
@@ -1430,13 +1441,9 @@ function handPanel(
         ...(actionController.turn
           ? [actionController.turn.kind === 'roll'
               ? Tooltip({ id: 'islanders-live-roll', content: [{ text: 'Roll dice', bold: true }, 'Every settlement on the rolled number pays its owner.'], maxWidth: 34 },
-                  workbenchActionButton('islanders-live-roll', 'roll', 'dice', true, () => { actionController.turn?.onClick(); }, {
-                    background: ISLANDERS_CARD.rollActionBg,
-                    hover: ISLANDERS_CARD.rollActionHover,
-                    pressed: ISLANDERS_CARD.rollActionPressed,
-                  }))
+                  workbenchActionButton('islanders-live-roll', 'roll', 'dice', true, () => { actionController.turn?.onClick(); }, TURN_ACTION_COLORS))
               : Tooltip({ id: 'islanders-live-end', content: [{ text: 'End turn', bold: true }, 'Pass the dice to the next player.'], maxWidth: 34 },
-                  workbenchActionButton('islanders-live-end', 'end', 'turn', true, () => { actionController.turn?.onClick(); }))]
+                  workbenchActionButton('islanders-live-end', 'end', 'turn', true, () => { actionController.turn?.onClick(); }, TURN_ACTION_COLORS))]
           : []),
       ];
   const tray = Box({ height: layout.handHeight, gap: HAND_SPLIT_GAP, padding: [HAND_PAD_T, HAND_PAD_X, HAND_PAD_B, HAND_PAD_X], background: uiChromeBg(0.9) }, [
