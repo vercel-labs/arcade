@@ -33,7 +33,7 @@ import {
 } from './card-hud.ts';
 import { IslandersState } from '../../../rules/islanders/islanders.ts';
 import { DEV_CARD_TYPES, type IslandersAction, type DevCardType, RESOURCES, type Resource, resourceIndex } from '../../../rules/islanders/types.ts';
-import { ISLANDERS_CARD, ISLANDERS_STATUS, PLAYER_LOOK, RESOURCE_LOOK } from './palette.ts';
+import { CITY_ICON, ISLANDERS_CARD, ISLANDERS_STATUS, PLAYER_LOOK, RESOURCE_LOOK, ROAD_ICON, SETTLEMENT_ICON } from './palette.ts';
 import { hudTopCenter, hudTopRight } from '../../shell/hud-chrome.ts';
 import type { BoardToken, SailLabel } from './tile-scene.ts';
 import { islandersFlyingCardNodes, islandersProjectedBoardLabels } from './tile-hud.ts';
@@ -567,9 +567,10 @@ function humanActionPanel(deps: IslandersGameHudDeps, region: LayoutBox): Node |
         children.push(liveActionButton('cancel-trade', 'cancel trade', () => scene.submitHumanAction({ type: 'cancelTrade' })));
       }
       if (prompt.kind === 'playTurn') {
-        if (types.has('buildRoad')) children.push(liveActionButton('road', 'road', () => scene.beginBoardChoice('buildRoad')));
-        if (types.has('buildSettlement')) children.push(liveActionButton('settlement', 'settlement', () => scene.beginBoardChoice('buildSettlement')));
-        if (types.has('buildCity')) children.push(liveActionButton('city', 'city', () => scene.beginBoardChoice('buildCity')));
+        // The same glyphs the log and the players table use for these pieces.
+        if (types.has('buildRoad')) children.push(liveActionButton('road', `${ROAD_ICON} road`, () => scene.beginBoardChoice('buildRoad')));
+        if (types.has('buildSettlement')) children.push(liveActionButton('settlement', `${SETTLEMENT_ICON} settlement`, () => scene.beginBoardChoice('buildSettlement')));
+        if (types.has('buildCity')) children.push(liveActionButton('city', `${CITY_ICON} city`, () => scene.beginBoardChoice('buildCity')));
       }
     }
   }
