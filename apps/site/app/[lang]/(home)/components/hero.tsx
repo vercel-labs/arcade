@@ -173,7 +173,10 @@ export const Hero = () => {
       const gridKey = `${cols}:${rows}`;
       if (gridKey !== primedGrid) {
         primedGrid = gridKey;
+        idleHandles.forEach((handle) => window.clearTimeout(handle));
+        idleHandles.clear();
         primedTransitions.clear();
+        scene.clearTransitionPlates();
       }
       const transitionKey = `${displayedChapter}:${gridKey}`;
       if (displayedChapter < 4 && !primedTransitions.has(transitionKey)) {
@@ -182,12 +185,17 @@ export const Hero = () => {
         // a resize creates a burst of main-thread work and stale-looking scroll.
         // The outgoing source must be the exact last live frame; only prepare
         // the next scene off the critical scroll path.
-        const parts = ['destination'] as const;
-        parts.forEach((part, index) => {
+        const jobs = [
+          () => scene.prepareTransitionPart(displayedChapter, cols, rows, 'destination', time / 1000),
+          ...Array.from({ length: 4 }, (_, index) => () => scene.prepareTransitionMotionSample(displayedChapter, cols, rows, 'source', index, time / 1000)),
+          ...Array.from({ length: 4 }, (_, index) => () => scene.prepareTransitionMotionSample(displayedChapter, cols, rows, 'destination', index, time / 1000)),
+        ];
+        jobs.forEach((job, index) => {
+          const scheduledGrid = gridKey;
           const handle = window.setTimeout(() => {
-            scene.prepareTransitionPart(displayedChapter, cols, rows, part, time / 1000);
+            if (primedGrid === scheduledGrid) job();
             idleHandles.delete(handle);
-          }, 120 + index * 90);
+          }, 120 + index * 80);
           idleHandles.add(handle);
         });
       }

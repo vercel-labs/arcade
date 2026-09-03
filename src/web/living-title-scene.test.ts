@@ -146,9 +146,13 @@ test('Chess and Poker ink cuts begin from the exact last live frame', () => {
   }
 });
 
-test('browser ink cuts keep both scene clocks alive while alternating live plate refreshes', () => {
+test('browser ink cuts select advancing pre-rendered motion plates without live rerasterization', () => {
   const scene = new LivingTitleScene();
   const act = 2;
+  for (let index = 0; index < 4; index++) {
+    scene.prepareTransitionMotionSample(act, 100, 40, 'source', index, 20);
+    scene.prepareTransitionMotionSample(act, 100, 40, 'destination', index, 20);
+  }
   const start = LIVING_TITLE_ACT_BOUNDARIES[act], end = LIVING_TITLE_ACT_BOUNDARIES[act + 1];
   const morph = LIVING_TITLE_MORPH_STARTS[act];
   const progress = (local: number) => start + (end - start) * local;
@@ -156,8 +160,9 @@ test('browser ink cuts keep both scene clocks alive while alternating live plate
   scene.frame({ cols: 100, rows: 40, timeSeconds: 20.2, progress: progress(morph + 0.05) });
   const third = scene.frame({ cols: 100, rows: 40, timeSeconds: 20.4, progress: progress(morph + 0.075) });
   assert.notEqual(surfaceSignature(first), surfaceSignature(third), 'the burn should not reuse one frozen composite');
-  const refreshes = (scene as unknown as { transitionRefreshSource: Map<string, boolean> }).transitionRefreshSource;
-  assert.equal(refreshes.get('2:100:40'), false, 'source and destination refresh ownership should alternate');
+  const plates = (scene as unknown as { transitionPlates: Map<string, { sourceMotion?: Surface[]; destinationMotion?: Surface[] }> }).transitionPlates.get('2:100:40');
+  assert.equal(plates?.sourceMotion?.filter(Boolean).length, 3);
+  assert.equal(plates?.destinationMotion?.length, 4);
   const pokerLoop = (scene as unknown as { pokerLoop: { sample(total: number, active: boolean, duration: number): { elapsed: number } } }).pokerLoop;
   assert.ok(pokerLoop.sample(20.5, true, POKER_LOOP_SECONDS).elapsed > 0, 'incoming Poker gameplay should already be moving beneath the burn');
 });
@@ -266,15 +271,13 @@ test('Cover Flow title and Chess handoff never collapse into an empty ultrawide 
   }
 });
 
-test('transition plate cache stays bounded across repeated viewport resizes', () => {
+test('transition plate cache can be cleared when the host changes grids', () => {
   const scene = new LivingTitleScene();
   for (let index = 0; index < 14; index++) scene.prepareTransitionPart(0, 80 + index, 36, 'destination', 1);
   const plates = (scene as unknown as { transitionPlates: Map<string, unknown> }).transitionPlates;
-  const refreshes = (scene as unknown as { transitionRefreshSource: Map<string, boolean> }).transitionRefreshSource;
-  assert.equal(plates.size, 8);
-  assert.ok(refreshes.size <= 8);
-  assert.ok(!plates.has('0:80:36'));
-  assert.ok(plates.has('0:93:36'));
+  assert.equal(plates.size, 14);
+  scene.clearTransitionPlates();
+  assert.equal(plates.size, 0);
 });
 
 function transitionProgresses(local: number): number[] {

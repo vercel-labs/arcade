@@ -1750,7 +1750,10 @@ function enterTrailer(): void {
   stopPokerMatch();
   audioScene.deactivate();
   mode = 'trailer';
-  currentTrailerScene().start();
+  if (!currentTrailerScene().start()) {
+    enterMenu();
+    return;
+  }
   trailerStartedAt = performance.now();
   ui.setRoot(null);
   fullRepaint();
@@ -1779,11 +1782,11 @@ function launchSelected(): void {
     openBrowser(action.url);
     return;
   }
-  if (item?.id === 'trailer') void currentTrailerScene().prepare();
   launching = true;
   launchT = 0;
   launchSel = menuSel;
   ui.setRoot(null); // hide the menu pill during the flip-to-title launch splash
+  if (item?.id === 'trailer') setTimeout(() => { void currentTrailerScene().prepare().catch(() => {}); }, 0);
 }
 
 // Open the actual game screen for a cover id (the destinations the splash hands off to).

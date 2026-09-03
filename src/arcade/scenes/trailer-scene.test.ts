@@ -14,7 +14,7 @@ test('Trailer advances through its CLI-only 30-second social cut and resets for 
   trailer.step(0.1);
   assert.equal(trailer.done(), true);
   assert.equal(trailer.progress(), 1);
-  trailer.start();
+  assert.equal(trailer.start(), true);
   assert.equal(trailer.progress(), 0);
   assert.equal(trailer.done(), false);
 });
@@ -143,7 +143,7 @@ test('Trailer preparation is safe to start in the background', async () => {
   const first = trailer.prepare();
   assert.equal(trailer.prepare(), first);
   await first;
-  trailer.start();
+  assert.equal(trailer.start(), true);
   assert.equal(trailer.prepare(), first, 'replay should retain prepared assets');
 });
 

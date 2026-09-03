@@ -22,7 +22,7 @@ const BLACK: RGB = [0, 0, 0];
 const ACTS = LIVING_TITLE_ACTS.length;
 const MATCH_CUT_SOURCE_PROGRESS = [LIVING_TITLE_MORPH_STARTS[0], 0.9, LIVING_TITLE_MORPH_STARTS[2], LIVING_TITLE_MORPH_STARTS[3]] as const;
 const ZOOM_DETAIL_SCALE = 2;
-const MAX_TRANSITION_PLATES = 8;
+const TRANSITION_MOTION_SAMPLES = 4;
 const COVER_FLOW_SETTLED_PROGRESS = 0.9;
 const MATCH_CUTS = [
   // Prism beam → selected cover bezel.
@@ -63,8 +63,7 @@ export class LivingTitleScene {
   private readonly chessLoop = new ActiveSceneLoopClock();
   private readonly pokerLoop = new ActiveSceneLoopClock();
   private readonly islandersLoop = new ActiveSceneLoopClock();
-  private readonly transitionPlates = new Map<string, Partial<{ source: Surface; destination: Surface }>>();
-  private readonly transitionRefreshSource = new Map<string, boolean>();
+  private readonly transitionPlates = new Map<string, Partial<{ source: Surface; destination: Surface; sourceMotion: Surface[]; destinationMotion: Surface[] }>>();
   private prismStartedAt: number | null = null;
   private chessGameplayPhase = 0;
   private pokerGameplayPhase = 0;
@@ -80,7 +79,6 @@ export class LivingTitleScene {
   prepare(): Promise<void> {
     return Promise.all([this.covers.prepare(), this.chess.prepare(), this.poker.prepare()]).then(() => {
       this.transitionPlates.clear();
-      this.transitionRefreshSource.clear();
       this.prepared = true;
     });
   }
@@ -94,7 +92,6 @@ export class LivingTitleScene {
     this.pokerGameplayPhase = 0;
     this.pokerGameplayIteration = 0;
     this.transitionPlates.clear();
-    this.transitionRefreshSource.clear();
     this.chessLoop.reset();
     this.pokerLoop.reset();
     this.islandersLoop.reset();
@@ -106,14 +103,41 @@ export class LivingTitleScene {
     this.transitionPlate(act, cols, rows, timeSeconds);
   }
 
+  clearTransitionPlates(): void { this.transitionPlates.clear(); }
+
   /** Prepare one transition plate at a time so the browser can yield between expensive renders. */
   prepareTransitionPart(act: number, cols: number, rows: number, part: 'source' | 'destination', timeSeconds = 0): void {
     if (act < 0 || act >= ACTS - 1) return;
     const key = `${act}:${cols}:${rows}`;
     const plate = this.transitionPlates.get(key) ?? {};
-    if (plate[part]) return;
-    if (part === 'source') plate.source = this.scene(act, cols, rows, MATCH_CUT_SOURCE_PROGRESS[act], timeSeconds, false);
-    else plate.destination = this.scene(act + 1, cols * ZOOM_DETAIL_SCALE, rows * ZOOM_DETAIL_SCALE, 0, timeSeconds, false);
+    if (part === 'source' && !plate.source) plate.source = this.scene(act, cols, rows, MATCH_CUT_SOURCE_PROGRESS[act], timeSeconds, false);
+    else if (part === 'destination' && !plate.destination) plate.destination = this.scene(act + 1, cols * ZOOM_DETAIL_SCALE, rows * ZOOM_DETAIL_SCALE, 0, timeSeconds, false);
+    this.setTransitionPlate(key, plate);
+  }
+
+  /** Prepare one motion sample; hosts schedule samples independently to avoid long tasks. */
+  prepareTransitionMotionSample(act: number, cols: number, rows: number, side: 'source' | 'destination', index: number, timeSeconds = 0): void {
+    if (act < 0 || act >= ACTS - 1 || index < 0 || index >= TRANSITION_MOTION_SAMPLES) return;
+    // Source sample zero is always the exact live frame captured at cut entry.
+    // Leave that slot empty so the first quarter falls back to plate.source.
+    if (side === 'source' && index === 0) return;
+    const key = `${act}:${cols}:${rows}`;
+    const plate = this.transitionPlates.get(key) ?? {};
+    const field = side === 'source' ? 'sourceMotion' : 'destinationMotion';
+    const samples = plate[field] ?? [];
+    if (samples[index]) return;
+    const phase = index / (TRANSITION_MOTION_SAMPLES - 1);
+    const sampleAct = side === 'source' ? act : act + 1;
+    const sampleCols = side === 'source' ? cols : cols * ZOOM_DETAIL_SCALE;
+    const sampleRows = side === 'source' ? rows : rows * ZOOM_DETAIL_SCALE;
+    const progress = side === 'source' ? lerp(MATCH_CUT_SOURCE_PROGRESS[act], 1, phase) : 0;
+    const sampleTime = timeSeconds + phase * 1.5;
+    const previous = [this.chessGameplayPhase, this.pokerGameplayPhase, this.pokerGameplayIteration] as const;
+    if (sampleAct === 2) this.chessGameplayPhase = phase * 1.5 / CHESS_LOOP_SECONDS;
+    if (sampleAct === 3) { this.pokerGameplayPhase = phase * 1.5 / POKER_LOOP_SECONDS; this.pokerGameplayIteration = 0; }
+    samples[index] = this.scene(sampleAct, sampleCols, sampleRows, progress, sampleTime, false, sampleTime);
+    [this.chessGameplayPhase, this.pokerGameplayPhase, this.pokerGameplayIteration] = previous;
+    plate[field] = samples;
     this.setTransitionPlate(key, plate);
   }
 
@@ -145,7 +169,7 @@ export class LivingTitleScene {
     }
     // Render denser transition plates so local ink fibers stay crisp. The shared
     // compositor preserves each plate's authored position and scale.
-    const { source: detailedScene, destination: next } = this.movingTransitionPlate(act, cols, rows, local, timeSeconds, islandersGameplay);
+    const { source: detailedScene, destination: next } = this.motionTransitionPlate(act, cols, rows, local, timeSeconds);
     const transition = anchoredInkMatchCut(
       detailedScene,
       next,
@@ -170,15 +194,15 @@ export class LivingTitleScene {
     return plate as { source: Surface; destination: Surface };
   }
 
-  private movingTransitionPlate(act: number, cols: number, rows: number, local: number, time: number, islandersGameplay: number): { source: Surface; destination: Surface } {
+  private motionTransitionPlate(act: number, cols: number, rows: number, local: number, time: number): { source: Surface; destination: Surface } {
     const key = `${act}:${cols}:${rows}`;
     const plate = this.transitionPlate(act, cols, rows, time);
-    const refreshSource = this.transitionRefreshSource.get(key) ?? true;
-    if (refreshSource) plate.source = this.scene(act, cols, rows, local, time, false, islandersGameplay);
-    else plate.destination = this.scene(act + 1, cols * ZOOM_DETAIL_SCALE, rows * ZOOM_DETAIL_SCALE, 0, time, false, islandersGameplay);
-    this.transitionRefreshSource.set(key, !refreshSource);
-    this.setTransitionPlate(key, plate);
-    return plate;
+    const stored = this.transitionPlates.get(key);
+    const transitionProgress = clamp01((local - LIVING_TITLE_MORPH_STARTS[act]) / (1 - LIVING_TITLE_MORPH_STARTS[act]));
+    return {
+      source: transitionProgress <= 0 ? plate.source : motionSample(stored?.sourceMotion, transitionProgress) ?? plate.source,
+      destination: motionSample(stored?.destinationMotion, transitionProgress) ?? plate.destination,
+    };
   }
 
   private scene(act: number, cols: number, rows: number, progress: number, time: number, reduced: boolean, islandersGameplay = 0): Surface {
@@ -217,14 +241,13 @@ export class LivingTitleScene {
   private setTransitionPlate(key: string, plate: Partial<{ source: Surface; destination: Surface }>): void {
     this.transitionPlates.delete(key);
     this.transitionPlates.set(key, plate);
-    while (this.transitionPlates.size > MAX_TRANSITION_PLATES) {
-      const oldest = this.transitionPlates.keys().next().value;
-      if (oldest === undefined) break;
-      this.transitionPlates.delete(oldest);
-      this.transitionRefreshSource.delete(oldest);
-    }
   }
 }
 
 function smoothstep(value: number): number { const t = clamp01(value); return t * t * (3 - 2 * t); }
+function motionSample(samples: Surface[] | undefined, progress: number): Surface | undefined {
+  if (!samples?.length) return undefined;
+  return samples[Math.min(samples.length - 1, Math.floor(clamp01(progress) * samples.length))];
+}
+function lerp(a: number, b: number, t: number): number { return a + (b - a) * t; }
 function clamp01(value: number): number { return Math.max(0, Math.min(1, value)); }

@@ -15,15 +15,24 @@ import { SOCIAL_TRAILER_SECONDS, SocialTrailerDirector } from './social-trailer.
 export class TrailerScene {
   private scene: SocialTrailerDirector | null = null;
   private preparation: Promise<void> | null = null;
+  private failed = false;
 
   prepare(): Promise<void> {
-    this.preparation ??= this.getScene().prepare().catch(() => undefined);
+    this.preparation ??= new Promise<void>((resolve, reject) => setTimeout(() => {
+      try { void this.getScene().prepare().then(resolve, reject); }
+      catch (error) { reject(error); }
+    }, 0)).catch((error) => {
+      this.failed = true;
+      this.preparation = null;
+      throw error;
+    });
     return this.preparation;
   }
 
-  start(): void {
-    this.getScene().reset();
-    void this.prepare();
+  start(): boolean {
+    if (this.failed || !this.scene) return false;
+    this.scene.reset();
+    return true;
   }
 
   step(seconds: number): void { this.getScene().step(seconds); }
