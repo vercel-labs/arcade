@@ -1048,7 +1048,11 @@ function playerTradeDecision(
   const detail = pending
     ? `${playerIs(reaction.player, 'deciding')}.`
     : accepted
-      ? `Complete the trade with ${isYou(reaction.player) ? 'you' : reaction.player.name}.`
+      ? isYou(reaction.player)
+        ? `You accepted. ${isYou(offer.offerer) ? 'Complete the trade.' : `${offer.offerer.name} decides.`}`
+        : isYou(offer.offerer)
+          ? `Complete the trade with ${reaction.player.name}.`
+          : `${reaction.player.name} accepted. ${offer.offerer.name} decides.`
       : countered
         ? `${isYou(reaction.player) ? 'You' : reaction.player.name} countered (the card below).`
       : `${isYou(reaction.player) ? 'You rejected' : `${reaction.player.name} rejected`} the offer.`;
