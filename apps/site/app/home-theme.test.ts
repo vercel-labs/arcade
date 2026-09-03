@@ -92,9 +92,11 @@ test('the hero advertises one canonical npm command with a full-row copy target'
   assert.match(command, /@vercel\/geistdocs\/assets\/icons\/icon-check/);
   assert.match(command, /navigator\.clipboard\.writeText\(INSTALL_COMMAND\)/);
   assert.doesNotMatch(command, /CodeBlock|CommandPrompt|data-install-command-rule|curl/);
-  assert.match(css, /\.living-title__primary \{[^\n]*height: 40px/);
+  assert.match(css, /\.living-title__primary \{[^\n]*height: 44px/);
+  assert.match(css, /\.living-title__primary \{[^\n]*border-radius: 999px/);
   assert.doesNotMatch(css, /\.living-title__primary:hover[^\n]*transform/);
-  assert.match(css, /\.living-title__install-command \{[^\n]*height: 40px/);
+  assert.match(css, /\.living-title__install-command \{[^\n]*height: 44px/);
+  assert.match(css, /\.living-title__install-command \{[^\n]*border-radius: 999px/);
   assert.match(css, /\.living-title__install-command \{[^\n]*width: max-content/);
   assert.doesNotMatch(css, /install-command:hover \.living-title__install-icon[^\n]*background/);
 });
@@ -112,7 +114,7 @@ test('the opening hero leads with the agent engine proposition in Geist Pixel', 
   assert.match(css, /\.living-title__chapter p[^\n]*var\(--font-geist-sans\)/);
   assert.match(css, /\.living-title__chapter h1[^\n]*text-shadow: 0 1px 2px #000, 0 0 14px/);
   assert.match(css, /\.living-title__chapter p[^\n]*text-shadow: 0 1px 2px #000, 0 0 12px/);
-  assert.match(css, /\.living-title__tour[^\n]*background: rgb\(0 0 0 \/ 58%\)[^\n]*backdrop-filter: blur\(8px\)/);
+  assert.match(css, /\.living-title__tour[^\n]*background: rgb\(0 0 0 \/ 34%\)[^\n]*backdrop-filter: blur\(10px\)/);
   assert.match(css, /\.site-nav__inner > a, \.site-nav__desktop[^\n]*drop-shadow\(0 0 10px rgb\(0 0 0 \/ 96%\)\)/);
   assert.match(css, /\.living-title__chapter h1[^\n]*clamp\(44px, 4vw, 56px\)\/\.96/);
   assert.match(css, /\.living-title__chapter p[^\n]*80%[^\n]*18px\/1\.5/);
@@ -194,13 +196,17 @@ test('the progress-ring tour control is responsive and tracks real scroll progre
   assert.doesNotMatch(hero, /tourPrototype|URLSearchParams\(window\.location\.search\).*tourPrototype/);
   assert.match(css, /\.living-title \{ --tour-progress: 0;/);
   assert.match(hero, /root\.style\.setProperty\('--tour-progress'/);
-  assert.match(css, /\.living-title__tour-ring-value[^{]*\{[^}]*stroke-dashoffset: calc\(113\.1 \* \(1 - var\(--tour-progress\)\)\)/);
-  assert.match(css, /\.living-title__tour \{[^}]*width: 44px;[^}]*height: 44px;[^}]*background: rgb\(0 0 0 \/ 58%\);[^}]*backdrop-filter: blur\(8px\)/);
+  assert.match(hero, /pathLength="100" r="21"/);
+  assert.match(css, /\.living-title__tour-ring-value[^{]*\{[^}]*stroke-dashoffset: calc\(100 \* \(1 - var\(--tour-progress\)\)\)/);
+  assert.match(css, /\.living-title__tour \{[^}]*width: 44px;[^}]*height: 44px;[^}]*background: rgb\(0 0 0 \/ 34%\);[^}]*backdrop-filter: blur\(10px\)/);
   assert.match(hero, /className="living-title__tour-media(?: is-play)?" viewBox="0 0 16 16"/);
   assert.match(hero, /className="living-title__tour-mobile"/);
   assert.match(hero, /className="living-title__tour-desktop"/);
   assert.match(css, /\.living-title__tour-mobile \{ display: none; \}/);
-  assert.match(css, /@media \(max-width: 760px\) and \(orientation: portrait\) \{[\s\S]*\.living-title__tour-desktop \{ display: none; \}[\s\S]*\.living-title__tour-mobile \{ display: block; margin-top: 18px; \}/);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*\.living-title__actions \{[^}]*gap: 8px;[^}]*flex-wrap: nowrap;[^}]*\}/);
+  assert.match(css, /\.living-title__primary > span \{ display: none; \}/);
+  assert.match(css, /\.living-title__install-command \{[^}]*min-width: 0;[^}]*flex: 1 1 auto;/);
+  assert.match(css, /\.living-title__tour-mobile \{[^}]*width: 44px;[^}]*flex: 0 0 44px;/);
   assert.doesNotMatch(css, /living-title__tour-mouse|arcade-scroll-cue/);
 });
 
