@@ -1444,10 +1444,8 @@ function handPanel(
         }, actionController.activeAction === 'buyDev')),
         ...(actionController.turn
           ? [actionController.turn.kind === 'roll'
-              ? Tooltip({ id: 'islanders-live-roll', content: [{ text: 'Roll dice', bold: true }, 'Every settlement on the rolled number pays its owner.'], maxWidth: 34 },
-                  workbenchActionButton('islanders-live-roll', 'roll', 'dice', true, () => { actionController.turn?.onClick(); }, TURN_ACTION_COLORS))
-              : Tooltip({ id: 'islanders-live-end', content: [{ text: 'End turn', bold: true }, 'Pass the dice to the next player.'], maxWidth: 34 },
-                  workbenchActionButton('islanders-live-end', 'end', 'turn', true, () => { actionController.turn?.onClick(); }, TURN_ACTION_COLORS))]
+              ? workbenchActionButton('islanders-live-roll', 'roll', 'dice', true, () => { actionController.turn?.onClick(); }, TURN_ACTION_COLORS)
+              : workbenchActionButton('islanders-live-end', 'end', 'turn', true, () => { actionController.turn?.onClick(); }, TURN_ACTION_COLORS)]
           : []),
       ];
   const tray = Box({ height: layout.handHeight, gap: HAND_SPLIT_GAP, padding: [HAND_PAD_T, HAND_PAD_X, HAND_PAD_B, HAND_PAD_X], background: uiChromeBg(0.9) }, [
