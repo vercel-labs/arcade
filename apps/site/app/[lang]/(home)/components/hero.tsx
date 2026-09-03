@@ -88,6 +88,7 @@ export const Hero = () => {
       const rect = root.getBoundingClientRect();
       const distance = Math.max(1, root.offsetHeight - viewportHeight());
       progressRef.current = Math.max(0, Math.min(1, -rect.top / distance));
+      root.style.setProperty('--tour-progress', `${progressRef.current}`);
       if (header && footer) header.classList.toggle('is-over-footer', footer.getBoundingClientRect().top <= viewportHeight());
     };
     const stopTour = () => {
@@ -317,6 +318,27 @@ export const Hero = () => {
     };
   }, []);
 
+  const tourControl = <button
+    aria-label={tourState === 'playing' ? 'Pause auto-scroll' : 'Start auto-scroll'}
+    className={`living-title__tour ${tourState === 'playing' ? 'is-playing' : ''}`}
+    onClick={() => rootRef.current?.dispatchEvent(new Event('arcade-tour-request'))}
+    title={tourState === 'playing' ? 'Pause auto-scroll' : 'Start auto-scroll'}
+    type="button"
+  >
+    <svg aria-hidden="true" className="living-title__tour-ring" viewBox="0 0 44 44">
+      <circle className="living-title__tour-ring-track" cx="22" cy="22" r="18" />
+      <circle className="living-title__tour-ring-value" cx="22" cy="22" r="18" />
+    </svg>
+    {tourState === 'playing' ?
+      <svg aria-hidden="true" className="living-title__tour-media" viewBox="0 0 16 16">
+        <rect height="10" rx="1" width="3" x="4" y="3" />
+        <rect height="10" rx="1" width="3" x="9" y="3" />
+      </svg> :
+      <svg aria-hidden="true" className="living-title__tour-media is-play" viewBox="0 0 16 16">
+        <path d="M5 3.6v8.8a.8.8 0 0 0 1.22.68l6.6-4.4a.82.82 0 0 0 0-1.36l-6.6-4.4A.8.8 0 0 0 5 3.6Z" />
+      </svg>}
+  </button>;
+
   return (
     <section className="living-title" ref={rootRef}>
       <span aria-hidden="true" className="living-title__legacy-anchor" id="system" style={{ top: '0' }} />
@@ -331,16 +353,9 @@ export const Hero = () => {
             <h1>{CHAPTERS[chapter].title.map((line) => <span key={line}>{line}</span>)}</h1>
             <p>{CHAPTERS[chapter].body.map((line) => <span key={line}>{line}</span>)}</p>
           </div>
-          <button
-            aria-label={tourState === 'playing' ? 'Pause auto-scroll' : 'Start auto-scroll'}
-            className={`living-title__tour ${tourState === 'playing' ? 'is-playing' : ''}`}
-            onClick={() => rootRef.current?.dispatchEvent(new Event('arcade-tour-request'))}
-            type="button"
-          >
-            <span aria-hidden="true">{tourState === 'playing' ? 'Ⅱ' : '▶'}</span>
-            {tourState === 'playing' ? 'Pause' : 'Auto-scroll'}
-          </button>
+          <div className="living-title__tour-mobile">{tourControl}</div>
         </div>
+        <div className="living-title__tour-desktop">{tourControl}</div>
         <div className="living-title__actions">
           <QuickTerminalButton className="living-title__primary"><span aria-hidden="true">›_</span>Play</QuickTerminalButton>
           <InstallCommand />
