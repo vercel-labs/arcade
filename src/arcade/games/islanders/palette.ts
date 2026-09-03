@@ -18,9 +18,6 @@ export const KNIGHT_ICON = '💂';
 export const ROAD_ICON = '➖';
 export const SETTLEMENT_ICON = '🏠';
 export const CITY_ICON = '🏰';
-// End of turn: skip ahead to the flag. Fast-forward is the one forward glyph with
-// Emoji_Presentation=Yes (next-track ⏭ is not, so its width varies by terminal).
-export const FAST_FORWARD_ICON = '⏩';
 
 export const RESOURCE_ORDER: Resource[] = ['lumber', 'brick', 'wool', 'grain', 'ore'];
 export const RESOURCE_LOOK: Record<Resource, IslandersCardLook> = {

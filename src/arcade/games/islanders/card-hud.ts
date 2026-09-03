@@ -37,7 +37,6 @@ import {
   DEV_CARD_ICON,
   DEV_HAND_LOOK,
   DEV_LOOK,
-  FAST_FORWARD_ICON,
   KNIGHT_ICON,
   PLAYER_LOOK,
   RESOURCE_LOOK,
@@ -1421,7 +1420,7 @@ function handPanel(
             'Costs 🐑 🌾 🪨.',
           ],
           maxWidth: 36,
-        }, workbenchActionButton('islanders-buy-dev', `${RESOURCE_LOOK.ore.emoji}⇄${DEV_CARD_ICON}`, 'buy dev', actionController.canBuyDevelopmentCard, () => {
+        }, workbenchActionButton('islanders-buy-dev', `$${DEV_CARD_ICON}`, 'buy dev', actionController.canBuyDevelopmentCard, () => {
           actionController.onBuyDevelopmentCard();
         }, {
           background: DEV_LOOK.fill,
@@ -1431,13 +1430,13 @@ function handPanel(
         ...(actionController.turn
           ? [actionController.turn.kind === 'roll'
               ? Tooltip({ id: 'islanders-live-roll', content: [{ text: 'Roll dice', bold: true }, 'Every settlement on the rolled number pays its owner.'], maxWidth: 34 },
-                  workbenchActionButton('islanders-live-roll', '🎲 🎲', 'roll', true, () => { actionController.turn?.onClick(); }, {
+                  workbenchActionButton('islanders-live-roll', 'roll', 'dice', true, () => { actionController.turn?.onClick(); }, {
                     background: ISLANDERS_CARD.rollActionBg,
                     hover: ISLANDERS_CARD.rollActionHover,
                     pressed: ISLANDERS_CARD.rollActionPressed,
                   }))
               : Tooltip({ id: 'islanders-live-end', content: [{ text: 'End turn', bold: true }, 'Pass the dice to the next player.'], maxWidth: 34 },
-                  workbenchActionButton('islanders-live-end', `${FAST_FORWARD_ICON} 🏁`, 'end', true, () => { actionController.turn?.onClick(); }))]
+                  workbenchActionButton('islanders-live-end', 'end', 'turn', true, () => { actionController.turn?.onClick(); }))]
           : []),
       ];
   const tray = Box({ height: layout.handHeight, gap: HAND_SPLIT_GAP, padding: [HAND_PAD_T, HAND_PAD_X, HAND_PAD_B, HAND_PAD_X], background: uiChromeBg(0.9) }, [
