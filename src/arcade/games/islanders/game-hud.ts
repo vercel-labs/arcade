@@ -73,9 +73,9 @@ function devTotal(state: IslandersState, seat: number): number {
 }
 
 function playerView(state: IslandersState, driver: IslandersDriver, seat: number, viewer?: number): IslandersCardsPlayerView {
-  // Hidden victory points are yours to see for your own seat, and everyone's when no human is
-  // playing (a spectated table has nothing to keep from the viewer).
-  const knowsHidden = driver.humanSeat() < 0 || seat === driver.humanSeat();
+  // Hidden victory points are private the way a hand is: a player sees their own, and a
+  // spectator sees only the seat whose point of view they have switched to.
+  const knowsHidden = seat === (driver.humanSeat() >= 0 ? driver.humanSeat() : viewer);
   return {
     seat,
     name: driver.labelOf(seat),
