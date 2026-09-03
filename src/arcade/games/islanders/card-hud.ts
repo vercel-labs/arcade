@@ -288,11 +288,9 @@ export const ISLANDERS_RAIL_INNER_W = RAIL_INNER;
 // Rows stop two columns short of the ScrollBox: one for the bar, one blank beside it, so text can
 // never sit flush against the bar. Mirrors the chat's SCROLLBAR_W + RIGHT_GAP reservation.
 const HISTORY_ROW_W = CONTENT_W - 2;
-// The history claims half the panel and keeps it whether or not there are entries to fill it —
-// a log that grows into reserved space beats one that shoves the bank and the table down the
-// panel as the game runs. On a short terminal there is less than half to give, so it takes
-// whatever the fixed sections leave and scrolls the rest.
-const HISTORY_SHARE = 0.5;
+// The log takes every row the fixed sections leave, so the bank and the players table sit at
+// the panel's bottom whatever the seat count, and an empty log at game start is just room the
+// entries grow into. Below this many rows the other sections start giving ground.
 const HISTORY_MIN_H = 4;
 
 // The bank and the players table are the rail's reason to exist, so the rail never hides for
@@ -326,10 +324,7 @@ export function islandersRailPlan(region: LayoutBox, playerCount: number, compos
   const tiers: [boolean, 0 | 1][] = [[false, 1], [false, 0], [true, 0]];
   for (const [compactBank, playerRowGap] of tiers) {
     const spare = region.h - railFixedH(playerCount, compactBank, playerRowGap);
-    if (spare >= logMin) {
-      const logH = compactBank || playerRowGap === 0 ? spare : Math.max(logMin, Math.min(Math.floor(region.h * HISTORY_SHARE), spare));
-      return { logH, compactBank, playerRowGap, bankTop: railBankTop(logH, compactBank) };
-    }
+    if (spare >= logMin) return { logH: spare, compactBank, playerRowGap, bankTop: railBankTop(spare, compactBank) };
   }
   // Even the tightest layout leaves the log short: keep whatever rows remain (at least one line
   // beside the composer), or swap in the hint when not even that fits.

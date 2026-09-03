@@ -37,7 +37,7 @@ stages each chapter's screen.
   local practice bots (`{ kind: 'bot' }` seats, a new kind on both drivers); telemetry is
   not recorded for those games. The poker bots say one in-character line per action and
   a grey system line explains the table, so the chat thread fills like a model table's; each
-  bot's reads book opens with sample notes on the other seats, so the reads pill has content.
+  bot's notebook opens with sample notes on the other seats, so the notes pill has content.
   Clicking a poker bot's flame still opens the model picker and seats a real model in its place.
 
 ## Chapters

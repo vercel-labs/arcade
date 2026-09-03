@@ -195,14 +195,16 @@ test('discard flights leave the staged resource row', () => {
 
 test('trade flights leave the visible bank card or the hidden right edge at the same height', () => {
   const region = { x: 0, y: 0, w: 140, h: 50 };
-  assert.deepEqual(islandersBankDepartureCell(region, 'ore', 4, true), { col: 126, row: 32 });
+  assert.deepEqual(islandersBankDepartureCell(region, 'ore', 4, true), { col: 126, row: 36 });
   assert.deepEqual(islandersBankDepartureCell(region, 'ore', 4, false), { col: 143, row: 33 });
 });
 
 test('the rail gives up rows in order as the terminal gets shorter, and never hides for height', () => {
   const at = (h: number) => islandersRailPlan({ x: 0, y: 0, w: 140, h }, 4, 0);
   assert.ok(islandersCardsLayout({ x: 0, y: 0, w: 140, h: 12 }).showPublicRail);
-  assert.deepEqual(at(50), { logH: 25, compactBank: false, playerRowGap: 1, bankTop: 31 });
+  assert.deepEqual(at(50), { logH: 29, compactBank: false, playerRowGap: 1, bankTop: 31 + 4 });
+  // Fewer seats: the log takes the freed rows, so the bank and players stay at the bottom.
+  assert.deepEqual(islandersRailPlan({ x: 0, y: 0, w: 140, h: 50 }, 2, 0).bankTop, 39);
   // Tight: the log is at its minimum, so the players table drops its row gaps first.
   assert.deepEqual(at(24), { logH: 7, compactBank: false, playerRowGap: 0, bankTop: 13 });
   // Tighter: the bank folds to one line and the log gets the rows back.
@@ -218,7 +220,7 @@ test('development flights leave the dev pile and land on a responsive dev-hand s
   const view = islandersWorkbenchView();
   assert.equal(view.source, 'workbench');
   view.pendingDevelopmentCards = ['knight'];
-  assert.deepEqual(islandersDevDeckDepartureCell(region, 4, true), { col: 134, row: 32 });
+  assert.deepEqual(islandersDevDeckDepartureCell(region, 4, true), { col: 134, row: 36 });
   assert.deepEqual(islandersDevDeckDepartureCell(region, 4, false), { col: 143, row: 33 });
   assert.deepEqual(islandersDevHandLandingCell(region, 'knight', true, view), { col: 49, row: 44 });
   assert.deepEqual(islandersDevHandLandingCell(region, 'knight', false, view), { col: 49, row: 44 });

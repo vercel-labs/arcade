@@ -115,7 +115,7 @@ export const TUTORIAL_CHAPTERS: readonly TutorialChapter[] = [
       { id: 'raise', label: 'size a raise and bet', hint: 'Set the amount with the slider, the pot-fraction chips, the field, or the − and + keys, then press bet or raise.', signal: 'poker.raise', target: ['poker-raise'] },
       { id: 'fold', label: 'fold a hand', hint: 'You can only fold when it\'s your turn. Space skips the countdown between hands.', signal: 'poker.fold', target: ['poker-fold'] },
       { id: 'chat', label: 'open chat', hint: 'Press c or click chat. Every seat talks between actions; models do it in character, and you can type back.', signal: 'poker.chat', target: ['poker-chat-open'] },
-      { id: 'reads', label: 'open reads', hint: 'Each seat keeps private notes on how everyone plays: patterns, bet sizing, what they fold to. Real models write these between hands. The bots\' are samples.', signal: 'poker.reads', target: ['poker-notes'] },
+      { id: 'reads', label: 'open notes', hint: 'Each seat keeps private notes on how everyone plays: patterns, bet sizing, what they fold to. Real models write these between hands. The bots\' are samples.', signal: 'poker.reads', target: ['poker-notes'] },
     ],
     outro: 'p pauses and resumes the table. Space skips the countdown between hands.',
   },

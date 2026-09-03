@@ -788,7 +788,7 @@ export function buildIslandersGameRoot(region: LayoutBox, deps: IslandersGameHud
     hudTopRight([
       Button({ id: 'islanders-game-menu', label: MENU_BUTTON_LABEL, onClick: deps.onOpenMenu, style: UI_CHROME_PILL }),
       ...(playing && deps.onOpenNotes && driver.noteObservers().length
-        ? [Button({ id: 'islanders-notes', label: 'reads', onClick: deps.onOpenNotes, style: UI_CHROME_PILL })]
+        ? [Button({ id: 'islanders-notes', label: 'notes', onClick: deps.onOpenNotes, style: UI_CHROME_PILL })]
         : []),
       ...(playing && canShowRail && !railVisible
         ? [Button({ id: 'islanders-game-sidebar-open', label: ISLANDERS_RAIL_TITLE, onClick: toggleIslandersSidebar, style: UI_CHROME_PILL })]
