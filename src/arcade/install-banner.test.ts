@@ -7,9 +7,21 @@ const plain = (env: NodeJS.ProcessEnv = {}, platform = 'linux'): string[] =>
 
 test('the banner tells the reader the command and where the docs are', () => {
   const text = plain().join('\n');
-  assert.match(text, /^\s*arcade\s+# Run it, from any directory$/m);
+  assert.match(text, /The 3D game engine built for agents\./);
+  assert.match(text, /^\s*arcade\s+Launch Arcade$/m);
   assert.match(text, /arcade --help/);
-  assert.match(text, /github\.com\/vercel-labs\/arcade/);
+  assert.match(text, /ascii-arcade\.vercel\.app\/docs/);
+  assert.match(text, /Tutorial is available from the menu/);
+  assert.match(text, /billed to the team you select/);
+});
+
+test('the install wordmark is a compact Press Start-style arcade bitmap', () => {
+  const lines = plain();
+  const mark = lines.slice(1, 5);
+  assert.equal(mark.length, 4);
+  assert.ok(mark.every((line) => line.length <= 53));
+  assert.ok(mark.some((line) => line.includes('▄')), 'the 7px face should use half-block geometry');
+  assert.ok(mark.some((line) => line.includes('░')), 'the wordmark should retain its shallow shadow without color');
 });
 
 test('color: false emits no escape sequences', () => {
@@ -20,10 +32,11 @@ test('the colored wordmark keeps its glyphs and closes every sequence', () => {
   const colored = bannerLines({ color: true, env: { PATH: '/usr/local/bin' }, platform: 'linux' });
   const glyphs = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, '');
   assert.deepEqual(
-    colored.map(glyphs),
-    plain(),
-    'stripping color must reproduce the plain banner exactly',
+    colored.map(glyphs).map((line) => line.replaceAll('█', '░')),
+    plain().map((line) => line.replaceAll('█', '░')),
+    'stripping color must preserve the same occupied wordmark cells',
   );
+  assert.ok(!colored.slice(1, 5).join('').includes('░'), 'colored shadows are solid, not stippled');
   const opens = colored.join('').match(/\x1b\[[0-9;]+m/g)?.length ?? 0;
   const resets = colored.join('').match(/\x1b\[0m/g)?.length ?? 0;
   assert.ok(opens > resets && resets > 0, 'runs of color are closed, not left open');

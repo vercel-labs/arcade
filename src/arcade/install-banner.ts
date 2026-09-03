@@ -13,22 +13,25 @@
 
 import { closeSync, openSync, writeSync } from 'node:fs';
 import { posix, win32 } from 'node:path';
-import { asciiFontLines } from '../tui/index.ts';
-
-// The prism's dispersion, sampled across the wordmark's columns: violet through red,
-// so the letters read as one beam split by glass.
-const SPECTRUM: ReadonlyArray<readonly [number, number, number]> = [
-  [168, 130, 240],
-  [110, 150, 245],
-  [90, 205, 225],
-  [130, 215, 150],
-  [240, 200, 110],
-  [235, 130, 130],
-];
-
 const RESET = '\x1b[0m';
-const DIM = '\x1b[2m';
 const BOLD = '\x1b[1m';
+const WHITE = '\x1b[38;2;237;237;237m';
+const MUTED = '\x1b[38;2;161;161;161m';
+const SHADOW = '\x1b[38;2;63;63;63m';
+
+// Press Start 2P's stepped 7px silhouette, reduced to the six glyphs this fixed
+// wordmark needs. The OFL face is based on 1980s Namco arcade lettering. Keeping
+// the bitmap here (rather than loading a font at install time) makes postinstall
+// deterministic and dependency-free. A one-pixel down-right graphite copy gives
+// it cabinet-title depth without overpowering the instructions below it.
+const WORDMARK: Record<string, readonly string[]> = {
+  A: ['0011100', '0110110', '1100011', '1100011', '1111111', '1100011', '1100011'],
+  R: ['1111110', '1100011', '1100011', '1111110', '1101100', '1100110', '1100011'],
+  C: ['0011110', '0110011', '1100011', '1100000', '1100000', '0110011', '0011110'],
+  D: ['1111100', '1100110', '1100011', '1100011', '1100011', '1100110', '1111100'],
+  E: ['1111111', '1100000', '1100000', '1111110', '1100000', '1100000', '1111111'],
+};
+const PLAIN_HALF = [' ', '▄', '▀', '█'];
 
 export interface BannerOpts {
   color?: boolean;
@@ -36,47 +39,47 @@ export interface BannerOpts {
   platform?: string;
 }
 
-function truecolor([r, g, b]: readonly [number, number, number]): string {
-  return `\x1b[38;2;${r};${g};${b}m`;
-}
-
-function spectrumAt(t: number): readonly [number, number, number] {
-  const p = Math.max(0, Math.min(t, 1)) * (SPECTRUM.length - 1);
-  const i = Math.min(Math.floor(p), SPECTRUM.length - 2);
-  const f = p - i;
-  const a = SPECTRUM[i];
-  const b = SPECTRUM[i + 1];
-  return [
-    Math.round(a[0] + (b[0] - a[0]) * f),
-    Math.round(a[1] + (b[1] - a[1]) * f),
-    Math.round(a[2] + (b[2] - a[2]) * f),
-  ];
-}
-
-// Block letters from the same 8x8 font as the arcade's in-app banners, tinted by
-// column so every row shares one hue ramp.
 function wordmark(color: boolean): string[] {
-  const lines = asciiFontLines('ARCADE');
-  const width = Math.max(...lines.map((l) => l.length));
-  if (!color) return lines;
-  return lines.map((line) => {
-    let out = '';
-    let hue = '';
-    for (let x = 0; x < line.length; x++) {
-      const ch = line[x];
-      if (ch === ' ') {
-        out += ch;
-        continue;
-      }
-      const next = truecolor(spectrumAt(x / (width - 1)));
-      if (next !== hue) {
-        out += next;
-        hue = next;
-      }
-      out += ch;
+  const glyphs = [...'ARCADE'].map((letter) => WORDMARK[letter]);
+  const letterGap = 2;
+  const face = glyphs.map((glyph) => glyph[0].length).reduce(
+    (sum, width) => sum + width,
+    letterGap * (glyphs.length - 1),
+  );
+  const pixels = Array.from({ length: 8 }, () => Array<number>(face + 1).fill(0));
+  let left = 0;
+  for (const glyph of glyphs) {
+    for (let y = 0; y < 7; y++) for (let x = 0; x < glyph[y].length; x++) {
+      if (glyph[y][x] !== '1') continue;
+      pixels[y + 1][left + x + 1] = 1; // shadow
+      pixels[y][left + x] = 2; // face wins where the layers overlap
     }
-    return out + RESET;
-  });
+    left += glyph[0].length + letterGap;
+  }
+
+  const coloredHalf = (top: number, bottom: number): string => {
+    const char = top === 1 && bottom === 1
+      ? '█'
+      : top > 0 && bottom > 0 && top !== bottom
+        ? '▀'
+        : PLAIN_HALF[((top > 0 ? 1 : 0) << 1) | (bottom > 0 ? 1 : 0)];
+    if (top === 0 || bottom === 0 || top === bottom) {
+      const ink = top || bottom;
+      if (!ink) return ' ';
+      return `${ink === 2 ? WHITE : SHADOW}${char}${RESET}`;
+    }
+    const fg = top === 2 ? '237;237;237' : '63;63;63';
+    const bg = bottom === 2 ? '237;237;237' : '63;63;63';
+    return `\x1b[38;2;${fg};48;2;${bg}m${char}${RESET}`;
+  };
+
+  return Array.from({ length: 4 }, (_, row) => pixels[2 * row].map((top, x) => {
+    const bottom = pixels[2 * row + 1][x];
+    if (color) return coloredHalf(top, bottom);
+    if (top === 1 && bottom === 1) return '░';
+    if (top > 0 && bottom > 0 && top !== bottom) return '▀';
+    return PLAIN_HALF[((top > 0 ? 1 : 0) << 1) | (bottom > 0 ? 1 : 0)];
+  }).join('').trimEnd());
 }
 
 // The global bin directory, when the installer said where it is. `npm_config_prefix`
@@ -105,16 +108,17 @@ function onPath(dir: string | null, env: NodeJS.ProcessEnv, platform: string): b
 export function bannerLines(opts: BannerOpts = {}): string[] {
   const { color = true, env = process.env, platform = process.platform } = opts;
   const paint = (code: string, text: string): string => (color ? `${code}${text}${RESET}` : text);
-  const cmd = (text: string): string => paint(BOLD, text);
-  const note = (text: string): string => paint(DIM, text);
+  const cmd = (text: string): string => paint(`${BOLD}${WHITE}`, text);
+  const note = (text: string): string => paint(MUTED, text);
 
   const lines = ['', ...wordmark(color), ''];
-  lines.push(note('  3D games in your terminal, played by frontier AI models.'), '');
-  lines.push(`  ${cmd('arcade')}${note('           # Run it, from any directory')}`);
-  lines.push(`  ${cmd('arcade --help')}${note('    # Flags and subcommands')}`);
+  lines.push(note('  The 3D game engine built for agents.'), '');
+  lines.push(`  ${cmd('arcade')}${note('           Launch Arcade')}`);
+  lines.push(`  ${cmd('arcade --help')}${note('    View commands and options')}`);
   lines.push('');
-  lines.push(note('  First launch signs you in to Vercel and asks which team to bill AI usage to.'));
-  lines.push(note('  Docs: https://github.com/vercel-labs/arcade'));
+  lines.push(note('  First launch signs you in with Vercel. Tutorial is available from the menu.'));
+  lines.push(note('  AI usage is billed to the team you select.'));
+  lines.push(note('  Docs: https://ascii-arcade.vercel.app/docs'));
 
   const bin = globalBinDir(env, platform);
   if (!onPath(bin, env, platform)) {
