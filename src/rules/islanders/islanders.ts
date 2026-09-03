@@ -105,6 +105,12 @@ export interface IslandersOpts {
    * never the recorded game: `applyAction` doesn't consult it, so transcripts replay without it.
    */
   domesticTradePolicy?: readonly (IslandersSeatOfferPolicy | undefined)[];
+  /**
+   * Whether a seat's observation ends with its outlook: what each next build still needs and
+   * where it stands on the awards. Facts drawn from the same state, never rankings; off lets a
+   * harness compare prompts that stop at the legal menu. Defaults to on.
+   */
+  promptOutlook?: boolean;
 }
 
 export interface IslandersSeatOfferPolicy {
@@ -284,6 +290,7 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
   private domesticTradeOfferLimit: number;
   private domesticOffersThisTurn = 0;
   private offerPolicy: (IslandersSeatOfferPolicy | undefined)[];
+  private promptOutlook: boolean;
   // The current turn owner's offers so far, newest last; reset when the turn ends.
   private turnOffers: IslandersTurnOffer[] = [];
   private lastDice: [number, number] | null = null;
@@ -305,6 +312,7 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
       throw new RangeError(`domesticTradeOfferLimit must be a nonnegative integer; received ${this.domesticTradeOfferLimit}`);
     }
     this.offerPolicy = Array.from({ length: this.n }, (_, seat) => opts.domesticTradePolicy?.[seat]);
+    this.promptOutlook = opts.promptOutlook ?? true;
     for (const policy of this.offerPolicy) {
       const max = policy?.maxOffersPerTurn;
       if (max !== undefined && (!Number.isInteger(max) || max < 0)) throw new RangeError(`maxOffersPerTurn must be a nonnegative integer; received ${max}`);
@@ -406,6 +414,7 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
     s.domesticTradeOfferLimit = this.domesticTradeOfferLimit;
     s.domesticOffersThisTurn = this.domesticOffersThisTurn;
     s.offerPolicy = this.offerPolicy.slice();
+    s.promptOutlook = this.promptOutlook;
     s.turnOffers = this.turnOffers.map((offer) => ({ ...offer, give: offer.give.slice(), receive: offer.receive.slice(), accepted: [...offer.accepted], countered: [...offer.countered], rejected: [...offer.rejected] }));
     s.lastDice = this.lastDice ? [...this.lastDice] : null;
     s.records = this.records.map((record) => ({
@@ -992,6 +1001,7 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
     lines.push(...this.recentTurnsSummary());
     lines.push(...this.dealingsDigest(player));
     lines.push(`Your portfolio: production pips ${this.productionStr(portfolio.production)}; numbers [${portfolio.numberCoverage.join(',')}]; ports ${this.portsStr(portfolio.ports)}; pieces left roads=${portfolio.roadsLeft}, settlements=${portfolio.settlementsLeft}, cities=${portfolio.citiesLeft}.`);
+    if (this.promptOutlook) lines.push(...this.outlookLines(player));
     lines.push(`Private rules vocabulary maps to public table talk as follows: ${PUBLIC_RESOURCE_ORDER}. Keep canonical IDs and pip calculations in private thinking; public speech uses the supplied public labels and player names.`);
     if (this.trade) {
       const offerer = this.seatName(this.trade.from);
@@ -1935,6 +1945,40 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
       `adjacent rival roads: ${rivals.length ? rivals.join(', ') : 'none'}`,
       'frontier sites are settlement opportunities, not city upgrades',
     ].join('; ');
+  }
+
+  // What stands between this seat and each of its next builds and awards, so a turn is chosen
+  // against every option's remaining cost and not only against what is affordable this moment.
+  // Everything here is derivable from the public board plus the seat's own hand; nothing ranks
+  // the options or names a strategy.
+  private outlookLines(player: number): string[] {
+    const hand = this.hands[player];
+    const lacks = (cost: FreqDeck): string => {
+      const missing = RESOURCES.map((_, i) => Math.max(0, (cost[i] ?? 0) - (hand[i] ?? 0)));
+      return freqTotal(missing) === 0 ? 'affordable now' : `need ${this.publicDeckPhrase(missing)}`;
+    };
+    const occ = this.occupancy();
+    const settleable: number[] = [];
+    const upgradable: number[] = [];
+    for (let node = 0; node < NUM_NODES; node++) {
+      if (canPlaceSettlement(node, occ) && nodeEdges[node].some((edge) => this.roads.get(edge) === player)) settleable.push(node);
+      if (canUpgradeCity(node, player, occ)) upgradable.push(node);
+    }
+    const spots = (nodes: number[]): string => {
+      const shown = nodes.slice(0, 4).map((node) => this.publicNodeLabel(node));
+      return `${shown.join(' | ')}${nodes.length > shown.length ? ` | +${nodes.length - shown.length} more` : ''}`;
+    };
+    const vp = this.victoryPoints(player, true);
+    const lines = ['Your outlook (facts, not advice):'];
+    lines.push(`- Victory: ${vp} VP counting hidden cards; ${Math.max(0, VP_TO_WIN - vp)} more to win.`);
+    lines.push(`- Settlement (${lacks(COSTS.settlement)}): ${this.pieceCount(player, 'settlement') >= PIECE_LIMITS.settlement ? 'no settlement pieces left' : settleable.length ? `spots you can take now: ${spots(settleable)}` : 'no spot reachable yet; a road toward an open spot comes first'}.`);
+    lines.push(`- City (${lacks(COSTS.city)}): ${this.pieceCount(player, 'city') >= PIECE_LIMITS.city ? 'no city pieces left' : upgradable.length ? `settlements you can upgrade: ${spots(upgradable)}` : 'no settlement to upgrade'}.`);
+    lines.push(`- Road (${lacks(COSTS.road)}); development card (${lacks(COSTS.devCard)}), ${this.devDeck.length} left in the deck.`);
+    const roadHolder = this.longestRoadHolder;
+    lines.push(`- Longest Road: yours is ${this.longestRoadLengths[player]}; ${roadHolder < 0 ? `no one holds it yet (${LONGEST_ROAD_MIN} needed)` : roadHolder === player ? 'you hold it' : `${this.seatName(roadHolder)} holds it at ${this.longestRoadLengths[roadHolder]}`}.`);
+    const armyHolder = this.largestArmyHolder;
+    lines.push(`- Largest Army: you have played ${this.playedKnights[player]} knights; ${armyHolder < 0 ? `no one holds it yet (${LARGEST_ARMY_MIN} needed)` : armyHolder === player ? 'you hold it' : `${this.seatName(armyHolder)} holds it at ${this.playedKnights[armyHolder]}`}.`);
+    return lines;
   }
 
   // The last full round of turns plus the one in progress, one line per turn, with each

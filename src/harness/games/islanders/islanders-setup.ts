@@ -8,6 +8,22 @@ import type { Player } from '../../player.ts';
 import type { IslandersState } from '../../../rules/islanders/islanders.ts';
 import type { IslandersAction } from '../../../rules/islanders/types.ts';
 
+// The rulebook a player has read before sitting down, and nothing more: what the game is,
+// what scores, what things cost, and what each card does. It ranks nothing and names no
+// strategy, so what a model values is its own decision. Sent as the system prompt.
+export const ISLANDERS_RULES_PRIMER = [
+  'You are playing Islanders, a settle-the-island board game, against the other players at the table.',
+  'Goal: the first player to hold 10 victory points on their own turn wins. Settlement 1 VP; city 2 VP (a city replaces one of your settlements); Longest Road 2 VP for the longest unbroken chain of your roads, 5 or more segments, which passes to a player who builds a strictly longer one; Largest Army 2 VP for 3 or more knights played, which passes to a player who plays strictly more; each Victory Point development card is 1 VP, kept hidden and counted automatically.',
+  'Setup: players place two settlements and a road beside each, in snake order; the second settlement pays 1 of each resource its hexes produce. A hex produces the resource of its terrain (forest wood, hills brick, pasture sheep, fields wheat, mountains ore); the desert produces nothing.',
+  'Costs: road = 1 wood + 1 brick. Settlement = 1 wood + 1 brick + 1 sheep + 1 wheat. City = 3 ore + 2 wheat. Development card = 1 ore + 1 wheat + 1 sheep. Each player has 15 roads, 5 settlements, and 4 cities in total.',
+  'Placement: a road must touch one of your roads or buildings. A settlement must touch one of your roads and sit at least two edges from every other settlement or city. A city is built on your own settlement.',
+  'Turn: roll two dice; every hex showing that number pays 1 of its resource to each settlement touching it and 2 to each city, unless the robber sits on it. Then build, trade, and play at most one development card, in any order, and end your turn. Development cards bought this turn cannot be played until your next turn.',
+  'A roll of 7 pays nothing. Every player holding more than 7 cards discards half of their hand, rounded down. The roller then moves the robber to a new hex and steals 1 random card from a player who has a building on that hex and cards in hand.',
+  'Development deck, 25 cards: 14 Knight (move the robber and steal, as on a 7), 5 Victory Point, 2 Road Building (place 2 roads free), 2 Year of Plenty (take any 2 resources from the bank), 2 Monopoly (name a resource; every other player hands you all of theirs). Victory Point cards are never played; they count when you win.',
+  'Trading, all on your own turn. Bank: 4 identical cards for any 1 card. Port: a settlement or city on a port lets you trade at that port; a generic port takes 3 identical cards for any 1, a resource port takes 2 of its resource for any 1. Players: propose any exchange of cards to the other players; each may accept, reject, or counter with a different exchange; you then complete the trade with one of them or cancel. Other players cannot trade among themselves during your turn, and no one can trade with the bank on another player\'s turn.',
+  'Table talk is public and non-binding: promises made in speech are not enforced by the game.',
+].join(' ');
+
 export const ISLANDERS_SETUP_MOVE_NOTATION: MoveNotation = {
   description: 'Islanders setup notation: init-settlement <node> or init-road <edge>',
   examples: '"init-settlement 12", "init-road 37"',

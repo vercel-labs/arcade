@@ -653,6 +653,27 @@ function mainPhaseWithDev(type: Exclude<DevCardType, 'victoryPoint'>): Islanders
   return s;
 }
 
+test('the outlook states what each build still needs and where the awards stand, and can be switched off', () => {
+  const s = fresh();
+  finishSetup(s);
+  s.applyAction({ type: 'roll' }, { dice: [1, 1] });
+  setHand(s, 0, { lumber: 1, brick: 1 });
+  const text = s.informationStateString(0);
+  assert.match(text, /Your outlook \(facts, not advice\):/);
+  assert.match(text, /- Victory: 2 VP counting hidden cards; 8 more to win\./);
+  assert.match(text, /- Settlement \(need 1 wheat, 1 sheep\): (spots you can take now: |no spot reachable yet)/);
+  assert.match(text, /- City \(need 2 wheat, 3 ore\): settlements you can upgrade: /);
+  assert.match(text, /- Road \(affordable now\); development card \(need 1 wheat, 1 ore, 1 sheep\), 25 left in the deck\./);
+  assert.match(text, /- Longest Road: yours is 1; no one holds it yet \(5 needed\)\./);
+  assert.match(text, /- Largest Army: you have played 0 knights; no one holds it yet \(3 needed\)\./);
+  assert.ok(text.indexOf('Your outlook') > text.indexOf('Your portfolio'), 'the outlook follows the portfolio line');
+  assert.equal(s.clone().informationStateString(0).includes('Your outlook'), true, 'clones keep the setting');
+
+  const quiet = new IslandersState({ numPlayers: 4, rng: rng(), promptOutlook: false });
+  finishSetup(quiet);
+  assert.equal(quiet.informationStateString(0).includes('Your outlook'), false);
+});
+
 test('a held development card explains why it cannot be played yet', () => {
   const s = mainPhaseWithDev('knight');
   assert.equal(s.developmentCardHold(0, 'knight'), null);
