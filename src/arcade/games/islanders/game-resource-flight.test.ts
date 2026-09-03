@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { RenderTarget } from '../../../engine/index.ts';
-import { COSTS, DEV_CARD_TYPES, RESOURCES, resourceIndex } from '../../../rules/islanders/types.ts';
+import { COSTS, DEV_CARD_TYPES, RESOURCES, resourceIndex, type IslandersAction } from '../../../rules/islanders/types.ts';
 import { IslandersDriver, type IslandersSeatSpec } from '../../match/islanders-driver.ts';
 import { islandersDiscardDepartureCell, islandersHandLandingCell } from './card-hud.ts';
 import { islandersLiveView } from './game-hud.ts';
@@ -51,6 +51,11 @@ test('live roll playback waits for dice landing and its visible production fligh
   await Promise.resolve();
   assert.equal(game.activeResourceFlights().length, 0, 'production waits for the dice to land');
   assert.equal(resolved, false);
+  // The live HUD re-publishes the flight layout every frame; that must not release the roll's
+  // production early.
+  game.setResourceFlightLayout(region, 2, false);
+  game.renderScene(target, 5.75);
+  assert.equal(game.activeResourceFlights().length, 0, 'a layout refresh mid-roll keeps production in the bank');
 
   const liveDice = (game.scene as unknown as { dice: [Die, Die] }).dice;
   liveDice[0].dur = 1;
@@ -336,4 +341,51 @@ test('a bought development card stays in flight until it lands in the live hand'
   assert.equal(game.activeResourceFlights().length, 0);
   assert.equal(view.devHand[type], 1);
   assert.equal(view.developmentDeck, deckBefore - 1);
+});
+
+test('a human monopoly flies the collected cards into the hand, staggered, and the log reports the haul', async () => {
+  const game = new IslandersGameScene();
+  const driver = new IslandersDriver({ scene: game, syncLive: () => {}, reflectionModel: () => null });
+  const state = driver.start([
+    { kind: 'human', color: 'red' },
+    { kind: 'ai', color: 'blue', model: 'test/blue' },
+    { kind: 'ai', color: 'orange', model: 'test/orange' },
+  ], { autoRun: false, rng: () => 0.5 });
+  const region = { x: 0, y: 0, w: 140, h: 50 };
+  game.setResourceFlightLayout(region, 3, true);
+  while (!state.initialPlacementComplete()) await game.playMove(state.legalActions()[0]);
+  const target = new RenderTarget(region.w, region.h * 2);
+  game.renderScene(target, 0);
+  game.renderScene(target, 5);
+  assert.equal(game.activeResourceFlights().length, 0);
+
+  // Roll, then stage a monopoly card the human may play and wool across the other hands.
+  state.applyAction({ type: 'roll' }, { dice: [3, 3] });
+  const internals = state as unknown as { hands: number[][]; devHand: number[][] };
+  internals.devHand[0][DEV_CARD_TYPES.indexOf('monopoly')] = 1;
+  internals.hands[0][resourceIndex('wool')] = 0;
+  internals.hands[1][resourceIndex('wool')] = 2;
+  internals.hands[2][resourceIndex('wool')] = 1;
+  assert.ok(state.legalActions().some((action) => action.type === 'playMonopoly' && action.resource === 'wool'));
+
+  // The driver's record hook sees the hands before the play, like the live loop does.
+  const before = { hands: internals.hands.map((hand) => hand.slice()), trade: state.activeTrade(), state: state.clone() };
+  void game.playMove({ type: 'playMonopoly', resource: 'wool' });
+  (driver as unknown as { record: (seat: number, action: IslandersAction, before: unknown) => void }).record(0, { type: 'playMonopoly', resource: 'wool' }, before);
+  assert.equal(state.handOf(0)[resourceIndex('wool')], 3, 'the rules move every wool to the monopolist');
+  assert.equal(state.handOf(1)[resourceIndex('wool')], 0);
+
+  game.renderScene(target, 5);
+  game.renderScene(target, 5.2);
+  const wool = game.activeResourceFlights().filter((flight) => flight.resource === 'wool');
+  assert.ok(wool.length > 0, 'the collected wool is in flight toward the hand');
+  const pending = total(game.resourceViewAdjustments().handPending);
+  assert.ok(pending > 0 && pending <= 3, 'cards are still landing one by one');
+  for (let frame = 21; frame <= 40; frame++) game.renderScene(target, frame * 0.25);
+  assert.equal(game.activeResourceFlights().length, 0);
+  assert.equal(total(game.resourceViewAdjustments().handPending), 0);
+
+  const entry = driver.history().find((line) => line.message.includes('monopoly'));
+  assert.ok(entry);
+  assert.match(entry.message, /played monopoly on 🐑 wool and collected 🐑 x3 \(2 from blue, 1 from orange\)/);
 });

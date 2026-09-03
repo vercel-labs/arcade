@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { MockLanguageModelV3 } from 'ai/test';
 import type { Player } from '../../harness/player.ts';
 import type { IslandersState } from '../../rules/islanders/islanders.ts';
 import { RESOURCES, resourceIndex, type IslandersAction, type PlayerColor } from '../../rules/islanders/types.ts';
@@ -100,6 +101,7 @@ test('driver waits for board setup presentation before asking for initial placem
   let choices = 0;
   const driver = new IslandersDriver({
     scene,
+    reflectionModel: () => null,
     syncLive: () => {},
     createPlayer: (_spec, _seat, label) => ({
       name: label,
@@ -126,6 +128,7 @@ test('driver installs the scene before models run a complete rules-authoritative
   let syncs = 0;
   const driver = new IslandersDriver({
     scene,
+    reflectionModel: () => null,
     syncLive: () => syncs++,
     createPlayer: (_spec, seat, label) => progressingPlayer(label, rng(100 + seat)),
   });
@@ -188,6 +191,7 @@ test('ambient live games offer affected models reaction-only turns while autorep
     const scene = new DriverScene();
     const driver = new IslandersDriver({
       scene,
+      reflectionModel: () => null,
       syncLive: () => {},
       createPlayer: (_spec, seat, label) => reactingPlayer(label, rng(300 + seat)),
     });
@@ -210,6 +214,7 @@ test('human UI labels stay conversational while model observations identify the 
   const scene = new DriverScene();
   const driver = new IslandersDriver({
     scene,
+    reflectionModel: () => null,
     syncLive: () => {},
     createPlayer: (_spec, _seat, label) => progressingPlayer(label, rng(101)),
   });
@@ -229,6 +234,7 @@ test('human-facing trade history uses your and you instead of You possessives', 
   const scene = new DriverScene();
   const driver = new IslandersDriver({
     scene,
+    reflectionModel: () => null,
     syncLive: () => {},
     createPlayer: (_spec, _seat, label) => progressingPlayer(label, rng(102)),
   });
@@ -251,6 +257,7 @@ test('reset aborts and clears both driver and scene session state', () => {
   const scene = new DriverScene();
   const driver = new IslandersDriver({
     scene,
+    reflectionModel: () => null,
     syncLive: () => {},
     createPlayer: (_spec, seat, label) => progressingPlayer(label, rng(200 + seat)),
   });
@@ -272,7 +279,7 @@ test('reset aborts and clears both driver and scene session state', () => {
 
 test('human chat is accepted only in human games and can directly address one model', () => {
   const scene = new DriverScene();
-  const driver = new IslandersDriver({ scene, syncLive: () => {} });
+  const driver = new IslandersDriver({ scene, syncLive: () => {}, reflectionModel: () => null });
   driver.start([
     { kind: 'human', color: 'red' },
     { kind: 'ai', color: 'blue', model: 'test/model' },
@@ -292,6 +299,7 @@ test('an @-addressed human message prompts one immediate model reply in ambient 
   const scene = new DriverScene();
   const driver = new IslandersDriver({
     scene,
+    reflectionModel: () => null,
     syncLive: () => {},
     createPlayer: (_spec, seat, label) => ({
       ...progressingPlayer(label, rng(500 + seat)),
@@ -318,4 +326,64 @@ test('an @-addressed human message prompts one immediate model reply in ambient 
   assert.equal(chat[0]?.seat, 0);
   assert.equal(chat[1]?.seat, 1);
   assert.match(chat[1]?.message ?? '', /^Replying once to /);
+});
+
+test('practice bots play a complete offline game and a stocked hand stays card-conserving', async () => {
+  const scene = new DriverScene();
+  const driver = new IslandersDriver({ scene, syncLive() {} });
+  const seats: IslandersSeatSpec[] = [
+    { kind: 'bot', color: 'red' },
+    { kind: 'bot', color: 'blue' },
+    { kind: 'bot', color: 'orange' },
+  ];
+  const state = driver.start(seats, { rng: rng(11), maxActions: 5_000 });
+  assert.deepEqual([0, 1, 2].map((seat) => driver.labelOf(seat)), ['bot 0', 'bot 1', 'bot 2']);
+  await waitForIdle(driver);
+  assert.equal(driver.error(), null);
+  assert.equal(driver.isComplete(), true);
+  assert.equal(state.isTerminal(), true);
+  assert.ok(driver.history().every((entry) => !entry.chat || !entry.message.startsWith('@')), 'bots never open player trades');
+
+  // The tutorial's opening-hand grant moves cards out of the bank, never conjuring them.
+  const staged = driver.start(seats, { rng: rng(12), autoRun: false });
+  const before = RESOURCES.map((resource) => staged.bankDeck()[resourceIndex(resource)] + staged.handOf(0)[resourceIndex(resource)]);
+  staged.grantResources(0, [2, 1, 2, 4, 1]);
+  assert.deepEqual(staged.handOf(0), [2, 1, 2, 4, 1]);
+  const after = RESOURCES.map((resource) => staged.bankDeck()[resourceIndex(resource)] + staged.handOf(0)[resourceIndex(resource)]);
+  assert.deepEqual(after, before);
+  driver.reset();
+});
+
+test('model seats reflect into a private notebook at the end of their own turns', async () => {
+  let reflections = 0;
+  const reflectionModel = new MockLanguageModelV3({
+    doGenerate: async () => {
+      reflections++;
+      return {
+        content: [{ type: 'text', text: JSON.stringify({ plan: `plan ${reflections}`, players: [{ player: 'model-1', notes: ['Refuses every offer.'] }] }) }],
+        finishReason: { unified: 'stop', raw: undefined },
+        usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
+        warnings: [],
+      } as unknown as Awaited<ReturnType<InstanceType<typeof MockLanguageModelV3>['doGenerate']>>;
+    },
+  });
+  const scene = new DriverScene();
+  const driver = new IslandersDriver({
+    scene,
+    syncLive: () => {},
+    createPlayer: (_spec, seat, label) => progressingPlayer(label, rng(700 + seat)),
+    reflectionModel: () => reflectionModel,
+  });
+  const seats: IslandersSeatSpec[] = [
+    { kind: 'ai', color: 'red', model: 'test/model-0' },
+    { kind: 'ai', color: 'blue', model: 'test/model-1' },
+  ];
+  driver.start(seats, { rng: rng(21), maxActions: 400 });
+  await waitForIdle(driver);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.ok(reflections > 0, 'each model turn end reflects');
+  assert.deepEqual(driver.noteObservers().map((o) => o.seat), [0, 1]);
+  const notebook = driver.notesView(0);
+  assert.match(notebook.plan, /^plan \d+$/);
+  assert.deepEqual(notebook.reads, [{ label: 'model-1', notes: ['Refuses every offer.'] }]);
 });

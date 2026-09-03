@@ -98,6 +98,8 @@ interface PendingResourceGain {
   resource: Resource;
   count: number;
   fromBank: boolean;
+  // Held until the dice settle (a roll's production), not merely until the layout is known.
+  deferred: boolean;
   resolve: () => void;
 }
 
@@ -366,7 +368,7 @@ export class IslandersGameScene {
     if (rollCompletion) {
       await rollCompletion;
       if (this.live !== state) return;
-      this.flushPendingResourceGains();
+      this.flushPendingResourceGains(true);
       this.flushPendingResourceLosses();
       this.onChange();
     }
@@ -858,16 +860,21 @@ export class IslandersGameScene {
     const completion = new Promise<void>((resolve) => { resolveCompletion = resolve; });
     this.handPending[resource] += count;
     if (fromBank) this.bankPendingDeparture[resource] += count;
-    this.pendingResourceGains.push({ resource, count, fromBank, resolve: resolveCompletion });
+    this.pendingResourceGains.push({ resource, count, fromBank, deferred: defer, resolve: resolveCompletion });
     if (!defer) this.flushPendingResourceGains();
     return completion;
   }
 
-  private flushPendingResourceGains(): void {
+  // Launch the queued gains that have a layout to fly in. Deferred (roll) gains stay queued
+  // unless `releaseDeferred` — the HUD refreshes the layout every frame, and that must not
+  // let production leave the bank while the dice are still tumbling.
+  private flushPendingResourceGains(releaseDeferred = false): void {
     const layout = this.resourceFlightLayout;
     if (!layout || !this.pendingResourceGains.length) return;
+    const held = releaseDeferred ? [] : this.pendingResourceGains.filter((gain) => gain.deferred);
+    const ready = releaseDeferred ? this.pendingResourceGains : this.pendingResourceGains.filter((gain) => !gain.deferred);
     let order = 0;
-    for (const gain of this.pendingResourceGains) {
+    for (const gain of ready) {
       const from = islandersBankDepartureCell(
         layout.region,
         gain.resource,
@@ -879,7 +886,7 @@ export class IslandersGameScene {
       void flights.spawn(gain.resource, gain.count, from, to, order).then(gain.resolve);
       order += gain.count;
     }
-    this.pendingResourceGains = [];
+    this.pendingResourceGains = held;
   }
 
   private queueResourceLoss(

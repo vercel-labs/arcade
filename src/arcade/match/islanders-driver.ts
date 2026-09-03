@@ -7,6 +7,7 @@
 // authority; this layer merely connects seats to it and records presentation-friendly history.
 
 import { HumanPlayer } from '../../harness/human-player.ts';
+import { PolicyPlayer } from '../../harness/policy-player.ts';
 import type { CommunicationDecision, CommunicationMode, PublicConversationMessage } from '../../harness/communication/types.ts';
 import type { Player } from '../../harness/player.ts';
 import type { RecordEndReason } from '../../harness/records.ts';
@@ -23,6 +24,8 @@ import { disambiguateLabels } from '../../harness/labels.ts';
 import { shortModel } from '../../harness/model-label.ts';
 import { normalizerModel } from './models.ts';
 import { IslandersCommunicationCoordinator } from '../../harness/games/islanders/islanders-communication.ts';
+import { IslandersMemory } from './islanders-memory.ts';
+import type { LanguageModel } from 'ai';
 import { detectIslandersMoments } from '../../harness/games/islanders/islanders-moments.ts';
 import { directedReplyOpportunities, primaryMoment, reactionOpportunities } from '../../harness/communication/moments.ts';
 import type { ModelFailureNotice } from '../../harness/model-failure-notice.ts';
@@ -35,9 +38,18 @@ import {
   trackModelFallback,
 } from '../../telemetry/index.ts';
 
-// One seat in the session: you, or an AI model (a Gateway slug). The color is the seat's
-// piece color — picked in setup and distinct per seat.
-export type IslandersSeatSpec = { kind: 'human'; color: PlayerColor } | { kind: 'ai'; model: string; color: PlayerColor };
+// Domestic offers a model seat may post per turn. Three is where repeating oneself stops
+// reading as negotiation (MIRAGE-Bench's trial-and-error bound); the human seat is uncapped.
+const MODEL_OFFERS_PER_TURN = 3;
+
+// One seat in the session: you, an AI model (a Gateway slug), or a local practice bot (a
+// PolicyPlayer that plays a random constructive legal action — no model, no network). The
+// color is the seat's piece color — picked in setup and distinct per seat. A table with any
+// bot seat is a practice table and is never recorded or tracked.
+export type IslandersSeatSpec =
+  | { kind: 'human'; color: PlayerColor }
+  | { kind: 'bot'; color: PlayerColor }
+  | { kind: 'ai'; model: string; color: PlayerColor };
 
 // What the board scene must offer the driver: the live state, an animated apply, and the
 // human seam. Deliberately the same shape as `MatchScene` plus `requestHumanMove`, so the
@@ -56,6 +68,11 @@ export interface IslandersDriverDeps {
   syncLive: () => void;
   /** Optional player factory for alternate controllers and deterministic tests. */
   createPlayer?: (spec: IslandersSeatSpec, seat: number, label: string) => Player<IslandersAction>;
+  /**
+   * The model a seat reflects with between turns (its notebook); defaults to the seat's own
+   * model. Return null to disable reflection — tests with fake players, offline tables.
+   */
+  reflectionModel?: (spec: Extract<IslandersSeatSpec, { kind: 'ai' }>, seat: number) => LanguageModel | null;
   onFailureNotice?(notice: ModelFailureNotice, model: string): void;
   onBlocked?(): void;
 }
@@ -92,6 +109,11 @@ export class IslandersDriver {
   private failure: string | null = null;
   private preAction: IslandersPreActionView | null = null;
   private communication: IslandersCommunicationCoordinator | null = null;
+  // Each model seat's private notebook (plan + reads), rewritten after its own turn while the
+  // next player acts; injected into its decision prompt. See islanders-memory.ts.
+  private readonly memory = new IslandersMemory();
+  private reflecting = new Map<number, Promise<void>>();
+  private talkSeenByObserver = new Map<number, number>();
   private lastCommunicationDecision: CommunicationDecision | null = null;
   private directedReplyQueue: Promise<void> = Promise.resolve();
   private recorder: IslandersGameRecorder | null = null;
@@ -184,16 +206,21 @@ export class IslandersDriver {
       seats.map((seat, index) =>
         seat.kind === 'human'
           ? { key: `human:${index}`, label: 'You' }
-          : { key: seat.model, label: shortModel(seat.model) },
+          : seat.kind === 'bot'
+            ? { key: `bot:${index}`, label: `bot ${index}` }
+            : { key: seat.model, label: shortModel(seat.model) },
         ),
     );
     this.modelContextLabels = disambiguateLabels(
-      seats.map((seat) =>
+      seats.map((seat, index) =>
         seat.kind === 'human'
           ? { key: 'human', label: 'the human player' }
-          : { key: seat.model, label: shortModel(seat.model) },
+          : seat.kind === 'bot'
+            ? { key: `bot:${index}`, label: `bot ${index}` }
+            : { key: seat.model, label: shortModel(seat.model) },
       ),
     );
+    const practice = seats.some((seat) => seat.kind === 'bot');
     this.log = [];
     this.lastActionEntry = null;
     this.preAction = null;
@@ -208,25 +235,33 @@ export class IslandersDriver {
       // conflict with the prompt's own second-person instructions.
       seatNames: this.modelContextLabels,
       domesticTrade: true,
-      ...(seats.every((seat) => seat.kind === 'ai') ? { domesticTradeOfferLimit: 3 } : {}),
+      // Model seats get a per-turn offer budget and may not re-post an offer the table already
+      // refused that turn — the guard against small models looping on one trade. A human seat
+      // carries no policy and negotiates freely.
+      domesticTradePolicy: seats.map((seat) => (seat.kind === 'ai' ? { maxOffersPerTurn: MODEL_OFFERS_PER_TURN, noRepeatRefused: true } : undefined)),
       rng: opts?.rng,
       board: opts?.board,
     });
     this.live = state;
+    this.memory.reset();
+    this.reflecting.clear();
+    this.talkSeenByObserver.clear();
     this.communication = new IslandersCommunicationCoordinator(opts?.communicationMode ?? 'autoreply', this.modelContextLabels);
     this.players = seats.map((s, i) => this.makePlayer(s, i));
     const mode = islandersMatchMode(seats);
     const controller = (seat: IslandersSeatSpec): RecorderController =>
-      seat.kind === 'human' ? { kind: 'human' } : { kind: 'model', model: seat.model };
-    this.recorder = isTelemetryEnabled()
+      seat.kind === 'ai' ? { kind: 'model', model: seat.model } : { kind: 'human' };
+    this.recorder = isTelemetryEnabled() && !practice
       ? new IslandersGameRecorder(mode, seats.map(controller), seats.map((seat) => seat.color), localPlayerKey())
       : null;
-    trackMatchStarted({
-      game: 'islanders',
-      mode,
-      models: seats.flatMap((seat) => seat.kind === 'ai' ? [seat.model] : []),
-      humans: seats.filter((seat) => seat.kind === 'human').length,
-    });
+    if (!practice) {
+      trackMatchStarted({
+        game: 'islanders',
+        mode,
+        models: seats.flatMap((seat) => seat.kind === 'ai' ? [seat.model] : []),
+        humans: seats.filter((seat) => seat.kind === 'human').length,
+      });
+    }
     this.abort = new AbortController();
     // Install the authoritative state in the scene before the runner can synchronously read it.
     // Keeping this inside the driver makes session creation atomic for the app and tools alike.
@@ -246,12 +281,16 @@ export class IslandersDriver {
         awaitMove: (_s, ctx) => this.deps.scene.requestHumanMove(ctx?.signal),
       });
     }
+    if (spec.kind === 'bot') return practiceIslandersBot(this.labels[seat], seat);
     return createIslandersModelPlayer({
       model: spec.model,
       name: this.modelContextLabels[seat],
       normalizer: normalizerModel(),
       communication: this.communication?.modelConfig(),
-      contextProvider: (player) => this.communication?.contextFor(player) ?? '',
+      contextProvider: (player) => [
+        this.memory.renderForPrompt(player, this.otherSeats(player), (s) => this.modelContextLabels[s]),
+        this.communication?.contextFor(player) ?? '',
+      ].filter(Boolean).join('\n\n'),
       onFailureNotice: (notice) => this.deps.onFailureNotice?.(notice, spec.model),
     });
   }
@@ -323,6 +362,7 @@ export class IslandersDriver {
             if (checkpoint) trackMatchRecord(checkpoint);
           });
           this.record(info.playerIndex, info.choice.action, this.preAction);
+          if (info.choice.action.type === 'endTurn') this.startReflection(info.playerIndex, signal);
           if (this.communication?.currentMode() === 'ambient' && this.preAction && this.live) {
             const actionNumber = this.live.actionRecords().length;
             if (
@@ -372,12 +412,14 @@ export class IslandersDriver {
         const winner = this.live.winner();
         const record = this.recordTelemetry(() => this.recorder?.completed(this.live!));
         if (record) trackMatchRecord(record);
-        trackMatchEnded({
-          game: 'islanders',
-          mode: islandersMatchMode(this.seats),
-          models: this.seats.flatMap((seat) => seat.kind === 'ai' ? [seat.model] : []),
-          winner: winner >= 0 && this.seats[winner]?.kind === 'ai' ? this.seats[winner].model : 'human',
-        });
+        if (!this.seats.some((seat) => seat.kind === 'bot')) {
+          trackMatchEnded({
+            game: 'islanders',
+            mode: islandersMatchMode(this.seats),
+            models: this.seats.flatMap((seat) => seat.kind === 'ai' ? [seat.model] : []),
+            winner: winner >= 0 && this.seats[winner]?.kind === 'ai' ? this.seats[winner].model : 'human',
+          });
+        }
         this.recorder = null;
       }
     } catch (err) {
@@ -456,6 +498,20 @@ export class IslandersDriver {
     return this.directedReplyQueue;
   }
 
+  // What a monopoly actually collected, from the hands as they stood before the card: the total
+  // and who paid what, so the log shows the result and not just the play.
+  private monopolyHaul(actor: number, resource: Resource, before: IslandersPreActionView | null): string {
+    if (!before) return '';
+    const index = resourceIndex(resource);
+    const paid = before.hands
+      .map((hand, seat) => ({ seat, count: hand[index] ?? 0 }))
+      .filter(({ seat, count }) => seat !== actor && count > 0);
+    const total = paid.reduce((sum, { count }) => sum + count, 0);
+    if (total === 0) return ' and collected nothing';
+    const emoji = RESOURCE_LOOK[resource].emoji;
+    return ` and collected ${emoji} x${total} (${paid.map(({ seat, count }) => `${count} from ${this.seats[seat]?.kind === 'human' ? 'you' : this.labelOf(seat)}`).join(', ')})`;
+  }
+
   private record(seat: number, action: IslandersAction, before: IslandersPreActionView | null): void {
     const trade = before?.trade;
     const other = (target: number): string => this.labelOf(target);
@@ -495,7 +551,7 @@ export class IslandersDriver {
                           : action.type === 'playYearOfPlenty'
                             ? `${DEV_CARD_ICON} played year of plenty and took ${action.resources.map((resource) => RESOURCE_LOOK[resource].emoji).join(' ')}`
                             : action.type === 'playMonopoly'
-                              ? `${DEV_CARD_ICON} played monopoly on ${RESOURCE_LOOK[action.resource].emoji} ${action.resource}`
+                              ? `${DEV_CARD_ICON} played monopoly on ${RESOURCE_LOOK[action.resource].emoji} ${action.resource}${this.monopolyHaul(seat, action.resource, before)}`
                               : action.type === 'discard'
                                 ? `discarded ${action.resources.length} cards after a 7`
                                 : action.type === 'maritimeTrade'
@@ -539,6 +595,52 @@ export class IslandersDriver {
   }
 
   // Abort the session loop. Safe to call when nothing is running.
+  private otherSeats(seat: number): number[] {
+    return this.seats.map((_, s) => s).filter((s) => s !== seat);
+  }
+
+  // Kick off a model seat's between-turn reflection: the round it just saw (the rules' turn
+  // digest) plus the table talk since its previous notes. Runs alongside the next player's
+  // decision; one in flight per seat, best-effort.
+  private startReflection(seat: number, signal?: AbortSignal): void {
+    const spec = this.seats[seat];
+    const state = this.live;
+    if (spec?.kind !== 'ai' || !state || this.reflecting.has(seat) || signal?.aborted) return;
+    const model = this.deps.reflectionModel ? this.deps.reflectionModel(spec, seat) : spec.model;
+    if (!model) return;
+    const messages = this.communication?.messages() ?? [];
+    const seen = this.talkSeenByObserver.get(seat) ?? 0;
+    const talk = messages.slice(seen).map((message) => `${message.speakerLabel}: ${message.text}`);
+    this.talkSeenByObserver.set(seat, messages.length);
+    const job = this.memory.reflect({
+      model,
+      observer: seat,
+      subjects: this.otherSeats(seat),
+      digest: state.recentTurnsSummary(),
+      talk,
+      labelOf: (s) => this.modelContextLabels[s],
+      signal,
+    }).finally(() => {
+      this.reflecting.delete(seat);
+      this.deps.syncLive();
+    });
+    this.reflecting.set(seat, job);
+  }
+
+  // The model seats that keep notebooks, for a reads surface (label + creator for tinting).
+  noteObservers(): { seat: number; label: string; creator: string }[] {
+    return this.seats.flatMap((spec, seat) =>
+      spec.kind === 'ai' ? [{ seat, label: this.labelOf(seat), creator: spec.model.split('/')[0] ?? spec.model }] : []);
+  }
+
+  // One observer's notebook: its plan and its reads on every other seat (UI labels).
+  notesView(observer: number): { plan: string; reads: { label: string; notes: string[] }[] } {
+    return {
+      plan: this.memory.plan(observer),
+      reads: this.memory.view(observer, this.otherSeats(observer)).map(({ subject, notes }) => ({ label: this.labelOf(subject), notes })),
+    };
+  }
+
   stop(reason: Exclude<RecordEndReason, 'natural'> = 'user_stopped'): void {
     this.restartAfterAbort = false;
     const record = this.live ? this.recordTelemetry(() => this.recorder?.abandoned(reason, this.live!)) : undefined;
@@ -580,4 +682,24 @@ export class IslandersDriver {
 function islandersMatchMode(seats: readonly IslandersSeatSpec[]): 'ai_table' | 'human_table' | 'mixed' {
   const humans = seats.filter((seat) => seat.kind === 'human').length;
   return humans === 0 ? 'ai_table' : humans === seats.length ? 'human_table' : 'mixed';
+}
+
+// The practice bot: a random constructive legal action — anything but ending the turn while
+// something else is possible, and never a player-to-player offer (the human would have to
+// answer it). Seeded per seat so a practice game replays identically.
+function practiceIslandersBot(name: string, seat: number): Player<IslandersAction> {
+  let state = (0x9e3779b9 ^ (seat * 0x85ebca6b)) >>> 0;
+  const random = (): number => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  return new PolicyPlayer<IslandersAction>(name, (legal) => {
+    const quiet = legal.filter((a) => a.type !== 'offerTrade' && a.type !== 'counterTrade');
+    const active = quiet.filter((a) => a.type !== 'endTurn');
+    const pool = active.length ? active : quiet.length ? quiet : legal;
+    return pool[Math.floor(random() * pool.length)];
+  });
 }

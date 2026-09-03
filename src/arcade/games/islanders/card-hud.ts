@@ -196,7 +196,8 @@ const HAND_ACTION_W = 9;
 // needs more air from the taller hand tray so their different silhouettes feel deliberate.
 const HAND_ACTION_GAP = 2;
 const ACTION_BUTTON_GAP = 2;
-const ACTIONS_W = HAND_ACTION_W * 2 + ACTION_BUTTON_GAP;
+// trade, buy dev, and the turn card (roll / end) sit in one row by the hand.
+const ACTIONS_W = HAND_ACTION_W * 3 + ACTION_BUTTON_GAP * 2;
 const ACTION_BG = ISLANDERS_CARD.actionBg;
 const ACTION_HOVER = ISLANDERS_CARD.actionHover;
 const ACTION_DISABLED = ISLANDERS_CARD.actionDisabled;
@@ -281,6 +282,9 @@ const RAIL_W = ISLANDERS_RAIL_W;
 // that edge by BODY_PAD_R so text is not jammed against it.
 const CONTENT_W = RAIL_W - SIDEBAR_PAD_L - SIDEBAR_PAD_R;
 const RAIL_INNER = CONTENT_W - BODY_PAD_R;
+// The width a full-row control in the sidebar body spans (the chat composer): the same margin
+// on the right as the panel's left inset.
+export const ISLANDERS_RAIL_INNER_W = RAIL_INNER;
 // Rows stop two columns short of the ScrollBox: one for the bar, one blank beside it, so text can
 // never sit flush against the bar. Mirrors the chat's SCROLLBAR_W + RIGHT_GAP reservation.
 const HISTORY_ROW_W = CONTENT_W - 2;
@@ -363,8 +367,11 @@ export function islandersCardsLayout(region: LayoutBox): IslandersCardsLayout {
 // A deliberately flat rectangle like the reference cards: one uninterrupted color field, the
 // glyph over its name, and a plain white count in the top-right. No frame. `dim` swaps in the
 // spent-slot colors without touching the geometry, so an empty card holds its place in the row.
-function card(look: ResourceLook, count: number | null, height = CARD_H, dim = false, selected = false): Node {
-  const fill = dim ? EMPTY_FILL : look.fill;
+// `hoverable` hands the fill to the wrapper `clickable` builds around the face, so the whole
+// card can lighten under the pointer (a hover style only paints on the hovered node, and the
+// tooltip trigger is that wrapper). The face's text then sits on the wrapper's fill.
+function card(look: ResourceLook, count: number | null, height = CARD_H, dim = false, selected = false, hoverable = false): Node {
+  const fill = hoverable ? 'transparent' : dim ? EMPTY_FILL : look.fill;
   const ink = dim ? EMPTY_INK : look.ink;
   const countInk = dim ? EMPTY_INK : COUNT_INK;
   // Glyph and name read as one block, so center the pair rather than each row; the count keeps
@@ -450,9 +457,10 @@ function bankRow(view: IslandersCardsView): Node {
 // be compared down a column.
 // Each column is only as wide as its own header or widest value, so the name column keeps
 // everything left over — a uniform width clipped the longest slug by a single cell.
-// vp sits at the far right, the column a reader scans to for the standings; the supporting counts
-// run from `cards` on the left. `strong` is the score's emphasis, carried on the column rather
-// than its position so the order can change without moving the styling with it.
+// The score rides on the name (`name · 6`, or `name · 6 (7)` when hidden victory-point cards the
+// viewer may know about raise the real total) rather than in a column: a seat's true score is
+// private information, so the two numbers can't line up as one comparable column anyway. The
+// supporting counts run from `cards` on the left.
 const STAT_GAP = 1;
 // `flag` promotes a value out of the muted default when the game state says it matters: gold for
 // the seat that HOLDS an award, red for a hand the robber would force a discard from. Both are
@@ -463,7 +471,6 @@ const STAT_GAP = 1;
 interface StatColumn {
   head: string;
   col: ColumnDef;
-  strong?: boolean;
   read: (p: IslandersCardsPlayerView) => number;
   flag?: (p: IslandersCardsPlayerView) => Rgb | null;
 }
@@ -472,7 +479,6 @@ const STAT_COLUMNS: StatColumn[] = [
   { head: DEV_CARD_ICON, col: { width: 3, align: 'end' }, read: (p) => p.developmentCards },
   { head: KNIGHT_ICON, col: { width: 3, align: 'end' }, read: (p) => p.knights, flag: (p) => (p.hasLargestArmy ? AWARD : null) },
   { head: ROAD_ICON, col: { width: 3, align: 'end' }, read: (p) => p.longestRoad, flag: (p) => (p.hasLongestRoad ? AWARD : null) },
-  { head: 'vp', col: { width: 2, align: 'end' }, strong: true, read: (p) => p.publicVp },
 ];
 // The name column takes whatever the stats leave, down to a floor that keeps a seat
 // identifiable rather than letting it collapse to nothing on a narrow terminal.
@@ -487,16 +493,26 @@ function playersHeader(): Node {
   ]);
 }
 
+// `name · 6`, with the real total in parentheses when it differs from the public one.
+function playerScore(player: IslandersCardsPlayerView): string {
+  const hidden = player.actualVp !== undefined && player.actualVp !== player.publicVp ? ` (${player.actualVp})` : '';
+  return `${player.publicVp}${hidden}`;
+}
+
 function playerRow(player: IslandersCardsPlayerView): Node {
   const seat = PLAYER_LOOK[player.color];
+  const name = Box({ gap: 0, overflow: 'hidden' }, [
+    Text({ text: `${player.active ? '▸ ' : '  '}${player.name}`, style: { color: seat, bold: true, textOverflow: 'ellipsis' } }),
+    Text({ text: ' · ', style: { color: RAIL_MUTED } }),
+    Text({ text: playerScore(player), style: { color: RAIL_TEXT, bold: true } }),
+  ]);
   return TableRow({}, [
-    TableCell(`${player.active ? '▸ ' : '  '}${player.name}`, { style: { color: seat, bold: true } }),
-    // vp is the score, so it keeps the reading white; the rest are supporting detail until a
-    // flag promotes them.
+    TableCell(name),
+    // Supporting detail stays muted until a flag promotes it.
     ...STAT_COLUMNS.map((c) => {
       const flag = c.flag?.(player) ?? null;
       return TableCell(`${c.read(player)}`, {
-        style: { color: flag ?? (c.strong ? RAIL_TEXT : RAIL_MUTED), bold: flag !== null || c.strong },
+        style: { color: flag ?? RAIL_MUTED, bold: flag !== null },
       });
     }),
   ]);
@@ -702,6 +718,11 @@ function tradeBankSourceRow(
   }));
 }
 
+// A shade lighter, for a hover on a filled card.
+function lighten(color: Rgb, amount: number): Rgb {
+  return [0, 1, 2].map((i) => Math.round(color[i] + (255 - color[i]) * amount)) as Rgb;
+}
+
 function tradeActionButton(
   id: string,
   icon: string,
@@ -768,11 +789,6 @@ function isYou(player: IslandersCardsPlayerView): boolean {
 
 function playerIs(player: IslandersCardsPlayerView, phrase: string): string {
   return isYou(player) ? `You are ${phrase}` : `${player.name} is ${phrase}`;
-}
-
-function playerPossessive(player: IslandersCardsPlayerView): string {
-  if (isYou(player)) return 'your';
-  return `${player.name}${player.name.endsWith('s') ? "'" : "'s"}`;
 }
 
 function workbenchTradeController(
@@ -964,7 +980,7 @@ function playerTradeDecision(
     : accepted
       ? `Complete the trade with ${isYou(reaction.player) ? 'you' : reaction.player.name}.`
       : countered
-        ? `See ${playerPossessive(reaction.player)} separate counteroffer.`
+        ? `${isYou(reaction.player) ? 'You' : reaction.player.name} countered (the card below).`
       : `${isYou(reaction.player) ? 'You rejected' : `${reaction.player.name} rejected`} the offer.`;
   const button = Button({
     id: `islanders-player-trade-${offer.id}-${reaction.player.name}`,
@@ -1043,6 +1059,59 @@ function playerTradeResponseButton(
   }, button);
 }
 
+// One exchange line of a trade card: who (the crowd, or a seat's color square), which way the
+// cards flow for the card's owner (↓ incoming, ↑ outgoing), and the cards.
+function exchangeRow(mark: { glyph: string; color: Rgb }, arrow: '↓' | '↑', counts: Record<Resource, number>): Node {
+  return Box({ height: PLAYER_TRADE_ROW_H, gap: 1, alignItems: 'center' }, [
+    Box({ width: PLAYER_TRADE_IDENTITY_W, height: PLAYER_TRADE_ROW_H, gap: 1, alignItems: 'center' }, [
+      Text({ text: mark.glyph, style: { color: mark.color, bold: true } }),
+      Text({ text: arrow, style: { color: mark.color, bold: true } }),
+    ]),
+    playerTradeCards(counts),
+  ]);
+}
+
+// The trade card's frame: the incoming line, then the outgoing line with the decisions at its
+// right. A posted offer and a counter to it are the same object, so they share this.
+function tradeCard(incoming: Node, outgoing: Node, decisions: Node): Node {
+  return Box({
+    height: PLAYER_TRADE_H,
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    padding: [0, 1, 1, 1],
+    background: TRADE_BG,
+    overflow: 'hidden',
+  }, [
+    incoming,
+    Box({ height: PLAYER_TRADE_ROW_H, alignItems: 'end', justifyContent: 'between', gap: 2 }, [outgoing, decisions]),
+  ]);
+}
+
+// A decision-slot button (the ✓ / X / ... squares at a trade card's right edge).
+function decisionButton(id: string, glyph: string, background: Rgb, onClick: () => void, tooltip: string, hover?: Rgb): Node {
+  const button = Button({
+    id,
+    label: '',
+    onClick,
+    style: {
+      width: PLAYER_TRADE_DECISION_W,
+      height: PLAYER_TRADE_DECISION_H,
+      padding: 0,
+      alignItems: 'center',
+      justifyContent: 'center',
+      background,
+      color: ISLANDERS_CARD.actionInk,
+      bold: true,
+      hover: { background: hover ?? ISLANDERS_CARD.actionHover, color: ISLANDERS_CARD.actionHoverInk },
+      pressed: { background: ISLANDERS_CARD.actionPressed, color: ISLANDERS_CARD.actionPressedInk },
+    },
+  });
+  button.children = [Box({ width: PLAYER_TRADE_DECISION_W, height: PLAYER_TRADE_DECISION_H, alignItems: 'center', justifyContent: 'center' }, [
+    Text({ text: glyph, style: { color: ISLANDERS_CARD.actionInk, bold: true } }),
+  ])];
+  return Tooltip({ id: `${id}-help`, content: [{ text: tooltip, bold: true }], maxWidth: 34 }, button);
+}
+
 function playerTradeOffer(offer: IslandersPlayerTradeOffer, controller: IslandersPlayerTradeOffersController): Node {
   const cancelButton = Button({
     id: `islanders-player-trade-${offer.id}-cancel`,
@@ -1076,32 +1145,6 @@ function playerTradeOffer(offer: IslandersPlayerTradeOffer, controller: Islander
     content: [{ text: 'Cancel player trade', bold: true }, 'Withdraw this offer from every player.'],
     maxWidth: 34,
   }, cancelButton);
-  const exchangeIdentity = (crowd: boolean): Node => Box({
-    width: PLAYER_TRADE_IDENTITY_W,
-    height: PLAYER_TRADE_ROW_H,
-    gap: 1,
-    alignItems: 'center',
-  }, [
-    Text({
-      text: crowd ? '👥' : '■',
-      style: { color: crowd ? ISLANDERS_CARD.tradeAccent : PLAYER_LOOK[offer.offerer.color], bold: true },
-    }),
-    Text({
-      text: crowd ? '↓' : '↑',
-      style: {
-        color: crowd ? ISLANDERS_CARD.tradeAccent : PLAYER_LOOK[offer.offerer.color],
-        bold: true,
-      },
-    }),
-  ]);
-  const exchangeRow = (crowd: boolean, counts: Record<Resource, number>): Node => Box({
-    height: PLAYER_TRADE_ROW_H,
-    gap: 1,
-    alignItems: 'center',
-  }, [
-    exchangeIdentity(crowd),
-    playerTradeCards(counts),
-  ]);
   const decisions = Box({
     height: PLAYER_TRADE_DECISION_H,
     gap: 1,
@@ -1113,83 +1156,43 @@ function playerTradeOffer(offer: IslandersPlayerTradeOffer, controller: Islander
     ...(!controller.onAccept && controller.activeResponse ? [playerTradeResponseButton(offer, controller, controller.activeResponse)] : []),
     ...(controller.onCancel || controller.activeCancel ? [cancel] : []),
   ]);
-  return Box({
-    height: PLAYER_TRADE_H,
-    flexDirection: 'column',
-    alignItems: 'stretch',
-    padding: [0, 1, 1, 1],
-    background: TRADE_BG,
-    overflow: 'hidden',
-  }, [
-    exchangeRow(true, offer.get),
-    Box({
-      height: PLAYER_TRADE_ROW_H,
-      alignItems: 'end',
-      justifyContent: 'between',
-      gap: 2,
-    }, [
-      exchangeRow(false, offer.give),
-      decisions,
-    ]),
-  ]);
+  const offerer = { glyph: '■', color: PLAYER_LOOK[offer.offerer.color] };
+  return tradeCard(
+    exchangeRow({ glyph: '👥', color: ISLANDERS_CARD.tradeAccent }, '↓', offer.get),
+    exchangeRow(offerer, '↑', offer.give),
+    decisions,
+  );
 }
 
+// A counter is drawn as a trade card of its own, from the counterer's side: the poster's color
+// square where the crowd was (the cards come from them), the counterer's square on the give
+// line. Only the poster decides — accept completes the trade with the counterer — and the
+// counterer can withdraw it.
 function playerCounterOffer(
   offer: IslandersPlayerTradeOffer,
   reaction: IslandersPlayerTradeOffer['reactions'][number],
   controller: IslandersPlayerTradeOffersController,
 ): Node | null {
   if (reaction.status !== 'countered' || !reaction.counterGive || !reaction.counterGet) return null;
-  const canAccept = controller.onComplete !== undefined;
-  const canWithdraw = isYou(reaction.player) && controller.onWithdrawCounter !== undefined;
-  const actions = Box({ height: PLAYER_TRADE_DECISION_H, gap: 1 }, [
-    ...(canAccept ? [Tooltip({
-      id: `islanders-player-trade-${offer.id}-${reaction.player.name}-counter-accept-help`,
-      content: [{ text: `Accept ${playerPossessive(reaction.player)} counteroffer`, bold: true }],
-    }, Button({
-      id: `islanders-player-trade-${offer.id}-${reaction.player.name}-counter-accept`,
-      label: ' ✓ ',
-      onClick: () => {
-        if (controller.onComplete?.(offer.id, reaction.player.name)) controller.onChange?.();
-      },
-      style: { background: PLAYER_LOOK[reaction.player.color], color: ISLANDERS_CARD.actionInk, bold: true },
-    }))] : []),
-    ...(canWithdraw ? [Tooltip({
-      id: `islanders-player-trade-${offer.id}-${reaction.player.name}-counter-withdraw-help`,
-      content: [{ text: 'Withdraw your counteroffer', bold: true }],
-    }, Button({
-      id: `islanders-player-trade-${offer.id}-${reaction.player.name}-counter-withdraw`,
-      label: ' × ',
-      onClick: () => {
-        if (controller.onWithdrawCounter?.(reaction.player.name)) controller.onChange?.();
-      },
-      style: { background: ISLANDERS_CARD.cancelBg, color: ISLANDERS_CARD.actionInk, bold: true },
-    }))] : []),
+  const counterer = reaction.player;
+  const idBase = `islanders-player-trade-${offer.id}-${counterer.name}-counter`;
+  const decisions = Box({ height: PLAYER_TRADE_DECISION_H, gap: 1 }, [
+    ...(controller.onComplete
+      ? [decisionButton(`${idBase}-accept`, '✓', PLAYER_LOOK[counterer.color], () => {
+          if (controller.onComplete?.(offer.id, counterer.name)) controller.onChange?.();
+        }, `Trade with ${counterer.name}`)]
+      : []),
+    ...(isYou(counterer) && controller.onWithdrawCounter
+      ? [decisionButton(`${idBase}-withdraw`, 'x', ISLANDERS_CARD.cancelBg, () => {
+          if (controller.onWithdrawCounter?.(counterer.name)) controller.onChange?.();
+        }, 'Withdraw your counter', ISLANDERS_CARD.cancelHover)]
+      : []),
   ]);
-  return Box({
-    height: PLAYER_TRADE_H,
-    flexDirection: 'column',
-    alignItems: 'stretch',
-    padding: [0, 1, 1, 1],
-    background: TRADE_BG,
-    overflow: 'hidden',
-  }, [
-    Box({ height: 1, gap: 1, alignItems: 'center' }, [
-      Text({ text: '↗', style: { color: PLAYER_LOOK[reaction.player.color], bold: true } }),
-      Text({ text: `${playerPossessive(reaction.player)} counteroffer`, style: { color: PLAYER_LOOK[reaction.player.color], bold: true } }),
-    ]),
-    Box({ height: PLAYER_TRADE_ROW_H, gap: 1, alignItems: 'center' }, [
-      Text({ text: 'give', style: { color: RAIL_MUTED } }),
-      playerTradeCards(reaction.counterGive),
-    ]),
-    Box({ height: PLAYER_TRADE_ROW_H, alignItems: 'end', justifyContent: 'between', gap: 2 }, [
-      Box({ gap: 1, alignItems: 'center' }, [
-        Text({ text: 'get', style: { color: RAIL_MUTED } }),
-        playerTradeCards(reaction.counterGet),
-      ]),
-      actions,
-    ]),
-  ]);
+  return tradeCard(
+    exchangeRow({ glyph: '■', color: PLAYER_LOOK[offer.offerer.color] }, '↓', reaction.counterGet),
+    exchangeRow({ glyph: '■', color: PLAYER_LOOK[counterer.color] }, '↑', reaction.counterGive),
+    decisions,
+  );
 }
 
 function playerTradeOffers(right: number, controller: IslandersPlayerTradeOffersController): Node | null {
@@ -1225,6 +1228,9 @@ export interface IslandersHandActionController {
   activeAction?: 'trade' | 'buyDev';
   onTrade(): boolean;
   onBuyDevelopmentCard(): boolean;
+  // The turn's spine, shown as a third card beside trade and buy dev: roll while the dice are
+  // due, end turn once the turn is open. Absent (the workbench, a model's turn) → no card.
+  turn?: { kind: 'roll' | 'end'; onClick(): boolean };
 }
 
 function handPanel(
@@ -1266,12 +1272,13 @@ function handPanel(
   // A card is wrapped in its own click target only in the workbench view. In the live game
   // the wrapper is skipped entirely, so the hit-test finds nothing interactive over the hand and
   // a click falls through to the board exactly as it did before the cards existed.
-  const clickable = (face: Node, onMouse: (ev: PointerHit) => boolean, enabled = true, allowLive = false): Node => {
+  const clickable = (face: Node, onMouse: (ev: PointerHit) => boolean, enabled = true, allowLive = false, fill?: Rgb): Node => {
     if ((view.source !== 'workbench' && !allowLive) || !enabled) return face;
     // The wrapper carries the handler so `card` stays presentational. The hit-test takes the
     // innermost INTERACTIVE node and the face has none, so it never competes; `Box` has no
-    // handler slot, hence attaching it to the node.
-    const hit = Box({ width: CARD_W, height }, [face]);
+    // handler slot, hence attaching it to the node. With `fill` the wrapper also paints the
+    // card's color and lightens it a touch under the pointer (see `card`'s `hoverable`).
+    const hit = Box({ width: CARD_W, height, ...(fill ? { background: fill, hover: { background: lighten(fill, 0.12) } } : {}) }, [face]);
     hit.onMouse = onMouse;
     return hit;
   };
@@ -1281,6 +1288,7 @@ function handPanel(
         // A pending purchase can add this type to a narrow hand solely to reserve its landing
         // slot. Keep that zero-count slot in the normal disabled treatment for the entire flight;
         // it becomes a purple held card only when landing credits the hand count.
+        const held = view.devHand[type] > 0 || view.developmentPlay?.type === type;
         return Tooltip({
           id: `islanders-dev-${type}`,
           content: [
@@ -1288,22 +1296,31 @@ function handPanel(
             DEV_CARD_HELP[type].effect,
           ],
           maxWidth: 46,
-        }, clickable(
-          card(
-            DEV_HAND_LOOK[type],
-            view.devHand[type],
-            height,
-            view.devHand[type] === 0 && view.developmentPlay?.type !== type,
-            view.developmentPlay?.type === type,
-          ),
-          (ev) => playDevHand(type, ev, onPlayDevelopmentCard),
-          view.devHand[type] > 0
+          // A touch lighter purple under the pointer, never the tooltip's default white pill.
+          hover: { background: lighten(held ? DEV_HAND_LOOK[type].fill : EMPTY_FILL, 0.12), color: undefined, bold: false },
+        }, (() => {
+          const playable = view.devHand[type] > 0
             && type !== 'victoryPoint'
             && view.maritimeTradeBusy !== true
             && view.developmentPlay === undefined
-            && (view.source === 'workbench' || view.playableDevelopmentCards?.includes(type as Exclude<DevCardType, 'victoryPoint'>) === true),
-          onPlayDevelopmentCard !== undefined,
-        ));
+            && (view.source === 'workbench' || view.playableDevelopmentCards?.includes(type as Exclude<DevCardType, 'victoryPoint'>) === true);
+          const live = onPlayDevelopmentCard !== undefined;
+          const hoverable = playable && (view.source === 'workbench' || live);
+          return clickable(
+            card(
+              DEV_HAND_LOOK[type],
+              view.devHand[type],
+              height,
+              view.devHand[type] === 0 && view.developmentPlay?.type !== type,
+              view.developmentPlay?.type === type,
+              hoverable,
+            ),
+            (ev) => playDevHand(type, ev, onPlayDevelopmentCard),
+            playable,
+            live,
+            hoverable ? DEV_HAND_LOOK[type].fill : undefined,
+          );
+        })());
       });
   const cards = RESOURCE_ORDER.map((resource) => clickable(
     card(RESOURCE_LOOK[resource], view.hand[resource], height, view.hand[resource] === 0),
@@ -1349,6 +1366,17 @@ function handPanel(
           hover: ISLANDERS_CARD.devActionHover,
           pressed: ISLANDERS_CARD.devActionPressed,
         }, actionController.activeAction === 'buyDev')),
+        ...(actionController.turn
+          ? [actionController.turn.kind === 'roll'
+              ? Tooltip({ id: 'islanders-live-roll', content: [{ text: 'Roll dice', bold: true }, 'Every settlement on the rolled number pays its owner.'], maxWidth: 34 },
+                  workbenchActionButton('islanders-live-roll', '🎲🎲', 'roll', true, () => { actionController.turn?.onClick(); }, {
+                    background: ISLANDERS_CARD.rollActionBg,
+                    hover: ISLANDERS_CARD.rollActionHover,
+                    pressed: ISLANDERS_CARD.rollActionPressed,
+                  }))
+              : Tooltip({ id: 'islanders-live-end', content: [{ text: 'End turn', bold: true }, 'Pass the dice to the next player.'], maxWidth: 34 },
+                  workbenchActionButton('islanders-live-end', '🏁🏁', 'end', true, () => { actionController.turn?.onClick(); }))]
+          : []),
       ];
   const tray = Box({ height: layout.handHeight, gap: HAND_SPLIT_GAP, padding: [HAND_PAD_T, HAND_PAD_X, HAND_PAD_B, HAND_PAD_X], background: uiChromeBg(0.9) }, [
     Box({ gap: 1 }, cards),

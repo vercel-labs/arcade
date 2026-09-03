@@ -26,6 +26,7 @@ import {
   type IslandersTradeEditorController,
   islandersCardsLayout,
   islandersRailVisible,
+  ISLANDERS_RAIL_INNER_W,
   mountIslandersCardsHud,
   toggleIslandersSidebar,
 } from './card-hud.ts';
@@ -44,7 +45,12 @@ const STATUS_FG = ISLANDERS_STATUS.foreground;
 const STATUS_MUTED = ISLANDERS_STATUS.muted;
 const PLAYER_LEGEND_W = 30;
 
+// The Screen the HUD is mounted on, kept so the robber-victim picker can move keyboard focus
+// between its rows (a node's onKey has no other route to focus).
+let screen: Screen | null = null;
+
 export function mountIslandersGameHud(ui: Screen): void {
+  screen = ui;
   mountIslandersSetup(ui);
   mountIslandersCardsHud(ui);
   mountIslandersChatComposer(ui);
@@ -66,11 +72,15 @@ function devTotal(state: IslandersState, seat: number): number {
 }
 
 function playerView(state: IslandersState, driver: IslandersDriver, seat: number, viewer?: number): IslandersCardsPlayerView {
+  // Hidden victory points are yours to see for your own seat, and everyone's when no human is
+  // playing (a spectated table has nothing to keep from the viewer).
+  const knowsHidden = driver.humanSeat() < 0 || seat === driver.humanSeat();
   return {
     seat,
     name: driver.labelOf(seat),
     color: driver.colorOf(seat),
     publicVp: state.victoryPoints(seat, false),
+    ...(knowsHidden ? { actualVp: state.victoryPoints(seat, true) } : {}),
     resourceCards: RESOURCES.reduce((sum, r) => sum + (state.handOf(seat)[resourceIndex(r)] ?? 0), 0),
     developmentCards: devTotal(state, seat),
     knights: state.playedKnightCount(seat),
@@ -177,7 +187,7 @@ function previewActionText(driver: IslandersDriver, preview: IslandersActionPrev
   }
   return action.type === 'initialSettlement' || action.type === 'buildSettlement' ? ongoing('placing a settlement')
     : action.type === 'initialRoad' || action.type === 'buildRoad' ? ongoing('placing a road')
-      : action.type === 'buildCity' ? ongoing('upgrading a city')
+      : action.type === 'buildCity' ? ongoing('upgrading to a city')
         : action.type === 'buyDevCard' ? ongoing('buying a development card')
           : action.type === 'playKnight' ? ongoing('playing a knight')
             : action.type === 'playRoadBuilding' ? ongoing('playing road building')
@@ -197,11 +207,11 @@ function pendingInstruction(state: IslandersState, human: boolean): string {
   const prompt = state.currentPrompt();
   if (prompt.kind === 'initialSettlement') {
     const round = state.initialSettlementCount(prompt.player) === 0 ? 'first' : 'second';
-    return human ? `place your ${round} settlement` : 'choosing a settlement';
+    return human ? `place your ${round} settlement` : 'choosing where to place a settlement';
   }
-  if (prompt.kind === 'initialRoad') return human ? 'place a road beside it' : 'choosing a road';
-  if (prompt.kind === 'roll') return human ? 'roll or play a development card' : 'preparing to roll';
-  if (prompt.kind === 'playTurn') return human ? 'build, trade, or end turn' : 'considering the next move';
+  if (prompt.kind === 'initialRoad') return human ? 'place a road beside it' : 'choosing where to build a road';
+  if (prompt.kind === 'roll') return human ? 'roll or play a development card' : 'starting their turn';
+  if (prompt.kind === 'playTurn') return human ? 'build, trade, or end turn' : 'considering their next move';
   if (prompt.kind === 'discard') {
     const count = state.legalActionFamilies().find((family) => family.type === 'discard')?.count ?? 0;
     return human ? `discard ${count} cards` : `discarding ${count} cards`;
@@ -230,7 +240,7 @@ export function islandersStatusLine(
     const winner = driver.winner();
     return {
       actor: driver.labelOf(winner),
-      narration: 'wins · 10 victory points',
+      narration: `${winner === driver.humanSeat() ? 'win' : 'wins'} · 10 victory points`,
       color: PLAYER_LOOK[driver.colorOf(winner)],
     };
   }
@@ -317,6 +327,8 @@ export interface IslandersGameHudDeps {
   resourceFlights?: readonly FlyingResource<Resource | DevCardType>[];
   resourceAdjustments?: IslandersResourceViewAdjustments;
   onOpenMenu: () => void;
+  // Opens the reads modal (each model's private plan and notes). Absent → no reads pill.
+  onOpenNotes?: () => void;
   onStart: () => void;
   healthStatus?: { lines: string[]; failed: boolean };
   notice?: string;
@@ -440,6 +452,46 @@ function humanMenuPanel(scene: IslandersGameScene, state: IslandersState): Node[
   ];
 }
 
+// Whether the open robber-victim picker has been handed keyboard focus, so the first row is
+// focused once when the picker appears and not on every rebuild. Cleared whenever the root is
+// built without a picker, so the next prompt (or the next game) focuses again.
+let victimPickerFocused = false;
+
+// The robber's victim picker: a column styled like the players legend (a color square and the
+// seat's name in its color), one row per seat that can be robbed. ↑/↓ move between rows, Enter
+// steals; the pointer works as usual. The first row takes focus when the picker opens.
+function victimPicker(deps: IslandersGameHudDeps, victims: readonly (number | null)[]): Node[] {
+  const { driver, scene } = deps;
+  const ids = victims.map((victim) => `islanders-live-victim-${victim ?? 'none'}`);
+  const rows = victims.map((victim, i) => {
+    const color = victim === null ? STATUS_MUTED : PLAYER_LOOK[driver.colorOf(victim)];
+    const button = Button({
+      id: ids[i],
+      label: `■ ${victim === null ? 'nobody' : driver.labelOf(victim)}`,
+      onClick: () => { scene.chooseRobberVictim(victim); },
+      onKey: (ev) => {
+        if (ev.name !== 'up' && ev.name !== 'down') return false;
+        const next = ids[(i + (ev.name === 'down' ? 1 : -1) + ids.length) % ids.length];
+        screen?.setFocus(next);
+        return true;
+      },
+      style: {
+        padding: [0, 1],
+        color,
+        hover: { background: 'surfaceControl', bold: true },
+        focus: { background: 'surfaceControl', bold: true },
+        pressed: { background: 'controlPressedBg', color: 'controlPressedFg', bold: true },
+      },
+    });
+    return button;
+  });
+  if (!victimPickerFocused && ids.length) {
+    victimPickerFocused = true;
+    screen?.setFocus(ids[0]);
+  }
+  return [Text({ text: 'steal from', style: { color: STATUS_MUTED, bold: true } }), ...rows];
+}
+
 function humanActionPanel(deps: IslandersGameHudDeps, region: LayoutBox): Node | null {
   const { driver, scene } = deps;
   const state = driver.state();
@@ -449,13 +501,12 @@ function humanActionPanel(deps: IslandersGameHudDeps, region: LayoutBox): Node |
   const layout = islandersCardsLayout(region);
   const menu = humanMenuPanel(scene, state);
   const children: Node[] = menu ?? [];
+  let column = false;
   if (!menu) {
     const victimSeats = scene.robberVictimSeats();
     if (victimSeats.length) {
-      children.push(Text({ text: 'steal from', style: { color: STATUS_FG, bold: true } }));
-      for (const victim of victimSeats) {
-        children.push(liveActionButton(`victim-${victim ?? 'none'}`, victim === null ? 'nobody' : driver.labelOf(victim), () => scene.chooseRobberVictim(victim)));
-      }
+      children.push(...victimPicker(deps, victimSeats));
+      column = true;
     } else if (scene.boardChoiceType()) {
       const choice = scene.boardChoiceType();
       children.push(Text({
@@ -467,7 +518,6 @@ function humanActionPanel(deps: IslandersGameHudDeps, region: LayoutBox): Node |
       const prompt = state.currentPrompt();
       const types = actionTypes(state.legalActions());
       const activeTrade = state.activeTrade();
-      if (prompt.kind === 'roll') children.push(liveActionButton('roll', '⚄ roll', () => scene.submitHumanAction({ type: 'roll' })));
       if (prompt.kind === 'moveRobber') children.push(Text({ text: 'choose a robber tile', style: { color: STATUS_FG, bold: true } }));
       if (prompt.kind === 'respondTrade') {
         if (activeTrade) children.push(Text({
@@ -504,12 +554,7 @@ function humanActionPanel(deps: IslandersGameHudDeps, region: LayoutBox): Node |
         if (types.has('buildRoad')) children.push(liveActionButton('road', 'road', () => scene.beginBoardChoice('buildRoad')));
         if (types.has('buildSettlement')) children.push(liveActionButton('settlement', 'settlement', () => scene.beginBoardChoice('buildSettlement')));
         if (types.has('buildCity')) children.push(liveActionButton('city', 'city', () => scene.beginBoardChoice('buildCity')));
-        children.push(liveActionButton('end', 'end turn', () => scene.submitHumanAction({ type: 'endTurn' })));
       }
-      if (types.has('playKnight')) children.push(liveActionButton('knight', '♞ knight', () => scene.beginBoardChoice('playKnight')));
-      if (types.has('playRoadBuilding')) children.push(liveActionButton('road-building', '🛣 road building', () => scene.beginBoardChoice('playRoadBuilding')));
-      if (types.has('playYearOfPlenty')) children.push(liveActionButton('plenty', '🌾 year of plenty', () => scene.beginHumanMenu('yearOfPlenty')));
-      if (types.has('playMonopoly')) children.push(liveActionButton('monopoly', 'monopoly', () => scene.beginHumanMenu('monopoly')));
     }
   }
   if (!children.length) return null;
@@ -519,8 +564,7 @@ function humanActionPanel(deps: IslandersGameHudDeps, region: LayoutBox): Node |
     bottom: layout.handHeight + 2,
     maxWidth: Math.max(1, region.w - (islandersRailVisible(region.w, region.h) ? ISLANDERS_RAIL_W : 0) - 4),
     minHeight: 1,
-    gap: 1,
-    padding: [0, 1],
+    ...(column ? { flexDirection: 'column', alignItems: 'stretch', gap: 0, padding: [0, 1] } : { gap: 1, padding: [0, 1] }),
     background: UI_CHROME_BG,
   }, children);
 }
@@ -570,6 +614,18 @@ function liveHandActionController(deps: IslandersGameHudDeps, state: IslandersSt
     state.legalActions().some((action) => action.type === 'maritimeTrade')
       || state.parameterizedActionExamples().some((action) => action.type === 'offerTrade')
   );
+  // The turn card hides while a menu, a board choice, or a robber victim pick has the turn's
+  // attention, like the rest of the action panel.
+  const turnOpen = scene.awaitingHuman()
+    && state.currentPlayer() === humanSeat
+    && scene.humanMenuKind() === null
+    && scene.boardChoiceType() === null
+    && scene.robberVictimSeats().length === 0;
+  const prompt = state.currentPrompt().kind;
+  const turn = !turnOpen ? undefined
+    : prompt === 'roll' ? { kind: 'roll' as const, onClick: () => scene.submitHumanAction({ type: 'roll' }) }
+      : prompt === 'playTurn' ? { kind: 'end' as const, onClick: () => scene.submitHumanAction({ type: 'endTurn' }) }
+        : undefined;
   return {
     canTrade,
     canBuyDevelopmentCard: activePlayTurn && legalTypes.has('buyDevCard'),
@@ -577,6 +633,7 @@ function liveHandActionController(deps: IslandersGameHudDeps, state: IslandersSt
     onBuyDevelopmentCard: () => activePlayTurn
       && legalTypes.has('buyDevCard')
       && scene.submitHumanAction({ type: 'buyDevCard' }),
+    ...(turn ? { turn } : {}),
   };
 }
 
@@ -721,6 +778,7 @@ export function buildIslandersGameRoot(region: LayoutBox, deps: IslandersGameHud
   const { driver } = deps;
   const state = driver.state();
   const playing = state !== null;
+  if (!playing || deps.scene.robberVictimSeats().length === 0) victimPickerFocused = false;
   const railVisible = playing && islandersRailVisible(region.w, region.h);
   const rail = railVisible ? ISLANDERS_RAIL_W : 0;
   const canShowRail = islandersCardsLayout(region).showPublicRail;
@@ -728,6 +786,9 @@ export function buildIslandersGameRoot(region: LayoutBox, deps: IslandersGameHud
   const chrome: Node[] = [
     hudTopRight([
       Button({ id: 'islanders-game-menu', label: MENU_BUTTON_LABEL, onClick: deps.onOpenMenu, style: UI_CHROME_PILL }),
+      ...(playing && deps.onOpenNotes && driver.noteObservers().length
+        ? [Button({ id: 'islanders-notes', label: 'reads', onClick: deps.onOpenNotes, style: UI_CHROME_PILL })]
+        : []),
       ...(playing && canShowRail && !railVisible
         ? [Button({ id: 'islanders-game-sidebar-open', label: 'sidebar', onClick: toggleIslandersSidebar, style: UI_CHROME_PILL })]
         : []),
@@ -757,7 +818,7 @@ export function buildIslandersGameRoot(region: LayoutBox, deps: IslandersGameHud
             .map((seat) => ({ seat, label: driver.labelOf(seat) })),
           onSubmit: (text, targetSeats) => driver.sendHumanChat(text, targetSeats),
         });
-        return buildIslandersChatComposer();
+        return buildIslandersChatComposer(ISLANDERS_RAIL_INNER_W);
       })()
     : undefined;
   return Box({ width: region.w, height: region.h }, [

@@ -9,6 +9,9 @@ export interface IslandersCardsPlayerView {
   name: string;
   color: PlayerColor;
   publicVp: number;
+  // The seat's real score including hidden victory-point cards, when the viewer may know it:
+  // your own seat, or every seat while spectating. Undefined for an opponent's hidden hand.
+  actualVp?: number;
   resourceCards: number;
   developmentCards: number;
   knights: number;

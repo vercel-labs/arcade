@@ -78,11 +78,17 @@ function completeSuggestion(target = suggestions[suggestionIndex]): boolean {
   return true;
 }
 
+// One cell of the field's own fill on each side, so typing never touches its edges and the
+// caret opens on the placeholder's first letter.
+const COMPOSER_PADDING = 1;
+let composerWidth = 36;
+
 const input = new Input({
   id: 'islanders-chat-input',
-  width: 36,
+  width: composerWidth,
+  padding: COMPOSER_PADDING,
   maxRows: 4,
-  placeholder: ' say something… use @ to address',
+  placeholder: 'say something… use @ to address',
   onChange: refreshSuggestions,
   onKeyDown: (event) => {
     if (!suggestions.length) return false;
@@ -125,22 +131,27 @@ export function configureIslandersChatComposer(next: {
   refreshSuggestions();
 }
 
-export function buildIslandersChatComposer(): Node {
+// `width` is the sidebar's body width, so the field runs edge to edge inside the panel's margins.
+export function buildIslandersChatComposer(width: number): Node {
+  if (width !== composerWidth) {
+    composerWidth = width;
+    input.setWidth(width);
+  }
   const rows = input.visibleRows();
-  return Box({ position: 'relative', width: 36, height: rows, overflow: 'visible' }, [
+  return Box({ position: 'relative', width, height: rows, overflow: 'visible' }, [
     Slot('islanders-chat-input'),
     ...(suggestions.length
       ? [Box({
           position: 'absolute',
           left: 0,
           bottom: rows,
-          width: 36,
+          width,
           flexDirection: 'column',
         }, suggestions.slice(0, 4).map((target, index) => Button({
           id: `islanders-chat-mention-${target.seat}`,
           label: `${index === suggestionIndex ? '›' : ' '} @${target.label}`,
           onClick: () => { completeSuggestion(target); },
-          style: { ...UI_CHROME_PILL, width: 36 },
+          style: { ...UI_CHROME_PILL, width },
         })))]
       : []),
   ]);
