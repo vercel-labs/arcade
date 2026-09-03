@@ -58,6 +58,7 @@ import {
   setIslandersWorkbenchTradeSelection,
   toggleIslandersSidebar,
 } from '../arcade/games/islanders/card-hud.ts';
+import { islandersChatComposerRows } from '../arcade/games/islanders/chat-composer.ts';
 import { type FlyingResource, ResourceFlights } from '../arcade/games/islanders/scene/resource-flight.ts';
 import { IslandersGameScene } from '../arcade/games/islanders/game-scene.ts';
 import { buildIslandersGameRoot, mountIslandersGameHud } from '../arcade/games/islanders/game-hud.ts';
@@ -780,7 +781,7 @@ function islandersGameSnapshot(): void {
     const state = driver.start(specs, { autoRun: false, rng: mulberry32(seed) });
     const pov = Number(args.find((arg) => arg.startsWith('pov='))?.slice(4) ?? 0);
     if (spectate && pov > 0 && pov < seats) gameScene.setViewedSeat(pov);
-    gameScene.setResourceFlightLayout(region, seats, islandersRailVisible(cols, rows));
+    gameScene.setResourceFlightLayout(region, seats, islandersRailVisible(cols, rows), !spectate && islandersRailVisible(cols, rows) ? islandersChatComposerRows() : 0);
     if (aiTrade || postedTrade) {
       while (!state.initialPlacementComplete()) void gameScene.playMove(state.legalActions()[0]);
       void gameScene.playMove({ type: 'roll' });

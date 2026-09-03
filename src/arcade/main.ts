@@ -30,6 +30,7 @@ import { IslandersController } from './games/islanders/islanders-controller.ts';
 import { ISLANDERS_RAIL_W, islandersRailVisible } from './games/islanders/card-hud.ts';
 import { IslandersGameScene } from './games/islanders/game-scene.ts';
 import { buildIslandersGameRoot, mountIslandersGameHud } from './games/islanders/game-hud.ts';
+import { islandersChatComposerRows } from './games/islanders/chat-composer.ts';
 import { IslandersDriver } from './match/islanders-driver.ts';
 import { RESOURCES } from '../rules/islanders/types.ts';
 import type { CommunicationMode } from '../harness/communication/types.ts';
@@ -2449,6 +2450,7 @@ function syncBar(): void {
         region,
         islandersDriver.seatCount(),
         islandersRailShown(),
+        islandersDriver.humanSeat() >= 0 && islandersRailShown() ? islandersChatComposerRows() : 0,
       );
     }
     ui.setRoot(

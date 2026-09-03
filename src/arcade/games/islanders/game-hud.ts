@@ -15,6 +15,7 @@ import { MENU_BUTTON_LABEL, UI_CHROME_BG, UI_CHROME_PILL } from '../../theme.ts'
 import { buildIslandersSetupPanel, islandersSetupReady, mountIslandersSetup } from '../../match/islanders-setup-panel.ts';
 import type { IslandersDriver } from '../../match/islanders-driver.ts';
 import {
+  ISLANDERS_RAIL_TITLE,
   ISLANDERS_RAIL_W,
   buildIslandersCardsOverlay,
   type IslandersActionHistoryView,
@@ -790,7 +791,7 @@ export function buildIslandersGameRoot(region: LayoutBox, deps: IslandersGameHud
         ? [Button({ id: 'islanders-notes', label: 'reads', onClick: deps.onOpenNotes, style: UI_CHROME_PILL })]
         : []),
       ...(playing && canShowRail && !railVisible
-        ? [Button({ id: 'islanders-game-sidebar-open', label: 'sidebar', onClick: toggleIslandersSidebar, style: UI_CHROME_PILL })]
+        ? [Button({ id: 'islanders-game-sidebar-open', label: ISLANDERS_RAIL_TITLE, onClick: toggleIslandersSidebar, style: UI_CHROME_PILL })]
         : []),
     ], { railWidth: rail }),
   ];

@@ -131,6 +131,11 @@ export function configureIslandersChatComposer(next: {
   refreshSuggestions();
 }
 
+// How many rows the field currently takes, for the rail layout that reserves room for it.
+export function islandersChatComposerRows(): number {
+  return input.visibleRows();
+}
+
 // `width` is the sidebar's body width, so the field runs edge to edge inside the panel's margins.
 export function buildIslandersChatComposer(width: number): Node {
   if (width !== composerWidth) {

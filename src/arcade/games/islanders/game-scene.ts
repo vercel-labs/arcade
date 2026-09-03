@@ -174,7 +174,7 @@ export class IslandersGameScene {
   private developmentDeckPendingDeparture = 0;
   private pendingDevelopmentCards: DevCardType[] = [];
   private pendingDevelopmentSpawns: DevCardType[] = [];
-  private resourceFlightLayout: { region: LayoutBox; playerCount: number; railVisible: boolean } | null = null;
+  private resourceFlightLayout: { region: LayoutBox; playerCount: number; railVisible: boolean; composerRows: number } | null = null;
   // The in-flight human turn: resolved by a board click, rejected when the match is aborted.
   private pending: {
     resolve: (action: IslandersAction) => void;
@@ -826,8 +826,8 @@ export class IslandersGameScene {
   // The flight starts at the bank card while the sidebar is visible, otherwise one cell beyond
   // the right edge at the same height. Layout can arrive after a very fast model decision; gains
   // are retained until this is called rather than skipping their animation.
-  setResourceFlightLayout(region: LayoutBox, playerCount: number, railVisible: boolean): void {
-    this.resourceFlightLayout = { region: { ...region }, playerCount, railVisible };
+  setResourceFlightLayout(region: LayoutBox, playerCount: number, railVisible: boolean, composerRows = 0): void {
+    this.resourceFlightLayout = { region: { ...region }, playerCount, railVisible, composerRows };
     this.flushPendingResourceGains();
     this.flushPendingResourceLosses();
     this.flushPendingDevelopmentPurchases();
@@ -880,6 +880,7 @@ export class IslandersGameScene {
         gain.resource,
         layout.playerCount,
         gain.fromBank && layout.railVisible,
+        layout.composerRows,
       );
       const to = islandersHandLandingCell(layout.region, gain.resource);
       const flights = gain.fromBank ? this.bankResourceFlights : this.externalResourceFlights;
@@ -912,7 +913,7 @@ export class IslandersGameScene {
       const from = loss.origin === 'discard'
         ? islandersDiscardDepartureCell(layout.region, loss.resource)
         : islandersHandLandingCell(layout.region, loss.resource);
-      const to = islandersBankDepartureCell(layout.region, loss.resource, layout.playerCount, loss.toBank && layout.railVisible);
+      const to = islandersBankDepartureCell(layout.region, loss.resource, layout.playerCount, loss.toBank && layout.railVisible, layout.composerRows);
       const flights = loss.toBank ? this.bankBoundResourceFlights : this.externalBoundResourceFlights;
       // Outgoing cards rise toward the bank rather than sinking behind the hand. Keep the full
       // chip visible for that path; target clipping is only for cards landing in the hand.
@@ -940,7 +941,7 @@ export class IslandersGameScene {
       this.developmentFlights.spawn(
         type,
         1,
-        islandersDevDeckDepartureCell(layout.region, layout.playerCount, layout.railVisible),
+        islandersDevDeckDepartureCell(layout.region, layout.playerCount, layout.railVisible, layout.composerRows),
         islandersDevHandLandingCellForTypes(layout.region, type, visibleTypes),
         order++,
       );

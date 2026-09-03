@@ -144,10 +144,10 @@ export const TUTORIAL_CHAPTERS: readonly TutorialChapter[] = [
       { id: 'setup-done', label: 'finish setup: a second settlement and road', hint: 'Placement snakes: the last player to place goes first on the second round.', signal: 'islanders.setupDone' },
       { id: 'roll', label: 'roll the dice', hint: 'Every settlement on a rolled number pays its owner. A 7 moves the robber instead.', signal: 'islanders.roll', target: ['islanders-live-roll'] },
       { id: 'build', label: 'build something', hint: 'Your hand has been stocked for this. A road costs brick + lumber; a settlement adds grain + wool; a city upgrades a settlement for three ore + two grain. Pick a build, then hover and click a legal spot.', signal: 'islanders.build', target: ['islanders-live-road', 'islanders-live-settlement'] },
-      { id: 'trade', label: 'trade with the bank', hint: 'Open your hand (the cards button, top right) and choose trade: four of a kind for any one card, or better at a port. The hand sidebar needs a wide window. If the button isn\'t there, widen the terminal or skip ahead.', signal: 'islanders.trade', target: ['islanders-game-sidebar-open', 'islanders-trade-open'] },
+      { id: 'trade', label: 'trade with the bank', hint: 'Click trade in your hand: four of a kind for any one card, or better at a port.', signal: 'islanders.trade', target: ['islanders-trade-open'] },
       { id: 'end', label: 'end your turn', hint: 'The bots take their turns, then the dice come back to you.', signal: 'islanders.endTurn', target: ['islanders-live-end'] },
     ],
-    outro: 'The sidebar also holds the log and table talk: type to address everyone, or @ a seat.',
+    outro: 'The game log panel (top right) also holds the bank, the table, and table talk: type to address everyone, or @ a seat.',
   },
   {
     id: 'done',

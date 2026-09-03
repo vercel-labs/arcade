@@ -295,17 +295,51 @@ const HISTORY_ROW_W = CONTENT_W - 2;
 const HISTORY_SHARE = 0.5;
 const HISTORY_MIN_H = 4;
 
-// Every row of the sidebar that is not the history viewport: the panel's insets and header, the
-// two section labels, the bank row, the players table, and the gap under each of those.
-function sidebarFixedH(playerCount: number): number {
-  const rows = 1 /* history label */ + 1 /* bank label */ + CARD_H /* bank row */ + 1 /* players header */ + playerCount;
-  const gaps = 4 + playerCount; // one under every body child except the last
-  return SIDEBAR_PAD_V * 2 + SIDEBAR_HEADER_H + rows + gaps;
+// The bank and the players table are the rail's reason to exist, so the rail never hides for
+// lack of height. As rows run out the sections give ground in order: the log shrinks to its
+// minimum, the players table drops the air between its rows, the bank folds from a row of cards
+// to one line of counts, and last the log gives up its remaining rows for a one-line hint.
+export interface IslandersRailPlan {
+  // Rows of the log block (viewport plus composer); 0 means the hint stands in for it.
+  logH: number;
+  compactBank: boolean;
+  playerRowGap: 0 | 1;
+  // Offset from the rail's top row to the first row of the bank (cards or line).
+  bankTop: number;
 }
 
-function islandersHistoryHeight(region: LayoutBox, playerCount: number): number {
-  const spare = region.h - sidebarFixedH(playerCount);
-  return Math.max(HISTORY_MIN_H, Math.min(Math.floor(region.h * HISTORY_SHARE), spare));
+// The chat composer rides inside the log block, so the block's minimum grows with it:
+// `composerRows` is the Input's current height (0 with no human seated), which the HUD build reads
+// off the node and the flight geometry is handed by its caller, so both see the same rail.
+// Every row of the rail that is not the log block: the panel's insets and header, the bank
+// (label + cards, or one line), the players table, and the gap under each body child but the last.
+function railFixedH(playerCount: number, compactBank: boolean, playerRowGap: 0 | 1): number {
+  const bank = compactBank ? 1 : 1 /* label */ + 1 /* gap */ + CARD_H;
+  const players = 1 /* header */ + playerCount + playerCount * playerRowGap;
+  const gaps = 2; // under the log block and under the bank
+  return SIDEBAR_PAD_V * 2 + SIDEBAR_HEADER_H + bank + gaps + players;
+}
+
+export function islandersRailPlan(region: LayoutBox, playerCount: number, composerRows: number): IslandersRailPlan {
+  const composer = composerRows ? composerRows + 1 : 0;
+  const logMin = HISTORY_MIN_H + composer;
+  const tiers: [boolean, 0 | 1][] = [[false, 1], [false, 0], [true, 0]];
+  for (const [compactBank, playerRowGap] of tiers) {
+    const spare = region.h - railFixedH(playerCount, compactBank, playerRowGap);
+    if (spare >= logMin) {
+      const logH = compactBank || playerRowGap === 0 ? spare : Math.max(logMin, Math.min(Math.floor(region.h * HISTORY_SHARE), spare));
+      return { logH, compactBank, playerRowGap, bankTop: railBankTop(logH, compactBank) };
+    }
+  }
+  // Even the tightest layout leaves the log short: keep whatever rows remain (at least one line
+  // beside the composer), or swap in the hint when not even that fits.
+  const spare = region.h - railFixedH(playerCount, true, 0);
+  const logH = spare >= 1 + composer ? spare : 0;
+  return { logH, compactBank: true, playerRowGap: 0, bankTop: railBankTop(Math.max(logH, 1), true) };
+}
+
+function railBankTop(logH: number, compactBank: boolean): number {
+  return SIDEBAR_PAD_V + SIDEBAR_HEADER_H + logH + 1 /* gap */ + (compactBank ? 0 : 1 /* label */ + 1 /* gap */);
 }
 
 // Player colors are font colors here, never fills — a seat's color reads as its name's ink the
@@ -356,7 +390,9 @@ export function islandersCardsLayout(region: LayoutBox): IslandersCardsLayout {
   const compact = region.w < 96 || region.h < 34;
   return {
     compact,
-    showPublicRail: region.w >= 112 && region.h >= 40,
+    // Width alone decides: the rail is 51 columns and the board needs the rest. Height only
+    // changes how the rail lays itself out (see islandersRailPlan).
+    showPublicRail: region.w >= 112,
     railWidth: RAIL_W,
     // No title: the cards are self-evident. Just the row of faces, a row of air above it, and
     // the panel's bottom pad.
@@ -450,6 +486,25 @@ function bankRow(view: IslandersCardsView): Node {
   ]);
 }
 
+// The bank folded to one line when the terminal is short: the section label, then each pile as
+// its glyph and count. Every pile occupies BANK_LINE_PILE_W cells so the flight geometry can find
+// a pile by index the same way it finds a card.
+const BANK_LINE_LABEL = 'bank';
+const BANK_LINE_PILE_W = 7;
+function bankLine(view: IslandersCardsView): Node {
+  const piles = [
+    ...RESOURCE_ORDER.map((resource) => ({ look: RESOURCE_LOOK[resource], count: view.bank[resource] })),
+    { look: DEV_LOOK, count: view.developmentDeck },
+  ];
+  return Box({ gap: 0 }, [
+    sectionTitle(BANK_LINE_LABEL),
+    ...piles.map(({ look, count }) => Box({ width: BANK_LINE_PILE_W, justifyContent: 'end' }, [
+      Text({ text: `${look.emoji} ` }),
+      Text({ text: `${count}`, style: { color: RAIL_TEXT, bold: true } }),
+    ])),
+  ]);
+}
+
 // ── Players table ───────────────────────────────────────────────────────────────────────────
 // Model slugs are long enough (claude-haiku-4.5 is 16 cells) that a per-row "2 vp  cards: 3" label
 // run no longer fits beside them. The labels move to a header instead and the stats become
@@ -518,8 +573,8 @@ function playerRow(player: IslandersCardsPlayerView): Node {
   ]);
 }
 
-function playersTable(players: IslandersCardsPlayerView[]): Node {
-  return Table({ columns: PLAYER_COLUMNS, width: RAIL_INNER, gap: STAT_GAP, rowGap: 1 }, [
+function playersTable(players: IslandersCardsPlayerView[], rowGap: 0 | 1): Node {
+  return Table({ columns: PLAYER_COLUMNS, width: RAIL_INNER, gap: STAT_GAP, rowGap }, [
     playersHeader(),
     ...players.map(playerRow),
   ]);
@@ -534,31 +589,36 @@ export function islandersSidebarPlayers(view: IslandersCardsView): IslandersCard
 // One continuous dark panel owning the full right strip — the same width the scene viewport is
 // inset by, so the rail sits beside the board rather than over it. Its ✕ collapses it back to the
 // reopen pill, mirroring the poker chat rail.
-function sidebar(view: IslandersCardsView, onClose: () => void, historyH: number, logComposer?: Node): Node {
+// The panel is titled for what sits directly under its header, the log; the bank and the players
+// table follow as labelled sections, so no row is spent on a second title.
+export const ISLANDERS_RAIL_TITLE = 'game log';
+const LOG_HINT = 'taller terminal shows the log';
+
+function sidebar(view: IslandersCardsView, onClose: () => void, plan: IslandersRailPlan, logComposer?: Node): Node {
   const players = islandersSidebarPlayers(view);
   // Only the ScrollBox reaches the panel edge; the rest is inset so it clears the scrollbar column.
   const inset = (child: Node): Node => Box({ width: { pct: 100 }, padding: [0, BODY_PAD_R, 0, 0] }, [child]);
   const composerH = typeof logComposer?.style.height === 'number' ? logComposer.style.height : 0;
-  const logViewportH = Math.max(1, historyH - composerH - (logComposer ? 1 : 0));
+  const logViewportH = Math.max(1, plan.logH - composerH - (logComposer ? 1 : 0));
   islandersHistoryScroll.setHeight(logViewportH);
-  const log = Box({
-    flexDirection: 'column',
-    gap: logComposer ? 1 : 0,
-    height: historyH,
-    overflow: 'visible',
-  }, [
-    Slot('islanders-history'),
-    ...(logComposer ? [inset(logComposer)] : []),
-  ]);
+  const log = plan.logH === 0
+    ? inset(Text({ text: LOG_HINT, style: { color: RAIL_MUTED } }))
+    : Box({
+        flexDirection: 'column',
+        gap: logComposer ? 1 : 0,
+        height: plan.logH,
+        overflow: 'visible',
+      }, [
+        Slot('islanders-history'),
+        ...(logComposer ? [inset(logComposer)] : []),
+      ]);
   const body = Box({ flexDirection: 'column', gap: 1, overflow: 'hidden' }, [
-    inset(sectionTitle('game log')),
     log,
-    inset(sectionTitle('bank')),
-    inset(bankRow(view)),
-    inset(playersTable(players)),
+    ...(plan.compactBank ? [inset(bankLine(view))] : [inset(sectionTitle('bank')), inset(bankRow(view))]),
+    inset(playersTable(players, plan.playerRowGap)),
   ]);
   return Box({ position: 'absolute', top: 0, right: 0, bottom: 0, width: RAIL_W, overflow: 'hidden' }, [
-    Sidebar({ width: RAIL_W, height: { pct: 100 }, title: 'sidebar', closeId: 'islanders-sidebar-close', onClose, background: uiChromeBg(0.9), titleColor: ARCADE_CHROME_TEXT.title }, [body]),
+    Sidebar({ width: RAIL_W, height: { pct: 100 }, title: ISLANDERS_RAIL_TITLE, closeId: 'islanders-sidebar-close', onClose, background: uiChromeBg(0.9), titleColor: ARCADE_CHROME_TEXT.title }, [body]),
   ]);
 }
 
@@ -1449,6 +1509,7 @@ function islandersBankPileDepartureCell(
   glyphWidth: number,
   playerCount: number,
   railVisible: boolean,
+  composerRows: number,
 ): { col: number; row: number } {
   if (!railVisible) {
     const flightChipWidth = glyphWidth + 2;
@@ -1458,14 +1519,16 @@ function islandersBankPileDepartureCell(
     };
   }
   const railLeft = region.x + region.w - RAIL_W;
+  const plan = islandersRailPlan(region, playerCount, composerRows);
+  if (plan.compactBank) {
+    // The glyph sits two cells before the right edge of its pile slot on the bank line.
+    const pileRight = railLeft + SIDEBAR_PAD_L + BANK_LINE_LABEL.length + (cardIndex + 1) * BANK_LINE_PILE_W;
+    return { col: pileRight - 3, row: region.y + plan.bankTop };
+  }
   const cardLeft = railLeft + SIDEBAR_PAD_L + cardIndex * (CARD_W + 1);
-  const bankCardTop = region.y + SIDEBAR_PAD_V + SIDEBAR_HEADER_H
-    + 1 + 1 // game-log label and its following gap
-    + islandersHistoryHeight(region, playerCount)
-    + 1 + 1 + 1; // gap, bank label, gap
   return {
     col: cardLeft + Math.floor(CARD_W / 2),
-    row: bankCardTop + Math.floor((CARD_H - 2) / 2),
+    row: region.y + plan.bankTop + Math.floor((CARD_H - 2) / 2),
   };
 }
 
@@ -1474,6 +1537,7 @@ export function islandersBankDepartureCell(
   resource: Resource,
   playerCount: number,
   railVisible: boolean,
+  composerRows = 0,
 ): { col: number; row: number } {
   return islandersBankPileDepartureCell(
     region,
@@ -1481,6 +1545,7 @@ export function islandersBankDepartureCell(
     stringWidth(RESOURCE_LOOK[resource].emoji),
     playerCount,
     railVisible,
+    composerRows,
   );
 }
 
@@ -1488,6 +1553,7 @@ export function islandersDevDeckDepartureCell(
   region: LayoutBox,
   playerCount: number,
   railVisible: boolean,
+  composerRows = 0,
 ): { col: number; row: number } {
   return islandersBankPileDepartureCell(
     region,
@@ -1495,6 +1561,7 @@ export function islandersDevDeckDepartureCell(
     stringWidth(DEV_CARD_ICON),
     playerCount,
     railVisible,
+    composerRows,
   );
 }
 
@@ -1543,11 +1610,11 @@ export function buildIslandersCardsOverlay(
 ): Node {
   const layout = islandersCardsLayout(region);
   const showSidebar = sidebarOpen && layout.showPublicRail;
-  if (showSidebar) {
+  const composerH = typeof logComposer?.style.height === 'number' ? logComposer.style.height : 0;
+  const plan = islandersRailPlan(region, view.opponents.length + 1, showSidebar ? composerH : 0);
+  if (showSidebar && plan.logH > 0) {
     // Follow-to-bottom: stay pinned to the newest entry unless the reader has scrolled up.
-    const historyH = islandersHistoryHeight(region, view.opponents.length + 1);
-    const composerH = typeof logComposer?.style.height === 'number' ? logComposer.style.height : 0;
-    const viewportH = Math.max(1, historyH - composerH - (logComposer ? 1 : 0));
+    const viewportH = Math.max(1, plan.logH - composerH - (logComposer ? 1 : 0));
     const rows: Row[] = view.history.flatMap(islandersHistoryRows);
     const atBottom = islandersHistoryScroll.scroll >= Math.max(0, islandersHistoryScroll.rows.length - viewportH);
     islandersHistoryScroll.setHeight(viewportH);
@@ -1568,7 +1635,7 @@ export function buildIslandersCardsOverlay(
   const discardController = liveDiscardController
     ?? (workbench ? workbenchDiscardController(onWorkbenchChange, onWorkbenchDiscard) : undefined);
   return Box({ position: 'absolute', top: 0, left: 0, width: region.w, height: region.h }, [
-    ...(showSidebar ? [sidebar(view, onCloseSidebar, islandersHistoryHeight(region, view.opponents.length + 1), logComposer)] : []),
+    ...(showSidebar ? [sidebar(view, onCloseSidebar, plan, logComposer)] : []),
     // The hand shares the bottom row with the board, and the rail eats into it. Hand it the
     // width actually left over so it can drop its optional half instead of sliding under the rail.
     ...(discardController
