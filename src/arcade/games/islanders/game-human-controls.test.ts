@@ -327,6 +327,9 @@ test('spectator POV changes never reorder the sidebar player rows', () => {
     const view = islandersLiveView(state, driver, undefined, viewer);
     assert.equal(view.localPlayer.seat, viewer);
     assert.deepEqual(islandersSidebarPlayers(view).map((player) => player.seat), [0, 1, 2, 3]);
+    // Hidden victory points are private like a hand: only the viewed seat's true total is known.
+    assert.equal(typeof view.localPlayer.actualVp, 'number');
+    assert.ok(view.opponents.every((player) => player.actualVp === undefined));
   }
 });
 
