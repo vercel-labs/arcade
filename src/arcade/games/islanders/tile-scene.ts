@@ -59,7 +59,7 @@ import { ROBBER_MOVE_DURATION, robberFlightPoint } from '../../../game-visuals/i
 import { ISLANDERS_BOARD_BUILD_END, ISLANDERS_TILE_PLACE_HOP, ISLANDERS_TILE_STACK_BASE_Y, ISLANDERS_TILE_STACK_THICKNESS, ISLANDERS_TILE_STACK_X, ISLANDERS_TILE_STACK_Z, islandersCoastProgress, islandersHarborProgress, islandersTilePlacementProgress } from '../../../game-visuals/islanders/setup-choreography.ts';
 import { islandersPieceMaterial, type IslandersPieceUniforms } from './mesh/piece-material.ts';
 import { EDGE_ENDS, hexRing, hexWorld, NODE_XZ } from './scene/board-layout.ts';
-import { DICE_BURN_DUR, DICE_HOLD, DICE_ROLL_DUR, DICE_STAGGER, type Die, type DicePhase, freshDie } from './scene/dice.ts';
+import { DICE_BURN_DUR, DICE_HOLD, DICE_RESULT_REVEAL_DELAY, DICE_ROLL_DUR, DICE_STAGGER, type Die, type DicePhase, freshDie } from './scene/dice.ts';
 import { type BoardHarborPose, boardHarborPoses } from './scene/harbors.ts';
 import { type BoardPickTarget, measureBoardTarget, pickBoardTarget } from './scene/placement-picking.ts';
 import { rollPayouts, rollYield } from './scene/production.ts';
@@ -1001,7 +1001,8 @@ export class TileScene {
     // Once the previous pair has landed, the rules turn may finish before its decorative hold
     // expires (especially when the viewed seat received no cards). Let the next legal roll replace
     // that hold; only an actually tumbling pair is protected from overlap.
-    if (!isBoardMode(this.modeName) || this.dicePhase === 'rolling' || this.robberGate) return Promise.resolve();
+    const resultPending = this.dicePhase === 'hold' && this.rolledSum === null;
+    if (!isBoardMode(this.modeName) || this.dicePhase === 'rolling' || resultPending || this.robberGate) return Promise.resolve();
     for (let index = 0; index < this.dice.length; index++) {
       const d = this.dice[index];
       d.val = values?.[index] ?? 1 + Math.floor(Math.random() * 6);
@@ -1529,22 +1530,25 @@ export class TileScene {
       const allLanded = Math.max(DICE_ROLL_DUR * this.dice[0].dur, DICE_STAGGER + DICE_ROLL_DUR * this.dice[1].dur);
       if (this.dicePhase === 'rolling' && this.rollClock.elapsed >= allLanded) {
         this.dicePhase = 'hold';
+      }
+      const resultPublishedAt = allLanded + DICE_RESULT_REVEAL_DELAY;
+      if (this.dicePhase === 'hold' && this.rolledSum === null && this.rollClock.elapsed >= resultPublishedAt) {
         this.rolledSum = this.dice[0].val + this.dice[1].val;
         this.tokensDirty = true; // light the matching chips on the next composite
-        this.onRollLanded?.(this.rolledSum); // the result is final here — pay out production
+        this.onRollLanded?.(this.rolledSum); // final faces have held briefly — publish the result
         const finishRoll = this.rollCompletion;
         this.rollCompletion = null;
         finishRoll?.();
       }
-      if (this.dicePhase === 'hold' && this.rollClock.elapsed >= allLanded + DICE_HOLD) {
+      if (this.dicePhase === 'hold' && this.rollClock.elapsed >= resultPublishedAt + DICE_HOLD) {
         this.dicePhase = 'burning';
       }
-      if (this.dicePhase === 'burning' && this.rollClock.elapsed >= allLanded + DICE_HOLD + DICE_BURN_DUR) {
+      if (this.dicePhase === 'burning' && this.rollClock.elapsed >= resultPublishedAt + DICE_HOLD + DICE_BURN_DUR) {
         this.dicePhase = 'idle'; // burn completes; the lit chips remain a moment longer
       }
       // The gold expires on its own rather than lasting until the next roll, so a board left
       // alone stops advertising a stale result.
-      if (this.rolledSum !== null && this.rollClock.elapsed >= allLanded + DICE_HIGHLIGHT_HOLD) {
+      if (this.rolledSum !== null && this.rollClock.elapsed >= resultPublishedAt + DICE_HIGHLIGHT_HOLD) {
         this.rolledSum = null;
         this.tokensDirty = true; // drop the chips back to black on the next composite
       }
@@ -1552,7 +1556,9 @@ export class TileScene {
     if (this.dicePhase === 'idle') return;
 
     const allLanded = Math.max(DICE_ROLL_DUR * this.dice[0].dur, DICE_STAGGER + DICE_ROLL_DUR * this.dice[1].dur);
-    const burnProgress = this.dicePhase === 'burning' ? (this.rollClock.elapsed - allLanded - DICE_HOLD) / DICE_BURN_DUR : 0;
+    const burnProgress = this.dicePhase === 'burning'
+      ? (this.rollClock.elapsed - allLanded - DICE_RESULT_REVEAL_DELAY - DICE_HOLD) / DICE_BURN_DUR
+      : 0;
     drawIslandersDiceOverlay(target, this.dice, this.rollClock.elapsed, this.dicePhase === 'rolling', { burnProgress });
   }
 }

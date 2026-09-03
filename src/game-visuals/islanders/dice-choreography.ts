@@ -2,6 +2,8 @@ import { type Mat4, mat4Identity, type Vec3 } from '../../engine/index.ts';
 
 export type DicePhase = 'idle' | 'rolling' | 'hold' | 'burning';
 export const DICE_ROLL_DUR = 1.8;
+/** Brief final-face hold before any result-dependent gameplay or highlighting begins. */
+export const DICE_RESULT_REVEAL_DELAY = 0.25;
 export const DICE_HOLD = 1.7;
 export const DICE_BURN_DUR = 0.85;
 export const DICE_STAGGER = 0.12;

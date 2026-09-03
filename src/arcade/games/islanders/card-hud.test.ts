@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mulberry32, RenderTarget } from '../../../engine/index.ts';
+import { DICE_RESULT_REVEAL_DELAY, DICE_ROLL_DUR, DICE_STAGGER, type Die } from '../../../game-visuals/islanders/dice-choreography.ts';
 import { type Node, Screen } from '../../../tui/index.ts';
 import { maritimePortTradeRates, maritimeTradeRates } from '../../../rules/islanders/maritime-trade.ts';
 import { generateBoard } from '../../../rules/islanders/setup.ts';
@@ -332,6 +333,41 @@ test('the workbench controller animates confirmed discards from the staged row i
   assert.equal(islandersWorkbenchView().bank.brick, bankBefore.brick + 3);
   assert.equal(islandersWorkbenchView().bank.grain, bankBefore.grain + 1);
   assert.equal(controller.scene.isMovingRobber(), true, 'robber choice starts after the cards land');
+  controller.reset();
+  resetIslandersWorkbenchCards();
+});
+
+test('the workbench waits for settled dice before opening discard or robber interaction', () => {
+  resetIslandersWorkbenchCards();
+  for (let i = 0; i < 8; i++) adjustIslandersWorkbenchHand('brick', 1);
+  const region = { x: 0, y: 0, w: 140, h: 50 };
+  const screen = new Screen(region.w, region.h);
+  const controller = new IslandersController({
+    ui: screen,
+    requestRender: () => {},
+    requestFrame: () => {},
+    shell: {
+      renderMode: () => 'ascii', colorMode: () => 'truecolor', onHome: () => {},
+      onCycleDisplay: () => {}, onCycleColor: () => {}, onControls: () => {}, onQuit: () => {}, menuValueColW: 10,
+    },
+  });
+  controller.scene.setMode('boardCards');
+  controller.scene.settle();
+  void controller.scene.rollDice([3, 4]);
+  const dice = (controller.scene as unknown as { dice: [Die, Die] }).dice;
+  dice[0].dur = 1;
+  dice[1].dur = 1;
+  const target = new RenderTarget(region.w, region.h * 2);
+  const physicalLanding = DICE_STAGGER + DICE_ROLL_DUR;
+
+  controller.renderScene(target, 0);
+  controller.renderScene(target, physicalLanding);
+  assert.equal(islandersWorkbenchDiscardOpen(), false, 'discard stays closed while final faces settle');
+  assert.equal(controller.scene.isMovingRobber(), false);
+
+  controller.renderScene(target, physicalLanding + DICE_RESULT_REVEAL_DELAY);
+  assert.equal(islandersWorkbenchDiscardOpen(), true, 'the exact discard opens only after result publication');
+  assert.equal(controller.scene.isMovingRobber(), false, 'robber selection waits for the required discard');
   controller.reset();
   resetIslandersWorkbenchCards();
 });

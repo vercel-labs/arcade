@@ -7,6 +7,7 @@ import { islandersDiscardDepartureCell, islandersHandLandingCell } from './card-
 import { islandersLiveView } from './game-hud.ts';
 import { IslandersGameScene } from './game-scene.ts';
 import { TileScene } from './tile-scene.ts';
+import { DICE_RESULT_REVEAL_DELAY, DICE_ROLL_DUR, DICE_STAGGER, type Die } from '../../../game-visuals/islanders/dice-choreography.ts';
 
 const total = (counts: Record<(typeof RESOURCES)[number], number>): number =>
   RESOURCES.reduce((sum, resource) => sum + counts[resource], 0);
@@ -51,9 +52,17 @@ test('live roll playback waits for dice landing and its visible production fligh
   assert.equal(game.activeResourceFlights().length, 0, 'production waits for the dice to land');
   assert.equal(resolved, false);
 
-  game.renderScene(target, 8);
+  const liveDice = (game.scene as unknown as { dice: [Die, Die] }).dice;
+  liveDice[0].dur = 1;
+  liveDice[1].dur = 1;
+  const physicalLanding = 5 + DICE_STAGGER + DICE_ROLL_DUR;
+  game.renderScene(target, physicalLanding);
+  assert.equal(game.activeResourceFlights().length, 0, 'the final-face settle beat still has no production flight');
+  assert.equal(resolved, false, 'the game does not publish the roll on the physical landing frame');
+
+  game.renderScene(target, physicalLanding + DICE_RESULT_REVEAL_DELAY);
   await Promise.resolve();
-  game.renderScene(target, 8);
+  game.renderScene(target, physicalLanding + DICE_RESULT_REVEAL_DELAY);
   assert.ok(game.activeResourceFlights().length > 0, 'production launches after the dice land');
   assert.equal(resolved, false, 'the next decision waits for the cards to reach the hand');
 
@@ -73,6 +82,36 @@ test('headless roll playback stays immediate when render synchronization is disa
   ], { autoRun: false, rng: () => 0.5 });
   await finishSetupWithProductionOnEight(game, state);
   await game.playMove({ type: 'roll' });
+});
+
+test('dice visibly settle before publishing highlights, payouts, or seven handling', () => {
+  const scene = new TileScene();
+  scene.setMode('board');
+  scene.settle();
+  const landed: number[] = [];
+  scene.onRollLanded = (sum) => landed.push(sum);
+  void scene.rollDice([4, 5]);
+  const dice = (scene as unknown as { dice: [Die, Die] }).dice;
+  dice[0].dur = 1;
+  dice[1].dur = 1;
+  const target = new RenderTarget(100, 64);
+  const physicalLanding = DICE_STAGGER + DICE_ROLL_DUR;
+
+  scene.renderScene(target, 0);
+  scene.renderScene(target, physicalLanding);
+  assert.deepEqual(landed, [], 'no result-dependent callback fires on the physical landing frame');
+  assert.equal((scene as unknown as { dicePhase: string }).dicePhase, 'hold', 'the final dice remain visibly at rest');
+  assert.equal((scene as unknown as { rolledSum: number | null }).rolledSum, null, 'matching number tokens stay unlit');
+  void scene.rollDice([1, 1]);
+  assert.equal((scene as unknown as { dice: [Die, Die] }).dice[0].val, 4, 'a second roll cannot replace an unpublished result');
+
+  scene.renderScene(target, physicalLanding + DICE_RESULT_REVEAL_DELAY - 0.001);
+  assert.deepEqual(landed, []);
+  assert.equal((scene as unknown as { rolledSum: number | null }).rolledSum, null);
+
+  scene.renderScene(target, physicalLanding + DICE_RESULT_REVEAL_DELAY);
+  assert.deepEqual(landed, [9]);
+  assert.equal((scene as unknown as { rolledSum: number | null }).rolledSum, 9);
 });
 
 test('a confirmed human discard closes its panel and flies the staged cards to the bank', async () => {
