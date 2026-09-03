@@ -69,6 +69,11 @@ test('live roll playback waits for dice landing and its visible production fligh
   await Promise.resolve();
   game.renderScene(target, physicalLanding + DICE_RESULT_REVEAL_DELAY);
   assert.ok(game.activeResourceFlights().length > 0, 'production launches after the dice land');
+  assert.ok(
+    game.activeResourceFlights().every((flight) => flight.col >= 0 && flight.col < region.w),
+    'production leaves the rolled hexes on the board, not the bank beyond the right edge',
+  );
+  assert.equal(total(game.resourceViewAdjustments().bankPendingDeparture), 0, 'the bank count does not wait on hex-sourced cards');
   assert.equal(resolved, false, 'the next decision waits for the cards to reach the hand');
 
   for (let frame = 33; frame <= 48; frame++) game.renderScene(target, frame * 0.25);
