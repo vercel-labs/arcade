@@ -1344,11 +1344,13 @@ function handPanel(
         // slot. Keep that zero-count slot in the normal disabled treatment for the entire flight;
         // it becomes a purple held card only when landing credits the hand count.
         const held = view.devHand[type] > 0 || view.developmentPlay?.type === type;
+        const hold = held ? view.developmentCardHolds?.[type] : undefined;
         return Tooltip({
           id: `islanders-dev-${type}`,
           content: [
             { text: DEV_CARD_HELP[type].title, bold: true },
             DEV_CARD_HELP[type].effect,
+            ...(hold ? [{ text: hold, color: RAIL_MUTED }] : []),
           ],
           maxWidth: 46,
           // A touch lighter purple under the pointer, never the tooltip's default white pill.

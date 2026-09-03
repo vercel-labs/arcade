@@ -653,6 +653,21 @@ function mainPhaseWithDev(type: Exclude<DevCardType, 'victoryPoint'>): Islanders
   return s;
 }
 
+test('a held development card explains why it cannot be played yet', () => {
+  const s = mainPhaseWithDev('knight');
+  assert.equal(s.developmentCardHold(0, 'knight'), null);
+  assert.equal(s.developmentCardHold(0, 'monopoly'), null, 'holding none is not a hold');
+  mutable(s).devHand[0][DEV_CARD_TYPES.indexOf('monopoly')] = 1;
+  mutable(s).boughtDevThisTurn[0][DEV_CARD_TYPES.indexOf('monopoly')] = 1;
+  assert.equal(s.developmentCardHold(0, 'monopoly'), 'boughtThisTurn');
+  s.applyAction(s.legalActions().find((action) => action.type === 'playKnight')!);
+  mutable(s).devHand[0][DEV_CARD_TYPES.indexOf('knight')] = 1;
+  assert.equal(s.developmentCardHold(0, 'knight'), 'alreadyPlayed');
+  s.applyAction({ type: 'endTurn' });
+  assert.equal(s.developmentCardHold(0, 'knight'), 'notYourTurn');
+  assert.equal(s.developmentCardHold(0, 'monopoly'), 'notYourTurn', 'the purchase gate lifts with the turn');
+});
+
 test('all playable development cards execute and the one-card-per-turn/new-card gates hold', () => {
   const preRoll = fresh();
   finishSetup(preRoll);

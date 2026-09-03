@@ -141,12 +141,21 @@ export function islandersLiveView(
     ...(legalTypes.has('playYearOfPlenty') ? ['yearOfPlenty' as const] : []),
     ...(legalTypes.has('playMonopoly') ? ['monopoly' as const] : []),
   ];
+  const developmentCardHolds: Partial<Record<DevCardType, string>> = {};
+  if (driver.humanSeat() === viewer) {
+    for (const type of DEV_CARD_TYPES) {
+      if (type === 'victoryPoint') continue;
+      const hold = state.developmentCardHold(viewer, type);
+      if (hold) developmentCardHolds[type] = DEV_CARD_HOLD_COPY[hold];
+    }
+  }
   return {
     source: 'live',
     localPlayer,
     hand,
     devHand,
     bank,
+    developmentCardHolds,
     maritimeRates: state.maritimeTradeRates(viewer),
     maritimePortRates: state.maritimePortTradeRates(viewer),
     developmentDeck: state.developmentDeckSize() + (adjustments?.developmentDeckPendingDeparture ?? 0),
@@ -156,6 +165,12 @@ export function islandersLiveView(
     history,
   };
 }
+
+const DEV_CARD_HOLD_COPY = {
+  boughtThisTurn: 'Bought this turn. You can play it from your next turn.',
+  alreadyPlayed: 'You already played a development card this turn.',
+  notYourTurn: 'Playable on your turn, before or after you roll.',
+} as const;
 
 // ── status ──────────────────────────────────────────────────────────────────────────────────
 // One loud line: whose turn it is and what they are being asked for. The doc's Part II calls

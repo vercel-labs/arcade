@@ -1234,6 +1234,15 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
   developmentCardCount(seat: number, type: DevCardType): number {
     return this.devHand[seat][DEV_CARD_TYPES.indexOf(type)] ?? 0;
   }
+  // Why a held development card cannot be played right now, or null when it can (or when the
+  // seat holds none). Cards bought this turn wait a turn; one play per turn; only on your turn.
+  developmentCardHold(seat: number, type: Exclude<DevCardType, 'victoryPoint'>): 'boughtThisTurn' | 'alreadyPlayed' | 'notYourTurn' | null {
+    if (this.developmentCardCount(seat, type) <= 0) return null;
+    if (this.playableDevCount(seat, type) <= 0) return 'boughtThisTurn';
+    if (this.playedDevCardThisTurn && this.turnOwner === seat) return 'alreadyPlayed';
+    if (this.prompt.player !== seat || (this.prompt.kind !== 'playTurn' && this.prompt.kind !== 'roll')) return 'notYourTurn';
+    return null;
+  }
   playedKnightCount(seat: number): number {
     return this.playedKnights[seat] ?? 0;
   }
