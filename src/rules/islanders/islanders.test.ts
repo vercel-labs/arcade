@@ -102,8 +102,8 @@ test('model-facing actions and public history name players instead of exposing P
   assert.doesNotMatch(s.actionToString(robber), /\bP\d+\b/);
   s.applyAction(robber, { stolenResource: 'brick' });
   const observation = s.informationStateString(0);
-  assert.match(observation, /Recent public actions:/);
-  assert.match(observation, /the human player: moved the robber to .* and targeted Claude/);
+  assert.match(observation, /Recent turns/);
+  assert.match(observation, /the human player: rolled 7; moved the robber to .* and targeted Claude/);
   assert.doesNotMatch(observation, /\bP\d+\b/);
 });
 
@@ -810,6 +810,59 @@ test('an optional AI-table offer budget prevents unchanged domestic-trade loops 
   s.applyAction({ type: 'endTurn' });
   s.applyAction({ type: 'roll' }, { dice: [1, 1] });
   assert.deepEqual(s.legalActionFamilies(), [{ type: 'offerTrade', player: 1, resourceOrder: RESOURCES }]);
+});
+
+test('a per-seat offer policy caps and de-duplicates one seat while the other negotiates freely', () => {
+  const s = new IslandersState({
+    numPlayers: 2,
+    rng: rng(),
+    domesticTrade: true,
+    seatNames: ['claude', 'the human player'],
+    domesticTradePolicy: [{ maxOffersPerTurn: 2, noRepeatRefused: true }, undefined],
+  });
+  finishSetup(s);
+  s.applyAction({ type: 'roll' }, { dice: [1, 1] });
+  setHand(s, 0, { brick: 3 });
+  setHand(s, 1, { grain: 3 });
+  const offer: IslandersAction = { type: 'offerTrade', give: [1, 0, 0, 0, 0], receive: [0, 1, 0, 0, 0] };
+  const other: IslandersAction = { type: 'offerTrade', give: [2, 0, 0, 0, 0], receive: [0, 1, 0, 0, 0] };
+  s.applyAction(offer);
+  s.applyAction({ type: 'rejectTrade' });
+  s.applyAction({ type: 'cancelTrade' });
+  // The same offer is refused for this seat; a changed one is still open (1 of 2 used).
+  assert.equal(s.isLegalAction(offer), false);
+  assert.equal(s.actionFromString('offer 1/0/0/0/0 for 0/1/0/0/0'), null);
+  assert.match(s.actionRejectionNote('offer 1/0/0/0/0 for 0/1/0/0/0') ?? '', /already refused this turn/);
+  assert.equal(s.actionRejectionNote('offer 2/0/0/0/0 for 0/1/0/0/0'), null);
+  assert.equal(s.isLegalAction(other), true);
+  assert.equal(s.offersRemainingThisTurn(0), 1);
+  const context = s.decisionContextString(0);
+  assert.match(context, /Offers you made this turn \(1 of 2 used\)/);
+  assert.match(context, /you offered 1 brick for 1 wheat: rejected by the human player → no deal/);
+  assert.match(context, /Do not post the same offer again/);
+  assert.match(context, /You have 1 offer left this turn/);
+  s.applyAction(other);
+  s.applyAction({ type: 'rejectTrade' });
+  s.applyAction({ type: 'cancelTrade' });
+  assert.deepEqual(s.legalActionFamilies(), []);
+  assert.match(s.actionRejectionNote('offer 1/0/0/0/0 for 0/1/0/0/0') ?? '', /used every domestic offer/);
+  assert.match(s.decisionContextString(0), /2 offers have been turned down this turn/);
+  assert.match(s.decisionContextString(0), /no offers left this turn/);
+  // The observation carries the collapsed story and the reciprocity tally.
+  const view = s.informationStateString(0);
+  assert.match(view, /Recent turns/);
+  assert.match(view, /offered 1 brick for 1 wheat \(rejected by the human player → no deal\)/);
+  assert.match(view, /the human player: you offered them 2 trades \(accepted 0, countered 0, rejected 2; 0 completed\)/);
+  s.applyAction({ type: 'endTurn' });
+  // The human seat has no policy: it may repeat itself and is never capped.
+  s.applyAction({ type: 'roll' }, { dice: [1, 1] });
+  const humanOffer: IslandersAction = { type: 'offerTrade', give: [0, 1, 0, 0, 0], receive: [1, 0, 0, 0, 0] };
+  s.applyAction(humanOffer);
+  s.applyAction({ type: 'rejectTrade' });
+  s.applyAction({ type: 'cancelTrade' });
+  assert.equal(s.isLegalAction(humanOffer), true);
+  assert.equal(s.offersRemainingThisTurn(1), Number.POSITIVE_INFINITY);
+  assert.match(s.informationStateString(1), /claude: you offered them 1 trade .*; they offered 2 \(you accepted 0, countered 0, rejected 2; 0 completed\)/);
 });
 
 test('domestic trading is disabled by default and regular parsing binds the final named action', () => {

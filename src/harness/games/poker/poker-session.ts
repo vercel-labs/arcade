@@ -1,6 +1,6 @@
 import { runMatch, type MatchScene } from '../../match.ts';
 import { TableCommunicationCoordinator } from '../../communication/coordinator.ts';
-import { ModelPlayer, type ModelPlayerOpts, type MoveNotation } from '../../model-player.ts';
+import { ModelPlayer, type ModelPlayerOpts, type MoveNotation, type ModelAttemptInfo } from '../../model-player.ts';
 import type { ActionChoice, Player } from '../../player.ts';
 import type { CommunicationDecision, CommunicationMode } from '../../communication/types.ts';
 import { HoldemState, type PokerAction } from '../../../rules/poker/holdem.ts';
@@ -35,7 +35,7 @@ export const POKER_PERSONA =
 
 export type PokerTextPlayerOpts = Pick<
   ModelPlayerOpts,
-  'model' | 'name' | 'normalizer' | 'normalizerName' | 'fallbackRng' | 'onAttempt' | 'onFailureNotice'
+  'model' | 'name' | 'normalizer' | 'normalizerName' | 'fallbackRng' | 'onAttempt' | 'captureThinking' | 'onFailureNotice'
 > & {
   contextProvider?: () => string;
   communication?: ModelPlayerOpts['communication'];
@@ -85,7 +85,9 @@ export interface HeadlessPokerSessionOpts {
   signal?: AbortSignal;
   normalizer?: string;
   fallbackRng?: () => number;
-  onAttempt?: (seat: number, info: { phase: 'structured' | 'text' | 'normalize'; raw: string; result: 'legal' | 'illegal' | 'error' }) => void;
+  onAttempt?: (seat: number, info: ModelAttemptInfo) => void;
+  /** Headless evaluation only: include private reasoning + context in `onAttempt` payloads. */
+  captureThinking?: boolean;
   onEvent?: (event: PokerSessionEvent) => void;
   communicationMode?: CommunicationMode;
 }
@@ -183,6 +185,7 @@ export async function runPokerSession(opts: HeadlessPokerSessionOpts): Promise<H
         communication?.contextFor(seat) ?? '',
       ].filter(Boolean).join('\n\n'),
       onAttempt: (info) => opts.onAttempt?.(seat, info),
+      captureThinking: opts.captureThinking,
     }));
   const handRecords: PokerHandRecord[] = [];
   let button = 0;

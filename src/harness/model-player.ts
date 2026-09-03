@@ -159,6 +159,16 @@ function tokenUsage(usage: unknown): Pick<DecisionAttempt, 'inputTokens' | 'outp
 
 const elapsedMs = (started: number): number => Math.max(0, Math.round(performance.now() - started));
 
+export interface ModelAttemptInfo {
+  phase: 'structured' | 'text' | 'normalize';
+  raw: string;
+  result: 'legal' | 'illegal' | 'error';
+  // Present only under `captureThinking`.
+  thinking?: string;
+  feedback?: string;
+  context?: string;
+}
+
 export interface ModelPlayerOpts {
   /**
    * The model: an AI Gateway slug string (e.g. "anthropic/claude-opus-4.8",
@@ -223,7 +233,14 @@ export interface ModelPlayerOpts {
    * (src/tools/self-play.ts), not used in the app. `raw` is the model's move
    * string / reply / error message; `result` is how it resolved.
    */
-  onAttempt?: (info: { phase: 'structured' | 'text' | 'normalize'; raw: string; result: 'legal' | 'illegal' | 'error' }) => void;
+  onAttempt?: (info: ModelAttemptInfo) => void;
+  /**
+   * Include the model's private reasoning, the retry feedback it was shown, and the
+   * game-specific context it received in `onAttempt` payloads. For headless evaluation
+   * (match-lab) only: the arcade never sets it, so private reasoning never reaches the
+   * UI or telemetry.
+   */
+  captureThinking?: boolean;
   /** Actionable Gateway failure surfaced by the app shell; never model/provider prose. */
   onFailureNotice?: (notice: ModelFailureNotice) => void;
   /**
@@ -275,6 +292,7 @@ export class ModelPlayer<A> implements Player<A> {
   private communication?: ModelPlayerOpts['communication'];
   private contextProvider?: (player: number) => string;
   private onAttempt?: ModelPlayerOpts['onAttempt'];
+  private captureThinking: boolean;
   private onFailureNotice?: ModelPlayerOpts['onFailureNotice'];
   private allowIllegal?: () => boolean;
   private normalizer?: LanguageModel;
@@ -295,6 +313,7 @@ export class ModelPlayer<A> implements Player<A> {
     this.communication = opts.communication;
     this.contextProvider = opts.contextProvider;
     this.onAttempt = opts.onAttempt;
+    this.captureThinking = opts.captureThinking ?? false;
     this.onFailureNotice = opts.onFailureNotice;
     this.allowIllegal = opts.allowIllegal;
     this.normalizer = opts.normalizer;
@@ -414,6 +433,7 @@ export class ModelPlayer<A> implements Player<A> {
       const attemptStarted = performance.now();
       let move: string;
       let rationale: string | undefined;
+      let thinking: string | undefined;
       let communication: Communication | undefined;
       let usage: unknown;
       try {
@@ -425,9 +445,11 @@ export class ModelPlayer<A> implements Player<A> {
           prompt: this.buildPrompt(state, 'json', feedback, opponentSaid),
         });
         usage = generated.usage;
-        // Split schema (speech) surfaces only `say`; `thinking` is private and dropped.
-        const out = generated.output as { move: string; rationale?: string; say?: string; communication?: CommunicationResponse };
+        // Split schema (speech) surfaces only `say`; `thinking` is private and dropped —
+        // except into the capture hook, when a headless evaluation asked for it.
+        const out = generated.output as { move: string; rationale?: string; say?: string; thinking?: string; communication?: CommunicationResponse };
         move = out.move;
+        thinking = out.thinking;
         communication = communicationFromResponse(out.communication);
         rationale = this.communication ? undefined : this.speech !== undefined ? out.say : out.rationale;
       } catch (err) {
@@ -462,11 +484,11 @@ export class ModelPlayer<A> implements Player<A> {
         latencyMs: elapsedMs(attemptStarted),
         ...tokenUsage(usage),
       });
-      this.onAttempt?.({ phase: 'structured', raw: move, result: action ? 'legal' : 'illegal' });
+      this.onAttempt?.({ phase: 'structured', raw: move, result: action ? 'legal' : 'illegal', ...this.capture(state, thinking, feedback) });
       if (action !== null) return finish(action, rationale, 'structured', {}, communication);
       lastRaw = move;
       lastRationale = rationale;
-      feedback = this.retryNote(move, useLoose, legalSan);
+      feedback = this.retryNote(state, move, useLoose, legalSan);
     }
 
     // Phase 2 — plain-text fallback with lenient parsing (the Kaggle Game Arena
@@ -517,11 +539,11 @@ export class ModelPlayer<A> implements Player<A> {
           latencyMs: elapsedMs(attemptStarted),
           ...tokenUsage(usage),
         });
-        this.onAttempt?.({ phase: 'text', raw: text.replace(/\s+/g, ' ').trim().slice(0, 120), result: parsed ? 'legal' : 'illegal' });
+        this.onAttempt?.({ phase: 'text', raw: text.replace(/\s+/g, ' ').trim().slice(0, 120), result: parsed ? 'legal' : 'illegal', ...this.capture(state, text, feedback) });
         if (parsed) return finish(parsed.action, parsed.rationale, 'text', {}, parsed.communication);
         lastRaw = text;
         lastRationale = this.communication ? undefined : this.speech !== undefined ? this.sayFrom(text) : this.rationaleFrom(text);
-        feedback = this.retryNote(text.replace(/\s+/g, ' ').trim().slice(0, 60), useLoose, legalSan);
+        feedback = this.retryNote(state, text.replace(/\s+/g, ' ').trim().slice(0, 60), useLoose, legalSan);
       }
     }
 
@@ -605,12 +627,34 @@ export class ModelPlayer<A> implements Player<A> {
   // Re-prompt text. Illegal mode: only "I couldn't parse a move" (any move is
   // accepted, so failure means unparseable — no legal list). Legal mode: list the
   // legal moves so a confused model can pick a valid one instead of guessing.
-  private retryNote(answer: string, useLoose: boolean, legalSan: string[]): string {
+  // The evaluation-only extras for an attempt payload: private reasoning, the retry note the
+  // model was shown, and the per-decision context (legal menu + notebook/chat) it had.
+  private capture(state: GameState<A>, thinking: string | undefined, feedback: string): Partial<ModelAttemptInfo> {
+    if (!this.captureThinking) return {};
+    const player = state.currentPlayer();
+    const decision = (state as { decisionContextString?: (p: number) => string }).decisionContextString;
+    const context = [
+      player >= 0 && typeof decision === 'function' ? decision.call(state, player) : '',
+      player >= 0 ? (this.contextProvider?.(player) ?? '') : '',
+    ].filter(Boolean).join('\n\n');
+    return {
+      ...(thinking ? { thinking } : {}),
+      ...(feedback ? { feedback: feedback.trim() } : {}),
+      ...(context ? { context } : {}),
+    };
+  }
+
+  // A game may explain a refusal beyond "not legal" (Islanders: a repeated or over-budget
+  // offer); when it does, the reason leads the retry so the model changes course rather than
+  // re-reading the same menu.
+  private retryNote(state: GameState<A>, answer: string, useLoose: boolean, legalSan: string[]): string {
     if (useLoose) {
       return `\nI couldn't read a move from "${answer}". Reply with one move, e.g. ${this.notation.examples}.`;
     }
+    const explain = (state as { actionRejectionNote?: (text: string) => string | null }).actionRejectionNote;
+    const reason = typeof explain === 'function' ? explain.call(state, answer) : null;
     return (
-      `\nYour previous answer "${answer}" was not a legal move here. ` +
+      `\nYour previous answer "${answer}" was not a legal move here. ${reason ? `${reason} ` : ''}` +
       `The legal moves are: ${legalSan.join(', ')}. ` +
       `Reply with exactly one of them, in ${this.notation.description}.`
     );

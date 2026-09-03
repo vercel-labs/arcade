@@ -453,3 +453,40 @@ test('illegal mode labels an unparseable reply without calling it an illegal mov
   assert.equal(choice.diagnostics?.attempts[0]?.result, 'rejected');
   assert.equal(choice.diagnostics?.attempts[0]?.rejectionReason, 'unparseable');
 });
+
+test('captureThinking is opt-in: attempts carry private reasoning, feedback, and context only when asked', async () => {
+  const replies = [
+    JSON.stringify({ thinking: 'The knight on b1 wants f3, but e4 first.', move: 'Qh5', say: 'Queen out early.' }),
+    JSON.stringify({ thinking: 'Right, Qh5 is not legal from the start; e4 it is.', move: 'e4', say: 'Center pawn.' }),
+  ];
+  const quiet: Record<string, unknown>[] = [];
+  const quietPlayer = new ModelPlayer<Move>({
+    model: jsonModel(replies).model,
+    name: 'test/quiet',
+    gameName: 'chess',
+    speech: 'one sentence',
+    contextProvider: () => 'Your private notebook: plan: develop fast.',
+    onAttempt: (info) => quiet.push({ ...info }),
+  });
+  await quietPlayer.chooseAction(new ChessState());
+  assert.equal(quiet.length, 2);
+  assert.ok(quiet.every((info) => !('thinking' in info) && !('feedback' in info) && !('context' in info)), 'nothing private leaks by default');
+
+  const captured: Record<string, unknown>[] = [];
+  const capturingPlayer = new ModelPlayer<Move>({
+    model: jsonModel(replies).model,
+    name: 'test/captured',
+    gameName: 'chess',
+    speech: 'one sentence',
+    contextProvider: () => 'Your private notebook: plan: develop fast.',
+    onAttempt: (info) => captured.push({ ...info }),
+    captureThinking: true,
+  });
+  const choice = await capturingPlayer.chooseAction(new ChessState());
+  assert.equal(choice.rationale, 'Center pawn.');
+  assert.equal(captured[0].thinking, 'The knight on b1 wants f3, but e4 first.');
+  assert.equal(captured[0].feedback, undefined, 'the first attempt was shown no retry note');
+  assert.match(String(captured[0].context), /Your private notebook: plan: develop fast\./);
+  assert.equal(captured[1].thinking, 'Right, Qh5 is not legal from the start; e4 it is.');
+  assert.match(String(captured[1].feedback), /"Qh5" was not a legal move here/);
+});
