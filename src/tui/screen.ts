@@ -17,7 +17,7 @@ import { hitSurface, hitTest, hoverTest } from './hit.ts';
 import { layout } from './layout.ts';
 import { paint, paintWithForeground, type ForegroundPainter, type PaintState } from './paint.ts';
 import { defaultTheme, type Theme } from './theme.ts';
-import type { LayoutBox, Node, PointerHit } from './types.ts';
+import type { LayoutBox, Node, PointerHit, PulseStyle } from './types.ts';
 
 export class Screen {
   cols: number;
@@ -26,10 +26,14 @@ export class Screen {
   private root: Node | null = null;
   private baseRoot: Node | null = null;
   private globalOverlay: Node | null = null;
-  private state: PaintState = { hoverId: null, focusId: null, pressedId: null };
+  private state: PaintState = { hoverId: null, focusId: null, pressedId: null, time: 0, attention: new Map() };
   // Interaction state as of the last paint, for dirty() (mirrors the old
   // `hoveredButton !== lastHoveredButton` check that gated chess repaints).
   private painted: PaintState = { hoverId: null, focusId: null, pressedId: null };
+  // Whether the current tree has any pulsing node (its own style.pulse, or an attention
+  // pulse attached to its id). Only then does advancing the clock dirty the frame, so a
+  // still screen keeps skipping repaints.
+  private pulsing = false;
   // Set when an input mutates a component's INTERNAL state (a ScrollBox offset, an
   // Input caret, a Select index) — content the dirty() gate must repaint even
   // though hover/focus/pressed are unchanged. Without this, a wheel/arrow/drag on
@@ -109,13 +113,16 @@ export class Screen {
     this.contentDirty = true;
   }
 
+  // With a global overlay, the base root keeps its own region (a bottom bar strip, or a
+  // screen narrowed by a rail) while the overlay spans the whole terminal above it.
   private composeRoot(): void {
-    const layer = (node: Node): Node => ({ ...node, style: { ...node.style, position: 'absolute', top: 0, left: 0, width: this.region.w, height: this.region.h } });
+    const full: LayoutBox = { x: 0, y: 0, w: this.cols, h: this.rows };
+    const at = (node: Node, box: LayoutBox): Node => ({ ...node, style: { ...node.style, position: 'absolute', top: box.y, left: box.x, width: box.w, height: box.h } });
     this.root = this.globalOverlay
-      ? { kind: 'box', style: { width: this.region.w, height: this.region.h, position: 'relative' }, children: [...(this.baseRoot ? [layer(this.baseRoot)] : []), layer(this.globalOverlay)] }
+      ? { kind: 'box', style: { width: full.w, height: full.h, position: 'relative' }, children: [...(this.baseRoot ? [at(this.baseRoot, this.region)] : []), at(this.globalOverlay, full)] }
       : this.baseRoot;
     this.expand(this.root);
-    if (this.root) layout(this.root, this.region);
+    if (this.root) layout(this.root, this.globalOverlay ? full : this.region);
   }
 
   // Register a persistent component instance (fires its onMount). Reference it in
@@ -143,7 +150,10 @@ export class Screen {
     this.nodeOwners = new WeakMap<Node, string>();
     this.focusOwners = new Map<string, string>();
     const refs = new Set<string>();
+    const attention = this.state.attention;
+    let pulsing = false;
     const walk = (n: Node, owner: string | null): void => {
+      if (n.style.pulse || (n.id && attention?.has(n.id))) pulsing = true;
       let nodeOwner = owner;
       if (n.component) {
         nodeOwner = n.component;
@@ -170,6 +180,31 @@ export class Screen {
     // Auto-unmount components that left the tree since last frame.
     for (const id of this.mountedRefs) if (!refs.has(id)) this.registry.unmount(id);
     this.mountedRefs = refs;
+    this.pulsing = pulsing;
+  }
+
+  // Whether the current tree has a pulsing node — an on-demand screen uses this to keep
+  // requesting frames while something breathes.
+  animating(): boolean {
+    return this.pulsing;
+  }
+
+  // Advance the clock attention pulses breathe against (seconds, monotonic). Dirties the
+  // frame only while the current tree actually pulses, so still screens stay on-demand.
+  setTime(t: number): void {
+    if (t === this.state.time) return;
+    this.state.time = t;
+    if (this.pulsing) this.contentDirty = true;
+  }
+
+  // Attach an attention pulse to nodes by id — the app's way to draw the eye to a control
+  // built elsewhere (a menu item, a bar pill) without the builder knowing. Replaces the
+  // previous set; pass an empty list to clear. Takes effect at the next setRoot.
+  setAttention(ids: Iterable<string>, pulse: PulseStyle): void {
+    const map = new Map<string, PulseStyle>();
+    for (const id of ids) map.set(id, pulse);
+    this.state.attention = map;
+    this.contentDirty = true;
   }
 
   // Paint the (already laid-out) root and return the escape string. No row clear

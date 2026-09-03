@@ -47,6 +47,21 @@ export interface TooltipSpec {
   arrow?: boolean;
 }
 
+// A slow, continuous attention pulse: the node's resting colors breathe toward these
+// targets and back on a sine, driven by the Screen's clock (Screen.setTime). Only the
+// channels the node already paints move — a filled pill pulses its background, an
+// outlined button its border and label — so a rounded control never grows a square
+// fill. Hover/focus/pressed still layer on top, so pointing at a pulsing control
+// looks exactly like pointing at a still one. Used to draw the eye to the next thing
+// to click (the tutorial), never as a state indicator.
+export interface PulseStyle {
+  background?: ColorToken;
+  color?: ColorToken;
+  borderColor?: ColorToken;
+  period?: number; // seconds per full breath (default 1.6)
+  strength?: number; // peak mix toward the targets, 0..1 (default 1)
+}
+
 export interface Style {
   width?: Dimension;
   height?: Dimension;
@@ -92,6 +107,9 @@ export interface Style {
   // Applied when the node sets `disabled`, INSTEAD of the three above — a control
   // that does nothing must not light up when the pointer crosses it.
   disabled?: Partial<Style>;
+  // Declarative attention pulse (see PulseStyle). The Screen can also attach one to a
+  // node by id at runtime (Screen.setAttention) without the builder knowing.
+  pulse?: PulseStyle;
   // `none` makes this node and its descendants purely visual: pointer hover,
   // presses, wheels, and hover-scroll keys pass through to whatever is behind
   // the subtree. Useful for projected scene labels that paint an opaque badge

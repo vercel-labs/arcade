@@ -67,6 +67,7 @@ export type {
   LayoutBox,
   BorderStyle,
   PointerHit,
+  PulseStyle,
   TextOverflow,
   TooltipContent,
   TooltipPlacement,
