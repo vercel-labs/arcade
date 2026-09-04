@@ -371,7 +371,17 @@ export class IslandersDriver {
               this.preAction.communicationDecision?.communication.mode === 'speak'
               && this.preAction.communicationMessage?.addressedSeats.length
             ) {
-              await this.enqueueDirectedReplies(this.preAction.communicationMessage, actionNumber);
+              // If an addressed model now owns the required game action, that action's structured
+              // communication is its one reply opportunity. Prompting a separate reply here and
+              // then immediately asking for accept/reject or confirm/cancel produced two adjacent,
+              // near-identical trade lines whenever the repetition heuristic did not catch them.
+              const actionReplySeats = new Set([this.live.currentPlayer()]);
+              const trade = this.live.activeTrade();
+              if (trade) {
+                actionReplySeats.add(trade.from);
+                for (const responder of trade.responders.slice(trade.responseIndex)) actionReplySeats.add(responder);
+              }
+              await this.enqueueDirectedReplies(this.preAction.communicationMessage, actionNumber, actionReplySeats);
             }
             const moments = detectIslandersMoments(
               this.preAction.state,
@@ -412,6 +422,12 @@ export class IslandersDriver {
       if (!signal?.aborted) this.complete = this.live?.isTerminal() ?? false;
       if (!signal?.aborted && this.complete && this.live) {
         const winner = this.live.winner();
+        this.log.push({
+          seat: winner,
+          color: this.colorOf(winner),
+          actor: this.labelOf(winner),
+          message: `${winner === this.humanSeat() ? 'win' : 'wins'} · ${this.live.victoryPoints(winner, true)} victory points`,
+        });
         const record = this.recordTelemetry(() => this.recorder?.completed(this.live!));
         if (record) trackMatchRecord(record);
         if (!this.seats.some((seat) => seat.kind === 'bot')) {
@@ -468,13 +484,14 @@ export class IslandersDriver {
     return true;
   }
 
-  private enqueueDirectedReplies(message: PublicConversationMessage, actionNumber: number): Promise<void> {
+  private enqueueDirectedReplies(message: PublicConversationMessage, actionNumber: number, actionReplySeats: ReadonlySet<number> = new Set()): Promise<void> {
     const run = async (): Promise<void> => {
       if (!this.communication || !this.live) return;
       const signal = this.abort?.signal;
       for (const opportunity of directedReplyOpportunities(message, 'islanders', this.seats.length)) {
         if (signal?.aborted) break;
         if (this.seats[opportunity.seat]?.kind !== 'ai') continue;
+        if (actionReplySeats.has(opportunity.seat)) continue;
         const proposal = await this.players[opportunity.seat]?.chooseCommunication?.({
           opportunity,
           gameView: this.live.informationStateString(opportunity.seat),

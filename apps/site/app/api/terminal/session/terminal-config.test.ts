@@ -10,6 +10,7 @@ import {
   interactiveStart,
   packageSpec,
   parseTerminalSize,
+  isTerminalBaseWarmRequest,
   sessionNetworkPolicy,
   terminalFiles,
 } from './terminal-config';
@@ -25,6 +26,12 @@ describe('hosted Arcade terminal configuration', () => {
     const env = { VERCEL_GIT_COMMIT_SHA: 'ABCDEF1234567890' } as unknown as NodeJS.ProcessEnv;
     assert.equal(packageSpec(env), '@vercel/arcade#ABCDEF1234567890');
     assert.equal(baseSandboxName(env), 'arcade-web-base-v16-abcdef123456');
+  });
+
+  test('recognizes only an explicit base-only warm request', () => {
+    assert.equal(isTerminalBaseWarmRequest({ warmOnly: true }), true);
+    assert.equal(isTerminalBaseWarmRequest({ warmOnly: false }), false);
+    assert.equal(isTerminalBaseWarmRequest(null), false);
   });
 
   test('allows only package installation hosts while building the base', () => {

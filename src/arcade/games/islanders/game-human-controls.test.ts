@@ -149,6 +149,33 @@ test('leaving Islanders can collapse the persisted game-log rail', () => {
   assert.equal(islandersSidebarOpen(), false);
 });
 
+test('only the game-log player table marks the active turn with a triangle', () => {
+  const scene = new IslandersGameScene();
+  const driver = new IslandersDriver({ scene, syncLive: () => {} });
+  driver.start([
+    { kind: 'ai', color: 'red', model: 'test/red' },
+    { kind: 'ai', color: 'blue', model: 'test/blue' },
+  ], { autoRun: false, rng: () => 0.5 });
+  closeIslandersSidebar();
+  toggleIslandersSidebar();
+
+  const root = buildIslandersGameRoot({ x: 0, y: 0, w: 140, h: 50 }, {
+    driver,
+    scene,
+    onOpenMenu: () => {},
+    onStart: () => {},
+  });
+  const activeLegendRow = findNode(root, 'islanders-view-seat-0');
+  assert.doesNotMatch(activeLegendRow?.text ?? '', /▸/);
+  assert.equal(activeLegendRow?.style.background, undefined);
+  assert.equal(activeLegendRow?.style.disabled?.background, undefined);
+  assert.equal(findNode(root, 'islanders-view-seat-0')?.text?.endsWith('(pov)'), true);
+  assert.deepEqual(allText(root).filter((text) => text.startsWith('▸ ')), ['▸ red']);
+
+  closeIslandersSidebar();
+  driver.reset();
+});
+
 test('live status is one borderless row with color confined to the actor', () => {
   const scene = new IslandersGameScene();
   const driver = new IslandersDriver({ scene, syncLive: () => {} });

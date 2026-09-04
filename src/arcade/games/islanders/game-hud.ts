@@ -35,7 +35,7 @@ import {
 } from './card-hud.ts';
 import { IslandersState } from '../../../rules/islanders/islanders.ts';
 import { DEV_CARD_TYPES, type IslandersAction, type DevCardType, RESOURCES, type Resource, resourceIndex } from '../../../rules/islanders/types.ts';
-import { ISLANDERS_CARD, ISLANDERS_STATUS, PLAYER_LOOK, RESOURCE_LOOK } from './palette.ts';
+import { ISLANDERS_STATUS, PLAYER_LOOK, RESOURCE_LOOK } from './palette.ts';
 import { hudTopCenter, hudTopRight } from '../../shell/hud-chrome.ts';
 import type { BoardToken, SailLabel } from './tile-scene.ts';
 import { islandersFlyingCardNodes, islandersProjectedBoardLabels } from './tile-hud.ts';
@@ -76,8 +76,9 @@ function devTotal(state: IslandersState, seat: number): number {
 
 function playerView(state: IslandersState, driver: IslandersDriver, seat: number, viewer?: number): IslandersCardsPlayerView {
   // Hidden victory points are private the way a hand is: a player sees their own, and a
-  // spectator sees only the seat whose point of view they have switched to.
-  const knowsHidden = seat === (driver.humanSeat() >= 0 ? driver.humanSeat() : viewer);
+  // spectator sees only the seat whose point of view they have switched to. Once the game is
+  // over, reveal every final total so a hidden VP cannot leave the winner visibly stuck at 9.
+  const knowsHidden = state.isTerminal() || seat === (driver.humanSeat() >= 0 ? driver.humanSeat() : viewer);
   return {
     seat,
     name: driver.labelOf(seat),
@@ -256,9 +257,10 @@ export function islandersStatusLine(
   if (driver.error()) return { actor: 'Game stopped', narration: driver.error() ?? '', color: STATUS_FG };
   if (driver.isComplete()) {
     const winner = driver.winner();
+    const points = state.victoryPoints(winner, true);
     return {
       actor: driver.labelOf(winner),
-      narration: `${winner === driver.humanSeat() ? 'win' : 'wins'} · 10 victory points`,
+      narration: `${winner === driver.humanSeat() ? 'win' : 'wins'} · ${points} victory points`,
       color: PLAYER_LOOK[driver.colorOf(winner)],
     };
   }
@@ -317,14 +319,11 @@ export function islandersPlayerLegend(
     gap: 0,
   }, [
     Text({ text: 'players', style: { width: textWidth, color: STATUS_MUTED, bold: true } }),
-    // Rows sit flush with the label: whose turn it is shows as a quiet band behind the row (the
-    // same band the rail's players table uses), never as a glyph column that would indent every
-    // name. The seat whose cards are on screen is bold, tagged (pov) when a spectator can switch.
+    // The legend is identity + POV only. Current-turn state already lives in the top narration
+    // and the rail's player table, so neither a triangle nor a row highlight belongs here.
     ...Array.from({ length: driver.seatCount() }, (_, seat) => {
-      const active = driver.state()?.currentPlayer() === seat;
       const viewing = seat === viewerSeat;
       const suffix = viewing && onSelect ? ' (pov)' : '';
-      const band = active ? { background: ISLANDERS_CARD.turnRowBg } : {};
       return Button({
         id: `islanders-view-seat-${seat}`,
         label: `■ ${driver.labelOf(seat)}${suffix}`,
@@ -333,12 +332,10 @@ export function islandersPlayerLegend(
         style: {
           width: textWidth,
           padding: 0,
-          ...band,
           color: PLAYER_LOOK[driver.colorOf(seat)],
           bold: viewing,
           textOverflow: 'ellipsis',
           disabled: {
-            ...band,
             color: PLAYER_LOOK[driver.colorOf(seat)],
             bold: viewing,
           },

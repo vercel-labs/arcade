@@ -63,8 +63,6 @@ export const ISLANDERS_CARD = {
   turnActionBg: POKER_PALETTE.actionRaiseBg,
   turnActionHover: POKER_PALETTE.actionRaiseHoverBg,
   turnActionPressed: [214, 218, 240] as IslandersRgb,
-  // The quiet band behind the seat whose turn it is, in the legend and the rail's players table.
-  turnRowBg: [40, 43, 54] as IslandersRgb,
   tradeBg: [20, 23, 31, 0.96] as [number, number, number, number],
   tradeAccent: [78, 167, 177] as IslandersRgb,
   tradeInk: [13, 36, 41] as IslandersRgb,
