@@ -30,11 +30,17 @@ test('Motivation is a paragraph-only Docs letter with a quiet linked signature',
   assert.match(motivation, /label: 'Motivation'/);
   assert.match(motivation, /title: 'Why Arcade exists'/);
   assert.match(motivation, /summary: 'A letter from the developer\.'/);
-  assert.match(motivation, /what does it feel like to share a world with these models\?/);
-  assert.match(motivation, /repeated choices under shared conditions/);
-  assert.match(motivation, /makes technology feel a little more playful/);
+  assert.match(motivation, /I never thought about the terminal as a canvas/);
+  assert.match(motivation, /entered a hackathon/);
+  assert.match(motivation, /my silly idea resonated with the judges/);
+  assert.match(motivation, /a few weeks later, I started my first day at Vercel/);
+  assert.match(motivation, /AlphaGo's Move 37 against Lee Sedol in Game 2/);
+  assert.match(motivation, /Nen restrictions and binding vows/);
+  assert.match(motivation, /tendencies that emerge from the model as it is/);
+  assert.match(motivation, /few fun minutes during a busy day/);
   assert.match(motivation, /href="https:\/\/x\.com\/_Brian_Zhang"/);
   assert.match(motivation, /className="doc-letter__signature">- <a/);
+  assert.doesNotMatch(motivation, /Notion Developer Platform|ended up winning|When I later joined Vercel/);
   assert.doesNotMatch(motivation, /—|<h2|<ul|<Code/);
   assert.match(about, /redirect\('\/docs\/motivation'\)/);
   assert.match(page, /MOTIVATION_DOC/);
@@ -191,6 +197,6 @@ test('getting started covers install, source, sign-in, and supported library pat
 test('the agent corpus preserves the implementation contracts documented for humans', async () => {
   const corpus = await readFile(new URL('../public/llms-full.txt', import.meta.url), 'utf8');
   for (const detail of ['Core contracts for agents', 'Material<U>', 'Screen', 'GameState<Action>', 'MatchScene.playMove()', 'CanvasSurfaceHost']) assert.match(corpus, new RegExp(detail.replace(/[<>()]/g, '\\$&')));
-  for (const detail of ['/docs/games', 'Chess case study', 'Poker case study', 'Islanders case study', 'Communication and chat', 'ambient', 'autoreply', '@model', 'runHeadlessChessMatch', 'runPokerSession']) assert.match(corpus, new RegExp(detail.replace(/[<>()]/g, '\\$&')));
+  for (const detail of ['/docs/games', 'Chess case study', 'Poker case study', 'Islanders case study', 'Communication and chat', 'ambient', 'autoreply', '@model', 'runHeadlessChessMatch', 'runPokerSession', 'play and whimsy']) assert.match(corpus, new RegExp(detail.replace(/[<>()]/g, '\\$&')));
   assert.match(corpus, /Current limitations/);
 });

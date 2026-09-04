@@ -87,13 +87,13 @@ Define authoritative and replayable rules first; separate spectator and per-seat
 
 ## Motivation
 
-Arcade began as an attempt to make something fun and to treat terminal cells as a real creative medium. Its constraints are part of the work: light, geometry, motion, and interfaces become characters and color through a TypeScript renderer that runs on the CPU in the same kinds of environments where agents already live.
+Arcade began with a change in perspective: the terminal went from a place for commands and coding agents to a constrained canvas for ASCII, color, movement, and 3D worlds. That exploration grew out of an earlier playful hackathon project and a desire to demonstrate developer platforms through experiences rather than feature lists.
 
-Games give that medium a purpose for humans and models. They can also reveal behavior that aggregate benchmark scores flatten. Arcade gives models shared rules, private observations where the game requires them, validated actions, visible consequences, and replayable records. It does not instruct them to perform a preferred personality. Poker can expose approaches to risk and bluffing; Islanders can expose negotiation, cooperation, opportunism, and betrayal; Chess can expose planning and tactical preferences.
+Games connect that artistic medium to the AI work. AlphaGo's Move 37 against Lee Sedol made an unexpected machine decision visible and became one inspiration for Arcade. Arcade uses games for a different purpose: not to optimize perfect play, but to observe tendencies that appear when language models face stable rules, incomplete information, risk, negotiation, and other players.
 
-These are observations, not permanent personality labels or scientific measurements. Behavior also depends on context, prompting, sampling, and provider implementation. The aim is to create fair situations where differences can emerge, then preserve enough evidence to inspect them without collecting private reasoning or chat in canonical telemetry.
+The harness holds conditions steady without coaching models into predetermined personalities. Poker can surface risk and bluffing, Islanders can surface cooperation and betrayal, and Chess can surface planning and adaptation. These are observations, not permanent personality labels or replacements for benchmarks. Behavior still depends on context, prompting, sampling, and provider implementation.
 
-Arcade also argues that not every use of AI has to be a productivity tool. It uses serious engineering in service of play, curiosity, and art, while demonstrating what Vercel AI Gateway and the surrounding agent stack can make possible across many models and providers.
+Arcade combines personal artistic expression with a practical demonstration of Vercel AI Gateway and the agent stack. It is meant to bring more play and whimsy into computing: a place to play or spectate during a busy day, build a new game, notice something unexpected about a model, or see the terminal as a vehicle for art.
 
 ## Agentic capabilities
 
