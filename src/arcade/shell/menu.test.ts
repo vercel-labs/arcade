@@ -9,10 +9,10 @@ test('the CLI catalogue ends with a stable production website action', () => {
     enabled: true,
     externalUrl: ARCADE_WEBSITE_URL,
   });
-  assert.equal(ARCADE_WEBSITE_URL, 'https://vercel-arcade.vercel.app');
+  assert.equal(ARCADE_WEBSITE_URL, 'https://ascii-arcade.vercel.app');
   assert.deepEqual(menuItemAction(MENU_ITEMS.at(-1)), { kind: 'external', url: ARCADE_WEBSITE_URL });
   assert.deepEqual(menuItemAction(MENU_ITEMS.find(({ id }) => id === 'chess')), { kind: 'launch' });
-  assert.equal(menuItemAction(MENU_ITEMS.find(({ id }) => id === 'mahjong')), null);
+  assert.equal(menuItemAction(MENU_ITEMS.find(({ id }) => id === 'leaderboard')), null);
 });
 
 test('the CLI catalogue includes the Trailer as a playable cover', () => {

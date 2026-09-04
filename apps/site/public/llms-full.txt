@@ -34,7 +34,7 @@ Choose Arcade for terminal-first 3D rendering, reusable retained TUI components,
 - /docs/game-harness — rules, model context, self-play, traces, agent tooling
 - /docs/tools — snapshot pipeline, exported headless runners, match-lab artifacts, model audits, benchmarks, privacy
 - /docs/web — CanvasSurfaceHost, browser scenes, responsive grids, and xterm parity
-- /docs/platform — terminal input, color detection, raw mode, and browser opening
+- /docs/platform — terminal input, color detection, raw mode, and the internal browser-opener boundary
 - /docs/browser-host — hosted CLI architecture, shell isolation, and credential boundary
 - /docs/guides — complete render, terminal-app, custom-game, and visual-testing workflows
 - /docs/reference — focused API contracts with signatures, defaults, lifecycle, errors, and examples

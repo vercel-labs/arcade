@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://vercel.com/security
+    about: Report vulnerabilities and sensitive security issues privately.

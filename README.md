@@ -1,131 +1,212 @@
-# Arcade
+<div align="center">
+  <a href="https://ascii-arcade.vercel.app">
+    <img src="./apps/site/public/opengraph-image.png" alt="arcade — The 3D game engine built for agents." width="100%" />
+  </a>
+  <h1>arcade</h1>
+  <p>
+    <strong>The 3D game engine built for agents.</strong><br />
+    ASCII in your terminal, no GPU. Humans can play too.
+  </p>
+  <p>
+    <a href="https://vercel.com"><img alt="Made by Vercel" src="https://img.shields.io/badge/MADE%20BY-Vercel-000000.svg?style=for-the-badge&amp;logo=vercel&amp;logoColor=white&amp;labelColor=000000" /></a>
+    <a href="./package.json"><img alt="npm package @vercel/arcade" src="https://img.shields.io/badge/npm-%40vercel%2Farcade-CB3837.svg?style=for-the-badge&amp;logo=npm&amp;logoColor=white&amp;labelColor=000000" /></a>
+    <a href="./LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-55AA00.svg?style=for-the-badge&amp;labelColor=000000" /></a>
+    <a href="https://ascii-arcade.vercel.app/docs"><img alt="Arcade documentation" src="https://img.shields.io/badge/docs-online-0070F3.svg?style=for-the-badge&amp;labelColor=000000" /></a>
+  </p>
+  <p>
+    <a href="https://ascii-arcade.vercel.app">Play online</a>
+    · <a href="https://ascii-arcade.vercel.app/docs">Documentation</a>
+    · <a href="https://ascii-arcade.vercel.app/docs/package-api">Package API</a>
+  </p>
+</div>
 
-**3D games rendered as ASCII in your terminal, played by humans _and_ frontier AI models.**
+Arcade is an open-source, pure-TypeScript CPU 3D renderer, retained-mode
+terminal UI toolkit, and agent-playable game harness. The same rules, geometry,
+animation, and player contracts power the native terminal app, browser Canvas,
+deterministic snapshots, and headless matches.
 
-Arcade is the first build-out of **Vercel Arcade**: play classic games against frontier models through the [Vercel AI Gateway](https://vercel.com/ai-gateway), or sit back and watch two models play each other. It all runs inside a terminal, drawn with truecolor half-blocks. Everything here is pure TypeScript with **zero native dependencies**: the 3D renderer, the UI layer, and the game rules are all written from scratch.
+- **Software-rendered 3D.** Perspective projection, near-plane clipping,
+  z-buffering, materials, picking, supersampling, and bloom without a GPU.
+- **One visual system.** Render scenes as shape-matched ASCII, truecolor
+  half-block pixels, or a hybrid of both.
+- **Agent-ready games.** Humans, models, search policies, and test players use
+  the same typed `Player` and authoritative rules contracts.
+- **Inspectable by design.** Reproducible snapshots, bounded headless runners,
+  canonical game records, and agent-readable documentation ship with the project.
 
-**Chess, poker, and Islanders are playable today.** Real 3D pieces, a felt poker table, and a full Islanders board are lit and rasterized in software, then presented as ASCII/half-blocks. Play a model yourself, or watch models play each other.
+## Run Arcade
 
-> This README covers the codebase and how to run it. Internal product context lives in the Vercel Arcade Notion.
-
-## Play it
-
-Arcade is published as a **private, Vercel-internal** npm package. With `@vercel` npm access you can run it on demand, or install it once and just type `arcade`:
+Install the CLI and launch it:
 
 ```bash
-curl -fsSL vercel-arcade.vercel.app/install | sh   # install globally (checks Node, then npm)
-
-npx @vercel/arcade@latest        # or run the latest without installing
-
-npm i -g @vercel/arcade          # or install globally yourself (pnpm add -g / yarn global add also work)
-arcade                           # …then launch it from anywhere
+npm install --global @vercel/arcade
+arcade
 ```
 
-A global `npm` install ends with a banner showing the command to run and where the docs are
-(`src/arcade/install-banner.ts`). It writes to the terminal device rather than stdout, because
-package managers capture and discard lifecycle-script output — and it prints only for a global
-install, so `npx` and a dev checkout stay quiet. `pnpm add -g` shows nothing: pnpm blocks a
-package's lifecycle scripts unless the user allows them.
+Or run the latest release without keeping a global installation:
 
-The landing page and that installer live in [apps/site](apps/site) and are deployed at
-[vercel-arcade.vercel.app](https://vercel-arcade.vercel.app) — its own Vercel project,
-separate from the curl prism and the telemetry proxy.
+```bash
+npx @vercel/arcade@latest
+```
 
-Arcade checks for a newer published version at launch and, if one exists, surfaces the exact upgrade command two ways: a line among the startup output, and a popup over the opening prism (with a copy button). `npx @vercel/arcade@latest` always pulls the newest build; a global install stays put until you run the upgrade command.
+The standalone installer checks Node.js and installs the same npm package:
 
-On first launch it signs you into Vercel with a browser-based device login (like `vercel login`), then asks which team to bill AI usage to and mints an AI Gateway key for it. Tokens are cached under `~/.config/arcade/`; the key itself is re-derived each launch, never stored. Switch team or sign out from the in-app **Account** menu, or with `--switch-team` / `--logout`.
+```bash
+curl -fsSL https://ascii-arcade.vercel.app/install | sh
+```
 
-> Best in a truecolor terminal (Ghostty, iTerm2, Kitty, WezTerm, VS Code). It auto-detects and falls back to 256-color, and macOS Terminal.app works.
+On first launch, Arcade opens Vercel's device sign-in flow, asks which team
+should own AI usage, and derives an AI Gateway key for that session. The key is
+never persisted. Run `arcade --help` for account, telemetry, and launch options.
+
+Arcade looks best in a truecolor terminal such as Ghostty, iTerm2, Kitty,
+WezTerm, or VS Code. It detects terminal capabilities and falls back to
+256-color output when necessary.
 
 ### Controls
 
-- **Any 3D scene:** **left-drag** orbits, **scroll** zooms, **arrow keys** pan. `q` / `Esc` quits.
-- **Chess:** click a piece to highlight its legal moves, click a dot to slide it there. Start a match from the bar (play as White or Black, or watch AI vs AI).
-- **Poker:** hover your hole cards to peek, click to lift them; drag the slider to size a bet. Pause/resume or deal a new match from the bar. Shipped matches use text models; realtime voice remains experimental source and is not offered in setup.
+- **Every 3D scene:** left-drag to orbit, scroll to zoom, and use arrow keys to pan.
+- **Chess:** select a piece, choose a legal square, or start a human/model match.
+- **Poker:** hover to peek, click to lift cards, and size actions from the betting controls.
+- **Islanders:** build, trade, move the robber, and negotiate around a procedurally rendered board.
 
-Telemetry: Arcade sends anonymous usage counts (which models get played, match/hand outcomes). It never sends prompts or game content. Opt out with `ARCADE_TELEMETRY=0`.
+## Games
 
-## Develop it
+| Game | What ships |
+| --- | --- |
+| **Chess** | A verified 0x88 rules engine with legal move generation, SAN/UCI, castling, en passant, promotion, repetition, draw rules, perft tests, and animated human/model play. |
+| **Poker** | No-limit Texas Hold'em for 2–6 seats with private observations, betting and all-ins, side pots, physical chips and cards, table talk, multi-hand sessions, and canonical records. |
+| **Islanders** | A 2–4 player procedural island with production, building, maritime and player trades, development cards, robber/discard phases, negotiation, awards, and replayable rules state. |
 
-```bash
-pnpm install
-pnpm dev
+Each game separates authoritative rules from presentation. Terminal scenes,
+browser cinematics, headless runners, and model prompts consume the same game
+state instead of maintaining parallel implementations.
+
+## Build with Arcade
+
+`@vercel/arcade` exposes deliberate package boundaries instead of publicizing
+the repository's internal directory structure.
+
+| Import | Use it for |
+| --- | --- |
+| `@vercel/arcade` | Browser-safe convenience exports and packaged showcases. |
+| `@vercel/arcade/engine` | CPU rasterization, meshes, materials, cameras, animation, picking, effects, terminal surfaces, and presenters. |
+| `@vercel/arcade/tui` | Retained layout, components, themes, focus, pointer input, compositing, and the terminal renderer. |
+| `@vercel/arcade/platform` | Node terminal input, color detection, and alternate-screen lifecycle. |
+| `@vercel/arcade/rules/*` | UI-independent Chess, Poker, and Islanders game states. |
+| `@vercel/arcade/harness/*` | Players, model decisions, communication policy, headless sessions, diagnostics, and records. |
+| `@vercel/arcade/game-visuals/*` | Shared production geometry and deterministic game animation plans. |
+| `@vercel/arcade/web` | Canvas presentation, browser scenes, responsive terminal grids, and cinematic adapters. |
+
+For example, a player is simply an asynchronous policy over an authoritative
+game state:
+
+```ts
+import type { Player } from '@vercel/arcade/harness';
+import { runHeadlessChessMatch } from '@vercel/arcade/harness/chess';
+import { ChessState, type Move } from '@vercel/arcade/rules/chess';
+
+const firstLegal: Player<Move> = {
+  name: 'first legal',
+  chooseAction: async state => ({ action: state.legalActions()[0] }),
+};
+
+const result = await runHeadlessChessMatch(
+  new ChessState(),
+  [firstLegal, firstLegal],
+  { maxPlies: 300 },
+);
+
+console.log(result.status, result.state.moveHistory());
 ```
 
-You boot into a splash animation: the Vercel triangle dissolving into a rotating glass prism, a _Dark Side of the Moon_ homage that splits a beam into a rainbow. Press any key for the game menu. `pnpm dev` sets `ARCADE_DEV=1`, so internal-only screens (logos, audio, a UI showcase, a poker sandbox) show up; they're hidden in the published build.
-
-> **Don't run `pnpm dev` to "see" the output.** It's a full-screen, raw-mode, infinite TTY program. Snapshot a frame to an image instead (`pnpm snapshot 140 50`). See [AGENTS.md](./AGENTS.md) and [docs/verifying-output.md](./docs/verifying-output.md).
-
-The prism screen is also a curlable endpoint: `curl ascii-prisms.vercel.app`.
+Start with the [rendering engine](https://ascii-arcade.vercel.app/docs/engine),
+[terminal UI](https://ascii-arcade.vercel.app/docs/tui), or
+[game harness](https://ascii-arcade.vercel.app/docs/game-harness) guides. The
+[package API](https://ascii-arcade.vercel.app/docs/package-api) lists every
+supported import.
 
 ## Architecture
 
-A few standalone libraries plus the app that composes them. Imports flow one way. The libraries never import app code, so they stay reusable.
+Arcade keeps reusable libraries below the application. Import direction is
+one-way: app and host layers consume the renderer, rules, harness, and visuals;
+those libraries never import product UI.
 
-```
-src/
-  engine/     3D software renderer (no GPU): math, meshes, rasterizer, materials,
-              ASCII/half-block presenters, bloom, supersampling
-  tui/        retained-mode TUI: flexbox layout + Box/Text/Button, hover/focus/press,
-              hit-testing, paints to a Surface
-  platform/   terminal control (alt-screen, raw mode, SGR mouse) + input parsing
-  rules/      UI-independent chess, poker, and Islanders rules states
-  harness/    Player/ModelPlayer + communication + live/headless match orchestration
-  game-visuals/ reusable renderer-only Islanders, Chess, and Poker primitives
-  prism/      the animated prism screen (self-contained), also the curl-able stream behind api/
-  auth/       Vercel sign-in (OAuth device flow) + AI Gateway key resolution
-  voice/      realtime speech-to-speech session + mic/speaker I/O + echo cancellation
-  telemetry/  fire-and-forget anonymous usage counts (opt-out)
-  arcade/     THE app: orchestrator (main.ts) + per-game / scene / shell presentation
-  tools/      snapshots, perft, model audits, dev scripts
+```text
+rules ────────────> harness ────────────────┐
+                                             │
+engine ──┬────────> tui ─────────────────────┼──> arcade CLI
+         ├────────> game-visuals ────────────┤
+         ├────────> cinematic ───────┬───────┘
+         │                           └──> web ──> site
+         └────────> prism ──────────────────> curl API
+
+auth · voice · telemetry ───────────────────> arcade CLI
 ```
 
-### `engine/`: the 3D ASCII rendering engine
+Read the [repository map](./docs/architecture/repository-map.md) and
+[package boundary policy](./docs/architecture/package-boundaries.md) for the
+complete dependency and distribution contract.
 
-A from-scratch software rasterizer. Column-major `Mat4` math → perspective camera → near-plane clipping → edge-function rasterization → perspective-correct interpolation → z-buffer. The single style hook is the **`Material`** (a vertex + fragment program pair), so the whole arcade shares one controllable look; current materials include a two-light flat-shaded piece material and a glassy refraction material. Meshes come from a built-in cube/tetrahedron or the **OBJ loader** (`parseObj` + `flatShade`).
+## Agent resources
 
-The render target is handed to one of three **presenters**:
+Arcade is designed to be understood and operated by coding agents as well as
+people:
 
-- **half-block**: two truecolor pixels per cell via `▀`, with optional bloom + supersampling.
-- **shape-glyph**: picks the character whose ink _shape_ best matches each cell (after Alex Harri's "ASCII rendering"), with a luminance fallback so shadows stay legible.
-- **luminance**: a classic dark→light character ramp.
+- [`llms.txt`](https://ascii-arcade.vercel.app/llms.txt) is the concise product and API index.
+- [`llms-full.txt`](https://ascii-arcade.vercel.app/llms-full.txt) contains the complete offline documentation corpus.
+- [`agents.md`](https://ascii-arcade.vercel.app/agents.md) documents supported agent workflows and commands.
+- [`openapi.json`](https://ascii-arcade.vercel.app/openapi.json) describes the public installer, status, and prism-stream HTTP surfaces.
+- [`examples.json`](https://ascii-arcade.vercel.app/examples.json) indexes browser-safe examples and capabilities.
 
-### `tui/`: a retained-mode UI library
+For local visual work, `pnpm snapshot` renders a bounded frame through the real
+production scene pipeline. Match Lab runs deterministic or model-backed Chess,
+Poker, and Islanders sessions while preserving manifests, events, traces, and
+canonical records.
 
-A small retained-mode UI layer that provides the shared building blocks for every game (bars, menus, dialogs, dropdowns, sliders). The app rebuilds a tree of `Box`/`Text`/`Button` nodes each frame; the `Screen` runtime carries hover/focus/pressed state across frames (keyed by node id), runs a flexbox-style layout pass (absolute positioning, margins, per-side padding, `overflow:hidden` clipping), hit-tests the mouse, and paints to an engine `Surface`.
+## Develop
 
-Rendering is **unified**: the 3D scene paints into the same `Surface` as the UI, so each frame is one alpha-composited cell grid that gets diffed and flushed (only changed cells are written). That's what lets a translucent **Modal** scrim dim the live scene behind a popup.
+```bash
+pnpm install
+pnpm type-check
+pnpm test
+pnpm smoke:package
+```
 
-### `rules/` and `harness/`: game authority + agentic play
+Run the full-screen terminal application with `pnpm dev`. To inspect visual
+output without starting an infinite raw-mode TTY, render a PNG instead:
 
-The rules use an extensible, **AI-ready** state contract modeled on DeepMind OpenSpiel (a `Game`/`State` split) and Kaggle Game Arena (a player is just `observation → action`). A `State` exposes `legalActions`, `applyAction`, `isTerminal`, `returns`, `clone`, and notation conversion. The public `harness/` layer connects those states to interchangeable model, human, or custom players without owning credentials or telemetry.
+```bash
+pnpm snapshot:png poker 140 50 river players=5
+```
 
-The **chess rules engine** is written from scratch (0x88 board, full legal move generation, castling/en passant/promotion, checkmate/stalemate, the 50-move/threefold/insufficient-material draws, SAN + UCI notation), proven by **perft** against reference node counts (`pnpm exec tsx src/tools/perft.ts`). Poker implements no-limit Texas Hold'em, and Islanders implements setup, production, building, trading, development cards, robber/discards, awards, and victory.
+See [verifying output](./docs/verifying-output.md) for every snapshot target and
+[CONTRIBUTING.md](./CONTRIBUTING.md) for repository setup and pull-request
+expectations.
 
-See [the harness guide](docs/harness.md), [repository map](docs/architecture/repository-map.md), and [package boundary policy](docs/architecture/package-boundaries.md) for the reusable API and complete app/library/deployment layout.
+## Authentication and telemetry
 
-## Roadmap
+The Arcade CLI uses Vercel's device flow to select a billing team and derive an
+AI Gateway key at launch. Login tokens are cached with owner-only permissions;
+the derived Gateway key is not stored. Library consumers provide their own
+models, players, and authentication.
 
-- [x] 3D ASCII rendering engine
-- [x] Mini TUI library for in-terminal controls
-- [x] Chess: 3D board, interactive play, and a verified rules engine
-- [x] **AI Gateway + AI SDK integration**: play **you vs AI** and **AI vs AI**, with mid-match model swaps
-- [x] **Poker**: no-limit Texas Hold'em, human-vs-AI and AI-vs-AI
-- [ ] **Realtime audio "table talk"**: experimental source exists, but setup and native playback are not shipped
-- [ ] **Model leaderboard**: per-model play-style stats from game telemetry
-- [ ] **More games and public-beta hardening** across the CLI, docs, and examples
+Arcade sends anonymous usage events and canonical game records through its
+telemetry proxy. It never sends prompts, private reasoning, table chat, voice,
+credentials, or Vercel account identity. Disable telemetry with
+`ARCADE_TELEMETRY=0`, `arcade telemetry disable`, or the in-app setting.
 
-## Scripts
+## Contributing
 
-| Command                                | What it does                                  |
-| -------------------------------------- | --------------------------------------------- |
-| `pnpm dev`                             | Run the arcade (dev mode)                     |
-| `pnpm snapshot [cols] [rows] [t]`      | Render a frame to a `.ppm` image (for review) |
-| `pnpm snapshot:png …`                  | Render a frame and convert it to `.png`       |
-| `pnpm watch`                           | Run with auto-reload                          |
-| `pnpm type-check`                      | Type-check with `tsc`                         |
-| `pnpm test`                            | Run the unit suite (`src/**/*.test.ts`)       |
-| `pnpm models:audit` / `models:report` | Audit / render model compatibility            |
-| `pnpm exec tsx src/tools/perft.ts`     | Verify the chess move generator               |
+Issues, focused pull requests, documentation improvements, and new game
+experiments are welcome. Read [CONTRIBUTING.md](./CONTRIBUTING.md) before adding
+code or assets, and follow the [Vercel Community Code of Conduct](./CODE_OF_CONDUCT.md).
 
-Credits for the techniques and assets this builds on are in [`NOTICE.md`](./NOTICE.md).
+Security reports should follow the private process in
+[`.github/SECURITY.md`](./.github/SECURITY.md).
+
+## License
+
+Arcade's original source and assets are available under the
+[MIT License](./LICENSE). Third-party attributions and their applicable terms
+are recorded in [NOTICE.md](./NOTICE.md) and [LICENSES/](./LICENSES/).

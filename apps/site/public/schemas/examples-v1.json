@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://vercel-arcade.vercel.app/schemas/examples-v1.json",
+  "$id": "https://ascii-arcade.vercel.app/schemas/examples-v1.json",
   "type": "object",
   "required": ["version", "examples"],
   "properties": {

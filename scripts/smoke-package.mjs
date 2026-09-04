@@ -24,6 +24,10 @@ try {
 
   const packedRoot = join(temp, 'package');
   const packed = JSON.parse(readFileSync(join(packedRoot, 'package.json'), 'utf8'));
+  for (const path of ['LICENSE', 'NOTICE.md', 'LICENSES/Apache-2.0.txt', 'LICENSES/OFL-1.1.txt', 'LICENSES/Press-Start-2P-OFL-1.1.txt']) {
+    if (!existsSync(join(packedRoot, path))) throw new Error(`packed package is missing legal file ${path}`);
+  }
+  if (packed.license !== 'MIT') throw new Error('packed Arcade must declare the MIT license');
   if (packed.dependencies?.speaker || packed.optionalDependencies?.speaker) {
     throw new Error('packed Arcade must not install the optional native speaker dependency');
   }

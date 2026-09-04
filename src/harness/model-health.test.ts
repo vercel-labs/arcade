@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
 import { checkModelHealth } from './model-health.ts';
 
 test('an empty model set is healthy', async () => {
@@ -35,8 +36,7 @@ test('queued health checks share one overall deadline', async () => {
     timeoutMs: 10,
     generate: async (model, signal) => {
       started.push(model);
-      await new Promise<void>((resolve) => signal.addEventListener('abort', () => resolve(), { once: true }));
-      throw signal.reason;
+      await delay(1_000, undefined, { signal });
     },
   });
   assert.deepEqual(failures, []);

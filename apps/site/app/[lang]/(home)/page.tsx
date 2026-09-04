@@ -6,7 +6,7 @@ const structuredData = {
   description: 'A pure-TypeScript CPU 3D renderer, retained TUI, and agent-playable game harness.',
   applicationCategory: 'DeveloperApplication', operatingSystem: 'Node.js 22+ and modern browsers',
   isAccessibleForFree: true, codeRepository: 'https://github.com/vercel-labs/arcade',
-  programmingLanguage: 'TypeScript', runtimePlatform: 'Node.js and Web browsers', url: 'https://vercel-arcade.vercel.app',
+  programmingLanguage: 'TypeScript', runtimePlatform: 'Node.js and Web browsers', url: 'https://ascii-arcade.vercel.app',
 };
 
 export const metadata: Metadata = {

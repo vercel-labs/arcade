@@ -1,5 +1,5 @@
 {
-  "$schema": "https://vercel-arcade.vercel.app/schemas/examples-v1.json",
+  "$schema": "https://ascii-arcade.vercel.app/schemas/examples-v1.json",
   "version": 1,
   "examples": [
     { "id": "hosted-arcade-cli", "title": "Hosted Arcade CLI", "url": "/#play", "docs": "/docs/browser-host", "source": "apps/site/app/api/terminal/session/route.ts", "imports": ["@vercel/sandbox", "@xterm/xterm", "@vercel/arcade"], "capabilities": ["actual-cli", "pty", "shell", "games", "temporary-filesystem"] },
