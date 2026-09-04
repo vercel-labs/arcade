@@ -1,5 +1,5 @@
 import { cameraMatrices } from '../engine/camera.ts';
-import { chessCinematicPose } from '../cinematic/camera.ts';
+import { chessCinematicPose, type ChessCinematicPose } from '../cinematic/camera.ts';
 import { CHESS_LOOP_SECONDS, CHESS_MOVE_SECONDS, EVERGREEN_GAME_MOVES } from '../cinematic/scripted-games.ts';
 import type { RGB } from '../engine/color.ts';
 import { RenderTarget } from '../engine/framebuffer.ts';
@@ -171,10 +171,14 @@ export class BrowserArcade {
 
   /** Scroll authors the camera; an independent active-scene clock authors play. */
   setCinematicState(cameraProgress: number, gameplayPhase: number, cameraDistanceScale = 1): void {
-    const moves = EVERGREEN_GAME_MOVES;
     const p = Math.max(0, Math.min(1, cameraProgress));
     const elapsed = Math.max(0, Math.min(0.999999, gameplayPhase)) * CHESS_LOOP_SECONDS;
-    const scaled = Math.min(moves.length, elapsed / CHESS_MOVE_SECONDS);
+    const pose = chessCinematicPose(p);
+    this.setCinematicScript({ ...pose, distance: pose.distance * cameraDistanceScale }, EVERGREEN_GAME_MOVES, elapsed, CHESS_MOVE_SECONDS);
+  }
+
+  setCinematicScript(pose: ChessCinematicPose, moves: readonly string[], elapsed: number, moveSeconds: number): void {
+    const scaled = Math.min(moves.length, Math.max(0, elapsed) / Math.max(1e-6, moveSeconds));
     const completed = Math.min(moves.length, Math.floor(scaled));
     this.game = new ChessState();
     this.moveLog = [];
@@ -194,10 +198,9 @@ export class BrowserArcade {
       const active = this.game.actionFromStringLoose(moves[completed]);
       if (active) this.cinematic = { move: active, progress: smoothstep(scaled - completed), plan: this.planMove(active) };
     }
-    const pose = chessCinematicPose(p);
     this.camera.azimuth = pose.azimuth;
     this.camera.elevation = pose.elevation;
-    this.camera.distance = pose.distance * cameraDistanceScale;
+    this.camera.distance = pose.distance;
     this.camera.target = pose.target;
     this.openChess();
   }

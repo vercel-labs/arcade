@@ -32,6 +32,7 @@ import { drawChipStack, playerColumns } from '../game-visuals/poker/index.ts';
 import { TERRAINS, type Terrain } from '../rules/islanders/types.ts';
 import { BrowserArcade, type BrowserDisplayMode } from './browser-chess.ts';
 import type { BrowserMiniScene, BrowserMiniSceneFrame, BrowserMiniSceneId, BrowserMiniSceneOptions } from './mini-scene.ts';
+import type { ChessCinematicPose } from '../cinematic/camera.ts';
 
 const BLACK: RGB = [0, 0, 0];
 const CYAN: RGB = [88, 212, 236];
@@ -94,6 +95,7 @@ export class BrowserChessBoardShowcase implements BrowserMiniScene {
 
   setCinematicProgress(progress: number): void { this.arcade.setCinematicProgress(progress); }
   setCinematicState(cameraProgress: number, gameplayPhase: number, cameraDistanceScale = 1): void { this.arcade.setCinematicState(cameraProgress, gameplayPhase, cameraDistanceScale); }
+  setCinematicScript(pose: ChessCinematicPose, moves: readonly string[], elapsed: number, moveSeconds: number): void { this.arcade.setCinematicScript(pose, moves, elapsed, moveSeconds); }
 
   cycleDisplayMode(): BrowserDisplayMode { return this.arcade.cycleDisplayMode(); }
   orbit(dx: number, dy: number): void { this.arcade.orbit(dx, dy); }

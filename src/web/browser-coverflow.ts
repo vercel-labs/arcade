@@ -15,6 +15,7 @@ const URLS: Record<typeof ITEMS[number]['id'], string> = {
   leaderboard: new URL('../../assets/games/leaderboard.png', import.meta.url).toString(),
   achievements: new URL('../../assets/games/achievements.png', import.meta.url).toString(),
   website: new URL('../../assets/games/website.png', import.meta.url).toString(),
+  tutorial: new URL('../../assets/games/tutorial.png', import.meta.url).toString(),
 };
 
 /** Browser image adapter around Arcade's shared production Cover Flow. */

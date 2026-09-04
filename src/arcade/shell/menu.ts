@@ -23,9 +23,9 @@ export { ARCADE_WEBSITE_URL };
 // marks internal-only surfaces — the test sandboxes and the ambient logos / audio /
 // UI-showcase screens — which are development tools, not games a player should see.
 const ALL_ITEMS: MenuItem[] = [
-  ...ARCADE_CATALOGUE,
+  ...ARCADE_CATALOGUE.slice(0, -1),
   { id: 'trailer', title: 'Trailer', enabled: true },
-  { id: 'tutorial', title: 'Tutorial', enabled: true },
+  ...ARCADE_CATALOGUE.slice(-1),
   { id: 'islanders-test', title: 'Islanders-Test', enabled: true, dev: true },
   { id: 'poker-test', title: 'Poker-Test', enabled: true, dev: true },
   { id: 'logos', title: 'Logos', enabled: true, dev: true },

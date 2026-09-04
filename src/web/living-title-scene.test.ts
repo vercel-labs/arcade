@@ -47,7 +47,7 @@ test('living title maps scroll progress to the expected game act', () => {
 });
 
 test('browser Cover Flow uses the complete shared production catalogue', () => {
-  assert.equal(ARCADE_CATALOGUE.at(-1)?.id, 'website');
+  assert.equal(ARCADE_CATALOGUE.at(-1)?.id, 'tutorial');
 });
 
 test('opening scenes pull back only in narrow portrait framing', () => {
