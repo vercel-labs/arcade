@@ -142,8 +142,8 @@ Test the exact handler locally: `pnpm exec tsx src/tools/serve-prism.ts` then
 
 Three separate Vercel projects live in this repo, all in **vercel-labs**: `ascii-prisms`
 (the curl prism, root `vercel.json`), `arcade-telemetry` (`apps/telemetry-proxy`), and
-`vercel-arcade` — the hero page + `curl … | sh` installer at
-[vercel-arcade.vercel.app](https://vercel-arcade.vercel.app) (`apps/site`, root directory
+`ascii-arcade` — the hero page + `curl … | sh` installer at
+[ascii-arcade.vercel.app](https://ascii-arcade.vercel.app) (`apps/site`, root directory
 `apps/site`, Next.js on [`@vercel/geistdocs`](https://github.com/vercel/geistdocs) —
 the shared nav/footer package behind vgpu.sh and skills.sh — deploys on push to `main`).
 It's its own nested pnpm workspace (own lockfile, own `node_modules`, `pnpm install`

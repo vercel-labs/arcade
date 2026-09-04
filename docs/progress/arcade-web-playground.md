@@ -44,8 +44,6 @@ headers without a real limiter, and a live MCP server outside this read-only sit
 OpenAPI already has typed response schemas, operation IDs, URL versioning, and a documented
 Deprecation/Sunset policy; the audit still reports those as partial.
 
-Agent-readiness follow-up is tracked under Linear issue `AIG-705`; existing package and
-open-source work remains under `AIG-589` through `AIG-598` rather than duplicated here.
 Credential-safe AI sessions and browser expansion beyond local Chess are tracked under
 `AIG-706` with the required server auth, rate-limit, privacy, and lifecycle boundary.
 
@@ -68,9 +66,6 @@ Credential-safe AI sessions and browser expansion beyond local Chess are tracked
   browser adapters should exist only when they teach a reusable package API.
 - Production capacity, abuse controls, and credential provisioning for the hosted terminal;
   see `AIG-706` and [ADR 0001](../architecture/0001-hosted-arcade-terminal.md).
-- Public npm claims. The package remains restricted until the source, asset, license, and
-  packed-consumer release audits are complete.
-
 ## Guardrails
 
 - Keep `/install`, curl prism, CLI startup, and telemetry opt-out unchanged.

@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# curl -fsSL vercel-arcade.vercel.app/install | sh
+# curl -fsSL ascii-arcade.vercel.app/install | sh
 #
 # Served by this project at /install (see build.mjs). A thin front door for
 # `npm i -g @vercel/arcade`: it checks for a usable Node, then hands off to npm.

@@ -12,7 +12,6 @@ const URLS: Record<typeof ITEMS[number]['id'], string> = {
   chess: new URL('../../assets/games/chess.png', import.meta.url).toString(),
   poker: new URL('../../assets/games/poker.png', import.meta.url).toString(),
   islanders: new URL('../../assets/games/islanders.png', import.meta.url).toString(),
-  mahjong: new URL('../../assets/games/mahjong.png', import.meta.url).toString(),
   leaderboard: new URL('../../assets/games/leaderboard.png', import.meta.url).toString(),
   achievements: new URL('../../assets/games/achievements.png', import.meta.url).toString(),
   website: new URL('../../assets/games/website.png', import.meta.url).toString(),

@@ -4,7 +4,18 @@
   "type": "module",
   "packageManager": "pnpm@10.34.5",
   "description": "Terminal-rendered ASCII arcade \u2014 3D games in the terminal, powered by Vercel AI Gateway",
-  "homepage": "https://vercel-arcade.vercel.app",
+  "license": "MIT",
+  "author": "Vercel, Inc.",
+  "keywords": [
+    "3d",
+    "ai",
+    "ascii",
+    "games",
+    "terminal",
+    "tui",
+    "vercel-ai-gateway"
+  ],
+  "homepage": "https://ascii-arcade.vercel.app",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/vercel-labs/arcade.git"
@@ -82,6 +93,9 @@
     "./web": { "types": "./dist/web/index.d.ts", "import": "./dist/web/index.js" }
   },
   "files": [
+    "LICENSE",
+    "LICENSES",
+    "NOTICE.md",
     "bin",
     "scripts/postinstall.mjs",
     "assets",

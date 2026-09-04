@@ -1,7 +1,7 @@
 // Bake the menu's game-tile art to assets/games/<id>.png. The tiles render
 // these as blocky (half-block) backgrounds, so simple, bold icons read best at the
-// tiny tile size. Source: Google's Noto Emoji (Apache-2.0 / OFL) — permissive and
-// hotlinkable via jsDelivr. Run:
+// tiny tile size. Source: Google's Noto Emoji (image resources: Apache-2.0;
+// fonts: OFL-1.1), fetched through jsDelivr. Run:
 //
 //   pnpm exec tsx src/tools/fetch-games.ts [cover-id ...]
 //
@@ -27,9 +27,6 @@ const ART: Record<string, string> = {
   trailer: '1f39e', // 🎞 film frames
   website: '1f310', // 🌐 globe with meridians
   codenames: '1f575', // 🕵 detective
-  // pacman: not a Noto emoji — its cover is the classic sprite from Wikimedia
-  // Commons (File:Original PacMan.png, transparent, "PD shape"), committed
-  // directly to assets/games/pacman.png and NOT managed by this tool.
   frogger: '1f438', // 🐸 frog
   'space-invaders': '1f47e', // 👾 alien monster
   'street-fighter': '1f94a', // 🥊 boxing glove

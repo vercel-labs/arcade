@@ -1,6 +1,6 @@
 import type { MetadataRoute } from 'next';
 
-const ORIGIN = 'https://vercel-arcade.vercel.app';
+const ORIGIN = 'https://ascii-arcade.vercel.app';
 const paths = ['', '/docs', '/docs/getting-started', '/docs/package-api', '/docs/engine', '/docs/renderer-pipeline', '/docs/tui', '/docs/components', '/docs/game-visuals', '/docs/rules', '/docs/game-harness', '/docs/tools', '/docs/web', '/docs/platform', '/docs/browser-host', '/docs/motivation', '/privacy', '/contact'];
 const docsPaths = [
   '/docs/app', '/docs/app/controls', '/docs/app/models',

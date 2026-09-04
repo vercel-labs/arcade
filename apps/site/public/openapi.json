@@ -5,16 +5,16 @@
     "version": "1.0.0",
     "description": "Version 1 of the read-only and installation endpoints exposed by the Arcade website. Versioned endpoints remain compatible within v1; incompatible changes use a new URL version. Deprecations are announced in the docs and use Deprecation and Sunset response headers before removal. Arcade does not expose a remote game-control or model-execution API.",
     "license": {
-      "name": "See repository licensing status",
-      "url": "https://github.com/vercel-labs/arcade"
+      "name": "MIT",
+      "identifier": "MIT"
     }
   },
   "servers": [
-    { "url": "https://vercel-arcade.vercel.app", "description": "Production website" }
+    { "url": "https://ascii-arcade.vercel.app", "description": "Production website" }
   ],
   "externalDocs": {
     "description": "Arcade developer documentation",
-    "url": "https://vercel-arcade.vercel.app/docs"
+    "url": "https://ascii-arcade.vercel.app/docs"
   },
   "paths": {
     "/api/v1/status": {

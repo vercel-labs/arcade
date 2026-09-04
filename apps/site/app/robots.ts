@@ -1,6 +1,6 @@
 import type { MetadataRoute } from 'next';
 
-const ORIGIN = 'https://vercel-arcade.vercel.app';
+const ORIGIN = 'https://ascii-arcade.vercel.app';
 
 export default function robots(): MetadataRoute.Robots {
   return {
