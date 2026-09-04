@@ -26,7 +26,7 @@ import {
   type IslandersPlayerTradeOffersController,
   type IslandersTradeEditorController,
   islandersCardsLayout,
-  islandersBuildControl,
+  islandersBuildControls,
   islandersLiveActionButton,
   islandersRailVisible,
   ISLANDERS_RAIL_INNER_W,
@@ -516,11 +516,34 @@ function humanActionPanel(deps: IslandersGameHudDeps, region: LayoutBox): Node |
   let column = false;
   let detachedBuildControls = false;
   let compactBuildControls = false;
+  const buildChoices = {
+    road: 'buildRoad',
+    settlement: 'buildSettlement',
+    city: 'buildCity',
+  } as const;
+  const boardChoice = scene.boardChoiceType();
+  const selectedBuild = boardChoice === 'buildRoad' ? 'road'
+    : boardChoice === 'buildSettlement' ? 'settlement'
+      : boardChoice === 'buildCity' ? 'city'
+        : undefined;
+  const buildControls = (active?: 'road' | 'settlement' | 'city'): Node[] => {
+    const seat = state.currentPlayer();
+    return islandersBuildControls(
+      (type) => state.buildAvailability(seat, type),
+      (type) => { scene.beginBoardChoice(buildChoices[type]); },
+      active ?? null,
+      active ? () => scene.cancelHumanChoice() : undefined,
+    );
+  };
   if (!menu) {
     const victimSeats = scene.robberVictimSeats();
     if (victimSeats.length) {
       children.push(...victimPicker(deps, victimSeats));
       column = true;
+    } else if (selectedBuild) {
+      detachedBuildControls = true;
+      compactBuildControls = region.w < 40;
+      children.push(...buildControls(selectedBuild));
     } else if (scene.boardChoiceType()) {
       const choice = scene.boardChoiceType();
       children.push(Text({
@@ -567,15 +590,7 @@ function humanActionPanel(deps: IslandersGameHudDeps, region: LayoutBox): Node |
       if (prompt.kind === 'playTurn') {
         detachedBuildControls = true;
         compactBuildControls = region.w < 40;
-        const seat = state.currentPlayer();
-        const builds = [
-          ['road', 'buildRoad'],
-          ['settlement', 'buildSettlement'],
-          ['city', 'buildCity'],
-        ] as const;
-        for (const [type, choice] of builds) {
-          children.push(islandersBuildControl(type, state.buildAvailability(seat, type), () => scene.beginBoardChoice(choice)));
-        }
+        children.push(...buildControls());
       }
     }
   }
