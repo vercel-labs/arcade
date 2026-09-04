@@ -165,7 +165,7 @@ test('driver installs the scene before models run a complete rules-authoritative
   const view = islandersLiveView(state, driver);
   assert.equal(view.source, 'live');
   const legendRows = islandersPlayerLegend(driver, { x: 0, y: 0, w: 140, h: 50 }).children?.slice(1) ?? [];
-  assert.deepEqual(legendRows.map((row) => row.text), colors.map((_color, seat) => `${seat === 0 ? '▸ ' : '  '}■ model-${seat}`));
+  assert.deepEqual(legendRows.map((row) => row.text), colors.map((_color, seat) => `■ model-${seat}`));
   assert.deepEqual(legendRows.map((row) => row.style.color), colors.map((color) => PLAYER_LOOK[color]));
   const players = [view.localPlayer, ...view.opponents];
   assert.equal(players.length, 4);

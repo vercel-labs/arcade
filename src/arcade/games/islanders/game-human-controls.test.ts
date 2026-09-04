@@ -306,7 +306,7 @@ test('spectators can click a player to inspect that seat hand and development ca
     onOpenMenu: () => {},
     onStart: () => {},
   });
-  assert.equal(findNode(root, 'islanders-view-seat-1')?.text?.startsWith('▸'), true);
+  assert.equal(findNode(root, 'islanders-view-seat-1')?.text?.endsWith('(pov)'), true, 'the viewed seat is tagged');
   const view = islandersLiveView(state, driver, undefined, 1);
   assert.equal(view.hand.ore, 3);
   assert.equal(view.devHand.knight, 2);
@@ -371,7 +371,7 @@ test('an AI trade visibly stages in the shared editor before becoming a posted t
     onOpenMenu: () => {},
     onStart: () => {},
   });
-  assert.equal(findNode(root, 'islanders-view-seat-1')?.text?.startsWith('▸'), true);
+  assert.equal(findNode(root, 'islanders-view-seat-1')?.text?.endsWith('(pov)'), true);
   assert.equal(findNode(root, 'islanders-player-trade')?.disabled, true);
   await applying;
 

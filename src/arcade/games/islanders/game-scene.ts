@@ -21,7 +21,7 @@ import { IslandersState } from '../../../rules/islanders/islanders.ts';
 import type { BoardSetup } from '../../../rules/islanders/setup.ts';
 import { DEV_CARD_TYPES, RESOURCES, resourceIndex, type IslandersAction, type DevCardType, type PlayerColor, type Resource } from '../../../rules/islanders/types.ts';
 import type { LayoutBox } from '../../../tui/index.ts';
-import { islandersBankDepartureCell, islandersDevDeckDepartureCell, islandersDevHandLandingCellForTypes, islandersDiscardDepartureCell, islandersHandLandingCell } from './card-hud.ts';
+import { ISLANDERS_RAIL_W, islandersBankDepartureCell, islandersDevDeckDepartureCell, islandersDevHandLandingCellForTypes, islandersDiscardDepartureCell, islandersHandLandingCell } from './card-hud.ts';
 import { ResourceFlights, type FlyingResource } from './scene/resource-flight.ts';
 import { TileScene } from './tile-scene.ts';
 
@@ -97,7 +97,7 @@ export function islandersActionPlaybackFrames(seat: number, action: IslandersAct
 interface PendingResourceGain {
   resource: Resource;
   count: number;
-  fromBank: boolean;
+  origin: ResourceGainOrigin;
   // Held until the dice settle (a roll's production), not merely until the layout is known.
   deferred: boolean;
   resolve: () => void;
@@ -133,9 +133,14 @@ function emptyResourceCounts(): Record<Resource, number> {
   return Object.fromEntries(RESOURCES.map((resource) => [resource, 0])) as Record<Resource, number>;
 }
 
+// Where a gained card is seen to come from. The bank pays for trades, year of plenty, and the
+// setup grant, so those leave the bank pile (and the pile's count waits for the departure). A
+// roll's production leaves the hexes that produced it. Cards taken from other players
+// (monopoly, a robber steal) enter from the bank's spot on the rail without touching its count.
+type ResourceGainOrigin = 'bank' | 'players' | { hex: number };
+
 function resourceGainComesFromBank(action: IslandersAction): boolean {
   return action.type === 'initialSettlement'
-    || action.type === 'roll'
     || action.type === 'maritimeTrade'
     || action.type === 'maritimeBulkTrade'
     || action.type === 'playYearOfPlenty';
@@ -329,11 +334,15 @@ export class IslandersGameScene {
     const handAfter = state.handOf(this.viewerSeat);
     const fromBank = resourceGainComesFromBank(action);
     const deferRollProduction = this.synchronizeActionAnimations && action.type === 'roll';
+    const rolled = action.type === 'roll' ? state.actionRecords().at(-1)?.outcome?.dice?.reduce((sum, die) => sum + die, 0) : undefined;
     const resourceCompletions: Promise<void>[] = [];
     for (const resource of RESOURCES) {
       const gain = (handAfter[resourceIndex(resource)] ?? 0) - (handBefore[resourceIndex(resource)] ?? 0);
-      if (gain > 0) resourceCompletions.push(this.queueResourceGain(resource, gain, fromBank, deferRollProduction));
-      else if (gain < 0) {
+      if (gain > 0) {
+        for (const { origin, count } of this.gainOrigins(resource, gain, fromBank, rolled)) {
+          resourceCompletions.push(this.queueResourceGain(resource, count, origin, deferRollProduction));
+        }
+      } else if (gain < 0) {
         const origin = action.type === 'discard' && seat === this.humanSeat && seat === this.viewerSeat
           ? 'discard'
           : 'hand';
@@ -855,12 +864,32 @@ export class IslandersGameScene {
     };
   }
 
-  private queueResourceGain(resource: Resource, count: number, fromBank: boolean, defer = false): Promise<void> {
+  // Split one resource's gain into flights by origin. A roll's cards are attributed to the
+  // hexes that paid the viewer, in board order, capped at what actually arrived (the bank can
+  // run short, in which case the rules pay nobody that resource); anything unattributable, and
+  // every non-roll gain, keeps a single origin.
+  private gainOrigins(resource: Resource, gain: number, fromBank: boolean, rolled: number | undefined): { origin: ResourceGainOrigin; count: number }[] {
+    if (rolled !== undefined) {
+      const out: { origin: ResourceGainOrigin; count: number }[] = [];
+      let left = gain;
+      for (const payout of this.scene.rollPayoutsFor(this.colorOf(this.viewerSeat), rolled)) {
+        if (payout.resource !== resource || left <= 0) continue;
+        const count = Math.min(payout.count, left);
+        out.push({ origin: { hex: payout.hex }, count });
+        left -= count;
+      }
+      if (left > 0) out.push({ origin: 'bank', count: left });
+      return out;
+    }
+    return [{ origin: fromBank ? 'bank' : 'players', count: gain }];
+  }
+
+  private queueResourceGain(resource: Resource, count: number, origin: ResourceGainOrigin, defer = false): Promise<void> {
     let resolveCompletion: () => void = () => {};
     const completion = new Promise<void>((resolve) => { resolveCompletion = resolve; });
     this.handPending[resource] += count;
-    if (fromBank) this.bankPendingDeparture[resource] += count;
-    this.pendingResourceGains.push({ resource, count, fromBank, deferred: defer, resolve: resolveCompletion });
+    if (origin === 'bank') this.bankPendingDeparture[resource] += count;
+    this.pendingResourceGains.push({ resource, count, origin, deferred: defer, resolve: resolveCompletion });
     if (!defer) this.flushPendingResourceGains();
     return completion;
   }
@@ -873,17 +902,18 @@ export class IslandersGameScene {
     if (!layout || !this.pendingResourceGains.length) return;
     const held = releaseDeferred ? [] : this.pendingResourceGains.filter((gain) => gain.deferred);
     const ready = releaseDeferred ? this.pendingResourceGains : this.pendingResourceGains.filter((gain) => !gain.deferred);
+    const sceneCols = layout.region.w - (layout.railVisible ? ISLANDERS_RAIL_W : 0);
     let order = 0;
     for (const gain of ready) {
-      const from = islandersBankDepartureCell(
-        layout.region,
-        gain.resource,
-        layout.playerCount,
-        gain.fromBank && layout.railVisible,
-        layout.composerRows,
-      );
+      // A hex behind the camera has no cell; that card comes from the bank's spot instead.
+      const hexCell = typeof gain.origin === 'object'
+        ? this.scene.hexCell(gain.origin.hex, sceneCols, layout.region.h)
+        : null;
+      const from = hexCell
+        ? { col: layout.region.x + hexCell.col, row: layout.region.y + hexCell.row }
+        : islandersBankDepartureCell(layout.region, gain.resource, layout.playerCount, layout.railVisible, layout.composerRows);
       const to = islandersHandLandingCell(layout.region, gain.resource);
-      const flights = gain.fromBank ? this.bankResourceFlights : this.externalResourceFlights;
+      const flights = gain.origin === 'bank' ? this.bankResourceFlights : this.externalResourceFlights;
       void flights.spawn(gain.resource, gain.count, from, to, order).then(gain.resolve);
       order += gain.count;
     }

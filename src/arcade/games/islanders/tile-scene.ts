@@ -62,7 +62,7 @@ import { EDGE_ENDS, hexRing, hexWorld, NODE_XZ } from './scene/board-layout.ts';
 import { DICE_BURN_DUR, DICE_HOLD, DICE_RESULT_REVEAL_DELAY, DICE_ROLL_DUR, DICE_STAGGER, type Die, type DicePhase, freshDie } from './scene/dice.ts';
 import { type BoardHarborPose, boardHarborPoses } from './scene/harbors.ts';
 import { type BoardPickTarget, measureBoardTarget, pickBoardTarget } from './scene/placement-picking.ts';
-import { rollPayouts, rollYield } from './scene/production.ts';
+import { type HexPayout, rollPayouts, rollYield } from './scene/production.ts';
 import { ISLANDERS_WATER_RADIUS_X, ISLANDERS_WATER_RADIUS_Z, islandersWaterMesh } from './water.ts';
 
 const FOVY = (44 * Math.PI) / 180;
@@ -866,23 +866,30 @@ export class TileScene {
   // point a card should be thrown from. Uses the live camera, so it must be read at launch: the
   // cell is only right for the frame it was taken on.
   rollSources(color: PlayerColor, roll: number, cols: number, rows: number): { resource: Resource; count: number; col: number; row: number }[] {
-    if (!this.board) return [];
-    const camera = this.cam().toCamera({ fovy: FOVY, near: 0.05, far: 100 });
-    const vp = cameraMatrices(camera, cols / (rows * 2)).viewProjection;
     const out: { resource: Resource; count: number; col: number; row: number }[] = [];
-    for (const payout of rollPayouts(this.board, this.buildings, color, roll, this.robberHex)) {
-      const { q, r } = HEX_COORDS[payout.hex];
-      const { x, z } = hexWorld(q, r);
-      const point = projectPoint(vp, { x, y: 0.14, z }); // the chip's height, so cards leave from the token
-      if (point.behind) continue;
-      out.push({
-        resource: payout.resource,
-        count: payout.count,
-        col: Math.round((point.x * 0.5 + 0.5) * cols),
-        row: Math.round((1 - (point.y * 0.5 + 0.5)) * rows),
-      });
+    for (const payout of this.rollPayoutsFor(color, roll)) {
+      const cell = this.hexCell(payout.hex, cols, rows);
+      if (cell) out.push({ resource: payout.resource, count: payout.count, ...cell });
     }
     return out;
+  }
+  // Which hexes pay `color` on this roll, per the board as drawn (robber included).
+  rollPayoutsFor(color: PlayerColor, roll: number): HexPayout[] {
+    return this.board ? rollPayouts(this.board, this.buildings, color, roll, this.robberHex) : [];
+  }
+  // The terminal cell over a hex's number token under the current camera, or null when the hex
+  // is behind the camera.
+  hexCell(hex: number, cols: number, rows: number): { col: number; row: number } | null {
+    const camera = this.cam().toCamera({ fovy: FOVY, near: 0.05, far: 100 });
+    const vp = cameraMatrices(camera, cols / (rows * 2)).viewProjection;
+    const { q, r } = HEX_COORDS[hex];
+    const { x, z } = hexWorld(q, r);
+    const point = projectPoint(vp, { x, y: 0.14, z }); // the chip's height, so cards leave from the token
+    if (point.behind) return null;
+    return {
+      col: Math.round((point.x * 0.5 + 0.5) * cols),
+      row: Math.round((1 - (point.y * 0.5 + 0.5)) * rows),
+    };
   }
   roadInfo(edge: number): PlayerColor | undefined {
     return this.roads.get(edge);
