@@ -11,7 +11,7 @@ const Source = ({ path, children }: { path: string; children?: ReactNode }) => <
 const Note = ({ children }: { children: ReactNode }) => <aside className="doc-note">{children}</aside>;
 const Api = ({ rows }: { rows: [string, string][] }) => <dl className="api-list">{rows.map(([name, description]) => <div key={name}><dt><code>{name}</code></dt><dd>{description}</dd></div>)}</dl>;
 const ARCHITECTURE_CHART = `flowchart TB
-  subgraph complete["Complete Arcade"]
+  subgraph complete["Arcade architecture"]
     direction LR
     fullLayers["Reusable layers<br/>Engine · Terminal platform · Terminal UI<br/>Rules · Game harness · Game visuals"]
     cli["Arcade CLI"]
@@ -22,7 +22,7 @@ const ARCHITECTURE_CHART = `flowchart TB
     cli --> hosted
   end
 
-  subgraph focused["Focused browser surfaces"]
+  subgraph focused["Browser surfaces"]
     direction LR
     browserLayers["Browser-safe layers<br/>Engine · Terminal UI · Rules · Game visuals"]
     browser["Browser API"]
@@ -32,17 +32,17 @@ const ARCHITECTURE_CHART = `flowchart TB
   end
   complete ~~~ focused`;
 const MOBILE_ARCHITECTURE_CHART = `flowchart TB
-  full["Complete Arcade<br/>all reusable layers"] --> cli["Arcade CLI"]
+  full["Arcade architecture<br/>all reusable layers"] --> cli["Arcade CLI"]
   cli --> local["Local terminal<br/>ANSI"]
   cli --> hosted["Browser host<br/>isolated PTY + xterm.js"]
-  hosted ~~~ focused["Focused browser surfaces<br/>browser-safe layers"]
+  hosted ~~~ focused["Browser surfaces<br/>browser-safe layers"]
   focused --> browser["Browser API"]
   browser --> canvas["Canvas"]`;
 
 const ArchitectureDiagram = () => <figure className="doc-architecture">
   <div className="doc-architecture__diagram doc-architecture__diagram--desktop"><Mermaid chart={ARCHITECTURE_CHART} /></div>
   <div className="doc-architecture__diagram doc-architecture__diagram--mobile"><Mermaid chart={MOBILE_ARCHITECTURE_CHART} /></div>
-  <figcaption>Two delivery paths from the same reusable package: the complete CLI and focused browser-safe scenes.</figcaption>
+  <figcaption>Two delivery paths from the same reusable package: the complete CLI and browser-safe scenes.</figcaption>
 </figure>;
 
 export const CORE_DOCS: DocPage[] = [

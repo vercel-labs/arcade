@@ -14,6 +14,9 @@ test('docs use a task-first grouped navigation and Sans typography', async () =>
   assert.match(content, /@vercel\/geistdocs\/components\/mermaid/);
   assert.match(content, /<Mermaid chart=\{ARCHITECTURE_CHART\}/);
   assert.match(content, /<Mermaid chart=\{MOBILE_ARCHITECTURE_CHART\}/);
+  assert.match(content, /subgraph complete\["Arcade architecture"\]/);
+  assert.match(content, /subgraph focused\["Browser surfaces"\]/);
+  assert.doesNotMatch(content, /Complete Arcade|Focused browser surfaces/);
   assert.doesNotMatch(content, /<Code title="Architecture">/);
   assert.match(content, /npx @vercel\/arcade@latest/);
   assert.match(page, /const CORE_NAV/);
@@ -33,6 +36,7 @@ test('docs use a task-first grouped navigation and Sans typography', async () =>
   assert.match(css, /\.doc-page-header h1 \{[^\n]*var\(--font-geist-sans\)/);
   assert.match(css, /\.doc-article h2 \{[^\n]*var\(--font-geist-sans\)/);
   assert.match(css, /\.doc-architecture svg \{[^\n]*var\(--font-geist-sans\)/);
+  assert.match(css, /\.doc-architecture \.cluster-label span \{ display: inline-block; transform: translateY\(6px\); \}/);
   assert.match(css, /\.doc-article > section > h2 \{ overflow-wrap: anywhere; \}/);
   assert.match(css, /\.doc-sidebar__pane \{[^\n]*150ms cubic-bezier\(\.175,\.885,\.32,1\.1\)/);
   assert.match(css, /prefers-reduced-motion: reduce[^\n]*\.doc-sidebar__pane \{ transition: none; \}/);
