@@ -10,10 +10,28 @@ const LIST_W = 36;
 const LIST_ROWS = 7; // maximum visible dropdown option rows before scrolling
 const CARD_W = LIST_W + 6; // three cells of breathing room on each side
 const SIGNED_IN_PREFIX = 'Signed in as ';
-// The committed-team view carries a "view spend" link: one row, plus the Dialog's gap
-// above it. Other bodies absorb the same height so the card keeps one shape across
-// states (see the signed-in/signed-out shape test).
-const SPEND_ROW_H = 2;
+// Pieces of the committed-team card, which is the reference shape (see
+// committedBodyHeight).
+const DIALOG_GAP = 1;
+const DROPDOWN_BODY_H = 4;
+const SPEND_ROW_H = 1;
+const ROUNDED_BUTTON_H = 3; // a rounded button needs three rows for its arc border
+const FLAT_BUTTON_H = 1; // `short` swaps in borderless buttons
+
+// Height of everything the committed-team card holds below the title: the dropdown
+// body, the "view spend" row, and the account actions, with the Dialog's gap between
+// each. The transient and signed-out states reserve this same total so the card never
+// resizes while a team resolves. It varies by mode because `compact` stacks the two
+// account buttons and `short` drops the spend row and the button borders.
+function committedBodyHeight(compact: boolean, short: boolean): number {
+  const actions = short
+    ? FLAT_BUTTON_H
+    : compact
+      ? ROUNDED_BUTTON_H * 2 + DIALOG_GAP
+      : ROUNDED_BUTTON_H;
+  const spend = short ? 0 : SPEND_ROW_H + DIALOG_GAP;
+  return DROPDOWN_BODY_H + spend + DIALOG_GAP + actions;
+}
 
 // The teams backing the dropdown (index-aligned with its items), and the pick
 // handler main.ts wires once at startup. The committed field shows the current team.
@@ -92,22 +110,24 @@ const RECOVERY: Style = {
 
 const center = (n: Node): Node => Box({ justifyContent: 'center' }, [n]);
 
-function switchAccountButton(onClick: () => void): Node {
+function switchAccountButton(onClick: () => void, disabled = false): Node {
   return RoundedButton({
     id: 'team-change-account',
     label: 'switch account',
     onClick,
+    disabled,
     color: ARCADE_OUTLINE_CONTROL.neutralText,
     borderColor: ARCADE_OUTLINE_CONTROL.neutralBorder,
     padding: [0, 2],
   });
 }
 
-function signOutButton(onClick: () => void): Node {
+function signOutButton(onClick: () => void, disabled = false): Node {
   return RoundedButton({
     id: 'team-logout',
     label: 'sign out',
     onClick,
+    disabled,
     color: [222, 150, 150],
     borderColor: [108, 54, 58],
     activeColor: [255, 242, 242],
@@ -159,7 +179,7 @@ function statusBody(text: string, color: Style['color'], align: 'left' | 'center
 // The dropdown stays one row in layout; its search and option list are overlays, so
 // opening it does not resize the card or push the logout action down.
 function dropdownBody(username: string | undefined, width: number, compact: boolean): Node {
-  return Box({ width, height: 4, flexDirection: 'column', gap: 1 }, [
+  return Box({ width, height: DROPDOWN_BODY_H, flexDirection: 'column', gap: 1 }, [
     ...(username ? [signedInRow(username, width)] : []),
     Box({ width, flexDirection: 'column', gap: 0 }, [
       Text({ text: compact ? 'Billing team' : 'AI Gateway billing team', style: { color: 'muted' } }),
@@ -168,8 +188,10 @@ function dropdownBody(username: string | undefined, width: number, compact: bool
   ]);
 }
 
-// Build the centered team-switch modal for the given view. The card is a fixed
-// size across every view (see statusBody/dropdownBody). `onClose` (the ✕ / Esc) closes
+// Build the centered team-switch modal for the given view. Every state in the load
+// flow — loading, switching, signed-out, committed — holds one card height (see
+// committedBodyHeight); the noTeams and error destinations carry more copy and are
+// allowed to be taller. `onClose` (the ✕ / Esc) closes
 // it; `onSignIn` (signed-out view only) kicks off the plain-text device login flow;
 // `onBack` (a failed switch) returns to the dropdown; `onLogout` clears Arcade's
 // cached Vercel session in place. There's no Cancel button.
@@ -193,13 +215,14 @@ export function buildTeamSwitch(
   const cardWidth = compact ? Math.max(14, viewportWidth - 2) : CARD_W;
   const horizontalPadding = compact ? 1 : CARD_PAD[1];
   const listWidth = Math.max(8, cardWidth - horizontalPadding * 2);
+  const reservedBodyH = committedBodyHeight(compact, short);
   dropdown.setWidth(listWidth);
   let body: Node;
   let footer: Node | null = null;
   // A switch that failed still has the accounts loaded, so offer a top-left ← back to the
   // dropdown (a load failure has nothing to return to — just the modal's ✕).
   const canBack = view.kind === 'error' && view.canReturn;
-  if (view.kind === 'loading') body = statusBody('Loading teams…', 'muted', 'center', listWidth, short ? 2 : LIST_ROWS);
+  if (view.kind === 'loading') body = statusBody('Loading teams…', 'muted', 'center', listWidth, reservedBodyH);
   else if (view.kind === 'error') {
     const message = compact
       ? view.canReturn ? 'Could not switch teams.' : 'Could not load account.'
@@ -215,7 +238,7 @@ export function buildTeamSwitch(
     const message = compact
       ? 'Sign in to play with AI models.'
       : "Sign in to play with AI models through Vercel's AI Gateway.";
-    body = Box({ width: listWidth, height: short ? 4 : 4 + SPEND_ROW_H, flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }, [
+    body = Box({ width: listWidth, height: Math.max(1, reservedBodyH - DIALOG_GAP - ROUNDED_BUTTON_H), flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }, [
       ...wrapText(message, listWidth).map((text) => Text({ text, style: { color: 'textPrimary' } })),
     ]);
     footer = Box({ flexDirection: 'row', justifyContent: 'center' }, [RoundedButton({
@@ -265,15 +288,20 @@ export function buildTeamSwitch(
       ? Box({ width: listWidth }, [Link({ id: 'team-view-spend', label: 'view spend', onClick: opts.onViewSpend })])
       : null;
 
-  const accountActions = view.kind === 'loaded'
+  // `switching` keeps the same actions rather than dropping the row: it is a brief
+  // transient, and removing it resized the card mid-switch. They stay inert while the
+  // switch is in flight so a second account action cannot race the first.
+  const committed = view.kind === 'loaded' || view.kind === 'switching';
+  const settling = view.kind === 'switching';
+  const accountActions = committed
     ? short
       ? Box({ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 1 }, [
-          Button({ id: 'team-change-account', label: 'switch', onClick: opts.onChangeAccount, style: { ...RECOVERY, padding: [0, 1] } }),
-          Button({ id: 'team-logout', label: 'sign out', onClick: opts.onLogout, style: { ...RECOVERY, padding: [0, 1], color: [222, 150, 150] } }),
+          Button({ id: 'team-change-account', label: 'switch', onClick: opts.onChangeAccount, disabled: settling, style: { ...RECOVERY, padding: [0, 1] } }),
+          Button({ id: 'team-logout', label: 'sign out', onClick: opts.onLogout, disabled: settling, style: { ...RECOVERY, padding: [0, 1], color: [222, 150, 150] } }),
         ])
       : Box({ flexDirection: compact ? 'column' : 'row', justifyContent: 'center', alignItems: 'center', gap: 1 }, [
-          switchAccountButton(opts.onChangeAccount),
-          signOutButton(opts.onLogout),
+          switchAccountButton(opts.onChangeAccount, settling),
+          signOutButton(opts.onLogout, settling),
         ])
     : (view.kind === 'noTeams' && !short) || (view.kind === 'error' && view.canRetry)
       ? center(signOutButton(opts.onLogout))
