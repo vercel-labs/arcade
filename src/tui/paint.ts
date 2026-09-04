@@ -25,6 +25,7 @@ export interface PaintState {
   hoverId: string | null;
   focusId: string | null;
   pressedId: string | null;
+  inputMode?: 'pointer' | 'keyboard';
   // The clock (seconds) pulses breathe against; omitted → pulses paint at rest.
   time?: number;
   // Runtime attention pulses by node id, layered under a node's own `style.pulse`.
@@ -280,7 +281,8 @@ function hoveredTooltip(root: Node, id: string | null): Node | null {
 // tree avoids layout shifts and prevents invisible tooltip chrome from entering
 // hit-testing; only the decorated trigger owns pointer interaction.
 function paintTooltip(root: Node, surf: Surface, st: PaintState, theme: Theme): void {
-  const trigger = hoveredTooltip(root, st.hoverId);
+  const focusId = st.inputMode === 'keyboard' ? st.focusId : null;
+  const trigger = hoveredTooltip(root, st.hoverId) ?? hoveredTooltip(root, focusId);
   const lb = trigger?.layout;
   const spec = trigger?.tooltip;
   if (!lb || !spec || surf.cols <= 0 || surf.rows <= 0) return;

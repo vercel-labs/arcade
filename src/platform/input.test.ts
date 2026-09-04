@@ -15,3 +15,15 @@ test('SGR mouse parsing preserves vertical and horizontal scroll direction', () 
     { type: 'wheel', wheel: 1, wheelAxis: 'horizontal' },
   ]);
 });
+
+test('SGR mouse parsing preserves modifiers on pointer presses', () => {
+  const events: MouseEvent[] = [];
+  const parse = createInputParser({ onMouse: (event) => events.push(event) });
+
+  parse('\x1b[<28;7;9M'); // left press + Shift (4) + Meta (8) + Ctrl (16)
+
+  assert.deepEqual(events, [{
+    type: 'down', button: 0, x: 7, y: 9,
+    shift: true, meta: true, ctrl: true,
+  }]);
+});

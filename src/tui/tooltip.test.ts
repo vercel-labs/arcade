@@ -4,6 +4,7 @@ import { STYLE_BOLD, type Surface } from '../engine/index.ts';
 import { Button, Box } from './nodes.ts';
 import { Tooltip } from './components/tooltip.ts';
 import { Screen } from './screen.ts';
+import type { KeyEvent } from '../platform/input.ts';
 
 const BLACK: [number, number, number] = [0, 0, 0];
 
@@ -80,4 +81,64 @@ test('a passive Tooltip trigger can hover without becoming a click target', () =
 
   assert.equal(screen.hover(3, 2), true, 'passive trigger participates in hover hit-testing');
   assert.equal(screen.pointerDown(3, 2), null, 'transparent passive trigger does not absorb scene clicks');
+});
+
+test('a disabled tooltip control is keyboard-readable but remains inert', () => {
+  let activations = 0;
+  const screen = new Screen(30, 8);
+  screen.setRoot(Box({ width: 30, height: 8 }, [Tooltip({
+    content: 'No city pieces remaining.',
+  }, Button({
+    id: 'city',
+    label: 'city',
+    disabled: true,
+    onClick: () => { activations++; },
+    style: { position: 'absolute', left: 10, top: 5, width: 8, height: 2, background: 'disabledBg' },
+  }))]), { x: 0, y: 0, w: 30, h: 8 });
+  const key = (name: string): KeyEvent => ({ name, raw: '', sequence: '', ctrl: false, shift: false, meta: false, eventType: 'press' });
+
+  assert.equal(screen.handleKey(key('tab')), true);
+  assert.equal((screen as unknown as { state: { focusId: string | null } }).state.focusId, 'city');
+  const focused = screen.snapshot((surface) => surface.fillRect(0, 0, 30, 8, BLACK));
+  assert.ok(findText(focused, 'No city pieces'));
+  assert.equal(screen.handleKey(key('enter')), true);
+  assert.equal(activations, 0);
+});
+
+test('keyboard navigation replaces a stationary pointer tooltip with the focused control', () => {
+  const screen = new Screen(36, 10);
+  screen.setRoot(Box({ width: 36, height: 10 }, [
+    Tooltip({ content: 'Roads unavailable.' }, Button({
+      id: 'road', label: 'road', disabled: true,
+      style: { position: 'absolute', left: 4, top: 7, width: 8, height: 2, background: 'disabledBg' },
+    })),
+    Tooltip({ content: 'No valid city spot.' }, Button({
+      id: 'city', label: 'city', disabled: true,
+      style: { position: 'absolute', left: 16, top: 7, width: 8, height: 2, background: 'disabledBg' },
+    })),
+  ]), { x: 0, y: 0, w: 36, h: 10 });
+  const tab: KeyEvent = { name: 'tab', raw: '\t', sequence: '\t', ctrl: false, shift: false, meta: false, eventType: 'press' };
+
+  screen.hover(5, 8);
+  screen.setFocus('road');
+  assert.equal(screen.handleKey(tab), true);
+  const focused = screen.snapshot((surface) => surface.fillRect(0, 0, 36, 10, BLACK));
+  assert.ok(findText(focused, 'No valid city spot'));
+  assert.equal(findText(focused, 'Roads unavailable'), null);
+});
+
+test('a pointer-focused tooltip closes when the pointer leaves its trigger', () => {
+  const screen = new Screen(30, 8);
+  screen.setRoot(Box({ width: 30, height: 8 }, [Tooltip({
+    content: 'Build a road.',
+  }, Button({
+    id: 'road', label: 'road',
+    style: { position: 'absolute', left: 10, top: 5, width: 8, height: 2, background: [20, 20, 24] },
+  }))]), { x: 0, y: 0, w: 30, h: 8 });
+
+  screen.hover(11, 6);
+  screen.pointerDown(11, 6);
+  assert.equal(screen.hover(1, 1), true);
+  const left = screen.snapshot((surface) => surface.fillRect(0, 0, 30, 8, BLACK));
+  assert.equal(findText(left, 'Build a road'), null);
 });

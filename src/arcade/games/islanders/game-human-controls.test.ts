@@ -24,6 +24,46 @@ function allText(node: Node): string[] {
   return [node.text ?? '', ...(node.children ?? []).flatMap(allText)].filter(Boolean);
 }
 
+function tooltipText(node: Node | undefined): string {
+  const content = node?.tooltip?.content;
+  if (typeof content === 'string') return content;
+  return content?.map((item) => typeof item === 'string' ? item : item.text).join(' ') ?? '';
+}
+
+test('the actual game keeps unavailable build controls visible with cost and piece counts', async () => {
+  const scene = new IslandersGameScene();
+  const driver = new IslandersDriver({ scene, syncLive: () => {} });
+  const state = driver.start([
+    { kind: 'human', color: 'red' },
+    { kind: 'ai', color: 'blue', model: 'test/blue' },
+  ], { autoRun: false, rng: () => 0.5 });
+  while (!state.initialPlacementComplete()) state.applyAction(state.legalActions()[0]);
+  state.applyAction({ type: 'roll' }, { dice: [1, 1] });
+  (state as unknown as { hands: number[][] }).hands[0].fill(0);
+  const pending = scene.requestHumanMove();
+  const root = buildIslandersGameRoot({ x: 0, y: 0, w: 140, h: 50 }, {
+    driver, scene, onOpenMenu: () => {}, onStart: () => {},
+  });
+  for (const [type, count] of [['road', 'Roads: 2/15 built.'], ['settlement', 'Settlements: 2/5 built.'], ['city', 'Cities: 0/4 built.']] as const) {
+    const button = findNode(root, `islanders-live-${type}`);
+    assert.equal(button?.disabled, true);
+    assert.match(tooltipText(button), /Costs/);
+    assert.ok(tooltipText(button).includes(count));
+    assert.match(tooltipText(button), /Not enough resources\./);
+  }
+  const compactRoot = buildIslandersGameRoot({ x: 0, y: 0, w: 20, h: 24 }, {
+    driver, scene, onOpenMenu: () => {}, onStart: () => {},
+  });
+  const compactScreen = new Screen(20, 24);
+  compactScreen.setRoot(compactRoot, { x: 0, y: 0, w: 20, h: 24 });
+  for (const type of ['road', 'settlement', 'city'] as const) {
+    const button = findNode(compactRoot, `islanders-live-${type}`);
+    assert.ok(button?.layout && button.layout.x + button.layout.w <= 20, `${type} stays visible in compact live play`);
+  }
+  assert.equal(scene.submitHumanAction({ type: 'endTurn' }), true);
+  await pending;
+});
+
 test('pre-game setup ignores board hover until a session starts', () => {
   const scene = new IslandersGameScene();
   let forwarded = 0;

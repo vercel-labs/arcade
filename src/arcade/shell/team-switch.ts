@@ -2,12 +2,14 @@
 // A persistent searchable Dropdown shows the current billing team in its committed
 // field and owns filtering, wrapped options, and overflow scrolling. main.ts owns
 // async loading/switching and the modal lifecycle.
-import { Box, Button, Dialog, Dropdown, Modal, Slot, Text, wrapText, type Node, type Screen, type Style } from '../../tui/index.ts';
+import { Box, Button, Dialog, Dropdown, Modal, NoticeToast, RoundedButton, Slot, Text, wrapText, type Node, type Screen, type Style } from '../../tui/index.ts';
 import type { Team } from '../../auth/index.ts';
+import { ARCADE_OUTLINE_CONTROL } from '../theme.ts';
 
 const LIST_W = 36;
 const LIST_ROWS = 7; // maximum visible dropdown option rows before scrolling
 const CARD_W = LIST_W + 6; // three cells of breathing room on each side
+const SIGNED_IN_PREFIX = 'Signed in as ';
 
 // The teams backing the dropdown (index-aligned with its items), and the pick
 // handler main.ts wires once at startup. The committed field shows the current team.
@@ -20,8 +22,8 @@ const dropdown = new Dropdown({
   width: LIST_W,
   rows: LIST_ROWS,
   searchable: true,
-  searchPlaceholder: 'Search Vercel accounts',
-  placeholder: 'select an account',
+  searchPlaceholder: 'Search billing teams',
+  placeholder: 'select a billing team',
   onSelect: (i) => {
     const team = teams[i];
     if (team) onPick(team);
@@ -56,12 +58,13 @@ export function markSwitchSucceeded(team: Team): void {
 // switch, no session (offer sign-in), or a load/switch error.
 export type TeamSwitchView =
   | { kind: 'loading' }
-  | { kind: 'loaded' }
-  | { kind: 'switching'; team: string }
+  | { kind: 'loaded'; username?: string }
+  | { kind: 'switching'; team: string; username?: string }
   | { kind: 'signedOut' }
+  | { kind: 'noTeams'; username?: string }
   // `canReturn` (a switch that failed with the list still loaded) shows a "← back"
   // to the dropdown instead of the plain close behavior.
-  | { kind: 'error'; message: string; canReturn?: boolean };
+  | { kind: 'error'; message: string; canReturn?: boolean; canRetry?: boolean; username?: string };
 
 const CARD_PAD: [number, number] = [1, 3];
 const PRIMARY: Style = {
@@ -73,27 +76,73 @@ const PRIMARY: Style = {
   focus: { background: [110, 84, 150] },
   pressed: { background: [120, 124, 142] },
 };
-// Destructive account action, kept visually separate at the bottom of the card.
-const LOGOUT: Style = {
+const RECOVERY: Style = {
   padding: [0, 2],
-  color: [222, 150, 150],
-  border: 'round',
-  borderColor: [108, 54, 58],
-  hover: { color: [255, 242, 242] },
-  focus: { background: [112, 44, 50], color: [255, 242, 242], borderColor: [190, 72, 78] },
-  pressed: { background: [190, 58, 64], color: [255, 255, 255] },
+  color: 'textPrimary',
+  background: 'surfaceControl',
+  bold: true,
+  hover: { background: 'controlHoverBg', color: 'controlHoverFg' },
+  focus: { background: 'controlFocusBg', color: 'controlFocusFg' },
+  pressed: { background: 'controlPressedBg', color: 'controlPressedFg' },
 };
 
 const center = (n: Node): Node => Box({ justifyContent: 'center' }, [n]);
 
+function switchAccountButton(onClick: () => void): Node {
+  return RoundedButton({
+    id: 'team-change-account',
+    label: 'switch account',
+    onClick,
+    color: ARCADE_OUTLINE_CONTROL.neutralText,
+    borderColor: ARCADE_OUTLINE_CONTROL.neutralBorder,
+    padding: [0, 2],
+  });
+}
+
+function signOutButton(onClick: () => void): Node {
+  return RoundedButton({
+    id: 'team-logout',
+    label: 'sign out',
+    onClick,
+    color: [222, 150, 150],
+    borderColor: [108, 54, 58],
+    activeColor: [255, 242, 242],
+    padding: [0, 2],
+  });
+}
+
+function signedInRow(username: string, width = LIST_W): Node {
+  const prefix = width < SIGNED_IN_PREFIX.length + 6 ? 'As ' : SIGNED_IN_PREFIX;
+  return Box({ flexDirection: 'row', width }, [
+    Text({ text: prefix, style: { color: 'muted', width: prefix.length, flexShrink: 0 } }),
+    Text({ text: username, style: { width: Math.max(1, width - prefix.length), color: 'textStrong', bold: true, textOverflow: 'ellipsis' } }),
+  ]);
+}
+
+export function buildGatewaySignInPrompt(onSignIn: () => void, onDismiss: () => void, width: number, height = Number.POSITIVE_INFINITY): Node {
+  const compact = width < 36;
+  const short = height < 15;
+  const tiny = height < 9;
+  return NoticeToast({
+    id: 'gateway-signin',
+    severity: 'warning',
+    title: compact ? 'AI sign-in' : 'Sign in for AI matches',
+    body: tiny ? '' : short ? 'Use AI Gateway.' : 'Sign in to play with AI models using Vercel AI Gateway.',
+    width: compact ? Math.max(12, width - 2) : Math.min(52, Math.max(32, width - 4)),
+    compact,
+    action: { label: compact ? 'sign in' : 'sign in to Vercel', onClick: onSignIn },
+    onDismiss,
+  });
+}
+
 // Status views keep the list's normal footprint. Long errors wrap and can grow
 // beyond it so the complete gateway response remains readable.
-function statusBody(text: string, color: Style['color'], align: 'left' | 'center' = 'center'): Node {
-  const lines = wrapText(text, LIST_W - 2);
+function statusBody(text: string, color: Style['color'], align: 'left' | 'center' = 'center', width = LIST_W, minRows = LIST_ROWS): Node {
+  const lines = wrapText(text, Math.max(1, width - 2));
   return Box(
     {
-      width: LIST_W,
-      height: Math.max(LIST_ROWS, lines.length),
+      width,
+      height: Math.max(minRows, lines.length),
       flexDirection: 'column',
       justifyContent: 'center',
       alignItems: align === 'left' ? 'start' : 'center',
@@ -105,49 +154,124 @@ function statusBody(text: string, color: Style['color'], align: 'left' | 'center
 
 // The dropdown stays one row in layout; its search and option list are overlays, so
 // opening it does not resize the card or push the logout action down.
-function dropdownBody(): Node {
-  return Box({ width: LIST_W }, [Slot('team-switch-dropdown')]);
+function dropdownBody(username: string | undefined, width: number, compact: boolean): Node {
+  return Box({ width, height: 4, flexDirection: 'column', gap: 1 }, [
+    ...(username ? [signedInRow(username, width)] : []),
+    Box({ width, flexDirection: 'column', gap: 0 }, [
+      Text({ text: compact ? 'Billing team' : 'AI Gateway billing team', style: { color: 'muted' } }),
+      Slot('team-switch-dropdown'),
+    ]),
+  ]);
 }
 
 // Build the centered team-switch modal for the given view. The card is a fixed
 // size across every view (see statusBody/dropdownBody). `onClose` (the ✕ / Esc) closes
 // it; `onSignIn` (signed-out view only) kicks off the plain-text device login flow;
 // `onBack` (a failed switch) returns to the dropdown; `onLogout` clears Arcade's
-// cached Vercel session and quits. There's no Cancel button.
+// cached Vercel session in place. There's no Cancel button.
 export function buildTeamSwitch(
   view: TeamSwitchView,
-  opts: { onClose: () => void; onSignIn: () => void; onBack: () => void; onLogout: () => void },
+  opts: {
+    onClose: () => void;
+    onSignIn: () => void;
+    onChangeAccount: () => void;
+    onRetry: () => void;
+    onOpenVercel: () => void;
+    onBack: () => void;
+    onLogout: () => void;
+  },
+  viewportWidth = CARD_W + 2,
+  viewportHeight = Number.POSITIVE_INFINITY,
 ): Node {
+  const compact = viewportWidth < CARD_W + 2;
+  const short = compact && viewportHeight < 20;
+  const cardWidth = compact ? Math.max(14, viewportWidth - 2) : CARD_W;
+  const horizontalPadding = compact ? 1 : CARD_PAD[1];
+  const listWidth = Math.max(8, cardWidth - horizontalPadding * 2);
+  dropdown.setWidth(listWidth);
   let body: Node;
   let footer: Node | null = null;
   // A switch that failed still has the accounts loaded, so offer a top-left ← back to the
   // dropdown (a load failure has nothing to return to — just the modal's ✕).
   const canBack = view.kind === 'error' && view.canReturn;
-  if (view.kind === 'loading') body = statusBody('Loading teams…', 'muted');
+  if (view.kind === 'loading') body = statusBody('Loading teams…', 'muted', 'center', listWidth, short ? 2 : LIST_ROWS);
   else if (view.kind === 'error') {
-    body = statusBody(view.message, 'danger', 'left');
+    const message = compact
+      ? view.canReturn ? 'Could not switch teams.' : 'Could not load account.'
+      : view.message;
+    body = statusBody(message, 'danger', 'left', listWidth, short ? 2 : LIST_ROWS);
+    if (view.canRetry) {
+      footer = Box({ flexDirection: 'column', alignItems: 'center', gap: 1 }, [
+        Button({ id: 'team-retry', label: 'try again', onClick: opts.onRetry, style: PRIMARY }),
+        Button({ id: 'team-change-account', label: 'switch account', onClick: opts.onChangeAccount, style: RECOVERY }),
+      ]);
+    }
   } else if (view.kind === 'signedOut') {
-    body = statusBody('Not signed in to Vercel.', 'muted');
-    footer = Box({ flexDirection: 'row', justifyContent: 'center' }, [Button({ id: 'team-signin', label: 'sign in', onClick: opts.onSignIn, style: PRIMARY })]);
+    const message = compact
+      ? 'Sign in to play with AI models.'
+      : "Sign in to play with AI models through Vercel's AI Gateway.";
+    body = Box({ width: listWidth, height: 4, flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }, [
+      ...wrapText(message, listWidth).map((text) => Text({ text, style: { color: 'textPrimary' } })),
+    ]);
+    footer = Box({ flexDirection: 'row', justifyContent: 'center' }, [RoundedButton({
+      id: 'team-signin',
+      label: 'sign in',
+      onClick: opts.onSignIn,
+      color: ARCADE_OUTLINE_CONTROL.activeText,
+      borderColor: ARCADE_OUTLINE_CONTROL.activeBorder,
+      activeColor: 'textStrong',
+    })]);
+  } else if (view.kind === 'noTeams') {
+    const unavailable = short ? 'No AI Gateway team.' : compact ? 'No team for AI Gateway billing.' : 'No Vercel team is available for AI Gateway billing.';
+    const recovery = short
+      ? 'Create or join one on Vercel.'
+      : compact
+      ? 'Create or join one on Vercel, then retry.'
+      : 'Create or join a team on Vercel, then try again. You can continue playing without AI.';
+    body = Box({ width: listWidth, flexDirection: 'column', gap: 1 }, [
+      ...(view.username && !short ? [signedInRow(view.username, listWidth)] : []),
+      ...wrapText(unavailable, listWidth).map((line) => Text({ text: line, style: { color: 'danger' } })),
+      ...wrapText(recovery, listWidth).map((line) => Text({ text: line, style: { color: 'muted' } })),
+    ]);
+    const primary = compact ? { ...PRIMARY, padding: [0, 1] as [number, number] } : PRIMARY;
+    const secondary = compact ? { ...RECOVERY, padding: [0, 1] as [number, number] } : RECOVERY;
+    const open = Button({ id: 'team-open-vercel', label: compact ? 'Vercel' : 'open Vercel', onClick: opts.onOpenVercel, style: primary });
+    const retry = Button({ id: 'team-retry', label: compact ? 'retry' : 'try again', onClick: opts.onRetry, style: secondary });
+    const change = Button({ id: 'team-change-account', label: short ? 'switch' : 'switch account', onClick: opts.onChangeAccount, style: secondary });
+    const shortSignOut = Button({ id: 'team-logout', label: 'sign out', onClick: opts.onLogout, style: { ...secondary, color: [222, 150, 150] } });
+    footer = Box({ flexDirection: 'column', alignItems: 'center', gap: 1 }, short
+      ? [Box({ flexDirection: 'row', justifyContent: 'center', gap: 1 }, [open, retry]), Box({ flexDirection: 'row', justifyContent: 'center', gap: 1 }, [change, shortSignOut])]
+      : compact
+      ? [Box({ flexDirection: 'row', justifyContent: 'center', gap: 1 }, [open, retry]), change]
+      : [Box({ flexDirection: 'row', justifyContent: 'center', gap: 1 }, [open, retry]), change]);
   } else {
     // Loaded and switching states keep the current team in the committed field.
     // Switching is quick, so there is no transient replacement label.
-    body = dropdownBody();
+    body = dropdownBody(view.username, listWidth, compact);
   }
 
-  const logout =
-    view.kind === 'signedOut'
-      ? null
-      : center(Button({ id: 'team-logout', label: 'log out and quit', onClick: opts.onLogout, style: LOGOUT }));
+  const accountActions = view.kind === 'loaded'
+    ? short
+      ? Box({ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 1 }, [
+          Button({ id: 'team-change-account', label: 'switch', onClick: opts.onChangeAccount, style: { ...RECOVERY, padding: [0, 1] } }),
+          Button({ id: 'team-logout', label: 'sign out', onClick: opts.onLogout, style: { ...RECOVERY, padding: [0, 1], color: [222, 150, 150] } }),
+        ])
+      : Box({ flexDirection: compact ? 'column' : 'row', justifyContent: 'center', alignItems: 'center', gap: 1 }, [
+          switchAccountButton(opts.onChangeAccount),
+          signOutButton(opts.onLogout),
+        ])
+    : (view.kind === 'noTeams' && !short) || (view.kind === 'error' && view.canRetry)
+      ? center(signOutButton(opts.onLogout))
+      : null;
 
   // Dialog supplies the fixed-width card, the centered "Vercel account" title, and the
   // corner ✕ (its absolute placement lines the ✕ up one cell from the edge through the
   // card's [1,1] padding — the same result the hand-rolled close box produced).
   return Modal(
-    Dialog({ title: 'Vercel account', onClose: opts.onClose, closeId: 'team-close', onBack: canBack ? opts.onBack : undefined, backId: 'team-back', align: 'center', width: CARD_W, padding: CARD_PAD }, [
+    Dialog({ title: compact ? 'Account' : 'Vercel account', onClose: opts.onClose, closeId: 'team-close', onBack: canBack ? opts.onBack : undefined, backId: 'team-back', align: 'center', width: cardWidth, padding: [1, horizontalPadding] }, [
       body,
       ...(footer ? [footer] : []),
-      ...(logout ? [logout] : []),
+      ...(accountActions ? [accountActions] : []),
     ]),
     { onDismiss: opts.onClose },
   );

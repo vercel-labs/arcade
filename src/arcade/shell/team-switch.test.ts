@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { Dropdown, Screen, type Node } from '../../tui/index.ts';
-import { buildTeamSwitch, markSwitchSucceeded, mountTeamSwitch, setTeamSwitchHandlers, setTeamSwitchTeams } from './team-switch.ts';
+import { Dropdown, layout, Screen, type Node } from '../../tui/index.ts';
+import { buildGatewaySignInPrompt, buildTeamSwitch, markSwitchSucceeded, mountTeamSwitch, setTeamSwitchHandlers, setTeamSwitchTeams } from './team-switch.ts';
 
 function find(root: Node, id: string): Node | null {
   if (root.id === id) return root;
@@ -12,19 +12,110 @@ function find(root: Node, id: string): Node | null {
   return null;
 }
 
+function text(root: Node): string {
+  return [root.text ?? '', ...(root.children ?? []).map(text)].filter(Boolean).join(' ');
+}
+
 const noop = (): void => {};
+const actions = (overrides: Partial<Parameters<typeof buildTeamSwitch>[1]> = {}): Parameters<typeof buildTeamSwitch>[1] => ({
+  onClose: noop,
+  onSignIn: noop,
+  onChangeAccount: noop,
+  onRetry: noop,
+  onOpenVercel: noop,
+  onBack: noop,
+  onLogout: noop,
+  ...overrides,
+});
 
 describe('Vercel account settings', () => {
-  test('offers log out and quit for a signed-in account', () => {
+  test('the AI match gate stays focused on Gateway sign-in', () => {
+    const root = buildGatewaySignInPrompt(noop, noop, 80);
+    assert.match(text(root), /Sign in to play with AI models using Vercel AI Gateway/);
+    assert.doesNotMatch(text(root), /Human play/);
+  });
+
+  test('the AI match gate uses compact copy and geometry in a narrow terminal', () => {
+    const root = buildGatewaySignInPrompt(noop, noop, 24);
+    const screen = new Screen(24, 20);
+    screen.setRoot(root, { x: 0, y: 0, w: 24, h: 20 });
+    assert.match(text(root), /AI sign-in/);
+    assert.match(text(root), /sign in/);
+    assert.ok((root.children?.[0]?.layout?.w ?? Infinity) <= 24);
+  });
+
+  test('the AI match gate keeps close and sign-in visible in a short terminal', () => {
+    const root = buildGatewaySignInPrompt(noop, noop, 20, 8);
+    const screen = new Screen(20, 8);
+    screen.setRoot(root, { x: 0, y: 0, w: 20, h: 8 });
+    for (const id of ['gateway-signin-close', 'gateway-signin-action']) {
+      const node = find(root, id);
+      assert.ok(node?.layout);
+      assert.ok(node.layout.y >= 0 && node.layout.y + node.layout.h <= 8);
+    }
+  });
+
+  test('account recovery keeps its dropdown and actions inside a narrow terminal', () => {
+    const screen = new Screen(24, 24);
+    mountTeamSwitch(screen);
+    const teams = [{ id: 'team', slug: 'team', name: 'A very long billing team name' }];
+    setTeamSwitchTeams(teams, teams[0]);
+    const root = buildTeamSwitch({ kind: 'loaded', username: 'a-very-long-username' }, actions(), 24);
+    screen.setRoot(root, { x: 0, y: 0, w: 24, h: 24 });
+    assert.ok((root.children?.[0]?.layout?.w ?? Infinity) <= 24);
+    assert.ok((find(root, 'team-switch-dropdown')?.layout?.w ?? Infinity) <= 20);
+    assert.ok(find(root, 'team-change-account'));
+    assert.ok(find(root, 'team-logout'));
+  });
+
+  test('short no-team recovery keeps dismissal and account actions visible', () => {
+    const screen = new Screen(24, 16);
+    const root = buildTeamSwitch({ kind: 'noTeams', username: 'brian.zhang' }, actions(), 24, 16);
+    screen.setRoot(root, { x: 0, y: 0, w: 24, h: 16 });
+    for (const id of ['team-close', 'team-open-vercel', 'team-retry', 'team-change-account', 'team-logout']) {
+      const node = find(root, id);
+      assert.ok(node?.layout, `${id} is present and laid out`);
+      assert.ok(node.layout.y >= 0 && node.layout.y + node.layout.h <= 16, `${id} stays inside the short viewport`);
+    }
+  });
+
+  test('short loaded account keeps close and both account actions visible', () => {
+    const screen = new Screen(40, 12);
+    mountTeamSwitch(screen);
+    const teams = [{ id: 'team', slug: 'team', name: 'Vercel Labs' }];
+    setTeamSwitchTeams(teams, teams[0]);
+    const root = buildTeamSwitch({ kind: 'loaded', username: 'brian.zhang' }, actions(), 40, 12);
+    screen.setRoot(root, { x: 0, y: 0, w: 40, h: 12 });
+    for (const id of ['team-close', 'team-change-account', 'team-logout']) {
+      const node = find(root, id);
+      assert.ok(node?.layout);
+      assert.ok(node.layout.y >= 0 && node.layout.y + node.layout.h <= 12);
+    }
+  });
+
+  test('offers non-destructive account actions for a signed-in account', () => {
     let loggedOut = false;
+    let changedAccount = false;
     const root = buildTeamSwitch(
-      { kind: 'loaded' },
-      { onClose: noop, onSignIn: noop, onBack: noop, onLogout: () => (loggedOut = true) },
+      { kind: 'loaded', username: 'brian.zhang' },
+      actions({
+        onChangeAccount: () => (changedAccount = true),
+        onLogout: () => (loggedOut = true),
+      }),
     );
     assert.equal(root.children?.[0]?.style.width, 42, 'account card leaves three cells around the account dropdown');
-    const button = find(root, 'team-logout');
-    assert.ok(button, 'expected the logout button');
-    button.onClick?.();
+    assert.match(text(root), /Signed in as\s+brian\.zhang/);
+    assert.match(text(root), /AI Gateway billing team/);
+    const change = find(root, 'team-change-account');
+    const logout = find(root, 'team-logout');
+    assert.equal(change?.text, 'switch account');
+    assert.equal(logout?.text, 'sign out');
+    assert.equal(change?.style.hover?.background, undefined, 'outlined hover never fills black');
+    assert.equal(change?.style.hover?.bold, true, 'switch account follows shared rounded hover emphasis');
+    assert.equal(logout?.style.hover?.bold, true, 'destructive rounded actions bold on hover too');
+    change?.onClick?.();
+    logout?.onClick?.();
+    assert.equal(changedAccount, true);
     assert.equal(loggedOut, true);
   });
 
@@ -32,7 +123,7 @@ describe('Vercel account settings', () => {
     const message = 'Could not create AI Gateway key (HTTP 403): Your team does not have permission to create this key.';
     const root = buildTeamSwitch(
       { kind: 'error', message, canReturn: true },
-      { onClose: noop, onSignIn: noop, onBack: noop, onLogout: noop },
+      actions(),
     );
     const errorLines: string[] = [];
     const visit = (node: Node): void => {
@@ -58,8 +149,8 @@ describe('Vercel account settings', () => {
     setTeamSwitchTeams(teams, teams[0]);
     screen.setRoot(
       buildTeamSwitch(
-        { kind: 'loaded' },
-        { onClose: noop, onSignIn: noop, onBack: noop, onLogout: noop },
+        { kind: 'loaded', username: 'brian.zhang' },
+        actions(),
       ),
       { x: 0, y: 0, w: 80, h: 30 },
     );
@@ -80,12 +171,62 @@ describe('Vercel account settings', () => {
     assert.equal(dropdown.value, teams[2].name, 'a successful switch commits the new current account');
   });
 
+  test('long account and team names stay inside the fixed-width card', () => {
+    const longTeam = { id: 'long', slug: 'long', name: 'An extraordinarily long team name that must not resize the account dialog' };
+    const screen = new Screen(80, 30);
+    mountTeamSwitch(screen);
+    setTeamSwitchTeams([longTeam], longTeam);
+    const root = buildTeamSwitch(
+      { kind: 'loaded', username: 'an-extraordinarily-long-user-name-that-must-not-resize-the-account-dialog' },
+      actions(),
+    );
+    screen.setRoot(root, { x: 0, y: 0, w: 80, h: 30 });
+    assert.equal(root.children?.[0]?.style.width, 42);
+    const rendered = screen.frame();
+    assert.ok((rendered.match(/…/g) ?? []).length >= 2, 'both constrained identity fields expose truncation rather than overflow');
+  });
+
   test('does not offer logout when already signed out', () => {
     const root = buildTeamSwitch(
       { kind: 'signedOut' },
-      { onClose: noop, onSignIn: noop, onBack: noop, onLogout: noop },
+      actions(),
     );
     assert.equal(find(root, 'team-logout'), null);
     assert.ok(find(root, 'team-signin'));
+    assert.match(text(root), /AI models through Vercel's AI Gateway/);
+    assert.doesNotMatch(text(root), /Human play/);
+  });
+
+  test('signed-in and signed-out cards share one shape and rounded action rhythm', () => {
+    const signedIn = buildTeamSwitch({ kind: 'loaded', username: 'brian.zhang' }, actions());
+    const signedOut = buildTeamSwitch({ kind: 'signedOut' }, actions());
+    const region = { x: 0, y: 0, w: 80, h: 30 };
+    layout(signedIn, region);
+    layout(signedOut, region);
+    assert.deepEqual(signedOut.children?.[0]?.layout, signedIn.children?.[0]?.layout);
+    assert.equal(find(signedOut, 'team-signin')?.style.border, 'round');
+  });
+
+  test('no-team recovery keeps the user in Arcade with three next actions', () => {
+    const root = buildTeamSwitch({ kind: 'noTeams', username: 'new-player' }, actions());
+    const rendered = text(root);
+    assert.match(rendered, /Signed in as\s+new-player/);
+    assert.match(rendered, /No Vercel team is available for AI Gateway billing/);
+    assert.match(rendered, /continue playing without AI/);
+    assert.ok(find(root, 'team-open-vercel'));
+    assert.ok(find(root, 'team-retry'));
+    assert.ok(find(root, 'team-change-account'));
+    assert.equal(find(root, 'team-logout')?.text, 'sign out');
+  });
+
+  test('a team-list load error can retry, change account, or sign out', () => {
+    const root = buildTeamSwitch(
+      { kind: 'error', message: 'Could not list teams (HTTP 503).', canRetry: true },
+      actions(),
+    );
+    assert.ok(find(root, 'team-retry'));
+    assert.ok(find(root, 'team-change-account'));
+    assert.equal(find(root, 'team-logout')?.text, 'sign out');
+    assert.equal(find(root, 'team-back'), null, 'a load error has no stale team list to return to');
   });
 });

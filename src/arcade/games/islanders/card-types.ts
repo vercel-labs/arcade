@@ -56,6 +56,9 @@ export interface IslandersCardsView {
   // A maritime exchange is between acceptance and its final animated arrival. The workbench
   // keeps another trade from opening while those bank cards are reserved in flight.
   maritimeTradeBusy?: boolean;
+  // A mandatory transfer such as discard is still settling. The visible hand remains in place
+  // for the flight, but it must not expose another action that could spend the reserved cards.
+  interactionBusy?: boolean;
   // Purchase flights may overlap. Pending types reserve disabled landing slots without exposing
   // the card in the held count before its own flight arrives.
   developmentPurchaseBusy?: boolean;

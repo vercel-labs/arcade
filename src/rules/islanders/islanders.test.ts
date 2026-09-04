@@ -169,6 +169,7 @@ test('public Islanders labels are stable, human-readable, and keep canonical IDs
   assert.doesNotMatch(nodeLabel, /\bN\d+\b|\bH\d+\b/);
   assert.equal(s.publicNodeLabel(0), nodeLabel);
   assert.equal(s.publicHexLabel(0), hexLabel);
+  assert.match(s.displayHexLabel(0), /^(?:\d+(?:🧱|🌾|🪵|🪨|🐑)|desert)$/u);
   assert.equal(new Set(Array.from({ length: NUM_NODES }, (_, node) => s.publicNodeLabel(node))).size, NUM_NODES);
   assert.equal(new Set(Array.from({ length: NUM_HEXES }, (_, hex) => s.publicHexLabel(hex))).size, NUM_HEXES);
 });

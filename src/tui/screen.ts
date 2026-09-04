@@ -26,10 +26,11 @@ export class Screen {
   private root: Node | null = null;
   private baseRoot: Node | null = null;
   private globalOverlay: Node | null = null;
-  private state: PaintState = { hoverId: null, focusId: null, pressedId: null, time: 0, attention: new Map() };
+  private globalFocusScope: Node | null = null;
+  private state: PaintState = { hoverId: null, focusId: null, pressedId: null, inputMode: 'pointer', time: 0, attention: new Map() };
   // Interaction state as of the last paint, for dirty() (mirrors the old
   // `hoveredButton !== lastHoveredButton` check that gated chess repaints).
-  private painted: PaintState = { hoverId: null, focusId: null, pressedId: null };
+  private painted: PaintState = { hoverId: null, focusId: null, pressedId: null, inputMode: 'pointer' };
   // Whether the current tree has any pulsing node (its own style.pulse, or an attention
   // pulse attached to its id). Only then does advancing the clock dirty the frame, so a
   // still screen keeps skipping repaints.
@@ -62,6 +63,7 @@ export class Screen {
   private captured: Node | null = null;
   // Button held since the last down, replayed onto the drags that follow it.
   private pressButton = 0;
+  private pressModifiers: Pick<PointerHit, 'shift' | 'meta' | 'ctrl'> = {};
   // Every expanded node is associated with its persistent component owner. The
   // map includes floating overlay descendants, so their clicks still count as
   // inside the component even when they extend beyond the field's layout box.
@@ -107,8 +109,9 @@ export class Screen {
   }
 
   /** App-global chrome or modal painted and hit-tested above whichever root is active. */
-  setGlobalOverlay(overlay: Node | null): void {
+  setGlobalOverlay(overlay: Node | null, focusScope: Node | null = null): void {
     this.globalOverlay = overlay;
+    this.globalFocusScope = overlay ? focusScope : null;
     this.composeRoot();
     this.contentDirty = true;
   }
@@ -271,7 +274,8 @@ export class Screen {
       this.contentDirty ||
       this.state.hoverId !== this.painted.hoverId ||
       this.state.focusId !== this.painted.focusId ||
-      this.state.pressedId !== this.painted.pressedId
+      this.state.pressedId !== this.painted.pressedId ||
+      this.state.inputMode !== this.painted.inputMode
     );
   }
 
@@ -285,6 +289,7 @@ export class Screen {
   // normal terminal path should continue to use hover(x, y), which hit-tests the
   // laid-out tree before assigning the id.
   setHover(id: string | null): void {
+    this.state.inputMode = 'pointer';
     this.state.hoverId = id;
   }
 
@@ -292,7 +297,9 @@ export class Screen {
   hover(x1: number, y1: number): boolean {
     const n = this.root ? hoverTest(this.root, x1 - 1, y1 - 1) : null;
     const id = n?.id ?? null;
-    if (id === this.state.hoverId) return false;
+    const modeChanged = this.state.inputMode !== 'pointer';
+    this.state.inputMode = 'pointer';
+    if (id === this.state.hoverId) return modeChanged;
     this.state.hoverId = id;
     return true;
   }
@@ -303,9 +310,11 @@ export class Screen {
   // `button` is the SGR button (0 = left, 2 = right); it reaches onMouse only —
   // onClick stays button-agnostic, so every existing pill fires on any button.
   // Returns the hit node, or null if the press missed.
-  pointerDown(x1: number, y1: number, button = 0): Node | null {
+  pointerDown(x1: number, y1: number, button = 0, modifiers: Pick<PointerHit, 'shift' | 'meta' | 'ctrl'> = {}): Node | null {
+    this.state.inputMode = 'pointer';
     this.captured = null;
     this.pressButton = button;
+    this.pressModifiers = modifiers;
     if (!this.root) return null;
 
     const x = x1 - 1;
@@ -361,6 +370,7 @@ export class Screen {
   // solid UI surface — even a non-interactive panel — so the caller suppresses
   // the scene's wheel-zoom (the wheel doesn't propagate through the panel).
   wheel(x1: number, y1: number, dir: -1 | 1): boolean {
+    this.state.inputMode = 'pointer';
     if (!this.root) return false;
     const target = hitTest(this.root, x1 - 1, y1 - 1);
     if (target?.onMouse && target.layout) {
@@ -387,7 +397,7 @@ export class Screen {
   // Build a PointerHit in coordinates local to node n's layout box.
   private local(n: Node, x1: number, y1: number, type: 'down' | 'drag' | 'wheel'): PointerHit {
     const lb = n.layout!;
-    return { type, x: x1 - 1 - lb.x, y: y1 - 1 - lb.y, w: lb.w, h: lb.h, button: this.pressButton };
+    return { type, x: x1 - 1 - lb.x, y: y1 - 1 - lb.y, w: lb.w, h: lb.h, button: this.pressButton, ...this.pressModifiers };
   }
 
   // Mouse release: drop the pressed highlight + release the capture.
@@ -401,7 +411,11 @@ export class Screen {
   // true if consumed, so the caller can stop before its own per-screen handling.
   handleKey(ev: KeyEvent): boolean {
     if (!this.root) return false;
-    const order = focusOrder(this.root);
+    // Keyboard input becomes the active modality. A stationary pointer must not keep its hover
+    // treatment or tooltip above the control reached with Tab.
+    this.state.inputMode = 'keyboard';
+    this.state.hoverId = null;
+    const order = focusOrder(this.globalFocusScope ?? this.root);
     // Drop focus that pointed at a node in a PREVIOUS root — setRoot doesn't clear focusId, so a
     // button focused on another screen lingers. A stale id matches nothing here, but left set it
     // makes the enter/space branch below swallow the key (return true) instead of letting it fall
@@ -409,7 +423,7 @@ export class Screen {
     if (this.state.focusId && !order.some((n) => n.id === this.state.focusId)) this.state.focusId = null;
     if (this.state.focusId) {
       const f = order.find((n) => n.id === this.state.focusId);
-      if (f?.onKey && f.onKey(ev)) {
+      if (!f?.disabled && f?.onKey && f.onKey(ev)) {
         this.contentDirty = true; // focused widget mutated (caret, scroll, selection)
         return true;
       }
@@ -425,8 +439,12 @@ export class Screen {
     if (ev.name === 'enter' || ev.name === 'space') {
       if (!this.state.focusId) return false;
       const f = order.find((n) => n.id === this.state.focusId);
+      if (f?.disabled) return true;
+      // Terminal key events have no portable key-up counterpart. Focus already communicates
+      // keyboard selection, so activation is instantaneous; latching the pointer-only pressed
+      // state here left the old button white after focus moved or a modal round trip.
+      this.state.pressedId = null;
       f?.onClick?.();
-      this.state.pressedId = f?.id ?? null;
       return true;
     }
     return false;

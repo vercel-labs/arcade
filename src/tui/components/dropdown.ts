@@ -82,7 +82,7 @@ export class Dropdown implements Component {
   private scroll = 0;
   private matches: Match[] = [];
   private lines: VLine[] = [];
-  private readonly width: number;
+  private width: number;
   private readonly rows: number;
   private opts: DropdownOpts;
 
@@ -109,6 +109,15 @@ export class Dropdown implements Component {
     this.index = index >= 0 && index < items.length ? index : -1;
     this.open = false;
     this.setQuery('');
+  }
+
+  setWidth(width: number): void {
+    const next = Math.max(8, width);
+    if (next === this.width) return;
+    this.width = next;
+    this.refilter();
+    this.scroll = Math.min(this.scroll, this.maxScroll());
+    this.scrollToHighlight();
   }
 
   setAccent(color: ColorToken): void {
@@ -327,6 +336,7 @@ export class Dropdown implements Component {
       return true;
     }
     if (ev.name === 'escape') {
+      if (!this.open && !this.query && !this.editing) return false;
       this.open = false;
       this.setQuery('');
       return true;

@@ -42,7 +42,7 @@ import {
   type WaterUniforms,
   WorldMaterialInstance,
 } from '../../../engine/index.ts';
-import { HEX_COORDS, NUM_EDGES, NUM_HEXES } from '../../../rules/islanders/board-topology.ts';
+import { HEX_COORDS, NUM_EDGES, NUM_HEXES, NUM_NODES, nodeEdges } from '../../../rules/islanders/board-topology.ts';
 import { type BoardOccupancy, canPlaceRoad, canPlaceSettlement } from '../../../rules/islanders/placement.ts';
 import { type BoardSetup, generateBoard } from '../../../rules/islanders/setup.ts';
 import {
@@ -838,6 +838,27 @@ export class TileScene {
     }
     return edges;
   }
+  legalSettlementNodes(color: PlayerColor): number[] {
+    const occupancy = this.occ();
+    const nodes: number[] = [];
+    for (let node = 0; node < NUM_NODES; node++) {
+      // Regular-turn settlement legality matches IslandersState: satisfy the distance rule and
+      // connect the new settlement to at least one road owned by this player.
+      if (canPlaceSettlement(node, occupancy)
+        && nodeEdges[node].some((edge) => occupancy.road(edge) === color)) nodes.push(node);
+    }
+    return nodes;
+  }
+  legalCityNodes(color: PlayerColor): number[] {
+    return [...this.buildings]
+      .filter(([, building]) => building.color === color && !building.city)
+      .map(([node]) => node);
+  }
+  pieceCount(color: PlayerColor, type: 'road' | 'settlement' | 'city'): number {
+    if (type === 'road') return [...this.roads.values()].filter((owner) => owner === color).length;
+    return [...this.buildings.values()].filter((building) =>
+      building.color === color && (type === 'city' ? building.city : !building.city)).length;
+  }
   buildingInfo(node: number): { city: boolean; color: PlayerColor } | undefined {
     return this.buildings.get(node);
   }
@@ -930,6 +951,16 @@ export class TileScene {
     this.roads.set(0, 'orange');
     this.roads.set(12, 'purple');
     this.hoverNode = 30;
+    this.dirty = true;
+  }
+
+  // Islanders Test starts with one inert local settlement so all three paid build actions can be
+  // exercised: it can be upgraded to a city, it anchors legal road targets, and the remaining
+  // board still has ample settlement targets. Unlike seedDemo(), this leaves hover untouched and
+  // does not pretend the static opponents are taking turns.
+  seedWorkbench(): void {
+    this.buildings.set(0, { city: false, color: 'red' });
+    this.placeColor = 'red';
     this.dirty = true;
   }
 

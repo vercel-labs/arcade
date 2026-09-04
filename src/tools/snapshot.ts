@@ -27,6 +27,7 @@ import { creators } from '../arcade/match/models.ts';
 import { CardsScene, type CardsMode } from '../arcade/games/poker/cards-scene.ts';
 import { buildPokerRoot, mountPokerHud } from '../arcade/games/poker/hud.ts';
 import { TileScene } from '../arcade/games/islanders/tile-scene.ts';
+import { IslandersController } from '../arcade/games/islanders/islanders-controller.ts';
 import { buildIslandersPieceModal, buildIslandersTileRoot, mountIslandersTileHud } from '../arcade/games/islanders/tile-hud.ts';
 import {
   adjustIslandersWorkbenchDev,
@@ -72,8 +73,8 @@ import { buildPokerSetupPanel, modeDropdown as pokerModeDropdown, mountPokerSetu
 import { HoldemState } from '../rules/poker/holdem.ts';
 import { RANK_LABELS, type Suit, SUIT_LETTERS } from '../rules/poker/cards.ts';
 import type { Color } from '../rules/chess/types.ts';
-import { Box, Button, Dropdown, NoticeToast, insetSceneViewport, layout, paint, Screen, Text, type PaintState } from '../tui/index.ts';
-import { buildTeamSwitch, markSwitchSucceeded, mountTeamSwitch, setTeamSwitchTeams } from '../arcade/shell/team-switch.ts';
+import { Box, Button, Dropdown, NoticeToast, insetSceneViewport, layout, paint, Screen, Text, type Node, type PaintState } from '../tui/index.ts';
+import { buildGatewaySignInPrompt, buildTeamSwitch, markSwitchSucceeded, mountTeamSwitch, setTeamSwitchTeams } from '../arcade/shell/team-switch.ts';
 import { ARCADE_THEME, UI_CHROME_PILL } from '../arcade/theme.ts';
 import { TUTORIAL_CHAPTERS, TUTORIAL_PULSE, TutorialController, tutorialRailWidth } from '../arcade/tutorial/tutorial.ts';
 import { modelFailureNotice } from '../harness/model-failure-notice.ts';
@@ -442,13 +443,13 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot splash [cols] [rows] [t] [out]     boot splash at time t
   pnpm snapshot coverflow|menu [cols] [rows] [pos] [hover] [out]   Cover Flow carousel
   pnpm snapshot trailer [cols] [rows] [seconds] [out]   terminal Trailer at wall-clock seconds
-  pnpm snapshot settings [cols] [rows] [open|account [dropdown|loading|switched|error|long]] [out]   home menu button, popup, or account modal
+  pnpm snapshot settings [cols] [rows] [open|gateway-signin|account [dropdown|loading|switched|error|no-teams|signed-out|long|focus-switch|focus-signout]] [out]   home menu button, popup, or account modal
   pnpm snapshot launch [cols] [rows] [index] [t] [out]   Cover Flow flip-to-title splash
   pnpm snapshot prism-prompt [cols] [rows] [t] [out]    prism loading screen + press-any-key marquee
   pnpm snapshot prism-menu-ink [cols] [rows] [progress] [out]   CLI prism → Cover Flow ink transition
   pnpm snapshot cards [single|hand|deck] [cols] [rows] [state] [out]   the cards screen
       (single: a code like Kh/10s/As · hand: peek|up · deck: shuffle|deal)
-  pnpm snapshot islanders [sidebar] [discard|trade|trade-port3|trade-port2|trade-empty|player-trade|player-trade-ready|player-trade-mixed] [play-knight|play-road|play-plenty|play-monopoly] [hover=<id>] [hybrid] [shadow-glyphs] [forest|hills|pasture|fields|mountains|desert] [cols] [rows] [<t>] [board|board-cards|pieces|port|edit] [robber|robber-moveN] [fly<roll>@<s>|trade-fly<N>@<s>|dev-fly@<s>] [hud|modal] [out]   a 3D Islanders tile
+  pnpm snapshot islanders [sidebar] [discard|trade|trade-port3|trade-port2|trade-empty|player-trade|player-trade-ready|player-trade-mixed] [play-knight|play-road|play-plenty|play-monopoly] [pick-<resource>[N]] [workbench] [funded] [select-road] [hover=<id>] [hybrid] [shadow-glyphs] [forest|hills|pasture|fields|mountains|desert] [cols] [rows] [<t>] [board|board-cards|pieces|port|edit] [robber|robber-moveN] [fly<roll>@<s>|trade-fly<N>@<s>|dev-fly@<s>] [hud|modal] [out]   a 3D Islanders tile
       (fly5@0.4: freeze the resource cards mid-arc, 0.4s after a roll of 5 pays out — needs hud; the sample board pays on 2, 5 and 10, and a non-paying roll throws nothing)
       (trade-fly2@0.4: freeze both sides of a two-card bank trade mid-arc; add sidebar to use the visible bank row)
       (dev-fly@0.4: freeze a purchased development card mid-arc; add sidebar to launch it from the visible dev pile)
@@ -593,6 +594,77 @@ function islandersSnapshot(): void {
   if (elArg) scene.orbit(0, (Number(elArg.slice(2)) * Math.PI) / (180 * 0.02));
   if (zoomArg) scene.zoomBy(Number(zoomArg.slice(4)));
   const target = new RenderTarget(cols * SS, rows * 2 * SS);
+  if (args.includes('workbench')) {
+    resetIslandersWorkbenchCards();
+    const screen = new Screen(cols, rows);
+    const controller = new IslandersController({
+      ui: screen,
+      requestRender: noop,
+      requestFrame: noop,
+      shell: {
+        renderMode: () => 'ascii',
+        colorMode: () => 'truecolor',
+        onHome: noop,
+        onCycleDisplay: noop,
+        onCycleColor: noop,
+        onControls: noop,
+        onQuit: noop,
+        menuValueColW: 10,
+      },
+    });
+    controller.enter();
+    controller.scene.settle();
+    if (args.includes('funded')) {
+      for (const resource of ['lumber', 'brick', 'wool', 'grain', 'ore'] as const) {
+        adjustIslandersWorkbenchHand(resource, 4);
+      }
+    }
+    if (args.includes('exhaust-cities')) {
+      for (const node of [10, 11, 12, 13]) void controller.scene.placePiece('building', node, 'red', true);
+    }
+    const developmentPlay = args.includes('play-knight')
+      ? 'knight'
+      : args.includes('play-road')
+        ? 'roadBuilding'
+        : args.includes('play-plenty')
+          ? 'yearOfPlenty'
+          : args.includes('play-monopoly')
+            ? 'monopoly'
+            : null;
+    if (developmentPlay) {
+      adjustIslandersWorkbenchDev(developmentPlay, 1);
+      const development = controller as unknown as {
+        beginDevelopmentPlay(type: DevCardType): boolean;
+        chooseDevelopmentResource(resource: Resource): boolean;
+      };
+      development.beginDevelopmentPlay(developmentPlay);
+      for (const arg of args) {
+        const match = /^pick-(lumber|brick|wool|grain|ore)(\d*)$/.exec(arg);
+        if (!match) continue;
+        for (let count = 0; count < Number(match[2] || 1); count++) {
+          development.chooseDevelopmentResource(match[1] as Resource);
+        }
+      }
+    }
+    const region = { x: 0, y: 0, w: cols, h: rows };
+    let root = controller.buildRoot(cols, rows);
+    screen.setRoot(root, region);
+    if (args.includes('select-road')) {
+      const find = (node: Node): Node | undefined => node.id === 'islanders-live-road'
+        ? node
+        : node.children?.map(find).find((candidate): candidate is Node => candidate !== undefined);
+      find(root)?.onClick?.();
+      root = controller.buildRoot(cols, rows);
+      screen.setRoot(root, region);
+    }
+    screen.setHover(args.find((arg) => arg.startsWith('hover='))?.slice(6) ?? null);
+    controller.renderScene(target, waterTime);
+    const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true }));
+    surfaceToPpm(surf, cols, rows, out);
+    controller.reset();
+    resetIslandersWorkbenchCards();
+    return;
+  }
   // `anim<seconds>` (board mode) plays the placement fly-in and captures that instant by
   // stepping frames at 60fps; otherwise a board snapshot settles straight to the finished
   // layout.
@@ -1533,7 +1605,9 @@ function settingsSnapshot(): void {
   const screen = new Screen(cols, rows);
   mountTeamSwitch(screen);
   const region = { x: 0, y: 0, w: cols, h: rows };
-  if (account) {
+  if (args.includes('gateway-signin')) {
+    screen.setRoot(buildGatewaySignInPrompt(noop, noop, cols, rows), region);
+  } else if (account) {
     // A long list exercises the dropdown's sticky search row, wrapped options,
     // and overflow-owned scrollbar. The closed field shows the current team.
     const teams = [
@@ -1548,14 +1622,21 @@ function settingsSnapshot(): void {
       { id: 't9', slug: 'atlas', name: 'Atlas' },
       { id: 't10', slug: 'nova', name: 'Nova' },
     ];
-    setTeamSwitchTeams(teams, teams[1]);
+    setTeamSwitchTeams(teams, args.includes('long') ? teams[0] : teams[1]);
     if (args.includes('switched')) markSwitchSucceeded(teams[3]);
     const view = args.includes('loading')
       ? { kind: 'loading' as const }
+      : args.includes('signed-out')
+        ? { kind: 'signedOut' as const }
+        : args.includes('no-teams')
+          ? { kind: 'noTeams' as const, username: 'brian.zhang' }
       : args.includes('error')
         ? { kind: 'error' as const, message: 'Could not create AI Gateway key (HTTP 403): Your team does not have permission to create AI Gateway keys.', canReturn: true }
-        : { kind: 'loaded' as const };
-    screen.setRoot(buildTeamSwitch(view, { onClose: noop, onSignIn: noop, onBack: noop, onLogout: noop }), region);
+        : { kind: 'loaded' as const, username: args.includes('long') ? 'a-very-long-vercel-username-that-must-not-resize-the-account-dialog' : 'brian.zhang' };
+    const accountActions = { onClose: noop, onSignIn: noop, onChangeAccount: noop, onRetry: noop, onOpenVercel: noop, onBack: noop, onLogout: noop };
+    screen.setRoot(buildTeamSwitch(view, accountActions, region.w, region.h), region);
+    if (view.kind === 'loaded' && args.includes('focus-switch')) screen.setFocus('team-change-account');
+    if (view.kind === 'loaded' && args.includes('focus-signout')) screen.setFocus('team-logout');
     if (view.kind === 'loaded' && args.includes('dropdown')) {
       screen.setFocus('team-switch-dropdown');
       (screen.component('team-switch-dropdown') as Dropdown | undefined)?.onKey({
@@ -1568,7 +1649,7 @@ function settingsSnapshot(): void {
         eventType: 'press',
       });
       // Re-expand after changing component state so the snapshot includes its overlays.
-      screen.setRoot(buildTeamSwitch(view, { onClose: noop, onSignIn: noop, onBack: noop, onLogout: noop }), region);
+      screen.setRoot(buildTeamSwitch(view, accountActions, region.w, region.h), region);
     }
   } else if (open) {
     screen.setRoot(

@@ -241,8 +241,9 @@ test('human-facing trade history uses your and you instead of You possessives', 
   const state = driver.start([
     { kind: 'human', color: 'red' },
     { kind: 'ai', color: 'blue', model: 'anthropic/claude-haiku-4.5' },
+    { kind: 'ai', color: 'orange', model: 'google/gemini-3-flash' },
   ], { autoRun: false, rng: rng(8) });
-  const before = { hands: [state.handOf(0).slice(), state.handOf(1).slice()], trade: { from: 0 } };
+  const before = { hands: [state.handOf(0).slice(), state.handOf(1).slice(), state.handOf(2).slice()], trade: { from: 0 } };
   const record = (driver as unknown as {
     record: (seat: number, action: IslandersAction, before: unknown) => void;
   }).record.bind(driver);
@@ -251,6 +252,20 @@ test('human-facing trade history uses your and you instead of You possessives', 
   assert.equal(driver.history().at(-1)?.message, 'rejected your trade offer');
   record(1, { type: 'counterTrade', give: [1, 0, 0, 0, 0], receive: [0, 1, 0, 0, 0] }, before);
   assert.match(driver.history().at(-1)?.message ?? '', /^countered you with /);
+
+  const monopolyHands = [Array(RESOURCES.length).fill(0), Array(RESOURCES.length).fill(0), Array(RESOURCES.length).fill(0)];
+  monopolyHands[1][resourceIndex('grain')] = 6;
+  record(0, { type: 'playMonopoly', resource: 'grain' }, { hands: monopolyHands, trade: null });
+  assert.equal(driver.history().at(-1)?.message, 'took 🌾 x6 with monopoly');
+
+  (state as unknown as { actionRecords: () => unknown[] }).actionRecords = () => [{ outcome: { stolenResource: 'grain' } }];
+  record(1, { type: 'moveRobber', hex: 1, victim: 2 }, null);
+  assert.match(driver.history().at(-1)?.message ?? '', /stole a card from/);
+  assert.doesNotMatch(driver.history().at(-1)?.message ?? '', /stole 🌾/, 'an uninvolved human cannot see the random card');
+  record(0, { type: 'moveRobber', hex: 1, victim: 2 }, null);
+  assert.match(driver.history().at(-1)?.message ?? '', /stole 🌾 x1 from/);
+  record(1, { type: 'moveRobber', hex: 1, victim: 0 }, null);
+  assert.match(driver.history().at(-1)?.message ?? '', /stole 🌾 x1 from you/);
 });
 
 test('reset aborts and clears both driver and scene session state', () => {

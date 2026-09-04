@@ -500,18 +500,11 @@ export class IslandersDriver {
     return this.directedReplyQueue;
   }
 
-  // What a monopoly actually collected, from the hands as they stood before the card: the total
-  // and who paid what, so the log shows the result and not just the play.
-  private monopolyHaul(actor: number, resource: Resource, before: IslandersPreActionView | null): string {
-    if (!before) return '';
+  // What a monopoly actually collected, from the hands as they stood before the card.
+  private monopolyTotal(actor: number, resource: Resource, before: IslandersPreActionView | null): number {
+    if (!before) return 0;
     const index = resourceIndex(resource);
-    const paid = before.hands
-      .map((hand, seat) => ({ seat, count: hand[index] ?? 0 }))
-      .filter(({ seat, count }) => seat !== actor && count > 0);
-    const total = paid.reduce((sum, { count }) => sum + count, 0);
-    if (total === 0) return ' and collected nothing';
-    const emoji = RESOURCE_LOOK[resource].emoji;
-    return ` and collected ${emoji} x${total} (${paid.map(({ seat, count }) => `${count} from ${this.seats[seat]?.kind === 'human' ? 'you' : this.labelOf(seat)}`).join(', ')})`;
+    return before.hands.reduce((total, hand, seat) => total + (seat === actor ? 0 : hand[index] ?? 0), 0);
   }
 
   private record(seat: number, action: IslandersAction, before: IslandersPreActionView | null): void {
@@ -528,9 +521,15 @@ export class IslandersDriver {
       .flatMap((resource, index) => counts[index] > 0 ? [`${RESOURCE_LOOK[resource].emoji} x${counts[index]}`] : [])
       .join(' ');
     const victim = 'victim' in action && action.victim !== null ? object(action.victim) : null;
+    const outcome = this.live?.actionRecords().at(-1)?.outcome;
+    const humanSeat = this.humanSeat();
+    const humanKnowsStolenResource = humanSeat === seat
+      || ('victim' in action && action.victim === humanSeat);
+    const tile = (hex: number): string => this.live ? `${this.live.displayHexLabel(hex)} tile` : `hex ${hex}`;
     // A robber move without a victim: say whether nobody was there or the neighbours had empty hands.
     const robbed = (hex: number): string => {
-      if (victim) return ` and stole 1 card from ${victim}`;
+      if (victim && outcome?.stolenResource && humanKnowsStolenResource) return ` and stole ${RESOURCE_LOOK[outcome.stolenResource].emoji} x1 from ${victim}`;
+      if (victim) return ` and stole a card from ${victim}`;
       const neighbours = new Set<number>();
       for (let node = 0; node < NUM_NODES; node++) {
         const building = nodeHexes[node].includes(hex) ? this.live?.buildingAt(node) : undefined;
@@ -539,7 +538,6 @@ export class IslandersDriver {
       if (neighbours.size === 0) return ', with no one to rob';
       return `; ${[...neighbours].map(object).join(' and ')} had no cards to steal`;
     };
-    const outcome = this.live?.actionRecords().at(-1)?.outcome;
     const message = action.type === 'initialSettlement'
       ? `${SETTLEMENT_ICON} placed a settlement`
       : action.type === 'initialRoad'
@@ -555,17 +553,17 @@ export class IslandersDriver {
                 : action.type === 'endTurn'
                   ? `ended the turn; ${isNext(this.live?.currentPlayer() ?? seat)}`
                   : action.type === 'buyDevCard'
-                    ? `${DEV_CARD_ICON} bought a development card`
+                    ? `bought a development card ${DEV_CARD_ICON}`
                     : action.type === 'playKnight'
-                      ? `${KNIGHT_ICON} played a knight, moved the robber to hex ${action.hex}${robbed(action.hex)}`
+                      ? `${KNIGHT_ICON} played a knight, moved the robber to the ${tile(action.hex)}${robbed(action.hex)}`
                       : action.type === 'moveRobber'
-                        ? `${KNIGHT_ICON} moved the robber to hex ${action.hex}${robbed(action.hex)}`
+                        ? `${KNIGHT_ICON} moved the robber to the ${tile(action.hex)}${robbed(action.hex)}`
                         : action.type === 'playRoadBuilding'
                           ? `${ROAD_ICON} played road building on edges ${action.edges.join(' and ')}`
                           : action.type === 'playYearOfPlenty'
                             ? `${DEV_CARD_ICON} played year of plenty and took ${action.resources.map((resource) => RESOURCE_LOOK[resource].emoji).join(' ')}`
                             : action.type === 'playMonopoly'
-                              ? `${DEV_CARD_ICON} played monopoly on ${RESOURCE_LOOK[action.resource].emoji} ${action.resource}${this.monopolyHaul(seat, action.resource, before)}`
+                            ? `took ${RESOURCE_LOOK[action.resource].emoji} x${this.monopolyTotal(seat, action.resource, before)} with monopoly`
                               : action.type === 'discard'
                                 ? `discarded ${action.resources.length} cards after a 7`
                                 : action.type === 'maritimeTrade'

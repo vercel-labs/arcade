@@ -392,5 +392,5 @@ test('a human monopoly flies the collected cards into the hand, staggered, and t
 
   const entry = driver.history().find((line) => line.message.includes('monopoly'));
   assert.ok(entry);
-  assert.match(entry.message, /played monopoly on 🐑 wool and collected 🐑 x3 \(2 from blue, 1 from orange\)/);
+  assert.equal(entry.message, 'took 🐑 x3 with monopoly');
 });

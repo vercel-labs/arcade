@@ -1292,6 +1292,21 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
     };
   }
 
+  buildAvailability(seat: number, type: BuildingType | 'road'): {
+    canAfford: boolean;
+    hasLegalTarget: boolean;
+    piecesUsed: number;
+    pieceLimit: number;
+  } {
+    if (seat < 0 || seat >= this.n) throw new Error(`Invalid seat ${seat}`);
+    return {
+      canAfford: hasCards(this.hands[seat], COSTS[type]),
+      hasLegalTarget: this.buildTargets(seat, type).length > 0,
+      piecesUsed: this.pieceCount(seat, type),
+      pieceLimit: PIECE_LIMITS[type],
+    };
+  }
+
   maritimeTradeRates(seat: number): MaritimeTradeRates {
     return maritimeTradeRates(this.portfolio(seat).ports);
   }
@@ -1383,6 +1398,25 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
     }
     if (this.devDeck.length && hasCards(this.hands[player], COSTS.devCard)) actions.push({ type: 'buyDevCard' });
     return actions;
+  }
+
+  private buildTargets(player: number, type: BuildingType | 'road'): number[] {
+    const occ = this.occupancy();
+    if (type === 'road') {
+      const edges: number[] = [];
+      for (let edge = 0; edge < NUM_EDGES; edge++) if (canPlaceRoad(edge, player, occ)) edges.push(edge);
+      return edges;
+    }
+    if (type === 'settlement') {
+      const nodes: number[] = [];
+      for (let node = 0; node < NUM_NODES; node++) {
+        if (canPlaceSettlement(node, occ) && nodeEdges[node].some((edge) => this.roads.get(edge) === player)) nodes.push(node);
+      }
+      return nodes;
+    }
+    const nodes: number[] = [];
+    for (let node = 0; node < NUM_NODES; node++) if (canUpgradeCity(node, player, occ)) nodes.push(node);
+    return nodes;
   }
 
   private devCardActions(player: number): IslandersAction[] {
@@ -1826,6 +1860,12 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
       .filter((candidate) => this.publicHexLabelBase(candidate) === base);
     if (duplicates.length === 1) return base;
     return this.disambiguatedLabel(base, hex, duplicates, hexPosition);
+  }
+
+  /** Compact duplicate-friendly tile label for the human UI log; model context keeps canonical IDs. */
+  displayHexLabel(hex: number): string {
+    if (!Number.isInteger(hex) || hex < 0 || hex >= NUM_HEXES) throw new RangeError(`invalid Islanders hex ${hex}`);
+    return this.publicHexLabelBase(hex);
   }
 
   private publicNodeLabelBase(node: number): string {

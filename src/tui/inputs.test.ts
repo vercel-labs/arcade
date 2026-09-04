@@ -4,7 +4,7 @@
 // same path the Screen uses when focused). No TTY — pure assertions.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Box, Text, Slot } from './nodes.ts';
+import { Box, Button, Text, Slot } from './nodes.ts';
 import { Dropdown } from './components/dropdown.ts';
 import { Modal } from './components/modal.ts';
 import { Input } from './components/input.ts';
@@ -21,6 +21,27 @@ const ok = (cond: boolean, msg: string): void => assert.ok(cond, msg);
 // A printable character event (raw preserves case); name is the lowercase form.
 const ch = (c: string): KeyEvent => ({ name: c.toLowerCase(), raw: c, sequence: c, ctrl: false, shift: c !== c.toLowerCase(), meta: false, eventType: 'press' });
 const key = (name: string): KeyEvent => ({ name, raw: '', sequence: '', ctrl: false, shift: false, meta: false, eventType: 'press' });
+
+test('keyboard activation does not leave an old button pressed after a modal round trip', () => {
+  const screen = new Screen(40, 12);
+  const region = { x: 0, y: 0, w: 40, h: 12 };
+  const menu = (): Node => Box({ flexDirection: 'column' }, [
+    Button({ id: 'controls', label: 'controls', onClick: () => {} }),
+    Button({ id: 'account', label: 'account', onClick: () => {} }),
+  ]);
+  screen.setRoot(menu(), region);
+  screen.setFocus('controls');
+  assert.equal(screen.handleKey(key('enter')), true);
+
+  screen.setRoot(Box({ width: 20, height: 6, background: 'surface' }), region);
+  assert.equal(screen.handleKey(key('escape')), false);
+  screen.setRoot(menu(), region);
+  screen.setFocus('account');
+
+  const state = (screen as unknown as { state: { focusId: string | null; pressedId: string | null } }).state;
+  assert.equal(state.focusId, 'account');
+  assert.equal(state.pressedId, null, 'Controls must not remain visually pressed behind Account focus');
+});
 
 test('Input: typing, editing, onChange/onEnter', () => {
   const changes: string[] = [];
@@ -180,6 +201,7 @@ test('Dropdown searchable: filtering, editing, navigation, commit, and empty res
   ok(combo.query === 'Claude', 'Backspace edits the live query');
   combo.onKey(key('escape'));
   ok(combo.query === '' && !combo.open && combo.value === 'GPT-5', 'Escape clears search but preserves the committed value');
+  assert.equal(combo.onKey(key('escape')), false, 'a closed dropdown leaves Escape for its containing modal');
 
   combo.onKey(key('enter'));
   combo.onKey(ch('z'));
@@ -310,6 +332,21 @@ test('Dropdown searchable: search row is sticky above seven scrolling options', 
   const stickySearch = after.find((node) => node.id === 'sticky-combo-search');
   const scrolledList = after.find((node) => node.overlay && node.children?.length === 7);
   ok(stickySearch?.text === 'Search' && scrolledList?.children?.[0]?.id !== firstBefore, 'scrolling options does not move the search row');
+});
+
+test('Dropdown width reflow keeps a scrolled option list populated', () => {
+  const combo = new Dropdown({
+    id: 'resized-combo',
+    searchable: true,
+    items: Array.from({ length: 10 }, (_, i) => `A very long billing team ${i + 1}`),
+    width: 8,
+    rows: 3,
+  });
+  combo.onKey(key('enter'));
+  for (let i = 0; i < 5; i++) combo.onKey(key('pagedown'));
+  combo.setWidth(80);
+  const list = combo.build().children?.find((node) => node.overlay && node.children?.some((child) => child.id?.includes('-option-')));
+  assert.ok(list?.children?.length, 'expanding the field clamps its old scroll to rendered options');
 });
 
 test('Dropdown searchable: field and option mouse targets are independent', () => {

@@ -28,8 +28,8 @@ import {
   type Screen,
 } from '../../../tui/index.ts';
 import { stringWidth } from '../../../engine/index.ts';
-import { ARCADE_CHROME_TEXT, RAIL_MUTED_FG, RAIL_TEXT_FG, uiChromeBg } from '../../theme.ts';
-import { COSTS, DEV_CARD_TYPES, type DevCardType, DISCARD_LIMIT, type Resource, resourceIndex } from '../../../rules/islanders/types.ts';
+import { ARCADE_CHROME_TEXT, RAIL_MUTED_FG, RAIL_TEXT_FG, UI_CHROME_BG, UI_CHROME_PILL, uiChromeBg } from '../../theme.ts';
+import { COSTS, DEV_CARD_TYPES, type DevCardType, DISCARD_LIMIT, PIECE_LIMITS, type Resource, resourceIndex } from '../../../rules/islanders/types.ts';
 import {
   ISLANDERS_CARD,
   type IslandersCardLook as ResourceLook,
@@ -42,18 +42,24 @@ import {
   RESOURCE_LOOK,
   RESOURCE_ORDER,
   ROAD_ICON,
+  SETTLEMENT_ICON,
+  CITY_ICON,
 } from './palette.ts';
 import type { IslandersActionHistoryView, IslandersCardsPlayerView, IslandersCardsView } from './card-types.ts';
 import {
   adjustIslandersWorkbenchDiscard,
+  adjustIslandersWorkbenchDev,
   adjustIslandersWorkbenchHand,
+  canAffordIslandersWorkbenchBuild,
   adjustIslandersWorkbenchTradeStaging,
   beginIslandersWorkbenchDiscard,
   beginIslandersWorkbenchDevelopmentPlay,
+  cancelIslandersWorkbenchDevelopmentPlay,
   beginIslandersWorkbenchDevPurchase,
   beginStagedIslandersWorkbenchBankTrade,
   beginStagedIslandersWorkbenchPortTrade,
   buyIslandersWorkbenchDevCard,
+  canConfirmIslandersWorkbenchDevelopmentSelection,
   canSubmitIslandersWorkbenchDiscard,
   cancelIslandersWorkbenchPlayerTrade,
   islandersTradeEditorOpen,
@@ -74,16 +80,22 @@ import {
   logIslandersWorkbenchMaritimeTrade,
   performStagedIslandersWorkbenchBankTrade,
   performStagedIslandersWorkbenchPortTrade,
+  completeIslandersWorkbenchSelectedMonopoly,
+  receiveIslandersWorkbenchYearOfPlenty,
   reserveIslandersWorkbenchDiscard,
+  reserveIslandersWorkbenchSelectedMonopoly,
   setIslandersTradeEditorOpen,
+  stageIslandersWorkbenchDevelopmentResource,
   stagedIslandersBankTrade,
   stagedIslandersPortTrade,
   stagedIslandersPlayerTradeValid,
   submitIslandersWorkbenchDiscard,
+  unstageIslandersWorkbenchDevelopmentResource,
   workbenchDiscardSelection,
   workbenchTradeGet,
   workbenchTradeGive,
   type IslandersPlayerTradeOffer,
+  type IslandersWorkbenchBuild,
 } from './card-workbench.ts';
 
 export type { IslandersActionHistoryView, IslandersCardsPlayerView, IslandersCardsView } from './card-types.ts';
@@ -91,14 +103,17 @@ export {
   adjustIslandersWorkbenchDiscard,
   adjustIslandersWorkbenchDev,
   adjustIslandersWorkbenchHand,
+  canAffordIslandersWorkbenchBuild,
   adjustIslandersWorkbenchTradeStaging,
   bankIslandersResource,
   beginIslandersWorkbenchDiscard,
   beginIslandersWorkbenchDevelopmentPlay,
+  cancelIslandersWorkbenchDevelopmentPlay,
   beginIslandersWorkbenchDevPurchase,
   beginStagedIslandersWorkbenchBankTrade,
   beginStagedIslandersWorkbenchPortTrade,
   buyIslandersWorkbenchDevCard,
+  canConfirmIslandersWorkbenchDevelopmentSelection,
   canSubmitIslandersWorkbenchDiscard,
   cancelIslandersWorkbenchPlayerTrade,
   ISLANDERS_CARD_WORKBENCH_VIEW,
@@ -129,13 +144,22 @@ export {
   performStagedIslandersWorkbenchBankTrade,
   performStagedIslandersWorkbenchPortTrade,
   chooseIslandersWorkbenchDevelopmentResource,
+  completeIslandersWorkbenchSelectedMonopoly,
   finishIslandersWorkbenchDevelopmentPlay,
   resetIslandersWorkbenchCards,
   reserveIslandersWorkbenchDiscard,
+  payIslandersWorkbenchBuild,
+  reserveIslandersWorkbenchMonopoly,
+  reserveIslandersWorkbenchSelectedMonopoly,
+  reserveIslandersWorkbenchRobberSteal,
+  logIslandersWorkbenchOpponentTransfer,
   resolveIslandersWorkbenchPlayerTradeOffer,
   setIslandersTradeEditorOpen,
   setIslandersWorkbenchTradeSelection,
   submitIslandersWorkbenchDiscard,
+  stageIslandersWorkbenchDevelopmentResource,
+  unstageIslandersWorkbenchDevelopmentResource,
+  receiveIslandersWorkbenchYearOfPlenty,
 } from './card-workbench.ts';
 
 // Only use codepoints whose Unicode Emoji_Presentation is Yes. One with Emoji_Presentation=No
@@ -378,6 +402,7 @@ export function mountIslandersCardsHud(ui: Screen): void {
 }
 
 export interface IslandersCardsLayout {
+  width: number;
   compact: boolean;
   showPublicRail: boolean;
   railWidth: number;
@@ -389,6 +414,7 @@ export interface IslandersCardsLayout {
 export function islandersCardsLayout(region: LayoutBox): IslandersCardsLayout {
   const compact = region.w < 96 || region.h < 34;
   return {
+    width: region.w,
     compact,
     // Width alone decides: the rail is 51 columns and the board needs the rest. Height only
     // changes how the rail lays itself out (see islandersRailPlan).
@@ -624,24 +650,30 @@ function sidebar(view: IslandersCardsView, onClose: () => void, plan: IslandersR
   ]);
 }
 
-// TEMPORARY (testing): left-click a hand card to add one of that resource, right-click to spend
-// one, and the count floors at zero. Both write module state through the workbench setters rather
+// Test-only: normal click adds one resource and right-click removes one, clamped at zero.
+// Build/trade/dev costs still move cards authoritatively. This writes module state through the
+// workbench setter rather
 // than the `view` handed in, which is rebuilt every frame — mutating that would last exactly until
 // the next repaint. Delete this and the wrappers in `handPanel` once a live IslandersState feeds the
 // HUD, since the rules engine is the only thing allowed to move cards then.
 function adjustHand(resource: Resource, ev: PointerHit): boolean {
   if (ev.type !== 'down') return false;
-  return adjustIslandersWorkbenchHand(resource, ev.button === 2 ? -1 : 1);
+  if (ev.button === 0 || ev.button === undefined) return adjustIslandersWorkbenchHand(resource, 1);
+  if (ev.button === 2) return adjustIslandersWorkbenchHand(resource, -1);
+  return false;
 }
 
-// Development cards are acquired only through the paid deck action. A held playable card commits
-// on left-click and then waits for its board/resource choices; victory points remain passive.
+// Test-only Shift-click adds a development card so every effect can be exercised directly.
+// An ordinary click plays a held card; victory points remain passive.
 function playDevHand(
   type: DevCardType,
   ev: PointerHit,
   onPlayDevelopmentCard?: IslandersDevelopmentPlayRequest,
+  testAdjustable = false,
 ): boolean {
-  if (ev.type !== 'down' || ev.button === 2 || type === 'victoryPoint') return false;
+  if (ev.type !== 'down' || ev.button === 2) return false;
+  if (ev.shift && testAdjustable) return adjustIslandersWorkbenchDev(type, 1);
+  if (type === 'victoryPoint') return false;
   return onPlayDevelopmentCard?.(type) ?? beginIslandersWorkbenchDevelopmentPlay(type);
 }
 
@@ -669,7 +701,8 @@ function workbenchActionButton(
   // longer before centering. The card is an odd number of cells wide, so odd-width rows center
   // exactly and even-width rows cannot; a trailing space makes those odd and settles them one
   // cell left of center, where a wide glyph reads as placed rather than nudged right.
-  const wordy = !/\p{Emoji_Presentation}/u.test(icon);
+  const iconWidth = stringWidth(icon);
+  const wordy = iconWidth > 1 && !/\p{Emoji_Presentation}/u.test(icon);
   const block = wordy ? Math.max(stringWidth(icon), stringWidth(label)) : 0;
   const settle = (text: string): string => {
     const padded = text.padEnd(Math.max(block, text.length));
@@ -708,12 +741,14 @@ function workbenchActionButton(
 
 function canBuyWorkbenchDev(view: IslandersCardsView): boolean {
   return view.maritimeTradeBusy !== true
+    && view.interactionBusy !== true
     && (view.developmentDeckAvailable ?? view.developmentDeck) > 0
     && RESOURCE_ORDER.every((resource) => view.hand[resource] >= COSTS.devCard[resourceIndex(resource)]);
 }
 
 function canOpenWorkbenchTrade(view: IslandersCardsView): boolean {
   return view.maritimeTradeBusy !== true
+    && view.interactionBusy !== true
     && RESOURCE_ORDER.some((resource) => view.hand[resource] > 0);
 }
 
@@ -922,7 +957,7 @@ function tradeEditor(view: IslandersCardsView, controller: IslandersTradeEditorC
         tradeActionButton('islanders-player-trade', '👥', 'player', controller.canPlayer, () => { controller.onPlayer(); }, undefined, controller.activeAction === 'player'));
   const closeAction = controller.readOnly
     ? Box({ width: HAND_ACTION_W, height: CARD_H })
-    : tradeActionButton('islanders-trade-close', '×', 'close', true, () => { controller.onClose(); });
+    : tradeActionButton('islanders-trade-close', 'x', 'close', true, () => { controller.onClose(); });
   const actionRows = controller.mode === 'counter'
     ? [
         Box({ width: HAND_ACTION_W, height: CARD_H }),
@@ -1335,6 +1370,237 @@ export interface IslandersHandActionController {
   turn?: { kind: 'roll' | 'end'; onClick(): boolean };
 }
 
+export interface IslandersWorkbenchBuildController {
+  active: IslandersWorkbenchBuild | null;
+  canAfford(type: IslandersWorkbenchBuild): boolean;
+  hasLegalTarget(type: IslandersWorkbenchBuild): boolean;
+  pieceCount(type: IslandersWorkbenchBuild): number;
+  canBuild(type: IslandersWorkbenchBuild): boolean;
+  onBuild(type: IslandersWorkbenchBuild): boolean;
+  onCancel(): void;
+  onCancelDevelopment?(): void;
+  onRemoveDevelopmentResource?(resource: Resource): boolean;
+  onConfirmDevelopment?(): boolean;
+}
+
+const LIVE_PILL_HOVER_BG: Rgb = [52, 56, 70];
+
+// Islanders Test uses the production action pill itself so visual testing exercises the same
+// control that appears during a real human turn.
+export function islandersLiveActionButton(
+  id: string,
+  label: string,
+  onClick: () => void,
+  disabled = false,
+  active = false,
+): Node {
+  return Button({
+    id: `islanders-live-${id}`,
+    label,
+    onClick,
+    disabled,
+    style: {
+      ...UI_CHROME_PILL,
+      hover: { background: LIVE_PILL_HOVER_BG },
+      padding: [0, 1],
+      ...(active ? { background: ISLANDERS_CARD.actionPressed, color: ISLANDERS_CARD.actionPressedInk, bold: true } : {}),
+      disabled: active
+        ? { background: ISLANDERS_CARD.actionPressed, color: ISLANDERS_CARD.actionPressedInk, bold: true }
+        : UI_CHROME_PILL.disabled,
+    },
+  });
+}
+
+function workbenchChromeButton(id: string, label: string, onClick: () => void, disabled = false, selected = false): Node {
+  const selectedStyle = { background: ISLANDERS_CARD.actionPressed, color: ISLANDERS_CARD.actionPressedInk, bold: true } as const;
+  return Button({
+    id: `islanders-live-${id}`,
+    label,
+    onClick,
+    disabled,
+    style: {
+      ...UI_CHROME_PILL,
+      disabled: { background: 'disabledBg', color: 'disabledFg', bold: false },
+      ...(selected ? {
+        ...selectedStyle,
+        hover: selectedStyle,
+        focus: selectedStyle,
+        pressed: selectedStyle,
+      } : {}),
+    },
+  });
+}
+
+const BUILD_CONTROL_SPEC: Record<IslandersWorkbenchBuild, { label: string; cost: string; plural: string }> = {
+  road: { label: `${ROAD_ICON} road`, cost: 'Costs 🧱 🌲.', plural: 'Roads' },
+  settlement: { label: `${SETTLEMENT_ICON} settlement`, cost: 'Costs 🧱 🌲 🐑 🌾.', plural: 'Settlements' },
+  city: { label: `${CITY_ICON} city`, cost: 'Costs 🪨 x3 and 🌾 x2.', plural: 'Cities' },
+};
+
+export interface IslandersBuildControlAvailability {
+  canAfford: boolean;
+  hasLegalTarget: boolean;
+  piecesUsed: number;
+  pieceLimit: number;
+}
+
+export function islandersBuildControl(
+  type: IslandersWorkbenchBuild,
+  availability: IslandersBuildControlAvailability,
+  onClick: () => void,
+  selected = false,
+): Node {
+  const spec = BUILD_CONTROL_SPEC[type];
+  const hasPiece = availability.piecesUsed < availability.pieceLimit;
+  const available = availability.canAfford && availability.hasLegalTarget && hasPiece;
+  return Tooltip(
+    {
+      content: [
+        { text: spec.label, bold: true },
+        spec.cost,
+        `${spec.plural}: ${availability.piecesUsed}/${availability.pieceLimit} built.`,
+        ...(!availability.canAfford ? ['Not enough resources.'] : []),
+        ...(!availability.hasLegalTarget ? [`No valid spot to build a ${type}.`] : []),
+      ],
+      maxWidth: 36,
+      hover: { ...UI_CHROME_PILL.hover, bold: false },
+    },
+    workbenchChromeButton(type, spec.label, onClick, !available, selected),
+  );
+}
+
+function workbenchBuildPanel(layout: IslandersCardsLayout, controller: IslandersWorkbenchBuildController): Node {
+  const buttons = (['road', 'settlement', 'city'] as const).map((type) => islandersBuildControl(type, {
+    canAfford: controller.canAfford(type),
+    hasLegalTarget: controller.hasLegalTarget(type),
+    piecesUsed: controller.pieceCount(type),
+    pieceLimit: PIECE_LIMITS[type],
+  }, () => { controller.onBuild(type); }, controller.active === type));
+  if (controller.active) buttons.push(workbenchChromeButton('build-cancel', 'cancel', controller.onCancel));
+  // Each button owns its own chrome rectangle. A transparent parent leaves the one-cell gaps
+  // visibly open instead of merging all three controls into one dark strip.
+  const narrow = layout.width < 40;
+  return Box({
+    position: 'absolute',
+    left: HAND_PANEL_LEFT + 1,
+    bottom: layout.handHeight + 2,
+    flexDirection: narrow ? 'column' : 'row',
+    alignItems: 'start',
+    gap: narrow ? 0 : 1,
+  }, buttons);
+}
+
+function developmentSelectionCounts(resources: readonly Resource[]): Record<Resource, number> {
+  const counts: Record<Resource, number> = { lumber: 0, brick: 0, wool: 0, grain: 0, ore: 0 };
+  for (const resource of resources) counts[resource]++;
+  return counts;
+}
+
+function developmentHandRow(hand: Record<Resource, number>): Node {
+  return Box({ width: TRADE_ROW_W, gap: 1 }, RESOURCE_ORDER.map((resource) =>
+    card(RESOURCE_LOOK[resource], hand[resource], CARD_H, hand[resource] === 0)));
+}
+
+function monopolySelectionRow(selected: Resource | undefined, onSelect: (resource: Resource) => void): Node {
+  return Box({ width: TRADE_ROW_W, gap: 1 }, RESOURCE_ORDER.map((resource) => {
+    const active = selected === resource;
+    const fill = active ? RESOURCE_LOOK[resource].fill : EMPTY_FILL;
+    const face = card(RESOURCE_LOOK[resource], null, CARD_H, !active, false, true);
+    const hit = Box({ width: CARD_W, height: CARD_H, background: fill, hover: { background: lighten(fill, 0.12) } }, [face]);
+    hit.id = `islanders-development-monopoly-${resource}`;
+    hit.onMouse = (event): boolean => {
+      if (event.type !== 'down' || event.button === 2) return false;
+      onSelect(resource);
+      return true;
+    };
+    return hit;
+  }));
+}
+
+function identifyDevelopmentRow(row: Node, prefix: 'bank' | 'choice'): Node {
+  row.children?.forEach((child, index) => {
+    child.id = `islanders-development-${prefix}-${RESOURCE_ORDER[index]}`;
+  });
+  return row;
+}
+
+const RECEIVE_ACTION_COLORS: WorkbenchActionColors = {
+  background: [48, 122, 72],
+  hover: [65, 151, 91],
+  pressed: [188, 232, 196],
+};
+
+function developmentSelectionEditor(
+  view: IslandersCardsView,
+  onChange: () => void,
+  onStage: IslandersDevelopmentResourceRequest | undefined,
+  controller: IslandersWorkbenchBuildController | undefined,
+): Node | null {
+  const play = view.developmentPlay;
+  if (!play || (play.type !== 'yearOfPlenty' && play.type !== 'monopoly')) return null;
+  const changed = (action: () => boolean): void => {
+    if (action()) onChange();
+  };
+  const stage = (resource: Resource): void => changed(() =>
+    onStage?.(resource) ?? stageIslandersWorkbenchDevelopmentResource(resource));
+  const unstage = (resource: Resource): void => changed(() =>
+    controller?.onRemoveDevelopmentResource?.(resource) ?? unstageIslandersWorkbenchDevelopmentResource(resource));
+  const confirm = (): void => changed(() => {
+    if (controller?.onConfirmDevelopment) return controller.onConfirmDevelopment();
+    return play.type === 'yearOfPlenty'
+      ? receiveIslandersWorkbenchYearOfPlenty() !== null
+      : completeIslandersWorkbenchSelectedMonopoly();
+  });
+  const cancel = (): void => {
+    if (controller?.onCancelDevelopment) controller.onCancelDevelopment();
+    else changed(cancelIslandersWorkbenchDevelopmentPlay);
+  };
+  const selected = developmentSelectionCounts(play.resources);
+  const ready = canConfirmIslandersWorkbenchDevelopmentSelection();
+  const rows = play.type === 'yearOfPlenty'
+    ? [
+        identifyDevelopmentRow(tradeBankSourceRow(view.bank, selected, stage), 'bank'),
+        identifyDevelopmentRow(tradeStagedRow(selected, '↓', unstage), 'choice'),
+        developmentHandRow(view.hand),
+      ]
+    : [
+        monopolySelectionRow(play.resources[0], stage),
+        developmentHandRow(view.hand),
+      ];
+  const actionRows = play.type === 'yearOfPlenty'
+    ? [
+        Box({ width: HAND_ACTION_W, height: CARD_H }),
+        tradeActionButton('islanders-development-confirm', '✓', 'receive', ready, confirm, RECEIVE_ACTION_COLORS),
+        tradeActionButton('islanders-development-panel-cancel', 'x', 'cancel', true, cancel),
+      ]
+    : [
+        tradeActionButton('islanders-development-confirm', '✓', 'steal', ready, confirm),
+        tradeActionButton('islanders-development-panel-cancel', 'x', 'cancel', true, cancel),
+      ];
+  const panelHeight = rows.length * CARD_H + (rows.length - 1) * TRADE_ROW_GAP + TRADE_PANEL_PAD_V * 2;
+  const instruction = play.type === 'yearOfPlenty'
+    ? play.remaining + play.resources.length === 1
+      ? 'pick the remaining resource from the bank'
+      : 'pick any two resources from the bank'
+    : 'steal all of one resource from the table';
+  return Box({
+    position: 'absolute',
+    left: HAND_PANEL_LEFT,
+    bottom: 1,
+    width: TRADE_PANEL_W,
+    height: panelHeight + 2,
+  }, [
+    Box({ position: 'absolute', left: 0, bottom: panelHeight + 1, padding: [0, 1], gap: 1, background: uiChromeBg(0.9), pointerEvents: 'none' }, [
+      Text({ text: DEV_CARD_HELP[play.type].title, style: { color: DEV_HAND_LOOK[play.type].fill, bold: true } }),
+      Text({ text: instruction, style: { color: ARCADE_CHROME_TEXT.body } }),
+    ]),
+    Box({ position: 'absolute', left: 0, bottom: 0, width: TRADE_PANEL_W, gap: HAND_ACTION_GAP }, [
+      Box({ width: TRADE_TABLE_W, height: panelHeight, flexDirection: 'column', gap: TRADE_ROW_GAP, padding: [TRADE_PANEL_PAD_V, 2], background: TRADE_BG }, rows),
+      Box({ width: HAND_ACTION_W, height: panelHeight, flexDirection: 'column', gap: TRADE_ROW_GAP, padding: [TRADE_PANEL_PAD_V, 0] }, actionRows),
+    ]),
+  ]);
+}
+
 function handPanel(
   view: IslandersCardsView,
   layout: IslandersCardsLayout,
@@ -1406,10 +1672,12 @@ function handPanel(
           const playable = view.devHand[type] > 0
             && type !== 'victoryPoint'
             && view.maritimeTradeBusy !== true
+            && view.interactionBusy !== true
             && view.developmentPlay === undefined
             && (view.source === 'workbench' || view.playableDevelopmentCards?.includes(type as Exclude<DevCardType, 'victoryPoint'>) === true);
           const live = onPlayDevelopmentCard !== undefined;
-          const hoverable = playable && (view.source === 'workbench' || live);
+          const testAdjustable = view.source === 'workbench' && view.interactionBusy !== true;
+          const hoverable = testAdjustable || (playable && live);
           return clickable(
             card(
               DEV_HAND_LOOK[type],
@@ -1419,23 +1687,17 @@ function handPanel(
               view.developmentPlay?.type === type,
               hoverable,
             ),
-            (ev) => playDevHand(type, ev, onPlayDevelopmentCard),
-            playable,
+            (ev) => playDevHand(type, ev, onPlayDevelopmentCard, testAdjustable),
+            playable || testAdjustable,
             live,
-            hoverable ? DEV_HAND_LOOK[type].fill : undefined,
+            hoverable ? (held ? DEV_HAND_LOOK[type].fill : EMPTY_FILL) : undefined,
           );
         })());
       });
   const cards = RESOURCE_ORDER.map((resource) => clickable(
     card(RESOURCE_LOOK[resource], view.hand[resource], height, view.hand[resource] === 0),
-    (ev) => {
-      if (view.developmentPlay?.type === 'yearOfPlenty' || view.developmentPlay?.type === 'monopoly') {
-        if (ev.type !== 'down' || ev.button === 2) return false;
-        return onChooseDevelopmentResource?.(resource) ?? chooseIslandersWorkbenchDevelopmentResource(resource);
-      }
-      return adjustHand(resource, ev);
-    },
-    view.maritimeTradeBusy !== true,
+    (ev) => adjustHand(resource, ev),
+    view.maritimeTradeBusy !== true && view.interactionBusy !== true,
   ));
   const actions = !showActions
     ? []
@@ -1461,6 +1723,7 @@ function handPanel(
           content: [
             { text: 'Buy development card', bold: true },
             'Costs 🐑 🌾 🪨.',
+            ...(view.developmentDeck <= 0 ? ['No development cards remaining.'] : []),
           ],
           maxWidth: 36,
         }, workbenchActionButton('islanders-buy-dev', `💲 ${DEV_CARD_ICON}`, 'buy dev', actionController.canBuyDevelopmentCard, () => {
@@ -1486,20 +1749,13 @@ function handPanel(
   ]);
 }
 
-function developmentPrompt(view: IslandersCardsView, layout: IslandersCardsLayout): Node | null {
+function developmentPrompt(view: IslandersCardsView, layout: IslandersCardsLayout, onCancel?: () => void): Node | null {
   const play = view.developmentPlay;
-  if (!play) return null;
+  if (!play || play.type === 'yearOfPlenty' || play.type === 'monopoly') return null;
   const instruction = play.type === 'knight'
     ? 'choose a robber tile'
-    : play.type === 'roadBuilding'
-      ? `place ${play.remaining} road${play.remaining === 1 ? '' : 's'}`
-      : play.type === 'yearOfPlenty'
-        ? `choose ${play.remaining} resource${play.remaining === 1 ? '' : 's'} from your hand row`
-        : 'choose a resource from your hand row';
-  return Box({
-    position: 'absolute',
-    left: HAND_PANEL_LEFT,
-    bottom: layout.handHeight + 2,
+    : `place ${play.remaining} road${play.remaining === 1 ? '' : 's'}`;
+  const explainer = Box({
     padding: [0, 1],
     gap: 1,
     background: uiChromeBg(0.9),
@@ -1507,6 +1763,16 @@ function developmentPrompt(view: IslandersCardsView, layout: IslandersCardsLayou
   }, [
     Text({ text: DEV_CARD_HELP[play.type].title, style: { color: DEV_HAND_LOOK[play.type].fill, bold: true } }),
     Text({ text: instruction, style: { color: ARCADE_CHROME_TEXT.body } }),
+  ]);
+  explainer.id = 'islanders-development-prompt';
+  return Box({
+    position: 'absolute',
+    left: HAND_PANEL_LEFT,
+    bottom: layout.handHeight + 2,
+    gap: 1,
+  }, [
+    explainer,
+    ...(onCancel ? [workbenchChromeButton('development-cancel', 'cancel', onCancel)] : []),
   ]);
 }
 
@@ -1587,6 +1853,23 @@ export function islandersBankDepartureCell(
   );
 }
 
+export function islandersPlayerResourceDepartureCell(
+  region: LayoutBox,
+  opponentIndex: number,
+  playerCount: number,
+  railVisible: boolean,
+  composerRows = 0,
+): { col: number; row: number } {
+  if (!railVisible) return { col: region.x + region.w + 2, row: region.y + Math.floor(region.h * 2 / 3) };
+  const plan = islandersRailPlan(region, playerCount, composerRows);
+  const bankHeight = plan.compactBank ? 1 : CARD_H;
+  const playersHeader = plan.bankTop + bankHeight + 1;
+  return {
+    col: region.x + region.w - 7,
+    row: region.y + playersHeader + 1 + opponentIndex * (1 + plan.playerRowGap),
+  };
+}
+
 export function islandersDevDeckDepartureCell(
   region: LayoutBox,
   playerCount: number,
@@ -1645,6 +1928,7 @@ export function buildIslandersCardsOverlay(
   liveDiscardController?: IslandersDiscardEditorController,
   livePlayerTradeController?: IslandersPlayerTradeOffersController,
   logComposer?: Node,
+  workbenchBuildController?: IslandersWorkbenchBuildController,
 ): Node {
   const layout = islandersCardsLayout(region);
   const showSidebar = sidebarOpen && layout.showPublicRail;
@@ -1672,6 +1956,9 @@ export function buildIslandersCardsOverlay(
     ?? (workbench && islandersTradeEditorOpen() ? workbenchTradeController(view, onWorkbenchChange, onMaritimeTrade) : undefined);
   const discardController = liveDiscardController
     ?? (workbench ? workbenchDiscardController(onWorkbenchChange, onWorkbenchDiscard) : undefined);
+  const developmentEditor = workbench
+    ? developmentSelectionEditor(view, onWorkbenchChange, onChooseDevelopmentResource, workbenchBuildController)
+    : null;
   return Box({ position: 'absolute', top: 0, left: 0, width: region.w, height: region.h }, [
     ...(showSidebar ? [sidebar(view, onCloseSidebar, plan, logComposer)] : []),
     // The hand shares the bottom row with the board, and the rail eats into it. Hand it the
@@ -1680,6 +1967,8 @@ export function buildIslandersCardsOverlay(
       ? [discardEditor(view, discardController)]
       : editorController
         ? [tradeEditor(view, editorController)]
+      : developmentEditor
+        ? [developmentEditor]
       : [handPanel(
           view,
           layout,
@@ -1690,7 +1979,16 @@ export function buildIslandersCardsOverlay(
           onChooseDevelopmentResource,
           liveActionController,
         )]),
-    ...(workbench ? [developmentPrompt(view, layout)].filter((node): node is Node => node !== null) : []),
+    ...(workbench ? [developmentPrompt(view, layout, workbenchBuildController?.onCancelDevelopment)].filter((node): node is Node => node !== null) : []),
+    ...(workbench
+      && workbenchBuildController
+      && !view.developmentPlay
+      && view.maritimeTradeBusy !== true
+      && view.interactionBusy !== true
+      && !discardController
+      && !editorController
+      ? [workbenchBuildPanel(layout, workbenchBuildController)]
+      : []),
     ...(offers ? [offers] : []),
   ]);
 }

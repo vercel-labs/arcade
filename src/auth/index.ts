@@ -8,10 +8,11 @@ export {
   ensureCachedGatewayKey,
   ensureGatewayKey,
   isLoggedIn,
+  signInWithAnotherAccount,
   signOut,
-  switchTeam,
   useTeam,
   type EnsureOpts,
   type EnsureResult,
+  type AvailableTeamsResult,
 } from './gateway-key.ts';
 export type { Team } from './vercel-api.ts';

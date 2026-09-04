@@ -7,9 +7,9 @@ import {
   type MaritimePortTradeRates,
   type MaritimeTradeRates,
 } from '../../../rules/islanders/maritime-trade.ts';
-import { COSTS, DEV_CARD_TYPES, DISCARD_LIMIT, type DevCardType, type PlayerColor, type Resource, resourceIndex, type Terrain } from '../../../rules/islanders/types.ts';
+import { COSTS, DEV_CARD_TYPES, DISCARD_LIMIT, type DevCardType, type PlayerColor, type Resource, resourceIndex, TERRAIN_RESOURCE, type Terrain } from '../../../rules/islanders/types.ts';
 import type { IslandersActionHistoryView, IslandersCardsPlayerView, IslandersCardsView, IslandersDevelopmentPlayView } from './card-types.ts';
-import { type IslandersRgb as Rgb, RESOURCE_LOOK, RESOURCE_ORDER, ROAD_ICON, SETTLEMENT_ICON } from './palette.ts';
+import { CITY_ICON, DEV_CARD_ICON, type IslandersRgb as Rgb, RESOURCE_LOOK, RESOURCE_ORDER, ROAD_ICON, SETTLEMENT_ICON } from './palette.ts';
 
 export const ISLANDERS_LOCAL_COLOR: PlayerColor = 'red';
 export const ISLANDERS_BANK_TRADE_RATE = 4;
@@ -20,6 +20,12 @@ const liveHand: Record<Resource, number> = { lumber: 0, brick: 0, wool: 0, grain
 const liveDevHand: Record<DevCardType, number> = { knight: 0, victoryPoint: 0, roadBuilding: 0, yearOfPlenty: 0, monopoly: 0 };
 const WORKBENCH_BANK_START: Record<Resource, number> = { lumber: 16, brick: 18, wool: 17, grain: 18, ore: 17 };
 const liveBank: Record<Resource, number> = { ...WORKBENCH_BANK_START };
+const WORKBENCH_OPPONENT_HAND_START: readonly Record<Resource, number>[] = [
+  { lumber: 2, brick: 1, wool: 3, grain: 1, ore: 0 },
+  { lumber: 0, brick: 2, wool: 1, grain: 3, ore: 2 },
+  { lumber: 3, brick: 0, wool: 2, grain: 2, ore: 3 },
+];
+const liveOpponentHands = WORKBENCH_OPPONENT_HAND_START.map((hand) => ({ ...hand }));
 const WORKBENCH_DEV_SEED = 0xc47a_2026;
 let liveDevelopmentDeck = buildDevelopmentDeck(mulberry32(WORKBENCH_DEV_SEED));
 // Purchases reserve cards in deck order immediately, while the visible pile is decremented only
@@ -27,6 +33,7 @@ let liveDevelopmentDeck = buildDevelopmentDeck(mulberry32(WORKBENCH_DEV_SEED));
 // without drawing the same top card twice.
 const reservedDevelopmentCards: DevCardType[] = [];
 let developmentPlay: IslandersDevelopmentPlayView | null = null;
+let developmentPlayHistoryIndex = -1;
 let livePlayedKnights = 0;
 let tradeOpen = false;
 let discardRequired = 0;
@@ -145,8 +152,78 @@ export function adjustIslandersWorkbenchDev(type: DevCardType, delta: number): b
   return true;
 }
 
+export type IslandersWorkbenchBuild = 'road' | 'settlement' | 'city';
+
+export function canAffordIslandersWorkbenchBuild(type: IslandersWorkbenchBuild): boolean {
+  return RESOURCE_ORDER.every((resource) => liveHand[resource] >= COSTS[type][resourceIndex(resource)]);
+}
+
+export function payIslandersWorkbenchBuild(type: IslandersWorkbenchBuild): boolean {
+  if (!canAffordIslandersWorkbenchBuild(type)) return false;
+  for (const resource of RESOURCE_ORDER) {
+    const amount = COSTS[type][resourceIndex(resource)];
+    liveHand[resource] -= amount;
+    liveBank[resource] += amount;
+  }
+  liveHistory.push({
+    actor: 'You',
+    color: ISLANDERS_LOCAL_COLOR,
+    message: type === 'road' ? `built a road ${ROAD_ICON}` : type === 'settlement' ? `built a settlement ${SETTLEMENT_ICON}` : `upgraded to a city ${CITY_ICON}`,
+  });
+  return true;
+}
+
+export interface IslandersWorkbenchOpponentTransfer {
+  resource: Resource;
+  victims: Array<{ index: number; name: string; count: number }>;
+  total: number;
+}
+
+export function reserveIslandersWorkbenchMonopoly(resource: Resource): IslandersWorkbenchOpponentTransfer | null {
+  if (developmentPlay?.type !== 'monopoly') return null;
+  const victims = liveOpponentHands.flatMap((hand, index) => {
+    const count = hand[resource];
+    if (!count) return [];
+    hand[resource] = 0;
+    return [{ index, name: ISLANDERS_CARD_WORKBENCH_VIEW.opponents[index].name, count }];
+  });
+  const total = victims.reduce((sum, victim) => sum + victim.count, 0);
+  developmentPlay = null;
+  developmentPlayHistoryIndex = -1;
+  return { resource, victims, total };
+}
+
+export function reserveIslandersWorkbenchRobberSteal(): IslandersWorkbenchOpponentTransfer | null {
+  for (let index = 0; index < liveOpponentHands.length; index++) {
+    const hand = liveOpponentHands[index];
+    const resource = RESOURCE_ORDER.find((candidate) => hand[candidate] > 0);
+    if (!resource) continue;
+    hand[resource]--;
+    return {
+      resource,
+      victims: [{ index, name: ISLANDERS_CARD_WORKBENCH_VIEW.opponents[index].name, count: 1 }],
+      total: 1,
+    };
+  }
+  return null;
+}
+
+export function logIslandersWorkbenchOpponentTransfer(transfer: IslandersWorkbenchOpponentTransfer, kind: 'monopoly' | 'robber'): void {
+  const names = transfer.victims.map((victim) => victim.name).join(', ');
+  liveHistory.push({
+    actor: 'You',
+    color: ISLANDERS_LOCAL_COLOR,
+    message: kind === 'monopoly'
+      ? `took ${RESOURCE_LOOK[transfer.resource].emoji} x${transfer.total} with monopoly`
+      : `stole ${RESOURCE_LOOK[transfer.resource].emoji} x1 from ${names}`,
+  });
+}
+
 function developmentPlaySteps(type: Exclude<DevCardType, 'victoryPoint'>): number {
-  if (type === 'roadBuilding' || type === 'yearOfPlenty') return 2;
+  if (type === 'yearOfPlenty') {
+    return Math.min(2, RESOURCE_ORDER.reduce((total, resource) => total + liveBank[resource], 0));
+  }
+  if (type === 'roadBuilding') return 2;
   return 1;
 }
 
@@ -166,6 +243,7 @@ export function beginIslandersWorkbenchDevelopmentPlay(type: DevCardType): boole
           ? 'played year of plenty'
           : 'played monopoly',
   });
+  developmentPlayHistoryIndex = liveHistory.length - 1;
   if (type === 'knight') livePlayedKnights++;
   return true;
 }
@@ -174,16 +252,102 @@ export function islandersWorkbenchDevelopmentPlay(): IslandersDevelopmentPlayVie
   return developmentPlay ? { ...developmentPlay, resources: [...developmentPlay.resources] } : null;
 }
 
+export function stageIslandersWorkbenchDevelopmentResource(resource: Resource): boolean {
+  const play = developmentPlay;
+  if (!play || (play.type !== 'yearOfPlenty' && play.type !== 'monopoly')) return false;
+  if (play.type === 'monopoly') {
+    if (play.resources[0] === resource) {
+      play.resources = [];
+      play.remaining = 1;
+    } else {
+      play.resources = [resource];
+      play.remaining = 0;
+    }
+    return true;
+  }
+  const required = developmentPlaySteps('yearOfPlenty');
+  if (play.resources.length >= required) return false;
+  const staged = play.resources.filter((candidate) => candidate === resource).length;
+  if (staged >= liveBank[resource]) return false;
+  play.resources.push(resource);
+  play.remaining = required - play.resources.length;
+  return true;
+}
+
+export function unstageIslandersWorkbenchDevelopmentResource(resource: Resource): boolean {
+  const play = developmentPlay;
+  if (!play || (play.type !== 'yearOfPlenty' && play.type !== 'monopoly')) return false;
+  const index = play.resources.lastIndexOf(resource);
+  if (index < 0) return false;
+  play.resources.splice(index, 1);
+  play.remaining = play.type === 'yearOfPlenty' ? developmentPlaySteps('yearOfPlenty') - play.resources.length : 1;
+  return true;
+}
+
+export function canConfirmIslandersWorkbenchDevelopmentSelection(): boolean {
+  const play = developmentPlay;
+  if (!play) return false;
+  if (play.type === 'monopoly') return play.resources.length === 1;
+  if (play.type !== 'yearOfPlenty' || play.resources.length !== developmentPlaySteps('yearOfPlenty')) return false;
+  return RESOURCE_ORDER.every((resource) =>
+    play.resources.filter((candidate) => candidate === resource).length <= liveBank[resource]);
+}
+
+export function receiveIslandersWorkbenchYearOfPlenty(): Resource[] | null {
+  const play = developmentPlay;
+  if (play?.type !== 'yearOfPlenty' || !canConfirmIslandersWorkbenchDevelopmentSelection()) return null;
+  const received = [...play.resources];
+  for (const resource of received) {
+    liveBank[resource]--;
+    liveHand[resource]++;
+  }
+  developmentPlay = null;
+  developmentPlayHistoryIndex = -1;
+  logIslandersReceived(received);
+  return received;
+}
+
+export function reserveIslandersWorkbenchSelectedMonopoly(): IslandersWorkbenchOpponentTransfer | null {
+  const resource = developmentPlay?.type === 'monopoly' ? developmentPlay.resources[0] : undefined;
+  return resource ? reserveIslandersWorkbenchMonopoly(resource) : null;
+}
+
+export function completeIslandersWorkbenchSelectedMonopoly(): boolean {
+  const transfer = reserveIslandersWorkbenchSelectedMonopoly();
+  if (!transfer) return false;
+  liveHand[transfer.resource] += transfer.total;
+  logIslandersWorkbenchOpponentTransfer(transfer, 'monopoly');
+  return true;
+}
+
 export function completeIslandersWorkbenchDevelopmentStep(type: 'knight' | 'roadBuilding'): boolean {
   if (developmentPlay?.type !== type) return false;
   developmentPlay.remaining--;
-  if (developmentPlay.remaining <= 0) developmentPlay = null;
+  if (developmentPlay.remaining <= 0) {
+    developmentPlay = null;
+    developmentPlayHistoryIndex = -1;
+  }
   return true;
 }
 
 export function finishIslandersWorkbenchDevelopmentPlay(type: Exclude<DevCardType, 'victoryPoint'>): boolean {
   if (developmentPlay?.type !== type) return false;
   developmentPlay = null;
+  developmentPlayHistoryIndex = -1;
+  return true;
+}
+
+// Test-sandbox cancellation is transactional: activating a development card is reversible until
+// its final choice commits. Scene-owned Road Building placements are rolled back by the controller;
+// resource and public-card state can be restored here.
+export function cancelIslandersWorkbenchDevelopmentPlay(): boolean {
+  const play = developmentPlay;
+  if (!play) return false;
+  if (play.type === 'knight') livePlayedKnights = Math.max(0, livePlayedKnights - 1);
+  liveDevHand[play.type]++;
+  developmentPlay = null;
+  if (developmentPlayHistoryIndex >= 0) liveHistory.splice(developmentPlayHistoryIndex, 1);
+  developmentPlayHistoryIndex = -1;
   return true;
 }
 
@@ -191,20 +355,15 @@ export function chooseIslandersWorkbenchDevelopmentResource(resource: Resource):
   const play = developmentPlay;
   if (!play || (play.type !== 'yearOfPlenty' && play.type !== 'monopoly')) return false;
   if (play.type === 'monopoly') {
-    liveHistory.push({ actor: 'You', color: ISLANDERS_LOCAL_COLOR, message: `named ${RESOURCE_LOOK[resource].name} for monopoly` });
-    developmentPlay = null;
+    if (!stageIslandersWorkbenchDevelopmentResource(resource)) return false;
+    const transfer = reserveIslandersWorkbenchSelectedMonopoly();
+    if (!transfer) return false;
+    liveHand[resource] += transfer.total;
+    logIslandersWorkbenchOpponentTransfer(transfer, 'monopoly');
     return true;
   }
-  if (liveBank[resource] <= 0) return false;
-  liveBank[resource]--;
-  liveHand[resource]++;
-  play.resources.push(resource);
-  play.remaining--;
-  if (play.remaining <= 0 || RESOURCE_ORDER.every((candidate) => liveBank[candidate] === 0)) {
-    const received = [...play.resources];
-    developmentPlay = null;
-    logIslandersReceived(received);
-  }
+  if (!stageIslandersWorkbenchDevelopmentResource(resource)) return false;
+  if (canConfirmIslandersWorkbenchDevelopmentSelection()) receiveIslandersWorkbenchYearOfPlenty();
   return true;
 }
 
@@ -491,7 +650,7 @@ export function landIslandersWorkbenchDevCard(type: DevCardType): void {
 }
 
 export function logIslandersWorkbenchDevPurchase(): void {
-  liveHistory.push({ actor: 'You', color: ISLANDERS_LOCAL_COLOR, message: 'bought a development card' });
+  liveHistory.push({ actor: 'You', color: ISLANDERS_LOCAL_COLOR, message: `bought a development card ${DEV_CARD_ICON}` });
 }
 
 export function buyIslandersWorkbenchDevCard(): boolean {
@@ -508,9 +667,13 @@ export function resetIslandersWorkbenchCards(): void {
     liveBank[resource] = WORKBENCH_BANK_START[resource];
   }
   for (const type of DEV_CARD_TYPES) liveDevHand[type] = 0;
+  for (let index = 0; index < liveOpponentHands.length; index++) {
+    Object.assign(liveOpponentHands[index], WORKBENCH_OPPONENT_HAND_START[index]);
+  }
   liveDevelopmentDeck = buildDevelopmentDeck(mulberry32(WORKBENCH_DEV_SEED));
   reservedDevelopmentCards.length = 0;
   developmentPlay = null;
+  developmentPlayHistoryIndex = -1;
   livePlayedKnights = 0;
   liveHistory.length = 0;
   for (const timer of playerTradeTimers.values()) clearTimeout(timer);
@@ -534,8 +697,10 @@ export function logIslandersRoll(sum: number): void {
   liveHistory.push({ actor: 'You', color: ISLANDERS_LOCAL_COLOR, message: `rolled a ${sum}` });
 }
 
-export function logIslandersRobberMove(terrain: Terrain): void {
-  liveHistory.push({ actor: 'You', color: ISLANDERS_LOCAL_COLOR, message: `moved the robber to the ${terrain} tile` });
+export function logIslandersRobberMove(terrain: Terrain, token: number | null): void {
+  const resource = TERRAIN_RESOURCE[terrain];
+  const tile = resource === null || token === null ? 'desert' : `${token}${RESOURCE_LOOK[resource].emoji}`;
+  liveHistory.push({ actor: 'You', color: ISLANDERS_LOCAL_COLOR, message: `moved the robber to the ${tile} tile` });
 }
 
 export function islandersResourceFace(resource: Resource): { emoji: string; fill: Rgb } {
@@ -582,9 +747,10 @@ export function islandersWorkbenchView(
       publicVp: seeded.localPlayer.publicVp + (hasLargestArmy ? 2 : 0),
       ...(hasLargestArmy ? { hasLargestArmy: true } : {}),
     },
-    opponents: seeded.opponents.map((player) => hasLargestArmy && player.hasLargestArmy
-      ? { ...player, hasLargestArmy: false }
-      : player),
+    opponents: seeded.opponents.map((player, index) => ({
+      ...(hasLargestArmy && player.hasLargestArmy ? { ...player, hasLargestArmy: false } : player),
+      resourceCards: RESOURCE_ORDER.reduce((sum, resource) => sum + liveOpponentHands[index][resource], 0),
+    })),
     history: [...seeded.history, ...liveHistory],
   };
 }
@@ -626,7 +792,7 @@ export const ISLANDERS_CARD_WORKBENCH_VIEW: IslandersCardsView = {
     { actor: 'You', color: 'red', message: 'received', resources: ['wool'] },
     { actor: 'You', color: 'red', message: 'rolled a 6' },
     { actor: 'You', color: 'red', message: 'received', resources: ['brick', 'grain'] },
-    { actor: 'You', color: 'red', message: 'bought a development card' },
+    { actor: 'You', color: 'red', message: `bought a development card ${DEV_CARD_ICON}` },
     { actor: 'claude-haiku-4.5', color: 'blue', message: 'rolled an 8' },
     { actor: 'claude-haiku-4.5', color: 'blue', message: 'received', resources: ['lumber', 'wool', 'wool'] },
     { actor: 'claude-haiku-4.5', color: 'blue', message: 'anyone need sheep? I have plenty', chat: true },
