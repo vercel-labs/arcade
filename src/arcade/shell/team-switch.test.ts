@@ -25,10 +25,50 @@ const actions = (overrides: Partial<Parameters<typeof buildTeamSwitch>[1]> = {})
   onOpenVercel: noop,
   onBack: noop,
   onLogout: noop,
+  onViewSpend: noop,
   ...overrides,
 });
 
 describe('Vercel account settings', () => {
+  test('offers view spend beside the committed team, and only there', () => {
+    let opened = 0;
+    const root = buildTeamSwitch({ kind: 'loaded', username: 'brian.zhang' }, actions({ onViewSpend: () => opened++ }));
+    const link = find(root, 'team-view-spend');
+    assert.ok(link, 'expected the view spend link');
+    assert.equal(link.text, 'view spend');
+    assert.equal(link.style.underline, true, 'reads as a link, not a button');
+    assert.equal(link.style.border, undefined, 'no button chrome');
+    link.onClick?.();
+    assert.equal(opened, 1);
+
+    // One row above and below, so the account buttons sit the same distance from the
+    // link as they used to sit from the dropdown.
+    const card = root.children?.[0];
+    assert.equal(card?.style.gap, 1);
+    const rows = (card?.children ?? []).filter((child) => child.style.position !== 'absolute');
+    const spendIndex = rows.findIndex((row) => find(row, 'team-view-spend'));
+    const actionsIndex = rows.findIndex((row) => find(row, 'team-logout'));
+    assert.equal(spendIndex, actionsIndex - 1, 'view spend sits directly above the account actions');
+    const hasDropdown = (node: Node): boolean =>
+      node.component === 'team-switch-dropdown' || (node.children ?? []).some(hasDropdown);
+    assert.ok(hasDropdown(rows[spendIndex - 1]!), 'the account dropdown body sits directly above it');
+
+    for (const view of [
+      { kind: 'loading' } as const,
+      { kind: 'signedOut' } as const,
+      { kind: 'noTeams', username: 'brian.zhang' } as const,
+      { kind: 'error', message: 'nope' } as const,
+    ]) {
+      assert.equal(find(buildTeamSwitch(view, actions()), 'team-view-spend'), null, `no spend link in the ${view.kind} view`);
+    }
+  });
+
+  test('a short viewport drops view spend to keep the account buttons', () => {
+    const root = buildTeamSwitch({ kind: 'loaded', username: 'brian.zhang' }, actions(), 30, 18);
+    assert.equal(find(root, 'team-view-spend'), null);
+    assert.ok(find(root, 'team-logout'), 'the account actions survive instead');
+  });
+
   test('the AI match gate stays focused on Gateway sign-in', () => {
     const root = buildGatewaySignInPrompt(noop, noop, 80);
     assert.match(text(root), /Sign in to play with AI models using Vercel AI Gateway/);

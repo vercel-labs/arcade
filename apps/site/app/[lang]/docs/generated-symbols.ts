@@ -259,6 +259,8 @@ export const PUBLIC_SYMBOLS = {
     "InputOpts",
     "Keymap",
     "LayoutBox",
+    "Link",
+    "LinkOpts",
     "Modal",
     "ModalOpts",
     "Node",

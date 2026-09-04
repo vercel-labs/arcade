@@ -2,7 +2,7 @@
 // A persistent searchable Dropdown shows the current billing team in its committed
 // field and owns filtering, wrapped options, and overflow scrolling. main.ts owns
 // async loading/switching and the modal lifecycle.
-import { Box, Button, Dialog, Dropdown, Modal, NoticeToast, RoundedButton, Slot, Text, wrapText, type Node, type Screen, type Style } from '../../tui/index.ts';
+import { Box, Button, Dialog, Dropdown, Link, Modal, NoticeToast, RoundedButton, Slot, Text, wrapText, type Node, type Screen, type Style } from '../../tui/index.ts';
 import type { Team } from '../../auth/index.ts';
 import { ARCADE_OUTLINE_CONTROL } from '../theme.ts';
 
@@ -10,6 +10,10 @@ const LIST_W = 36;
 const LIST_ROWS = 7; // maximum visible dropdown option rows before scrolling
 const CARD_W = LIST_W + 6; // three cells of breathing room on each side
 const SIGNED_IN_PREFIX = 'Signed in as ';
+// The committed-team view carries a "view spend" link: one row, plus the Dialog's gap
+// above it. Other bodies absorb the same height so the card keeps one shape across
+// states (see the signed-in/signed-out shape test).
+const SPEND_ROW_H = 2;
 
 // The teams backing the dropdown (index-aligned with its items), and the pick
 // handler main.ts wires once at startup. The committed field shows the current team.
@@ -179,6 +183,7 @@ export function buildTeamSwitch(
     onOpenVercel: () => void;
     onBack: () => void;
     onLogout: () => void;
+    onViewSpend: () => void;
   },
   viewportWidth = CARD_W + 2,
   viewportHeight = Number.POSITIVE_INFINITY,
@@ -210,7 +215,7 @@ export function buildTeamSwitch(
     const message = compact
       ? 'Sign in to play with AI models.'
       : "Sign in to play with AI models through Vercel's AI Gateway.";
-    body = Box({ width: listWidth, height: 4, flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }, [
+    body = Box({ width: listWidth, height: short ? 4 : 4 + SPEND_ROW_H, flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }, [
       ...wrapText(message, listWidth).map((text) => Text({ text, style: { color: 'textPrimary' } })),
     ]);
     footer = Box({ flexDirection: 'row', justifyContent: 'center' }, [RoundedButton({
@@ -250,6 +255,16 @@ export function buildTeamSwitch(
     body = dropdownBody(view.username, listWidth, compact);
   }
 
+  // Spend belongs to the committed team, so this rides with the dropdown and stays out
+  // of the loading/error/signed-out/noTeams views. Left-aligned to the field's edge so it
+  // reads as that field's helper rather than a third card-level action; the Dialog's own
+  // gap supplies the one row above and below. `short` viewports drop it — they already
+  // shed the signed-in row, and a link is worth less there than the account buttons.
+  const viewSpend =
+    (view.kind === 'loaded' || view.kind === 'switching') && !short
+      ? Box({ width: listWidth }, [Link({ id: 'team-view-spend', label: 'view spend', onClick: opts.onViewSpend })])
+      : null;
+
   const accountActions = view.kind === 'loaded'
     ? short
       ? Box({ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 1 }, [
@@ -271,6 +286,7 @@ export function buildTeamSwitch(
     Dialog({ title: compact ? 'Account' : 'Vercel account', onClose: opts.onClose, closeId: 'team-close', onBack: canBack ? opts.onBack : undefined, backId: 'team-back', align: 'center', width: cardWidth, padding: [1, horizontalPadding] }, [
       body,
       ...(footer ? [footer] : []),
+      ...(viewSpend ? [viewSpend] : []),
       ...(accountActions ? [accountActions] : []),
     ]),
     { onDismiss: opts.onClose },
