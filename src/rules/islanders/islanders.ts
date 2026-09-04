@@ -1933,7 +1933,7 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
     const hand = this.hands[player];
     if (freqTotal(hand) === 0) return 'keeps an empty hand';
     const { settleable, upgradable } = this.buildSites(player);
-    const parts = [`keeps ${this.publicDeckPhrase(hand)} in hand`];
+    const parts = [`keeps ${this.publicDeckPhrase(hand)} in hand for later turns`];
     if (this.pieceCount(player, 'settlement') < PIECE_LIMITS.settlement) {
       parts.push(`a settlement${settleable.length ? ` at ${this.publicNodeLabel(settleable[0])}` : ' (once a road reaches an open spot)'} ${this.lacks(hand, COSTS.settlement)}`);
     }

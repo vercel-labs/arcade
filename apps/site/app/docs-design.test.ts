@@ -10,12 +10,37 @@ test('docs use a flat peer-page navigation and Sans typography', async () => {
   ]);
   for (const label of ['Overview', 'Getting started', 'Package API', 'Engine', 'Rendering pipeline', 'TUI', 'Components', 'Game visuals', 'Rules', 'Game harness', 'Headless tooling', 'Web API', 'Platform', 'Browser host']) assert.match(content, new RegExp(`label: '${label}'`));
   assert.match(page, /const CORE_NAV/);
+  assert.match(page, /href: '\/docs\/reference', label: 'API Reference'.*href: '\/docs\/motivation', label: 'Motivation'/);
   assert.match(page, /nestedNavItems/);
   assert.match(page, /drillIn: true/);
   assert.doesNotMatch(page, /<details|<summary/);
   assert.match(css, /\.doc-page-header h1 \{[^\n]*var\(--font-geist-sans\)/);
   assert.match(css, /\.doc-article h2 \{[^\n]*var\(--font-geist-sans\)/);
   assert.doesNotMatch(css, /\.doc-(?:shell|article|sidebar|toc|page-header)[^\n]*font-site-display/);
+});
+
+test('Motivation is a paragraph-only Docs letter with a quiet linked signature', async () => {
+  const [motivation, about, page, css, sitemap] = await Promise.all([
+    readFile(new URL('./[lang]/docs/docs-motivation.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('./[lang]/about/page.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('./[lang]/docs/[[...slug]]/page.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('./global.css', import.meta.url), 'utf8'),
+    readFile(new URL('./sitemap.ts', import.meta.url), 'utf8'),
+  ]);
+  assert.match(motivation, /label: 'Motivation'/);
+  assert.match(motivation, /title: 'Why Arcade exists'/);
+  assert.match(motivation, /what does it feel like to share a world with these models\?/);
+  assert.match(motivation, /repeated choices under shared conditions/);
+  assert.match(motivation, /makes technology feel a little more playful/);
+  assert.match(motivation, /href="https:\/\/x\.com\/_Brian_Zhang"/);
+  assert.match(motivation, /className="doc-letter__signature">- <a/);
+  assert.doesNotMatch(motivation, /—|<h2|<ul|<Code/);
+  assert.match(about, /redirect\('\/docs\/motivation'\)/);
+  assert.match(page, /MOTIVATION_DOC/);
+  assert.match(page, /page\.body \?\?/);
+  assert.match(css, /\.doc-letter__signature a \{ color: inherit; text-decoration: none; \}/);
+  assert.match(css, /\.doc-letter__signature a:hover \{ text-decoration: underline;/);
+  assert.match(sitemap, /'\/docs\/motivation'/);
 });
 
 test('guides and reference use real child routes with generated symbol coverage', async () => {
@@ -35,20 +60,62 @@ test('guides and reference use real child routes with generated symbol coverage'
   assert.match(script, /packageJson\.exports/);
 });
 
-test('games are a drill-in chapter with rules, graphics, and model case studies', async () => {
-  const [page, games, sitemap] = await Promise.all([
+test('games are a drill-in chapter with rules, graphics, model, record, and communication case studies', async () => {
+  const [page, games, sitemap, css] = await Promise.all([
     readFile(new URL('./[lang]/docs/[[...slug]]/page.tsx', import.meta.url), 'utf8'),
     readFile(new URL('./[lang]/docs/docs-games.tsx', import.meta.url), 'utf8'),
     readFile(new URL('./sitemap.ts', import.meta.url), 'utf8'),
+    readFile(new URL('./global.css', import.meta.url), 'utf8'),
   ]);
-  for (const slug of ['games/chess', 'games/poker', 'games/islanders']) {
+  for (const slug of ['games/chess', 'games/poker', 'games/islanders', 'games/communication']) {
     assert.match(games, new RegExp(`slug: '${slug}'`));
     assert.match(sitemap, new RegExp(`/docs/${slug}`));
   }
-  for (const topic of ['Rules at a glance', 'What the model sees', 'What each model sees', 'What an Islanders model sees', 'From OBJ files to terminal pieces', 'A shuffle is a physical timeline', 'The island is generated, not imported']) assert.match(games, new RegExp(topic));
+  for (const topic of ['Rules at a glance', 'What the model sees', 'What each model sees', 'What an Islanders model sees', 'From OBJ files to terminal pieces', 'A shuffle is a physical timeline', 'The island is generated, not imported', 'Run and record a match', 'Run a tournament and preserve both records', 'Choose how often the table talks', 'Address a model with @', 'Build your own game']) assert.match(games, new RegExp(topic));
   assert.match(page, /GAME_DOCS/);
   assert.match(page, /href: '\/docs\/games', label: 'Games', drillIn: true/);
   assert.match(page, /nestedMode === 'games'/);
+  assert.match(games, /import Link from 'next\/link'/);
+  assert.match(games, /<Link href="\/docs\/games\/chess"/);
+  assert.match(games, /<dl className="api-list"/);
+  assert.match(games, /<dt>\{name\}<\/dt><dd>\{description\}<\/dd>/);
+  assert.doesNotMatch(games, /Build a fourth game/);
+  assert.match(css, /\.doc-cards--games \{ grid-template-columns: repeat\(3, minmax\(0, 1fr\)\); \}/);
+});
+
+test('game documentation examples match the public contracts they teach', async () => {
+  const games = await readFile(new URL('./[lang]/docs/docs-games.tsx', import.meta.url), 'utf8');
+  for (const expected of [
+    "fetchChessPieceMeshes('/assets/chess_blender', loadText)",
+    'planChessMove(move, layout)',
+    'drawMovingPiece(segment.type, position)',
+    'hideStaticPiece(segment.hideSq)',
+    'stacks: [1000, 1000, 1000]',
+    'button: 0',
+    'smallBlind: 10',
+    'bigBlind: 20',
+    'preparePokerCardTextures()',
+    "['Ah', 'Ac', 'Kh', 'Qh', 'Jh', '9h', '2h']",
+    'must steal one random resource when an eligible adjacent opponent exists',
+    'https://www.pokertda.com/poker-tda-rules/',
+  ]) assert.match(games, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  for (const stale of ['fetchChessPieceMeshes(loadText)', 'planChessMove(state.board, move)', 'segment.piece', 'plan.hideSq', 'players: 3, startingStack', 'preparePokerCardTextures(loadTexture)', 'www.pokerstars.com/poker/learn/how-to-play']) assert.doesNotMatch(games, new RegExp(stale.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+});
+
+test('game docs distinguish plaintext from code and copy every visible structure', async () => {
+  const [games, code, client] = await Promise.all([
+    readFile(new URL('./[lang]/docs/docs-games.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('./[lang]/docs/docs-code.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('./[lang]/docs/docs-client.tsx', import.meta.url), 'utf8'),
+  ]);
+  assert.match(games, /language="text" title="Model context \(abridged\)"/);
+  assert.match(games, /language="text" title="Prompt state machine"/);
+  assert.match(games, /language="text" title="Checklist"/);
+  assert.match(code, /data-language=\{lang\}/);
+  assert.match(client, /p, li, pre, dt, dd, \.doc-note, \.doc-cards > a, \.source-link/);
+  assert.match(client, /node\.tagName === 'DT'/);
+  assert.match(client, /node\.classList\.contains\('source-link'\)/);
+  assert.match(client, /dataset\.language/);
 });
 
 test('the generated public symbol index is current', async () => {
@@ -123,5 +190,6 @@ test('getting started covers install, source, sign-in, and supported library pat
 test('the agent corpus preserves the implementation contracts documented for humans', async () => {
   const corpus = await readFile(new URL('../public/llms-full.txt', import.meta.url), 'utf8');
   for (const detail of ['Core contracts for agents', 'Material<U>', 'Screen', 'GameState<Action>', 'MatchScene.playMove()', 'CanvasSurfaceHost']) assert.match(corpus, new RegExp(detail.replace(/[<>()]/g, '\\$&')));
+  for (const detail of ['/docs/games', 'Chess case study', 'Poker case study', 'Islanders case study', 'Communication and chat', 'ambient', 'autoreply', '@model', 'runHeadlessChessMatch', 'runPokerSession']) assert.match(corpus, new RegExp(detail.replace(/[<>()]/g, '\\$&')));
   assert.match(corpus, /Current limitations/);
 });

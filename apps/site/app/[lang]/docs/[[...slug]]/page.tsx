@@ -5,12 +5,13 @@ import { notFound } from 'next/navigation';
 import { CopyPageButton, MobileDocsNav, type DocsNavItem } from '../docs-client';
 import { CORE_DOCS, type DocPage } from '../docs-content';
 import { GAME_DOCS } from '../docs-games';
+import { MOTIVATION_DOC } from '../docs-motivation';
 import { GUIDE_DOCS, REFERENCE_DOCS } from '../docs-reference';
 
 const hrefFor = (slug: string) => `/docs${slug ? `/${slug}` : ''}`;
-const DOCS = [...CORE_DOCS, ...GAME_DOCS, ...GUIDE_DOCS, ...REFERENCE_DOCS];
+const DOCS = [...CORE_DOCS, ...GAME_DOCS, ...GUIDE_DOCS, ...REFERENCE_DOCS, MOTIVATION_DOC];
 const findDoc = (slug: string) => DOCS.find((page) => page.slug === slug);
-const CORE_NAV: DocsNavItem[] = [...CORE_DOCS.map((page) => ({ href: hrefFor(page.slug), label: page.label })), { href: '/docs/games', label: 'Games', drillIn: true }, { href: '/docs/guides', label: 'Guides', drillIn: true }, { href: '/docs/reference', label: 'API Reference', drillIn: true }];
+const CORE_NAV: DocsNavItem[] = [...CORE_DOCS.map((page) => ({ href: hrefFor(page.slug), label: page.label })), { href: '/docs/games', label: 'Games', drillIn: true }, { href: '/docs/guides', label: 'Guides', drillIn: true }, { href: '/docs/reference', label: 'API Reference', drillIn: true }, { href: '/docs/motivation', label: 'Motivation' }];
 
 export function generateStaticParams() { return DOCS.map((page) => ({ slug: page.slug ? page.slug.split('/') : [] })); }
 
@@ -39,7 +40,7 @@ export default async function DocsPage({ params }: PageProps<'/[lang]/docs/[[...
     <aside aria-label="Documentation navigation" className="doc-sidebar"><nav className="doc-sidebar__scroll">{nestedMode ? <Link aria-label="Back to all documentation sections" className="doc-sidebar__section-header" href="/docs"><span aria-hidden="true"><IconChevronRight size={16} /></span><strong>{nestedMode === 'reference' ? 'API Reference' : nestedMode === 'guides' ? 'Guides' : 'Games'}</strong><span aria-hidden="true" /></Link> : null}{navItems.map((item) => item.group ? <span className="doc-sidebar__group" key={`group-${item.group}`}>{item.group}</span> : <Link aria-current={item.href === activeHref ? 'page' : undefined} href={item.href} key={item.href}><span>{item.label}</span>{item.drillIn ? <span aria-hidden="true"><IconChevronRight size={16} /></span> : null}</Link>)}</nav></aside>
     <article className="doc-article" data-doc-article>
       <header className="doc-page-header"><nav aria-label="Breadcrumb" className="doc-breadcrumbs"><Link href="/docs">Docs</Link>{page.navParent ? <><span>/</span><Link href={`/docs/${page.navParent}`}>{page.navParent === 'reference' ? 'Reference' : page.navParent === 'guides' ? 'Guides' : 'Games'}</Link></> : null}{page.slug ? <><span>/</span><span>{page.label}</span></> : null}</nav><h1>{page.title}</h1><p>{page.summary}</p><div className="doc-actions"><CopyPageButton /></div></header>
-      {page.sections.map((section, sectionIndex) => { const id = sectionIds[sectionIndex]; return <section id={id} key={section.heading}><h2><a aria-label={`Link to ${section.heading}`} href={`#${id}`}>{section.heading}</a></h2><div>{section.body}</div></section>; })}
+      {page.body ?? page.sections.map((section, sectionIndex) => { const id = sectionIds[sectionIndex]; return <section id={id} key={section.heading}><h2><a aria-label={`Link to ${section.heading}`} href={`#${id}`}>{section.heading}</a></h2><div>{section.body}</div></section>; })}
       <nav aria-label="Documentation pagination" className="doc-pagination">{previous ? <Link href={hrefFor(previous.slug)}><span>Previous</span><strong>← {previous.label}</strong></Link> : <span />}{next ? <Link href={hrefFor(next.slug)}><span>Next</span><strong>{next.label} →</strong></Link> : <span />}</nav>
     </article>
   </main>;

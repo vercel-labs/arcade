@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { CodeBlock } from './docs-code';
 
 export interface DocSection { heading: string; body: ReactNode }
-export interface DocPage { slug: string; label: string; title: string; summary: string; sections: DocSection[]; navParent?: string; navGroup?: string }
+export interface DocPage { slug: string; label: string; title: string; summary: string; sections: DocSection[]; body?: ReactNode; navParent?: string; navGroup?: string }
 
 const REPO = 'https://github.com/vercel-labs/arcade/blob/main/';
 const Code = ({ children, title }: { children: string; title?: string }) => <CodeBlock title={title}>{children}</CodeBlock>;
@@ -50,7 +50,7 @@ import {
       },
       {
         heading: 'Choose the right path',
-        body: <><ul><li>Start with <a href="/docs/getting-started">Getting started</a> to install the CLI, sign in, or run from source.</li><li>Use <a href="/docs/package-api">Package API</a> to choose a stable npm subpath.</li><li>Continue to <a href="/docs/engine">Rendering engine</a> to draw your first CPU-rendered mesh.</li><li>Read <a href="/docs/renderer-pipeline">Rendering pipeline</a> to understand how pixels become ASCII, pixel, or hybrid cells.</li><li>Use <a href="/docs/tui">Terminal UI</a> and <a href="/docs/components">Components</a> to place interactive UI over a live scene.</li><li>Start with <a href="/docs/game-harness">Game harness</a> when rules, models, human players, or reproducible match records are the primary problem.</li><li>Reuse <a href="/docs/game-visuals">Game visuals</a> when a new host needs Arcade’s production boards, cards, pieces, or motion.</li><li>Use <a href="/docs/tools">Headless and agentic tooling</a> before reviewing visuals or long-running self-play.</li></ul><p>Arcade fits terminal-first graphics and agent-playable games. Choose a GPU renderer, remote-desktop stack, or authoritative multiplayer service when those are the actual requirements.</p></>,
+        body: <><ul><li>Start with <a href="/docs/getting-started">Getting started</a> to install the CLI, sign in, or run from source.</li><li>Use <a href="/docs/package-api">Package API</a> to choose a stable npm subpath.</li><li>Open <a href="/docs/games">Games</a> to follow Chess, Poker, Islanders, and communication from rules through rendering and model play.</li><li>Continue to <a href="/docs/engine">Rendering engine</a> to draw your first CPU-rendered mesh.</li><li>Read <a href="/docs/renderer-pipeline">Rendering pipeline</a> to understand how pixels become ASCII, pixel, or hybrid cells.</li><li>Use <a href="/docs/tui">Terminal UI</a> and <a href="/docs/components">Components</a> to place interactive UI over a live scene.</li><li>Start with <a href="/docs/game-harness">Game harness</a> when rules, models, human players, or reproducible match records are the primary problem.</li><li>Reuse <a href="/docs/game-visuals">Game visuals</a> when a new host needs Arcade’s production boards, cards, pieces, or motion.</li><li>Use <a href="/docs/tools">Headless and agentic tooling</a> before reviewing visuals or long-running self-play.</li></ul><p>Arcade fits terminal-first graphics and agent-playable games. Choose a GPU renderer, remote-desktop stack, or authoritative multiplayer service when those are the actual requirements.</p></>,
       },
     ],
   },

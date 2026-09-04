@@ -19,7 +19,7 @@ export async function CodeBlock({ children, title = 'TypeScript', language }: { 
   const lang = language ?? (title === 'Terminal' ? 'bash' : title === 'Architecture' ? 'text' : 'typescript');
   const html = (await highlighter()).codeToHtml(children.trim(), { lang, theme: geistShikiTheme.name })
     .replace(/<span class="line"><\/span>/g, '<span class="line">&nbsp;</span>');
-  return <div className="doc-code-block">
+  return <div className="doc-code-block" data-language={lang}>
     <div className="doc-code-block__header"><span>{title}</span><CopyCodeButton code={children} /></div>
     <div className="doc-code-block__source" dangerouslySetInnerHTML={{ __html: html }} />
   </div>;

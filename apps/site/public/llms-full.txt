@@ -16,6 +16,12 @@ Choose Arcade for terminal-first 3D rendering, reusable retained TUI components,
 - /docs — overview and import boundaries
 - /docs/getting-started — CLI installation, source workflow, Vercel sign-in, and library imports
 - /docs/package-api — complete npm subpath map and public/private boundaries
+- /docs/games — complete-game case studies and a build-your-own integration checklist
+- /docs/games/chess — rules, OBJ pieces, move choreography, model play, runner, and records
+- /docs/games/poker — Hold'em rules, cards, shuffling, chips, private observations, tournament runner, and records
+- /docs/games/islanders — building/trading rules, procedural world, model context, negotiation, and replay
+- /docs/games/communication — ambient/autoreply policy, public chat, @model replies, privacy, and wisps
+- /docs/motivation — why Arcade treats the terminal as a canvas and games as a way to observe model behavior
 - /docs/engine — renderer, materials, camera, display modes, imported models
 - /docs/renderer-pipeline — clipping, rasterization, post-processing, presenters, Surface, diffing, performance
 - /docs/tui — Surface, retained components, input, compositing
@@ -30,6 +36,64 @@ Choose Arcade for terminal-first 3D rendering, reusable retained TUI components,
 - /docs/guides — complete render, terminal-app, custom-game, and visual-testing workflows
 - /docs/reference — focused API contracts with signatures, defaults, lifecycle, errors, and examples
 - /docs/reference/symbols — generated exhaustive symbol index for every supported package entry point
+
+## Game case studies
+
+The Games chapter follows complete products through the same four boundaries: presentation-independent rules, renderer-neutral game visuals, player-safe model context and bounded harnesses, then the production Arcade scene and HUD. Humans, models, headless policies, and visual playback all submit to the same legal-action and apply-action authority.
+
+### Chess case study
+
+- `ChessState` owns the 0x88 board, legal movement, check, SAN history, repetition, terminal results, and SAN/UCI parsing. It detects checkmate, stalemate, fifty-move draws, threefold repetition, and insufficient material.
+- The six piece families load from OBJ assets through `fetchChessPieceMeshes(baseUrl, transport?)`; `measureChessPieceMeshes()` derives shared scale and square metrics.
+- `planChessMove(move, layout)` produces every visible segment for ordinary movement, captures, en passant, castling, jail placement, and knight arcs. Each segment carries its own `type` and `hideSq`.
+- Chess is perfect information. Models receive the current position, numbered SAN history, notation instructions, and optional public conversation. Responses are validated against legal moves before application.
+- `runChessMatch()` drives an animated scene; `runHeadlessChessMatch()` drives the same state directly. Both require two players, default to a 300-ply bound, expose chosen/applied hooks, and return `completed` or `bounded`.
+- `ChessMatchRecord` stores participants, controller assignments, diagnostics, SAN/UCI, move flags, final FEN, and result. Prompts, reasoning, and chat are excluded.
+
+### Poker case study
+
+- `HoldemState` implements no-limit Texas Hold'em with private hole cards, flop/turn/river, legal betting order, full-raise reopening, short all-ins, side pots, showdown, and requested-versus-effective actions.
+- `evaluate()` selects the best five of five to seven cards and encodes category plus ordered kickers in one comparable integer. Categories run from high card through straight flush; A-2-3-4-5 is the ace-low wheel.
+- Card faces combine procedural rank/pip drawing with packaged PNG suit and court artwork. `preparePokerCardTextures()` resolves browser assets through `import.meta.url`; cards are double-sided strip-deformed geometry for peeking and physical riffle/bridge animation.
+- Chip inventory remains physical across stack, bet, pot, collection, and award positions. Creator wisps identify model seats and visibly react when that model speaks.
+- A model sees only its hole cards plus public board, street, blinds, pot, stacks, commitments, amount to call, minimum raise, all-in ceiling, and public action history. Private reasoning, selected move, and public speech are separate fields.
+- `runPokerSession()` carries stacks/button across hands, advances blind levels, emits lifecycle events, and stops on one remaining player or explicit hand/action bounds. It returns `PokerHandRecord[]`, one `PokerMatchRecord`, final stacks, winners, and blind progression.
+- Hand records preserve deals with visibility, requested/effective actions, side-pot settlement, awards, shown cards, and ending stacks. Match records preserve participants, controller changes, levels, eliminations, and placement.
+
+### Islanders case study
+
+- `IslandersState` implements the base hex-island building-and-trading game for two to four seats: snake setup, production, robber/discard/steal, roads, settlements, cities, development cards, maritime and optional domestic trade, Longest Road, Largest Army, and victory at 10 points on the winner's turn.
+- A rolled 7 forces over-limit discards, then a robber move. If an eligible adjacent opponent exists, the actor must choose one and steal a random resource; theft is omitted only when no victim is eligible.
+- Canonical hex/node/edge topology lives with rules. Renderer-neutral visuals map IDs into procedural terrain, animated crops/trees/sheep, water/coast/surf, harbors, pieces, setup choreography, dice, and robber motion.
+- Each model receives its exact hand, development cards, actual/public VP and portfolio. Opponents expose only public VP and aggregate hidden-card counts. Board, buildings, roads, awards, recent turns, and exact legal actions are public context.
+- Initial-placement options expose neutral pips, diversity, numbers, harbors, and road expansion frontiers without ranking decisions for the model.
+- `IslandersTranscript` and `IslandersMatchRecord` preserve board/deck setup, applied actions, random outcomes, trade responses, awards, and final scores without storing prompts, private reasoning, or chat.
+
+### Communication and chat
+
+Communication is proposed beside a legal move and never changes the move or rules state.
+
+- `autoreply`: the acting model may propose speech after every action; every spoken proposal is accepted, though the model may choose silence.
+- `ambient`: speech is scored against a 0.62 threshold using action salience, intent, spacing, repetition, and monologue frequency. It favors meaningful reactions, negotiation, and table politics while suppressing routine action narration.
+- Applied game actions become public `GameMoment` values. Ambient Islanders may offer one affected or relevant model a reaction opportunity; autoreply remains actor-focused.
+- `PublicConversation` sanitizes text, limits a message to 360 characters, stores addressed seats, and projects bounded recent public context per model. It never contains hidden hands, chain-of-thought, or account identity.
+- In live human Islanders games, type `@` to filter model labels and complete an exact `@model` mention. In ambient mode, each addressed model receives one immediate required reply opportunity tied to that source message. Replies do not create reply-to-reply obligations, preventing an infinite chat loop.
+- Canonical records and anonymous telemetry exclude chat, prompts, reasoning, voice, and raw model responses. Local Match Lab traces may separately retain communication decisions for debugging.
+- `CommunicationPolicy`, `PublicConversation`, `TableCommunicationCoordinator`, and the game-moment helpers are exported from `@vercel/arcade/harness/communication`.
+
+### Build your own game
+
+Define authoritative and replayable rules first; separate spectator and per-seat observations; add notation, structured decisions, canonical records, renderer-neutral visuals, a scene/HUD, and bounded tests. To ship inside Arcade, also register the launcher/setup mode, match driver and model-health path, Match Lab/model-audit adapters, snapshots, intentional package exports, sitemap routes, human docs, agent docs, and packed-package checks.
+
+## Motivation
+
+Arcade began as an attempt to make something fun and to treat terminal cells as a real creative medium. Its constraints are part of the work: light, geometry, motion, and interfaces become characters and color through a TypeScript renderer that runs on the CPU in the same kinds of environments where agents already live.
+
+Games give that medium a purpose for humans and models. They can also reveal behavior that aggregate benchmark scores flatten. Arcade gives models shared rules, private observations where the game requires them, validated actions, visible consequences, and replayable records. It does not instruct them to perform a preferred personality. Poker can expose approaches to risk and bluffing; Islanders can expose negotiation, cooperation, opportunism, and betrayal; Chess can expose planning and tactical preferences.
+
+These are observations, not permanent personality labels or scientific measurements. Behavior also depends on context, prompting, sampling, and provider implementation. The aim is to create fair situations where differences can emerge, then preserve enough evidence to inspect them without collecting private reasoning or chat in canonical telemetry.
+
+Arcade also argues that not every use of AI has to be a productivity tool. It uses serious engineering in service of play, curiosity, and art, while demonstrating what Vercel AI Gateway and the surrounding agent stack can make possible across many models and providers.
 
 ## Agentic capabilities
 
