@@ -41,7 +41,8 @@ src/
   prism/      the prism screen — a self-contained visual (scene + splash + curl/HTTP
               stream handler); depends only on engine/, shared by arcade + api/ + tools/
   auth/       Vercel sign-in (OAuth device flow) + AI Gateway key resolution
-  voice/      realtime speech-to-speech session + mic/speaker I/O + echo cancel
+  voice/      realtime speech-to-speech session + mic/speaker I/O + echo cancel (built, not
+              reachable in the shipped CLI; see docs/voice.md)
   telemetry/  anonymous usage + canonical game records → Arcade telemetry proxy → Tinybird (opt-out)
   arcade/     THE app: orchestrator (main.ts) + per-game/scene/shell presentation
     games/<game>/   per-game presentation (chess: scene, hud, turntable)
