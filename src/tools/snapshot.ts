@@ -15,7 +15,7 @@ import { ChessGameScene } from '../arcade/games/chess/scene.ts';
 import { LogosScene } from '../arcade/scenes/logos-scene.ts';
 import { AudioScene } from '../arcade/scenes/audio-scene.ts';
 import { CoverFlowScene } from '../arcade/shell/coverflow.ts';
-import { HOME_MENU_INDEX, MENU_ITEMS } from '../arcade/shell/menu.ts';
+import { coverTail, HOME_MENU_INDEX, MENU_ITEMS } from '../arcade/shell/menu.ts';
 import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, mouseControlsFor, type Mode } from '../arcade/shell/bars.ts';
 import { installKeymap } from '../arcade/shell/keybindings.ts';
 import { buildShowcase, mountShowcase } from '../arcade/scenes/ui-showcase.ts';
@@ -1567,7 +1567,8 @@ function coverflowSnapshot(): void {
   shapeGlyphToSurface(surf, target, cols, rows, { color: true });
   const item = MENU_ITEMS[coverFlowIndex(sel, MENU_ITEMS.length)];
   if (item) {
-    const suffix = item.enabled ? '' : '   coming soon';
+    const tail = coverTail(item, false);
+    const suffix = tail ? `   ${tail}` : '';
     const x = Math.max(0, Math.floor((cols - item.title.length - suffix.length) / 2));
     surf.drawTextOver(x, rows - 4, item.title, [240, 244, 255], STYLE_BOLD);
     if (suffix) surf.drawTextOver(x + item.title.length, rows - 4, suffix, [150, 156, 174], STYLE_DIM);
@@ -1693,7 +1694,8 @@ function settingsSnapshot(): void {
     shapeGlyphToSurface(s, target, cols, rows, { color: true });
     const item = MENU_ITEMS[sel];
     if (item) {
-      const suffix = item.enabled ? '' : '   coming soon';
+      const tail = coverTail(item, false);
+      const suffix = tail ? `   ${tail}` : '';
       const x = Math.max(0, Math.floor((cols - item.title.length - suffix.length) / 2));
       s.drawTextOver(x, rows - 4, item.title, [240, 244, 255], STYLE_BOLD);
       if (suffix) s.drawTextOver(x + item.title.length, rows - 4, suffix, [150, 156, 174], STYLE_DIM);

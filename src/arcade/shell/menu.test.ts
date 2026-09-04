@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ARCADE_WEBSITE_URL, HOME_MENU_INDEX, MENU_ITEMS, menuItemAction, TUTORIAL_MENU_INDEX } from './menu.ts';
+import { ARCADE_WEBSITE_URL, coverTail, HOME_MENU_INDEX, MENU_ITEMS, menuItemAction, TUTORIAL_MENU_INDEX } from './menu.ts';
 
 test('the CLI catalogue is in production order with the tutorial one press left of Chess', () => {
   assert.deepEqual(
@@ -23,4 +23,12 @@ test('the website cover is a stable external action', () => {
 test('the CLI catalogue includes the Trailer as a playable cover', () => {
   assert.deepEqual(MENU_ITEMS.find(({ id }) => id === 'trailer'), { id: 'trailer', title: 'Trailer', enabled: true });
   assert.deepEqual(menuItemAction(MENU_ITEMS.find(({ id }) => id === 'trailer')), { kind: 'launch' });
+});
+
+test('cover tails name placeholders, dev surfaces, and the first-launch tutorial nudge', () => {
+  assert.equal(coverTail({ id: 'leaderboard', title: 'Leaderboard', enabled: false }, false), 'coming soon');
+  assert.equal(coverTail({ id: 'logos', title: 'Logos', enabled: true, dev: true }, true), 'dev only');
+  assert.equal(coverTail({ id: 'tutorial', title: 'Tutorial', enabled: true }, true), 'new here? start with this');
+  assert.equal(coverTail({ id: 'tutorial', title: 'Tutorial', enabled: true }, false), '');
+  assert.equal(coverTail({ id: 'chess', title: 'Chess', enabled: true }, true), '');
 });

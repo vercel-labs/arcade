@@ -1,7 +1,7 @@
 import { ARCADE_CATALOGUE, ARCADE_WEBSITE_URL } from '../../cinematic/catalogue.ts';
 
 // The arcade's game catalogue: the ordered list of games shown in the Cover Flow
-// menu. Functional games come first, then "coming soon" placeholders. This is
+// menu, in production order, with the dev-only surfaces trailing. This is
 // pure data — the menu's 3D presentation lives in coverflow.ts and its selection
 // /input wiring lives in main.ts.
 
@@ -42,6 +42,15 @@ export const MENU_ITEMS: MenuItem[] = ALL_ITEMS.filter((item) => DEV || !item.de
 export const TUTORIAL_MENU_INDEX = MENU_ITEMS.findIndex((item) => item.id === 'tutorial');
 // The slot the carousel opens on: Chess, the flagship.
 export const HOME_MENU_INDEX = MENU_ITEMS.findIndex((item) => item.id === 'chess');
+
+// The dim tail drawn after a cover's title: what a placeholder is, that a cover is a
+// development surface, and on an install's first launch a nudge under the Tutorial.
+export function coverTail(item: MenuItem, firstLaunch: boolean): string {
+  if (!item.enabled) return 'coming soon';
+  if (item.dev) return 'dev only';
+  if (item.id === 'tutorial' && firstLaunch) return 'new here? start with this';
+  return '';
+}
 
 export function menuItemAction(item: MenuItem | undefined): MenuItemAction {
   if (!item?.enabled) return null;
