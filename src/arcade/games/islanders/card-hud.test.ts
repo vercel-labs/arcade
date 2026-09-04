@@ -91,6 +91,34 @@ function findParent(node: Node, id: string): Node | undefined {
   return undefined;
 }
 
+test('Board + cards previews placement only inside an explicit gate and keeps the selected color', () => {
+  const scene = new TileScene();
+  scene.setMode('boardCards');
+  scene.settle();
+  scene.seedWorkbench();
+  const internals = scene as unknown as {
+    placeColor: 'red' | 'blue' | 'purple' | 'orange';
+    placeable(target: { kind: 'node' | 'edge'; id: number }): boolean;
+  };
+  const node = { kind: 'node' as const, id: 10 };
+  const edge = { kind: 'edge' as const, id: 10 };
+
+  assert.equal(internals.placeable(node), false, 'idle paid mode has no settlement preview');
+  assert.equal(internals.placeable(edge), false, 'idle paid mode has no road preview');
+  scene.setPlacementGate({ nodes: [node.id] });
+  assert.equal(internals.placeable(node), true, 'settlement mode previews its legal targets');
+  assert.equal(internals.placeable(edge), false);
+  scene.setPlacementGate({ edges: [edge.id] });
+  assert.equal(internals.placeable(node), false);
+  assert.equal(internals.placeable(edge), true, 'road mode previews its legal targets');
+  scene.setPlacementGate(null);
+  assert.equal(internals.placeable(node), false, 'clearing paid mode returns to an inert board');
+
+  scene.setActiveColor('purple');
+  scene.seedWorkbench();
+  assert.equal(internals.placeColor, 'purple', 'regeneration preserves the selected preview color');
+});
+
 function tooltipText(node: Node | undefined): string {
   const content = node?.tooltip?.content;
   if (typeof content === 'string') return content;

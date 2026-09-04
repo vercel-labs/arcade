@@ -30,6 +30,19 @@ function tooltipText(node: Node | undefined): string {
   return content?.map((item) => typeof item === 'string' ? item : item.text).join(' ') ?? '';
 }
 
+test('live placement previews use the human seat color', () => {
+  const scene = new IslandersGameScene();
+  const driver = new IslandersDriver({ scene, syncLive: () => {} });
+  driver.start([
+    { kind: 'human', color: 'purple' },
+    { kind: 'ai', color: 'orange', model: 'test/orange' },
+  ], { autoRun: false, rng: () => 0.5 });
+
+  const internals = scene.scene as unknown as { placeColor: string };
+  assert.equal(internals.placeColor, 'purple');
+  driver.reset();
+});
+
 test('the actual game keeps unavailable build controls visible with cost and piece counts', async () => {
   const scene = new IslandersGameScene();
   const driver = new IslandersDriver({ scene, syncLive: () => {} });

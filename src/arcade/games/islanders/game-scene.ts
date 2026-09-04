@@ -227,6 +227,7 @@ export class IslandersGameScene {
     this.colors = colors.slice();
     this.viewerSeat = viewerSeat;
     this.humanSeat = humanSeat;
+    this.scene.setActiveColor(colors[humanSeat >= 0 ? humanSeat : viewerSeat] ?? 'red');
     this.setupComplete = false;
     this.clearHumanChoice();
     this.scene.setMode('boardCards');
