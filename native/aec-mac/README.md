@@ -1,5 +1,7 @@
 # aec-mac — macOS VoiceProcessingIO AEC spike
 
+How this fits the voice layer, and why it does not ship yet: [`docs/voice.md`](../../docs/voice.md).
+
 A throwaway spike to prove **true acoustic echo cancellation** works headless from
 a terminal/Node process on macOS — no headphones, no Apple account, no signing.
 

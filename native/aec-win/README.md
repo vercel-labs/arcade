@@ -1,5 +1,7 @@
 # aec-win — Windows VoiceCapture DMO AEC sidecar
 
+How this fits the voice layer, and why it does not ship yet: [`docs/voice.md`](../../docs/voice.md).
+
 The Windows mirror of [`../aec-mac`](../aec-mac). Same job, same stdio contract, so
 the Node side (`src/voice/aec-sidecar.ts`) treats them identically — it just spawns
 whichever binary matches `process.platform`.

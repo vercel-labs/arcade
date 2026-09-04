@@ -1,9 +1,9 @@
 // Public API of the voice module: realtime speech-to-speech session over the AI
 // Gateway, plus mic capture / speaker playback and OS-native echo cancellation.
 // App code imports from here; modules inside the module import each other directly.
-// NOTE: this barrel pulls in audio-out (the native `speaker` sink), so code that
-// only needs the realtime WebSocket — e.g. tools/match-test.ts — should import
-// ./realtime-session.ts directly to keep `speaker` out of its graph.
+// Code that only needs the realtime WebSocket (tools/match-test.ts) imports
+// ./realtime-session.ts directly so it never probes the audio devices.
+// docs/voice.md covers the design, what ships, and what does not.
 export { AudioPlayer, StreamPlayer, audioAvailable, toWav } from './audio-out.ts';
 export { MicCapture, micAvailable } from './audio-in.ts';
 export { AudioLog } from './audio-log.ts';

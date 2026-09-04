@@ -2,8 +2,8 @@
 // speaks and takes its actions through one speech-to-speech session, and the human
 // talks back (and may act) by voice. Scoped to a 2-seat Play match — human vs one AI —
 // where a live realtime session pays off and the multi-speaker problem can't occur
-// (one bot voice + one human). It's enabled by choosing the realtime model type for the
-// AI seat in poker setup, not by any env flag.
+// (one bot voice + one human). It runs only for a seat whose runtime is `realtime`;
+// poker setup does not offer that runtime today, so see docs/voice.md for the status.
 //
 // This owns ONE RealtimeSession + the shared VoiceDuplex audio bus, and bridges to the
 // turn loop via a RealtimeVoicePlayer (a Player<PokerAction>): on the bot's turn it
