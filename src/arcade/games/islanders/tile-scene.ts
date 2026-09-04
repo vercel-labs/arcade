@@ -555,12 +555,12 @@ export class TileScene {
     for (const resolve of this.numberRevealCompletions.splice(0)) resolve();
   }
 
-  // Restrict which vertices/edges may be hovered and clicked. Null (the default, and what the
-  // islanders-test editor keeps) means "anywhere the placement rules allow", so the editor stays
-  // free-form. A gate means the caller — the game — has already decided the legal set from the
-  // rules engine, and the scene stops applying geometry rules of its own.
+  // Restrict which vertices/edges may be hovered and clicked. Null means the free-form `board`
+  // editor may use its placement rules. `boardCards` is paid/rules-oriented, so clearing its gate
+  // makes it inert until a build or development-card mode supplies explicit legal targets.
   setPlacementGate(gate: { nodes?: Iterable<number>; edges?: Iterable<number> } | null): void {
-    this.gate = gate ? { nodes: new Set(gate.nodes ?? []), edges: new Set(gate.edges ?? []) } : null;
+    const effective = gate ?? (this.modeName === 'boardCards' ? {} : null);
+    this.gate = effective ? { nodes: new Set(effective.nodes ?? []), edges: new Set(effective.edges ?? []) } : null;
     // A hover left over from the previous gate would keep drawing a ghost on a spot that is no
     // longer offered.
     if (this.gate && !this.gateAllows(this.hoveredTarget())) this.setHoveredTarget(null);
@@ -960,7 +960,6 @@ export class TileScene {
   // does not pretend the static opponents are taking turns.
   seedWorkbench(): void {
     this.buildings.set(0, { city: false, color: 'red' });
-    this.placeColor = 'red';
     this.dirty = true;
   }
 
@@ -977,6 +976,8 @@ export class TileScene {
 
   setMode(m: IslandersMode): void {
     this.modeName = m;
+    if (m === 'boardCards') this.gate = { nodes: new Set(), edges: new Set() };
+    else if (m === 'board') this.gate = null;
     this.cameraInteracting = false;
     this.hoverNode = null; // hover is board-only
     this.hoverEdge = null;
