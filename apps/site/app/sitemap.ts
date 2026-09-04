@@ -1,7 +1,7 @@
 import type { MetadataRoute } from 'next';
 
 const ORIGIN = 'https://ascii-arcade.vercel.app';
-const paths = ['', '/docs', '/docs/getting-started', '/docs/engine', '/docs/renderer-pipeline', '/docs/game-visuals', '/docs/platform', '/docs/tui', '/docs/components', '/docs/game-harness', '/docs/tools', '/docs/web', '/docs/browser-host', '/docs/motivation', '/docs/package-api', '/privacy', '/contact'];
+const paths = ['', '/docs', '/docs/getting-started', '/docs/engine', '/docs/renderer-pipeline', '/docs/game-visuals', '/docs/platform', '/docs/tui', '/docs/components', '/docs/game-harness', '/docs/tools', '/docs/web', '/docs/browser-host', '/docs/package-api', '/privacy', '/contact'];
 const docsPaths = [
   '/docs/app', '/docs/app/controls', '/docs/app/models',
   '/docs/games', '/docs/games/chess', '/docs/games/poker', '/docs/games/islanders', '/docs/rules', '/docs/games/communication',
@@ -9,7 +9,7 @@ const docsPaths = [
   '/docs/reference', '/docs/reference/engine/render-target', '/docs/reference/engine/material', '/docs/reference/engine/surface', '/docs/reference/engine/camera-resources',
   '/docs/reference/tui/screen', '/docs/reference/tui/layout-nodes', '/docs/reference/tui/renderer-keymap',
   '/docs/reference/components/input', '/docs/reference/components/select-dropdown', '/docs/reference/components/slider', '/docs/reference/components/table-scrollbox', '/docs/reference/components/overlays',
-  '/docs/reference/symbols',
+  '/docs/reference/symbols', '/docs/motivation',
 ];
 
 export default function sitemap(): MetadataRoute.Sitemap {

@@ -4,7 +4,7 @@ import { IconCheck } from '@vercel/geistdocs/assets/icons/icon-check';
 import { IconChevronRight } from '@vercel/geistdocs/assets/icons/icon-chevron-right';
 import { IconCopy } from '@vercel/geistdocs/assets/icons/icon-copy';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export function CopyCodeButton({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
@@ -38,7 +38,32 @@ function DocsNavLinks({ active, items }: { active: string; items: DocsNavItem[] 
 
 export function DesktopDocsNav({ active, items, rootItems, sectionTitle }: { active: string; items: DocsNavItem[]; rootItems: DocsNavItem[]; sectionTitle: string | null }) {
   const nested = sectionTitle !== null;
-  return <aside aria-label="Documentation navigation" className="doc-sidebar"><nav className="doc-sidebar__scroll"><div className="doc-sidebar__viewport">
+  const scrollRef = useRef<HTMLElement>(null);
+  const [fade, setFade] = useState({ top: false, bottom: false });
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const updateFade = () => {
+      const top = element.scrollTop > 1;
+      const paddingBottom = Number.parseFloat(getComputedStyle(element).paddingBottom) || 0;
+      const bottom = element.scrollTop + element.clientHeight < element.scrollHeight - paddingBottom - 1;
+      setFade((current) => current.top === top && current.bottom === bottom ? current : { top, bottom });
+    };
+    const frame = requestAnimationFrame(() => {
+      element.querySelector<HTMLElement>('.doc-sidebar__pane.is-active [aria-current="page"]')?.scrollIntoView({ block: 'nearest' });
+      updateFade();
+    });
+    const resizeObserver = new ResizeObserver(updateFade);
+    resizeObserver.observe(element);
+    if (element.firstElementChild) resizeObserver.observe(element.firstElementChild);
+    element.addEventListener('scroll', updateFade, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      resizeObserver.disconnect();
+      element.removeEventListener('scroll', updateFade);
+    };
+  }, [active, sectionTitle]);
+  return <aside aria-label="Documentation navigation" className="doc-sidebar"><nav className="doc-sidebar__scroll" data-fade-bottom={fade.bottom} data-fade-top={fade.top} ref={scrollRef}><div className="doc-sidebar__viewport">
     <div aria-hidden={nested} className={`doc-sidebar__pane ${nested ? 'is-left' : 'is-active'}`} data-doc-sidebar-pane="root" inert={nested}>
       <DocsNavLinks active={active} items={rootItems} />
     </div>

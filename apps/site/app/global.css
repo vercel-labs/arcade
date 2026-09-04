@@ -271,7 +271,9 @@ button.quick-terminal-control:hover { box-shadow: inset 0 0 0 1px rgb(0 0 0 / 35
 
 .doc-shell { display: grid; grid-template-columns: 300px minmax(0, 760px); max-width: 1196px; min-height: calc(100vh - 64px); margin-inline: auto; padding: 0 32px 140px; column-gap: 64px; }
 .doc-sidebar { position: relative; border-right: 1px solid var(--site-border); }
-.doc-sidebar__scroll { position: sticky; top: 64px; display: flex; max-height: calc(100vh - 64px); flex-direction: column; gap: 1px; overflow-y: auto; padding: 56px 12px 60px 8px; scrollbar-width: none; }
+.doc-sidebar__scroll { --doc-sidebar-fade-top: 0px; --doc-sidebar-fade-bottom: 0px; position: sticky; top: 64px; height: calc(100vh - 64px); height: calc(100dvh - 64px); overflow-y: auto; padding: 56px 12px 60px 8px; scroll-padding-block: 40px; scrollbar-width: none; -webkit-mask-image: linear-gradient(to bottom, transparent 0, black var(--doc-sidebar-fade-top), black calc(100% - var(--doc-sidebar-fade-bottom)), transparent 100%); mask-image: linear-gradient(to bottom, transparent 0, black var(--doc-sidebar-fade-top), black calc(100% - var(--doc-sidebar-fade-bottom)), transparent 100%); }
+.doc-sidebar__scroll[data-fade-top='true'] { --doc-sidebar-fade-top: 40px; }
+.doc-sidebar__scroll[data-fade-bottom='true'] { --doc-sidebar-fade-bottom: 40px; }
 .doc-sidebar__scroll::-webkit-scrollbar { display: none; }
 .doc-sidebar__viewport { position: relative; overflow: hidden; }
 .doc-sidebar__pane { position: relative; display: flex; width: 100%; flex-direction: column; transition: transform 150ms cubic-bezier(.175,.885,.32,1.1), opacity 150ms cubic-bezier(.175,.885,.32,1.1); }

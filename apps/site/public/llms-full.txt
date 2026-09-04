@@ -35,10 +35,10 @@ Choose Arcade for terminal-first 3D rendering, reusable retained TUI components,
 - /docs/web — Browser integration overview, CanvasSurfaceHost, focused scenes, responsive grids, and xterm parity
 - /docs/browser-host — Hosted CLI child page covering shell architecture, isolation, and credential boundaries
 - /docs/guides — complete render, terminal-app, custom-game, and visual-testing workflows
-- /docs/motivation — why Arcade treats the terminal as a canvas and games as a way to observe model behavior
 - /docs/package-api — complete npm subpath map and public/private boundaries
 - /docs/reference — focused API contracts with signatures, defaults, lifecycle, errors, and examples
 - /docs/reference/symbols — generated exhaustive symbol index for every supported package entry point
+- /docs/motivation — a final letter on why Arcade treats the terminal as a canvas and games as a way to observe model behavior
 
 ## Using the Arcade app
 

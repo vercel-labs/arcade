@@ -26,9 +26,9 @@ const DOCS = [
   corePage('platform'), corePage('tui'), corePage('components'),
   corePage('game-harness'), corePage('tools'), ...BROWSER_DOCS,
   ...GUIDE_DOCS,
-  MOTIVATION_DOC,
   corePage('package-api'),
   ...REFERENCE_DOCS,
+  MOTIVATION_DOC,
 ];
 const findDoc = (slug: string) => DOCS.find((page) => page.slug === slug);
 const navItem = (slug: string, drillIn = false): DocsNavItem => {
@@ -50,9 +50,9 @@ const CORE_NAV: DocsNavItem[] = [
   navItem('tools'),
   navItem('web', true),
   { href: '/docs/guides', label: 'Guides', drillIn: true },
-  { href: '/docs/motivation', label: 'Motivation' },
   navItem('package-api'),
   { href: '/docs/reference', label: 'API Reference', drillIn: true },
+  { href: '/docs/motivation', label: 'Motivation' },
 ];
 const sectionLabel = (section: string): string => section === 'app' ? 'Using Arcade' : section === 'reference' ? 'API Reference' : section === 'guides' ? 'Guides' : section === 'web' ? 'Browser integration' : 'Games';
 

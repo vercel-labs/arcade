@@ -24,7 +24,7 @@ test('docs use a task-first grouped navigation and Sans typography', async () =>
   assert.match(page, /href: '\/docs\/games', label: 'Games', drillIn: true/);
   assert.match(page, /navItem\('web', true\)/);
   assert.doesNotMatch(page, /navItem\('(rules|browser-host)'/);
-  assert.match(page, /href: '\/docs\/motivation', label: 'Motivation'[\s\S]*navItem\('package-api'\)[\s\S]*href: '\/docs\/reference', label: 'API Reference'/);
+  assert.match(page, /navItem\('package-api'\)[\s\S]*href: '\/docs\/reference', label: 'API Reference'[\s\S]*href: '\/docs\/motivation', label: 'Motivation'/);
   assert.match(page, /corePage\('engine'\), corePage\('renderer-pipeline'\), corePage\('game-visuals'\)/);
   assert.match(page, /corePage\('platform'\), corePage\('tui'\), corePage\('components'\)/);
   assert.match(page, /nestedNavItems/);
@@ -32,6 +32,8 @@ test('docs use a task-first grouped navigation and Sans typography', async () =>
   assert.match(client, /DesktopDocsNav/);
   assert.match(client, /data-doc-sidebar-pane="root"/);
   assert.match(client, /data-doc-sidebar-pane="section"/);
+  assert.match(client, /scrollIntoView\(\{ block: 'nearest' \}\)/);
+  assert.match(client, /data-fade-bottom=\{fade\.bottom\}/);
   assert.doesNotMatch(page, /<details|<summary/);
   assert.match(css, /\.doc-page-header h1 \{[^\n]*var\(--font-geist-sans\)/);
   assert.match(css, /\.doc-article h2 \{[^\n]*var\(--font-geist-sans\)/);
@@ -39,6 +41,8 @@ test('docs use a task-first grouped navigation and Sans typography', async () =>
   assert.match(css, /\.doc-architecture \.cluster-label span \{ display: inline-block; transform: translateY\(6px\); \}/);
   assert.match(css, /\.doc-article > section > h2 \{ overflow-wrap: anywhere; \}/);
   assert.match(css, /\.doc-sidebar__pane \{[^\n]*150ms cubic-bezier\(\.175,\.885,\.32,1\.1\)/);
+  assert.match(css, /\.doc-sidebar__scroll \{[^\n]*height: calc\(100dvh - 64px\)[^\n]*overflow-y: auto[^\n]*scroll-padding-block: 40px[^\n]*mask-image: linear-gradient/);
+  assert.match(css, /\.doc-sidebar__scroll\[data-fade-bottom='true'\] \{ --doc-sidebar-fade-bottom: 40px; \}/);
   assert.match(css, /prefers-reduced-motion: reduce[^\n]*\.doc-sidebar__pane \{ transition: none; \}/);
   assert.doesNotMatch(css, /\.doc-(?:shell|article|sidebar|toc|page-header)[^\n]*font-site-display/);
 });
