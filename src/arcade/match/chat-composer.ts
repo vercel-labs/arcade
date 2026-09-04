@@ -81,7 +81,7 @@ export class ChatComposer {
       width: this.width,
       padding: COMPOSER_PADDING,
       maxRows: opts.maxRows ?? 4,
-      placeholder: opts.placeholder ?? 'say something… use @ to address',
+      placeholder: opts.placeholder ?? '@ a model to talk to it',
       onChange: () => this.refreshSuggestions(),
       onKeyDown: (event) => {
         if (!this.suggestions.length) return false;

@@ -9,9 +9,12 @@ import { CHAT_WIDTH, type ChatBox } from './chat.ts';
 const CHAT_PAD_V = 1;
 const CHAT_HEADER_H = 2;
 const COMPOSER_GAP = 1;
+// The rail's right padding is zero so the transcript's scrollbar can sit on the edge; the
+// field has no scrollbar, so it stops short of the edge by the same inset the header's ✕ uses.
+const COMPOSER_PAD_R = 2;
 
-// The width a composer should be built at to run edge to edge inside the rail's padding.
-export const CHAT_COMPOSER_W = CHAT_WIDTH - SIDEBAR_PAD_L - SIDEBAR_PAD_R;
+// The width a composer should be built at inside the rail's padding.
+export const CHAT_COMPOSER_W = CHAT_WIDTH - SIDEBAR_PAD_L - SIDEBAR_PAD_R - COMPOSER_PAD_R;
 
 export function buildChatSidebar(opts: {
   chat: ChatBox;
