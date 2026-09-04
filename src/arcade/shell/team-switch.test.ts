@@ -237,6 +237,37 @@ describe('Vercel account settings', () => {
     assert.doesNotMatch(text(root), /Human play/);
   });
 
+  test('the card keeps one height while a team resolves, in every mode', () => {
+    // Loading, switching, signed-out and committed all appear in one uninterrupted
+    // flow, so the card must not resize between them. noTeams/error are destinations
+    // with more to say and are deliberately allowed to be taller.
+    const flow = [
+      { kind: 'loading' } as const,
+      { kind: 'switching', team: 'Vercel Labs', username: 'brian.zhang' } as const,
+      { kind: 'signedOut' } as const,
+      { kind: 'loaded', username: 'brian.zhang' } as const,
+    ];
+    for (const [mode, w, h] of [['wide', 80, 40], ['compact', 34, 40], ['short', 34, 18]] as const) {
+      const heights = flow.map((view) => {
+        const root = buildTeamSwitch(view, actions(), w, h);
+        layout(root, { x: 0, y: 0, w, h });
+        return root.children?.[0]?.layout?.h;
+      });
+      assert.equal(new Set(heights).size, 1, `${mode}: card resized across the load flow (${heights.join(' → ')})`);
+    }
+  });
+
+  test('switching keeps the account actions, inert, rather than dropping the row', () => {
+    const switching = buildTeamSwitch({ kind: 'switching', team: 'Vercel Labs', username: 'brian.zhang' }, actions());
+    for (const id of ['team-change-account', 'team-logout']) {
+      const button = find(switching, id);
+      assert.ok(button, `${id} stays mounted mid-switch so the card holds its height`);
+      assert.equal(button.disabled, true, `${id} is inert until the switch settles`);
+    }
+    const loaded = buildTeamSwitch({ kind: 'loaded', username: 'brian.zhang' }, actions());
+    assert.ok(!find(loaded, 'team-logout')?.disabled, 'and live again once loaded');
+  });
+
   test('signed-in and signed-out cards share one shape and rounded action rhythm', () => {
     const signedIn = buildTeamSwitch({ kind: 'loaded', username: 'brian.zhang' }, actions());
     const signedOut = buildTeamSwitch({ kind: 'signedOut' }, actions());
