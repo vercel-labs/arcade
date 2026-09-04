@@ -43,6 +43,18 @@ import {
   type ChessPieceMeshes,
   type ChessPieceName,
 } from '../game-visuals/chess/index.ts';
+import {
+  CHESS_AMBIENT,
+  CHESS_BROWN,
+  CHESS_DARK_SQUARE,
+  CHESS_FILL_DIR,
+  CHESS_FILL_STRENGTH,
+  CHESS_FRAME,
+  CHESS_IVORY,
+  CHESS_KEY_DIR,
+  CHESS_KEY_STRENGTH,
+  CHESS_LIGHT_SQUARE,
+} from '../game-visuals/chess/lighting.ts';
 import { ChessState } from '../rules/chess/chess.ts';
 import { BrowserCreatorWisps } from './browser-wisp.ts';
 import type { CinematicCreator } from './browser-wisp.ts';
@@ -75,11 +87,12 @@ export interface BrowserArcadeFrame {
 
 const BLACK_RGB: RGB = [0, 0, 0];
 const MUTED: RGB = [137, 143, 164];
-const WHITE_RGB: RGB = [232, 228, 216];
+const WHITE_RGB: RGB = [CHESS_IVORY.x, CHESS_IVORY.y, CHESS_IVORY.z];
 const BROWN: RGB = [158, 98, 53];
-const LIGHT: RGB = [142, 138, 130];
-const DARK: RGB = [78, 74, 70];
-const FRAME: RGB = [46, 43, 40];
+const PRODUCTION_BROWN: RGB = [CHESS_BROWN.x, CHESS_BROWN.y, CHESS_BROWN.z];
+const LIGHT: RGB = [CHESS_LIGHT_SQUARE.x, CHESS_LIGHT_SQUARE.y, CHESS_LIGHT_SQUARE.z];
+const DARK: RGB = [CHESS_DARK_SQUARE.x, CHESS_DARK_SQUARE.y, CHESS_DARK_SQUARE.z];
+const FRAME: RGB = [CHESS_FRAME.x, CHESS_FRAME.y, CHESS_FRAME.z];
 const GOLD: RGB = [217, 178, 77];
 const CYAN: RGB = [76, 191, 212];
 const DISPLAY_MODES: BrowserDisplayMode[] = ['ascii', 'pixel', 'hybrid'];
@@ -131,7 +144,11 @@ export class BrowserArcade {
   private hideChrome = false;
   private readonly wisps: BrowserCreatorWisps;
 
-  constructor(wispTextures: Partial<Record<CinematicCreator, Texture>> = {}, private readonly rasterScale = 3) {
+  constructor(
+    wispTextures: Partial<Record<CinematicCreator, Texture>> = {},
+    private readonly rasterScale = 3,
+    private readonly renderStyle: { shadowGlyphs?: boolean; productionLighting?: boolean } = {},
+  ) {
     this.wisps = new BrowserCreatorWisps(wispTextures);
   }
 
@@ -299,7 +316,7 @@ export class BrowserArcade {
       shapeGlyphToSurface(surface, target, this.cols, this.rows, {
         color: true,
         contrast: 2,
-        hybrid: this.displayMode === 'hybrid',
+        hybrid: this.displayMode === 'hybrid' || (this.displayMode === 'ascii' && this.renderStyle.shadowGlyphs === true),
         coloredBackground: this.displayMode === 'hybrid',
       }, 0, 0, this.glyphCache);
     }
@@ -325,6 +342,15 @@ export class BrowserArcade {
     const { viewProjection } = cameraMatrices(camera, target.width / target.height);
     const lightDir = normalize3({ x: -0.4, y: 0.9, z: 0.5 });
     const draw = (mesh: Mesh, model: Mat4, color: RGB, ambient = 0.28) => {
+      if (this.renderStyle.productionLighting) {
+        rasterize(target, mesh, pieceMaterial, {
+          mvp: mat4Multiply(viewProjection, model), model, cameraPos: camera.eye,
+          keyDir: CHESS_KEY_DIR, fillDir: CHESS_FILL_DIR,
+          keyStrength: CHESS_KEY_STRENGTH, fillStrength: CHESS_FILL_STRENGTH, ambient: CHESS_AMBIENT,
+          tint: { x: color[0], y: color[1], z: color[2] },
+        });
+        return;
+      }
       const tinted = this.tintedMesh(mesh, color);
       rasterize(target, tinted, lambertMaterial, {
         mvp: mat4Multiply(viewProjection, model),
@@ -372,13 +398,13 @@ export class BrowserArcade {
   private drawPiece(target: RenderTarget, vp: Mat4, cameraPos: Vec3, type: PieceType, color: number, x: number, y: number, z: number): void {
     const draw = (mesh: Mesh, model: Mat4, rgb: RGB) => rasterize(target, mesh, pieceMaterial, {
       mvp: mat4Multiply(vp, model), model, cameraPos,
-      keyDir: normalize3({ x: -0.4, y: 0.85, z: 0.5 }), fillDir: normalize3({ x: 0.6, y: 0.25, z: 0.35 }),
-      keyStrength: 0.7, fillStrength: 0.18, ambient: 0.32,
+      keyDir: CHESS_KEY_DIR, fillDir: CHESS_FILL_DIR,
+      keyStrength: CHESS_KEY_STRENGTH, fillStrength: CHESS_FILL_STRENGTH, ambient: CHESS_AMBIENT,
       tint: { x: rgb[0], y: rgb[1], z: rgb[2] },
     });
     if (this.pieceMeshes) {
       const scale = mat4Scale(this.importedPieceScale, this.importedPieceScale, this.importedPieceScale);
-      draw(this.pieceMeshes[PIECE_NAME[type]], mat4Multiply(mat4Translate(x, y, z), color === WHITE ? scale : mat4Multiply(mat4RotY(Math.PI), scale)), color === WHITE ? [232, 228, 216] : [150, 96, 52]);
+      draw(this.pieceMeshes[PIECE_NAME[type]], mat4Multiply(mat4Translate(x, y, z), color === WHITE ? scale : mat4Multiply(mat4RotY(Math.PI), scale)), color === WHITE ? WHITE_RGB : PRODUCTION_BROWN);
     } else {
       const scale = PIECE_SCALE[type];
       draw(this.pieceMesh, mat4Multiply(mat4Translate(x, y + scale.y * 0.48, z), mat4Scale(scale.x, scale.y, scale.z)), color === WHITE ? WHITE_RGB : BROWN);

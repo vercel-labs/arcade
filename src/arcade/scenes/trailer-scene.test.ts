@@ -2,10 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ARCADE_CATALOGUE } from '../../cinematic/catalogue.ts';
 import { buildTrailerOverlay, SOCIAL_TRAILER_SECONDS, trailerCoverTextures, trailerWispTextures, TrailerScene } from './trailer-scene.ts';
-import { SOCIAL_TRAILER_BEATS, SOCIAL_TRAILER_INK_SECONDS, socialTrailerCoverPosition, socialTrailerIslandersCamera, socialTrailerIslandersElapsed, socialTrailerIslandersHookCamera, socialTrailerSample } from './social-trailer.ts';
+import { SOCIAL_TRAILER_BEATS, SOCIAL_TRAILER_INK_SECONDS, SOCIAL_TRAILER_RENDER_STYLE, SocialTrailerDirector, socialTrailerCoverPosition, socialTrailerIslandersCamera, socialTrailerIslandersElapsed, socialTrailerIslandersHookCamera, socialTrailerSample } from './social-trailer.ts';
 import { layout } from '../../tui/layout.ts';
 import { ISLANDERS_GAMEPLAY_START, islandersCinematicGameplay } from '../../cinematic/islanders-choreography.ts';
-import { POKER_LOOP_SECONDS, pokerLoopState } from '../../cinematic/scripted-games.ts';
+import { CHESS_LOOP_SECONDS, POKER_LOOP_SECONDS, pokerLoopState } from '../../cinematic/scripted-games.ts';
+import { islandersCinematicCamera } from '../../cinematic/camera.ts';
+import { BrowserIslandersCinematic, BrowserPokerCinematic } from '../../web/browser-game-cinematics.ts';
+import { BrowserChessBoardShowcase } from '../../web/browser-mini-scenes.ts';
 
 test('Trailer advances through its CLI-only 30-second social cut and resets for replay', () => {
   const trailer = new TrailerScene();
@@ -68,6 +71,87 @@ test('CLI social trailer owns its moving cuts without changing the shared browse
   assert.doesNotMatch(livingTitle, /SocialTrailerDirector|SOCIAL_TRAILER_BEATS/);
   assert.match(timeline, /\[0, 3 \/ 38, 8 \/ 38, 17 \/ 38, 28 \/ 38, 1\]/);
 });
+
+test('CLI Trailer routes production game presentation without changing website renderer defaults', async () => {
+  const livingTitle = await import('node:fs/promises').then(({ readFile }) => readFile(new URL('../../web/living-title-scene.ts', import.meta.url), 'utf8'));
+  assert.deepEqual(SOCIAL_TRAILER_RENDER_STYLE, {
+    rasterScale: 2,
+    productionLighting: true,
+    shadowGlyphs: true,
+  });
+  assert.doesNotMatch(livingTitle, /productionLighting|shadowGlyphs/);
+
+  const cols = 48, rows = 20;
+  const director = new SocialTrailerDirector();
+  const islandersSeconds = ISLANDERS_GAMEPLAY_START + 10.8;
+  director.seek(0);
+  assert.equal(
+    surfaceSignature(director.frame(cols, rows)),
+    surfaceSignature(new BrowserIslandersCinematic(
+      socialTrailerIslandersHookCamera,
+      SOCIAL_TRAILER_RENDER_STYLE.rasterScale,
+      { productionLighting: SOCIAL_TRAILER_RENDER_STYLE.productionLighting },
+    ).frame(cols, rows, 0.54, islandersSeconds, islandersSeconds)),
+    'Islanders hook must render with the Trailer production style',
+  );
+
+  director.seek(1.75);
+  assert.equal(
+    surfaceSignature(director.frame(cols, rows)),
+    surfaceSignature(new BrowserPokerCinematic({
+      rasterScale: SOCIAL_TRAILER_RENDER_STYLE.rasterScale,
+      productionLighting: SOCIAL_TRAILER_RENDER_STYLE.productionLighting,
+      shadowGlyphs: SOCIAL_TRAILER_RENDER_STYLE.shadowGlyphs,
+    }).frame(cols, rows, 0.02, 0.6, 0.6 / POKER_LOOP_SECONDS, 0)),
+    'Poker hook must render with production lighting and shadow glyphs',
+  );
+
+  director.seek(3.5);
+  const trailerChess = chessFrame({
+    rasterScale: SOCIAL_TRAILER_RENDER_STYLE.rasterScale,
+    productionLighting: SOCIAL_TRAILER_RENDER_STYLE.productionLighting,
+    shadowGlyphs: SOCIAL_TRAILER_RENDER_STYLE.shadowGlyphs,
+  }, cols, rows);
+  assert.equal(surfaceSignature(director.frame(cols, rows)), trailerChess, 'Chess hook must render with the Trailer production style');
+
+  const islandersArgs = [cols, rows, 0.54, islandersSeconds, islandersSeconds] as const;
+  const browserIslanders = surfaceSignature(new BrowserIslandersCinematic().frame(...islandersArgs));
+  assert.equal(browserIslanders, surfaceSignature(new BrowserIslandersCinematic(
+    islandersCinematicCamera, 3, { productionLighting: false },
+  ).frame(...islandersArgs)));
+  assert.notEqual(browserIslanders, surfaceSignature(new BrowserIslandersCinematic(
+    islandersCinematicCamera, 3, { productionLighting: true },
+  ).frame(...islandersArgs)));
+
+  const pokerArgs = [cols, rows, 0.02, 0.6, 0.6 / POKER_LOOP_SECONDS, 0] as const;
+  const browserPoker = surfaceSignature(new BrowserPokerCinematic().frame(...pokerArgs));
+  assert.equal(browserPoker, surfaceSignature(new BrowserPokerCinematic({
+    productionLighting: false, shadowGlyphs: false,
+  }).frame(...pokerArgs)));
+  assert.notEqual(browserPoker, surfaceSignature(new BrowserPokerCinematic({
+    productionLighting: true, shadowGlyphs: true,
+  }).frame(...pokerArgs)));
+
+  const browserChess = chessFrame({}, cols, rows);
+  assert.equal(browserChess, chessFrame({ productionLighting: false, shadowGlyphs: false }, cols, rows));
+  assert.notEqual(browserChess, chessFrame({ productionLighting: true, shadowGlyphs: true }, cols, rows));
+});
+
+function chessFrame(options: ConstructorParameters<typeof BrowserChessBoardShowcase>[0], cols: number, rows: number): string {
+  const chess = new BrowserChessBoardShowcase(options);
+  chess.setChromeVisible(false);
+  chess.setCinematicState(0.4, 5.15 / CHESS_LOOP_SECONDS);
+  return surfaceSignature(chess.frame(cols, rows, 5.15).surface);
+}
+
+function surfaceSignature(surface: ReturnType<SocialTrailerDirector['frame']>): string {
+  let signature = '';
+  for (let y = 0; y < surface.rows; y++) for (let x = 0; x < surface.cols; x++) {
+    const cell = surface.getCell(x, y);
+    if (cell?.opaque) signature += `${x},${y},${cell.ch},${cell.fg.join('.')},${cell.bg.join('.')},${cell.style};`;
+  }
+  return signature;
+}
 
 test('Trailer Cover Flow performs one inertial catalogue swipe and settles on Chess', () => {
   const samples = [0, 0.5, 1, 1.5, 2, 2.5, 3.15].map(socialTrailerCoverPosition);

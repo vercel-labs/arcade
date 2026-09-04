@@ -32,6 +32,18 @@ import {
   type ChessPieceMeshes,
 } from '../../../game-visuals/chess/index.ts';
 import { chessJailPosition, chessMovePosition, chessSquarePosition, planChessMove } from '../../../game-visuals/chess/move-animation.ts';
+import {
+  CHESS_AMBIENT as AMBIENT,
+  CHESS_BROWN as BROWN,
+  CHESS_DARK_SQUARE as DARK_SQ,
+  CHESS_FILL_DIR as FILL_DIR,
+  CHESS_FILL_STRENGTH as FILL_STRENGTH,
+  CHESS_FRAME as FRAME,
+  CHESS_IVORY as IVORY,
+  CHESS_KEY_DIR as KEY_DIR,
+  CHESS_KEY_STRENGTH as KEY_STRENGTH,
+  CHESS_LIGHT_SQUARE as LIGHT_SQ,
+} from '../../../game-visuals/chess/lighting.ts';
 import { ChessState } from '../../../rules/chess/chess.ts';
 import {
   BISHOP,
@@ -58,11 +70,6 @@ const pieceMeshCache = new ResourceCache<string, Mesh>();
 const FOVY = (50 * Math.PI) / 180;
 const TALLEST = 1.7; // world height of the tallest piece (king)
 
-const IVORY: Vec3 = { x: 232, y: 228, z: 216 }; // white set
-const BROWN: Vec3 = { x: 150, y: 96, z: 52 }; // dark set
-const LIGHT_SQ: Vec3 = { x: 142, y: 138, z: 130 };
-const DARK_SQ: Vec3 = { x: 78, y: 74, z: 70 };
-const FRAME: Vec3 = { x: 46, y: 43, z: 40 };
 // Single muted pastel-yellow used for the selected-square tint (light and dark
 // squares alike) and the legal-move dots.
 const HILITE_LIGHT: Vec3 = { x: 152, y: 144, z: 100 };
@@ -74,11 +81,6 @@ const HILITE_DARK: Vec3 = { x: 152, y: 144, z: 100 };
 const DOT_ON_LIGHT: Vec3 = { x: 98, y: 95, z: 88 };
 const DOT_ON_DARK: Vec3 = { x: 126, y: 123, z: 116 };
 
-const KEY_DIR = normalize3({ x: -0.4, y: 0.85, z: 0.5 });
-const FILL_DIR = normalize3({ x: 0.6, y: 0.25, z: 0.35 });
-const AMBIENT = 0.32;
-const KEY_STRENGTH = 0.7;
-const FILL_STRENGTH = 0.18;
 
 const ANIM_FRAMES = 9; // ~0.3s at 30fps for a single animation phase
 // Match HUD: the wisp floats this far (world units) above a king's square center —

@@ -57,7 +57,17 @@ import { AnimatedTileMeshCache, animatedTileMesh, boardOverlayMesh, coastMesh, h
 import { drawIslandersDiceOverlay } from '../../../game-visuals/islanders/dice-overlay.ts';
 import { ROBBER_MOVE_DURATION, robberFlightPoint } from '../../../game-visuals/islanders/robber-motion.ts';
 import { ISLANDERS_BOARD_BUILD_END, ISLANDERS_TILE_PLACE_HOP, ISLANDERS_TILE_STACK_BASE_Y, ISLANDERS_TILE_STACK_THICKNESS, ISLANDERS_TILE_STACK_X, ISLANDERS_TILE_STACK_Z, islandersCoastProgress, islandersHarborProgress, islandersTilePlacementProgress } from '../../../game-visuals/islanders/setup-choreography.ts';
-import { islandersPieceMaterial, type IslandersPieceUniforms } from './mesh/piece-material.ts';
+import { islandersPieceMaterial, type IslandersPieceUniforms } from '../../../game-visuals/islanders/piece-material.ts';
+import {
+  ISLANDERS_PIECE_AMBIENT as PIECE_AMBIENT,
+  ISLANDERS_PIECE_LIGHT as PIECE_LIGHT,
+  ISLANDERS_PIECE_WRAP as PIECE_WRAP,
+  ISLANDERS_PORT_LIGHT as PORT_LIGHT,
+  ISLANDERS_PORT_WRAP as PORT_WRAP,
+  ISLANDERS_TERRAIN_AMBIENT as AMBIENT,
+  ISLANDERS_TERRAIN_LIGHT as LIGHT,
+  ISLANDERS_TERRAIN_WRAP as WRAP,
+} from '../../../game-visuals/islanders/lighting.ts';
 import { EDGE_ENDS, hexRing, hexWorld, NODE_XZ } from './scene/board-layout.ts';
 import { DICE_BURN_DUR, DICE_HOLD, DICE_RESULT_REVEAL_DELAY, DICE_ROLL_DUR, DICE_STAGGER, type Die, type DicePhase, freshDie } from './scene/dice.ts';
 import { type BoardHarborPose, boardHarborPoses } from './scene/harbors.ts';
@@ -170,27 +180,6 @@ function includeScaledDepthBounds(source: RenderTarget, target: RenderTarget): v
   if (maxX > target.maxDepthX) target.maxDepthX = maxX;
   if (maxY > target.maxDepthY) target.maxDepthY = maxY;
 }
-// A warm key from the upper front-right so tops read bright and the raised content casts its
-// form; a high ambient floor keeps side faces legible (especially in ASCII mode).
-const LIGHT: Vec3 = normalize3({ x: 0.42, y: 0.86, z: 0.5 });
-const AMBIENT = 0.52;
-// Wrap the diffuse falloff toward half-Lambert so much more of each tile sits in the lit
-// gradient instead of pinned at the flat ambient floor (≈24% lit at wrap 0 → ≈45% at 0.85).
-const WRAP = 0.85;
-// Player pieces need to remain color-readable even when they occupy only a few terminal
-// cells. Use a broader, slightly lower key than the terrain so both the roof and an adjoining
-// wall catch useful light, then lift the ambient floor enough that the opposite wall keeps its
-// player hue instead of collapsing into a near-black face.
-const PIECE_LIGHT: Vec3 = normalize3({ x: 0.5, y: 0.72, z: 0.48 });
-const PIECE_AMBIENT = 0.62;
-const PIECE_WRAP = 1;
-// The boat's hull sides flare outward (their normals point out-and-down), so the tiles' near
-// top-down key barely grazes them and they read too dark — especially in ASCII — while the
-// up-facing deck stays bright. Port mode uses a lower, more raking key from the camera-front
-// quarter so the visible hull walls catch angular light, plus a wider wrap so the shadow side
-// lifts a touch. This is angle-dependent, not a flat lightening of the hull color.
-const PORT_LIGHT: Vec3 = normalize3({ x: 0.62, y: 0.4, z: 0.52 });
-const PORT_WRAP = 0.95;
 const MODEL: Mat4 = mat4Identity();
 const WATER_MESH = islandersWaterMesh();
 const SETTLED_WATER_MESH = islandersWaterMesh({ omitSettledLand: true });

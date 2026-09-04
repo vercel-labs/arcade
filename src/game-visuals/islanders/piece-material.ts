@@ -1,9 +1,8 @@
 // Islanders player-piece lighting. Most colors keep the broad, readable wrapped Lambert look used
-// by the board, while ivory pieces get a steeper light-to-shadow curve. That distinction matters
-// in ASCII mode: a flat, uniform shadow repeatedly resolves to one glyph across every plane and
-// hides the form, whereas separated face values preserve the building's silhouette.
+// by the board, while ivory pieces get a steeper light-to-shadow curve. This is renderer-neutral so
+// both the playable scene and the terminal Trailer can use the exact same material.
 
-import { mat4MulDir, mat4MulVec4, type Mat4, type Material, type Vec3 } from '../../../../engine/index.ts';
+import { mat4MulDir, mat4MulVec4, type Mat4, type Material, type Vec3 } from '../../engine/index.ts';
 
 export interface IslandersPieceUniforms {
   mvp: Mat4;
@@ -21,11 +20,6 @@ const SHADOW_AXIS_X = 0.8;
 const SHADOW_AXIS_Z = -0.6;
 const DARK_COLOR_LUMINANCE = 0.58;
 
-// Wrapped Lambert lighting intentionally gives pieces a broad readable shadow, but its flat
-// floor used to collapse every away-facing plane to one RGB value—and therefore one repeated
-// ASCII glyph. Keep the same overall shadow brightness while separating differently oriented
-// planes into a small range of values. Because this depends only on the face normal, each face
-// stays clean and solid rather than acquiring noisy per-pixel stipple.
 function separatedShadow(base: number, nx: number, nz: number, range: number): number {
   const facing = Math.max(-1, Math.min(1, nx * SHADOW_AXIS_X + nz * SHADOW_AXIS_Z));
   return base + facing * range;
@@ -50,20 +44,12 @@ export const islandersPieceMaterial: Material<IslandersPieceUniforms> = {
     const white = vy.color.x >= WHITE_CHANNEL_FLOOR && vy.color.y >= WHITE_CHANNEL_FLOOR && vy.color.z >= WHITE_CHANNEL_FLOOR;
     let intensity: number;
     if (white) {
-      // A smooth but fairly narrow key-light band keeps the roof brilliant and one adjoining
-      // wall clearly lit, while the opposite wall drops far enough down the luminance range to
-      // avoid a solid W-shaped patch. Unlike a square-root curve, this does not lift middling
-      // side normals until they are almost as bright as the roof.
       const linear = Math.max(0, Math.min(1, (ndl - WHITE_LIGHT_START) / (WHITE_LIGHT_END - WHITE_LIGHT_START)));
       const key = linear * linear * (3 - 2 * linear);
       const shadow = separatedShadow(WHITE_SHADOW, unitX, unitZ, 0.055);
       intensity = shadow + (1 - shadow) * key;
     } else {
       const wrapped = (ndl + u.wrap) / (1 + u.wrap);
-      // Red and blue have much lower perceived luminance than orange. The old fixed intensity
-      // range changed their RGB channels, but both faces still landed in one ASCII brightness
-      // bucket. Lift and widen only darker saturated colors; orange keeps its already-readable
-      // shading while red/blue gain distinct rear-face values without changing their hue.
       const baseLuminance = (vy.color.x * 0.299 + vy.color.y * 0.587 + vy.color.z * 0.114) / 255;
       const darkBoost = Math.max(0, Math.min(1, (DARK_COLOR_LUMINANCE - baseLuminance) / 0.18));
       const shadowBase = u.ambient + darkBoost * 0.04;

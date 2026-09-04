@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mat4Identity, normalize3, type Vec3 } from '../../../engine/index.ts';
-import { islandersPieceMaterial } from './mesh/piece-material.ts';
+import { islandersPieceMaterial } from '../../../game-visuals/islanders/piece-material.ts';
 
 const lightDir = normalize3({ x: 0.5, y: 0.72, z: 0.48 });
 const uniforms = {
