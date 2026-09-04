@@ -17,6 +17,7 @@ export const BRAND_HUE: Record<string, RGB> = {
   anthropic: [217, 119, 87],
   google: [66, 133, 244],
   xai: [88, 126, 198], // steel blue — deep enough to stay colored, not blow to white
+  spacexai: [88, 126, 198], // the gateway's current slug for xAI; same mark, same hue
 };
 
 const ORG_TO_FILE: Record<string, string> = {
@@ -74,6 +75,7 @@ const ORG_TO_FILE: Record<string, string> = {
   voyage: 'voyage.png',
   xiaomi: 'xiaomi.png',
   xai: 'xai.png',
+  spacexai: 'xai.png',
   zai: 'zai.png',
 };
 

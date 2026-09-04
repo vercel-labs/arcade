@@ -1,8 +1,6 @@
-// Arcade product defaults shared by the setup picker and repository-owned tools. These
-// provider choices are intentionally not part of the public game harness contract.
-export const ISLANDERS_DEFAULT_AI_SEATS = [
-  { creator: 'xai', model: 'xai/grok-4.1-fast-non-reasoning' },
-  { creator: 'anthropic', model: 'anthropic/claude-haiku-4.5' },
-  { creator: 'openai', model: 'openai/gpt-5.4-nano' },
-  { creator: 'google', model: 'google/gemini-2.5-flash' },
-] as const;
+// Arcade product defaults shared by repository-owned tools (self-play, match-lab). These
+// provider choices are intentionally not part of the public game harness contract. The
+// live setup panel resolves the same ladder against the team's catalog instead.
+import { defaultSeatModelIds } from './default-seats.ts';
+
+export const ISLANDERS_DEFAULT_AI_MODELS: readonly string[] = defaultSeatModelIds(4);

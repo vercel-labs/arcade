@@ -34,13 +34,15 @@ export function modelsFor(slug: string): ModelInfo[] {
   return catalog.creators.find((c) => c.slug === slug)?.models ?? [];
 }
 
-// Baked-fallback model policy (AIG-183 → AIG-105). Without a usable team-aware
-// response, the match-setup picker offers only BETA_MODEL_ALLOWLIST — models verified via native
-// structured output on the internal-playground team. A selected model still runs the
-// ModelPlayer fallback ladder (structured → soft parse → normalizer → random legal),
-// so this is about a clean first-impression menu, not the only way a model can play.
-// Set ARCADE_ALL_MODELS=1 to offer the full catalog (dev, or a different team). The
-// base creators()/modelsFor() stay unfiltered so tools and direct lookups see everything.
+// Fallback-only policy. This filter never applies to a signed-in launch: the live team
+// catalog (team-model-catalog.ts) replaces it wholesale using Gateway's per-team
+// eligibility. It survives for the signed-out / offline / error path, where nothing else
+// can keep a first pick off a model the compatibility audit showed can't play.
+// BETA_MODEL_ALLOWLIST is a frozen snapshot of that audit, no longer regenerated. A
+// selected model still runs the ModelPlayer fallback ladder (structured → soft parse →
+// normalizer → random legal), so this governs the fallback menu, not whether a model can
+// play. Set ARCADE_ALL_MODELS=1 to offer the full baked catalog. The base creators() /
+// modelsFor() stay unfiltered so tools and direct lookups see everything.
 function allowlistActive(): boolean {
   return !/^(1|on|true|yes)$/i.test(process.env.ARCADE_ALL_MODELS?.trim() ?? '');
 }

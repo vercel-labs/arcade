@@ -15,6 +15,7 @@ import { BIG_BLIND, type PokerSeatSpec } from './poker-driver.ts';
 import type { PokerSeatView } from '../games/poker/poker-scene.ts';
 import { ARCADE_CHROME_TEXT } from '../theme.ts';
 import { createModelSeatPicker, hiddenModelSeat, modelSeatControls, modelSeatTint, mountModelSeat, setModelSeatCreators, type ModelCreator, type ModelSeatPicker } from './model-seat-picker.ts';
+import { resolveDefaultSeats } from './default-seats.ts';
 import { matchSetupHeading } from './match-setup-chrome.ts';
 
 let TEXT_CREATORS: ModelCreator[] = pickerCreators();
@@ -34,26 +35,19 @@ const changed = (): void => {
   onChanged?.();
 };
 
-// Per-seat model configs, pre-committed so "start match" is live immediately; re-pick
-// any creator/model to change them. Index 0 is seat 1's config — used only in SPECTATE
-// mode (where seat 1 is an AI too); in HERO mode you play seat 1 and indices 1..MAX_OPP
-// are your opponents (seats 2..6). The first three AI seats span claude / gpt / gemini;
-// index 0 is a cheap fast Grok, so the default 4-handed spectate table seats four
-// DIFFERENT creators instead of repeating one.
-const DEFAULT_MODELS = [
-  ['xai', 'xai/grok-4.1-fast-non-reasoning'],
-  ['anthropic', 'anthropic/claude-haiku-4.5'],
-  ['openai', 'openai/gpt-5.4-nano'],
-  ['google', 'google/gemini-2.5-flash'],
-  ['xai', 'xai/grok-4.1-fast-non-reasoning'],
-  ['anthropic', 'anthropic/claude-haiku-4.5'],
-] as const;
-const sides: ModelSeatPicker[] = DEFAULT_MODELS.map(([prov, model], i) =>
-  createModelSeatPicker({ idPrefix: `poker-opp${i}`, creators: TEXT_CREATORS, defaultCreator: prov, defaultModelId: model, onChange: changed }),
+// Per-seat model configs, pre-seated from the default ladder so "start match" is live
+// immediately; re-pick any creator/model to change them. Index 0 is seat 1's config, used
+// only in SPECTATE mode (where seat 1 is an AI too); in HERO mode you play seat 1 and
+// indices 1..MAX_OPP are your opponents (seats 2..6). The ladder spans four creators and
+// comes back around for seats five and six, so a table never repeats a model.
+const SEATS = 6;
+const sides: ModelSeatPicker[] = resolveDefaultSeats(TEXT_CREATORS, SEATS).map((seat, i) =>
+  createModelSeatPicker({ idPrefix: `poker-opp${i}`, creators: TEXT_CREATORS, defaultCreator: seat?.creator ?? 'openai', defaultModelId: seat?.model, onChange: changed }),
 );
 export function setPokerSetupModelCatalog(textCreators: readonly ModelCreator[]): void {
   TEXT_CREATORS = [...textCreators];
-  for (const side of sides) setModelSeatCreators(side, TEXT_CREATORS);
+  const defaults = resolveDefaultSeats(TEXT_CREATORS, SEATS);
+  sides.forEach((side, i) => setModelSeatCreators(side, TEXT_CREATORS, defaults[i]));
   changed();
 }
 
