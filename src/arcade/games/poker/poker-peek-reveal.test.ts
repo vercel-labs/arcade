@@ -95,6 +95,8 @@ test('hero hole cards stay placeholders until peeked, then reveal the peeked car
   // board out, the hero's made-hand now reads out; the still-hidden opponent's does not.
   while (hand.boardCards().length < 3 && !hand.isTerminal() && hand.toActSeat() >= 0) hand.applyAction({ type: 'call' });
   assert.ok(hand.boardCards().length >= 3, 'reached the flop');
+  // The readout follows the felt, not the rules: let the three cards land first.
+  for (let t = 0.1; t < 20 && scene.tableView()!.boardShown < 3; t += 0.1) scene.renderScene(target, t);
   const flop = scene.tableView();
   assert.ok(flop, 'still running');
   assert.notEqual(flop.seats[0].madeHand, '', 'both cards seen + board out → the hero made-hand reads out');

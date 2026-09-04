@@ -118,6 +118,8 @@ const CINE_MARGIN = 1.18;
 // dealt from it too. Purely cosmetic — the state already knows every card; this just
 // animates them onto the felt, sandbox-deck-mode style.
 const DEAL_STEP = 0.3; // seconds each card takes to fly to its seat — an unhurried, dealt-by-hand pace
+// The street a board of N landed cards belongs to, for a run-out that is still dealing.
+const STREET_BY_BOARD = ['preflop', 'preflop', 'preflop', 'flop', 'turn', 'river'] as const;
 const COMMUNITY_STEP = 0.68; // a community card flies out slowly (it flips face-up mid-flight) so the bird's-eye reads
 const DEAL_CARD: Card = { rank: 0, suit: 0 }; // dealt face-down, so identity is irrelevant
 // After the opening deal lands, hold this long before the first action is requested, so
@@ -332,6 +334,9 @@ export class PokerGameScene {
   // Community deal: how many board cards have landed, and the flight progress of the
   // one currently coming out of the deck (−1 = none in flight).
   private boardShown = 0;
+  // The end-of-hand chat line, held back while an all-in run-out is still dealing so the
+  // transcript reveals the winner no sooner than the felt does.
+  private pendingResult: string | null = null;
   private boardT = -1;
   // Cards removed from the deck so far this hand (hole + community) — drives the
   // shrinking centre stack.
@@ -574,6 +579,7 @@ export class PokerGameScene {
     ]);
     this.boardShown = 0;
     this.boardT = -1;
+    this.pendingResult = null;
     this.dealtFromDeck = 0;
     this.dealHold = -1; // (re)armed when this hand's opening deal lands
     this.lastAction = new Array(state.n).fill(null);
@@ -710,7 +716,10 @@ export class PokerGameScene {
         if (boardBefore < 4 && board.length >= 4) this.events(`Turn  ${fmtCards(board.slice(3, 4))}`);
         if (boardBefore < 5 && board.length >= 5) this.events(`River  ${fmtCards(board.slice(4, 5))}`);
       }
-      if (this.events && !wasTerminal && this.hand!.isTerminal()) this.events(this.handResult(this.hand!));
+      if (this.events && !wasTerminal && this.hand!.isTerminal()) {
+        if (newCards > 0) this.pendingResult = this.handResult(this.hand!);
+        else this.events(this.handResult(this.hand!));
+      }
       // A street-turning action (flop/turn/river, or a multi-street all-in runout) runs the
       // bird's-eye deal cinematic, which resolves the settle when it cuts back. Any other
       // action just lingers a short beat. Either way this gates runMatch (it awaits us).
@@ -760,10 +769,27 @@ export class PokerGameScene {
       if (this.boardShown >= target && this.boardT < 0) {
         c.phase = 'wait';
         c.clock = 0;
+        this.announceResult();
         this.dirty = true;
       }
     }
     // 'wait' → nothing ticks; continueGesture cuts back and releases the settle.
+  }
+
+  // Whether the hand's outcome may show: the rules state is terminal AND every community
+  // card it turned has landed. An all-in closes the betting with cards still to come, and
+  // until the run-out has dealt them the hole cards stay down, the strips show no awards or
+  // made hands, and the transcript says nothing, so the winner is never known before the
+  // river is. A fold-out turns no cards, so it reveals at once.
+  private showdownRevealed(hand: HoldemState): boolean {
+    return hand.isTerminal() && this.boardT < 0 && this.boardShown >= hand.boardCards().length;
+  }
+
+  private announceResult(): void {
+    if (this.pendingResult === null) return;
+    const text = this.pendingResult;
+    this.pendingResult = null;
+    this.events?.(text);
   }
 
   // Whether a community-deal cinematic has cut to the bird's-eye right now (deal/wait —
@@ -836,6 +862,7 @@ export class PokerGameScene {
     if (this.cine !== null && this.cine.phase === 'wait') {
       this.cam = this.cine.saved;
       this.cine = null;
+      this.announceResult();
       this.dirty = true;
       const done = this.settleResolve;
       this.settleResolve = null;
@@ -854,6 +881,7 @@ export class PokerGameScene {
   // Drop any pending continue gate (pause / stop), releasing its waiter so the driver
   // never hangs and restoring the camera if a cinematic was up.
   cancelContinue(): void {
+    this.announceResult();
     if (this.cine !== null) {
       this.cam = this.cine.saved;
       this.cine = null;
@@ -926,13 +954,14 @@ export class PokerGameScene {
     if (!this.active) return null;
     const hand = this.hand;
     const spectator = !this.seats.some((s) => s.kind === 'human');
-    const shown = hand ? new Set(hand.showdownSeats()) : new Set<number>();
+    const revealed = !!hand && this.showdownRevealed(hand);
+    const shown = revealed ? new Set(hand!.showdownSeats()) : new Set<number>();
     const button = hand?.button ?? -1;
     const sb = hand?.smallBlindSeat() ?? -1;
     const bb = hand?.bigBlindSeat() ?? -1;
     const toAct = hand ? hand.toActSeat() : -1;
     const awards = new Map<number, number>();
-    if (hand) for (const a of hand.awards()) awards.set(a.seat, (awards.get(a.seat) ?? 0) + a.amount);
+    if (revealed) for (const a of hand!.awards()) awards.set(a.seat, (awards.get(a.seat) ?? 0) + a.amount);
 
     const seats: SeatCardView[] = this.seats.map((s, i) => {
       const isSelf = s.kind === 'human';
@@ -951,8 +980,9 @@ export class PokerGameScene {
             ? [0, 1].map((k) => (this.heroPeek.seen(k) ? hole[k] ?? null : null))
             : [null, null];
       // A made-hand name needs both hole cards visible to the viewer, so it reads only
-      // once this seat is fully open (both peeked, or a real showdown).
-      const fullyOpen = cards[0] !== null && cards[1] !== null;
+      // once this seat is fully open (both peeked, or a real showdown), and only against a
+      // board that has landed: the rules already hold the cards still flying out.
+      const fullyOpen = cards[0] !== null && cards[1] !== null && this.boardT < 0 && this.boardShown >= (hand?.boardCards().length ?? 0);
       const folded = hand ? hand.isFolded(i) : false;
       // Position badge: BB / SB take priority (so heads-up, where the button IS the SB,
       // reads as SB + BB); the button only shows as BTN when it's neither blind (3+ handed).
@@ -980,8 +1010,9 @@ export class PokerGameScene {
       pot: hand && !this.potDelivered ? hand.potTotal() : 0,
       board: hand ? hand.boardCards() : [],
       boardShown: this.boardShown,
-      street: hand ? hand.streetName() : '',
-      ended: hand ? hand.isTerminal() : false,
+      // Mid run-out the rules already say showdown; the pill follows the cards that have landed.
+      street: !hand ? '' : hand.isTerminal() && !revealed ? STREET_BY_BOARD[Math.min(this.boardShown, 5)] : hand.streetName(),
+      ended: revealed,
     };
   }
 
@@ -1404,7 +1435,8 @@ export class PokerGameScene {
   }
 
   private drawHoleCards(target: RenderTarget, vp: Mat4, hand: HoldemState): void {
-    const reveal = hand.showdownSeats(); // small array (≤ seats) — membership via includes, no per-frame Set
+    // small array (≤ seats) — membership via includes, no per-frame Set
+    const reveal = this.showdownRevealed(hand) ? hand.showdownSeats() : [];
     // The human hero peeks its own cards (shared HandPeek) during play; at showdown they
     // flip up flat like everyone else's. An AI seat 0 stays hidden until showdown.
     const heroPeek = this.seats[0]?.kind === 'human';
