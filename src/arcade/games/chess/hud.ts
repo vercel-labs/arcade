@@ -235,6 +235,7 @@ export function buildChessGameRoot(
     onToggleChat: () => void;
     onOpenMenu: () => void; // ☰ pill → the in-game menu popup (home / new game / mode / …)
     chatActive: boolean; // an AI match exists, so its transcript affordance is available
+    chatComposer?: Node; // the human's table-talk field, under the transcript (human seat only)
     illegalOn?: boolean; // illegal-moves mode on → show an "(illegal)" tag beside the "moves" header
     matchup?: { white: MatchSide; black: MatchSide } | null; // top banner: the matchup, or free play (null)
   },
@@ -310,7 +311,7 @@ export function buildChessGameRoot(
   const row = Box({ width: region.w, height: region.h, flexDirection: 'row' }, [
     main,
     ...(opts.evalVisible ? [buildEvalBar(opts.evalCp, opts.evalResult, region.h)] : []),
-    ...(chatShown ? [buildChatPanel(region.h, opts.onToggleChat, opts.chatActive)] : []),
+    ...(chatShown ? [buildChatPanel(region.h, opts.onToggleChat, opts.chatActive, opts.chatComposer)] : []),
   ]);
   // The ☰ menu pill lives to the LEFT of the chat (mirroring poker). Chat hidden → a
   // top-right cluster [☰ menu][chat]. Chat shown → the chat panel carries its own ✕, so
@@ -331,9 +332,9 @@ export function buildChessGameRoot(
 // The right-edge chat panel: a "Chat" header (clickable → hide, plus a ✕) over the
 // scrollable ChatBox Slot, full region height with a translucent fill matching the
 // move panel. Sizes the ChatBox viewport from the available height each frame.
-function buildChatPanel(height: number, onToggle: () => void, active: boolean): Node {
+function buildChatPanel(height: number, onToggle: () => void, active: boolean, composer?: Node): Node {
   // flexShrink 0: the wide chess-game bar in the main column overflows its row, so
   // without this the panel would be squeezed below CHAT_WIDTH and clip its bubbles.
-  return buildChatSidebar({ chat: chatBox, height, active, onToggle, closeId: 'chat-close', flexShrink: 0,
+  return buildChatSidebar({ chat: chatBox, height, active, onToggle, closeId: 'chat-close', flexShrink: 0, composer,
     title: Button({ id: 'chat-toggle', label: 'chat', onClick: onToggle, style: HEADER_BTN }) });
 }

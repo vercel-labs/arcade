@@ -21,6 +21,8 @@ import { installKeymap } from '../arcade/shell/keybindings.ts';
 import { buildShowcase, mountShowcase } from '../arcade/scenes/ui-showcase.ts';
 import { buildChessGameRoot, chessMoveChat, mountChessHud, refreshMoveHistory } from '../arcade/games/chess/hud.ts';
 import { CHAT_WIDTH, type ChatMessage, clearChat, pushChatMessage } from '../arcade/match/chat.ts';
+import { ChatComposer } from '../arcade/match/chat-composer.ts';
+import { CHAT_COMPOSER_W } from '../arcade/match/chat-sidebar.ts';
 import { evaluate } from '../rules/chess/eval.ts';
 import { buildMatchSetup, chessPreviewSides, mountMatchSetup } from '../arcade/match/setup.ts';
 import { creators } from '../arcade/match/models.ts';
@@ -60,10 +62,9 @@ import {
   setIslandersWorkbenchTradeSelection,
   toggleIslandersSidebar,
 } from '../arcade/games/islanders/card-hud.ts';
-import { islandersChatComposerRows } from '../arcade/games/islanders/chat-composer.ts';
 import { type FlyingResource, ResourceFlights } from '../arcade/games/islanders/scene/resource-flight.ts';
 import { IslandersGameScene } from '../arcade/games/islanders/game-scene.ts';
-import { buildIslandersGameRoot, mountIslandersGameHud } from '../arcade/games/islanders/game-hud.ts';
+import { buildIslandersGameRoot, islandersChatComposer, mountIslandersGameHud } from '../arcade/games/islanders/game-hud.ts';
 import { IslandersDriver, type IslandersSeatSpec } from '../arcade/match/islanders-driver.ts';
 import { generateBoard } from '../rules/islanders/setup.ts';
 import { type IslandersAction, type DevCardType, type PlayerColor, type Resource, resourceIndex, type Terrain, TERRAINS } from '../rules/islanders/types.ts';
@@ -430,7 +431,8 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot unified [prism|chess|chess-game|logos] [cols] [rows] [out]   unified compositing path
   pnpm snapshot showcase [cols] [rows] [focus=<id>] [query=<text>] [blur] [out]   the UI component playground
   pnpm snapshot modal [cols] [rows] [out]          promotion modal over chess
-  pnpm snapshot chess-overlay [cols] [rows] [min|empty|illegal|short] [eval] [chat] [menu] [out]   match HUD + moves panel (menu → ☰ popup)
+  pnpm snapshot chess-overlay [cols] [rows] [min|empty|illegal|short] [eval] [chat] [compose[=@text]] [menu] [out]   match HUD + moves panel (menu → ☰ popup)
+      (compose adds the table-talk field under the chat; compose=@gp types that and opens the @ completion list)
   pnpm snapshot tutorial [cols] [rows] [<chapter id>] [done=N] [menu] [signed-out] [t=<s>] [out]   the tutorial rail over the chess screen
       (done=N ticks the first N steps · menu opens the ☰ popup, pulsing its target · signed-out dims the gateway steps · t is the pulse clock)
   pnpm snapshot setup [cols] [rows] [out] [open|models|thinking|checking|health-failed|no-card]   AI match setup modal
@@ -861,7 +863,7 @@ function islandersGameSnapshot(): void {
     const state = driver.start(specs, { autoRun: false, rng: mulberry32(seed) });
     const pov = Number(args.find((arg) => arg.startsWith('pov='))?.slice(4) ?? 0);
     if (spectate && pov > 0 && pov < seats) gameScene.setViewedSeat(pov);
-    gameScene.setResourceFlightLayout(region, seats, islandersRailVisible(cols, rows), !spectate && islandersRailVisible(cols, rows) ? islandersChatComposerRows() : 0);
+    gameScene.setResourceFlightLayout(region, seats, islandersRailVisible(cols, rows), !spectate && islandersRailVisible(cols, rows) ? islandersChatComposer.rows() : 0);
     if (aiTrade || postedTrade) {
       while (!state.initialPlacementComplete()) void gameScene.playMove(state.legalActions()[0]);
       void gameScene.playMove({ type: 'roll' });
@@ -1838,6 +1840,31 @@ function showcaseSnapshot(): void {
 // (so the move-history Slot expands): the AI HUD wisps + bar 'play/stop ai'
 // button + the collapsible Moves panel. Pass 'min' to render the collapsed panel.
 //   pnpm exec tsx src/tools/snapshot.ts chess-overlay [cols] [rows] [min] [eval] [out.ppm]
+// The human's table-talk field for the chess-overlay still. `compose=@gp` pre-types text so
+// the @ completion list is in the frame.
+function chessSnapshotComposer(screen: Screen, args: string[]): { build(): Node; type(): boolean } | undefined {
+  const flag = args.find((a) => a === 'compose' || a.startsWith('compose='));
+  if (!flag) return undefined;
+  const composer = new ChatComposer({ id: 'chess-chat-input' });
+  composer.mount(screen);
+  composer.configure({
+    targets: [{ seat: 0, label: 'claude-opus-4.8' }, { seat: 1, label: 'gpt-5.4' }],
+    onSubmit: () => true,
+  });
+  const typed = flag.includes('=') ? flag.slice(flag.indexOf('=') + 1) : '';
+  return {
+    build: () => composer.build(CHAT_COMPOSER_W),
+    // Keys only reach the field once its Slot is in a laid-out root, so the caller types
+    // after the first setRoot and builds again.
+    type: () => {
+      if (!typed) return false;
+      screen.setFocus('chess-chat-input');
+      for (const ch of typed) screen.handleKey({ name: ch, raw: ch, sequence: ch, ctrl: false, shift: false, meta: false, eventType: 'press' });
+      return true;
+    },
+  };
+}
+
 function chessOverlaySnapshot(): void {
   const args = process.argv.slice(3);
   const cols = Number(args[0]) || 140;
@@ -1944,7 +1971,8 @@ function chessOverlaySnapshot(): void {
     surfaceToPpm(surf2, cols, rows, out);
     return;
   }
-  screen.setRoot(
+  const composer = chessSnapshotComposer(screen, args);
+  const buildRoot = (): Node =>
     buildChessGameRoot(region, buildBar('chess-game', 'ascii', barActions, { label: 'pause', active: true }), {
       minimized,
       onToggle: noop,
@@ -1957,15 +1985,16 @@ function chessOverlaySnapshot(): void {
       chatVisible,
       onToggleChat: noop,
       onOpenMenu: noop,
-      chatActive: false,
+      chatActive: chatVisible,
+      chatComposer: composer?.build(),
       illegalOn: process.argv.includes('illegal'),
       // Sample matchup for the top banner (brand-ish colors); `freeplay` shows the idle state.
       matchup: process.argv.includes('freeplay')
         ? null
         : { white: { text: 'claude-opus-4.8', color: [217, 119, 87] }, black: { text: 'gpt-5.4', color: [22, 163, 127] } },
-    }),
-    region,
-  );
+    });
+  screen.setRoot(buildRoot(), region);
+  if (composer?.type()) screen.setRoot(buildRoot(), region);
   const surf = screen.snapshot((s) =>
     shapeGlyphToSurface(
       s,

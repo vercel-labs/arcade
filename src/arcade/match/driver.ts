@@ -5,7 +5,10 @@
 // the surrounding UI — the setup modal, the commentary toast, and the
 // illegal-moves flag — and injects the seams below.
 import { runMatch } from '../../harness/match.ts';
-import { createChessModelPlayer } from '../../harness/games/chess/chess-session.ts';
+import { CHESS_AMBIENT_GUIDE, createChessModelPlayer } from '../../harness/games/chess/chess-session.ts';
+import { TableCommunicationCoordinator } from '../../harness/communication/index.ts';
+import { DirectedReplies } from './directed-replies.ts';
+import type { ChatTarget } from './chat-composer.ts';
 import { HumanPlayer } from '../../harness/human-player.ts';
 import type { Player } from '../../harness/player.ts';
 import type { ChessGameScene } from '../games/chess/scene.ts';
@@ -46,6 +49,8 @@ export interface AiMatchDeps {
   onBlocked?(): void;
   // Live illegal-moves flag, read per move by each ModelPlayer.
   allowIllegal(): boolean;
+  // Test seam: stand in for a seat's player (no network). Omitted in the arcade.
+  createPlayer?(seat: Seat, index: number, label: string): Player<Move>;
 }
 
 export class AiMatch {
@@ -62,8 +67,46 @@ export class AiMatch {
   // alive.
   private paused = false;
   private recorder: ChessGameRecorder | null = null;
+  // The table's public conversation: what each side said with its moves plus the human's
+  // lines, so an @-addressed model answers with the recent exchange in view. Labels are
+  // resolved live because a mid-game model swap renames a side.
+  private communication: TableCommunicationCoordinator | null = null;
+  private readonly directedReplies = new DirectedReplies();
 
   constructor(private readonly deps: AiMatchDeps) {}
+
+  humanSeat(): number {
+    return this.seats?.findIndex((seat) => seat.kind === 'human') ?? -1;
+  }
+
+  // The seats the human can address from the chat composer: every model side.
+  chatTargets(): ChatTarget[] {
+    return (this.seats ?? []).flatMap((seat, index) => (seat.kind === 'ai' ? [{ seat: index, label: this.labels[index] ?? shortModel(seat.model) }] : []));
+  }
+
+  // The human's chat line. Addressed models reply through their own communication call;
+  // the caller renders the human's line itself (it owns the chat rail).
+  sendHumanChat(text: string, targetSeats: readonly number[] = []): boolean {
+    const seat = this.humanSeat();
+    if (seat < 0 || !this.communication || !this.players) return false;
+    const message = this.communication.addHuman(seat, text, targetSeats);
+    if (!message) return false;
+    if (message.addressedSeats.length) {
+      void this.directedReplies.enqueue({
+        game: 'chess',
+        seatCount: this.seats?.length ?? 0,
+        isModelSeat: (index) => this.seats?.[index]?.kind === 'ai',
+        player: (index) => this.players?.[index],
+        gameView: (index) => this.chatGameView(index),
+        coordinator: this.communication,
+        onSpeak: (index, reply) => {
+          const side = this.seats?.[index];
+          if (side?.kind === 'ai') this.deps.onCommentary(reply, side.model, this.labels[index] ?? shortModel(side.model));
+        },
+      }, message, this.deps.chessGame.moves().length, this.abort?.signal ?? undefined);
+    }
+    return true;
+  }
 
   isPaused(): boolean {
     return this.paused;
@@ -81,9 +124,24 @@ export class AiMatch {
     this.players = null;
     this.seats = null;
     this.labels = [];
+    this.communication = null;
+    this.directedReplies.reset();
     this.paused = false;
     this.deps.chessGame.setMatchPaused(false);
     this.deps.chessGame.endMatch();
+  }
+
+  // The position as the move prompt shows it (FEN, board, moves so far), from the side's
+  // own point of view, for a reply that should know what is on the board.
+  private chatGameView(index: number): string {
+    const state = this.deps.chessGame.state();
+    const history = state.moveHistory();
+    return [
+      `You are playing ${index === 0 ? 'White' : 'Black'}.`,
+      `Position (FEN): ${state.fen()}`,
+      `Board (uppercase = White, lowercase = Black):\n${state.toString()}`,
+      history ? `The moves played so far are: ${history}` : '',
+    ].filter(Boolean).join('\n');
   }
 
   // Run a recorder call in isolation: telemetry must never stall a match. Any fault
@@ -116,6 +174,7 @@ export class AiMatch {
         const seat = index >= 0 ? this.seats?.[index] : null;
         const model = seat?.kind === 'ai' ? seat.model : player.name;
         const label = index >= 0 ? (this.labels[index] ?? shortModel(model)) : shortModel(model);
+        if (index >= 0) this.communication?.noteSpeech(index, text);
         this.deps.onCommentary(text, model, label);
       },
       onActionChosen: ({ player, playerIndex, choice, state }) => {
@@ -212,18 +271,22 @@ export class AiMatch {
       humans: this.seats.filter((s) => s.kind === 'human').length,
     });
     this.paused = false;
-    this.players = [this.makePlayer(white), this.makePlayer(black)];
+    this.communication = new TableCommunicationCoordinator('ambient', (seat) => this.labels[seat], CHESS_AMBIENT_GUIDE, 2);
+    this.directedReplies.reset();
+    this.players = [this.makePlayer(white, 0), this.makePlayer(black, 1)];
     this.runLoop();
   }
 
   // Build a side's player: an LLM-backed ModelPlayer, or a HumanPlayer whose move is
   // awaited from the board (the loop passes the abort signal through so pausing a
   // human's turn cancels the wait cleanly).
-  private makePlayer(seat: Seat): Player<Move> {
+  private makePlayer(seat: Seat, index: number): Player<Move> {
+    const custom = this.deps.createPlayer?.(seat, index, this.labels[index] ?? '');
+    if (custom) return custom;
     if (seat.kind === 'human') {
       return new HumanPlayer<Move>({ name: 'you', awaitMove: (_state, ctx) => this.deps.chessGame.requestHumanMove(ctx?.signal) });
     }
-    return createChessModelPlayer({ model: seat.model, allowIllegal: this.deps.allowIllegal, normalizer: normalizerModel(), onFailureNotice: (notice) => this.deps.onFailureNotice?.(notice, seat.model) });
+    return createChessModelPlayer({ model: seat.model, allowIllegal: this.deps.allowIllegal, normalizer: normalizerModel(), replyGuide: CHESS_AMBIENT_GUIDE, onFailureNotice: (notice) => this.deps.onFailureNotice?.(notice, seat.model) });
   }
 
   private computeLabels(): void {
@@ -242,7 +305,7 @@ export class AiMatch {
   // handoff) and resumes after. No-op when idle (no players yet).
   setPlayer(index: number, model: string): void {
     if (!this.players || index < 0 || index >= this.players.length) return;
-    this.players[index] = createChessModelPlayer({ model, allowIllegal: this.deps.allowIllegal, normalizer: normalizerModel(), onFailureNotice: (notice) => this.deps.onFailureNotice?.(notice, model) });
+    this.players[index] = createChessModelPlayer({ model, allowIllegal: this.deps.allowIllegal, normalizer: normalizerModel(), replyGuide: CHESS_AMBIENT_GUIDE, onFailureNotice: (notice) => this.deps.onFailureNotice?.(notice, model) });
     if (this.seats) this.seats[index] = { kind: 'ai', model };
     this.computeLabels();
   }

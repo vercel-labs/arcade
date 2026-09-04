@@ -1,7 +1,9 @@
 import type { PublicConversationMessage } from './types.ts';
 
-// Messages a seat sees verbatim; older talk is summarized as a count.
+// Messages a seat sees verbatim; older talk is summarized as a count, so the buffer
+// keeps more than the window shows.
 const PROMPT_WINDOW = 24;
+const DEFAULT_MAX_MESSAGES = 48;
 
 const MAX_MESSAGE_LENGTH = 360;
 
@@ -18,7 +20,7 @@ export class PublicConversation {
   private sequence = 0;
   private pendingResponses = new Map<number, string>();
 
-  constructor(private readonly maxMessages = 16) {}
+  constructor(private readonly maxMessages = DEFAULT_MAX_MESSAGES) {}
 
   reset(): void {
     this.messages = [];

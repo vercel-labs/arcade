@@ -24,9 +24,13 @@ import type { ModelFailureNotice } from '../../harness/model-failure-notice.ts';
 import {
   BIG_BLIND,
   createPokerTextPlayer,
+  POKER_AMBIENT_GUIDE,
   SMALL_BLIND,
   STARTING_STACK,
 } from '../../harness/games/poker/poker-session.ts';
+import { TableCommunicationCoordinator } from '../../harness/communication/index.ts';
+import { DirectedReplies } from './directed-replies.ts';
+import type { ChatTarget } from './chat-composer.ts';
 
 export { BIG_BLIND };
 // A `bot` is a local practice opponent (a PolicyPlayer — no model, no network): it checks
@@ -88,6 +92,8 @@ export interface PokerMatchDeps {
   onChat?(text: string, speaker: string, event: boolean, label?: string): void;
   // A human action parsed from speech is staged awaiting confirm (null clears it).
   onVoiceStage?(label: string | null): void;
+  // Test seam: stand in for a seat's player (no network). Omitted in the arcade.
+  createPlayer?(seat: PokerSeatSpec, index: number, label: string): Player<PokerAction>;
 }
 
 export class PokerMatch {
@@ -114,8 +120,46 @@ export class PokerMatch {
   private completedHands = 0;
   private blindStructure: PokerBlindStructure = {};
   private currentBlinds: PokerBlindState = pokerBlindState(0);
+  // The table's public conversation: every seat's table talk plus the human's lines, so
+  // an @-addressed model answers with the recent exchange in view.
+  private communication: TableCommunicationCoordinator | null = null;
+  private readonly directedReplies = new DirectedReplies();
 
   constructor(private readonly deps: PokerMatchDeps) {}
+
+  humanSeat(): number {
+    return this.seats.findIndex((seat) => seat.kind === 'human');
+  }
+
+  // The seats the human can address from the chat composer: the text-model seats. Practice
+  // bots have no model to answer with, and a voice seat is already listening.
+  chatTargets(): ChatTarget[] {
+    return this.seats.flatMap((seat, index) => (seat.kind === 'ai' && seat.runtime === 'text' ? [{ seat: index, label: this.labelOf(index) }] : []));
+  }
+
+  // The human's chat line. Addressed models reply through their own communication call;
+  // the caller renders the human's line itself (it owns the chat rail).
+  sendHumanChat(text: string, targetSeats: readonly number[] = []): boolean {
+    const seat = this.humanSeat();
+    if (seat < 0 || !this.communication || !this.running) return false;
+    const message = this.communication.addHuman(seat, text, targetSeats);
+    if (!message) return false;
+    if (message.addressedSeats.length) {
+      void this.directedReplies.enqueue({
+        game: 'poker',
+        seatCount: this.seats.length,
+        isModelSeat: (index) => this.seats[index]?.kind === 'ai' && this.seats[index]?.runtime === 'text',
+        player: (index) => this.players[index],
+        gameView: (index) => this.deps.scene.state().informationStateString(index),
+        coordinator: this.communication,
+        onSpeak: (index, reply) => {
+          const spec = this.seats[index];
+          if (spec?.kind === 'ai') this.deps.onCommentary(reply, spec.model, this.labelOf(index));
+        },
+      }, message, this.completedHands, this.abort?.signal ?? undefined);
+    }
+    return true;
+  }
 
   // Whether this session is running heads-up voice against the AI.
   hasVoice(): boolean {
@@ -222,6 +266,8 @@ export class PokerMatch {
         stack: opts?.stack ?? STARTING_STACK,
       });
     }
+    this.communication = new TableCommunicationCoordinator('ambient', (seat) => this.labels[seat], POKER_AMBIENT_GUIDE, seats.length);
+    this.directedReplies.reset();
     this.setupVoice(); // may set this.voice for a 2-seat human-vs-AI match — before makePlayer
     this.players = seats.map((s, i) => this.makePlayer(s, i));
     this.running = true;
@@ -269,6 +315,8 @@ export class PokerMatch {
   }
 
   private makePlayer(seat: PokerSeatSpec, index: number): Player<PokerAction> {
+    const custom = this.deps.createPlayer?.(seat, index, this.labelOf(index));
+    if (custom) return custom;
     if (seat.kind === 'human') {
       return new HumanPlayer<PokerAction>({ name: 'you', awaitMove: (_s, ctx) => this.deps.scene.requestHumanMove(ctx?.signal) });
     }
@@ -289,6 +337,7 @@ export class PokerMatch {
       model: seat.model,
       contextProvider: () => this.moveContext(index),
       normalizer: normalizerModel(),
+      replyGuide: POKER_AMBIENT_GUIDE,
       onFailureNotice: (notice) => this.deps.onFailureNotice?.(notice, seat.model),
     });
   }
@@ -397,7 +446,7 @@ export class PokerMatch {
       signal: ctrl.signal,
       onCommentary: (text, player, playerIndex) => {
         const seat = playerIndex;
-        const spec = seat >= 0 ? this.seats[seat] : undefined;
+        if (seat >= 0) this.communication?.noteSpeech(seat, text);
         this.deps.onCommentary(text, player.name, seat >= 0 ? this.labelOf(seat) : shortModel(player.name));
       },
       onActionChosen: ({ player, playerIndex, choice }) => {
@@ -605,6 +654,8 @@ export class PokerMatch {
     this.reflecting = null;
     this.running = false;
     this.paused = false;
+    this.communication = null;
+    this.directedReplies.reset();
     this.voice?.close(); // tear down the realtime session + free the mic
     this.voice = null;
     this.deps.scene.cancelInterlude();

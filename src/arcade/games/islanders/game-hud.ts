@@ -41,7 +41,7 @@ import type { BoardToken, SailLabel } from './tile-scene.ts';
 import { islandersFlyingCardNodes, islandersProjectedBoardLabels } from './tile-hud.ts';
 import type { FlyingResource } from './scene/resource-flight.ts';
 import type { IslandersActionPreview, IslandersGameScene, IslandersResourceViewAdjustments } from './game-scene.ts';
-import { buildIslandersChatComposer, configureIslandersChatComposer, mountIslandersChatComposer } from './chat-composer.ts';
+import { ChatComposer } from '../../match/chat-composer.ts';
 import { matchSetupLayout, newMatchButton } from '../../match/match-setup-chrome.ts';
 
 const STATUS_FG = ISLANDERS_STATUS.foreground;
@@ -51,12 +51,13 @@ const PLAYER_LEGEND_W = 30;
 // The Screen the HUD is mounted on, kept so the robber-victim picker can move keyboard focus
 // between its rows (a node's onKey has no other route to focus).
 let screen: Screen | null = null;
+export const islandersChatComposer = new ChatComposer({ id: 'islanders-chat-input' });
 
 export function mountIslandersGameHud(ui: Screen): void {
   screen = ui;
   mountIslandersSetup(ui);
   mountIslandersCardsHud(ui);
-  mountIslandersChatComposer(ui);
+  islandersChatComposer.mount(ui);
 }
 
 // ── IslandersState → the card overlay's view ────────────────────────────────────────────────────
@@ -851,13 +852,13 @@ export function buildIslandersGameRoot(region: LayoutBox, deps: IslandersGameHud
   const humanSeat = driver.humanSeat();
   const chatComposer = humanSeat >= 0 && railVisible
     ? (() => {
-        configureIslandersChatComposer({
+        islandersChatComposer.configure({
           targets: Array.from({ length: driver.seatCount() }, (_, seat) => seat)
             .filter((seat) => seat !== humanSeat)
             .map((seat) => ({ seat, label: driver.labelOf(seat) })),
           onSubmit: (text, targetSeats) => driver.sendHumanChat(text, targetSeats),
         });
-        return buildIslandersChatComposer(ISLANDERS_RAIL_INNER_W);
+        return islandersChatComposer.build(ISLANDERS_RAIL_INNER_W);
       })()
     : undefined;
   return Box({ width: region.w, height: region.h }, [
