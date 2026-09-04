@@ -109,7 +109,7 @@ export function pokerStartingStack(): number {
 // is visible). Drives whether seat 1 gets its own model row.
 export const modeDropdown = new Dropdown({
   id: 'poker-setup-mode',
-  items: ['play vs ai', 'spectate ai'],
+  items: ['play vs AI', 'spectate AI'],
   width: 16,
   index: 0,
   onSelect: () => changed(),

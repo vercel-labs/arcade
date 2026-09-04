@@ -323,7 +323,7 @@ test('Dropdown searchable: search row is sticky above seven scrolling options', 
   const before = combo.build().children ?? [];
   const search = before.find((node) => node.id === 'sticky-combo-search');
   const list = before.find((node) => node.overlay && node.children?.length === 7);
-  ok(search?.text === 'Search' && search.style.top === 1, 'search is the first sticky dropdown row');
+  ok(search?.text === 'search' && search.style.top === 1, 'search is the first sticky dropdown row');
   ok(list?.style.top === 2 && list.children?.length === 7, 'exactly seven option rows render below search');
   const firstBefore = list?.children?.[0]?.id;
 
@@ -331,7 +331,7 @@ test('Dropdown searchable: search row is sticky above seven scrolling options', 
   const after = combo.build().children ?? [];
   const stickySearch = after.find((node) => node.id === 'sticky-combo-search');
   const scrolledList = after.find((node) => node.overlay && node.children?.length === 7);
-  ok(stickySearch?.text === 'Search' && scrolledList?.children?.[0]?.id !== firstBefore, 'scrolling options does not move the search row');
+  ok(stickySearch?.text === 'search' && scrolledList?.children?.[0]?.id !== firstBefore, 'scrolling options does not move the search row');
 });
 
 test('Dropdown width reflow keeps a scrolled option list populated', () => {

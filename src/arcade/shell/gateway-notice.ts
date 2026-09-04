@@ -14,11 +14,14 @@ import { ARCADE_CHROME_TEXT, UI_CHROME_PILL } from '../theme.ts';
 
 export type GatewayNoticeKind = 'sign-in' | 'add-card' | 'buy-credits';
 
+// One sentence whose opening words are the link: `lead` is underlined and clickable,
+// `rest` completes it. `title` names the situation ahead of the sentence when the
+// sentence alone would not (there is no title for signing in; the sentence is enough).
 export interface GatewayNotice {
   kind: GatewayNoticeKind;
-  title: string;
-  body: string;
-  action: string;
+  title?: string;
+  lead: string;
+  rest: string;
   // Absent for `sign-in`, whose action is the in-app device flow rather than a page.
   url?: string;
 }
@@ -26,22 +29,21 @@ export interface GatewayNotice {
 const NOTICES: Record<GatewayNoticeKind, GatewayNotice> = {
   'sign-in': {
     kind: 'sign-in',
-    title: 'Sign in to play AI matches',
-    body: 'human games and the tutorial work without an account',
-    action: 'sign in',
+    lead: 'sign in',
+    rest: 'to play AI matches',
   },
   'add-card': {
     kind: 'add-card',
     title: 'AI Gateway setup needed',
-    body: 'add a credit card to play AI matches and unlock $5 in free monthly credits',
-    action: 'add credit card',
+    lead: 'add a credit card',
+    rest: 'to play AI matches and unlock $5 in free monthly credits',
     url: GATEWAY_ADD_CARD_URL,
   },
   'buy-credits': {
     kind: 'buy-credits',
     title: 'AI Gateway credit required',
-    body: 'add credits to play AI matches',
-    action: 'buy credits',
+    lead: 'add credits',
+    rest: 'to play AI matches',
     url: GATEWAY_TOP_UP_URL,
   },
 };
@@ -77,30 +79,30 @@ export function catalogAccessLine(catalog: ArcadeModelCatalog | null): { text: s
 
 const PILL_GAP = 2;
 const PILL_INK = UI_CHROME_PILL.color!;
+const LINK_STYLE = {
+  padding: 0,
+  color: ARCADE_CHROME_TEXT.title,
+  underline: true,
+  hover: { color: 'textStrong', underline: true, bold: true },
+  focus: { color: 'textStrong', underline: true, bold: true },
+  pressed: { color: 'controlPressedBg', underline: true, bold: true },
+} as const;
 
-// `title  body  action  ×` on one row of chrome. The body is the first thing to go when
-// the row would collide with the menu button; the title, action, and × always fit or the
-// pill is not drawn at all, since a truncated instruction is worse than none.
+// `title  lead rest  ✕` on one row of chrome. The rest of the sentence is the first thing
+// to go when the row would collide with the menu button; the title, the link, and ✕
+// always fit or the pill is not drawn at all, since a truncated instruction is worse
+// than none.
 export function buildGatewayNoticePill(notice: GatewayNotice, opts: { maxWidth: number; onAction: () => void; onDismiss: () => void }): Node | null {
-  const fixed = 1 + stringWidth(notice.title) + PILL_GAP + stringWidth(notice.action) + PILL_GAP + 1 + 1;
+  const titleW = notice.title ? stringWidth(notice.title) + PILL_GAP : 0;
+  const fixed = 1 + titleW + stringWidth(notice.lead) + PILL_GAP + 1 + 1;
   if (fixed > opts.maxWidth) return null;
-  const withBody = fixed + stringWidth(notice.body) + PILL_GAP <= opts.maxWidth;
+  const withRest = fixed + 1 + stringWidth(notice.rest) <= opts.maxWidth;
   return Box({ flexDirection: 'row', alignItems: 'center', gap: PILL_GAP, padding: [0, 1], background: UI_CHROME_PILL.background }, [
-    Text({ text: notice.title, style: { color: ARCADE_CHROME_TEXT.title, bold: true } }),
-    ...(withBody ? [Text({ text: notice.body, style: { color: PILL_INK } })] : []),
-    Button({
-      id: 'gateway-notice-action',
-      label: notice.action,
-      onClick: opts.onAction,
-      style: {
-        padding: 0,
-        color: ARCADE_CHROME_TEXT.title,
-        underline: true,
-        hover: { color: 'textStrong', underline: true, bold: true },
-        focus: { color: 'textStrong', underline: true, bold: true },
-        pressed: { color: 'controlPressedBg', underline: true, bold: true },
-      },
-    }),
+    ...(notice.title ? [Text({ text: notice.title, style: { color: ARCADE_CHROME_TEXT.title, bold: true } })] : []),
+    Box({ flexDirection: 'row' }, [
+      Button({ id: 'gateway-notice-action', label: notice.lead, onClick: opts.onAction, style: LINK_STYLE }),
+      ...(withRest ? [Text({ text: ` ${notice.rest}`, style: { color: PILL_INK } })] : []),
+    ]),
     Button({
       id: 'gateway-notice-dismiss',
       label: '✕',

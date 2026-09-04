@@ -48,7 +48,7 @@ const modelDropdown = new Dropdown({
   width: 28,
   rows: 7,
   index: 0,
-  searchPlaceholder: 'Search',
+  searchPlaceholder: 'search',
 });
 const creatorDropdown = new Dropdown({
   id: 'sc-creator-dropdown',
@@ -57,7 +57,7 @@ const creatorDropdown = new Dropdown({
   width: 28,
   rows: 7,
   index: defaultCreatorIndex,
-  searchPlaceholder: 'Search',
+  searchPlaceholder: 'search',
   onSelect: (index) => modelDropdown.setItems(modelLabels(index), 0),
 });
 

@@ -39,6 +39,23 @@ identity established by the product and its renderer:
   states as one product. Verify the actual rendered surface at representative
   sizes rather than approving design from source alone.
 
+## Copy
+
+Terminal copy is lowercase: buttons, links, menu items, form labels,
+placeholders, rail headings, chrome pills, modal titles, status lines, and
+seat badges (`sign out`, `new match`, `sign in for AI matches`, `fold`,
+`your turn`). Only names keep their case:
+
+- `Vercel`, `AI Gateway`, and `Arcade` as the product.
+- Acronyms: `AI`, `BYOK`, `PGN`, `HTTP`, `URL`, `PATH`.
+- Creator and model names as the gateway spells them (`OpenAI`, `xAI`).
+- Game titles on the covers (`Chess`, `Islanders`, `Tutorial`), development
+  card names (`Year of Plenty`), and poker streets (`Pre-flop`, `Showdown`).
+
+A body sentence may start with a capital and ends with a period; a one-line
+status fragment does neither (`checking model health…`). Do not capitalize a
+word to make it look like a heading.
+
 ## Precedence
 
 Apply guidance in this order:

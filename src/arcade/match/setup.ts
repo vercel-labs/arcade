@@ -76,7 +76,7 @@ const black = makeSide('black', 'setup-black', chessDefaults[1] ?? 'anthropic');
 // mirrors poker's mode. Defaults to Play White (White moves first — the conventional default).
 export const modeDropdown = new Dropdown({
   id: 'setup-mode',
-  items: ['play white', 'play black', 'spectate ai'],
+  items: ['play white', 'play black', 'spectate AI'],
   width: 16,
   index: 0,
   onSelect: () => {

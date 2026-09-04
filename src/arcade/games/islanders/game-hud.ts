@@ -253,7 +253,7 @@ export function islandersStatusLine(
   const state = driver.state();
   if (!state) return null;
   if (!setupComplete) return null;
-  if (driver.error()) return { actor: 'Game stopped', narration: driver.error() ?? '', color: STATUS_FG };
+  if (driver.error()) return { actor: 'game stopped', narration: driver.error() ?? '', color: STATUS_FG };
   if (driver.isComplete()) {
     const winner = driver.winner();
     return {
@@ -271,7 +271,7 @@ export function islandersStatusLine(
   const seat = prompt.player;
   const human = seat === driver.humanSeat();
   return {
-    actor: human ? 'Your turn' : driver.labelOf(seat),
+    actor: human ? 'your turn' : driver.labelOf(seat),
     narration: `· ${pendingInstruction(state, human)}`,
     color: PLAYER_LOOK[driver.colorOf(seat)],
   };

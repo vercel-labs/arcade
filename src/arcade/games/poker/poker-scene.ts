@@ -223,17 +223,17 @@ const ARTICLE_HANDS = new Set(['pair', 'straight', 'flush', 'full house', 'strai
 function actionLabel(a: PokerAction): string {
   switch (a.type) {
     case 'fold':
-      return 'FOLD';
+      return 'fold';
     case 'check':
-      return 'CHECK';
+      return 'check';
     case 'call':
-      return 'CALL';
+      return 'call';
     case 'bet':
-      return `BET ${money(a.amount)}`;
+      return `bet ${money(a.amount)}`;
     case 'raise':
-      return `RAISE TO ${money(a.to)}`;
+      return `raise to ${money(a.to)}`;
     case 'allin':
-      return 'ALL IN';
+      return 'all in';
   }
 }
 

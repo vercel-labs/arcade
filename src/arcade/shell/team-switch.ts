@@ -44,7 +44,7 @@ const dropdown = new Dropdown({
   width: LIST_W,
   rows: LIST_ROWS,
   searchable: true,
-  searchPlaceholder: 'Search billing teams',
+  searchPlaceholder: 'search billing teams',
   placeholder: 'select a billing team',
   onSelect: (i) => {
     const team = teams[i];
@@ -150,7 +150,7 @@ export function buildGatewaySignInPrompt(onSignIn: () => void, onDismiss: () => 
   return NoticeToast({
     id: 'gateway-signin',
     severity: 'warning',
-    title: compact ? 'AI sign-in' : 'Sign in for AI matches',
+    title: compact ? 'AI sign-in' : 'sign in for AI matches',
     body: tiny ? '' : short ? 'Use AI Gateway.' : 'Sign in to play with AI models using Vercel AI Gateway.',
     width: compact ? Math.max(12, width - 2) : Math.min(52, Math.max(32, width - 4)),
     compact,

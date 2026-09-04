@@ -263,11 +263,11 @@ function bettingControls(hero: HeroContext): Node {
 
   // ── The three action buttons: fixed widths (Fold narrow, Raise widest), never resizing ──
   const atMax = hero.canRaise && betAmount(hero) >= hero.maxRaiseTo; // "max" / typed-to-stack → all-in
-  const callLabel = hero.toCall > 0 ? (hero.toCall >= hero.stack ? `Call ${money(hero.stack)}` : `Call ${money(hero.toCall)}`) : 'Check';
-  const raiseLabel = atMax ? 'All-in' : `${hero.toCall > 0 ? 'Raise to' : 'Bet'} ${money(betAmount(hero))}`;
+  const callLabel = hero.toCall > 0 ? (hero.toCall >= hero.stack ? `call ${money(hero.stack)}` : `call ${money(hero.toCall)}`) : 'check';
+  const raiseLabel = atMax ? 'all-in' : `${hero.toCall > 0 ? 'raise to' : 'bet'} ${money(betAmount(hero))}`;
 
   const actions: Node[] = [
-    Button({ id: 'poker-fold', label: centerLabel('Fold', FOLD_LABEL_W), onClick: () => H?.onFold(), style: FOLD }),
+    Button({ id: 'poker-fold', label: centerLabel('fold', FOLD_LABEL_W), onClick: () => H?.onFold(), style: FOLD }),
     Button({ id: hero.toCall > 0 ? 'poker-call' : 'poker-check', label: centerLabel(callLabel, CALL_LABEL_W), onClick: () => H?.onCheckCall(), style: ACTION }),
   ];
   if (hero.canRaise) {
@@ -404,7 +404,7 @@ function playerStrip(s: SeatCardView, ended: boolean): Node {
 
   const cells = [0, 1].map((i) => cardCell(s.cards[i] ?? null, '??'));
   // A single info field: the action while the hand plays, the made-hand once it ends.
-  const text = ended ? s.madeHand : s.allIn ? 'ALL IN' : (s.lastAction ?? '');
+  const text = ended ? s.madeHand : s.allIn ? 'all in' : (s.lastAction ?? '');
   const color = win ? WIN_INK : ended ? (s.folded ? DIM_FG : MADE_FG) : s.folded ? DIM_FG : ACTION_FG;
   const info = text ? [Text({ text, style: { color, bold: win } })] : [];
   // Fixed width (matching the header), so every strip is the same width and the right
