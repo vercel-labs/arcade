@@ -50,7 +50,7 @@ Real model seats require Vercel device authorization and a selected team. Arcade
 
 The model picker requests an availability-aware catalog for the selected team and removes models that Gateway marks durably policy-ineligible. Unknown, transient, and configuration-dependent entries may remain visible, and a baked compatibility catalog is used if live discovery fails. Appearing in the picker is therefore not a routing guarantee; the Start-time health request is the current verdict for credits, rate limits, access, and provider health.
 
-Every Vercel team has free and paid AI Gateway tiers. The monthly free credit covers a changing subset of models with lower per-model rate limits. Purchasing AI Gateway Credits moves the team to paid access and the monthly free credit no longer applies; eligible Enterprise teams can use invoice billing. Arcade does not hardcode the credit amount or model subset. Current policy, pricing, keys, spend, logs, and budgets remain linked to the canonical Vercel AI Gateway pages.
+Teams that have never purchased AI Gateway Credits and are not on an eligible Enterprise plan use the Free tier. After card verification, AI Gateway grants $5 in free credits every 30 days for a subset of models with lower per-model rate limits. Purchasing at least $10 in Gateway Credits moves a team to the Paid tier, expands access beyond the Free-tier model subset, and raises rate limits; the recurring $5 credit then no longer applies. Eligible Enterprise teams can use invoiced billing instead. Current pricing, eligible models, keys, spend, logs, and budgets remain linked to the canonical Vercel AI Gateway pages.
 
 ## Game case studies
 

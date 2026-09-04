@@ -112,14 +112,16 @@ test('Using Arcade is a player-facing chapter with controls, billing, and recove
     assert.match(corpus, new RegExp(`/docs/${slug.replace('/', '\\/')}`));
   }
   for (const topic of ['Choose how to play', 'Follow the app flow', 'Start a match', 'Start with the Tutorial', 'Use global controls', 'Understand the Arcade key', 'Understand the model picker', 'Understand free and paid access', 'Troubleshoot model play']) assert.match(app, new RegExp(`heading: '${topic}'`));
+  assert.match(app, /title: 'Navigating the app'/);
+  assert.match(app, /Arcade automatically creates an AI Gateway API key for your selected team/);
   assert.match(app, /Arcade \(<username>\)/);
   assert.match(app, /models\?freeTier=true/);
-  for (const fact of ['availability-aware AI Gateway model catalog', 'monthly free credit no longer applies', 'Start-time health', 'Signing out of Arcade clears local access only']) assert.match(app, new RegExp(fact));
+  for (const fact of ['availability-aware AI Gateway model catalog', 'Start-time health', 'Signing out of Arcade clears local access only', 'never purchased AI Gateway Credits', 'valid credit card', 'grants $5 in free credits every 30 days', 'at least $10 in AI Gateway Credits', 'recurring $5 free credit no longer applies']) assert.match(app, new RegExp(fact.replace('$', '\\$')));
   for (const url of ['ai-gateway%2Fapi-keys', 'docs/ai-gateway/pricing', 'observability-and-spend/budgets']) assert.match(app, new RegExp(url));
   assert.match(page, /import \{ APP_DOCS \}/);
   assert.match(page, /nestedMode === 'app'/);
   assert.match(page, /nestedNavItems\(APP_DOCS, 'app'\)/);
-  assert.doesNotMatch(app, /\$5|card on file/i);
+  assert.doesNotMatch(app, /get-or-create exchange|existing exchanged key|Every Vercel team has an AI Gateway free tier and paid tier|instead of hardcoding|card on file/i);
   assert.match(tutorial, /monthly included Gateway credit/);
   assert.doesNotMatch(tutorial, /card on file/i);
 });

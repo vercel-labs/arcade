@@ -16,7 +16,7 @@ const GATEWAY_BUDGETS = 'https://vercel.com/docs/ai-gateway/observability-and-sp
 
 export const APP_DOCS: DocPage[] = [
   {
-    slug: 'app', label: 'Using Arcade', title: 'Play and spectate',
+    slug: 'app', label: 'Using Arcade', title: 'Navigating the app',
     summary: 'Move through the Arcade app, start human and model matches, follow live games, and know where each screen and control lives.',
     sections: [
       {
@@ -131,7 +131,7 @@ export const APP_DOCS: DocPage[] = [
     sections: [
       {
         heading: 'Know what model play requires',
-        body: <><p>Arcade itself and its offline-first Tutorial do not require a Vercel account. Real model seats require a Vercel account that belongs to at least one team, because AI Gateway keys and usage are scoped to a team.</p><p>Every Vercel team has an AI Gateway free tier and paid tier. You can use the free-tier model subset without purchasing Gateway Credits. Other models and higher limits require purchased AI Gateway Credits, or invoiced billing for an eligible Enterprise team.</p><Note>The monthly free-credit amount, eligible models, and limits are controlled by AI Gateway and can change. Arcade links to the canonical Gateway pages instead of hardcoding a dollar amount.</Note></>,
+        body: <><p>Arcade itself and its offline-first Tutorial do not require a Vercel account. Real model seats require a Vercel account that belongs to at least one team, because AI Gateway keys and usage are scoped to a team.</p><p>Teams that have never purchased AI Gateway Credits and are not on an eligible Enterprise plan use the Free tier. After the team adds a valid credit card, AI Gateway grants $5 in free credits every 30 days. The Free tier covers a subset of models and has lower per-model rate limits.</p><p>To move to the Paid tier, purchase at least $10 in AI Gateway Credits from the Gateway dashboard. Paid teams can use models outside the Free-tier subset and receive higher limits, including access to more of the latest models. Eligible Enterprise teams can use invoiced billing instead. Once a team purchases Gateway Credits, the recurring $5 free credit no longer applies.</p></>,
       },
       {
         heading: 'Sign in and choose a team',
@@ -146,7 +146,7 @@ arcade --logout`}</Code><Details rows={[
       },
       {
         heading: 'Understand the Arcade key',
-        body: <><p>Arcade creates or reuses an AI Gateway key for the selected team through Vercel’s get-or-create exchange. A newly created key is named <code>{'Arcade (<username>)'}</code>, or <code>Arcade</code> when the username is unavailable. An existing exchanged key keeps the name it already has.</p><Details rows={[
+        body: <><p>Arcade automatically creates an AI Gateway API key for your selected team. The key is named <code>{'Arcade (<username>)'}</code>, or simply <code>Arcade</code> when your username is unavailable.</p><Details rows={[
           ['Where to find it', <>Open the <External href={GATEWAY_KEYS}>AI Gateway API Keys page</External> for the selected team. The raw secret cannot be retrieved again, but the key entry, last use, budget, spend, and revoke controls remain visible.</>],
           ['What Arcade stores', <>Vercel OAuth tokens, the chosen team, and username are cached in <code>~/.config/arcade/auth.json</code> with private file permissions.</>],
           ['What Arcade does not store', 'The generated AI Gateway key is held only in the running process. Arcade derives it again from the cached Vercel session on the next launch.'],
@@ -166,11 +166,11 @@ arcade --logout`}</Code><Details rows={[
       {
         heading: 'Understand free and paid access',
         body: <Details rows={[
-          ['Free tier', <>A monthly included credit covers a <External href={GATEWAY_FREE_MODELS}>subset of models</External>. Free requests have lower per-model rate limits, and the credit period begins with the team’s first Gateway request.</>],
-          ['Paid tier', <>Purchase AI Gateway Credits from the <External href={GATEWAY_DASHBOARD}>Gateway dashboard</External> to use models outside the free subset and receive higher Gateway rate limits.</>],
-          ['Monthly credit after purchase', <>Purchasing Gateway Credits moves the team to the paid tier, and the monthly free credit no longer applies. See <External href={GATEWAY_PRICING}>AI Gateway pricing</External> for the current policy.</>],
-          ['Payment method', 'Choose a payment method during the Gateway credit purchase flow. Merely opening Arcade or using a free-tier model does not require a credit purchase.'],
-          ['Enterprise', 'Eligible Enterprise teams can arrange invoice billing instead of purchasing credits through the dashboard.'],
+          ['Free tier', <>A team that has never purchased Gateway Credits and is not on an eligible Enterprise plan uses the Free tier. Add a valid credit card to receive $5 in free credits every 30 days. Those credits cover a <External href={GATEWAY_FREE_MODELS}>subset of models</External> with lower per-model rate limits.</>],
+          ['Paid tier', <>Purchase at least $10 in AI Gateway Credits from the <External href={GATEWAY_DASHBOARD}>Gateway dashboard</External>. Paid access includes models outside the Free-tier subset and higher Gateway rate limits.</>],
+          ['$5 credit after purchase', <>Once a team purchases Gateway Credits, it remains on the Paid tier and the recurring $5 Free-tier credit no longer applies. See <External href={GATEWAY_PRICING}>AI Gateway pricing</External> for the current policy.</>],
+          ['Credit card verification', 'A valid credit card is required to receive the recurring Free-tier credit. The same payment method can be used when purchasing Gateway Credits.'],
+          ['Enterprise', 'Eligible Enterprise teams can arrange invoiced billing instead of purchasing credits through the dashboard.'],
           ['Token pricing', 'AI Gateway charges provider list prices with no token markup. Model pages show current input, output, and cached-token rates.'],
         ]} />,
       },
