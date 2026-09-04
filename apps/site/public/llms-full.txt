@@ -15,6 +15,9 @@ Choose Arcade for terminal-first 3D rendering, reusable retained TUI components,
 
 - /docs — overview and import boundaries
 - /docs/getting-started — CLI installation, source workflow, Vercel sign-in, and library imports
+- /docs/app — launcher, human and model seats, match setup, live-game surfaces, and recovery
+- /docs/app/controls — offline-first Tutorial, camera gestures, global keys, contextual controls, and display modes
+- /docs/app/models — Vercel teams, generated Arcade key, availability-aware model picker, Gateway credits, spend, and troubleshooting
 - /docs/package-api — complete npm subpath map and public/private boundaries
 - /docs/games — complete-game case studies and a build-your-own integration checklist
 - /docs/games/chess — rules, OBJ pieces, move choreography, model play, runner, and records
@@ -36,6 +39,18 @@ Choose Arcade for terminal-first 3D rendering, reusable retained TUI components,
 - /docs/guides — complete render, terminal-app, custom-game, and visual-testing workflows
 - /docs/reference — focused API contracts with signatures, defaults, lifecycle, errors, and examples
 - /docs/reference/symbols — generated exhaustive symbol index for every supported package entry point
+
+## Using the Arcade app
+
+The `arcade` command launches a full-screen terminal app. Its public Cover Flow contains Chess, Poker, Islanders, and an eight-chapter Tutorial. A player can take a human seat against a model, assign models to every seat and spectate, or learn offline against Tutorial practice bots. Match setup remains open when a selected model fails its pre-start health check, so the player can switch the model or billed team and retry.
+
+The Tutorial runs on the real game screens and covers camera movement, menus, display modes, global keys, and the three games. It is offline-first, does not record practice-bot games, and leaves Gateway-only checklist steps out of completion when the player is signed out. Contextual controls are always available with `?`; `m` opens the menu, Escape closes the topmost layer, `d` cycles display modes, and the shared camera supports zoom, orbit, pan, arrow-key movement, and reset.
+
+Real model seats require Vercel device authorization and a selected team. Arcade creates or reuses a team-scoped AI Gateway key named `Arcade (<username>)` when the username is available. The stored auth file contains the Vercel session and selected team, not the generated Gateway key; the key is re-derived for the running process on each launch. An inherited `AI_GATEWAY_API_KEY` is ignored so another shell credential cannot silently change the billing scope.
+
+The model picker requests an availability-aware catalog for the selected team and removes models that Gateway marks durably policy-ineligible. Unknown, transient, and configuration-dependent entries may remain visible, and a baked compatibility catalog is used if live discovery fails. Appearing in the picker is therefore not a routing guarantee; the Start-time health request is the current verdict for credits, rate limits, access, and provider health.
+
+Every Vercel team has free and paid AI Gateway tiers. The monthly free credit covers a changing subset of models with lower per-model rate limits. Purchasing AI Gateway Credits moves the team to paid access and the monthly free credit no longer applies; eligible Enterprise teams can use invoice billing. Arcade does not hardcode the credit amount or model subset. Current policy, pricing, keys, spend, logs, and budgets remain linked to the canonical Vercel AI Gateway pages.
 
 ## Game case studies
 

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Mermaid } from '@vercel/geistdocs/components/mermaid';
 import { CodeBlock } from './docs-code';
 
 export interface DocSection { heading: string; body: ReactNode }
@@ -9,6 +10,40 @@ const Code = ({ children, title }: { children: string; title?: string }) => <Cod
 const Source = ({ path, children }: { path: string; children?: ReactNode }) => <a className="source-link" href={`${REPO}${path}`} rel="noreferrer" target="_blank">{children ?? path} ↗</a>;
 const Note = ({ children }: { children: ReactNode }) => <aside className="doc-note">{children}</aside>;
 const Api = ({ rows }: { rows: [string, string][] }) => <div className="api-list">{rows.map(([name, description]) => <div key={name}><code>{name}</code><p>{description}</p></div>)}</div>;
+const ARCHITECTURE_CHART = `flowchart TB
+  subgraph complete["Complete Arcade"]
+    direction LR
+    fullLayers["Reusable layers<br/>Engine · Terminal platform · Terminal UI<br/>Rules · Game harness · Game visuals"]
+    cli["Arcade CLI"]
+    local["Local terminal<br/>ANSI"]
+    hosted["Browser host<br/>isolated PTY + xterm.js"]
+    fullLayers --> cli
+    cli --> local
+    cli --> hosted
+  end
+
+  subgraph focused["Focused browser surfaces"]
+    direction LR
+    browserLayers["Browser-safe layers<br/>Engine · Terminal UI · Rules · Game visuals"]
+    browser["Browser API"]
+    canvas["Canvas"]
+    browserLayers --> browser
+    browser --> canvas
+  end
+  complete ~~~ focused`;
+const MOBILE_ARCHITECTURE_CHART = `flowchart TB
+  full["Complete Arcade<br/>all reusable layers"] --> cli["Arcade CLI"]
+  cli --> local["Local terminal<br/>ANSI"]
+  cli --> hosted["Browser host<br/>isolated PTY + xterm.js"]
+  hosted ~~~ focused["Focused browser surfaces<br/>browser-safe layers"]
+  focused --> browser["Browser API"]
+  browser --> canvas["Canvas"]`;
+
+const ArchitectureDiagram = () => <figure className="doc-architecture">
+  <div className="doc-architecture__diagram doc-architecture__diagram--desktop"><Mermaid chart={ARCHITECTURE_CHART} /></div>
+  <div className="doc-architecture__diagram doc-architecture__diagram--mobile"><Mermaid chart={MOBILE_ARCHITECTURE_CHART} /></div>
+  <figcaption>Two delivery paths from the same reusable package: the complete CLI and focused browser-safe scenes.</figcaption>
+</figure>;
 
 export const CORE_DOCS: DocPage[] = [
   {
@@ -20,7 +55,7 @@ export const CORE_DOCS: DocPage[] = [
       {
         heading: 'Start here',
         body: <><p>Arcade is both an application and a set of reusable TypeScript layers. Install the CLI when you want to play, spectate, or run the complete product. Import a package subpath when you want to build a renderer, terminal interface, game, model harness, or browser presentation of your own.</p><Code title="Terminal">{`npm i -g @vercel/arcade
-arcade`}</Code><p>Arcade requires Node.js 22 or newer and a terminal with truecolor support for the intended presentation. The renderer itself is CPU-only: there are no native graphics dependencies and no GPU requirement.</p></>,
+arcade`}</Code><p>To try the latest version once without installing a global command, run <code>npx @vercel/arcade@latest</code>. Arcade requires Node.js 22 or newer and a terminal with truecolor support for the intended presentation. The renderer itself is CPU-only: there are no native graphics dependencies and no GPU requirement.</p></>,
       },
       {
         heading: 'Choose an API',
@@ -43,14 +78,11 @@ import {
       },
       {
         heading: 'Understand the architecture',
-        body: <><p><code>engine</code> is the reusable CPU graphics layer. <code>tui</code> consumes engine cells and normalized platform input. Rules and AI contracts remain presentation-agnostic. <code>arcade</code> composes those libraries into games. Browser surfaces import only browser-safe subpaths, while the homepage connects to the actual packaged CLI in an isolated PTY.</p><Code title="Architecture">{`engine ----> tui ---------> terminal host -> ANSI
-   |          |
-   |          +-----------> focused browser surfaces -> Canvas
-   +----> arcade <---- rules + ai ----> hosted PTY`}</Code><p>Read the <Source path="docs/architecture/0001-hosted-arcade-terminal.md">hosted-terminal decision record</Source> before introducing a new host or credential path.</p></>,
+        body: <><p>Arcade has two delivery paths. The full CLI composes the reusable graphics, terminal interface, rules, game harness, and game visuals, then writes ANSI to a local terminal or runs unchanged inside the website’s isolated PTY. The Browser API imports browser-safe package layers and renders focused scenes directly to Canvas instead of loading the full application.</p><ArchitectureDiagram /><p>Read the <Source path="docs/architecture/0001-hosted-arcade-terminal.md">hosted-terminal decision record</Source> before introducing a new host or credential path.</p></>,
       },
       {
         heading: 'Choose the right path',
-        body: <><ul><li>Start with <a href="/docs/getting-started">Getting started</a> to install the CLI, sign in, or run from source.</li><li>Use <a href="/docs/package-api">Package API</a> to choose a stable npm subpath.</li><li>Open <a href="/docs/games">Games</a> to follow Chess, Poker, Islanders, and communication from rules through rendering and model play.</li><li>Continue to <a href="/docs/engine">Rendering engine</a> to draw your first CPU-rendered mesh.</li><li>Read <a href="/docs/renderer-pipeline">Rendering pipeline</a> to understand how pixels become ASCII, pixel, or hybrid cells.</li><li>Use <a href="/docs/tui">Terminal UI</a> and <a href="/docs/components">Components</a> to place interactive UI over a live scene.</li><li>Start with <a href="/docs/game-harness">Game harness</a> when rules, models, human players, or reproducible match records are the primary problem.</li><li>Reuse <a href="/docs/game-visuals">Game visuals</a> when a new host needs Arcade’s production boards, cards, pieces, or motion.</li><li>Use <a href="/docs/tools">Headless and agentic tooling</a> before reviewing visuals or long-running self-play.</li></ul><p>Arcade fits terminal-first graphics and agent-playable games. Choose a GPU renderer, remote-desktop stack, or authoritative multiplayer service when those are the actual requirements.</p></>,
+        body: <><ul><li>Start with <a href="/docs/getting-started">Getting started</a> to install the CLI, sign in, or run from source.</li><li>Open <a href="/docs/app">Using Arcade</a> to learn the launcher, tutorial, controls, model setup, teams, and billing.</li><li>Use <a href="/docs/package-api">Package API</a> to choose a stable npm subpath.</li><li>Open <a href="/docs/games">Games</a> to follow Chess, Poker, Islanders, and communication from rules through rendering and model play.</li><li>Continue to <a href="/docs/engine">Rendering engine</a> to draw your first CPU-rendered mesh.</li><li>Read <a href="/docs/renderer-pipeline">Rendering pipeline</a> to understand how pixels become ASCII, pixel, or hybrid cells.</li><li>Use <a href="/docs/platform">Terminal platform</a>, <a href="/docs/tui">Terminal UI</a>, and <a href="/docs/components">Components</a> to own terminal lifecycle and place interactive UI over a live scene.</li><li>Start with <a href="/docs/game-harness">Game harness</a> when rules, models, human players, or reproducible match records are the primary problem.</li><li>Reuse <a href="/docs/game-visuals">Game visuals</a> when a new host needs Arcade’s production boards, cards, pieces, or motion.</li><li>Use <a href="/docs/tools">Agentic tooling</a> to give coding agents bounded snapshots, structured artifacts, and inspectable self-play.</li></ul><p>Arcade fits terminal-first graphics and agent-playable games. Choose a GPU renderer, remote-desktop stack, or authoritative multiplayer service when those are the actual requirements.</p></>,
       },
     ],
   },
@@ -61,9 +93,13 @@ import {
     summary: 'Install Arcade, launch the terminal application, sign in for model play, and choose the package layer that matches what you want to build.',
     sections: [
       {
+        heading: 'Before you start',
+        body: <><ul><li>Use Node.js 22 or newer.</li><li>Run Arcade in a terminal with truecolor support for the intended presentation; 256-color terminals receive a compatible fallback.</li><li>You do not need a Vercel account to open Arcade or complete most of the offline-first Tutorial.</li><li>Real model seats require a Vercel account that belongs to at least one team. The selected team owns the generated AI Gateway key and model usage.</li></ul><p>The AI Gateway free tier covers a changing subset of models without a credit purchase. Read <a href="/docs/app/models">Models, teams, and billing</a> before selecting paid models or troubleshooting access.</p></>,
+      },
+      {
         heading: 'Install the CLI',
-        body: <><p>Arcade requires Node.js 22 or newer. Install the package globally, then launch it from any terminal.</p><Code title="Terminal">{`npm i -g @vercel/arcade
-arcade`}</Code><p>The first screen is a CPU-rendered prism followed by the game launcher. Keyboard and mouse input both work; open the in-app menu to see the active controls for the current screen.</p><Note>The npm package currently has restricted access while the public beta is finalized. If npm cannot resolve the package for your account, clone the repository and use the development workflow below.</Note></>,
+        body: <><p>Arcade requires Node.js 22 or newer. Install the package globally when you plan to return, then launch it from any terminal.</p><Code title="Terminal">{`npm i -g @vercel/arcade
+arcade`}</Code><p>For a one-off run, <code>npx @vercel/arcade@latest</code> downloads and launches the newest published version without leaving a global <code>arcade</code> command behind.</p><Code title="Terminal">{`npx @vercel/arcade@latest`}</Code><p>The first screen is a CPU-rendered prism followed by the game launcher. Keyboard and mouse input both work; open the in-app menu to see the active controls for the current screen.</p><Note>The npm package currently has restricted access while the public beta is finalized. If npm cannot resolve the package for your account, clone the repository and use the development workflow below.</Note></>,
       },
       {
         heading: 'Run from source',
@@ -71,13 +107,17 @@ arcade`}</Code><p>The first screen is a CPU-rendered prism followed by the game 
 cd arcade
 pnpm install
 pnpm dev`}</Code><Code title="Terminal">{`pnpm snapshot:png 140 50 0.7
-pnpm snapshot:png islanders 180 70 0.7`}</Code><p>Snapshot output is written under <code>.snapshots/</code>. Continue to <a href="/docs/tools">Testing and tools</a> for bounded render checks, self-play, and model audits.</p></>,
+pnpm snapshot:png islanders 180 70 0.7`}</Code><p>Snapshot output is written under <code>.snapshots/</code>. Continue to <a href="/docs/tools">Agentic tooling</a> for bounded render checks, self-play, and model audits.</p></>,
       },
       {
         heading: 'Enable model play',
-        body: <><p>Arcade uses Vercel device authorization rather than asking you to paste a credential. On first model-enabled launch, follow the browser prompt, select the Vercel team that should own AI Gateway usage, and return to the terminal.</p><Code title="Terminal">{`arcade --login
+        body: <><p>Arcade uses Vercel device authorization rather than asking you to paste a credential. On first model-enabled launch, follow the browser prompt, select the Vercel team that should own AI Gateway usage, and return to the terminal. Arcade creates or reuses that team’s key, then refreshes the model picker from an availability-aware team catalog.</p><Code title="Terminal">{`arcade --login
 arcade --switch-team
-arcade --logout`}</Code><p>The session is cached in <code>~/.config/arcade/auth.json</code>. The minted AI Gateway key is re-derived instead of stored. An unrelated <code>AI_GATEWAY_API_KEY</code> inherited from your shell is intentionally ignored.</p></>,
+arcade --logout`}</Code><p>The session is cached in <code>~/.config/arcade/auth.json</code>. The minted AI Gateway key is re-derived instead of stored. An unrelated <code>AI_GATEWAY_API_KEY</code> inherited from your shell is intentionally ignored. Continue to <a href="/docs/app/models">Models, teams, and billing</a> for key naming, free and paid access, spend links, and health-check failures.</p></>,
+      },
+      {
+        heading: 'Play your first game',
+        body: <><p>From Cover Flow, open the Tutorial to learn camera movement, menus, global keys, Chess, Poker, and Islanders on their real screens. The walkthrough uses local practice bots by default and skips its optional Gateway steps when you are signed out.</p><p>To start a model match instead, open a game, choose New match, assign each seat to a human or model, and press Start. Arcade tests each unique selected model before beginning, so a billing or routing problem remains recoverable in setup.</p><p>Continue to <a href="/docs/app">Using Arcade</a> for the complete app flow and <a href="/docs/games">Games</a> for detailed rules and technical case studies.</p></>,
       },
       {
         heading: 'Use Arcade as a library',
@@ -298,8 +338,44 @@ target.plot(x, y, depth, { r: 255, g: 160, b: 80, a: 1 }, 'opaque')`}</Code><p><
     ],
   },
   {
+    slug: 'platform',
+    label: 'Terminal platform',
+    title: 'Terminal platform',
+    summary: 'Normalize raw terminal input, detect color capability, and safely enter and leave Arcade’s alternate-screen runtime.',
+    sections: [
+      {
+        heading: 'Parse input',
+        body: <><Code>{`const parse = createInputParser({
+  onKey(event) { screen.handleKey(event) },
+  onMouse(event) { routeMouse(event) }
+})
+
+process.stdin.on('data', parse)`}</Code><p>The parser accepts arbitrary chunks because escape sequences may be split across reads. It buffers incomplete CSI or SGR mouse sequences and emits normalized events only when complete.</p><Api rows={[
+          ['KeyEvent.name', 'Lowercase letters or named keys such as up, escape, enter, tab, space, backspace, home, end, and delete.'],
+          ['KeyEvent.raw', 'Literal typed character for text input, preserving case and punctuation. Empty for pure escape sequences.'],
+          ['ctrl / shift / meta / super', 'Normalized modifier state, including xterm/Kitty CSI modifier parameters.'],
+          ['MouseEvent.type', 'down, up, drag, move, or wheel from SGR 1006 coordinates.'],
+          ['wheel / wheelAxis', 'Direction and vertical/horizontal axis for mouse wheel buttons 64–67.'],
+        ]} /><p>Terminal coordinates are one-based at this boundary. <code>Screen</code> converts them to zero-based local cell coordinates.</p></>,
+      },
+      {
+        heading: 'Detect terminal color',
+        body: <><p><code>detectTerminalColorMode()</code> returns <code>truecolor</code> or <code>256-color</code>. It accepts strong environment signals from known terminals, but does not blindly trust outer-terminal variables inside tmux or screen.</p><p>When capability is uncertain, Arcade sends a bounded DECRQSS SGR probe in raw mode and parses whether the terminal reports the exact RGB background. Non-TTY streams and probe timeouts safely fall back to 256 colors.</p><Code>{`const mode = await detectTerminalColorMode()
+const frame = applyTerminalColorMode(ansiFrame, mode)`}</Code></>,
+      },
+      {
+        heading: 'Enter and leave raw mode',
+        body: <><p><code>enterTerminal()</code> switches to the alternate screen, hides the cursor, enables SGR mouse motion, forces the default background to black, and enables raw stdin. <code>leaveTerminal()</code> reverses every setting.</p><p>Cleanup is registered for normal exit, SIGINT, SIGTERM, and uncaught exceptions. Both functions are idempotent. Applications embedding this platform layer must still structure their own startup and shutdown so <code>leaveTerminal()</code> is reached after recoverable failures.</p><Note>Do not enable mouse mode or raw input merely to render a static frame. Snapshot tools operate directly on <code>Surface</code> and avoid terminal state entirely.</Note></>,
+      },
+      {
+        heading: 'Respect the platform boundary',
+        body: <><p>The public platform subpath intentionally stops at input, color capability, and terminal lifecycle. Arcade’s URL opener, clipboard integration, hosted private OSC events, authentication, and process policy remain application internals.</p><p>If your terminal application opens a browser, print the URL as a fallback and own validation at the host boundary. Do not depend on <code>src/platform/open-browser.ts</code>; it is not exported by <code>@vercel/arcade/platform</code>.</p></>,
+      },
+    ],
+  },
+  {
     slug: 'tui',
-    label: 'TUI',
+    label: 'Terminal UI',
     title: 'Terminal UI',
     summary: 'Build retained component trees over a live scene, lay them out in terminal cells, and keep focus, pointer, keyboard, and command semantics independent from ANSI.',
     sections: [
@@ -733,8 +809,8 @@ console.log(state.fen())`}</Code></>,
   },
   {
     slug: 'tools',
-    label: 'Headless tooling',
-    title: 'Headless and agentic tooling',
+    label: 'Agentic tooling',
+    title: 'Agentic tooling',
     summary: 'Render inspectable frames, run games without a terminal, retain structured match artifacts, and give coding agents bounded evidence instead of an infinite TTY.',
     sections: [
       {
@@ -847,8 +923,8 @@ pnpm match:run -- --game islanders --models=a,b,c,d --communication=ambient`}</C
   },
   {
     slug: 'web',
-    label: 'Web API',
-    title: 'Web API',
+    label: 'Browser API',
+    title: 'Browser API',
     summary: 'Present Arcade Surface cells in a browser, host focused production scenes, and keep terminal glyph geometry consistent with xterm.',
     sections: [
       {
@@ -911,42 +987,6 @@ const { surface, status, displayMode } = scene.frame(cols, rows, time)`}</Code><
       {
         heading: 'Own browser lifecycle',
         body: <><ul><li>Measure the canvas with <code>ResizeObserver</code> and rebuild grid/backing resolution when either dimension changes.</li><li>Pause expensive frame production when the canvas is offscreen or the document is hidden.</li><li>Resolve and load fonts before judging glyph geometry.</li><li>Keep reusable scene logic browser-safe: no filesystem, terminal state, auth, telemetry, or secret access.</li><li>Use <code>forceFull</code> for dense effects whose neighboring glyphs all change; retained repainting is for sparse changes.</li></ul><Source path="src/web/index.ts" /></>,
-      },
-    ],
-  },
-  {
-    slug: 'platform',
-    label: 'Platform',
-    title: 'Terminal platform',
-    summary: 'Normalize raw terminal input, detect color capability, and safely enter and leave Arcade’s alternate-screen runtime.',
-    sections: [
-      {
-        heading: 'Parse input',
-        body: <><Code>{`const parse = createInputParser({
-  onKey(event) { screen.handleKey(event) },
-  onMouse(event) { routeMouse(event) }
-})
-
-process.stdin.on('data', parse)`}</Code><p>The parser accepts arbitrary chunks because escape sequences may be split across reads. It buffers incomplete CSI or SGR mouse sequences and emits normalized events only when complete.</p><Api rows={[
-          ['KeyEvent.name', 'Lowercase letters or named keys such as up, escape, enter, tab, space, backspace, home, end, and delete.'],
-          ['KeyEvent.raw', 'Literal typed character for text input, preserving case and punctuation. Empty for pure escape sequences.'],
-          ['ctrl / shift / meta / super', 'Normalized modifier state, including xterm/Kitty CSI modifier parameters.'],
-          ['MouseEvent.type', 'down, up, drag, move, or wheel from SGR 1006 coordinates.'],
-          ['wheel / wheelAxis', 'Direction and vertical/horizontal axis for mouse wheel buttons 64–67.'],
-        ]} /><p>Terminal coordinates are one-based at this boundary. <code>Screen</code> converts them to zero-based local cell coordinates.</p></>,
-      },
-      {
-        heading: 'Detect terminal color',
-        body: <><p><code>detectTerminalColorMode()</code> returns <code>truecolor</code> or <code>256-color</code>. It accepts strong environment signals from known terminals, but does not blindly trust outer-terminal variables inside tmux or screen.</p><p>When capability is uncertain, Arcade sends a bounded DECRQSS SGR probe in raw mode and parses whether the terminal reports the exact RGB background. Non-TTY streams and probe timeouts safely fall back to 256 colors.</p><Code>{`const mode = await detectTerminalColorMode()
-const frame = applyTerminalColorMode(ansiFrame, mode)`}</Code></>,
-      },
-      {
-        heading: 'Enter and leave raw mode',
-        body: <><p><code>enterTerminal()</code> switches to the alternate screen, hides the cursor, enables SGR mouse motion, forces the default background to black, and enables raw stdin. <code>leaveTerminal()</code> reverses every setting.</p><p>Cleanup is registered for normal exit, SIGINT, SIGTERM, and uncaught exceptions. Both functions are idempotent. Applications embedding this platform layer must still structure their own startup and shutdown so <code>leaveTerminal()</code> is reached after recoverable failures.</p><Note>Do not enable mouse mode or raw input merely to render a static frame. Snapshot tools operate directly on <code>Surface</code> and avoid terminal state entirely.</Note></>,
-      },
-      {
-        heading: 'Respect the platform boundary',
-        body: <><p>The public platform subpath intentionally stops at input, color capability, and terminal lifecycle. Arcade’s URL opener, clipboard integration, hosted private OSC events, authentication, and process policy remain application internals.</p><p>If your terminal application opens a browser, print the URL as a fallback and own validation at the host boundary. Do not depend on <code>src/platform/open-browser.ts</code>; it is not exported by <code>@vercel/arcade/platform</code>.</p></>,
       },
     ],
   },
