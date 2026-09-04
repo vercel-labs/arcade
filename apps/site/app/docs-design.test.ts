@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 
 test('docs use a flat peer-page navigation and Sans typography', async () => {
@@ -24,6 +24,7 @@ test('docs use a flat peer-page navigation and Sans typography', async () => {
   assert.match(css, /\.doc-page-header h1 \{[^\n]*var\(--font-geist-sans\)/);
   assert.match(css, /\.doc-article h2 \{[^\n]*var\(--font-geist-sans\)/);
   assert.match(css, /\.doc-architecture svg \{[^\n]*var\(--font-geist-sans\)/);
+  assert.match(css, /\.doc-article > section > h2 \{ overflow-wrap: anywhere; \}/);
   assert.doesNotMatch(css, /\.doc-(?:shell|article|sidebar|toc|page-header)[^\n]*font-site-display/);
 });
 
@@ -95,6 +96,10 @@ test('games are a drill-in chapter with rules, graphics, model, record, and comm
   assert.match(games, /<dl className="api-list"/);
   assert.match(games, /<dt>\{name\}<\/dt><dd>\{description\}<\/dd>/);
   assert.doesNotMatch(games, /Build a fourth game/);
+  assert.match(games, /Every live Chess, Poker, and Islanders game uses the same composer/);
+  assert.match(games, /src\/arcade\/match\/chat-composer\.ts/);
+  assert.match(games, /src\/arcade\/match\/directed-replies\.ts/);
+  assert.doesNotMatch(games, /currently belongs to live Islanders|src\/arcade\/games\/islanders\/chat-composer\.ts/);
   assert.match(css, /\.doc-cards--games \{ grid-template-columns: repeat\(3, minmax\(0, 1fr\)\); \}/);
 });
 
@@ -116,6 +121,9 @@ test('Using Arcade is a player-facing chapter with controls, billing, and recove
   assert.match(app, /Arcade automatically creates an AI Gateway API key for your selected team/);
   assert.match(app, /Arcade \(<username>\)/);
   assert.match(app, /models\?freeTier=true/);
+  assert.match(app, /view spend/);
+  assert.match(app, /suggests different creators across unfilled seats/);
+  assert.match(app, /Exit immediately from any screen/);
   for (const fact of ['availability-aware AI Gateway model catalog', 'Start-time health', 'Signing out of Arcade clears local access only', 'never purchased AI Gateway Credits', 'valid credit card', 'grants $5 in free credits every 30 days', 'at least $10 in AI Gateway Credits', 'recurring $5 free credit no longer applies']) assert.match(app, new RegExp(fact.replace('$', '\\$')));
   for (const url of ['ai-gateway%2Fapi-keys', 'docs/ai-gateway/pricing', 'observability-and-spend/budgets']) assert.match(app, new RegExp(url));
   assert.match(page, /import \{ APP_DOCS \}/);
@@ -146,14 +154,18 @@ test('game documentation examples match the public contracts they teach', async 
 });
 
 test('game docs distinguish plaintext from code and copy every visible structure', async () => {
-  const [games, code, client] = await Promise.all([
+  const [games, content, reference, code, client] = await Promise.all([
     readFile(new URL('./[lang]/docs/docs-games.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('./[lang]/docs/docs-content.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('./[lang]/docs/docs-reference.tsx', import.meta.url), 'utf8'),
     readFile(new URL('./[lang]/docs/docs-code.tsx', import.meta.url), 'utf8'),
     readFile(new URL('./[lang]/docs/docs-client.tsx', import.meta.url), 'utf8'),
   ]);
   assert.match(games, /language="text" title="Model context \(abridged\)"/);
   assert.match(games, /language="text" title="Prompt state machine"/);
   assert.match(games, /language="text" title="Checklist"/);
+  assert.match(content, /language="text" title="Pipeline"/);
+  assert.match(reference, /language="text" title="Workflow"/);
   assert.match(code, /data-language=\{lang\}/);
   assert.match(client, /p, li, pre, dt, dd, \.doc-note, \.doc-cards > a, \.source-link/);
   assert.match(client, /node\.tagName === 'DT'/);
@@ -196,7 +208,7 @@ test('docs provide highlighted copyable code, a copy-page action, section links,
   assert.doesNotMatch(page, /On this page|Edit on GitHub|doc-toc/);
   assert.match(page, /aria-label="Documentation pagination"/);
   assert.match(page, /href=\{`#\$\{id\}`\}/);
-  assert.match(content, /<CodeBlock title=\{title\}>/);
+  assert.match(content, /<CodeBlock language=\{language\} title=\{title\}>/);
 });
 
 test('every published package family and agentic workflow has a documentation path', async () => {
@@ -217,7 +229,7 @@ test('every published package family and agentic workflow has a documentation pa
 
 test('docs overview teaches a task-first path and supported package boundaries', async () => {
   const content = await readFile(new URL('./[lang]/docs/docs-content.tsx', import.meta.url), 'utf8');
-  for (const heading of ['Start here', 'Choose an API', 'Understand the architecture', 'Choose the right path']) assert.match(content, new RegExp(`heading: '${heading}'`));
+  for (const heading of ['Start here', 'Choose what to build', 'Understand the architecture', 'Explore the documentation']) assert.match(content, new RegExp(`heading: '${heading}'`));
   assert.match(content, /npm i -g @vercel\/arcade/);
   assert.match(content, /supported consumer boundary/);
   assert.match(content, /@vercel\/arcade\/harness/);
@@ -236,4 +248,16 @@ test('the agent corpus preserves the implementation contracts documented for hum
   for (const detail of ['Core contracts for agents', 'Material<U>', 'Screen', 'GameState<Action>', 'MatchScene.playMove()', 'CanvasSurfaceHost']) assert.match(corpus, new RegExp(detail.replace(/[<>()]/g, '\\$&')));
   for (const detail of ['/docs/app', '/docs/app/controls', '/docs/app/models', '/docs/games', 'Chess case study', 'Poker case study', 'Islanders case study', 'Communication and chat', 'ambient', 'autoreply', '@model', 'runHeadlessChessMatch', 'runPokerSession', 'play and whimsy']) assert.match(corpus, new RegExp(detail.replace(/[<>()]/g, '\\$&')));
   assert.match(corpus, /Current limitations/);
+  assert.match(corpus, /Live Chess, Poker, and Islanders games share a human chat composer/);
+});
+
+test('every linked documentation source exists in the repository', async () => {
+  const sources = await Promise.all([
+    './[lang]/docs/docs-content.tsx',
+    './[lang]/docs/docs-games.tsx',
+    './[lang]/docs/docs-reference.tsx',
+  ].map((path) => readFile(new URL(path, import.meta.url), 'utf8')));
+  const paths = sources.flatMap((source) => [...source.matchAll(/<Source path="([^"]+)"/g)].map((match) => match[1]!));
+  assert.ok(paths.length > 0);
+  for (const path of paths) await access(new URL(`../../../${path}`, import.meta.url));
 });

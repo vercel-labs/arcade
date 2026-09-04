@@ -22,7 +22,7 @@ export const APP_DOCS: DocPage[] = [
       {
         heading: 'Choose how to play',
         body: <><p>The <code>arcade</code> command launches an interactive terminal app. From its Cover Flow home screen, open Chess, Poker, Islanders, or the Tutorial. The games support different combinations of human and model seats; the Tutorial supplies local practice bots so you can learn the interface before making a model request.</p><Details rows={[
-          ['Play a model', <>Choose <strong>human</strong> for your seat and a model for the opposing seat. Chess is the shortest path to a one-on-one match.</>],
+          ['Play a model', <>Choose <strong>play vs AI</strong>, then select the models you want to face. Chess also lets you choose whether to play White or Black and is the shortest path to a one-on-one match.</>],
           ['Spectate models', <>Assign models to every seat and watch the match, public commentary, animations, and records progress without taking a turn yourself.</>],
           ['Practice offline', <>Open the Tutorial. Its Poker and Islanders chapters use local policy bots, and Gateway-only checklist steps are skipped when you are signed out.</>],
         ]} /><Note>You can open Arcade and complete most of the Tutorial without a Vercel account. Only real model seats require Vercel sign-in and AI Gateway access.</Note></>,
@@ -31,11 +31,11 @@ export const APP_DOCS: DocPage[] = [
         heading: 'Follow the app flow',
         body: <Details rows={[
           ['Opening prism', 'Arcade detects terminal color support while a CPU-rendered prism introduces the display. Continue to the launcher with any key.'],
-          ['Cover Flow', 'Move between the three public games and Tutorial. Open a cover to enter its scene; the home menu also holds account and telemetry controls.'],
-          ['Match setup', 'Choose which seats are human or model controlled, select models, and start only when every required seat is assigned.'],
+          ['Cover Flow', 'Move among three playable games, Leaderboard and Achievements covers marked coming soon, a Website shortcut, the Trailer, and Tutorial. Development checkouts append test surfaces marked dev only; published installs hide them.'],
+          ['Match setup', 'Choose a play or spectate mode, then select a model for every AI seat. Arcade suggests different creators across unfilled seats, but it does not choose the models for you.'],
           ['Health check', 'Before a model match begins, Arcade sends one small request to each unique selected model. A failed check leaves setup recoverable and explains the likely access, billing, or provider problem.'],
           ['Game scene', 'The board or table owns the camera, contextual action bar, status, and animated consequences. Optional panels expose controls, history, chat, or private reads where the game supports them.'],
-          ['Menu and account', 'Press m or open the top-right menu for display, controls, reset, home, account, and quit actions. Switch the billed Vercel team or sign out from Account.'],
+          ['Menu and account', 'Press m or open the top-right menu for display, controls, reset, home, account, and quit actions. Account lets you view Gateway spend for the selected team, switch the billed team, or sign out.'],
         ]} />,
       },
       {
@@ -43,7 +43,7 @@ export const APP_DOCS: DocPage[] = [
         body: <><Details rows={[
           ['1. Open a game', 'Choose Chess, Poker, or Islanders from the launcher. The scene opens before you commit to a model match.'],
           ['2. Open match setup', 'Use New match or the model setup control. Escape closes setup without changing the current game.'],
-          ['3. Assign seats', 'Choose human where you want to act, or select a model creator and model. Poker and Islanders support more seats than Chess.'],
+          ['3. Assign seats', 'Choose play vs AI or spectate AI; Chess also lets you choose a color. Then select a model for every AI seat. Arcade distributes suggested creators across unfilled seats and preserves models you already chose when you switch modes.'],
           ['4. Start', 'Arcade health-checks the selected models, then applies every human or model action through the same authoritative game rules.'],
           ['5. Recover if needed', <>If a model fails before the match, stay in setup and read <Link href="/docs/app/models">Models, teams, and billing</Link>. You can change the model or billed team and retry.</>],
         ]} /><p>Model availability and pricing can differ by team. A model appearing in the picker is useful discovery, but the Start-time health check is the final proof that the selected team can route a request right now.</p></>,
@@ -51,7 +51,7 @@ export const APP_DOCS: DocPage[] = [
       {
         heading: 'Follow a live game',
         body: <Details rows={[
-          ['Public commentary', 'Chat contains table-facing speech or rationale, not hidden chain-of-thought. Press c where chat is available; directed @model mentions can request one bounded reply.'],
+          ['Public commentary', <>Chess, Poker, and Islanders share public chat for table-facing speech, never hidden chain-of-thought. When you hold a human seat, type <code>@</code> to choose one or more model labels and request one bounded reply from each. Press <code>c</code> to open chat in Chess or Poker; Islanders keeps chat in its right rail.</>],
           ['Private reads', 'Poker seats can keep private notes about how others play. These notes belong to the local match experience and are not part of canonical telemetry.'],
           ['History and records', 'Chess exposes move history and PGN copy. Poker and Islanders preserve their own action and match records for replay and inspection.'],
           ['Model wisps', 'A colored wisp identifies a model seat and reacts when it speaks or thinks. In supported screens, select the wisp to swap that seat to another model.'],
@@ -102,15 +102,16 @@ export const APP_DOCS: DocPage[] = [
           ['m', 'Open or close the current screen menu.'],
           ['Escape', 'Close the topmost popup or menu. With nothing open inside a game, Arcade asks before returning home.'],
           ['d', 'Cycle ASCII, pixels, and hybrid display styles.'],
-          ['q or Ctrl+C', 'Enter the app quit path. An active screen may ask for confirmation before Arcade exits.'],
+          ['q', 'Open the quit confirmation.'],
+          ['Ctrl+C', 'Exit immediately from any screen, including while a dialog or text field is open.'],
         ]} /><p>Arcade maps these inputs to stable command IDs. The same command can be invoked from a menu, a key binding, or an agent-capable host without changing what the action means.</p></>,
       },
       {
         heading: 'Know the game controls',
         body: <><Details rows={[
-          ['Chess', <>Select a piece to reveal legal destinations, then select a highlighted square. Toggle move history with <code>h</code>, the evaluation bar with <code>e</code>, and use New match for human or model seats.</>],
+          ['Chess', <>Select a piece to reveal legal destinations, then select a highlighted square. Toggle move history with <code>h</code>, the evaluation bar with <code>e</code>, and chat with <code>c</code>.</>],
           ['Poker', <>Use the contextual action bar to fold, check, call, bet, or raise. Press <code>c</code> for chat, <code>p</code> to pause, and Space to skip the countdown between hands.</>],
-          ['Islanders', 'Use the phase-specific HUD for placement, rolling, building, trading, robber actions, and ending a turn. Chat and directed model mentions stay separate from legal game actions.'],
+          ['Islanders', <>Use the phase-specific HUD for placement, rolling, building, trading, robber actions, and ending a turn. The right rail holds public chat and the shared <code>@model</code> composer; directed replies are available in ambient mode.</>],
         ]} /><p>Press <code>?</code> after entering a game for the exact controls available in its current phase. Read the <Link href="/docs/games">Games</Link> chapter for complete rules and game-specific behavior.</p></>,
       },
       {
@@ -139,9 +140,9 @@ export const APP_DOCS: DocPage[] = [
 arcade --switch-team
 arcade --logout`}</Code><Details rows={[
           ['Sign in', 'Force a new device-authorization flow when you skipped it or need another Vercel account.'],
-          ['Switch team', 'Choose another team, create or reuse its Arcade key, refresh the model catalog, and bill future model requests there.'],
+          ['Switch team', 'Choose another team, let Arcade obtain its team-scoped key, refresh the model catalog, and bill future model requests there.'],
           ['Sign out', 'Remove the cached Vercel session and process-local Gateway key from this machine. It does not delete keys already listed in the Vercel dashboard.'],
-          ['Account menu', 'Perform the same account and team changes without leaving the running Arcade app.'],
+          ['Account menu', 'Perform the same account and team changes without leaving the running Arcade app, or select view spend to open the chosen team’s AI Gateway overview.'],
         ]} /></>,
       },
       {
@@ -161,6 +162,7 @@ arcade --logout`}</Code><Details rows={[
           ['Visible unknowns', 'Unknown, transient, or configuration-dependent eligibility can remain visible so a temporary evaluation does not empty the catalog.'],
           ['Fallback catalog', 'If the availability request fails, times out, or lacks eligibility annotations, Arcade uses its baked compatibility-tested catalog.'],
           ['Final health check', 'Starting a match sends one small request to each unique selected model. This is the final check for current credits, rate limits, provider access, and routing health.'],
+          ['Setup suggestions', 'Match setup distributes suggested creators across unfilled AI seats, then waits for you to choose the actual models. Switching play or spectate modes preserves committed model choices.'],
         ]} /><Note>The picker is team-aware, but appearing there is not a guarantee that a model can answer right now. Use the Start-time health result as the current routing verdict.</Note></>,
       },
       {
@@ -177,6 +179,7 @@ arcade --logout`}</Code><Details rows={[
       {
         heading: 'Manage keys, spend, and limits',
         body: <Details rows={[
+          ['In Arcade', <>Open Account and select <strong>view spend</strong> beneath the current team to open its AI Gateway overview.</>],
           ['AI Gateway dashboard', <>Open <External href={GATEWAY_DASHBOARD}>AI Gateway</External> to see the current credit balance. Overview charts usage and spend by model, while Logs shows individual request costs and routing attempts.</>],
           ['API Keys', <>Open <External href={GATEWAY_KEYS}>API Keys</External> to identify the Arcade key, inspect last use, set a key budget where available, or revoke it.</>],
           ['Free-tier models', <>Browse the current <External href={GATEWAY_FREE_MODELS}>free-tier model list</External> rather than relying on a static list in Arcade documentation.</>],

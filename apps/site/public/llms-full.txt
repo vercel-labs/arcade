@@ -42,13 +42,15 @@ Choose Arcade for terminal-first 3D rendering, reusable retained TUI components,
 
 ## Using the Arcade app
 
-The `arcade` command launches a full-screen terminal app. Its public Cover Flow contains Chess, Poker, Islanders, and an eight-chapter Tutorial. A player can take a human seat against a model, assign models to every seat and spectate, or learn offline against Tutorial practice bots. Match setup remains open when a selected model fails its pre-start health check, so the player can switch the model or billed team and retry.
+The `arcade` command launches a full-screen terminal app. Its production Cover Flow contains Chess, Poker, Islanders, Leaderboard and Achievements covers marked coming soon, a Website shortcut, the Trailer, and an eight-chapter Tutorial. Development runs append internal test surfaces marked `dev only`; published installs hide them. A player can take a human seat against models, assign models to every available AI seat and spectate, or learn offline against Tutorial practice bots. Match setup remains open when a selected model fails its pre-start health check, so the player can switch the model or billed team and retry.
 
 The Tutorial runs on the real game screens and covers camera movement, menus, display modes, global keys, and the three games. It is offline-first, does not record practice-bot games, and leaves Gateway-only checklist steps out of completion when the player is signed out. Contextual controls are always available with `?`; `m` opens the menu, Escape closes the topmost layer, `d` cycles display modes, and the shared camera supports zoom, orbit, pan, arrow-key movement, and reset.
 
-Real model seats require Vercel device authorization and a selected team. Arcade creates or reuses a team-scoped AI Gateway key named `Arcade (<username>)` when the username is available. The stored auth file contains the Vercel session and selected team, not the generated Gateway key; the key is re-derived for the running process on each launch. An inherited `AI_GATEWAY_API_KEY` is ignored so another shell credential cannot silently change the billing scope.
+Real model seats require Vercel device authorization and a selected team. Arcade automatically creates a team-scoped AI Gateway key named `Arcade (<username>)`, or simply `Arcade` when the username is unavailable. The stored auth file contains the Vercel session and selected team, not the generated Gateway key; the key is re-derived for the running process on each launch. An inherited `AI_GATEWAY_API_KEY` is ignored so another shell credential cannot silently change the billing scope.
 
 The model picker requests an availability-aware catalog for the selected team and removes models that Gateway marks durably policy-ineligible. Unknown, transient, and configuration-dependent entries may remain visible, and a baked compatibility catalog is used if live discovery fails. Appearing in the picker is therefore not a routing guarantee; the Start-time health request is the current verdict for credits, rate limits, access, and provider health.
+
+Match setup suggests different creators across unfilled AI seats but leaves every model for the user to choose. Switching between play and spectate preserves committed model choices and re-deals only untouched seats.
 
 Teams that have never purchased AI Gateway Credits and are not on an eligible Enterprise plan use the Free tier. After card verification, AI Gateway grants $5 in free credits every 30 days for a subset of models with lower per-model rate limits. Purchasing at least $10 in Gateway Credits moves a team to the Paid tier, expands access beyond the Free-tier model subset, and raises rate limits; the recurring $5 credit then no longer applies. Eligible Enterprise teams can use invoiced billing instead. Current pricing, eligible models, keys, spend, logs, and budgets remain linked to the canonical Vercel AI Gateway pages.
 
@@ -92,7 +94,7 @@ Communication is proposed beside a legal move and never changes the move or rule
 - `ambient`: speech is scored against a 0.62 threshold using action salience, intent, spacing, repetition, and monologue frequency. It favors meaningful reactions, negotiation, and table politics while suppressing routine action narration.
 - Applied game actions become public `GameMoment` values. Ambient Islanders may offer one affected or relevant model a reaction opportunity; autoreply remains actor-focused.
 - `PublicConversation` sanitizes text, limits a message to 360 characters, stores addressed seats, and projects bounded recent public context per model. It never contains hidden hands, chain-of-thought, or account identity.
-- In live human Islanders games, type `@` to filter model labels and complete an exact `@model` mention. In ambient mode, each addressed model receives one immediate required reply opportunity tied to that source message. Replies do not create reply-to-reply obligations, preventing an infinite chat loop.
+- Live Chess, Poker, and Islanders games share a human chat composer. Type `@` to filter model labels and complete an exact `@model` mention. Chess and Poker queue one bounded reply for each addressed model; ambient Islanders does the same. Unaddressed messages become public context without forcing a reply, and model replies never create reply-to-reply obligations.
 - Canonical records and anonymous telemetry exclude chat, prompts, reasoning, voice, and raw model responses. Local Match Lab traces may separately retain communication decisions for debugging.
 - `CommunicationPolicy`, `PublicConversation`, `TableCommunicationCoordinator`, and the game-moment helpers are exported from `@vercel/arcade/harness/communication`.
 
@@ -133,6 +135,7 @@ The cinematic and hosted terminal reuse `@vercel/arcade/web` and the packaged CL
 - Public npm entry points are exactly the package export map: root, engine, engine/png, TUI, platform, web, generic/per-game rules, generic/per-game harnesses, communication, records, and generic/per-game game-visual modules.
 - `engine/png` is Node-only because it uses node:zlib. The root convenience entry, engine, browser TUI surface, game visuals, and web entry are browser-safe.
 - `src/arcade`, `src/tools`, `src/cinematic`, authentication, telemetry delivery, voice, and prism deployment are not npm APIs. Do not deep-import them.
+- Published match setup currently offers text-model seats only. The experimental realtime voice layer and Audio surface remain development-only.
 - Snapshot and match-lab orchestration are checkout tools. Their reusable foundations—renderer, Surface, Screen.snapshot, rules, Players, headless game runners, visual choreography, and canonical records—are public.
 
 ### Engine

@@ -41,7 +41,7 @@ export function MobileDocsNav({ active, items }: { active: string; items: DocsNa
   return <div className="doc-mobile-nav">
     <button aria-controls="doc-mobile-nav-sheet" aria-expanded={open} onClick={() => setOpen((value) => !value)} type="button"><span>Browse docs</span><span aria-hidden="true">{open ? '−' : '+'}</span></button>
     <div className={open ? 'open' : ''} id="doc-mobile-nav-sheet">
-      <nav>{items.map((item, index) => item.group ? <span className="doc-sidebar__group" key={`${item.group}-${index}`}>{item.group}</span> : <Link aria-current={item.href === active ? 'page' : undefined} href={item.href} key={item.href} onClick={() => setOpen(false)}><span>{item.label}</span>{item.drillIn ? <span aria-hidden="true"><IconChevronRight size={16} /></span> : null}</Link>)}</nav>
+      <nav aria-label="Documentation navigation">{items.map((item, index) => item.group ? <span className="doc-sidebar__group" key={`${item.group}-${index}`}>{item.group}</span> : <Link aria-current={item.href === active ? 'page' : undefined} href={item.href} key={item.href} onClick={() => setOpen(false)}><span>{item.label}</span>{item.drillIn ? <span aria-hidden="true"><IconChevronRight size={16} /></span> : null}</Link>)}</nav>
     </div>
   </div>;
 }
@@ -67,7 +67,7 @@ export function articleMarkdown(article: HTMLElement): string {
       const title = node.querySelector('strong')?.innerText.trim() ?? text;
       const description = node.querySelector('span')?.innerText.trim();
       const href = node.getAttribute('href') ?? '';
-      lines.push(`- [${title}](${href})${description ? ` — ${description}` : ''}`);
+      lines.push(`- [${title}](${href})${description ? `: ${description}` : ''}`);
     } else if (node.classList.contains('source-link')) {
       lines.push(`Source: [${node.innerText.replace(/\s*↗\s*$/, '').trim()}](${node.getAttribute('href') ?? ''})`);
     }
