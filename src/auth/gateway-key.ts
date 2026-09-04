@@ -92,7 +92,7 @@ export async function ensureGatewayKey(opts: EnsureOpts = {}): Promise<EnsureRes
   } catch (err) {
     out();
     out(`  Vercel sign-in skipped: ${errMessage(err)}`);
-    out(dim('  Playing without AI — sign in later to enable model play.'));
+    out(dim('  playing without AI — sign in later to enable model play.'));
     out();
     return null;
   }
@@ -114,7 +114,7 @@ export async function signInWithAnotherAccount(): Promise<EnsureResult | null> {
   } catch (err) {
     if (previousKey === undefined) delete process.env[ENV_KEY];
     else process.env[ENV_KEY] = previousKey;
-    out(`  Could not change account: ${errMessage(err)}`);
+    out(`  could not change account: ${errMessage(err)}`);
     return null;
   }
 }
@@ -198,12 +198,12 @@ async function login(persist = true): Promise<StoredAuth> {
   const url = device.verification_uri_complete ?? device.verification_uri;
 
   out();
-  out(bold('  Sign in to Vercel'));
-  out('  A browser window will open. If it doesn’t, visit:');
+  out(bold('  sign in to Vercel'));
+  out('  a browser window will open. if it doesn’t, visit:');
   out(`    ${bold(device.verification_uri)}`);
   out(`  and enter the code:  ${bold(device.user_code)}`);
   out();
-  out(dim('  Waiting for you to authorize…'));
+  out(dim('  waiting for you to authorize…'));
   openBrowser(url);
 
   const tokens = await pollForToken(device.device_code, {
@@ -215,7 +215,7 @@ async function login(persist = true): Promise<StoredAuth> {
   if (user?.username) auth.user = { username: user.username }; // persisted → key name + skips a refetch later
   if (persist) writeAuth(auth);
 
-  if (persist) out(status(`  ✓ Signed in${user ? ` as ${user.username}` : ''}.`));
+  if (persist) out(status(`  ✓ signed in${user ? ` as ${user.username}` : ''}.`));
   return auth;
 }
 
@@ -235,7 +235,7 @@ async function ensureTeam(auth: StoredAuth, forcePick: boolean, persist = true):
 }
 
 function soleTeam(team: Team): Team {
-  out(`  Using team ${bold(team.name)}.`);
+  out(`  using team ${bold(team.name)}.`);
   return team;
 }
 
@@ -243,7 +243,7 @@ function soleTeam(team: Team): Team {
 // retry budget throws (caught upstream → AI just stays gated).
 async function pickTeam(teams: Team[]): Promise<Team> {
   out();
-  out(bold('  Select a team to bill AI Gateway usage to:'));
+  out(bold('  select a team to bill AI Gateway usage to:'));
   teams.forEach((t, i) => out(`    ${String(i + 1).padStart(2)}. ${t.name}${t.slug !== t.name ? dim(`  (${t.slug})`) : ''}`));
   out();
 
@@ -253,7 +253,7 @@ async function pickTeam(teams: Team[]): Promise<Team> {
       const answer = (await rl.question(`  Team [1-${teams.length}]: `)).trim();
       const n = Number(answer);
       if (Number.isInteger(n) && n >= 1 && n <= teams.length) return teams[n - 1]!;
-      out(dim('  Enter the number next to a team.'));
+      out(dim('  enter the number next to a team.'));
     }
     throw new Error('no team selected');
   } finally {
@@ -284,7 +284,7 @@ async function mintKey(auth: StoredAuth, team: Team, quiet = false, persist = tr
   const key = await createGatewayKey(auth.access_token, team.id, name);
   if (install) process.env[ENV_KEY] = key;
   if (!quiet) {
-    out(status(`  ✓ AI Gateway ready. Billed to ${team.name}.`));
+    out(status(`  ✓ AI Gateway ready. billed to ${team.name}.`));
     out();
   }
   return key;

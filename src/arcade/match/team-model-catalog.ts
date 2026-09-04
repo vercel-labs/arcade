@@ -37,13 +37,29 @@ interface GatewayModel {
   model_eligibility?: ModelEligibility;
 }
 
+// Gateway's verdict on the team itself, independent of any model: whether a request
+// from this key could be billed at all. `reason` is only present when unavailable;
+// `customer_verification_required` means no card on file, `insufficient_funds` a card
+// with an exhausted balance. Anything the evaluator could not settle arrives as
+// `unknown`, and a response without the field means the team is not yet in the
+// availability rollout.
+export interface RequestAvailability {
+  status: 'available' | 'unavailable' | 'unknown';
+  reason?: string;
+}
+
 export interface ArcadeModelCatalog {
   source: 'team' | 'fallback';
   textCreators: CreatorInfo[];
   realtimeCreators: CreatorInfo[];
   availabilityStatus?: string;
   catalogStatus?: string;
-  requestContextAvailability?: unknown;
+  requestAvailability?: RequestAvailability;
+  // Text models Gateway hides from this team until it has purchased credits
+  // (`model_eligibility.reason === 'plan_restricted'`, a `policy` denial, so the rows are
+  // dropped from the picker above). The count lets the account modal say how many more
+  // models a purchase would unlock.
+  planRestrictedCount: number;
   fallbackReason?: string;
 }
 
@@ -86,8 +102,18 @@ export function fallbackArcadeModelCatalog(reason?: string): ArcadeModelCatalog 
     source: 'fallback',
     textCreators: pickerCreators(),
     realtimeCreators: realtimeFallback(),
+    planRestrictedCount: 0,
     fallbackReason: reason,
   };
+}
+
+function parseRequestAvailability(value: unknown): RequestAvailability | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const http = (value as { http?: unknown }).http;
+  if (typeof http !== 'object' || http === null) return undefined;
+  const { status, reason } = http as { status?: unknown; reason?: unknown };
+  if (status !== 'available' && status !== 'unavailable' && status !== 'unknown') return undefined;
+  return { status, ...(typeof reason === 'string' ? { reason } : {}) };
 }
 
 function isGatewayModel(value: unknown): value is GatewayModel {
@@ -149,13 +175,15 @@ export function parseTeamModelCatalog(value: unknown, popularityOrder: readonly 
 
   const visible = models.filter((model) => !isDurablyUnavailable(model));
   const modelsById = new Map(visible.map((model) => [model.id, model]));
+  const allById = new Map(models.map((model) => [model.id, model]));
   return {
     source: 'team',
     textCreators: groupCreators(visible.filter((model) => isTextModel(model, modelsById)), popularityOrder),
     realtimeCreators: groupCreators(visible.filter(isRealtimeModel), popularityOrder),
     availabilityStatus: typeof response.availability_status === 'string' ? response.availability_status : undefined,
     catalogStatus: typeof response.catalog_status === 'string' ? response.catalog_status : undefined,
-    requestContextAvailability: response.request_context_availability,
+    requestAvailability: parseRequestAvailability(response.request_context_availability),
+    planRestrictedCount: models.filter((model) => model.model_eligibility?.reason === 'plan_restricted' && isTextModel(model, allById)).length,
   };
 }
 

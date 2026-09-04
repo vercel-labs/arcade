@@ -170,9 +170,9 @@ export function islandersLiveView(
 }
 
 const DEV_CARD_HOLD_COPY = {
-  boughtThisTurn: 'Bought this turn. You can play it from your next turn.',
-  alreadyPlayed: 'You already played a development card this turn.',
-  notYourTurn: 'Playable on your turn, before or after you roll.',
+  boughtThisTurn: 'bought this turn. you can play it from your next turn.',
+  alreadyPlayed: 'you already played a development card this turn.',
+  notYourTurn: 'playable on your turn, before or after you roll.',
 } as const;
 
 // ── status ──────────────────────────────────────────────────────────────────────────────────
@@ -254,7 +254,7 @@ export function islandersStatusLine(
   const state = driver.state();
   if (!state) return null;
   if (!setupComplete) return null;
-  if (driver.error()) return { actor: 'Game stopped', narration: driver.error() ?? '', color: STATUS_FG };
+  if (driver.error()) return { actor: 'game stopped', narration: driver.error() ?? '', color: STATUS_FG };
   if (driver.isComplete()) {
     const winner = driver.winner();
     const points = state.victoryPoints(winner, true);
@@ -273,7 +273,7 @@ export function islandersStatusLine(
   const seat = prompt.player;
   const human = seat === driver.humanSeat();
   return {
-    actor: human ? 'Your turn' : driver.labelOf(seat),
+    actor: human ? 'your turn' : driver.labelOf(seat),
     narration: `· ${pendingInstruction(state, human)}`,
     color: PLAYER_LOOK[driver.colorOf(seat)],
   };
@@ -357,6 +357,7 @@ export interface IslandersGameHudDeps {
   onOpenNotes?: () => void;
   onStart: () => void;
   healthStatus?: { lines: string[]; failed: boolean };
+  gatewayNote?: string[];
   notice?: string;
 }
 
@@ -819,7 +820,7 @@ export function buildIslandersGameRoot(region: LayoutBox, deps: IslandersGameHud
   ];
 
   if (!playing) {
-    const setup = matchSetupLayout(region, buildIslandersSetupPanel(deps.healthStatus), [
+    const setup = matchSetupLayout(region, buildIslandersSetupPanel(deps.healthStatus, deps.gatewayNote), [
       newMatchButton('islanders-start', deps.onStart, !islandersSetupReady() || deps.healthStatus?.failed === false),
     ]);
     return Box({ width: region.w, height: region.h }, [setup, ...chrome]);

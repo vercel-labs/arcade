@@ -184,3 +184,28 @@ test('team catalog follows Gateway popularity and groups fast variants with thei
     'openai/alpha',
   ]);
 });
+
+test('team catalog keeps the request-wide billing verdict and counts plan-restricted text models', () => {
+  const catalog = parseTeamModelCatalog({
+    request_context_availability: { http: { status: 'unavailable', reason: 'customer_verification_required' }, realtime_websocket: { status: 'available' } },
+    data: [
+      model('openai/text-ok', 'http'),
+      model('openai/text-paid', 'http', 'ineligible'),
+      model('anthropic/text-paid', 'http', 'ineligible'),
+      model('openai/realtime-paid', 'realtime_websocket', 'ineligible'),
+      model('openai/image-paid', 'http', 'ineligible', { tags: ['image-generation'] }),
+      model('xai/text-denied', 'http', 'ineligible', {
+        model_eligibility: { evaluated_runtime: 'http', status: 'ineligible', category: 'policy', reason: 'model_not_allowlisted' },
+      }),
+    ],
+  });
+  assert.ok(catalog);
+  assert.deepEqual(catalog.requestAvailability, { status: 'unavailable', reason: 'customer_verification_required' });
+  assert.equal(catalog.planRestrictedCount, 2);
+  assert.deepEqual(catalog.textCreators.flatMap((creator) => creator.models.map((entry) => entry.id)), ['openai/text-ok']);
+
+  const bare = parseTeamModelCatalog({ data: [model('openai/text-ok', 'http')] });
+  assert.equal(bare?.requestAvailability, undefined);
+  assert.equal(bare?.planRestrictedCount, 0);
+  assert.equal(parseTeamModelCatalog({ request_context_availability: { http: { status: 'later' } }, data: [model('openai/text-ok', 'http')] })?.requestAvailability, undefined);
+});

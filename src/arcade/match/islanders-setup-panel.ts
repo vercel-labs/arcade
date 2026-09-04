@@ -86,7 +86,7 @@ function heroColor(): PlayerColor {
 // its own model row and whether the color picker applies to you or to seat 1.
 export const modeDropdown = new Dropdown({
   id: 'islanders-setup-mode',
-  items: ['play vs ai', 'spectate ai'],
+  items: ['play vs AI', 'spectate AI'],
   width: 16,
   index: 0,
   onSelect: () => changed(),
@@ -162,7 +162,7 @@ export function islandersSetupSelection(): IslandersSeatSpec[] | null {
 // The current choices as display labels, in seat order — for the status rail before the
 // game starts, and for the seat labels once it has.
 export function islandersSetupLabels(): string[] {
-  const labels: string[] = [spectating() ? seatLabel(sides[0]) : 'You'];
+  const labels: string[] = [spectating() ? seatLabel(sides[0]) : 'you'];
   for (let i = 1; i < seatCount(); i++) labels.push(seatLabel(sides[i]));
   return labels;
 }
@@ -186,7 +186,7 @@ function seatRow(side: ModelSeatPicker, seatNo: number, color: PlayerColor): Nod
 // background — the rows float over the scene and only the controls carry their own pill
 // fills. Configs not currently shown keep their Slots mounted (hidden in a 0×0 box) so the
 // Screen doesn't unmount them. Starting is the bottom-left "new match" button, not here.
-export function buildIslandersSetupPanel(healthStatus?: { lines: string[]; failed: boolean }): Node {
+export function buildIslandersSetupPanel(healthStatus?: { lines: string[]; failed: boolean }, gatewayNote?: string[]): Node {
   const shownIdx = shownIndices();
   const colors = islandersSeatColors();
   const seatRows: Node[] = [];
@@ -217,6 +217,7 @@ export function buildIslandersSetupPanel(healthStatus?: { lines: string[]; faile
       : [Box({ width: 0, height: 0, overflow: 'hidden' }, [Slot('islanders-setup-color')])]),
     ...seatRows,
     ...(healthStatus ? healthStatus.lines.map((text) => Text({ text, style: { color: healthStatus.failed ? 'danger' : 'muted' } })) : []),
+    ...(gatewayNote?.length ? [Box({ flexDirection: 'column' }, gatewayNote.map((text) => Text({ text, style: { color: 'muted' } })))] : []),
     ...hidden,
   ]);
 }

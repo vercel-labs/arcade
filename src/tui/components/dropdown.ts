@@ -409,7 +409,7 @@ export class Dropdown implements Component {
 
   private selectionText(): string {
     const caret = this.open ? '▴' : '▾';
-    const label = this.value ?? this.opts.placeholder ?? 'Select…';
+    const label = this.value ?? this.opts.placeholder ?? 'select…';
     // Bare: the caret hugs the label — no fixed-width padding, no ellipsis.
     if (this.opts.bare) return `${label} ${caret}`;
     const room = Math.max(1, this.width - 4);
@@ -418,7 +418,7 @@ export class Dropdown implements Component {
   }
 
   private searchText(): string {
-    if (!this.editing) return this.opts.searchPlaceholder ?? 'Search';
+    if (!this.editing) return this.opts.searchPlaceholder ?? 'search';
     this.reflowQuery();
     return this.query.slice(this.queryScroll, this.queryScroll + this.searchRoom());
   }
@@ -490,7 +490,7 @@ export class Dropdown implements Component {
       if (!this.lines.length) {
         children.push({
           ...Box({ position: 'absolute', top: dropdownTop, left: 0, width: this.width, height: 1, background: 'surfaceControl' }, [
-            Text({ text: this.opts.emptyLabel ?? 'No matches', style: { width: this.width, padding: [0, 1], color: 'textMuted', background: 'surfaceControl' } }),
+            Text({ text: this.opts.emptyLabel ?? 'no matches', style: { width: this.width, padding: [0, 1], color: 'textMuted', background: 'surfaceControl' } }),
           ]),
           overlay: true,
           onMouse: (ev: PointerHit) => this.onListMouse(ev),

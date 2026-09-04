@@ -88,7 +88,7 @@ export async function requestDeviceCode(fetchImpl: Fetch = fetch): Promise<Devic
   });
   if (!res.ok) {
     const detail = await safeError(res);
-    throw new OAuthError(detail.error ?? 'device_authorization_failed', detail.error_description ?? `Could not start login (HTTP ${res.status}).`);
+    throw new OAuthError(detail.error ?? 'device_authorization_failed', detail.error_description ?? `could not start login (HTTP ${res.status}).`);
   }
   return (await res.json()) as DeviceAuth;
 }
@@ -127,14 +127,14 @@ export async function pollForToken(deviceCode: string, opts: PollOpts): Promise<
         interval += 5000; // server asked us to ease off
         continue;
       case 'access_denied':
-        throw new OAuthError('access_denied', 'Login was denied.');
+        throw new OAuthError('access_denied', 'login was denied.');
       case 'expired_token':
-        throw new OAuthError('expired_token', 'The login code expired — run login again.');
+        throw new OAuthError('expired_token', 'the login code expired — run login again.');
       default:
-        throw new OAuthError(error ?? 'unknown', error_description ?? `Login failed (HTTP ${res.status}).`);
+        throw new OAuthError(error ?? 'unknown', error_description ?? `login failed (HTTP ${res.status}).`);
     }
   }
-  throw new OAuthError('expired_token', 'Login timed out — run login again.');
+  throw new OAuthError('expired_token', 'login timed out — run login again.');
 }
 
 // Exchange a refresh token for a fresh access token. Throws OAuthError (typically
@@ -147,7 +147,7 @@ export async function refreshAccessToken(refreshToken: string, fetchImpl: Fetch 
   });
   if (!res.ok) {
     const { error, error_description } = await safeError(res);
-    throw new OAuthError(error ?? 'refresh_failed', error_description ?? `Could not refresh session (HTTP ${res.status}).`);
+    throw new OAuthError(error ?? 'refresh_failed', error_description ?? `could not refresh session (HTTP ${res.status}).`);
   }
   return (await res.json()) as TokenSet;
 }

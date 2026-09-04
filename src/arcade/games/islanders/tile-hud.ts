@@ -117,11 +117,11 @@ export function islandersProjectedBoardLabels(
 
 // The six terrains, labeled by what they produce (desert produces nothing).
 const TERRAINS: Terrain[] = ['forest', 'hills', 'pasture', 'fields', 'mountains', 'desert'];
-const LABELS = ['Forest · lumber', 'Hills · brick', 'Pasture · wool', 'Fields · grain', 'Mountains · ore', 'Desert · —'];
+const LABELS = ['forest · lumber', 'hills · brick', 'pasture · wool', 'fields · grain', 'mountains · ore', 'desert · —'];
 
 // The player colors selectable in pieces mode / the piece editor.
 const COLORS: PlayerColor[] = ['red', 'blue', 'purple', 'orange'];
-const COLOR_LABELS = ['Red', 'Blue', 'Purple', 'Orange'];
+const COLOR_LABELS = ['red', 'blue', 'purple', 'orange'];
 // The chip previews the piece, so these match PLAYER_RGB exactly.
 const SWATCH: Record<PlayerColor, [number, number, number]> = {
   red: [201, 58, 47],
@@ -131,7 +131,7 @@ const SWATCH: Record<PlayerColor, [number, number, number]> = {
 };
 // The scene modes, chosen from the Mode dropdown.
 const MODES: IslandersMode[] = ['tile', 'board', 'boardCards', 'pieces', 'port'];
-const MODE_LABELS = ['Tile', 'Board', 'Board + cards', 'Pieces', 'Port'];
+const MODE_LABELS = ['tile', 'board', 'board + cards', 'pieces', 'port'];
 
 // The nine harbor types: one generic 3:1 (empty ship) + a 2:1 port per resource.
 const PORT_KINDS: PortKind[] = ['generic', 'brick', 'grain', 'lumber', 'ore', 'wool'];
@@ -218,8 +218,8 @@ export function buildIslandersPieceModal(o: PieceModalOpts): Node {
       return Button({ id: `pm-col-${c}`, label: c === o.color ? ' ✓ ' : '   ', onClick: () => o.onColor(c), style: { padding: [0, 1], background: SWATCH[c], color: ink, bold: true } });
     }),
   );
-  const card = Dialog({ title: o.road ? 'Road' : o.city ? 'City' : 'Settlement', onClose: o.onClose, closeId: 'pm-close', padding: [1, 2], background: UI_CHROME_BG }, [
-    Box({ flexDirection: 'column', gap: 1 }, [Box({ flexDirection: 'column', alignItems: 'stretch', gap: 0 }, actions), Field({ label: 'Color', child: swatches })]),
+  const card = Dialog({ title: o.road ? 'Road' : o.city ? 'city' : 'settlement', onClose: o.onClose, closeId: 'pm-close', padding: [1, 2], background: UI_CHROME_BG }, [
+    Box({ flexDirection: 'column', gap: 1 }, [Box({ flexDirection: 'column', alignItems: 'stretch', gap: 0 }, actions), Field({ label: 'color', child: swatches })]),
   ]);
   // Menu-style overlay: a dim scrim behind the card that dismisses on an outside click.
   return Modal(card, { onDismiss: o.onClose });
@@ -239,13 +239,13 @@ export function buildIslandersTileRoot(region: LayoutBox, onOpenMenu: () => void
   };
   const controls: Node[] =
     boardMode
-      ? [FilledButton({ id: 'islanders-reroll', label: '⟳ regenerate', onClick: () => H?.onReroll() }), Field({ label: 'Color', child: Slot('islanders-color') })]
+      ? [FilledButton({ id: 'islanders-reroll', label: '⟳ regenerate', onClick: () => H?.onReroll() }), Field({ label: 'color', child: Slot('islanders-color') })]
       : mode === 'pieces'
-        ? [Field({ label: 'Color', child: Slot('islanders-color') })]
+        ? [Field({ label: 'color', child: Slot('islanders-color') })]
         : mode === 'port'
-          ? [Field({ label: 'Port', child: Slot('islanders-port') })]
+          ? [Field({ label: 'port', child: Slot('islanders-port') })]
           : [
-            Field({ label: 'Tile', child: Slot('islanders-terrain') }),
+            Field({ label: 'tile', child: Slot('islanders-terrain') }),
             FilledButton({ id: 'islanders-reroll', label: '⟳ vary', onClick: () => H?.onReroll() }),
             FilledButton({
               id: 'islanders-robber',
@@ -256,7 +256,7 @@ export function buildIslandersTileRoot(region: LayoutBox, onOpenMenu: () => void
               },
             }),
           ];
-  const panel = Box({ flexDirection: 'column', gap: 1, padding: [1, 2], background: [16, 18, 26, 0.9] }, [Field({ label: 'Mode', child: Slot('islanders-mode') }), ...controls]);
+  const panel = Box({ flexDirection: 'column', gap: 1, padding: [1, 2], background: [16, 18, 26, 0.9] }, [Field({ label: 'mode', child: Slot('islanders-mode') }), ...controls]);
   // Portal chrome is deliberately a later compositing phase: the shared Screen can insert a
   // sparse foreground 3D layer (the rolling dice) after ordinary projected labels but before
   // controls, cards, menus, and dialogs. Nested dropdown portals still paint one phase later.

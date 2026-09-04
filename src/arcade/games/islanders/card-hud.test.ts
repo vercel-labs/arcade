@@ -697,10 +697,10 @@ test('workbench builds use official costs and invalid targets never spend the ha
   assert.equal(unavailableRoad?.disabled, true);
   assert.ok(unavailableRoad?.tooltip, 'unavailable builds retain their cost tooltip');
   assert.deepEqual(unavailableRoad?.style.disabled, { background: 'disabledBg', color: 'disabledFg', bold: false });
-  assert.match(tooltipText(unavailableRoad), /Costs .*Not enough resources\./);
-  assert.doesNotMatch(tooltipText(unavailableRoad), /No valid spot/);
+  assert.match(tooltipText(unavailableRoad), /costs .*not enough resources\./);
+  assert.doesNotMatch(tooltipText(unavailableRoad), /no valid spot/);
   const unavailableSettlement = findNode(unfundedRoot, 'islanders-live-settlement');
-  assert.match(tooltipText(unavailableSettlement), /Costs .*Not enough resources\..*No valid spot to build a settlement\./);
+  assert.match(tooltipText(unavailableSettlement), /costs .*not enough resources\..*no valid spot to build a settlement\./);
   const buildRow = findParent(unfundedRoot, 'islanders-live-road');
   assert.equal(buildRow?.style.background, undefined, 'each build pill owns its rectangle; the gaps stay transparent');
   assert.equal(buildRow?.style.gap, 1);
@@ -719,7 +719,7 @@ test('workbench builds use official costs and invalid targets never spend the ha
   );
   assert.equal(availableRoad?.style.hover?.bold, false, 'the cost tooltip does not add its own bold hover treatment');
   assert.equal(findNode(fundedRoot, 'islanders-live-settlement')?.disabled, true);
-  assert.match(tooltipText(findNode(fundedRoot, 'islanders-live-settlement')), /No valid spot to build a settlement\./);
+  assert.match(tooltipText(findNode(fundedRoot, 'islanders-live-settlement')), /no valid spot to build a settlement\./);
   assert.equal(findNode(fundedRoot, 'islanders-live-city')?.disabled, false);
 
   screen.resize(24, 24);
@@ -790,8 +790,8 @@ test('workbench builds use official costs and invalid targets never spend the ha
   adjustIslandersWorkbenchHand('grain', 2);
   const noCityTarget = findNode(controller.buildRoot(region.w, region.h), 'islanders-live-city');
   assert.equal(noCityTarget?.disabled, true);
-  assert.match(tooltipText(noCityTarget), /Costs .*No valid spot to build a city\./);
-  assert.doesNotMatch(tooltipText(noCityTarget), /Not enough resources/);
+  assert.match(tooltipText(noCityTarget), /costs .*no valid spot to build a city\./);
+  assert.doesNotMatch(tooltipText(noCityTarget), /not enough resources/);
   controller.reset();
   resetIslandersWorkbenchCards();
 });
@@ -817,8 +817,8 @@ test('workbench road availability disables when every network exit is occupied',
   assert.deepEqual(controller.scene.legalRoadEdges('red'), []);
   const road = findNode(controller.buildRoot(140, 50), 'islanders-live-road');
   assert.equal(road?.disabled, true);
-  assert.match(tooltipText(road), /Costs .*No valid spot to build a road\./);
-  assert.doesNotMatch(tooltipText(road), /Not enough resources/);
+  assert.match(tooltipText(road), /costs .*no valid spot to build a road\./);
+  assert.doesNotMatch(tooltipText(road), /not enough resources/);
   controller.reset();
   resetIslandersWorkbenchCards();
 });
@@ -854,8 +854,8 @@ test('workbench build controls enforce and explain the official piece supply', (
   for (const type of ['road', 'settlement', 'city'] as const) {
     const button = findNode(root, `islanders-live-${type}`);
     assert.equal(button?.disabled, true);
-    assert.match(tooltipText(button), /Costs/);
-    const plural = type === 'city' ? 'Cities' : type === 'road' ? 'Roads' : 'Settlements';
+    assert.match(tooltipText(button), /costs/);
+    const plural = type === 'city' ? 'cities' : type === 'road' ? 'roads' : 'settlements';
     assert.match(tooltipText(button), new RegExp(`${plural}: ${PIECE_LIMITS[type]}/${PIECE_LIMITS[type]} built\\.`));
     assert.equal(internals.beginBuild(type), false);
   }
@@ -1669,7 +1669,7 @@ test('workbench development purchases exhaust the official uneven 25-card deck',
   assert.equal(buyIslandersWorkbenchDevCard(), false);
   const buy = findNode(buildIslandersCardsOverlay({ x: 0, y: 0, w: 140, h: 50 }, () => {}, islandersWorkbenchView()), 'islanders-buy-dev');
   assert.equal(buy?.disabled, true);
-  assert.match(tooltipText(buy), /Costs .*No development cards remaining\./);
+  assert.match(tooltipText(buy), /costs .*no development cards remaining\./);
   resetIslandersWorkbenchCards();
 });
 

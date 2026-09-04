@@ -57,7 +57,7 @@ export function createModelSeatPicker(opts: ModelSeatPickerOpts): ModelSeatPicke
   let picker: ModelSeatPicker;
   const creatorDropdown = new Dropdown({
     searchable: true,
-    searchPlaceholder: 'Search',
+    searchPlaceholder: 'search',
     id: `${opts.idPrefix}-creator`,
     items: opts.creators.map((creator) => creator.name),
     width: opts.creatorWidth ?? 22,
@@ -70,7 +70,7 @@ export function createModelSeatPicker(opts: ModelSeatPickerOpts): ModelSeatPicke
   });
   const modelDropdown = new Dropdown({
     searchable: true,
-    searchPlaceholder: 'Search',
+    searchPlaceholder: 'search',
     id: `${opts.idPrefix}-model`,
     items: [],
     width: opts.modelWidth ?? 22,

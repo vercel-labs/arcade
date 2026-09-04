@@ -39,6 +39,25 @@ identity established by the product and its renderer:
   states as one product. Verify the actual rendered surface at representative
   sizes rather than approving design from source alone.
 
+## Copy
+
+Terminal copy is lowercase, sentences included: buttons, menu items, labels,
+modal titles, status lines, seat badges, tooltip and toast bodies, tutorial
+prose, and the plain-text startup transcript (`sign out`, `sign in for AI
+matches`, `fold`, `your turn`, `every game is a 3D scene. frame it however you
+like.`). Only names keep their case, wherever they fall in a sentence:
+
+- `Vercel`, `AI Gateway`, and `Arcade` as the product.
+- Acronyms: `AI`, `3D`, `BYOK`, `PGN`, `HTTP`, `URL`, `PATH`.
+- Creator and model names as the gateway spells them (`OpenAI`, `xAI`).
+- Game titles on the covers (`Chess`, `Islanders`, `Tutorial`).
+- The tagline `The 3D game engine built for agents.`, which is also the npm
+  description and the site hero, so it keeps one casing everywhere it appears.
+
+Development card names, poker streets, and piece names are ordinary words
+(`year of plenty`, `pre-flop`, `knight`). A body sentence still ends with a
+period; a one-line status fragment does not (`checking model health…`).
+
 ## Precedence
 
 Apply guidance in this order:

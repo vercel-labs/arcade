@@ -53,7 +53,8 @@ import { CHESS_PALETTE } from './games/chess/palette.ts';
 import { creatorTint } from './scenes/wisp.ts';
 import { CHAT_WIDTH, clearChat, pushChatMessage } from './match/chat.ts';
 import { buildMatchSetup, buildSwapSetup, chessPreviewSides, matchSetupOptions, matchSetupSelection, mountMatchSetup, mountSwapSetup, openSwapSetup, setMatchSetupChanged, setMatchSetupModelCatalog, swapSetupSelection } from './match/setup.ts';
-import { fallbackArcadeModelCatalog, fetchTeamModelCatalog } from './match/team-model-catalog.ts';
+import { fallbackArcadeModelCatalog, fetchTeamModelCatalog, type ArcadeModelCatalog } from './match/team-model-catalog.ts';
+import { buildGatewayNoticePill, catalogAccessLine, gatewayNoticeFor, gatewayNoticeSentence, type GatewayNoticeKind } from './shell/gateway-notice.ts';
 import { copyToClipboard } from '../platform/clipboard.ts';
 import { checkForUpdate, packageInfo, refreshLatestInBackground, type UpdateInfo } from './update.ts';
 import { BLACK, type Color, WHITE } from '../rules/chess/types.ts';
@@ -278,8 +279,8 @@ let updateCopied = false; // the "copy command" button flipped to its "copied �
 // is the second, more prominent surface.
 function updateNotice(u: UpdateInfo): string {
   return (
-    `\x1b[38;2;120;200;150m↑ Update available: v${u.current} → v${u.latest}\x1b[0m\n` +
-    `  Run \x1b[38;2;150;220;180m${u.command}\x1b[0m to update.`
+    `\x1b[38;2;120;200;150m↑ update available: v${u.current} → v${u.latest}\x1b[0m\n` +
+    `  run \x1b[38;2;150;220;180m${u.command}\x1b[0m to update.`
   );
 }
 // Start from the universally safe palette. Startup detection upgrades this to
@@ -346,6 +347,12 @@ let teamModalFocused = false;
 let teamView: TeamSwitchView = { kind: 'loading' };
 let currentAccountUsername: string | undefined;
 const teamOperations = new AccountOperations();
+// The team catalog as last fetched, kept for its request-wide billing verdict and its
+// count of plan-restricted models; the setup pickers hold their own copies of the
+// creators. `gatewayNoticeDismissed` is the kind the player put away with ×, for this
+// launch only: a different kind (signing in, then finding no card) still shows.
+let teamModelCatalog: ArcadeModelCatalog | null = null;
+let gatewayNoticeDismissed: GatewayNoticeKind | null = null;
 
 // AI-vs-AI match. The two sides are chosen in the setup modal (creator → model).
 // The match turn-loop lifecycle lives in AiMatch (ai-match.ts); main owns the
@@ -839,6 +846,7 @@ async function refreshTeamModelCatalog(auth: EnsureResult | null, isCurrent: () 
     ? await fetchTeamModelCatalog(auth.key)
     : fallbackArcadeModelCatalog('not signed in');
   if (!isCurrent()) return false;
+  teamModelCatalog = catalog;
   setMatchSetupModelCatalog(catalog.textCreators, catalog.realtimeCreators);
   setPokerSetupModelCatalog(catalog.textCreators);
   setIslandersSetupModelCatalog(catalog.textCreators);
@@ -910,7 +918,15 @@ function teamSwitchActions(onClose: () => void): Parameters<typeof buildTeamSwit
     onViewSpend: teamSwitchViewSpend,
     onBack: teamSwitchBack,
     onLogout: teamSwitchSignOut,
+    modelAccess: teamModelAccess(),
   };
+}
+
+function teamModelAccess(): { text: string; onClick?: () => void } | null {
+  const line = catalogAccessLine(teamModelCatalog);
+  if (!line) return null;
+  const url = line.url;
+  return url ? { text: line.text, onClick: () => openBrowser(url) } : { text: line.text };
 }
 
 async function loadTeams(): Promise<void> {
@@ -1036,7 +1052,39 @@ function buildMenuOverlay(): Node {
   const menuButton = Button({ id: 'menu-button', label: MENU_BUTTON_LABEL, onClick: openHomeMenu, style: UI_CHROME_PILL });
   // Inset from the top-right corner by a row / a couple of columns so it breathes.
   const region = hudRegion();
-  return Box({ width: region.w, height: region.h }, [Box({ position: 'absolute', top: 1, right: 2 }, [menuButton])]);
+  const notice = currentGatewayNotice();
+  const pill = notice
+    ? buildGatewayNoticePill(notice, {
+        maxWidth: region.w - 2 - (MENU_BUTTON_LABEL.length + 2) - 2 - 2,
+        onAction: () => {
+          if (notice.url) {
+            copyToClipboard(notice.url);
+            openBrowser(notice.url);
+          } else teamSwitchSignIn();
+        },
+        onDismiss: () => {
+          gatewayNoticeDismissed = notice.kind;
+          forceFrame = true;
+          r.requestRender();
+        },
+      })
+    : null;
+  return Box({ width: region.w, height: region.h }, [
+    ...(pill ? [Box({ position: 'absolute', top: 1, left: 2 }, [pill])] : []),
+    Box({ position: 'absolute', top: 1, right: 2 }, [menuButton]),
+  ]);
+}
+
+function currentGatewayNotice() {
+  const notice = gatewayNoticeFor(isLoggedIn(), teamModelCatalog);
+  return notice && notice.kind !== gatewayNoticeDismissed ? notice : null;
+}
+
+// The setup panels repeat the notice as one muted sentence above Start, wrapped like the
+// health-check lines, so the reason a match will not begin is in view before Start is.
+function gatewayNoticeLines(): string[] | undefined {
+  const notice = currentGatewayNotice();
+  return notice ? wrapText(gatewayNoticeSentence(notice), Math.max(24, Math.min(72, cols - 4))) : undefined;
 }
 
 function cycleMode(): void {
@@ -1624,7 +1672,7 @@ function pokerHero(): HeroContext {
 // needs no prompt — the bottom-left "new match" button is the affordance.
 function pokerStatus(): string {
   if (mode !== 'poker' || !pokerScene.isActive()) return '';
-  if (!pokerMatch.isRunning()) return 'Session over';
+  if (!pokerMatch.isRunning()) return 'session over';
   // Paused state is shown by the bottom-right resume button, not a status line.
   // No "Your move" toast: the hero's turn is already shown by the lit player strip and the
   // Fold/Check/Bet/Raise action bar, so the label above the strips would be redundant.
@@ -2010,7 +2058,7 @@ function showTutorialChapter(chapter: TutorialChapter, previous: TutorialChapter
       enterPoker();
       pokerMatch.start([{ kind: 'human' }, { kind: 'bot' }, { kind: 'bot' }]);
       pokerChatOpen = false;
-      pushPokerChat({ text: 'Practice table: the bots only check and call. In a real game each model talks here between actions, in character.', model: '', event: true });
+      pushPokerChat({ text: 'practice table: the bots only check and call. in a real game each model talks here between actions, in character.', model: '', event: true });
     }
     fullRepaint();
   } else {
@@ -2271,7 +2319,7 @@ function syncBar(): void {
   if (!islandersNotesOpen && keymap.hasContext('islanders-notes')) keymap.popContext('islanders-notes');
   if (!islandersNotesOpen) islandersNotesFocused = false;
   if (!confirmHomeOpen && keymap.hasContext('confirm-home')) keymap.popContext('confirm-home');
-  if (!confirmHomeOpen) confirmHomeFocused = false; // re-focus "Return home" on the next open
+  if (!confirmHomeOpen) confirmHomeFocused = false; // re-focus "return home" on the next open
   if (!shortcutsOpen && keymap.hasContext('shortcuts')) keymap.popContext('shortcuts');
   if (!confirmQuitOpen && keymap.hasContext('confirm-quit')) keymap.popContext('confirm-quit');
   if (!confirmQuitOpen) confirmQuitFocused = false; // re-focus "quit" on the next open
@@ -2393,7 +2441,7 @@ function syncBar(): void {
     popSwap();
     promoFocused = false;
     if (!keymap.hasContext('setup')) keymap.pushContext('setup', true);
-    ui.setRoot(buildMatchSetup(region, { onStart: () => { void confirmMatchSetup(); }, onCancel: closeMatchSetup, onOpenMenu: openChessMenu, healthStatus: modelHealthStatus('chess') }), region);
+    ui.setRoot(buildMatchSetup(region, { onStart: () => { void confirmMatchSetup(); }, onCancel: closeMatchSetup, onOpenMenu: openChessMenu, healthStatus: modelHealthStatus('chess'), gatewayNote: gatewayNoticeLines() }), region);
     if (!setupFocused) {
       ui.setFocus('setup-mode'); // start on the mode picker (the human side has no creator list)
       setupFocused = true;
@@ -2644,6 +2692,7 @@ function syncBar(): void {
           onOpenNotes: openIslandersNotes,
           onStart: () => { void startIslandersGame(); },
           healthStatus: modelHealthStatus('islanders'),
+          gatewayNote: gatewayNoticeLines(),
           notice: commentary && t < commentary.until ? commentary.text : undefined,
         },
       ),
@@ -2742,7 +2791,7 @@ function syncBar(): void {
         onToggleChat: togglePokerChat,
         onOpenMenu: openPokerMenu,
         onOpenNotes: openPokerNotes,
-        setup: pokerSetupOpen ? buildPokerSetupPanel(modelHealthStatus('poker')) : null,
+        setup: pokerSetupOpen ? buildPokerSetupPanel(modelHealthStatus('poker'), gatewayNoticeLines()) : null,
         matchControls,
         pauseControl:
           pokerScene.isActive() && pokerMatch.isRunning()
@@ -3507,10 +3556,10 @@ if (argv.includes('--help') || argv.includes('-h')) {
       `${name} ${version}`,
       description,
       '',
-      'Usage: arcade [options]',
+      'usage: arcade [options]',
       '       arcade telemetry [status|enable|disable]',
       '',
-      'Options:',
+      'options:',
       '  --login          re-run the Vercel sign-in device flow',
       '  --switch-team    pick a different team for the AI Gateway key',
       '  --logout         sign out of Vercel',
@@ -3522,7 +3571,7 @@ if (argv.includes('--help') || argv.includes('-h')) {
 }
 if (argv.includes('--logout')) {
   const was = signOutVercel();
-  console.log(was ? 'Signed out of Vercel.' : 'Not signed in.');
+  console.log(was ? 'signed out of Vercel.' : 'not signed in.');
   process.exit(0);
 }
 // `arcade telemetry [status|enable|disable]` — mirrors `vercel telemetry …`. Runs before
@@ -3531,17 +3580,17 @@ if (argv[0] === 'telemetry') {
   const sub = argv[1];
   if (sub === 'enable' || sub === 'disable') {
     setTelemetryEnabled(sub === 'enable');
-    console.log(`Telemetry ${sub}d.`);
+    console.log(`telemetry ${sub}d.`);
   } else if (sub === undefined || sub === 'status') {
-    console.log(`Telemetry is ${telemetryStatus()}.`);
+    console.log(`telemetry is ${telemetryStatus()}.`);
   } else {
-    console.log('Usage: arcade telemetry [status|enable|disable]');
+    console.log('usage: arcade telemetry [status|enable|disable]');
   }
   process.exit(0);
 }
 colorMode = await detectTerminalColorMode();
 const colorStatus =
-  colorMode === 'truecolor' ? 'Truecolor detected.' : 'Truecolor not detected. Using 256-color.';
+  colorMode === 'truecolor' ? 'truecolor detected.' : 'truecolor not detected. using 256-color.';
 process.stdout.write(`\x1b[38;2;135;135;175m  \u2713 ${colorStatus}\x1b[0m\n`);
 
 // Arm the modal (shown over the prism) and refresh the version cache for the next launch.

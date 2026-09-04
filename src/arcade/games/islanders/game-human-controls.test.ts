@@ -57,12 +57,12 @@ test('the actual game keeps unavailable build controls visible with cost and pie
   const root = buildIslandersGameRoot({ x: 0, y: 0, w: 140, h: 50 }, {
     driver, scene, onOpenMenu: () => {}, onStart: () => {},
   });
-  for (const [type, count] of [['road', 'Roads: 2/15 built.'], ['settlement', 'Settlements: 2/5 built.'], ['city', 'Cities: 0/4 built.']] as const) {
+  for (const [type, count] of [['road', 'roads: 2/15 built.'], ['settlement', 'settlements: 2/5 built.'], ['city', 'cities: 0/4 built.']] as const) {
     const button = findNode(root, `islanders-live-${type}`);
     assert.equal(button?.disabled, true);
-    assert.match(tooltipText(button), /Costs/);
+    assert.match(tooltipText(button), /costs/);
     assert.ok(tooltipText(button).includes(count));
-    assert.match(tooltipText(button), /Not enough resources\./);
+    assert.match(tooltipText(button), /not enough resources\./);
   }
   const compactRoot = buildIslandersGameRoot({ x: 0, y: 0, w: 20, h: 24 }, {
     driver, scene, onOpenMenu: () => {}, onStart: () => {},
@@ -195,7 +195,7 @@ test('live status is one borderless row with color confined to the actor', () =>
   assert.equal(banner.style.flexDirection, 'row');
   assert.equal(banner.style.background, undefined);
   assert.equal(banner.children?.length, 2);
-  assert.equal(banner.children?.[0]?.text, 'Your turn');
+  assert.equal(banner.children?.[0]?.text, 'your turn');
   assert.equal(banner.children?.[0]?.style.color, PLAYER_LOOK.red);
   assert.equal(banner.children?.[1]?.text, ' · place your first settlement');
   assert.notEqual(banner.children?.[1]?.style.color, PLAYER_LOOK.red);
@@ -215,18 +215,18 @@ test('pending status names every required human action and the exact discard cou
     return `${line?.actor} ${line?.narration}`;
   };
 
-  assert.equal(status({ kind: 'initialSettlement', player: 0 }), 'Your turn · place your first settlement');
+  assert.equal(status({ kind: 'initialSettlement', player: 0 }), 'your turn · place your first settlement');
   await scene.playMove(state.legalActions()[0]);
-  assert.equal(status({ kind: 'initialRoad', player: 0 }), 'Your turn · place a road beside it');
+  assert.equal(status({ kind: 'initialRoad', player: 0 }), 'your turn · place a road beside it');
   while (state.initialSettlementCount(0) < 1) state.applyAction(state.legalActions()[0]);
-  assert.equal(status({ kind: 'initialSettlement', player: 0 }), 'Your turn · place your second settlement');
-  assert.equal(status({ kind: 'roll', player: 0 }), 'Your turn · roll or play a development card');
-  assert.equal(status({ kind: 'playTurn', player: 0 }), 'Your turn · build, trade, or end turn');
+  assert.equal(status({ kind: 'initialSettlement', player: 0 }), 'your turn · place your second settlement');
+  assert.equal(status({ kind: 'roll', player: 0 }), 'your turn · roll or play a development card');
+  assert.equal(status({ kind: 'playTurn', player: 0 }), 'your turn · build, trade, or end turn');
   internals.discardRemaining[0] = 4;
-  assert.equal(status({ kind: 'discard', player: 0 }), 'Your turn · discard 4 cards');
-  assert.equal(status({ kind: 'moveRobber', player: 0 }), 'Your turn · move the robber');
-  assert.equal(status({ kind: 'respondTrade', player: 0 }), 'Your turn · respond to the trade');
-  assert.equal(status({ kind: 'decideAcceptees', player: 0 }), 'Your turn · choose a trade partner');
+  assert.equal(status({ kind: 'discard', player: 0 }), 'your turn · discard 4 cards');
+  assert.equal(status({ kind: 'moveRobber', player: 0 }), 'your turn · move the robber');
+  assert.equal(status({ kind: 'respondTrade', player: 0 }), 'your turn · respond to the trade');
+  assert.equal(status({ kind: 'decideAcceptees', player: 0 }), 'your turn · choose a trade partner');
 });
 
 test('pending status gives concise phase context while a model is deciding', () => {
