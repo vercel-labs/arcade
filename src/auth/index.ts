@@ -14,5 +14,6 @@ export {
   type EnsureOpts,
   type EnsureResult,
   type AvailableTeamsResult,
+  GATEWAY_SPEND_URL,
 } from './gateway-key.ts';
 export type { Team } from './vercel-api.ts';

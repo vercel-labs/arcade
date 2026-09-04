@@ -67,7 +67,7 @@ import { TUTORIAL_PULSE, TutorialController, tutorialRailWidth, type TutorialCha
 import { eventToChord } from '../tui/index.ts';
 import { buildGatewaySignInPrompt, buildTeamSwitch, markSwitchSucceeded, mountTeamSwitch, setTeamSwitchHandlers, setTeamSwitchTeams, type TeamSwitchView } from './shell/team-switch.ts';
 import * as term from '../platform/terminal.ts';
-import { availableTeams, ensureGatewayKey, isLoggedIn, loadEnv, signInWithAnotherAccount, signOut as signOutVercel, type EnsureResult, type Team, useTeam } from '../auth/index.ts';
+import { availableTeams, ensureGatewayKey, GATEWAY_SPEND_URL, isLoggedIn, loadEnv, signInWithAnotherAccount, signOut as signOutVercel, type EnsureResult, type Team, useTeam } from '../auth/index.ts';
 import { AiMatch, type Seat } from './match/driver.ts';
 import { disambiguateLabels } from '../harness/labels.ts';
 import { flushTelemetry, initTelemetry, isTelemetryEnabled, isTelemetryEnvironmentOptedOut, isTelemetryPreferenceEnabled, setTelemetryEnabled, telemetryStatus, toggleTelemetryPreference, trackSessionStart, type RecordEndReason } from '../telemetry/index.ts';
@@ -907,6 +907,7 @@ function teamSwitchActions(onClose: () => void): Parameters<typeof buildTeamSwit
       void loadTeams();
     },
     onOpenVercel: teamSwitchOpenVercel,
+    onViewSpend: teamSwitchViewSpend,
     onBack: teamSwitchBack,
     onLogout: teamSwitchSignOut,
   };
@@ -1021,6 +1022,10 @@ function teamSwitchSignOut(): void {
 
 function teamSwitchOpenVercel(): void {
   openBrowser('https://vercel.com/account');
+}
+
+function teamSwitchViewSpend(): void {
+  openBrowser(GATEWAY_SPEND_URL);
 }
 
 setTeamSwitchHandlers({ onPick: pickTeamChoice });

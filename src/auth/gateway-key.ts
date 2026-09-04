@@ -20,6 +20,11 @@ import { createGatewayKey, getUser, listTeams, type Team } from './vercel-api.ts
 // entering the alt-screen, so it reads like `vercel login`. Once resolved, every
 // existing model/voice call works unchanged because they all read the env var.
 
+// The selected team's AI Gateway dashboard, where spend and credit live. Vercel's
+// `/d?to=` redirector resolves the literal `[team]` placeholder against the signed-in
+// session, so this stays correct across a team switch without interpolating a slug.
+export const GATEWAY_SPEND_URL = 'https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai';
+
 const ENV_KEY = 'AI_GATEWAY_API_KEY';
 const HOSTED_TERMINAL_ENV = 'ARCADE_HOSTED_TERMINAL';
 const HOSTED_DEMO_KEY_ENV = 'ARCADE_HOSTED_DEMO_KEY';

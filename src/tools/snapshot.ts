@@ -1633,7 +1633,7 @@ function settingsSnapshot(): void {
       : args.includes('error')
         ? { kind: 'error' as const, message: 'Could not create AI Gateway key (HTTP 403): Your team does not have permission to create AI Gateway keys.', canReturn: true }
         : { kind: 'loaded' as const, username: args.includes('long') ? 'a-very-long-vercel-username-that-must-not-resize-the-account-dialog' : 'brian.zhang' };
-    const accountActions = { onClose: noop, onSignIn: noop, onChangeAccount: noop, onRetry: noop, onOpenVercel: noop, onBack: noop, onLogout: noop };
+    const accountActions = { onClose: noop, onSignIn: noop, onChangeAccount: noop, onRetry: noop, onOpenVercel: noop, onBack: noop, onLogout: noop, onViewSpend: noop };
     screen.setRoot(buildTeamSwitch(view, accountActions, region.w, region.h), region);
     if (view.kind === 'loaded' && args.includes('focus-switch')) screen.setFocus('team-change-account');
     if (view.kind === 'loaded' && args.includes('focus-signout')) screen.setFocus('team-logout');
