@@ -47,10 +47,13 @@ test('docs use a task-first grouped navigation and Sans typography', async () =>
   assert.doesNotMatch(content, /Complete Arcade|Focused browser surfaces/);
   assert.doesNotMatch(content, /<Code title="Architecture">/);
   assert.match(content, /npx @vercel\/arcade@latest/);
+  assert.match(content, /arcade --help/);
+  assert.match(content, /exit before authentication, network requests, or terminal takeover/);
   assert.match(navigation, /section\('Using Arcade', '\/docs\/app'/);
   assert.match(navigation, /section\('Games', '\/docs\/games'/);
   assert.match(navigation, /section\('Browser integration', '\/docs\/web'/);
-  assert.match(navigation, /page\('Package API', '\/docs\/package-api'\)[\s\S]*section\('API Reference', '\/docs\/reference'[\s\S]*page\('Motivation', '\/docs\/motivation'\)/);
+  assert.match(navigation, /page\('Package API', '\/docs\/package-api'\)[\s\S]*section\('API Reference', '\/docs\/reference'/);
+  assert.doesNotMatch(navigation, /Motivation|\/docs\/motivation/);
   assert.match(page, /corePage\('engine'\), corePage\('renderer-pipeline'\), corePage\('game-visuals'\)/);
   assert.match(page, /corePage\('platform'\), corePage\('tui'\), corePage\('components'\)/);
   assert.match(navigation, /type: 'folder'/);
@@ -66,35 +69,19 @@ test('docs use a task-first grouped navigation and Sans typography', async () =>
   assert.doesNotMatch(css, /\.doc-(?:shell|article|sidebar|toc|page-header)[^\n]*font-site-display/);
 });
 
-test('Motivation is a paragraph-only Docs letter with a quiet linked signature', async () => {
-  const [motivation, about, page, css, sitemap] = await Promise.all([
-    readFile(new URL('./[lang]/docs/docs-motivation.tsx', import.meta.url), 'utf8'),
+test('the Motivation letter is absent from every public documentation surface', async () => {
+  const [about, page, navigation, css, sitemap, corpus, shortCorpus] = await Promise.all([
     readFile(new URL('./[lang]/about/page.tsx', import.meta.url), 'utf8'),
     readFile(new URL('./[lang]/docs/[[...slug]]/page.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('./[lang]/docs/docs-navigation.ts', import.meta.url), 'utf8'),
     readFile(new URL('./global.css', import.meta.url), 'utf8'),
     readFile(new URL('./sitemap.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../public/llms-full.txt', import.meta.url), 'utf8'),
+    readFile(new URL('../public/llms.txt', import.meta.url), 'utf8'),
   ]);
-  assert.match(motivation, /label: 'Motivation'/);
-  assert.match(motivation, /title: 'Why Arcade exists'/);
-  assert.match(motivation, /summary: 'A letter from the developer\.'/);
-  assert.match(motivation, /I never thought about the terminal as a canvas/);
-  assert.match(motivation, /entered a hackathon/);
-  assert.match(motivation, /my silly idea resonated with the judges/);
-  assert.match(motivation, /a few weeks later, I started my first day at Vercel/);
-  assert.match(motivation, /AlphaGo's Move 37 against Lee Sedol in Game 2/);
-  assert.match(motivation, /Nen restrictions and binding vows/);
-  assert.match(motivation, /tendencies that emerge from the model as it is/);
-  assert.match(motivation, /few fun minutes during a busy day/);
-  assert.match(motivation, /href="https:\/\/x\.com\/_Brian_Zhang"/);
-  assert.match(motivation, /className="doc-letter__signature">- <a/);
-  assert.doesNotMatch(motivation, /Notion Developer Platform|ended up winning|When I later joined Vercel/);
-  assert.doesNotMatch(motivation, /—|<h2|<ul|<Code/);
-  assert.match(about, /redirect\('\/docs\/motivation'\)/);
-  assert.match(page, /MOTIVATION_DOC/);
-  assert.match(page, /page\.body \?\?/);
-  assert.match(css, /\.doc-letter__signature a \{ color: inherit; text-decoration: none; \}/);
-  assert.match(css, /\.doc-letter__signature a:hover \{ text-decoration: underline;/);
-  assert.match(sitemap, /'\/docs\/motivation'/);
+  await assert.rejects(access(new URL('./[lang]/docs/docs-motivation.tsx', import.meta.url)), { code: 'ENOENT' });
+  assert.match(about, /redirect\('\/docs'\)/);
+  for (const source of [page, navigation, css, sitemap, corpus, shortCorpus]) assert.doesNotMatch(source, /Motivation|motivation|doc-letter|_Brian_Zhang/);
 });
 
 test('guides and reference use real child routes with generated symbol coverage', async () => {
@@ -177,7 +164,7 @@ test('Using Arcade is a player-facing chapter with controls, billing, and recove
     assert.match(sitemap, new RegExp(`/docs/${slug}`));
     assert.match(corpus, new RegExp(`/docs/${slug.replace('/', '\\/')}`));
   }
-  for (const topic of ['Choose how to play', 'Follow the app flow', 'Start a match', 'Start with the Tutorial', 'Use global controls', 'Understand the Arcade key', 'Understand the model picker', 'Understand free and paid access', 'Troubleshoot model play']) assert.match(app, new RegExp(`heading: '${topic}'`));
+  for (const topic of ['Choose how to play', 'Follow the app flow', 'Start a match', 'Start with the Tutorial', 'Use global controls', 'Manage telemetry', 'Understand the Arcade key', 'Understand the model picker', 'Understand free and paid access', 'Troubleshoot model play']) assert.match(app, new RegExp(`heading: '${topic}'`));
   assert.match(app, /title: 'Navigating the app'/);
   assert.match(app, /Arcade automatically creates an AI Gateway API key for your selected team/);
   assert.match(app, /Arcade \(<username>\)/);
@@ -185,6 +172,11 @@ test('Using Arcade is a player-facing chapter with controls, billing, and recove
   assert.match(app, /view spend/);
   assert.match(app, /suggests different creators across unfilled seats/);
   assert.match(app, /Exit immediately from any screen/);
+  assert.match(app, /arcade telemetry status/);
+  assert.match(app, /ARCADE_TELEMETRY=0/);
+  assert.match(app, /pseudonymous hash of the install ID/);
+  assert.match(app, /On every interactive launch/);
+  assert.match(app, /Poker and Islanders models keep private notes or plans/);
   for (const fact of ['availability-aware AI Gateway model catalog', 'Start-time health', 'Signing out of Arcade clears local access only', 'never purchased AI Gateway Credits', 'valid credit card', 'grants $5 in free credits every 30 days', 'at least $10 in AI Gateway Credits', 'recurring $5 free credit no longer applies']) assert.match(app, new RegExp(fact.replace('$', '\\$')));
   for (const url of ['ai-gateway%2Fapi-keys', 'docs/ai-gateway/pricing', 'observability-and-spend/budgets']) assert.match(app, new RegExp(url));
   assert.match(page, /import \{ APP_DOCS \}/);
@@ -251,7 +243,26 @@ test('reference pages document behavioral contracts rather than only naming expo
   for (const contract of ['frameComposited', 'ShapeGlyphSurfaceCache', 'InputOpts', 'chanceOutcomes', 'ModelPlayer', 'CanvasSurfaceHost', 'createInputParser']) assert.match(content, new RegExp(contract));
   for (const detail of ['SelectOpts', 'fixed 0–1 range', 'setHeight\(\)', 'chanceRng', 'forceFull']) assert.match(content, new RegExp(detail));
   assert.match(content, /not currently implemented/);
+  assert.match(content, /returns completed or bounded plus state, actionCount/);
+  assert.match(content, /throws IslandersMatchActionLimitError/);
   assert.doesNotMatch(content, /toFEN\(|screen\.key\(|min: 0, max: 1|Use <code>setValue\(\)<\/code>/);
+});
+
+test('auth, telemetry, and hosted-terminal docs match their current process boundaries', async () => {
+  const [content, app, privacy, corpus] = await Promise.all([
+    readFile(new URL('./[lang]/docs/docs-content.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('./[lang]/docs/docs-app.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('./[lang]/privacy/page.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../public/llms-full.txt', import.meta.url), 'utf8'),
+  ]);
+  assert.match(content, /If no usable session exists, device authorization starts before the full-screen UI/);
+  assert.match(content, /Every fresh hosted session starts without cached Arcade authentication/);
+  assert.match(app, /current CLI still resolves or requests Vercel sign-in during startup/);
+  assert.match(privacy, /site owns no shared AI Gateway credential/);
+  assert.match(privacy, /team-scoped key exists only inside the separate Arcade process/);
+  assert.match(privacy, /Lightweight events use random install and session IDs/);
+  assert.match(corpus, /each interactive launch reuses the cached Vercel session and team or starts device authorization/);
+  assert.doesNotMatch([content, app, privacy, corpus].join('\n'), /first model-enabled launch|site&apos;s AI Gateway credential|scoped network transformation|Every fresh hosted Sandbox starts signed out/);
 });
 
 test('docs provide highlighted copyable code, a copy-page action, section links, and pagination', async () => {
@@ -307,7 +318,7 @@ test('getting started covers install, source, sign-in, and supported library pat
 test('the agent corpus preserves the implementation contracts documented for humans', async () => {
   const corpus = await readFile(new URL('../public/llms-full.txt', import.meta.url), 'utf8');
   for (const detail of ['Core contracts for agents', 'Material<U>', 'Screen', 'GameState<Action>', 'MatchScene.playMove()', 'CanvasSurfaceHost']) assert.match(corpus, new RegExp(detail.replace(/[<>()]/g, '\\$&')));
-  for (const detail of ['/docs/app', '/docs/app/controls', '/docs/app/models', '/docs/games', 'Chess case study', 'Poker case study', 'Islanders case study', 'Communication and chat', 'ambient', 'autoreply', '@model', 'runHeadlessChessMatch', 'runPokerSession', 'play and whimsy']) assert.match(corpus, new RegExp(detail.replace(/[<>()]/g, '\\$&')));
+  for (const detail of ['/docs/app', '/docs/app/controls', '/docs/app/models', '/docs/games', 'Chess case study', 'Poker case study', 'Islanders case study', 'Communication and chat', 'ambient', 'autoreply', '@model', 'runHeadlessChessMatch', 'runPokerSession', 'pseudonymous hash of the install ID']) assert.match(corpus, new RegExp(detail.replace(/[<>()]/g, '\\$&')));
   assert.match(corpus, /Current limitations/);
   assert.match(corpus, /Live Chess, Poker, and Islanders games share a human chat composer/);
 });

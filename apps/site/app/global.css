@@ -282,12 +282,6 @@ button.quick-terminal-control:hover { box-shadow: inset 0 0 0 1px rgb(0 0 0 / 35
 .doc-action:hover { border-color: var(--site-border-strong); background: var(--site-hover); }
 .doc-action:focus-visible { outline: 2px solid var(--site-foreground); outline-offset: 2px; }
 .doc-article > section { scroll-margin-top: 96px; border-top: 1px solid var(--site-border); padding: 48px 0; }
-.doc-letter { border-top: 1px solid var(--site-border); padding: 48px 0; }
-.doc-letter p { max-width: 680px; color: var(--site-muted); font: 400 17px/1.75 var(--font-geist-sans), Arial, sans-serif; }
-.doc-letter p + p { margin-top: 24px; }
-.doc-letter .doc-letter__signature { margin-top: 40px; color: var(--site-foreground); }
-.doc-letter__signature a { color: inherit; text-decoration: none; }
-.doc-letter__signature a:hover { text-decoration: underline; text-underline-offset: 4px; }
 .doc-article h2 { margin: 0 0 20px; font: 600 24px/1.25 var(--font-geist-sans), Arial, sans-serif; letter-spacing: -.025em; }
 .doc-article h2 a, .doc-article section h2 a:not(.source-link) { color: inherit; text-decoration: none; }
 .doc-article h2 a:hover::after { content: ' #'; color: var(--site-muted-light); font-weight: 400; }

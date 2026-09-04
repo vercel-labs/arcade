@@ -25,7 +25,7 @@ export const APP_DOCS: DocPage[] = [
           ['Play a model', <>Choose <strong>play vs AI</strong>, then select the models you want to face. Chess also lets you choose whether to play White or Black and is the shortest path to a one-on-one match.</>],
           ['Spectate models', <>Assign models to every seat and watch the match, public commentary, animations, and records progress without taking a turn yourself.</>],
           ['Practice offline', <>Open the Tutorial. Its Poker and Islanders chapters use local policy bots, and Gateway-only checklist steps are skipped when you are signed out.</>],
-        ]} /><Note>You can open Arcade and complete most of the Tutorial without a Vercel account. Only real model seats require Vercel sign-in and AI Gateway access.</Note></>,
+        ]} /><Note>The Tutorial practice bots do not make AI Gateway requests. The current CLI still resolves or requests Vercel sign-in during startup before entering the full-screen app. In a signed-out running session, only real model seats and Gateway tutorial steps are unavailable.</Note></>,
       },
       {
         heading: 'Follow the app flow',
@@ -52,7 +52,7 @@ export const APP_DOCS: DocPage[] = [
         heading: 'Follow a live game',
         body: <Details rows={[
           ['Public commentary', <>Chess, Poker, and Islanders share public chat for table-facing speech, never hidden chain-of-thought. When you hold a human seat, type <code>@</code> to choose one or more model labels and request one bounded reply from each. Press <code>c</code> to open chat in Chess or Poker; Islanders keeps chat in its right rail.</>],
-          ['Private reads', 'Poker seats can keep private notes about how others play. These notes belong to the local match experience and are not part of canonical telemetry.'],
+          ['Private reads', 'Poker and Islanders models keep private notes or plans that can be inspected in the local match experience. These reads are not part of canonical telemetry.'],
           ['History and records', 'Chess exposes move history and PGN copy. Poker and Islanders preserve their own action and match records for replay and inspection.'],
           ['Model wisps', 'A colored wisp identifies a model seat and reacts when it speaks or thinks. In supported screens, select the wisp to swap that seat to another model.'],
           ['Human pacing', 'Arcade waits for visible movement, dice, cards, resources, and other consequences before advancing even when a model decides immediately.'],
@@ -107,6 +107,15 @@ export const APP_DOCS: DocPage[] = [
         ]} /><p>Arcade maps these inputs to stable command IDs. The same command can be invoked from a menu, a key binding, or an agent-capable host without changing what the action means.</p></>,
       },
       {
+        heading: 'Manage telemetry',
+        body: <><p>Published local installs send anonymous usage events and canonical game records by default. They do not send prompts, private reasoning, chat, voice, credentials, or Vercel account identity. Lightweight events carry random install and session IDs; human game records use a pseudonymous hash of the install ID for personal statistics.</p><Details rows={[
+          ['Home menu', 'Open the home menu and switch telemetry on or off. The saved preference applies to later launches.'],
+          ['CLI', <><code>arcade telemetry status</code>, <code>arcade telemetry enable</code>, and <code>arcade telemetry disable</code> inspect or change the same saved preference without launching the UI.</>],
+          ['Environment', <><code>ARCADE_TELEMETRY=0</code> forces telemetry off for that process even when the saved preference is enabled.</>],
+          ['Hosted and evaluation runs', 'The hosted website terminal and Match Lab force telemetry off. Match Lab can still write private diagnostic artifacts to its local, gitignored run directory.'],
+        ]} /><p>Disabling telemetry also discards any queued canonical records in the local outbox. Read the <Link href="/privacy">Privacy page</Link> for the complete boundary.</p></>,
+      },
+      {
         heading: 'Know the game controls',
         body: <><Details rows={[
           ['Chess', <>Select a piece to reveal legal destinations, then select a highlighted square. Toggle move history with <code>h</code>, the evaluation bar with <code>e</code>, and chat with <code>c</code>.</>],
@@ -136,10 +145,10 @@ export const APP_DOCS: DocPage[] = [
       },
       {
         heading: 'Sign in and choose a team',
-        body: <><p>On first model-enabled launch, Arcade starts Vercel device authorization in the normal terminal before entering its full-screen UI. Approve the browser request, return to the terminal, and choose the team that should own AI Gateway usage.</p><Code title="Terminal">{`arcade --login
+        body: <><p>On every interactive launch, Arcade first tries to reuse the cached Vercel session and selected team. If no usable session exists, it starts device authorization in the normal terminal before entering its full-screen UI. Approve the browser request, return to the terminal, and choose the team that should own AI Gateway usage.</p><Code title="Terminal">{`arcade --login
 arcade --switch-team
 arcade --logout`}</Code><Details rows={[
-          ['Sign in', 'Force a new device-authorization flow when you skipped it or need another Vercel account.'],
+          ['Sign in', 'Force a new device-authorization flow when you need another Vercel account or a fresh authorization.'],
           ['Switch team', 'Choose another team, let Arcade obtain its team-scoped key, refresh the model catalog, and bill future model requests there.'],
           ['Sign out', 'Remove the cached Vercel session and process-local Gateway key from this machine. It does not delete keys already listed in the Vercel dashboard.'],
           ['Account menu', 'Perform the same account and team changes without leaving the running Arcade app, or select view spend to open the chosen team’s AI Gateway overview.'],
