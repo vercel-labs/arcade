@@ -2,7 +2,7 @@ import { TERMINAL_CELL_ASPECT_RATIO } from './canvas-surface-host.ts';
 
 export const CINEMATIC_CELL_HEIGHT = 12;
 export const MOBILE_CINEMATIC_CELL_HEIGHT = 10;
-const LARGE_SCREEN_CELL_HEIGHT = 14;
+const LARGE_SCREEN_CELL_HEIGHT = 18;
 const LARGE_SCREEN_MIN_WIDTH = 1800;
 const LARGE_SCREEN_MIN_HEIGHT = 900;
 
