@@ -11,7 +11,7 @@ test('the banner tells the reader the command and where the docs are', () => {
   assert.match(text, /^\s*arcade\s+launch Arcade$/m);
   assert.match(text, /arcade --help/);
   assert.match(text, /ascii-arcade\.vercel\.app\/docs/);
-  assert.match(text, /Tutorial is available from the menu/);
+  assert.match(text, /the tutorial is available from the menu/);
   assert.match(text, /billed to the team you select/);
 });
 
