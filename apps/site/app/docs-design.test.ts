@@ -2,28 +2,30 @@ import assert from 'node:assert/strict';
 import { access, readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 
-test('docs navigation is owned by a persistent layout so pane transitions can run', async () => {
-  const [layout, shell, page] = await Promise.all([
+test('docs navigation uses the complete Geistdocs layout and page tree', async () => {
+  const [layout, shell, navigation, client, page] = await Promise.all([
     readFile(new URL('./[lang]/docs/layout.tsx', import.meta.url), 'utf8'),
     readFile(new URL('./[lang]/docs/docs-shell.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('./[lang]/docs/docs-navigation.ts', import.meta.url), 'utf8'),
+    readFile(new URL('./[lang]/docs/docs-client.tsx', import.meta.url), 'utf8'),
     readFile(new URL('./[lang]/docs/[[...slug]]/page.tsx', import.meta.url), 'utf8'),
   ]);
   assert.match(layout, /<DocsShell>\{children\}<\/DocsShell>/);
-  assert.match(shell, /usePathname\(\)/);
-  assert.match(shell, /<DesktopDocsNav/);
-  assert.match(shell, /<MobileDocsNav/);
+  assert.match(shell, /<GeistdocsDocsLayout/);
+  assert.match(shell, /tree=\{DOCS_PAGE_TREE\}/);
+  assert.match(shell, /<MobileDocsBar \/>/);
+  assert.match(navigation, /export const DOCS_PAGE_TREE: PageTree\.Root/);
+  assert.doesNotMatch(client, /DesktopDocsNav|MobileDocsNav|usePathname|navigationForPathname/);
   assert.doesNotMatch(page, /DesktopDocsNav|MobileDocsNav|className="doc-shell/);
 });
 
-test('docs drill-in changes local pane state before navigation and the tablet drawer uses the viewport', async () => {
-  const [client, css] = await Promise.all([
-    readFile(new URL('./[lang]/docs/docs-client.tsx', import.meta.url), 'utf8'),
+test('docs retain the viewport-safe tablet drawer fix around Geistdocs navigation', async () => {
+  const [shell, css] = await Promise.all([
+    readFile(new URL('./[lang]/docs/docs-shell.tsx', import.meta.url), 'utf8'),
     readFile(new URL('./global.css', import.meta.url), 'utf8'),
   ]);
-  assert.match(client, /navigationForPathname\(item\.href\)/);
-  assert.match(client, /setView\('section'\)/);
-  assert.match(client, /requestAnimationFrame\(\(\) => setSectionRevealed\(true\)\)/);
-  assert.match(client, /<button aria-label="Back to all documentation sections"/);
+  assert.match(shell, /@vercel\/geistdocs\/layout/);
+  assert.match(shell, /@vercel\/geistdocs\/mobile-docs-bar/);
   assert.match(css, /header\.sticky\.is-menu-open \{[^\n]*backdrop-filter: none !important;/);
 });
 
@@ -45,30 +47,22 @@ test('docs use a task-first grouped navigation and Sans typography', async () =>
   assert.doesNotMatch(content, /Complete Arcade|Focused browser surfaces/);
   assert.doesNotMatch(content, /<Code title="Architecture">/);
   assert.match(content, /npx @vercel\/arcade@latest/);
-  assert.match(navigation, /export const ROOT_DOCS_NAV/);
-  assert.match(navigation, /href: '\/docs\/app', label: 'Using Arcade', drillIn: true/);
-  assert.match(navigation, /href: '\/docs\/games', label: 'Games', drillIn: true/);
-  assert.match(navigation, /href: '\/docs\/web', label: 'Browser integration', drillIn: true/);
-  assert.match(navigation, /href: '\/docs\/package-api', label: 'Package API'[\s\S]*href: '\/docs\/reference', label: 'API Reference'[\s\S]*href: '\/docs\/motivation', label: 'Motivation'/);
+  assert.match(navigation, /section\('Using Arcade', '\/docs\/app'/);
+  assert.match(navigation, /section\('Games', '\/docs\/games'/);
+  assert.match(navigation, /section\('Browser integration', '\/docs\/web'/);
+  assert.match(navigation, /page\('Package API', '\/docs\/package-api'\)[\s\S]*section\('API Reference', '\/docs\/reference'[\s\S]*page\('Motivation', '\/docs\/motivation'\)/);
   assert.match(page, /corePage\('engine'\), corePage\('renderer-pipeline'\), corePage\('game-visuals'\)/);
   assert.match(page, /corePage\('platform'\), corePage\('tui'\), corePage\('components'\)/);
-  assert.match(navigation, /navigationForPathname/);
-  assert.match(navigation, /drillIn: true/);
-  assert.match(client, /DesktopDocsNav/);
-  assert.match(client, /data-doc-sidebar-pane="root"/);
-  assert.match(client, /data-doc-sidebar-pane="section"/);
-  assert.match(client, /scrollIntoView\(\{ block: 'nearest' \}\)/);
-  assert.match(client, /data-fade-bottom=\{fade\.bottom\}/);
+  assert.match(navigation, /type: 'folder'/);
+  assert.match(navigation, /index: page\(name, url\)/);
   assert.doesNotMatch(page, /<details|<summary/);
   assert.match(css, /\.doc-page-header h1 \{[^\n]*var\(--font-geist-sans\)/);
   assert.match(css, /\.doc-article h2 \{[^\n]*var\(--font-geist-sans\)/);
   assert.match(css, /\.doc-architecture svg \{[^\n]*var\(--font-geist-sans\)/);
   assert.match(css, /\.doc-architecture \.cluster-label span \{ display: inline-block; transform: translateY\(6px\); \}/);
   assert.match(css, /\.doc-article > section > h2 \{ overflow-wrap: anywhere; \}/);
-  assert.match(css, /\.doc-sidebar__pane \{[^\n]*150ms cubic-bezier\(\.175,\.885,\.32,1\.1\)/);
-  assert.match(css, /\.doc-sidebar__scroll \{[^\n]*height: calc\(100dvh - 64px\)[^\n]*overflow-y: auto[^\n]*scroll-padding-block: 40px[^\n]*mask-image: linear-gradient/);
-  assert.match(css, /\.doc-sidebar__scroll\[data-fade-bottom='true'\] \{ --doc-sidebar-fade-bottom: 40px; \}/);
-  assert.match(css, /prefers-reduced-motion: reduce[^\n]*\.doc-sidebar__pane \{ transition: none; \}/);
+  assert.match(css, /\.arcade-docs-layout \{/);
+  assert.doesNotMatch(css, /\.doc-sidebar(?:__pane|__scroll)/);
   assert.doesNotMatch(css, /\.doc-(?:shell|article|sidebar|toc|page-header)[^\n]*font-site-display/);
 });
 
@@ -104,17 +98,17 @@ test('Motivation is a paragraph-only Docs letter with a quiet linked signature',
 });
 
 test('guides and reference use real child routes with generated symbol coverage', async () => {
-  const [page, client, reference, generated, script] = await Promise.all([
+  const [page, navigation, reference, generated, script] = await Promise.all([
     readFile(new URL('./[lang]/docs/[[...slug]]/page.tsx', import.meta.url), 'utf8'),
-    readFile(new URL('./[lang]/docs/docs-client.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('./[lang]/docs/docs-navigation.ts', import.meta.url), 'utf8'),
     readFile(new URL('./[lang]/docs/docs-reference.tsx', import.meta.url), 'utf8'),
     readFile(new URL('./[lang]/docs/generated-symbols.ts', import.meta.url), 'utf8'),
     readFile(new URL('../../../scripts/generate-doc-symbols.mjs', import.meta.url), 'utf8'),
   ]);
   for (const slug of ['guides/render-scene', 'guides/terminal-app', 'guides/custom-game', 'guides/visual-testing', 'reference/engine/render-target', 'reference/engine/material', 'reference/engine/surface', 'reference/tui/screen', 'reference/tui/layout-nodes', 'reference/tui/renderer-keymap', 'reference/components/input', 'reference/symbols']) assert.match(reference, new RegExp(slug));
   for (const section of ['Import', 'Signature', 'Lifecycle', 'Example', 'Common failures']) assert.match(reference, new RegExp(`heading: '${section}'`));
-  assert.match(client, /Back to all documentation sections/);
-  assert.match(client, /IconChevronRight/);
+  assert.match(navigation, /section\('Guides', '\/docs\/guides'/);
+  assert.match(navigation, /section\('API Reference', '\/docs\/reference'/);
   assert.match(generated, /@vercel\/arcade\/engine/);
   assert.match(generated, /@vercel\/arcade\/tui/);
   assert.match(script, /checker\.getExportsOfModule/);
@@ -136,8 +130,8 @@ test('games are a drill-in chapter with rules, graphics, model, record, and comm
   }
   for (const topic of ['Rules at a glance', 'What the model sees', 'What each model sees', 'What an Islanders model sees', 'From OBJ files to terminal pieces', 'A shuffle is a physical timeline', 'The island is generated, not imported', 'Run and record a match', 'Run a tournament and preserve both records', 'Choose how often the table talks', 'Address a model with @', 'Build your own game']) assert.match(games, new RegExp(topic));
   assert.match(page, /GAME_DOCS/);
-  assert.match(navigation, /games: \{[\s\S]*title: 'Games'/);
-  assert.match(navigation, /href: '\/docs\/rules', label: 'Rules'/);
+  assert.match(navigation, /section\('Games', '\/docs\/games'/);
+  assert.match(navigation, /page\('Rules', '\/docs\/rules'\)/);
   assert.match(page, /GAME_SECTION_DOCS/);
   assert.match(page, /RULES_DOC/);
   assert.match(content, /slug: 'rules'[\s\S]*navParent: 'games'[\s\S]*navGroup: 'Shared systems'/);
@@ -163,8 +157,8 @@ test('Browser integration groups focused Canvas APIs and the hosted CLI', async 
   assert.match(content, /slug: 'web'[\s\S]*label: 'Browser integration'[\s\S]*heading: 'Choose a browser path'/);
   assert.match(content, /slug: 'browser-host'[\s\S]*label: 'Hosted CLI'[\s\S]*navParent: 'web'/);
   assert.match(page, /BROWSER_DOCS/);
-  assert.match(navigation, /web: \{[\s\S]*title: 'Browser integration'/);
-  assert.match(navigation, /href: '\/docs\/browser-host', label: 'Hosted CLI'/);
+  assert.match(navigation, /section\('Browser integration', '\/docs\/web'/);
+  assert.match(navigation, /page\('Hosted CLI', '\/docs\/browser-host'\)/);
   assert.match(corpus, /Browser integration overview/);
   assert.match(corpus, /Hosted CLI child page/);
 });
@@ -194,8 +188,8 @@ test('Using Arcade is a player-facing chapter with controls, billing, and recove
   for (const fact of ['availability-aware AI Gateway model catalog', 'Start-time health', 'Signing out of Arcade clears local access only', 'never purchased AI Gateway Credits', 'valid credit card', 'grants $5 in free credits every 30 days', 'at least $10 in AI Gateway Credits', 'recurring $5 free credit no longer applies']) assert.match(app, new RegExp(fact.replace('$', '\\$')));
   for (const url of ['ai-gateway%2Fapi-keys', 'docs/ai-gateway/pricing', 'observability-and-spend/budgets']) assert.match(app, new RegExp(url));
   assert.match(page, /import \{ APP_DOCS \}/);
-  assert.match(navigation, /app: \{[\s\S]*title: 'Using Arcade'/);
-  assert.match(navigation, /href: '\/docs\/app\/models', label: 'Models and billing'/);
+  assert.match(navigation, /section\('Using Arcade', '\/docs\/app'/);
+  assert.match(navigation, /page\('Models and billing', '\/docs\/app\/models'\)/);
   assert.doesNotMatch(app, /get-or-create exchange|existing exchanged key|Every Vercel team has an AI Gateway free tier and paid tier|instead of hardcoding|card on file/i);
   assert.match(tutorial, /monthly included Gateway credit/);
   assert.doesNotMatch(tutorial, /card on file/i);

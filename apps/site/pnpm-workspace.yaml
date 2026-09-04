@@ -1,2 +1,4 @@
 packages:
   - "."
+patchedDependencies:
+  fumadocs-ui@16.2.2: patches/fumadocs-ui@16.2.2.patch

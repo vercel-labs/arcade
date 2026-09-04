@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  fumadocs-ui@16.2.2:
+    hash: 047e04fa26533d4356b851e6598b33c372974fcca8e709b73b6f633d110a6df5
+    path: patches/fumadocs-ui@16.2.2.patch
+
 importers:
 
   .:
@@ -37,7 +42,7 @@ importers:
         version: 16.2.2(@types/react@19.2.7)(lucide-react@0.555.0(react@19.2.3))(next@16.3.1(@opentelemetry/api@1.9.1)(@types/node@24.10.1)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       fumadocs-ui:
         specifier: 16.2.2
-        version: 16.2.2(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(lucide-react@0.555.0(react@19.2.3))(next@16.3.1(@opentelemetry/api@1.9.1)(@types/node@24.10.1)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(tailwindcss@4.1.17)
+        version: 16.2.2(patch_hash=047e04fa26533d4356b851e6598b33c372974fcca8e709b73b6f633d110a6df5)(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(lucide-react@0.555.0(react@19.2.3))(next@16.3.1(@opentelemetry/api@1.9.1)(@types/node@24.10.1)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(tailwindcss@4.1.17)
       geist:
         specifier: 1.7.1
         version: 1.7.1(next@16.3.1(@opentelemetry/api@1.9.1)(@types/node@24.10.1)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))
@@ -5696,7 +5701,7 @@ snapshots:
       dexie-react-hooks: 4.4.0(dexie@4.4.5)(react@19.2.3)
       fumadocs-core: 16.2.2(@types/react@19.2.7)(lucide-react@0.555.0(react@19.2.3))(next@16.3.1(@opentelemetry/api@1.9.1)(@types/node@24.10.1)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       fumadocs-mdx: 14.0.4(fumadocs-core@16.2.2(@types/react@19.2.7)(lucide-react@0.555.0(react@19.2.3))(next@16.3.1(@opentelemetry/api@1.9.1)(@types/node@24.10.1)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(next@16.3.1(@opentelemetry/api@1.9.1)(@types/node@24.10.1)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react@19.2.3)
-      fumadocs-ui: 16.2.2(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(lucide-react@0.555.0(react@19.2.3))(next@16.3.1(@opentelemetry/api@1.9.1)(@types/node@24.10.1)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(tailwindcss@4.1.17)
+      fumadocs-ui: 16.2.2(patch_hash=047e04fa26533d4356b851e6598b33c372974fcca8e709b73b6f633d110a6df5)(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(lucide-react@0.555.0(react@19.2.3))(next@16.3.1(@opentelemetry/api@1.9.1)(@types/node@24.10.1)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(tailwindcss@4.1.17)
       glob: 11.1.0
       lucide-react: 0.555.0(react@19.2.3)
       mermaid: 11.17.2
@@ -6353,7 +6358,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  fumadocs-ui@16.2.2(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(lucide-react@0.555.0(react@19.2.3))(next@16.3.1(@opentelemetry/api@1.9.1)(@types/node@24.10.1)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(tailwindcss@4.1.17):
+  fumadocs-ui@16.2.2(patch_hash=047e04fa26533d4356b851e6598b33c372974fcca8e709b73b6f633d110a6df5)(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(lucide-react@0.555.0(react@19.2.3))(next@16.3.1(@opentelemetry/api@1.9.1)(@types/node@24.10.1)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(tailwindcss@4.1.17):
     dependencies:
       '@radix-ui/react-accordion': 1.2.20(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       '@radix-ui/react-collapsible': 1.1.20(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
