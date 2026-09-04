@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import { access, readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 
-test('docs use a flat peer-page navigation and Sans typography', async () => {
-  const [page, content, css] = await Promise.all([
+test('docs use a task-first grouped navigation and Sans typography', async () => {
+  const [page, client, content, css] = await Promise.all([
     readFile(new URL('./[lang]/docs/[[...slug]]/page.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('./[lang]/docs/docs-client.tsx', import.meta.url), 'utf8'),
     readFile(new URL('./[lang]/docs/docs-content.tsx', import.meta.url), 'utf8'),
     readFile(new URL('./global.css', import.meta.url), 'utf8'),
   ]);
-  for (const label of ['Overview', 'Getting started', 'Package API', 'Engine', 'Rendering pipeline', 'Terminal platform', 'Terminal UI', 'Components', 'Game visuals', 'Rules', 'Game harness', 'Agentic tooling', 'Browser API', 'Browser host']) assert.match(content, new RegExp(`label: '${label}'`));
+  for (const label of ['Overview', 'Getting started', 'Package API', 'Engine', 'Rendering pipeline', 'Terminal platform', 'Terminal UI', 'Components', 'Game visuals', 'Rules', 'Game harness', 'Agentic tooling', 'Browser integration', 'Hosted CLI']) assert.match(content, new RegExp(`label: '${label}'`));
   assert.match(content, /slug: 'renderer-pipeline'[\s\S]*slug: 'platform'[\s\S]*slug: 'tui'[\s\S]*slug: 'components'/);
   assert.match(content, /@vercel\/geistdocs\/components\/mermaid/);
   assert.match(content, /<Mermaid chart=\{ARCHITECTURE_CHART\}/);
@@ -17,14 +18,24 @@ test('docs use a flat peer-page navigation and Sans typography', async () => {
   assert.match(content, /npx @vercel\/arcade@latest/);
   assert.match(page, /const CORE_NAV/);
   assert.match(page, /href: '\/docs\/app', label: 'Using Arcade', drillIn: true/);
-  assert.match(page, /href: '\/docs\/reference', label: 'API Reference'.*href: '\/docs\/motivation', label: 'Motivation'/);
+  assert.match(page, /href: '\/docs\/games', label: 'Games', drillIn: true/);
+  assert.match(page, /navItem\('web', true\)/);
+  assert.doesNotMatch(page, /navItem\('(rules|browser-host)'/);
+  assert.match(page, /href: '\/docs\/motivation', label: 'Motivation'[\s\S]*navItem\('package-api'\)[\s\S]*href: '\/docs\/reference', label: 'API Reference'/);
+  assert.match(page, /corePage\('engine'\), corePage\('renderer-pipeline'\), corePage\('game-visuals'\)/);
+  assert.match(page, /corePage\('platform'\), corePage\('tui'\), corePage\('components'\)/);
   assert.match(page, /nestedNavItems/);
   assert.match(page, /drillIn: true/);
+  assert.match(client, /DesktopDocsNav/);
+  assert.match(client, /data-doc-sidebar-pane="root"/);
+  assert.match(client, /data-doc-sidebar-pane="section"/);
   assert.doesNotMatch(page, /<details|<summary/);
   assert.match(css, /\.doc-page-header h1 \{[^\n]*var\(--font-geist-sans\)/);
   assert.match(css, /\.doc-article h2 \{[^\n]*var\(--font-geist-sans\)/);
   assert.match(css, /\.doc-architecture svg \{[^\n]*var\(--font-geist-sans\)/);
   assert.match(css, /\.doc-article > section > h2 \{ overflow-wrap: anywhere; \}/);
+  assert.match(css, /\.doc-sidebar__pane \{[^\n]*150ms cubic-bezier\(\.175,\.885,\.32,1\.1\)/);
+  assert.match(css, /prefers-reduced-motion: reduce[^\n]*\.doc-sidebar__pane \{ transition: none; \}/);
   assert.doesNotMatch(css, /\.doc-(?:shell|article|sidebar|toc|page-header)[^\n]*font-site-display/);
 });
 
@@ -60,16 +71,17 @@ test('Motivation is a paragraph-only Docs letter with a quiet linked signature',
 });
 
 test('guides and reference use real child routes with generated symbol coverage', async () => {
-  const [page, reference, generated, script] = await Promise.all([
+  const [page, client, reference, generated, script] = await Promise.all([
     readFile(new URL('./[lang]/docs/[[...slug]]/page.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('./[lang]/docs/docs-client.tsx', import.meta.url), 'utf8'),
     readFile(new URL('./[lang]/docs/docs-reference.tsx', import.meta.url), 'utf8'),
     readFile(new URL('./[lang]/docs/generated-symbols.ts', import.meta.url), 'utf8'),
     readFile(new URL('../../../scripts/generate-doc-symbols.mjs', import.meta.url), 'utf8'),
   ]);
   for (const slug of ['guides/render-scene', 'guides/terminal-app', 'guides/custom-game', 'guides/visual-testing', 'reference/engine/render-target', 'reference/engine/material', 'reference/engine/surface', 'reference/tui/screen', 'reference/tui/layout-nodes', 'reference/tui/renderer-keymap', 'reference/components/input', 'reference/symbols']) assert.match(reference, new RegExp(slug));
   for (const section of ['Import', 'Signature', 'Lifecycle', 'Example', 'Common failures']) assert.match(reference, new RegExp(`heading: '${section}'`));
-  assert.match(page, /Back to all documentation sections/);
-  assert.match(page, /IconChevronRight/);
+  assert.match(client, /Back to all documentation sections/);
+  assert.match(client, /IconChevronRight/);
   assert.match(generated, /@vercel\/arcade\/engine/);
   assert.match(generated, /@vercel\/arcade\/tui/);
   assert.match(script, /checker\.getExportsOfModule/);
@@ -77,8 +89,9 @@ test('guides and reference use real child routes with generated symbol coverage'
 });
 
 test('games are a drill-in chapter with rules, graphics, model, record, and communication case studies', async () => {
-  const [page, games, sitemap, css] = await Promise.all([
+  const [page, content, games, sitemap, css] = await Promise.all([
     readFile(new URL('./[lang]/docs/[[...slug]]/page.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('./[lang]/docs/docs-content.tsx', import.meta.url), 'utf8'),
     readFile(new URL('./[lang]/docs/docs-games.tsx', import.meta.url), 'utf8'),
     readFile(new URL('./sitemap.ts', import.meta.url), 'utf8'),
     readFile(new URL('./global.css', import.meta.url), 'utf8'),
@@ -91,6 +104,9 @@ test('games are a drill-in chapter with rules, graphics, model, record, and comm
   assert.match(page, /GAME_DOCS/);
   assert.match(page, /href: '\/docs\/games', label: 'Games', drillIn: true/);
   assert.match(page, /nestedMode === 'games'/);
+  assert.match(page, /GAME_SECTION_DOCS/);
+  assert.match(page, /RULES_DOC/);
+  assert.match(content, /slug: 'rules'[\s\S]*navParent: 'games'[\s\S]*navGroup: 'Shared systems'/);
   assert.match(games, /import Link from 'next\/link'/);
   assert.match(games, /<Link href="\/docs\/games\/chess"/);
   assert.match(games, /<dl className="api-list"/);
@@ -101,6 +117,21 @@ test('games are a drill-in chapter with rules, graphics, model, record, and comm
   assert.match(games, /src\/arcade\/match\/directed-replies\.ts/);
   assert.doesNotMatch(games, /currently belongs to live Islanders|src\/arcade\/games\/islanders\/chat-composer\.ts/);
   assert.match(css, /\.doc-cards--games \{ grid-template-columns: repeat\(3, minmax\(0, 1fr\)\); \}/);
+});
+
+test('Browser integration groups focused Canvas APIs and the hosted CLI', async () => {
+  const [page, content, corpus] = await Promise.all([
+    readFile(new URL('./[lang]/docs/[[...slug]]/page.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('./[lang]/docs/docs-content.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../public/llms-full.txt', import.meta.url), 'utf8'),
+  ]);
+  assert.match(content, /slug: 'web'[\s\S]*label: 'Browser integration'[\s\S]*heading: 'Choose a browser path'/);
+  assert.match(content, /slug: 'browser-host'[\s\S]*label: 'Hosted CLI'[\s\S]*navParent: 'web'/);
+  assert.match(page, /BROWSER_DOCS/);
+  assert.match(page, /nestedMode === 'web'/);
+  assert.match(page, /nestedNavItems\(BROWSER_DOCS, 'web'\)/);
+  assert.match(corpus, /Browser integration overview/);
+  assert.match(corpus, /Hosted CLI child page/);
 });
 
 test('Using Arcade is a player-facing chapter with controls, billing, and recoverable model setup', async () => {

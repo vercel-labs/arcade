@@ -65,7 +65,7 @@ arcade`}</Code><p>To try the latest version once without installing a global com
           <a href="/docs/game-harness"><strong>Run models in games</strong><span>Rules contracts, player-safe context, decisions, communication, and records</span></a>
           <a href="/docs/game-visuals"><strong>Reuse game visuals</strong><span>Production geometry, asset loading, layouts, and animation choreography</span></a>
           <a href="/docs/tools"><strong>Develop with agents</strong><span>Headless runners, bounded snapshots, artifacts, and deterministic checks</span></a>
-          <a href="/docs/browser-host"><strong>Host Arcade on the web</strong><span>Canvas adapters or the packaged CLI in an isolated browser terminal</span></a>
+          <a href="/docs/web"><strong>Integrate with the browser</strong><span>Focused Canvas scenes or the complete CLI in an isolated browser terminal</span></a>
         </div><Code title="TypeScript">{`npm install @vercel/arcade
 
 import { Surface } from '@vercel/arcade/engine'
@@ -82,7 +82,7 @@ import {
       },
       {
         heading: 'Explore the documentation',
-        body: <><ul><li>Start with <a href="/docs/getting-started">Getting started</a> to install the CLI, sign in, or run from source.</li><li>Open <a href="/docs/app">Using Arcade</a> to learn the launcher, tutorial, controls, model setup, teams, and billing.</li><li>Use <a href="/docs/package-api">Package API</a> to choose a stable npm subpath.</li><li>Open <a href="/docs/games">Games</a> to follow Chess, Poker, Islanders, and communication from rules through rendering and model play.</li><li>Continue to <a href="/docs/engine">Rendering engine</a> to draw your first CPU-rendered mesh.</li><li>Read <a href="/docs/renderer-pipeline">Rendering pipeline</a> to understand how pixels become ASCII, pixel, or hybrid cells.</li><li>Use <a href="/docs/platform">Terminal platform</a>, <a href="/docs/tui">Terminal UI</a>, and <a href="/docs/components">Components</a> to own terminal lifecycle and place interactive UI over a live scene.</li><li>Start with <a href="/docs/game-harness">Game harness</a> when rules, models, human players, or reproducible match records are the primary problem.</li><li>Reuse <a href="/docs/game-visuals">Game visuals</a> when a new host needs Arcade’s production boards, cards, pieces, or motion.</li><li>Use <a href="/docs/tools">Agentic tooling</a> to give coding agents bounded snapshots, structured artifacts, and inspectable self-play.</li></ul><p>Arcade fits terminal-first graphics and agent-playable games. Choose a GPU renderer, remote-desktop stack, or authoritative multiplayer service when those are the actual requirements.</p></>,
+        body: <><ul><li>Start with <a href="/docs/getting-started">Getting started</a> to install the CLI, sign in, or run from source.</li><li>Open <a href="/docs/app">Using Arcade</a> to learn the launcher, tutorial, controls, model setup, teams, and billing.</li><li>Study <a href="/docs/games">Games</a> for complete Chess, Poker, and Islanders case studies, shared rules, and model communication.</li><li>Continue through <a href="/docs/engine">Rendering engine</a> and <a href="/docs/renderer-pipeline">Rendering pipeline</a> to understand how meshes become terminal cells.</li><li>Reuse <a href="/docs/game-visuals">Game visuals</a> when a new host needs Arcade’s production boards, cards, pieces, or motion.</li><li>Use <a href="/docs/platform">Terminal platform</a>, <a href="/docs/tui">Terminal UI</a>, and <a href="/docs/components">Components</a> to own terminal lifecycle and place interactive UI over a live scene.</li><li>Start with <a href="/docs/game-harness">Game harness</a> when rules, models, human players, or reproducible match records are the primary problem.</li><li>Use <a href="/docs/tools">Agentic tooling</a> to give coding agents bounded snapshots, structured artifacts, and inspectable self-play.</li><li>Choose <a href="/docs/web">Browser integration</a> for focused Canvas scenes or the complete CLI hosted in an isolated PTY.</li><li>Follow a <a href="/docs/guides">Guide</a> for an end-to-end workflow, then use <a href="/docs/package-api">Package API</a> and <a href="/docs/reference">API Reference</a> for exact lookup.</li></ul><p>Arcade fits terminal-first graphics and agent-playable games. Choose a GPU renderer, remote-desktop stack, or authoritative multiplayer service when those are the actual requirements.</p></>,
       },
     ],
   },
@@ -679,6 +679,8 @@ const meshes = await fetchObjMeshSet({
     slug: 'rules',
     label: 'Rules',
     title: 'Rules engines',
+    navParent: 'games',
+    navGroup: 'Shared systems',
     summary: 'Use presentation-independent game states for legal actions, deterministic tests, search, model observations, chance events, and replay.',
     sections: [
       {
@@ -923,10 +925,17 @@ pnpm match:run -- --game islanders --models=a,b,c,d --communication=ambient`}</C
   },
   {
     slug: 'web',
-    label: 'Browser API',
-    title: 'Browser API',
-    summary: 'Present Arcade Surface cells in a browser, host focused production scenes, and keep terminal glyph geometry consistent with xterm.',
+    label: 'Browser integration',
+    title: 'Browser integration',
+    summary: 'Render focused Arcade surfaces directly to Canvas or host the complete CLI in an isolated browser terminal.',
     sections: [
+      {
+        heading: 'Choose a browser path',
+        body: <><Api rows={[
+          ['Canvas and focused scenes', 'Import the browser-safe web API when you own the page, render loop, and scene. This keeps the complete terminal application out of the browser bundle.'],
+          ['Hosted CLI', 'Run the packaged Arcade command inside an isolated PTY when people should use the complete launcher, games, terminal input, and model flow unchanged.'],
+        ]} /><div className="doc-cards doc-cards--single"><a href="/docs/browser-host"><strong>Host the complete CLI</strong><span>Sandbox lifecycle, xterm transport, device authorization, isolation, and credential boundaries</span></a></div></>,
+      },
       {
         heading: 'Render a Surface to Canvas',
         body: <><Code>{`import {
@@ -992,9 +1001,10 @@ const { surface, status, displayMode } = scene.frame(cols, rows, time)`}</Code><
   },
   {
     slug: 'browser-host',
-    label: 'Browser host',
-    title: 'Browser host',
-    summary: 'Run the packaged Arcade CLI in an isolated browser terminal, or render focused browser-safe scenes directly through the Canvas Surface adapter.',
+    label: 'Hosted CLI',
+    title: 'Hosting the complete CLI',
+    navParent: 'web',
+    summary: 'Run the packaged Arcade CLI in an isolated Vercel Sandbox PTY, stream it through xterm.js, and keep credentials out of the browser.',
     sections: [
       {
         heading: 'Start the hosted shell',

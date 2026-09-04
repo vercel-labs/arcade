@@ -1,8 +1,7 @@
 import type { Metadata } from 'next';
-import { IconChevronRight } from '@vercel/geistdocs/assets/icons/icon-chevron-right';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { CopyPageButton, MobileDocsNav, type DocsNavItem } from '../docs-client';
+import { CopyPageButton, DesktopDocsNav, MobileDocsNav, type DocsNavItem } from '../docs-client';
 import { APP_DOCS } from '../docs-app';
 import { CORE_DOCS, type DocPage } from '../docs-content';
 import { GAME_DOCS } from '../docs-games';
@@ -10,11 +9,52 @@ import { MOTIVATION_DOC } from '../docs-motivation';
 import { GUIDE_DOCS, REFERENCE_DOCS } from '../docs-reference';
 
 const hrefFor = (slug: string) => `/docs${slug ? `/${slug}` : ''}`;
-const APP_INSERT_INDEX = CORE_DOCS.findIndex((page) => page.slug === 'getting-started') + 1;
-const CORE_NAV_ITEMS: DocsNavItem[] = CORE_DOCS.map((page) => ({ href: hrefFor(page.slug), label: page.label }));
-const DOCS = [...CORE_DOCS.slice(0, APP_INSERT_INDEX), ...APP_DOCS, ...CORE_DOCS.slice(APP_INSERT_INDEX), ...GAME_DOCS, ...GUIDE_DOCS, ...REFERENCE_DOCS, MOTIVATION_DOC];
+const corePage = (slug: string): DocPage => {
+  const page = CORE_DOCS.find((entry) => entry.slug === slug);
+  if (!page) throw new Error(`Missing core docs page: ${slug}`);
+  return page;
+};
+const RULES_DOC = corePage('rules');
+const COMMUNICATION_DOC = GAME_DOCS.find((page) => page.slug === 'games/communication')!;
+const GAME_SECTION_DOCS = [...GAME_DOCS.filter((page) => page !== COMMUNICATION_DOC), RULES_DOC, COMMUNICATION_DOC];
+const BROWSER_DOCS = [corePage('web'), corePage('browser-host')];
+const DOCS = [
+  corePage(''), corePage('getting-started'),
+  ...APP_DOCS,
+  ...GAME_SECTION_DOCS,
+  corePage('engine'), corePage('renderer-pipeline'), corePage('game-visuals'),
+  corePage('platform'), corePage('tui'), corePage('components'),
+  corePage('game-harness'), corePage('tools'), ...BROWSER_DOCS,
+  ...GUIDE_DOCS,
+  MOTIVATION_DOC,
+  corePage('package-api'),
+  ...REFERENCE_DOCS,
+];
 const findDoc = (slug: string) => DOCS.find((page) => page.slug === slug);
-const CORE_NAV: DocsNavItem[] = [...CORE_NAV_ITEMS.slice(0, APP_INSERT_INDEX), { href: '/docs/app', label: 'Using Arcade', drillIn: true }, ...CORE_NAV_ITEMS.slice(APP_INSERT_INDEX), { href: '/docs/games', label: 'Games', drillIn: true }, { href: '/docs/guides', label: 'Guides', drillIn: true }, { href: '/docs/reference', label: 'API Reference', drillIn: true }, { href: '/docs/motivation', label: 'Motivation' }];
+const navItem = (slug: string, drillIn = false): DocsNavItem => {
+  const page = corePage(slug);
+  return { href: hrefFor(page.slug), label: page.label, ...(drillIn ? { drillIn: true } : {}) };
+};
+const CORE_NAV: DocsNavItem[] = [
+  navItem(''),
+  navItem('getting-started'),
+  { href: '/docs/app', label: 'Using Arcade', drillIn: true },
+  { href: '/docs/games', label: 'Games', drillIn: true },
+  navItem('engine'),
+  navItem('renderer-pipeline'),
+  navItem('game-visuals'),
+  navItem('platform'),
+  navItem('tui'),
+  navItem('components'),
+  navItem('game-harness'),
+  navItem('tools'),
+  navItem('web', true),
+  { href: '/docs/guides', label: 'Guides', drillIn: true },
+  { href: '/docs/motivation', label: 'Motivation' },
+  navItem('package-api'),
+  { href: '/docs/reference', label: 'API Reference', drillIn: true },
+];
+const sectionLabel = (section: string): string => section === 'app' ? 'Using Arcade' : section === 'reference' ? 'API Reference' : section === 'guides' ? 'Guides' : section === 'web' ? 'Browser integration' : 'Games';
 
 export function generateStaticParams() { return DOCS.map((page) => ({ slug: page.slug ? page.slug.split('/') : [] })); }
 
@@ -31,8 +71,8 @@ export default async function DocsPage({ params }: PageProps<'/[lang]/docs/[[...
   const page = findDoc(slug.join('/'));
   if (!page) notFound();
   const activeHref = hrefFor(page.slug);
-  const nestedMode = page.slug === 'app' || page.navParent === 'app' ? 'app' : page.slug === 'reference' || page.navParent === 'reference' ? 'reference' : page.slug === 'guides' || page.navParent === 'guides' ? 'guides' : page.slug === 'games' || page.navParent === 'games' ? 'games' : null;
-  const navItems = nestedMode === 'app' ? nestedNavItems(APP_DOCS, 'app') : nestedMode === 'reference' ? nestedNavItems(REFERENCE_DOCS, 'reference') : nestedMode === 'guides' ? nestedNavItems(GUIDE_DOCS, 'guides') : nestedMode === 'games' ? nestedNavItems(GAME_DOCS, 'games') : CORE_NAV;
+  const nestedMode = page.slug === 'app' || page.navParent === 'app' ? 'app' : page.slug === 'reference' || page.navParent === 'reference' ? 'reference' : page.slug === 'guides' || page.navParent === 'guides' ? 'guides' : page.slug === 'games' || page.navParent === 'games' ? 'games' : page.slug === 'web' || page.navParent === 'web' ? 'web' : null;
+  const navItems = nestedMode === 'app' ? nestedNavItems(APP_DOCS, 'app') : nestedMode === 'reference' ? nestedNavItems(REFERENCE_DOCS, 'reference') : nestedMode === 'guides' ? nestedNavItems(GUIDE_DOCS, 'guides') : nestedMode === 'games' ? nestedNavItems(GAME_SECTION_DOCS, 'games') : nestedMode === 'web' ? nestedNavItems(BROWSER_DOCS, 'web') : CORE_NAV;
   const sectionIds = page.sections.map((section) => slugify(section.heading));
   const index = DOCS.findIndex((entry) => entry.slug === page.slug);
   const previous = index > 0 ? DOCS[index - 1] : null;
@@ -40,9 +80,9 @@ export default async function DocsPage({ params }: PageProps<'/[lang]/docs/[[...
 
   return <main className="doc-shell mt-(--fd-nav-height)">
     <MobileDocsNav active={activeHref} items={navItems} />
-    <aside aria-label="Documentation navigation" className="doc-sidebar"><nav className="doc-sidebar__scroll">{nestedMode ? <Link aria-label="Back to all documentation sections" className="doc-sidebar__section-header" href="/docs"><span aria-hidden="true"><IconChevronRight size={16} /></span><strong>{nestedMode === 'app' ? 'Using Arcade' : nestedMode === 'reference' ? 'API Reference' : nestedMode === 'guides' ? 'Guides' : 'Games'}</strong><span aria-hidden="true" /></Link> : null}{navItems.map((item) => item.group ? <span className="doc-sidebar__group" key={`group-${item.group}`}>{item.group}</span> : <Link aria-current={item.href === activeHref ? 'page' : undefined} href={item.href} key={item.href}><span>{item.label}</span>{item.drillIn ? <span aria-hidden="true"><IconChevronRight size={16} /></span> : null}</Link>)}</nav></aside>
+    <DesktopDocsNav active={activeHref} items={navItems} rootItems={CORE_NAV} sectionTitle={nestedMode ? sectionLabel(nestedMode) : null} />
     <article className="doc-article" data-doc-article>
-      <header className="doc-page-header"><nav aria-label="Breadcrumb" className="doc-breadcrumbs"><Link href="/docs">Docs</Link>{page.navParent ? <><span>/</span><Link href={`/docs/${page.navParent}`}>{page.navParent === 'app' ? 'Using Arcade' : page.navParent === 'reference' ? 'Reference' : page.navParent === 'guides' ? 'Guides' : 'Games'}</Link></> : null}{page.slug ? <><span>/</span><span>{page.label}</span></> : null}</nav><h1>{page.title}</h1><p>{page.summary}</p><div className="doc-actions"><CopyPageButton /></div></header>
+      <header className="doc-page-header"><nav aria-label="Breadcrumb" className="doc-breadcrumbs"><Link href="/docs">Docs</Link>{page.navParent ? <><span>/</span><Link href={`/docs/${page.navParent}`}>{sectionLabel(page.navParent)}</Link></> : null}{page.slug ? <><span>/</span><span>{page.label}</span></> : null}</nav><h1>{page.title}</h1><p>{page.summary}</p><div className="doc-actions"><CopyPageButton /></div></header>
       {page.body ?? page.sections.map((section, sectionIndex) => { const id = sectionIds[sectionIndex]; return <section id={id} key={section.heading}><h2><a aria-label={`Link to ${section.heading}`} href={`#${id}`}>{section.heading}</a></h2><div>{section.body}</div></section>; })}
       <nav aria-label="Documentation pagination" className="doc-pagination">{previous ? <Link href={hrefFor(previous.slug)}><span>Previous</span><strong>← {previous.label}</strong></Link> : <span />}{next ? <Link href={hrefFor(next.slug)}><span>Next</span><strong>{next.label} →</strong></Link> : <span />}</nav>
     </article>

@@ -30,6 +30,25 @@ export function CopyPageButton() {
 
 export interface DocsNavItem { href: string; label: string; group?: string; drillIn?: boolean }
 
+function DocsNavLinks({ active, items }: { active: string; items: DocsNavItem[] }) {
+  return <>{items.map((item, index) => item.group
+    ? <span className="doc-sidebar__group" key={`${item.group}-${index}`}>{item.group}</span>
+    : <Link aria-current={item.href === active ? 'page' : undefined} href={item.href} key={item.href}><span>{item.label}</span>{item.drillIn ? <span aria-hidden="true"><IconChevronRight size={16} /></span> : null}</Link>)}</>;
+}
+
+export function DesktopDocsNav({ active, items, rootItems, sectionTitle }: { active: string; items: DocsNavItem[]; rootItems: DocsNavItem[]; sectionTitle: string | null }) {
+  const nested = sectionTitle !== null;
+  return <aside aria-label="Documentation navigation" className="doc-sidebar"><nav className="doc-sidebar__scroll"><div className="doc-sidebar__viewport">
+    <div aria-hidden={nested} className={`doc-sidebar__pane ${nested ? 'is-left' : 'is-active'}`} data-doc-sidebar-pane="root" inert={nested}>
+      <DocsNavLinks active={active} items={rootItems} />
+    </div>
+    <div aria-hidden={!nested} className={`doc-sidebar__pane ${nested ? 'is-active' : 'is-right'}`} data-doc-sidebar-pane="section" inert={!nested}>
+      {sectionTitle ? <Link aria-label="Back to all documentation sections" className="doc-sidebar__section-header" href="/docs"><span aria-hidden="true"><IconChevronRight size={16} /></span><strong>{sectionTitle}</strong><span aria-hidden="true" /></Link> : null}
+      <DocsNavLinks active={active} items={items} />
+    </div>
+  </div></nav></aside>;
+}
+
 export function MobileDocsNav({ active, items }: { active: string; items: DocsNavItem[] }) {
   const [open, setOpen] = useState(false);
   useEffect(() => {

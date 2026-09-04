@@ -18,25 +18,25 @@ Choose Arcade for terminal-first 3D rendering, reusable retained TUI components,
 - /docs/app — launcher, human and model seats, match setup, live-game surfaces, and recovery
 - /docs/app/controls — offline-first Tutorial, camera gestures, global keys, contextual controls, and display modes
 - /docs/app/models — Vercel teams, generated Arcade key, availability-aware model picker, Gateway credits, spend, and troubleshooting
-- /docs/package-api — complete npm subpath map and public/private boundaries
 - /docs/games — complete-game case studies and a build-your-own integration checklist
 - /docs/games/chess — rules, OBJ pieces, move choreography, model play, runner, and records
 - /docs/games/poker — Hold'em rules, cards, shuffling, chips, private observations, tournament runner, and records
 - /docs/games/islanders — building/trading rules, procedural world, model context, negotiation, and replay
+- /docs/rules — shared GameState, private information, chance nodes, and shipped game rules within the Games chapter
 - /docs/games/communication — ambient/autoreply policy, public chat, @model replies, privacy, and wisps
-- /docs/motivation — why Arcade treats the terminal as a canvas and games as a way to observe model behavior
 - /docs/engine — renderer, materials, camera, display modes, imported models
 - /docs/renderer-pipeline — clipping, rasterization, post-processing, presenters, Surface, diffing, performance
+- /docs/game-visuals — shared production geometry, assets, layouts, and animation plans
+- /docs/platform — terminal input, color detection, raw mode, and the internal browser-opener boundary
 - /docs/tui — Surface, retained components, input, compositing
 - /docs/components — controls, tables, fields, overlays, themes, accessibility
-- /docs/game-visuals — shared production geometry, assets, layouts, and animation plans
-- /docs/rules — GameState, private information, chance nodes, and shipped game rules
 - /docs/game-harness — rules, model context, self-play, traces, agent tooling
 - /docs/tools — snapshot pipeline, exported headless runners, match-lab artifacts, model audits, benchmarks, privacy
-- /docs/web — CanvasSurfaceHost, browser scenes, responsive grids, and xterm parity
-- /docs/platform — terminal input, color detection, raw mode, and the internal browser-opener boundary
-- /docs/browser-host — hosted CLI architecture, shell isolation, and credential boundary
+- /docs/web — Browser integration overview, CanvasSurfaceHost, focused scenes, responsive grids, and xterm parity
+- /docs/browser-host — Hosted CLI child page covering shell architecture, isolation, and credential boundaries
 - /docs/guides — complete render, terminal-app, custom-game, and visual-testing workflows
+- /docs/motivation — why Arcade treats the terminal as a canvas and games as a way to observe model behavior
+- /docs/package-api — complete npm subpath map and public/private boundaries
 - /docs/reference — focused API contracts with signatures, defaults, lifecycle, errors, and examples
 - /docs/reference/symbols — generated exhaustive symbol index for every supported package entry point
 
