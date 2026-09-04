@@ -25,10 +25,11 @@ import { disambiguateLabels } from '../../harness/labels.ts';
 import { shortModel } from '../../harness/model-label.ts';
 import { normalizerModel } from './models.ts';
 import { IslandersCommunicationCoordinator } from '../../harness/games/islanders/islanders-communication.ts';
+import { DirectedReplies } from './directed-replies.ts';
 import { IslandersMemory } from './islanders-memory.ts';
 import type { LanguageModel } from 'ai';
 import { detectIslandersMoments } from '../../harness/games/islanders/islanders-moments.ts';
-import { directedReplyOpportunities, primaryMoment, reactionOpportunities } from '../../harness/communication/moments.ts';
+import { primaryMoment, reactionOpportunities } from '../../harness/communication/moments.ts';
 import type { ModelFailureNotice } from '../../harness/model-failure-notice.ts';
 import {
   isTelemetryEnabled,
@@ -116,7 +117,7 @@ export class IslandersDriver {
   private reflecting = new Map<number, Promise<void>>();
   private talkSeenByObserver = new Map<number, number>();
   private lastCommunicationDecision: CommunicationDecision | null = null;
-  private directedReplyQueue: Promise<void> = Promise.resolve();
+  private readonly directedReplies = new DirectedReplies();
   private recorder: IslandersGameRecorder | null = null;
   private restartAfterAbort = false;
 
@@ -228,7 +229,7 @@ export class IslandersDriver {
     this.failure = null;
     this.complete = false;
     this.lastCommunicationDecision = null;
-    this.directedReplyQueue = Promise.resolve();
+    this.directedReplies.reset();
     const state = new IslandersState({
       numPlayers: seats.length,
       // UI copy uses `this.labels` so the local seat remains "You". The rules state's
@@ -485,36 +486,22 @@ export class IslandersDriver {
   }
 
   private enqueueDirectedReplies(message: PublicConversationMessage, actionNumber: number, actionReplySeats: ReadonlySet<number> = new Set()): Promise<void> {
-    const run = async (): Promise<void> => {
-      if (!this.communication || !this.live) return;
-      const signal = this.abort?.signal;
-      for (const opportunity of directedReplyOpportunities(message, 'islanders', this.seats.length)) {
-        if (signal?.aborted) break;
-        if (this.seats[opportunity.seat]?.kind !== 'ai') continue;
-        if (actionReplySeats.has(opportunity.seat)) continue;
-        const proposal = await this.players[opportunity.seat]?.chooseCommunication?.({
-          opportunity,
-          gameView: this.live.informationStateString(opportunity.seat),
-          conversation: this.communication.contextFor(opportunity.seat),
-          signal,
-        });
-        if (signal?.aborted) break;
-        const decision = this.communication.decideDirectedReply(opportunity, proposal, actionNumber);
+    const communication = this.communication;
+    const live = this.live;
+    if (!communication || !live) return Promise.resolve();
+    return this.directedReplies.enqueue({
+      game: 'islanders',
+      seatCount: this.seats.length,
+      isModelSeat: (seat) => this.seats[seat]?.kind === 'ai',
+      player: (seat) => this.players[seat],
+      gameView: (seat) => live.informationStateString(seat),
+      coordinator: communication,
+      onSpeak: (seat, text, decision) => {
         this.lastCommunicationDecision = decision;
-        if (decision.communication.mode === 'speak') {
-          this.log.push({
-            seat: opportunity.seat,
-            color: this.colorOf(opportunity.seat),
-            actor: this.labelOf(opportunity.seat),
-            message: decision.communication.text,
-            chat: true,
-          });
-          this.deps.syncLive();
-        }
-      }
-    };
-    this.directedReplyQueue = this.directedReplyQueue.then(run, run);
-    return this.directedReplyQueue;
+        this.log.push({ seat, color: this.colorOf(seat), actor: this.labelOf(seat), message: text, chat: true });
+        this.deps.syncLive();
+      },
+    }, message, actionNumber, this.abort?.signal, actionReplySeats);
   }
 
   // What a monopoly actually collected, from the hands as they stood before the card.

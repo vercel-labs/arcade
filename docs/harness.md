@@ -57,7 +57,12 @@ picker are CLI product behavior, not a requirement of the harness.
 Game-specific helpers are available from `@vercel/arcade/harness/chess`,
 `@vercel/arcade/harness/islanders`, and `@vercel/arcade/harness/poker`. Public conversation
 types, ambient/autoreply policy, and notable-moment helpers live at
-`@vercel/arcade/harness/communication`.
+`@vercel/arcade/harness/communication`. A `TableCommunicationCoordinator` holds a table's
+public conversation: `addHuman` records what a human said and whom it addressed,
+`noteSpeech` records a line a seat said through another channel (a move's rationale), and
+`decideDirectedReply` bounds the reply a `ModelPlayer.chooseCommunication` call proposes.
+A `ModelPlayer` answers addresses either through its `communication` config (ambient mode)
+or, for games whose move prompt stays rationale-based, through `replyGuide`.
 
 ## Run a headless Chess match
 

@@ -222,6 +222,13 @@ export interface ModelPlayerOpts {
     guide: string;
   };
   /**
+   * Answer a direct address at the table (`chooseCommunication`) without moving the
+   * move prompt onto the structured `communication` schema. For games whose moves keep
+   * their `rationale` / `say` line (chess, poker); a game that sets `communication`
+   * already has a guide and does not need this.
+   */
+  replyGuide?: string;
+  /**
    * Optional extra context woven into the move prompt for the seat to act, read
    * live per turn (a thunk, so it reflects the latest state). Poker uses it to inject
    * chip standings + the seat's private opponent notes; games that don't set it are
@@ -290,6 +297,7 @@ export class ModelPlayer<A> implements Player<A> {
   private rationaleGuide?: string;
   private speech?: string;
   private communication?: ModelPlayerOpts['communication'];
+  private replyGuide?: string;
   private contextProvider?: (player: number) => string;
   private onAttempt?: ModelPlayerOpts['onAttempt'];
   private captureThinking: boolean;
@@ -311,6 +319,7 @@ export class ModelPlayer<A> implements Player<A> {
     this.rationaleGuide = opts.rationaleGuide;
     this.speech = opts.speech;
     this.communication = opts.communication;
+    this.replyGuide = opts.replyGuide;
     this.contextProvider = opts.contextProvider;
     this.onAttempt = opts.onAttempt;
     this.captureThinking = opts.captureThinking ?? false;
@@ -329,7 +338,10 @@ export class ModelPlayer<A> implements Player<A> {
     conversation: string;
     signal?: AbortSignal;
   }): Promise<Communication | undefined> {
-    if (!this.communication || this.communication.mode() !== 'ambient') return undefined;
+    // In autoreply mode the address is answered alongside the seat's next action, so a
+    // standalone reply would double up; without any guide the game has no table talk.
+    const guide = this.communication ? (this.communication.mode() === 'ambient' ? this.communication.guide : undefined) : this.replyGuide;
+    if (!guide) return undefined;
     const moment = input.opportunity.moment;
     const actorLabel = moment.actorLabel ?? (moment.actorSeat === input.opportunity.seat ? this.name : `seat ${moment.actorSeat ?? 'unknown'}`);
     const samePlayer = moment.actorSeat === input.opportunity.seat;
@@ -345,7 +357,7 @@ export class ModelPlayer<A> implements Player<A> {
       input.gameView ? `Your current game view:\n${input.gameView}` : '',
       input.conversation,
       this.speech,
-      this.communication.guide,
+      guide,
     ].filter(Boolean).join('\n\n');
     try {
       const generated = await generateText({

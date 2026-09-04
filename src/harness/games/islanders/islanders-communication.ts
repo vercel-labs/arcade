@@ -1,5 +1,6 @@
 import { PublicConversation } from '../../communication/conversation.ts';
 import { CommunicationPolicy } from '../../communication/policy.ts';
+import { resolveDirectedReply, validTargets } from '../../communication/coordinator.ts';
 import type { Communication, CommunicationDecision, CommunicationMode, PublicConversationMessage } from '../../communication/types.ts';
 import type { CommunicationOpportunity } from '../../communication/moments.ts';
 import type { IslandersAction } from '../../../rules/islanders/types.ts';
@@ -167,37 +168,23 @@ export class IslandersCommunicationCoordinator {
   }
 
   decideDirectedReply(opportunity: CommunicationOpportunity, proposal: Communication | undefined, actionNumber: number): CommunicationDecision {
-    const proposed = proposal ?? { mode: 'silent', intent: 'none', privateReason: 'declined the directed reply opportunity' };
-    const decision = this.policy.decide({
-      mode: this.mode,
-      proposal: proposed,
-      seat: opportunity.seat,
+    const decision = resolveDirectedReply(
+      { conversation: this.conversation, policy: this.policy, mode: this.mode, labels: this.labels, seatCount: this.labels.length },
+      opportunity,
+      proposal,
       actionNumber,
-      actionSalience: 1,
-      requiredResponse: true,
-    });
+    );
     this.decisions++;
     this.required++;
     if (decision.communication.mode === 'speak') {
       this.spoken++;
       this.requiredSpoken++;
       this.words += decision.communication.text.trim().split(/\s+/).filter(Boolean).length;
-      // A directed response is deliberately terminal: it may name somebody, but it
-      // cannot create another forced reply and turn one address into an endless loop.
-      this.conversation.appendModel(
-        opportunity.seat,
-        this.labels[opportunity.seat] ?? `player ${opportunity.seat + 1}`,
-        decision.communication.text,
-        this.validTargets(opportunity.seat, decision.communication.addressedSeats),
-        false,
-      );
     }
-    this.conversation.consumeResponseFor(opportunity.seat);
     return decision;
   }
 
   private validTargets(speakerSeat: number, addressedSeats: readonly number[] | undefined): number[] {
-    return [...new Set((addressedSeats ?? []).filter((seat) =>
-      Number.isInteger(seat) && seat >= 0 && seat < this.labels.length && seat !== speakerSeat))];
+    return validTargets(this.labels.length, speakerSeat, addressedSeats);
   }
 }

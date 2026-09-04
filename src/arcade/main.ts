@@ -29,8 +29,7 @@ import { type TileScene } from './games/islanders/tile-scene.ts';
 import { IslandersController } from './games/islanders/islanders-controller.ts';
 import { closeIslandersSidebar, ISLANDERS_RAIL_W, islandersRailVisible } from './games/islanders/card-hud.ts';
 import { IslandersGameScene } from './games/islanders/game-scene.ts';
-import { buildIslandersGameRoot, mountIslandersGameHud } from './games/islanders/game-hud.ts';
-import { islandersChatComposerRows } from './games/islanders/chat-composer.ts';
+import { buildIslandersGameRoot, islandersChatComposer, mountIslandersGameHud } from './games/islanders/game-hud.ts';
 import { IslandersDriver } from './match/islanders-driver.ts';
 import { RESOURCES } from '../rules/islanders/types.ts';
 import type { CommunicationMode } from '../harness/communication/types.ts';
@@ -55,6 +54,8 @@ import { CHAT_WIDTH, clearChat, pushChatMessage } from './match/chat.ts';
 import { buildMatchSetup, buildSwapSetup, chessPreviewSides, matchSetupOptions, matchSetupSelection, mountMatchSetup, mountSwapSetup, openSwapSetup, setMatchSetupChanged, setMatchSetupModelCatalog, swapSetupSelection } from './match/setup.ts';
 import { fallbackArcadeModelCatalog, fetchTeamModelCatalog, type ArcadeModelCatalog } from './match/team-model-catalog.ts';
 import { buildGatewayNoticePill, catalogAccessLine, gatewayNoticeFor, gatewayNoticeSentence, type GatewayNoticeKind } from './shell/gateway-notice.ts';
+import { ChatComposer } from './match/chat-composer.ts';
+import { CHAT_COMPOSER_W } from './match/chat-sidebar.ts';
 import { copyToClipboard } from '../platform/clipboard.ts';
 import { checkForUpdate, packageInfo, refreshLatestInBackground, type UpdateInfo } from './update.ts';
 import { BLACK, type Color, WHITE } from '../rules/chess/types.ts';
@@ -1104,7 +1105,43 @@ function enterChessGame(): void {
   draggingCamera = false;
   evalBarVisible = false; // a fresh entry shows the default board; the bar insets the viewport, so a stale one reframes the scene
   mountChessHud(ui); // (re)register the move-history panel for its Slot
+  chessChatComposer.mount(ui);
   fullRepaint();
+}
+
+// The human's table-talk field under each game's chat transcript. Present only while the
+// human holds a seat in a live match (a spectator has nobody to speak as); the driver
+// takes the line and prompts any @-addressed model, and the human's own line goes straight
+// into the thread.
+const chessChatComposer = new ChatComposer({ id: 'chess-chat-input' });
+const pokerChatComposer = new ChatComposer({ id: 'poker-chat-input' });
+
+function chessChatComposerNode(): Node | undefined {
+  if (!chatVisible || !matchSeats || aiMatch.humanSeat() < 0) return undefined;
+  chessChatComposer.configure({
+    targets: aiMatch.chatTargets(),
+    onSubmit: (text, targetSeats) => {
+      if (!aiMatch.sendHumanChat(text, targetSeats)) return false;
+      pushChatMessage({ text, model: 'you', label: 'you' });
+      r.requestRender();
+      return true;
+    },
+  });
+  return chessChatComposer.build(CHAT_COMPOSER_W);
+}
+
+function pokerChatComposerNode(): Node | undefined {
+  if (!pokerChatOpen || !pokerMatch.isRunning() || pokerMatch.humanSeat() < 0) return undefined;
+  pokerChatComposer.configure({
+    targets: pokerMatch.chatTargets(),
+    onSubmit: (text, targetSeats) => {
+      if (!pokerMatch.sendHumanChat(text, targetSeats)) return false;
+      pushPokerChat({ text, model: 'you', label: 'you' });
+      r.requestRender();
+      return true;
+    },
+  });
+  return pokerChatComposer.build(CHAT_COMPOSER_W);
 }
 
 // Collapse/expand the move-history panel (bound to 'h', and the panel's own
@@ -1868,6 +1905,7 @@ function enterPoker(): void {
   mode = 'poker';
   draggingCamera = false;
   mountPokerGameHud(ui);
+  pokerChatComposer.mount(ui);
   fullRepaint();
 }
 
@@ -2566,6 +2604,7 @@ function syncBar(): void {
     // + scroll survive on the module-level object) restores the list when the popup
     // closes, so Close preserves the game for review / PGN copy.
     mountChessHud(ui);
+    chessChatComposer.mount(ui);
     // Full-screen overlay: move-history panel (top-right) + commentary toast over
     // the board, with the standard bar beneath. Refresh the panel rows first.
     refreshMoveHistory(chessGame.moves(), chessGame.illegalFlags());
@@ -2598,6 +2637,7 @@ function syncBar(): void {
         onToggleChat: toggleChat,
         onOpenMenu: openChessMenu,
         chatActive: matchSeats !== null,
+        chatComposer: chessChatComposerNode(),
         illegalOn: illegalAllowed,
         matchup: matchSeats ? chessMatchupLabels(matchSeats) : null,
       }),
@@ -2673,7 +2713,7 @@ function syncBar(): void {
         region,
         islandersDriver.seatCount(),
         islandersRailShown(),
-        islandersDriver.humanSeat() >= 0 && islandersRailShown() ? islandersChatComposerRows() : 0,
+        islandersDriver.humanSeat() >= 0 && islandersRailShown() ? islandersChatComposer.rows() : 0,
       );
     }
     ui.setRoot(
@@ -2767,6 +2807,7 @@ function syncBar(): void {
       mountPokerSetup(ui); // a prior modal root may have dropped the Slots
     }
     mountPokerGameHud(ui);
+    pokerChatComposer.mount(ui);
     // The bottom-left corner controls: "start" + "cancel" while the panel is up (start
     // disabled until every shown seat has a model), "new match" whenever no session is
     // running, nothing mid-session.
@@ -2789,6 +2830,7 @@ function syncBar(): void {
         active: pokerScene.isActive(),
         chatOpen: pokerChatOpen,
         onToggleChat: togglePokerChat,
+        chatComposer: pokerChatComposerNode(),
         onOpenMenu: openPokerMenu,
         onOpenNotes: openPokerNotes,
         setup: pokerSetupOpen ? buildPokerSetupPanel(modelHealthStatus('poker'), gatewayNoticeLines()) : null,

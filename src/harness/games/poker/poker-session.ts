@@ -35,7 +35,7 @@ export const POKER_PERSONA =
 
 export type PokerTextPlayerOpts = Pick<
   ModelPlayerOpts,
-  'model' | 'name' | 'normalizer' | 'normalizerName' | 'fallbackRng' | 'onAttempt' | 'captureThinking' | 'onFailureNotice'
+  'model' | 'name' | 'normalizer' | 'normalizerName' | 'fallbackRng' | 'onAttempt' | 'captureThinking' | 'onFailureNotice' | 'replyGuide'
 > & {
   contextProvider?: () => string;
   communication?: ModelPlayerOpts['communication'];
@@ -105,7 +105,7 @@ export interface HeadlessPokerSessionResult {
   communication?: Record<string, number>;
 }
 
-const POKER_AMBIENT_GUIDE =
+export const POKER_AMBIENT_GUIDE =
   'Public speech should sound like optional live poker table talk, not an action log. Useful speech includes replying to another player, a concise bluff or needle, reacting to a large visible bet, or commenting on public table dynamics. Never honestly reveal hole cards, exact private hand strength, or private calculations. Do not announce every check, call, or fold. Usually choose silence.';
 
 function pokerActionSalience(action: PokerAction): number {

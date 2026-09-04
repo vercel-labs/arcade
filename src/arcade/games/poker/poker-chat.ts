@@ -16,6 +16,6 @@ export function clearPokerChat(): void {
   pokerChat.clear();
 }
 
-export function buildPokerChatSidebar(height: number, active: boolean, onToggle: () => void): Node {
-  return buildChatSidebar({ chat: pokerChat, height, active, onToggle, closeId: 'poker-chat-close' });
+export function buildPokerChatSidebar(height: number, active: boolean, onToggle: () => void, composer?: Node): Node {
+  return buildChatSidebar({ chat: pokerChat, height, active, onToggle, closeId: 'poker-chat-close', composer });
 }

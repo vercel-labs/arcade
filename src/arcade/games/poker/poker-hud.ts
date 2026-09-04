@@ -480,8 +480,8 @@ function continuePrompt(nextHand: boolean, seconds: number | null | undefined): 
 // The right rail: the table-talk chat, full height, pinned to the right edge. Present only
 // when the chat is OPEN — collapsed, the rail reserves no width (so the bottom-right controls
 // can reach the true corner) and its reopen pill lives in the top-right of the main area.
-function buildRightRail(height: number, active: boolean, onToggleChat: () => void): Node {
-  return Box({ flexDirection: 'column', width: RAIL_W, height, flexShrink: 0 }, [buildPokerChatSidebar(height, active, onToggleChat)]);
+function buildRightRail(height: number, active: boolean, onToggleChat: () => void, composer?: Node): Node {
+  return Box({ flexDirection: 'column', width: RAIL_W, height, flexShrink: 0 }, [buildPokerChatSidebar(height, active, onToggleChat, composer)]);
 }
 
 // Build the full-screen poker overlay, WSOP-style: the pot pill top-left and the stacked
@@ -501,6 +501,7 @@ export function buildPokerGameRoot(
     active: boolean; // a session is running (suppresses the chat's empty placeholder)
     chatOpen: boolean; // table-talk panel expanded vs. collapsed to its reopen pill
     onToggleChat: () => void;
+    chatComposer?: Node; // the human's table-talk field, under the transcript (human seat only)
     onOpenMenu: () => void; // ☰ pill → the in-game menu popup (home / restart / mode / quit)
     onOpenNotes: () => void; // "notes" pill → the opponent-notes modal
     setup: Node | null; // the new-match settings panel (top-left, in place of the pot pill)
@@ -635,6 +636,6 @@ export function buildPokerGameRoot(
     ...(banner ? [banner] : []),
   ]);
 
-  const rail = railOpen ? [buildRightRail(region.h, opts.active, opts.onToggleChat)] : [];
+  const rail = railOpen ? [buildRightRail(region.h, opts.active, opts.onToggleChat, opts.chatComposer)] : [];
   return Box({ width: region.w, height: region.h, flexDirection: 'row' }, [main, ...rail]);
 }
