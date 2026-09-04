@@ -73,8 +73,9 @@ import { buildPokerSetupPanel, modeDropdown as pokerModeDropdown, mountPokerSetu
 import { HoldemState } from '../rules/poker/holdem.ts';
 import { RANK_LABELS, type Suit, SUIT_LETTERS } from '../rules/poker/cards.ts';
 import type { Color } from '../rules/chess/types.ts';
-import { Box, Button, Dropdown, NoticeToast, insetSceneViewport, layout, paint, Screen, Text, type Node, type PaintState } from '../tui/index.ts';
+import { Box, Button, Dropdown, NoticeToast, insetSceneViewport, layout, paint, Screen, Text, wrapText, type Node, type PaintState } from '../tui/index.ts';
 import { buildGatewaySignInPrompt, buildTeamSwitch, markSwitchSucceeded, mountTeamSwitch, setTeamSwitchTeams } from '../arcade/shell/team-switch.ts';
+import { buildGatewayNoticePill, catalogAccessLine, gatewayNoticeFor, gatewayNoticeSentence } from '../arcade/shell/gateway-notice.ts';
 import { ARCADE_THEME, UI_CHROME_PILL } from '../arcade/theme.ts';
 import { TUTORIAL_CHAPTERS, TUTORIAL_PULSE, TutorialController, tutorialRailWidth } from '../arcade/tutorial/tutorial.ts';
 import { modelFailureNotice } from '../harness/model-failure-notice.ts';
@@ -433,7 +434,7 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot chess-overlay [cols] [rows] [min|empty|illegal|short] [eval] [chat] [menu] [out]   match HUD + moves panel (menu → ☰ popup)
   pnpm snapshot tutorial [cols] [rows] [<chapter id>] [done=N] [menu] [signed-out] [t=<s>] [out]   the tutorial rail over the chess screen
       (done=N ticks the first N steps · menu opens the ☰ popup, pulsing its target · signed-out dims the gateway steps · t is the pulse clock)
-  pnpm snapshot setup [cols] [rows] [out] [open|models|thinking]   AI match setup modal
+  pnpm snapshot setup [cols] [rows] [out] [open|models|thinking|checking|health-failed|no-card]   AI match setup modal
   pnpm snapshot gameover [cols] [rows] [out]       result popup over a finished board
   pnpm snapshot confirm-home [cols] [rows] [out]   "return to home screen?" confirm over a game
   pnpm snapshot confirm-quit [cols] [rows] [out]   "quit arcade?" confirm over a game
@@ -443,7 +444,8 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
   pnpm snapshot splash [cols] [rows] [t] [out]     boot splash at time t
   pnpm snapshot coverflow|menu [cols] [rows] [pos] [hover] [out]   Cover Flow carousel
   pnpm snapshot trailer [cols] [rows] [seconds] [out]   terminal Trailer at wall-clock seconds
-  pnpm snapshot settings [cols] [rows] [open|gateway-signin|account [dropdown|loading|switched|error|no-teams|signed-out|long|focus-switch|focus-signout]] [out]   home menu button, popup, or account modal
+  pnpm snapshot settings [cols] [rows] [open|gateway-signin|account [dropdown|loading|switched|error|no-teams|signed-out|long|focus-switch|focus-signout|access=N]|notice=<sign-in|add-card|buy-credits>] [out]   home menu button, popup, or account modal
+      (notice=… adds the top-left gateway notice pill · access=N puts N plan-restricted models under view spend)
   pnpm snapshot launch [cols] [rows] [index] [t] [out]   Cover Flow flip-to-title splash
   pnpm snapshot prism-prompt [cols] [rows] [t] [out]    prism loading screen + press-any-key marquee
   pnpm snapshot prism-menu-ink [cols] [rows] [progress] [out]   CLI prism → Cover Flow ink transition
@@ -1633,7 +1635,9 @@ function settingsSnapshot(): void {
       : args.includes('error')
         ? { kind: 'error' as const, message: 'Could not create AI Gateway key (HTTP 403): Your team does not have permission to create AI Gateway keys.', canReturn: true }
         : { kind: 'loaded' as const, username: args.includes('long') ? 'a-very-long-vercel-username-that-must-not-resize-the-account-dialog' : 'brian.zhang' };
-    const accountActions = { onClose: noop, onSignIn: noop, onChangeAccount: noop, onRetry: noop, onOpenVercel: noop, onBack: noop, onLogout: noop, onViewSpend: noop };
+    const access = args.find((a) => a.startsWith('access='));
+    const modelAccess = access ? catalogAccessLine({ source: 'team', textCreators: [], realtimeCreators: [], planRestrictedCount: Number(access.slice(7)) }) : null;
+    const accountActions = { onClose: noop, onSignIn: noop, onChangeAccount: noop, onRetry: noop, onOpenVercel: noop, onBack: noop, onLogout: noop, onViewSpend: noop, modelAccess: modelAccess && { text: modelAccess.text, ...(modelAccess.url ? { onClick: noop } : {}) } };
     screen.setRoot(buildTeamSwitch(view, accountActions, region.w, region.h), region);
     if (view.kind === 'loaded' && args.includes('focus-switch')) screen.setFocus('team-change-account');
     if (view.kind === 'loaded' && args.includes('focus-signout')) screen.setFocus('team-logout');
@@ -1671,7 +1675,16 @@ function settingsSnapshot(): void {
       region,
     );
   } else {
-    const overlay = Box({ width: cols, height: rows }, [Box({ position: 'absolute', top: 1, right: 2 }, [Button({ id: 'menu-button', label: '☰ menu', style: UI_CHROME_PILL })])]);
+    const kind = args.find((a) => a.startsWith('notice='))?.slice(7);
+    const verdict = kind === 'add-card' ? 'customer_verification_required' : kind === 'buy-credits' ? 'insufficient_funds' : undefined;
+    const notice = kind
+      ? gatewayNoticeFor(kind !== 'sign-in', { source: 'team', textCreators: [], realtimeCreators: [], planRestrictedCount: 0, requestAvailability: verdict ? { status: 'unavailable', reason: verdict } : { status: 'available' } })
+      : null;
+    const pill = notice ? buildGatewayNoticePill(notice, { maxWidth: cols - 2 - 8 - 2 - 2, onAction: noop, onDismiss: noop }) : null;
+    const overlay = Box({ width: cols, height: rows }, [
+      ...(pill ? [Box({ position: 'absolute', top: 1, left: 2 }, [pill])] : []),
+      Box({ position: 'absolute', top: 1, right: 2 }, [Button({ id: 'menu-button', label: '☰ menu', style: UI_CHROME_PILL })]),
+    ]);
     screen.setRoot(overlay, region);
   }
   const surf = screen.snapshot((s) => {
@@ -2127,7 +2140,7 @@ function setupSnapshot(): void {
   chess.setPreview(chessPreviewSides());
   chess.renderScene(target, 0.6);
   const region = { x: 0, y: 0, w: cols, h: rows };
-  screen.setRoot(buildMatchSetup(region, { onStart: noop, onCancel: noop, onOpenMenu: noop, healthStatus: process.argv.includes('checking') ? { lines: ['checking model health ...'], failed: false } : process.argv.includes('health-failed') ? { lines: ['claude-haiku-4.5, gpt-5.4-nano failed health check.'], failed: true } : undefined }), region);
+  screen.setRoot(buildMatchSetup(region, { onStart: noop, onCancel: noop, onOpenMenu: noop, healthStatus: process.argv.includes('checking') ? { lines: ['checking model health ...'], failed: false } : process.argv.includes('health-failed') ? { lines: ['claude-haiku-4.5, gpt-5.4-nano failed health check.'], failed: true } : undefined, gatewayNote: process.argv.includes('no-card') ? wrapText(gatewayNoticeSentence(gatewayNoticeFor(true, { source: 'team', textCreators: [], realtimeCreators: [], planRestrictedCount: 0, requestAvailability: { status: 'unavailable', reason: 'customer_verification_required' } })!), 72) : undefined }), region);
   const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
   surfaceToPpm(surf, cols, rows, out);
 }

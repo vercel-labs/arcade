@@ -257,6 +257,28 @@ describe('Vercel account settings', () => {
     }
   });
 
+  test('the model-access line rides under view spend and is a link only when there is somewhere to go', () => {
+    const loaded = { kind: 'loaded', username: 'brian.zhang' } as const;
+    let opened = 0;
+    const withLink = buildTeamSwitch(loaded, actions({ modelAccess: { text: '12 more models with paid credits', onClick: () => opened++ } }));
+    const link = find(withLink, 'team-model-access');
+    assert.ok(link);
+    link.onClick?.();
+    assert.equal(opened, 1);
+
+    const plain = buildTeamSwitch(loaded, actions({ modelAccess: { text: 'all models available to this team' } }));
+    assert.equal(find(plain, 'team-model-access'), null);
+    assert.match(text(plain), /all models available to this team/);
+
+    // The row is reserved whether or not the catalog has anything to say, so the card is
+    // the same height with the line, without it, and while a team resolves.
+    const heights = [withLink, plain, buildTeamSwitch(loaded, actions()), buildTeamSwitch({ kind: 'loading' }, actions())].map((root) => {
+      layout(root, { x: 0, y: 0, w: 80, h: 40 });
+      return root.children?.[0]?.layout?.h;
+    });
+    assert.equal(new Set(heights).size, 1, heights.join(' → '));
+  });
+
   test('switching keeps the account actions, inert, rather than dropping the row', () => {
     const switching = buildTeamSwitch({ kind: 'switching', team: 'Vercel Labs', username: 'brian.zhang' }, actions());
     for (const id of ['team-change-account', 'team-logout']) {

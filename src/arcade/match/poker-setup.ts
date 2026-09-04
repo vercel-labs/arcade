@@ -203,7 +203,7 @@ function seatRow(side: ModelSeatPicker, seatNo: number): Node {
 // currently shown keep their dropdown Slots mounted (hidden in a 0×0 box) so the
 // Screen doesn't unmount them. Starting is the bottom-left "start match" button (built
 // by the HUD), not a button here; Esc closes.
-export function buildPokerSetupPanel(healthStatus?: { lines: string[]; failed: boolean }): Node {
+export function buildPokerSetupPanel(healthStatus?: { lines: string[]; failed: boolean }, gatewayNote?: string[]): Node {
   const shownIdx = shownIndices();
   const visibleSides = new Set(shownIdx.map((index) => sideForIndex(index)));
   const seatRows: Node[] = [];
@@ -227,6 +227,7 @@ export function buildPokerSetupPanel(healthStatus?: { lines: string[]; failed: b
     row('stack', stackControl()),
     ...seatRows,
     ...(healthStatus ? healthStatus.lines.map((text) => Text({ text, style: { color: healthStatus.failed ? 'danger' : 'muted' } })) : []),
+    ...(gatewayNote?.length ? [Box({ flexDirection: 'column' }, gatewayNote.map((text) => Text({ text, style: { color: 'muted' } })))] : []),
     ...hidden,
   ]);
 }

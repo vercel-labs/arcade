@@ -360,6 +360,7 @@ export interface IslandersGameHudDeps {
   onOpenNotes?: () => void;
   onStart: () => void;
   healthStatus?: { lines: string[]; failed: boolean };
+  gatewayNote?: string[];
   notice?: string;
 }
 
@@ -822,7 +823,7 @@ export function buildIslandersGameRoot(region: LayoutBox, deps: IslandersGameHud
   ];
 
   if (!playing) {
-    const setup = matchSetupLayout(region, buildIslandersSetupPanel(deps.healthStatus), [
+    const setup = matchSetupLayout(region, buildIslandersSetupPanel(deps.healthStatus, deps.gatewayNote), [
       newMatchButton('islanders-start', deps.onStart, !islandersSetupReady() || deps.healthStatus?.failed === false),
     ]);
     return Box({ width: region.w, height: region.h }, [setup, ...chrome]);

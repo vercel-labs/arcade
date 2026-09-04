@@ -14,12 +14,12 @@ const SIGNED_IN_PREFIX = 'Signed in as ';
 // committedBodyHeight).
 const DIALOG_GAP = 1;
 const DROPDOWN_BODY_H = 4;
-const SPEND_ROW_H = 1;
+const SPEND_ROW_H = 2; // "view spend" plus the model-access line beneath it
 const ROUNDED_BUTTON_H = 3; // a rounded button needs three rows for its arc border
 const FLAT_BUTTON_H = 1; // `short` swaps in borderless buttons
 
 // Height of everything the committed-team card holds below the title: the dropdown
-// body, the "view spend" row, and the account actions, with the Dialog's gap between
+// body, the "view spend" rows, and the account actions, with the Dialog's gap between
 // each. The transient and signed-out states reserve this same total so the card never
 // resizes while a team resolves. It varies by mode because `compact` stacks the two
 // account buttons and `short` drops the spend row and the button borders.
@@ -206,6 +206,10 @@ export function buildTeamSwitch(
     onBack: () => void;
     onLogout: () => void;
     onViewSpend: () => void;
+    // How much of the model catalog the committed team can reach, from the team catalog's
+    // eligibility rows; null while the catalog is the baked fallback, which knows nothing
+    // about the team. The row is reserved either way so the card never resizes.
+    modelAccess?: { text: string; onClick?: () => void } | null;
   },
   viewportWidth = CARD_W + 2,
   viewportHeight = Number.POSITIVE_INFINITY,
@@ -283,9 +287,17 @@ export function buildTeamSwitch(
   // reads as that field's helper rather than a third card-level action; the Dialog's own
   // gap supplies the one row above and below. `short` viewports drop it — they already
   // shed the signed-in row, and a link is worth less there than the account buttons.
+  const access = opts.modelAccess;
   const viewSpend =
     (view.kind === 'loaded' || view.kind === 'switching') && !short
-      ? Box({ width: listWidth }, [Link({ id: 'team-view-spend', label: 'view spend', onClick: opts.onViewSpend })])
+      ? Box({ width: listWidth, height: SPEND_ROW_H, flexDirection: 'column' }, [
+          Link({ id: 'team-view-spend', label: 'view spend', onClick: opts.onViewSpend }),
+          ...(access
+            ? [access.onClick
+                ? Link({ id: 'team-model-access', label: access.text, onClick: access.onClick })
+                : Text({ text: access.text, style: { color: 'muted' } })]
+            : []),
+        ])
       : null;
 
   // `switching` keeps the same actions rather than dropping the row: it is a brief

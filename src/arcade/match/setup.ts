@@ -187,7 +187,7 @@ function sideRow(side: Side): Node {
 // The new-match setup: a top-left settings panel floating over the board (no modal, no
 // scrim — the board stays visible behind, like the poker setup over the felt), with the
 // start/cancel controls bottom-left. `onStart` is wired only when both sides are ready.
-export function buildMatchSetup(region: LayoutBox, opts: { onStart: () => void; onCancel: () => void; onOpenMenu?: () => void; healthStatus?: { lines: string[]; failed: boolean } }): Node {
+export function buildMatchSetup(region: LayoutBox, opts: { onStart: () => void; onCancel: () => void; onOpenMenu?: () => void; healthStatus?: { lines: string[]; failed: boolean }; gatewayNote?: string[] }): Node {
   const ready = matchSetupReady();
   // Rounded (outlined) controls over the board: a green "start" (dim + inert until both
   // sides are ready) beside a neutral "cancel". Green matches poker's new-match button.
@@ -205,6 +205,7 @@ export function buildMatchSetup(region: LayoutBox, opts: { onStart: () => void; 
     row('eval bar', 'muted', [booleanControl('setup-eval', setupEvalBar, (value) => { setupEvalBar = value; })]),
     row('illegal moves', 'muted', [booleanControl('setup-illegal', setupIllegalMoves, (value) => { setupIllegalMoves = value; })]),
     ...(opts.healthStatus ? opts.healthStatus.lines.map((text) => Text({ text, style: { color: opts.healthStatus!.failed ? 'danger' : 'muted' } })) : []),
+    ...(opts.gatewayNote?.length ? [Box({ flexDirection: 'column' }, opts.gatewayNote.map((text) => Text({ text, style: { color: 'muted' } })))] : []),
   ]);
 
   // Full region: panel top-left, start/cancel bottom-left (mirrors the poker HUD layout).
