@@ -50,13 +50,13 @@ like.`). Only names keep their case, wherever they fall in a sentence:
 - `Vercel`, `AI Gateway`, and `Arcade` as the product.
 - Acronyms: `AI`, `3D`, `BYOK`, `PGN`, `HTTP`, `URL`, `PATH`.
 - Creator and model names as the gateway spells them (`OpenAI`, `xAI`).
-- Game titles on the covers (`Chess`, `Islanders`, `Tutorial`), development
-  card names (`Year of Plenty`), and poker streets (`Pre-flop`, `Showdown`).
+- Game titles on the covers (`Chess`, `Islanders`, `Tutorial`).
+- The tagline `The 3D game engine built for agents.`, which is also the npm
+  description and the site hero, so it keeps one casing everywhere it appears.
 
-A body sentence still ends with a period; a one-line status fragment does not
-(`checking model health…`). The postinstall banner (`install-banner.ts`) is
-the one surface outside this rule: it prints into a package manager's log and
-keeps ordinary Sentence case.
+Development card names, poker streets, and piece names are ordinary words
+(`year of plenty`, `pre-flop`, `knight`). A body sentence still ends with a
+period; a one-line status fragment does not (`checking model health…`).
 
 ## Precedence
 

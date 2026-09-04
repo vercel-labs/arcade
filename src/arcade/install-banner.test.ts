@@ -8,7 +8,7 @@ const plain = (env: NodeJS.ProcessEnv = {}, platform = 'linux'): string[] =>
 test('the banner tells the reader the command and where the docs are', () => {
   const text = plain().join('\n');
   assert.match(text, /The 3D game engine built for agents\./);
-  assert.match(text, /^\s*arcade\s+Launch Arcade$/m);
+  assert.match(text, /^\s*arcade\s+launch Arcade$/m);
   assert.match(text, /arcade --help/);
   assert.match(text, /ascii-arcade\.vercel\.app\/docs/);
   assert.match(text, /Tutorial is available from the menu/);

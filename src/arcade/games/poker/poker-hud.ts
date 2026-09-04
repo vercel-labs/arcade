@@ -428,7 +428,7 @@ function playerStrips(seats: readonly SeatCardView[], ended: boolean): Node {
 // Turn / River) pinned top-right, mirroring a seat's name + position badge. Bottom row:
 // the five community slots, mirroring a seat's two hole cards. Undealt slots read a muted
 // "??" (matching hidden hole cards, two chars so the grid never reflows) and are replaced in place as streets deal.
-const STREET_LABEL: Record<string, string> = { preflop: 'Pre-flop', flop: 'Flop', turn: 'Turn', river: 'River', showdown: 'Showdown' };
+const STREET_LABEL: Record<string, string> = { preflop: 'pre-flop', flop: 'flop', turn: 'turn', river: 'river', showdown: 'showdown' };
 function boardPanel(v: TableView | null): Node {
   const board = v?.board ?? [];
   const shown = v?.boardShown ?? 0;

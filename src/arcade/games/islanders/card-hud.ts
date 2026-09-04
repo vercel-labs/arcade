@@ -241,23 +241,23 @@ interface DevCardHelp {
 // the hand remains usable in narrow terminals; this copy carries the rules meaning on hover.
 const DEV_CARD_HELP: Record<DevCardType, DevCardHelp> = {
   knight: {
-    title: 'Knight',
+    title: 'knight',
     effect: 'move the robber to another hex. then steal 1 random resource from a player with a settlement or city beside its new hex.',
   },
   victoryPoint: {
-    title: 'Victory Point',
+    title: 'victory point',
     effect: 'keep this card hidden. it is worth 1 victory point; reveal it when it gives you enough points to win.',
   },
   roadBuilding: {
-    title: 'Road Building',
+    title: 'road building',
     effect: 'place 2 new roads for free, following the normal road placement rules.',
   },
   yearOfPlenty: {
-    title: 'Year of Plenty',
+    title: 'year of plenty',
     effect: 'take any 2 resources from the supply and add them to your hand. they may be the same resource or different resources.',
   },
   monopoly: {
-    title: 'Monopoly',
+    title: 'monopoly',
     effect: 'name 1 resource type. every other player gives you every resource of that type in their hand.',
   },
 };

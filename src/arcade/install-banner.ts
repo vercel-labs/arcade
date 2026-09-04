@@ -113,12 +113,12 @@ export function bannerLines(opts: BannerOpts = {}): string[] {
 
   const lines = ['', ...wordmark(color), ''];
   lines.push(note('  The 3D game engine built for agents.'), '');
-  lines.push(`  ${cmd('arcade')}${note('           Launch Arcade')}`);
-  lines.push(`  ${cmd('arcade --help')}${note('    View commands and options')}`);
+  lines.push(`  ${cmd('arcade')}${note('           launch Arcade')}`);
+  lines.push(`  ${cmd('arcade --help')}${note('    view commands and options')}`);
   lines.push('');
-  lines.push(note('  First launch signs you in with Vercel. Tutorial is available from the menu.'));
+  lines.push(note('  first launch signs you in with Vercel. the tutorial is available from the menu.'));
   lines.push(note('  AI usage is billed to the team you select.'));
-  lines.push(note('  Docs: https://ascii-arcade.vercel.app/docs'));
+  lines.push(note('  docs: https://ascii-arcade.vercel.app/docs'));
 
   const bin = globalBinDir(env, platform);
   if (!onPath(bin, env, platform)) {
