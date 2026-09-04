@@ -24,3 +24,13 @@ test('mobile cinematic cells increase ASCII sampling density without changing ge
   assert.ok(mobileDensity.cols * mobileDensity.rows > desktopDensity.cols * desktopDensity.rows * 1.4);
   assert.equal(mobileDensity.cols / (mobileDensity.rows * 2), 78 / 168);
 });
+
+test('large monitors increase cinematic cell size without affecting laptop or shallow-wide grids', () => {
+  const monitor = responsiveTerminalGrid(2558, 1289);
+  const oldDensity = responsiveTerminalGrid(2558, 1289, 12);
+  assert.deepEqual(monitor, { cols: 365, rows: 92 });
+  assert.deepEqual(oldDensity, { cols: 426, rows: 107 });
+  assert.ok(monitor.cols * monitor.rows < oldDensity.cols * oldDensity.rows * 0.75, 'large screens should render at least 25% fewer cells');
+  assert.deepEqual(responsiveTerminalGrid(1799, 899), { cols: 299, rows: 74 });
+  assert.deepEqual(responsiveTerminalGrid(1800, 656), { cols: 300, rows: 54 }, 'a shallow ultrawide retains laptop-sized cells');
+});
