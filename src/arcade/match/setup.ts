@@ -10,6 +10,7 @@
 import { Box, Dialog, Dropdown, Field, Modal, RoundedButton, ToggleButton, Slot, Text, type LayoutBox, type Node, type Screen } from '../../tui/index.ts';
 import type { RGB } from '../../engine/index.ts';
 import { includeEarlyAccessModels, pickerCreators } from './models.ts';
+import { resolveDefaultSeats } from './default-seats.ts';
 import { availableRealtimeModels } from '../../voice/index.ts';
 import type { Seat } from './driver.ts';
 import { ARCADE_OUTLINE_CONTROL, UI_CHROME_BG } from '../theme.ts';
@@ -59,11 +60,11 @@ function makeSide(
   return Object.assign(createModelSeatPicker({ idPrefix, creators, defaultCreator, defaultModelId, modelWidth: MODEL_W, onChange: changed }), { key, human: false }) as Side;
 }
 
-// TEMP (demo): pre-commit a full matchup — Claude Haiku 4.5 vs GPT 5.4 Nano — so the
-// modal opens with Start already enabled. To go back to "pick a model yourself",
-// drop the third arg from each makeSide call (creators stay pre-selected).
-const white = makeSide('white', 'setup-white', 'anthropic', 'anthropic/claude-haiku-4.5');
-const black = makeSide('black', 'setup-black', 'openai', 'openai/gpt-5.4-nano');
+// Both sides pre-seated from the default ladder so the modal opens with Start enabled.
+// A side the ladder cannot fill from the catalog stays unset until the player picks.
+const chessDefaults = resolveDefaultSeats(TEXT_CREATORS, 2);
+const white = makeSide('white', 'setup-white', chessDefaults[0]?.creator ?? 'anthropic', chessDefaults[0]?.model);
+const black = makeSide('black', 'setup-black', chessDefaults[1]?.creator ?? 'openai', chessDefaults[1]?.model);
 
 // The match mode folds the "am I playing, and which color?" choice into one control —
 // chess's analogue to poker's Play/Spectate, plus the side dimension chess needs (White
@@ -226,7 +227,8 @@ export function setMatchSetupModelCatalog(
 ): void {
   TEXT_CREATORS = [...textCreators];
   REALTIME_CREATORS = [...realtimeCreators];
-  for (const side of [white, black]) setModelSeatCreators(side, TEXT_CREATORS);
+  const defaults = resolveDefaultSeats(TEXT_CREATORS, 2);
+  [white, black].forEach((side, i) => setModelSeatCreators(side, TEXT_CREATORS, defaults[i]));
   setModelSeatCreators(swap, swapRuntime === 'realtime' ? REALTIME_CREATORS : TEXT_CREATORS);
   changed();
 }

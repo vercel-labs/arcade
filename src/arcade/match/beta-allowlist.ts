@@ -1,5 +1,7 @@
-// Private-beta model allowlist: the models the match-setup picker offers by
-// default. Two layers:
+// Frozen snapshot of the private-beta compatibility audit. Used only by the baked
+// fallback catalog (see models.ts); a signed-in launch gets the team's live Gateway
+// catalog instead (team-model-catalog.ts). No longer regenerated, apart from following
+// the gateway's xAI slug rename (`xai/` → `spacexai/`). Two layers:
 //   AUDITED  — generated from the first-hand compatibility audit
 //              (docs/model-compat.vercel-internal-playground.json): every model
 //              here played BOTH chess and poker via native structured output on
@@ -103,12 +105,12 @@ const AUDITED: readonly string[] = [
   "openai/o3-mini",
   "openai/o3-pro",
   "openai/o4-mini",
-  "xai/grok-4.1-fast-non-reasoning",
-  "xai/grok-4.1-fast-reasoning",
-  "xai/grok-4.20-non-reasoning",
-  "xai/grok-4.20-reasoning",
-  "xai/grok-4.3",
-  "xai/grok-4.5",
+  "spacexai/grok-4.1-fast-non-reasoning",
+  "spacexai/grok-4.1-fast-reasoning",
+  "spacexai/grok-4.20-non-reasoning",
+  "spacexai/grok-4.20-reasoning",
+  "spacexai/grok-4.3",
+  "spacexai/grok-4.5",
   "zai/glm-4.7",
   "zai/glm-4.7-flash",
   "zai/glm-5",

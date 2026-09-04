@@ -1,6 +1,14 @@
-// Runtime model discovery for Arcade's match setup. The baked catalog remains the
-// offline/error fallback, but a signed-in launch replaces it with the selected team's
-// owner-visible AI Gateway catalog and per-model availability annotations.
+// Where the match-setup picker gets its models. Signed in, the picker is the team's own
+// AI Gateway catalog: `/v1/models?include_availability` with the team key, fetched once at
+// launch and again on team switch, with the rows Gateway marks durably ineligible for this
+// team (`ineligible` + `policy`, e.g. a provider the team's allowlist blocks) removed. That
+// mirrors the coding-agent discovery routes: `unknown`, `transient`, and `configuration`
+// states stay visible, so a flaky evaluation never empties the menu. Availability answers
+// "can this team route to it", not "does it play well": the Start-time health check
+// (src/harness/model-health.ts) covers billing and live routing, and the ModelPlayer
+// fallback ladder covers models that answer badly.
+// The baked catalog + BETA_MODEL_ALLOWLIST is the fallback only: signed out, non-2xx,
+// timeout, or a response without eligibility annotations.
 import { availableRealtimeModels } from '../../voice/index.ts';
 import { includeEarlyAccessModels, pickerCreators, creatorName, type CreatorInfo } from './models.ts';
 import { orderCreatorModels } from './model-catalog-order.ts';

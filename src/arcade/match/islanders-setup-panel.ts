@@ -18,7 +18,7 @@ import { PLAYER_COLORS, type PlayerColor } from '../../rules/islanders/types.ts'
 import type { IslandersSeatSpec } from './islanders-driver.ts';
 import { ARCADE_CHROME_TEXT } from '../theme.ts';
 import { createModelSeatPicker, hiddenModelSeat, modelSeatControls, mountModelSeat, setModelSeatCreators, type ModelCreator, type ModelSeatPicker } from './model-seat-picker.ts';
-import { ISLANDERS_DEFAULT_AI_SEATS } from './islanders-defaults.ts';
+import { resolveDefaultSeats } from './default-seats.ts';
 import { matchSetupHeading } from './match-setup-chrome.ts';
 
 let TEXT_CREATORS: ModelCreator[] = pickerCreators();
@@ -37,20 +37,23 @@ const changed = (): void => {
   onChanged?.();
 };
 
-// One config per AI seat the table can hold. Index 0 is only used when spectating (where
-// seat 1 is a model too); playing, you are seat 1 and indices 1.. are your opponents.
-// Spanning four creators keeps the default 4-seat spectate table from repeating one.
-const sides: ModelSeatPicker[] = ISLANDERS_DEFAULT_AI_SEATS.map(({ creator, model }, i) => createModelSeatPicker({
+// One config per AI seat the table can hold, pre-seated from the default ladder. Index 0
+// is only used when spectating (where seat 1 is a model too); playing, you are seat 1 and
+// indices 1.. are your opponents. The ladder spans four creators, so the default 4-seat
+// spectate table never repeats one.
+const SEATS = 4;
+const sides: ModelSeatPicker[] = resolveDefaultSeats(TEXT_CREATORS, SEATS).map((seat, i) => createModelSeatPicker({
   idPrefix: `islanders-seat${i}`,
   creators: TEXT_CREATORS,
-  defaultCreator: creator,
-  defaultModelId: model,
+  defaultCreator: seat?.creator ?? 'openai',
+  defaultModelId: seat?.model,
   onChange: changed,
 }));
 
 export function setIslandersSetupModelCatalog(textCreators: readonly ModelCreator[]): void {
   TEXT_CREATORS = [...textCreators];
-  for (const side of sides) setModelSeatCreators(side, TEXT_CREATORS);
+  const defaults = resolveDefaultSeats(TEXT_CREATORS, SEATS);
+  sides.forEach((side, i) => setModelSeatCreators(side, TEXT_CREATORS, defaults[i]));
   changed();
 }
 

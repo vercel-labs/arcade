@@ -14,7 +14,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import type { MatchScene } from '../harness/match.ts';
 import type { Player } from '../harness/player.ts';
 import { ensureCachedGatewayKey } from '../auth/index.ts';
-import { ISLANDERS_DEFAULT_AI_SEATS } from '../arcade/match/islanders-defaults.ts';
+import { ISLANDERS_DEFAULT_AI_MODELS } from '../arcade/match/islanders-defaults.ts';
 import {
   IslandersMatchActionLimitError,
   createIslandersModelPlayer,
@@ -158,7 +158,7 @@ async function main(): Promise<void> {
   const auth = await ensureCachedGatewayKey();
   if (!auth?.team) throw new Error('no cached Arcade login/team. Run `pnpm dev --login` once.');
 
-  const models = ISLANDERS_DEFAULT_AI_SEATS.map((seat) => seat.model);
+  const models = [...ISLANDERS_DEFAULT_AI_MODELS];
   const labels = models.map(shortModel);
   const state = new IslandersState({
     numPlayers: 4,

@@ -20,6 +20,7 @@ const LOGO_DIR = `${ASSET_DIR}/logos`;
 const LABELS: Record<string, string> = {
   openai: 'OpenAI',
   xai: 'xAI',
+  spacexai: 'xAI',
   deepseek: 'DeepSeek',
   moonshotai: 'Moonshot AI',
   'arcee-ai': 'Arcee AI',

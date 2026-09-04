@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { resolveDefaultSeats } from './default-seats.ts';
+import { pickerCreators } from './models.ts';
 
 import {
   buildPokerSetupPanel,
@@ -28,7 +30,7 @@ test('heads-up setup always selects a text model and exposes no voice controls',
     assert.deepEqual(pokerPreviewSeats().map((seat) => seat.creator), [undefined, 'anthropic']);
     assert.deepEqual(pokerSetupSelection(), [
       { kind: 'human' },
-      { kind: 'ai', model: 'anthropic/claude-haiku-4.5', runtime: 'text' },
+      { kind: 'ai', model: resolveDefaultSeats(pickerCreators(), 6)[1]!.model, runtime: 'text' },
     ]);
 
     const visibleText = collectNodes(buildPokerSetupPanel()).flatMap((node) => node.text ?? []);

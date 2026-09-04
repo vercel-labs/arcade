@@ -1,5 +1,13 @@
 # Private-beta model allowlist
 
+> **Status: fallback only.** A signed-in launch fetches the team's own catalog from
+> `/v1/models?include_availability` (`src/arcade/match/team-model-catalog.ts`) and hides
+> only the rows Gateway marks durably ineligible for that team. The allowlist below is
+> reached only when that fetch is unavailable (signed out, offline, error), and it is a
+> frozen snapshot of the AIG-183 audit; the regeneration recipe further down is historical.
+> Default seats come from `src/arcade/match/default-seats.ts`, resolved against whichever
+> catalog is in use.
+
 The match-setup picker (chess + poker) offers a curated set of models for the
 private beta rather than the full ~200-model catalog. This keeps a beta user's
 first pick from landing on a model that can't play — provider-restricted,

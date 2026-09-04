@@ -93,3 +93,17 @@ test('model seat picker chooses a valid replacement when a model becomes unavail
   assert.equal(picker.creatorDropdown.value, 'Beta');
   assert.equal(picker.modelDropdown.value, 'Three');
 });
+
+const creator = (slug: string, ...ids: string[]): ModelCreator => ({ slug, name: slug, models: ids.map((id) => ({ id, name: id })) });
+
+test('a vanished model falls to the given default, or stays unset when told to', () => {
+  const picker = createModelSeatPicker({ idPrefix: 'seat', creators: [creator('openai', 'openai/old')], defaultCreator: 'openai', defaultModelId: 'openai/old', onChange: () => {} });
+  const fresh = [creator('openai', 'openai/new'), creator('google', 'google/gemini')];
+  setModelSeatCreators(picker, fresh, { creator: 'google', model: 'google/gemini' });
+  assert.equal(picker.modelId, 'google/gemini');
+  assert.equal(picker.creator, 'google');
+  setModelSeatCreators(picker, [creator('openai', 'openai/new')], null);
+  assert.equal(picker.modelId, null, 'no silent substitution');
+  assert.equal(picker.creator, 'openai', 'the creator column still has a value to browse from');
+  assert.equal(picker.modelDropdown.value, null);
+});

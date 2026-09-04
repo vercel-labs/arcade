@@ -3,7 +3,7 @@ import { disambiguateLabels } from '../../../harness/labels.ts';
 import { shortModel } from '../../../harness/model-label.ts';
 import { directedReplyOpportunities, primaryMoment, reactionOpportunities } from '../../../harness/communication/moments.ts';
 import type { PublicConversationMessage } from '../../../harness/communication/types.ts';
-import { ISLANDERS_DEFAULT_AI_SEATS } from '../../../arcade/match/islanders-defaults.ts';
+import { ISLANDERS_DEFAULT_AI_MODELS } from '../../../arcade/match/islanders-defaults.ts';
 import {
   IslandersMatchActionLimitError,
   createIslandersModelPlayer,
@@ -25,7 +25,7 @@ import { IslandersMemory } from '../../../arcade/match/islanders-memory.ts';
 // Domestic offers a model seat may post per turn under the current harness (matches the arcade).
 const MODEL_OFFERS_PER_TURN = 3;
 
-export const DEFAULT_ISLANDERS_MODELS = ISLANDERS_DEFAULT_AI_SEATS.map((seat) => seat.model);
+export const DEFAULT_ISLANDERS_MODELS = [...ISLANDERS_DEFAULT_AI_MODELS];
 
 /** Prompt/UI identities stay concise; artifacts and model routing retain full slugs. */
 export function islandersMatchLabLabels(models: readonly string[]): string[] {
