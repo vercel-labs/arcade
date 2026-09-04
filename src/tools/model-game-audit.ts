@@ -1,6 +1,12 @@
 // Live, team-aware compatibility matrix built on the real match-lab adapters.
 // Each selected model is seat 0 against one stable opponent in bounded Chess,
 // Poker, and Islanders scenarios. Telemetry is always disabled; traces stay local.
+//
+// `--bench` plays each scenario long enough to time the model (five chess moves, two
+// poker hands, an Islanders setup plus two rounds) and records per-decision latency,
+// retries, the fallback rung, provider errors, tokens, and the model's list price, so
+// the report ranks models by speed as well as playability. `--publish=DIR` also writes
+// the per-model summary as `model-bench.<team>.json` and `.md` for the repo to keep.
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -16,11 +22,15 @@ import {
   betterModelGameAudit,
   buildModelMatrixCases,
   classifyModelGameAudit,
+  MODEL_MATRIX_SCENARIOS,
+  modelBenchEntries,
+  modelBenchMarkdown,
   modelGameAuditMarkdown,
   retryModelMatrixCase,
   shouldRetryModelGameAudit,
   type ModelGameAuditCase,
   type ModelGameAuditRow,
+  type ModelMatrixDepth,
 } from './match-lab/model-matrix.ts';
 import type { MatchLabAdapter, MatchLabEvent, MatchLabGame, MatchLabResult } from './match-lab/types.ts';
 
@@ -83,6 +93,8 @@ Options:
   --dry-run                print the matrix without making model calls
   --allow-fallback-catalog use Arcade's baked catalog if team availability cannot load
   --strict                 exit non-zero when any final scenario is not playable
+  --bench                  longer scenarios + latency/retry/price stats (speed benchmark)
+  --publish=DIR            with --bench: also write model-bench.<team>.json/.md into DIR
 
 Telemetry is always disabled. Prompts, attempts, actions, and results remain on disk.`);
 }
@@ -113,6 +125,24 @@ function failedResult(auditCase: ModelGameAuditCase, startedAt: string, started:
   };
 }
 
+async function fetchListPrices(): Promise<Map<string, { input: number; output: number }>> {
+  const prices = new Map<string, { input: number; output: number }>();
+  try {
+    const response = await fetch('https://ai-gateway.vercel.sh/v1/models', { signal: AbortSignal.timeout(8_000) });
+    if (!response.ok) return prices;
+    const body = (await response.json()) as { data?: Array<{ id?: unknown; pricing?: { input?: unknown; output?: unknown } }> };
+    for (const model of body.data ?? []) {
+      if (typeof model.id !== 'string') continue;
+      const input = Number(model.pricing?.input);
+      const output = Number(model.pricing?.output);
+      if (Number.isFinite(input) && Number.isFinite(output)) prices.set(model.id, { input: input * 1_000_000, output: output * 1_000_000 });
+    }
+  } catch {
+    // Prices are decoration on the report; a slow public catalog must not stop the run.
+  }
+  return prices;
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args.includes('--help') || args.includes('-h')) {
@@ -120,9 +150,11 @@ async function main(): Promise<void> {
     return;
   }
   const selectedGames = games(args);
+  const depth: ModelMatrixDepth = args.includes('--bench') ? 'bench' : 'audit';
+  const publishDir = value(args, 'publish');
   const concurrency = positiveInt(args, 'concurrency', 3);
-  const timeoutMs = positiveInt(args, 'timeout', 300) * 1_000;
-  const retryAttempts = nonnegativeInt(args, 'retry-attempts', 2);
+  const timeoutMs = positiveInt(args, 'timeout', depth === 'bench' ? 900 : 300) * 1_000;
+  const retryAttempts = nonnegativeInt(args, 'retry-attempts', depth === 'bench' ? 1 : 2);
   const limit = value(args, 'limit') === undefined ? undefined : positiveInt(args, 'limit', 1);
   const seed = positiveInt(args, 'seed', DEFAULT_SEED);
   const creator = value(args, 'creator');
@@ -152,7 +184,11 @@ async function main(): Promise<void> {
     opponentModel,
     seed,
     timeoutMs,
+    depth,
   });
+  // List prices ride along in the public catalog (USD per token); the benchmark reports
+  // them per million so a fast model's cost is visible next to its speed.
+  const pricing = depth === 'bench' ? await fetchListPrices() : new Map<string, { input: number; output: number }>();
   console.log(`AI Gateway team: ${auth.team.name} (${auth.team.slug})`);
   console.log(`Catalog: ${catalog.source} · ${modelIds.length} target models`);
   console.log(`Opponent: ${opponentModel}`);
@@ -184,11 +220,8 @@ async function main(): Promise<void> {
     retryAttempts,
     seed,
     timeoutMs,
-    scenarios: {
-      chess: { maxPlies: 2 },
-      poker: { maxHands: 1 },
-      islanders: { setupActions: 2 },
-    },
+    depth,
+    scenarios: MODEL_MATRIX_SCENARIOS[depth],
     gitCommit: gitCommit(),
     telemetry: 'disabled',
   };
@@ -224,7 +257,8 @@ async function main(): Promise<void> {
     await artifacts.writeResult(result);
     const row = classifyModelGameAudit(auditCase, result, captured);
     await writeFile(join(directory, 'matches', auditCase.id, 'audit.json'), `${JSON.stringify(row, null, 2)}\n`, 'utf8');
-    console.log(`${row.status.padEnd(10)} ${auditCase.game.padEnd(6)} ${auditCase.targetModel} (${row.targetActions} target action${row.targetActions === 1 ? '' : 's'}, ${row.durationMs}ms)`);
+    const timing = depth === 'bench' ? `, p50 ${(row.stats.latencyMs.p50 / 1000).toFixed(1)}s, retries ${row.stats.retries}` : '';
+    console.log(`${row.status.padEnd(10)} ${auditCase.game.padEnd(6)} ${auditCase.targetModel} (${row.targetActions} target action${row.targetActions === 1 ? '' : 's'}, ${row.durationMs}ms${timing})`);
     return row;
   };
 
@@ -271,6 +305,20 @@ async function main(): Promise<void> {
     teamSlug: auth.team.slug,
     catalogSource: catalog.source,
   })}\n`, 'utf8');
+  if (depth === 'bench') {
+    const entries = modelBenchEntries(rows, pricing);
+    const bench = { schemaVersion: 1, generatedAt, team: manifest.team, catalogSource: catalog.source, games: selectedGames, scenarios: MODEL_MATRIX_SCENARIOS.bench, opponentModel, gitCommit: manifest.gitCommit, models: entries };
+    const markdown = modelBenchMarkdown(entries, selectedGames, { generatedAt, teamName: auth.team.name, teamSlug: auth.team.slug });
+    await writeFile(join(directory, 'bench.json'), `${JSON.stringify(bench, null, 2)}\n`, 'utf8');
+    await writeFile(join(directory, 'bench.md'), `${markdown}\n`, 'utf8');
+    if (publishDir) {
+      await mkdir(publishDir, { recursive: true });
+      await writeFile(join(publishDir, `model-bench.${auth.team.slug}.json`), `${JSON.stringify(bench, null, 2)}\n`, 'utf8');
+      await writeFile(join(publishDir, `model-bench.${auth.team.slug}.md`), `${markdown}\n`, 'utf8');
+      console.log(`\nPublished: ${join(publishDir, `model-bench.${auth.team.slug}.{json,md}`)}`);
+    }
+    for (const verdict of ['fast', 'ok', 'slow', 'broken'] as const) console.log(`${verdict}: ${entries.filter((entry) => entry.verdict === verdict).length}`);
+  }
   console.log(`\nPlayable: ${report.playable}/${rows.length}`);
   console.log(`Summary: ${join(directory, 'summary.json')}`);
   console.log(`Report: ${join(directory, 'report.md')}`);

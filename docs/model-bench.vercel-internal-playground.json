@@ -1,0 +1,4997 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-04T07:43:49.216Z",
+  "team": {
+    "name": "Internal Playground",
+    "slug": "vercel-internal-playground"
+  },
+  "catalogSource": "team",
+  "games": [
+    "chess",
+    "poker",
+    "islanders"
+  ],
+  "scenarios": {
+    "chess": {
+      "maxPlies": 10
+    },
+    "poker": {
+      "maxHands": 2
+    },
+    "islanders": {
+      "setupOnly": false,
+      "maxActions": 22
+    }
+  },
+  "opponentModel": "spacexai/grok-4.20-non-reasoning",
+  "gitCommit": "78c11dfd7bd12904575263f8e76dbb9a450306d5",
+  "models": [
+    {
+      "model": "alibaba/qwen-3-235b",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1572,
+          "p90Ms": 2296,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 6975,
+          "p90Ms": 8305,
+          "decisions": 4,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 10724,
+          "p90Ms": 15865,
+          "decisions": 12,
+          "retries": 2,
+          "errors": [
+            "No object generated: response did not match schema."
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.22,
+        "output": 0.88
+      },
+      "free": false
+    },
+    {
+      "model": "alibaba/qwen-3-32b",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 829,
+          "p90Ms": 1267,
+          "decisions": 5,
+          "retries": 1,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 2295,
+          "p90Ms": 2798,
+          "decisions": 9,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 3043,
+          "p90Ms": 6175,
+          "decisions": 10,
+          "retries": 4,
+          "errors": [
+            "No object generated: could not parse the response."
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.16,
+        "output": 0.64
+      },
+      "free": false
+    },
+    {
+      "model": "alibaba/qwen3-coder",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 2445,
+          "p90Ms": 3476,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 3155,
+          "p90Ms": 3902,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 6945,
+          "p90Ms": 14141,
+          "decisions": 13,
+          "retries": 10,
+          "errors": [
+            "No object generated: response did not match schema."
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 1.5,
+        "output": 7.5
+      },
+      "free": false
+    },
+    {
+      "model": "alibaba/qwen3-coder-30b-a3b",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 5141,
+          "p90Ms": 16193,
+          "decisions": 5,
+          "retries": 1,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 3135,
+          "p90Ms": 10129,
+          "decisions": 5,
+          "retries": 3,
+          "errors": [
+            "No object generated: could not parse the response."
+          ]
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 2737,
+          "p90Ms": 7307,
+          "decisions": 11,
+          "retries": 13,
+          "errors": [
+            "No object generated: could not parse the response."
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.15,
+        "output": 0.6
+      },
+      "free": false
+    },
+    {
+      "model": "alibaba/qwen3-coder-next",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 2781,
+          "p90Ms": 3168,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 3190,
+          "p90Ms": 6485,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 5898,
+          "p90Ms": 14563,
+          "decisions": 12,
+          "retries": 2,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.5,
+        "output": 1.2
+      },
+      "free": false
+    },
+    {
+      "model": "alibaba/qwen3-next-80b-a3b-instruct",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 852,
+          "p90Ms": 1072,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 4554,
+          "p90Ms": 4554,
+          "decisions": 1,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 17851,
+          "p90Ms": 26783,
+          "decisions": 14,
+          "retries": 13,
+          "errors": [
+            "No object generated: response did not match schema.",
+            "Failed after 3 attempts. Last error: Service temporarily unavailable. Please try again shortly."
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.15,
+        "output": 1.2
+      },
+      "free": false
+    },
+    {
+      "model": "alibaba/qwen3-next-80b-a3b-thinking",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 16141,
+          "p90Ms": 36322,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 29153,
+          "p90Ms": 42457,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "TEXT",
+          "p50Ms": 928,
+          "p90Ms": 115775,
+          "decisions": 12,
+          "retries": 12,
+          "errors": [
+            "No object generated: response did not match schema.",
+            "Cannot read properties of undefined (reading 'inputTokens')"
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.15,
+        "output": 1.2
+      },
+      "free": false
+    },
+    {
+      "model": "alibaba/qwen3.8-2.4t-a95b",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 2678,
+          "p90Ms": 5659,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 56168,
+          "p90Ms": 56168,
+          "decisions": 1,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 135740,
+          "p90Ms": 509572,
+          "decisions": 5,
+          "retries": 1,
+          "errors": [
+            "No output generated."
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 2,
+        "output": 6
+      },
+      "free": false
+    },
+    {
+      "model": "alibaba/qwen3.8-max",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 2595,
+          "p90Ms": 3743,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 10657,
+          "p90Ms": 50033,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 90618,
+          "p90Ms": 230592,
+          "decisions": 5,
+          "retries": 0,
+          "errors": [
+            "No output generated."
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 2,
+        "output": 6
+      },
+      "free": false
+    },
+    {
+      "model": "amazon/nova-2-lite",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 998,
+          "p90Ms": 2219,
+          "decisions": 5,
+          "retries": 2,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 3664,
+          "p90Ms": 3664,
+          "decisions": 1,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 2868,
+          "p90Ms": 6773,
+          "decisions": 11,
+          "retries": 2,
+          "errors": [
+            "No output generated."
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.3,
+        "output": 2.5
+      },
+      "free": false
+    },
+    {
+      "model": "amazon/nova-lite",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1239,
+          "p90Ms": 1384,
+          "decisions": 5,
+          "retries": 2,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 956,
+          "p90Ms": 1039,
+          "decisions": 4,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 1381,
+          "p90Ms": 2420,
+          "decisions": 10,
+          "retries": 3,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.06,
+        "output": 0.24
+      },
+      "free": false
+    },
+    {
+      "model": "amazon/nova-micro",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 599,
+          "p90Ms": 1184,
+          "decisions": 5,
+          "retries": 2,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 910,
+          "p90Ms": 1122,
+          "decisions": 7,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 1716,
+          "p90Ms": 4089,
+          "decisions": 11,
+          "retries": 16,
+          "errors": [
+            "No object generated: response did not match schema."
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.035,
+        "output": 0.14
+      },
+      "free": false
+    },
+    {
+      "model": "amazon/nova-pro",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 686,
+          "p90Ms": 754,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 1195,
+          "p90Ms": 1387,
+          "decisions": 6,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 1804,
+          "p90Ms": 2371,
+          "decisions": 10,
+          "retries": 1,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.7999999999999999,
+        "output": 3.1999999999999997
+      },
+      "free": false
+    },
+    {
+      "model": "anthropic/claude-3-haiku",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1126,
+          "p90Ms": 1261,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 2589,
+          "p90Ms": 3707,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 5052,
+          "p90Ms": 6239,
+          "decisions": 11,
+          "retries": 10,
+          "errors": [
+            "No object generated: response did not match schema."
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.25,
+        "output": 1.25
+      },
+      "free": false
+    },
+    {
+      "model": "anthropic/claude-fable-5",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 4137,
+          "p90Ms": 5066,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 11501,
+          "p90Ms": 16336,
+          "decisions": 7,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 11886,
+          "p90Ms": 29198,
+          "decisions": 12,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 10,
+        "output": 50
+      },
+      "free": false
+    },
+    {
+      "model": "anthropic/claude-fable-5.1",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 5327,
+          "p90Ms": 5717,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 7096,
+          "p90Ms": 11260,
+          "decisions": 3,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 11569,
+          "p90Ms": 23526,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 10,
+        "output": 50
+      },
+      "free": false
+    },
+    {
+      "model": "anthropic/claude-haiku-4.5",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1284,
+          "p90Ms": 1353,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 4071,
+          "p90Ms": 4071,
+          "decisions": 1,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 10301,
+          "p90Ms": 34476,
+          "decisions": 12,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 1,
+        "output": 5
+      },
+      "free": false
+    },
+    {
+      "model": "anthropic/claude-opus-4",
+      "verdict": "broken",
+      "games": {
+        "chess": {
+          "status": "ACCESS",
+          "p50Ms": 423,
+          "p90Ms": 432,
+          "decisions": 5,
+          "retries": 0,
+          "errors": [
+            "max_tokens: 128000 > 32000, which is the maximum allowed number of output tokens for claude-opus-4-2"
+          ]
+        },
+        "poker": {
+          "status": "ACCESS",
+          "p50Ms": 452,
+          "p90Ms": 576,
+          "decisions": 6,
+          "retries": 0,
+          "errors": [
+            "max_tokens: 128000 > 32000, which is the maximum allowed number of output tokens for claude-opus-4-2"
+          ]
+        },
+        "islanders": {
+          "status": "ACCESS",
+          "p50Ms": 440,
+          "p90Ms": 523,
+          "decisions": 12,
+          "retries": 1,
+          "errors": [
+            "max_tokens: 128000 > 32000, which is the maximum allowed number of output tokens for claude-opus-4-2",
+            "Failed after 3 attempts. Last error: Service temporarily unavailable. Please try again shortly."
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 15,
+        "output": 75
+      },
+      "free": false
+    },
+    {
+      "model": "anthropic/claude-opus-4.5",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 2672,
+          "p90Ms": 2882,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 9140,
+          "p90Ms": 19625,
+          "decisions": 8,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 13224,
+          "p90Ms": 22740,
+          "decisions": 13,
+          "retries": 1,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 5,
+        "output": 25
+      },
+      "free": false
+    },
+    {
+      "model": "anthropic/claude-opus-4.6",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 2934,
+          "p90Ms": 3322,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 9785,
+          "p90Ms": 22485,
+          "decisions": 4,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 30159,
+          "p90Ms": 39294,
+          "decisions": 12,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 5,
+        "output": 25
+      },
+      "free": false
+    },
+    {
+      "model": "anthropic/claude-opus-4.7",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 2123,
+          "p90Ms": 2291,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 4750,
+          "p90Ms": 23480,
+          "decisions": 9,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 6660,
+          "p90Ms": 15535,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 5,
+        "output": 25
+      },
+      "free": false
+    },
+    {
+      "model": "anthropic/claude-opus-4.8",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1897,
+          "p90Ms": 2462,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 4202,
+          "p90Ms": 14365,
+          "decisions": 4,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 6915,
+          "p90Ms": 12460,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 5,
+        "output": 25
+      },
+      "free": false
+    },
+    {
+      "model": "anthropic/claude-opus-4.8-fast",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1072,
+          "p90Ms": 1648,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 2148,
+          "p90Ms": 3834,
+          "decisions": 6,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 2199,
+          "p90Ms": 3781,
+          "decisions": 10,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 10,
+        "output": 50
+      },
+      "free": false
+    },
+    {
+      "model": "anthropic/claude-opus-5",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 2277,
+          "p90Ms": 2571,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 5030,
+          "p90Ms": 8845,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 14254,
+          "p90Ms": 31955,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 5,
+        "output": 25
+      },
+      "free": false
+    },
+    {
+      "model": "anthropic/claude-opus-5-fast",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1149,
+          "p90Ms": 1226,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 3381,
+          "p90Ms": 4569,
+          "decisions": 3,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 5080,
+          "p90Ms": 10991,
+          "decisions": 12,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 10,
+        "output": 50
+      },
+      "free": false
+    },
+    {
+      "model": "anthropic/claude-sonnet-4",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1605,
+          "p90Ms": 2742,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 5812,
+          "p90Ms": 8394,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 9572,
+          "p90Ms": 12703,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 3,
+        "output": 15
+      },
+      "free": false
+    },
+    {
+      "model": "anthropic/claude-sonnet-4.5",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 2491,
+          "p90Ms": 2768,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 10188,
+          "p90Ms": 11131,
+          "decisions": 3,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 20063,
+          "p90Ms": 26572,
+          "decisions": 14,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 3,
+        "output": 15
+      },
+      "free": false
+    },
+    {
+      "model": "anthropic/claude-sonnet-4.6",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 2811,
+          "p90Ms": 3244,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 9007,
+          "p90Ms": 14528,
+          "decisions": 4,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 30655,
+          "p90Ms": 84957,
+          "decisions": 12,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 3,
+        "output": 15
+      },
+      "free": false
+    },
+    {
+      "model": "anthropic/claude-sonnet-5",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1681,
+          "p90Ms": 1860,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 2526,
+          "p90Ms": 3076,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 8510,
+          "p90Ms": 30850,
+          "decisions": 14,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 2,
+        "output": 10
+      },
+      "free": false
+    },
+    {
+      "model": "deepseek/deepseek-r1",
+      "verdict": "broken",
+      "games": {
+        "chess": {
+          "status": "ACCESS",
+          "p50Ms": 156,
+          "p90Ms": 236,
+          "decisions": 5,
+          "retries": 0,
+          "errors": [
+            "This model doesn't support tool use."
+          ]
+        },
+        "poker": {
+          "status": "ACCESS",
+          "p50Ms": 170,
+          "p90Ms": 214,
+          "decisions": 2,
+          "retries": 0,
+          "errors": [
+            "This model doesn't support tool use."
+          ]
+        },
+        "islanders": {
+          "status": "ACCESS",
+          "p50Ms": 218,
+          "p90Ms": 257,
+          "decisions": 12,
+          "retries": 0,
+          "errors": [
+            "This model doesn't support tool use."
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 1.35,
+        "output": 5.4
+      },
+      "free": false
+    },
+    {
+      "model": "deepseek/deepseek-v3.2",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1244,
+          "p90Ms": 4040,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 8316,
+          "p90Ms": 20405,
+          "decisions": 4,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 10499,
+          "p90Ms": 21391,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.28,
+        "output": 0.42
+      },
+      "free": false
+    },
+    {
+      "model": "deepseek/deepseek-v3.2-thinking",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 4033,
+          "p90Ms": 8215,
+          "decisions": 5,
+          "retries": 1,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 2808,
+          "p90Ms": 2808,
+          "decisions": 1,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 11251,
+          "p90Ms": 16539,
+          "decisions": 13,
+          "retries": 1,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.62,
+        "output": 1.85
+      },
+      "free": false
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 4190,
+          "p90Ms": 7129,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 10015,
+          "p90Ms": 20019,
+          "decisions": 3,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 10361,
+          "p90Ms": 26413,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.13,
+        "output": 0.26
+      },
+      "free": false
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 5389,
+          "p90Ms": 8631,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 6268,
+          "p90Ms": 59365,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 11094,
+          "p90Ms": 44829,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.07600000000000001,
+        "output": 0.153
+      },
+      "free": false
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash-vision-exp",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1815,
+          "p90Ms": 5118,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 7750,
+          "p90Ms": 16638,
+          "decisions": 4,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 25099,
+          "p90Ms": 58875,
+          "decisions": 13,
+          "retries": 3,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.22,
+        "output": 0.66
+      },
+      "free": false
+    },
+    {
+      "model": "deepseek/deepseek-v4-pro-0813",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 4250,
+          "p90Ms": 5196,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 6038,
+          "p90Ms": 6038,
+          "decisions": 1,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 24086,
+          "p90Ms": 125491,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.66,
+        "output": 1.9800000000000002
+      },
+      "free": false
+    },
+    {
+      "model": "google/gemini-2.5-flash",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 3001,
+          "p90Ms": 4253,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 13259,
+          "p90Ms": 50975,
+          "decisions": 3,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 10451,
+          "p90Ms": 22393,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.3,
+        "output": 2.5
+      },
+      "free": false
+    },
+    {
+      "model": "google/gemini-2.5-flash-lite",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 678,
+          "p90Ms": 717,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 1687,
+          "p90Ms": 2372,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 1907,
+          "p90Ms": 2478,
+          "decisions": 11,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.09999999999999999,
+        "output": 0.39999999999999997
+      },
+      "free": false
+    },
+    {
+      "model": "google/gemini-2.5-pro",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 7648,
+          "p90Ms": 12741,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 15384,
+          "p90Ms": 25149,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 34310,
+          "p90Ms": 51668,
+          "decisions": 14,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 1.25,
+        "output": 10
+      },
+      "free": false
+    },
+    {
+      "model": "google/gemini-3-flash",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 15035,
+          "p90Ms": 20038,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 13172,
+          "p90Ms": 30540,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 31186,
+          "p90Ms": 50815,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.5,
+        "output": 3
+      },
+      "free": false
+    },
+    {
+      "model": "google/gemini-3.1-flash-lite",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1073,
+          "p90Ms": 1379,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 1443,
+          "p90Ms": 1811,
+          "decisions": 7,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 1778,
+          "p90Ms": 1974,
+          "decisions": 11,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.25,
+        "output": 1.5
+      },
+      "free": false
+    },
+    {
+      "model": "google/gemini-3.1-pro-preview",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 2974,
+          "p90Ms": 3560,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 7350,
+          "p90Ms": 9821,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 9566,
+          "p90Ms": 22472,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 2,
+        "output": 12
+      },
+      "free": false
+    },
+    {
+      "model": "google/gemini-3.5-flash",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 2520,
+          "p90Ms": 3850,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 3611,
+          "p90Ms": 4684,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 8259,
+          "p90Ms": 16571,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 1.5,
+        "output": 9
+      },
+      "free": false
+    },
+    {
+      "model": "google/gemini-3.5-flash-lite",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 891,
+          "p90Ms": 1120,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 1303,
+          "p90Ms": 1335,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 1576,
+          "p90Ms": 2058,
+          "decisions": 12,
+          "retries": 1,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.3,
+        "output": 2.5
+      },
+      "free": false
+    },
+    {
+      "model": "google/gemini-3.6-flash",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 2622,
+          "p90Ms": 8061,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 3172,
+          "p90Ms": 6104,
+          "decisions": 4,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 8884,
+          "p90Ms": 15870,
+          "decisions": 12,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.75,
+        "output": 3.75
+      },
+      "free": false
+    },
+    {
+      "model": "google/gemini-3.7-flash",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 2421,
+          "p90Ms": 4496,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 4645,
+          "p90Ms": 8796,
+          "decisions": 4,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 6475,
+          "p90Ms": 8995,
+          "decisions": 10,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.75,
+        "output": 3.75
+      },
+      "free": false
+    },
+    {
+      "model": "google/gemini-3.8-flash",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 2013,
+          "p90Ms": 3645,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 3906,
+          "p90Ms": 3906,
+          "decisions": 1,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 8398,
+          "p90Ms": 11392,
+          "decisions": 12,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.75,
+        "output": 3.75
+      },
+      "free": false
+    },
+    {
+      "model": "google/gemma-4-26b-a4b-it",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 900,
+          "p90Ms": 2043,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 5074,
+          "p90Ms": 6304,
+          "decisions": 4,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 7376,
+          "p90Ms": 16238,
+          "decisions": 9,
+          "retries": 4,
+          "errors": [
+            "No object generated: response did not match schema."
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.15,
+        "output": 0.6
+      },
+      "free": false
+    },
+    {
+      "model": "meta/llama-3.1-70b",
+      "verdict": "broken",
+      "games": {
+        "chess": {
+          "status": "ACCESS",
+          "p50Ms": 174,
+          "p90Ms": 185,
+          "decisions": 5,
+          "retries": 0,
+          "errors": [
+            "This model doesn't support the toolConfig.toolChoice.any field. Remove toolConfig.toolChoice.any and"
+          ]
+        },
+        "poker": {
+          "status": "ACCESS",
+          "p50Ms": 143,
+          "p90Ms": 154,
+          "decisions": 2,
+          "retries": 0,
+          "errors": [
+            "This model doesn't support the toolConfig.toolChoice.any field. Remove toolConfig.toolChoice.any and"
+          ]
+        },
+        "islanders": {
+          "status": "ACCESS",
+          "p50Ms": 190,
+          "p90Ms": 320,
+          "decisions": 9,
+          "retries": 0,
+          "errors": [
+            "This model doesn't support the toolConfig.toolChoice.any field. Remove toolConfig.toolChoice.any and"
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.72,
+        "output": 0.72
+      },
+      "free": false
+    },
+    {
+      "model": "meta/llama-3.1-8b",
+      "verdict": "broken",
+      "games": {
+        "chess": {
+          "status": "ACCESS",
+          "p50Ms": 173,
+          "p90Ms": 215,
+          "decisions": 5,
+          "retries": 0,
+          "errors": [
+            "This model doesn't support the toolConfig.toolChoice.any field. Remove toolConfig.toolChoice.any and"
+          ]
+        },
+        "poker": {
+          "status": "ACCESS",
+          "p50Ms": 191,
+          "p90Ms": 229,
+          "decisions": 2,
+          "retries": 0,
+          "errors": [
+            "This model doesn't support the toolConfig.toolChoice.any field. Remove toolConfig.toolChoice.any and"
+          ]
+        },
+        "islanders": {
+          "status": "ACCESS",
+          "p50Ms": 201,
+          "p90Ms": 233,
+          "decisions": 12,
+          "retries": 0,
+          "errors": [
+            "This model doesn't support the toolConfig.toolChoice.any field. Remove toolConfig.toolChoice.any and"
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.22,
+        "output": 0.22
+      },
+      "free": false
+    },
+    {
+      "model": "meta/llama-3.3-70b",
+      "verdict": "broken",
+      "games": {
+        "chess": {
+          "status": "ACCESS",
+          "p50Ms": 148,
+          "p90Ms": 162,
+          "decisions": 5,
+          "retries": 0,
+          "errors": [
+            "This model doesn't support the toolConfig.toolChoice.any field. Remove toolConfig.toolChoice.any and"
+          ]
+        },
+        "poker": {
+          "status": "ACCESS",
+          "p50Ms": 166,
+          "p90Ms": 191,
+          "decisions": 3,
+          "retries": 0,
+          "errors": [
+            "This model doesn't support the toolConfig.toolChoice.any field. Remove toolConfig.toolChoice.any and"
+          ]
+        },
+        "islanders": {
+          "status": "ACCESS",
+          "p50Ms": 193,
+          "p90Ms": 264,
+          "decisions": 13,
+          "retries": 0,
+          "errors": [
+            "This model doesn't support the toolConfig.toolChoice.any field. Remove toolConfig.toolChoice.any and"
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.72,
+        "output": 0.72
+      },
+      "free": false
+    },
+    {
+      "model": "meta/llama-4-maverick",
+      "verdict": "broken",
+      "games": {
+        "chess": {
+          "status": "ACCESS",
+          "p50Ms": 161,
+          "p90Ms": 188,
+          "decisions": 5,
+          "retries": 0,
+          "errors": [
+            "This model doesn't support the toolConfig.toolChoice.any field. Remove toolConfig.toolChoice.any and"
+          ]
+        },
+        "poker": {
+          "status": "ACCESS",
+          "p50Ms": 184,
+          "p90Ms": 302,
+          "decisions": 2,
+          "retries": 0,
+          "errors": [
+            "This model doesn't support the toolConfig.toolChoice.any field. Remove toolConfig.toolChoice.any and"
+          ]
+        },
+        "islanders": {
+          "status": "ACCESS",
+          "p50Ms": 188,
+          "p90Ms": 253,
+          "decisions": 12,
+          "retries": 0,
+          "errors": [
+            "This model doesn't support the toolConfig.toolChoice.any field. Remove toolConfig.toolChoice.any and"
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.24,
+        "output": 0.9700000000000001
+      },
+      "free": false
+    },
+    {
+      "model": "meta/llama-4-scout",
+      "verdict": "broken",
+      "games": {
+        "chess": {
+          "status": "ACCESS",
+          "p50Ms": 153,
+          "p90Ms": 274,
+          "decisions": 5,
+          "retries": 0,
+          "errors": [
+            "This model doesn't support the toolConfig.toolChoice.any field. Remove toolConfig.toolChoice.any and"
+          ]
+        },
+        "poker": {
+          "status": "ACCESS",
+          "p50Ms": 226,
+          "p90Ms": 226,
+          "decisions": 1,
+          "retries": 0,
+          "errors": [
+            "This model doesn't support the toolConfig.toolChoice.any field. Remove toolConfig.toolChoice.any and"
+          ]
+        },
+        "islanders": {
+          "status": "ACCESS",
+          "p50Ms": 177,
+          "p90Ms": 219,
+          "decisions": 11,
+          "retries": 0,
+          "errors": [
+            "This model doesn't support the toolConfig.toolChoice.any field. Remove toolConfig.toolChoice.any and"
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.16999999999999998,
+        "output": 0.66
+      },
+      "free": false
+    },
+    {
+      "model": "meta/muse-glimmer-30b",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 14270,
+          "p90Ms": 41285,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 53050,
+          "p90Ms": 100032,
+          "decisions": 7,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 28134,
+          "p90Ms": 83168,
+          "decisions": 12,
+          "retries": 1,
+          "errors": [
+            "No object generated: response did not match schema."
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.35,
+        "output": 1.5
+      },
+      "free": false
+    },
+    {
+      "model": "minimax/minimax-m2.1",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 5340,
+          "p90Ms": 78258,
+          "decisions": 5,
+          "retries": 1,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 5370,
+          "p90Ms": 45547,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 8288,
+          "p90Ms": 19306,
+          "decisions": 12,
+          "retries": 2,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.3,
+        "output": 1.2
+      },
+      "free": false
+    },
+    {
+      "model": "minimax/minimax-m2.5",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 12039,
+          "p90Ms": 29354,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 11671,
+          "p90Ms": 11671,
+          "decisions": 1,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 22308,
+          "p90Ms": 33441,
+          "decisions": 12,
+          "retries": 2,
+          "errors": [
+            "No object generated: could not parse the response."
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.3,
+        "output": 1.2
+      },
+      "free": false
+    },
+    {
+      "model": "minimax/minimax-m3",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1454,
+          "p90Ms": 2842,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 7440,
+          "p90Ms": 20172,
+          "decisions": 4,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 17065,
+          "p90Ms": 98987,
+          "decisions": 12,
+          "retries": 4,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.3,
+        "output": 1.2
+      },
+      "free": false
+    },
+    {
+      "model": "minimax/minimax-m3-free",
+      "verdict": "broken",
+      "games": {
+        "chess": {
+          "status": "ACCESS",
+          "p50Ms": 0,
+          "p90Ms": 0,
+          "decisions": 0,
+          "retries": 0,
+          "errors": [
+            "Your team has restricted access to this provider. Contact the owner of the account for more details."
+          ]
+        },
+        "poker": {
+          "status": "ACCESS",
+          "p50Ms": 0,
+          "p90Ms": 0,
+          "decisions": 0,
+          "retries": 0,
+          "errors": [
+            "Your team has restricted access to this provider. Contact the owner of the account for more details."
+          ]
+        },
+        "islanders": {
+          "status": "ACCESS",
+          "p50Ms": 0,
+          "p90Ms": 0,
+          "decisions": 0,
+          "retries": 0,
+          "errors": [
+            "Your team has restricted access to this provider. Contact the owner of the account for more details."
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 0,
+        "output": 0
+      },
+      "free": true
+    },
+    {
+      "model": "moonshotai/kimi-k2.5",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1076,
+          "p90Ms": 4815,
+          "decisions": 5,
+          "retries": 1,
+          "errors": [
+            "No object generated: could not parse the response."
+          ]
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 3022,
+          "p90Ms": 3022,
+          "decisions": 1,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 3983,
+          "p90Ms": 8012,
+          "decisions": 11,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.6,
+        "output": 3
+      },
+      "free": false
+    },
+    {
+      "model": "moonshotai/kimi-k2.6",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 7295,
+          "p90Ms": 13527,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 42363,
+          "p90Ms": 91287,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 78760,
+          "p90Ms": 197861,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.95,
+        "output": 4
+      },
+      "free": false
+    },
+    {
+      "model": "moonshotai/kimi-k2.7-code",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 2938,
+          "p90Ms": 8605,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 14567,
+          "p90Ms": 147569,
+          "decisions": 4,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 37001,
+          "p90Ms": 74653,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.95,
+        "output": 4
+      },
+      "free": false
+    },
+    {
+      "model": "moonshotai/kimi-k3",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 5256,
+          "p90Ms": 8692,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 11400,
+          "p90Ms": 42458,
+          "decisions": 4,
+          "retries": 1,
+          "errors": [
+            "Failed after 3 attempts. Last error: Service temporarily unavailable. Please try again shortly."
+          ]
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 35341,
+          "p90Ms": 80973,
+          "decisions": 11,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 3,
+        "output": 15
+      },
+      "free": false
+    },
+    {
+      "model": "moonshotai/kimi-k3-fast",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 2881,
+          "p90Ms": 3692,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 8985,
+          "p90Ms": 13238,
+          "decisions": 3,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 8723,
+          "p90Ms": 59463,
+          "decisions": 12,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 4.5,
+        "output": 22.5
+      },
+      "free": false
+    },
+    {
+      "model": "nvidia/nemotron-3-super-120b-a12b",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 803,
+          "p90Ms": 1395,
+          "decisions": 5,
+          "retries": 1,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 2578,
+          "p90Ms": 305668,
+          "decisions": 7,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 3254,
+          "p90Ms": 9192,
+          "decisions": 14,
+          "retries": 7,
+          "errors": [
+            "No object generated: response did not match schema.",
+            "No object generated: could not parse the response."
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.15,
+        "output": 0.65
+      },
+      "free": false
+    },
+    {
+      "model": "nvidia/nemotron-3.5-lightning",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 10355,
+          "p90Ms": 33955,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 17606,
+          "p90Ms": 21502,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 17885,
+          "p90Ms": 45709,
+          "decisions": 12,
+          "retries": 3,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.049999999999999996,
+        "output": 0.19999999999999998
+      },
+      "free": false
+    },
+    {
+      "model": "nvidia/nemotron-nano-12b-v2-vl",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "TEXT",
+          "p50Ms": 950,
+          "p90Ms": 1012,
+          "decisions": 5,
+          "retries": 5,
+          "errors": [
+            "No object generated: could not parse the response."
+          ]
+        },
+        "poker": {
+          "status": "TEXT",
+          "p50Ms": 1748,
+          "p90Ms": 1748,
+          "decisions": 1,
+          "retries": 1,
+          "errors": [
+            "No object generated: could not parse the response."
+          ]
+        },
+        "islanders": {
+          "status": "TEXT",
+          "p50Ms": 2527,
+          "p90Ms": 611753,
+          "decisions": 4,
+          "retries": 5,
+          "errors": [
+            "No object generated: could not parse the response."
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.19999999999999998,
+        "output": 0.6
+      },
+      "free": false
+    },
+    {
+      "model": "nvidia/nemotron-nano-9b-v2",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "TEXT",
+          "p50Ms": 14174,
+          "p90Ms": 55049,
+          "decisions": 5,
+          "retries": 5,
+          "errors": [
+            "No object generated: could not parse the response."
+          ]
+        },
+        "poker": {
+          "status": "TEXT",
+          "p50Ms": 43575,
+          "p90Ms": 43613,
+          "decisions": 3,
+          "retries": 3,
+          "errors": [
+            "No object generated: could not parse the response."
+          ]
+        },
+        "islanders": {
+          "status": "TEXT",
+          "p50Ms": 30924,
+          "p90Ms": 48402,
+          "decisions": 13,
+          "retries": 15,
+          "errors": [
+            "No object generated: could not parse the response."
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.06,
+        "output": 0.22999999999999998
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-3.5-turbo",
+      "verdict": "broken",
+      "games": {
+        "chess": {
+          "status": "ACCESS",
+          "p50Ms": 386,
+          "p90Ms": 461,
+          "decisions": 5,
+          "retries": 0,
+          "errors": [
+            "Invalid parameter: 'text.format' of type 'json_schema' is not supported with model version `gpt-3.5-"
+          ]
+        },
+        "poker": {
+          "status": "ACCESS",
+          "p50Ms": 402,
+          "p90Ms": 432,
+          "decisions": 3,
+          "retries": 0,
+          "errors": [
+            "Invalid parameter: 'text.format' of type 'json_schema' is not supported with model version `gpt-3.5-"
+          ]
+        },
+        "islanders": {
+          "status": "ACCESS",
+          "p50Ms": 315,
+          "p90Ms": 503,
+          "decisions": 12,
+          "retries": 0,
+          "errors": [
+            "Invalid parameter: 'text.format' of type 'json_schema' is not supported with model version `gpt-3.5-"
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.5,
+        "output": 1.5
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-4-turbo",
+      "verdict": "broken",
+      "games": {
+        "chess": {
+          "status": "ACCESS",
+          "p50Ms": 318,
+          "p90Ms": 393,
+          "decisions": 5,
+          "retries": 0,
+          "errors": [
+            "Invalid parameter: 'text.format' of type 'json_schema' is not supported with model version `gpt-4-tu"
+          ]
+        },
+        "poker": {
+          "status": "ACCESS",
+          "p50Ms": 281,
+          "p90Ms": 281,
+          "decisions": 1,
+          "retries": 0,
+          "errors": [
+            "Invalid parameter: 'text.format' of type 'json_schema' is not supported with model version `gpt-4-tu"
+          ]
+        },
+        "islanders": {
+          "status": "ACCESS",
+          "p50Ms": 292,
+          "p90Ms": 478,
+          "decisions": 11,
+          "retries": 0,
+          "errors": [
+            "Invalid parameter: 'text.format' of type 'json_schema' is not supported with model version `gpt-4-tu"
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 10,
+        "output": 30
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-4.1",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1044,
+          "p90Ms": 1312,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 1940,
+          "p90Ms": 3038,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 2208,
+          "p90Ms": 2863,
+          "decisions": 14,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 2,
+        "output": 8
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-4.1-fast",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1042,
+          "p90Ms": 5926,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 1337,
+          "p90Ms": 1943,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 1720,
+          "p90Ms": 2283,
+          "decisions": 10,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 3.5,
+        "output": 14
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-4.1-mini",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1128,
+          "p90Ms": 1262,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 2709,
+          "p90Ms": 4165,
+          "decisions": 3,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 3219,
+          "p90Ms": 5527,
+          "decisions": 12,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.39999999999999997,
+        "output": 1.5999999999999999
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-4.1-mini-fast",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 714,
+          "p90Ms": 984,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 2094,
+          "p90Ms": 2109,
+          "decisions": 3,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 2140,
+          "p90Ms": 3028,
+          "decisions": 10,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.7,
+        "output": 2.8
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-4.1-nano",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 777,
+          "p90Ms": 1416,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 1340,
+          "p90Ms": 1505,
+          "decisions": 3,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 2523,
+          "p90Ms": 8041,
+          "decisions": 13,
+          "retries": 15,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.09999999999999999,
+        "output": 0.39999999999999997
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-4.1-nano-fast",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 814,
+          "p90Ms": 983,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 1068,
+          "p90Ms": 1352,
+          "decisions": 4,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 1368,
+          "p90Ms": 2305,
+          "decisions": 12,
+          "retries": 3,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.19999999999999998,
+        "output": 0.7999999999999999
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-4o",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 860,
+          "p90Ms": 1051,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 2225,
+          "p90Ms": 2928,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 2450,
+          "p90Ms": 3036,
+          "decisions": 12,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 2.5,
+        "output": 10
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-4o-fast",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 840,
+          "p90Ms": 1060,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 1553,
+          "p90Ms": 1766,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 1590,
+          "p90Ms": 2077,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 4.25,
+        "output": 17
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-4o-mini",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 889,
+          "p90Ms": 1260,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 1944,
+          "p90Ms": 2158,
+          "decisions": 9,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 1771,
+          "p90Ms": 3019,
+          "decisions": 10,
+          "retries": 2,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.15,
+        "output": 0.6
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-4o-mini-fast",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 852,
+          "p90Ms": 895,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 1303,
+          "p90Ms": 2388,
+          "decisions": 4,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 1604,
+          "p90Ms": 2612,
+          "decisions": 10,
+          "retries": 3,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.25,
+        "output": 1
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 11471,
+          "p90Ms": 19095,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 31356,
+          "p90Ms": 183826,
+          "decisions": 9,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 38136,
+          "p90Ms": 69668,
+          "decisions": 14,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 1.25,
+        "output": 10
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5-fast",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 4054,
+          "p90Ms": 10084,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 10341,
+          "p90Ms": 17127,
+          "decisions": 4,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 17381,
+          "p90Ms": 29768,
+          "decisions": 10,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 2.5,
+        "output": 20
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5-mini",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 3107,
+          "p90Ms": 5820,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 12500,
+          "p90Ms": 27847,
+          "decisions": 4,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 19449,
+          "p90Ms": 39539,
+          "decisions": 12,
+          "retries": 1,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.25,
+        "output": 2
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5-mini-fast",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 2346,
+          "p90Ms": 5445,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 16627,
+          "p90Ms": 22290,
+          "decisions": 8,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 10746,
+          "p90Ms": 13853,
+          "decisions": 12,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.44999999999999996,
+        "output": 3.5999999999999996
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5-nano",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 14537,
+          "p90Ms": 24491,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 49851,
+          "p90Ms": 64361,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 36399,
+          "p90Ms": 114692,
+          "decisions": 8,
+          "retries": 7,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.049999999999999996,
+        "output": 0.39999999999999997
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5-pro",
+      "verdict": "broken",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 84521,
+          "p90Ms": 462698,
+          "decisions": 2,
+          "retries": 1,
+          "errors": [
+            "Failed after 3 attempts. Last error: Service temporarily unavailable. Please try again shortly."
+          ]
+        },
+        "poker": {
+          "status": "TEXT",
+          "p50Ms": 575659,
+          "p90Ms": 575659,
+          "decisions": 1,
+          "retries": 1,
+          "errors": [
+            "Failed after 3 attempts. Last error: Service temporarily unavailable. Please try again shortly."
+          ]
+        },
+        "islanders": {
+          "status": "TIMEOUT",
+          "p50Ms": 0,
+          "p90Ms": 0,
+          "decisions": 0,
+          "retries": 0,
+          "errors": [
+            "Failed after 3 attempts. Last error: Service temporarily unavailable. Please try again shortly."
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 15,
+        "output": 120
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5.1-thinking",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1325,
+          "p90Ms": 1414,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 4605,
+          "p90Ms": 8347,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 3985,
+          "p90Ms": 9816,
+          "decisions": 14,
+          "retries": 3,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 1.25,
+        "output": 10
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5.1-thinking-fast",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1127,
+          "p90Ms": 1586,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 2606,
+          "p90Ms": 3802,
+          "decisions": 3,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 1905,
+          "p90Ms": 4917,
+          "decisions": 12,
+          "retries": 1,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 2.5,
+        "output": 20
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5.2",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1586,
+          "p90Ms": 1743,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 3349,
+          "p90Ms": 5256,
+          "decisions": 4,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 3477,
+          "p90Ms": 4245,
+          "decisions": 12,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 1.75,
+        "output": 14
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5.2-fast",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1190,
+          "p90Ms": 1335,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 2133,
+          "p90Ms": 3906,
+          "decisions": 4,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 1943,
+          "p90Ms": 2951,
+          "decisions": 12,
+          "retries": 1,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 3.5,
+        "output": 28
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5.2-pro",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 16029,
+          "p90Ms": 28308,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 56182,
+          "p90Ms": 69918,
+          "decisions": 3,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 72657,
+          "p90Ms": 106446,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 21,
+        "output": 168
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5.3-codex",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1471,
+          "p90Ms": 1789,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 2142,
+          "p90Ms": 5413,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 1804,
+          "p90Ms": 2026,
+          "decisions": 12,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 1.75,
+        "output": 14
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5.3-codex-fast",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1587,
+          "p90Ms": 1941,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 2142,
+          "p90Ms": 3571,
+          "decisions": 3,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 1567,
+          "p90Ms": 1994,
+          "decisions": 10,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 3.5,
+        "output": 28
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5.4",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1298,
+          "p90Ms": 1526,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 3524,
+          "p90Ms": 3820,
+          "decisions": 4,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 2683,
+          "p90Ms": 3667,
+          "decisions": 11,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 2.5,
+        "output": 15
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5.4-fast",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1339,
+          "p90Ms": 1538,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 3111,
+          "p90Ms": 5861,
+          "decisions": 7,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 2050,
+          "p90Ms": 3067,
+          "decisions": 12,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 5,
+        "output": 30
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5.4-mini",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 871,
+          "p90Ms": 1299,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 1399,
+          "p90Ms": 1399,
+          "decisions": 1,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 1889,
+          "p90Ms": 2021,
+          "decisions": 10,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.75,
+        "output": 4.5
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5.4-mini-fast",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 801,
+          "p90Ms": 1297,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 1649,
+          "p90Ms": 2946,
+          "decisions": 4,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 1310,
+          "p90Ms": 1753,
+          "decisions": 12,
+          "retries": 1,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 1.5,
+        "output": 9
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5.4-nano",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1207,
+          "p90Ms": 1293,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 1616,
+          "p90Ms": 1921,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 2431,
+          "p90Ms": 2805,
+          "decisions": 10,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.19999999999999998,
+        "output": 1.25
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5.4-pro",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 19904,
+          "p90Ms": 42212,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 132883,
+          "p90Ms": 148961,
+          "decisions": 3,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 237908,
+          "p90Ms": 276272,
+          "decisions": 3,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 30,
+        "output": 180
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5.5",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 3143,
+          "p90Ms": 12702,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 18838,
+          "p90Ms": 72444,
+          "decisions": 9,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 13179,
+          "p90Ms": 59925,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 5,
+        "output": 30
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5.5-fast",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 2503,
+          "p90Ms": 9743,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 6443,
+          "p90Ms": 10281,
+          "decisions": 4,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 17958,
+          "p90Ms": 29966,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 12.5,
+        "output": 75
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5.5-pro",
+      "verdict": "broken",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 36193,
+          "p90Ms": 111339,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 234710,
+          "p90Ms": 234710,
+          "decisions": 1,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "TIMEOUT",
+          "p50Ms": 0,
+          "p90Ms": 0,
+          "decisions": 0,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 30,
+        "output": 180
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5.6-luna",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 2389,
+          "p90Ms": 5199,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 4222,
+          "p90Ms": 11899,
+          "decisions": 4,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 5615,
+          "p90Ms": 9869,
+          "decisions": 12,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.19999999999999998,
+        "output": 1.2
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5.6-luna-fast",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1371,
+          "p90Ms": 1561,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 2529,
+          "p90Ms": 2529,
+          "decisions": 1,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 2764,
+          "p90Ms": 6994,
+          "decisions": 12,
+          "retries": 2,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.39999999999999997,
+        "output": 2.4
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5.6-sol",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 2120,
+          "p90Ms": 2998,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 4581,
+          "p90Ms": 12690,
+          "decisions": 8,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 9168,
+          "p90Ms": 13910,
+          "decisions": 12,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 2,
+        "output": 10
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5.6-sol-fast",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1758,
+          "p90Ms": 2739,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 4127,
+          "p90Ms": 4127,
+          "decisions": 1,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 4593,
+          "p90Ms": 11642,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 4,
+        "output": 20
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5.6-terra",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 2117,
+          "p90Ms": 2182,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 5734,
+          "p90Ms": 13896,
+          "decisions": 7,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 6638,
+          "p90Ms": 13189,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 2,
+        "output": 12
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-5.6-terra-fast",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1397,
+          "p90Ms": 1623,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 4722,
+          "p90Ms": 6540,
+          "decisions": 11,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 4703,
+          "p90Ms": 5832,
+          "decisions": 12,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 4,
+        "output": 24
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-oss-120b",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 3770,
+          "p90Ms": 15273,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 18405,
+          "p90Ms": 21275,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 11853,
+          "p90Ms": 20211,
+          "decisions": 14,
+          "retries": 2,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.09999999999999999,
+        "output": 0.5
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-oss-20b",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 16259,
+          "p90Ms": 140518,
+          "decisions": 5,
+          "retries": 9,
+          "errors": [
+            "No output generated."
+          ]
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 12129,
+          "p90Ms": 20512,
+          "decisions": 4,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 8847,
+          "p90Ms": 48618,
+          "decisions": 10,
+          "retries": 5,
+          "errors": [
+            "No output generated."
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.049999999999999996,
+        "output": 0.19999999999999998
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-oss-safeguard-120b",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1918,
+          "p90Ms": 5295,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 11316,
+          "p90Ms": 26645,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 9382,
+          "p90Ms": 22701,
+          "decisions": 12,
+          "retries": 2,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.15,
+        "output": 0.6
+      },
+      "free": false
+    },
+    {
+      "model": "openai/gpt-oss-safeguard-20b",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 10223,
+          "p90Ms": 97094,
+          "decisions": 5,
+          "retries": 1,
+          "errors": [
+            "No object generated: could not parse the response."
+          ]
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 50040,
+          "p90Ms": 147004,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 73739,
+          "p90Ms": 132585,
+          "decisions": 11,
+          "retries": 1,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.07,
+        "output": 0.19999999999999998
+      },
+      "free": false
+    },
+    {
+      "model": "openai/o1",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 5337,
+          "p90Ms": 10413,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 6093,
+          "p90Ms": 13978,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 13395,
+          "p90Ms": 41989,
+          "decisions": 14,
+          "retries": 1,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 15,
+        "output": 60
+      },
+      "free": false
+    },
+    {
+      "model": "openai/o3",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 4340,
+          "p90Ms": 10178,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 4388,
+          "p90Ms": 7776,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 15897,
+          "p90Ms": 42701,
+          "decisions": 14,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 2,
+        "output": 8
+      },
+      "free": false
+    },
+    {
+      "model": "openai/o3-fast",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 2393,
+          "p90Ms": 3988,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 4532,
+          "p90Ms": 32333,
+          "decisions": 4,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 10000,
+          "p90Ms": 32844,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 3.5,
+        "output": 14
+      },
+      "free": false
+    },
+    {
+      "model": "openai/o3-mini",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 2436,
+          "p90Ms": 4300,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 10509,
+          "p90Ms": 11773,
+          "decisions": 4,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 7055,
+          "p90Ms": 17149,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 1.1,
+        "output": 4.4
+      },
+      "free": false
+    },
+    {
+      "model": "openai/o3-pro",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 19072,
+          "p90Ms": 66453,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 36719,
+          "p90Ms": 123279,
+          "decisions": 4,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 46475,
+          "p90Ms": 86613,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 20,
+        "output": 80
+      },
+      "free": false
+    },
+    {
+      "model": "openai/o4-mini",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 2375,
+          "p90Ms": 3899,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 4033,
+          "p90Ms": 4033,
+          "decisions": 1,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 9394,
+          "p90Ms": 25334,
+          "decisions": 14,
+          "retries": 1,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 1.1,
+        "output": 4.4
+      },
+      "free": false
+    },
+    {
+      "model": "openai/o4-mini-fast",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1517,
+          "p90Ms": 1799,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 4904,
+          "p90Ms": 5468,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 7455,
+          "p90Ms": 23966,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 2,
+        "output": 8
+      },
+      "free": false
+    },
+    {
+      "model": "private/kimi-k3",
+      "verdict": "broken",
+      "games": {
+        "chess": {
+          "status": "FALLBACK",
+          "p50Ms": 13323,
+          "p90Ms": 16010,
+          "decisions": 5,
+          "retries": 5,
+          "errors": [
+            "Failed after 3 attempts. Last error: model has no ready backend"
+          ]
+        },
+        "poker": {
+          "status": "FALLBACK",
+          "p50Ms": 13224,
+          "p90Ms": 15266,
+          "decisions": 5,
+          "retries": 5,
+          "errors": [
+            "Failed after 3 attempts. Last error: model has no ready backend"
+          ]
+        },
+        "islanders": {
+          "status": "FALLBACK",
+          "p50Ms": 13388,
+          "p90Ms": 18283,
+          "decisions": 8,
+          "retries": 8,
+          "errors": [
+            "Failed after 3 attempts. Last error: model has no ready backend"
+          ]
+        }
+      }
+    },
+    {
+      "model": "spacexai/grok-4.1-fast-non-reasoning",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 844,
+          "p90Ms": 4078,
+          "decisions": 5,
+          "retries": 4,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 1361,
+          "p90Ms": 1599,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 2305,
+          "p90Ms": 5497,
+          "decisions": 14,
+          "retries": 1,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.19999999999999998,
+        "output": 0.5
+      },
+      "free": false
+    },
+    {
+      "model": "spacexai/grok-4.1-fast-reasoning",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 9913,
+          "p90Ms": 29274,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 6075,
+          "p90Ms": 8818,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 19585,
+          "p90Ms": 42688,
+          "decisions": 12,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.19999999999999998,
+        "output": 0.5
+      },
+      "free": false
+    },
+    {
+      "model": "spacexai/grok-4.20-multi-agent",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 6809,
+          "p90Ms": 7074,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 24644,
+          "p90Ms": 116371,
+          "decisions": 3,
+          "retries": 1,
+          "errors": [
+            "No object generated: could not parse the response."
+          ]
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 34115,
+          "p90Ms": 81902,
+          "decisions": 12,
+          "retries": 3,
+          "errors": [
+            "No object generated: could not parse the response."
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 1.25,
+        "output": 2.5
+      },
+      "free": false
+    },
+    {
+      "model": "spacexai/grok-4.20-multi-agent-beta",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 6168,
+          "p90Ms": 7895,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 31353,
+          "p90Ms": 31353,
+          "decisions": 1,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 27638,
+          "p90Ms": 63747,
+          "decisions": 12,
+          "retries": 1,
+          "errors": [
+            "No object generated: could not parse the response."
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 1.25,
+        "output": 2.5
+      },
+      "free": false
+    },
+    {
+      "model": "spacexai/grok-4.20-non-reasoning",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 860,
+          "p90Ms": 1526,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 4509,
+          "p90Ms": 5225,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 4005,
+          "p90Ms": 5333,
+          "decisions": 12,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 1.25,
+        "output": 2.5
+      },
+      "free": false
+    },
+    {
+      "model": "spacexai/grok-4.20-non-reasoning-beta",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 818,
+          "p90Ms": 989,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 4311,
+          "p90Ms": 5310,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 3791,
+          "p90Ms": 4991,
+          "decisions": 10,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 1.25,
+        "output": 2.5
+      },
+      "free": false
+    },
+    {
+      "model": "spacexai/grok-4.20-reasoning",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 4454,
+          "p90Ms": 6923,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 34460,
+          "p90Ms": 41965,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 19815,
+          "p90Ms": 64813,
+          "decisions": 12,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 1.25,
+        "output": 2.5
+      },
+      "free": false
+    },
+    {
+      "model": "spacexai/grok-4.20-reasoning-beta",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 5494,
+          "p90Ms": 10321,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 36053,
+          "p90Ms": 36053,
+          "decisions": 1,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 31259,
+          "p90Ms": 47106,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 1.25,
+        "output": 2.5
+      },
+      "free": false
+    },
+    {
+      "model": "spacexai/grok-4.3",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 4773,
+          "p90Ms": 4936,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 8019,
+          "p90Ms": 8059,
+          "decisions": 3,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 5297,
+          "p90Ms": 6852,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 1.25,
+        "output": 2.5
+      },
+      "free": false
+    },
+    {
+      "model": "spacexai/grok-4.5",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 5359,
+          "p90Ms": 6548,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 10361,
+          "p90Ms": 10361,
+          "decisions": 1,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 22203,
+          "p90Ms": 51055,
+          "decisions": 13,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 2,
+        "output": 6
+      },
+      "free": false
+    },
+    {
+      "model": "spacexai/grok-4.6",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 9437,
+          "p90Ms": 12136,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 22639,
+          "p90Ms": 28801,
+          "decisions": 3,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 55172,
+          "p90Ms": 122654,
+          "decisions": 10,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 2,
+        "output": 6
+      },
+      "free": false
+    },
+    {
+      "model": "spacexai/grok-build-0.1",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 5539,
+          "p90Ms": 6308,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 15661,
+          "p90Ms": 15661,
+          "decisions": 1,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 33345,
+          "p90Ms": 132657,
+          "decisions": 9,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 1,
+        "output": 2
+      },
+      "free": false
+    },
+    {
+      "model": "zai/glm-4.7",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 934,
+          "p90Ms": 3193,
+          "decisions": 5,
+          "retries": 1,
+          "errors": [
+            "No object generated: could not parse the response."
+          ]
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 4550,
+          "p90Ms": 6143,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 3429,
+          "p90Ms": 5555,
+          "decisions": 10,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.6,
+        "output": 2.2
+      },
+      "free": false
+    },
+    {
+      "model": "zai/glm-4.7-flash",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 769,
+          "p90Ms": 1939,
+          "decisions": 5,
+          "retries": 2,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 2270,
+          "p90Ms": 2580,
+          "decisions": 3,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 5096,
+          "p90Ms": 33583,
+          "decisions": 12,
+          "retries": 4,
+          "errors": [
+            "No object generated: could not parse the response."
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.07,
+        "output": 0.39999999999999997
+      },
+      "free": false
+    },
+    {
+      "model": "zai/glm-5",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 933,
+          "p90Ms": 5189,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 3282,
+          "p90Ms": 16637,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 4582,
+          "p90Ms": 18247,
+          "decisions": 12,
+          "retries": 2,
+          "errors": [
+            "No object generated: could not parse the response."
+          ]
+        }
+      },
+      "pricePerMillion": {
+        "input": 1,
+        "output": 3.1999999999999997
+      },
+      "free": false
+    },
+    {
+      "model": "zai/glm-5.2",
+      "verdict": "ok",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 3374,
+          "p90Ms": 5735,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 10358,
+          "p90Ms": 12528,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 19274,
+          "p90Ms": 42882,
+          "decisions": 14,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.7999999999999999,
+        "output": 2.5500000000000003
+      },
+      "free": false
+    },
+    {
+      "model": "zai/glm-5.2-fast",
+      "verdict": "fast",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 1882,
+          "p90Ms": 2840,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 2278,
+          "p90Ms": 4697,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 4261,
+          "p90Ms": 11891,
+          "decisions": 12,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 2.0999999999999996,
+        "output": 6.6000000000000005
+      },
+      "free": false
+    },
+    {
+      "model": "zai/glm-5.3",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 6852,
+          "p90Ms": 9734,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 30183,
+          "p90Ms": 36356,
+          "decisions": 3,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 264463,
+          "p90Ms": 416745,
+          "decisions": 3,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.7,
+        "output": 2.2
+      },
+      "free": false
+    },
+    {
+      "model": "zai/glm-5.3-flash",
+      "verdict": "slow",
+      "games": {
+        "chess": {
+          "status": "STRUCTURED",
+          "p50Ms": 4321,
+          "p90Ms": 5733,
+          "decisions": 5,
+          "retries": 0,
+          "errors": []
+        },
+        "poker": {
+          "status": "STRUCTURED",
+          "p50Ms": 4225,
+          "p90Ms": 8870,
+          "decisions": 2,
+          "retries": 0,
+          "errors": []
+        },
+        "islanders": {
+          "status": "STRUCTURED",
+          "p50Ms": 59799,
+          "p90Ms": 463993,
+          "decisions": 7,
+          "retries": 0,
+          "errors": []
+        }
+      },
+      "pricePerMillion": {
+        "input": 0.15,
+        "output": 0.5
+      },
+      "free": false
+    }
+  ]
+}
