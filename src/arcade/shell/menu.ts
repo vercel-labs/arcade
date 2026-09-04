@@ -16,19 +16,17 @@ export type MenuItemAction = { kind: 'launch' } | { kind: 'external'; url: strin
 
 export { ARCADE_WEBSITE_URL };
 
-// The full catalogue. `dev: true` marks internal-only surfaces — the poker-test sandbox
-// and the ambient logos / audio / UI-showcase screens — which are development tools, not
-// games a private-beta user should see.
+// The full catalogue, in production order: the three games, the two coming-soon covers,
+// the website, then the Trailer and the Tutorial. Because the carousel is a ring, the
+// tutorial's last slot puts it one press LEFT of Chess (HOME_MENU_INDEX) every launch, and an
+// install's very first launch opens on it instead (see shell/first-run.ts). `dev: true`
+// marks internal-only surfaces — the test sandboxes and the ambient logos / audio /
+// UI-showcase screens — which are development tools, not games a player should see.
 const ALL_ITEMS: MenuItem[] = [
-  // The interactive walkthrough — a cover like any game, shelved immediately LEFT of Chess in
-  // the ring. The carousel opens on Chess (HOME_MENU_INDEX), so the tutorial is one press left
-  // every launch; an install's very first launch opens on the tutorial instead, with Chess to
-  // its right (see shell/first-run.ts). Same ring either way, just a different starting slot.
-  { id: 'tutorial', title: 'Tutorial', enabled: true },
-  ...ARCADE_CATALOGUE.slice(0, 3),
+  ...ARCADE_CATALOGUE,
   { id: 'trailer', title: 'Trailer', enabled: true },
+  { id: 'tutorial', title: 'Tutorial', enabled: true },
   { id: 'islanders-test', title: 'Islanders-Test', enabled: true, dev: true },
-  ...ARCADE_CATALOGUE.slice(3),
   { id: 'poker-test', title: 'Poker-Test', enabled: true, dev: true },
   { id: 'logos', title: 'Logos', enabled: true, dev: true },
   { id: 'audio', title: 'Audio', enabled: true, dev: true },
