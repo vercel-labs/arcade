@@ -1054,6 +1054,7 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
       return lines.join('\n');
     }
     const legal = this.legalActions();
+    if (legal.some((action) => action.type === 'buildRoad')) lines.push('Road lines name the settlement spots a road would open; those are settlement opportunities, not city upgrades.');
     if (this.prompt.kind === 'discard') {
       const combinations = countDiscardCombinations(this.hands[player], this.discardRemaining[player]);
       lines.push(`Discard exactly ${this.discardRemaining[player]} cards. Use: discard resource,resource,... (duplicates mean multiple cards).`);
@@ -1976,7 +1977,6 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
       `settlement expansion — settle now: ${spots(settleNow)}`,
       `future settlement one road away: ${spots(oneRoadAway)}`,
       `adjacent rival roads: ${rivals.length ? rivals.join(', ') : 'none'}`,
-      'frontier sites are settlement opportunities, not city upgrades',
     ].join('; ');
   }
 

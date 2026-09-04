@@ -4,7 +4,7 @@ export const MOTIVATION_DOC: DocPage = {
   slug: 'motivation',
   label: 'Motivation',
   title: 'Why Arcade exists',
-  summary: 'A note on play, model behavior, and treating the terminal as a canvas.',
+  summary: 'A letter from the developer.',
   sections: [],
   body: <div className="doc-letter">
     <p>I started Arcade because I wanted to make something fun.</p>

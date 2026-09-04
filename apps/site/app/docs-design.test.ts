@@ -29,6 +29,7 @@ test('Motivation is a paragraph-only Docs letter with a quiet linked signature',
   ]);
   assert.match(motivation, /label: 'Motivation'/);
   assert.match(motivation, /title: 'Why Arcade exists'/);
+  assert.match(motivation, /summary: 'A letter from the developer\.'/);
   assert.match(motivation, /what does it feel like to share a world with these models\?/);
   assert.match(motivation, /repeated choices under shared conditions/);
   assert.match(motivation, /makes technology feel a little more playful/);

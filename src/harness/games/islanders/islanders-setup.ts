@@ -34,7 +34,7 @@ export const ISLANDERS_SETUP_SPEECH_GUIDE =
 
 export const ISLANDERS_MOVE_NOTATION: MoveNotation = {
   description:
-    'Use exactly one canonical Islanders action from the legal-action context (setup, roll, build, robber, development card, trade, discard, or end).',
+    'the canonical Islanders action text exactly as listed under legal actions (setup, roll, build, robber, development card, trade, discard, or end)',
   examples: '"roll", "road 37", "offer 1/0/0/0/0 for 0/1/0/0/0", "counter 0/2/0/0/0 for 1/0/0/0/0", "end"',
 };
 
