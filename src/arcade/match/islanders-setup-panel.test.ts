@@ -11,7 +11,7 @@ function collectNodes(root: Node): Node[] {
 test('Islanders setup defaults to a four-player table with creators pre-filled and models left to pick', () => {
   assert.equal(seatsDropdown.index, 2);
   assert.equal(islandersSeatColors().length, 4);
-  assert.deepEqual([1, 2, 3].map((i) => islandersSeatPicker(i).creator), ['anthropic', 'google', 'spacexai']);
+  assert.deepEqual([1, 2, 3].map((i) => islandersSeatPicker(i).creator), ['openai', 'anthropic', 'google'], 'you at seat 1 still face the ranking from the top');
   assert.equal(islandersSetupReady(), false, 'Start waits for real picks');
   assert.equal(islandersSetupSelection(), null);
   for (const i of [1, 2, 3]) {

@@ -14,8 +14,8 @@ import { shortModel } from '../../harness/model-label.ts';
 import { BIG_BLIND, type PokerSeatSpec } from './poker-driver.ts';
 import type { PokerSeatView } from '../games/poker/poker-scene.ts';
 import { ARCADE_CHROME_TEXT } from '../theme.ts';
-import { createModelSeatPicker, hiddenModelSeat, modelSeatControls, modelSeatTint, mountModelSeat, setModelSeatCreators, type ModelCreator, type ModelSeatPicker } from './model-seat-picker.ts';
-import { resolveDefaultCreators } from './default-seats.ts';
+import { createModelSeatPicker, hiddenModelSeat, modelSeatControls, modelSeatTint, mountModelSeat, selectModelSeat, setModelSeatCreators, type ModelCreator, type ModelSeatPicker } from './model-seat-picker.ts';
+import { dealDefaultCreators } from './default-seats.ts';
 import { matchSetupHeading } from './match-setup-chrome.ts';
 
 let TEXT_CREATORS: ModelCreator[] = pickerCreators();
@@ -41,12 +41,26 @@ const changed = (): void => {
 // config, used only in SPECTATE mode (where seat 1 is an AI too); in HERO mode you play
 // seat 1 and indices 1..MAX_OPP are your opponents (seats 2..6).
 const SEATS = 6;
-const sides: ModelSeatPicker[] = resolveDefaultCreators(TEXT_CREATORS, SEATS).map((creator, i) =>
+// The configs a model occupies in the current mode, in table order: every seat when
+// spectating, seats 2.. when you hold seat 1. Creators are dealt down this list, so the
+// first opponent is OpenAI whether or not you are at the table.
+function aiConfigs(spectate: boolean): number[] {
+  return Array.from({ length: SEATS }, (_, i) => i).filter((i) => spectate || i > 0);
+}
+const sides: ModelSeatPicker[] = dealDefaultCreators(TEXT_CREATORS, SEATS, aiConfigs(false)).map((creator, i) =>
   createModelSeatPicker({ idPrefix: `poker-opp${i}`, creators: TEXT_CREATORS, defaultCreator: creator ?? 'openai', onChange: changed }),
 );
+// Re-deal the default creators for the mode. A seat the player has already given a model
+// keeps it; a seat still on "pick a model…" takes its rank's creator.
+function dealSeats(): void {
+  const defaults = dealDefaultCreators(TEXT_CREATORS, SEATS, aiConfigs(spectating()));
+  sides.forEach((side, i) => {
+    if (side.modelId === null && defaults[i] && side.creator !== defaults[i]) selectModelSeat(side, defaults[i]);
+  });
+}
 export function setPokerSetupModelCatalog(textCreators: readonly ModelCreator[]): void {
   TEXT_CREATORS = [...textCreators];
-  const defaults = resolveDefaultCreators(TEXT_CREATORS, SEATS);
+  const defaults = dealDefaultCreators(TEXT_CREATORS, SEATS, aiConfigs(spectating()));
   sides.forEach((side, i) => setModelSeatCreators(side, TEXT_CREATORS, defaults[i]));
   changed();
 }
@@ -112,7 +126,10 @@ export const modeDropdown = new Dropdown({
   items: ['play vs AI', 'spectate AI'],
   width: 16,
   index: 0,
-  onSelect: () => changed(),
+  onSelect: () => {
+    dealSeats();
+    changed();
+  },
 });
 function spectating(): boolean {
   return modeDropdown.index === 1;

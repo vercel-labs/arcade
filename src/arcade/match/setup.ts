@@ -10,7 +10,7 @@
 import { Box, Button, Dialog, Dropdown, Field, Modal, RoundedButton, ToggleButton, Slot, Text, type LayoutBox, type Node, type Screen } from '../../tui/index.ts';
 import type { RGB } from '../../engine/index.ts';
 import { includeEarlyAccessModels, pickerCreators } from './models.ts';
-import { resolveDefaultCreators } from './default-seats.ts';
+import { CHESS_CREATOR_RANKING, dealDefaultCreators } from './default-seats.ts';
 import { availableRealtimeModels } from '../../voice/index.ts';
 import type { Seat } from './driver.ts';
 import { ARCADE_OUTLINE_CONTROL, MENU_BUTTON_LABEL, UI_CHROME_BG, UI_CHROME_PILL } from '../theme.ts';
@@ -61,11 +61,13 @@ function makeSide(
   return Object.assign(createModelSeatPicker({ idPrefix, creators, defaultCreator, defaultModelId, modelWidth: MODEL_W, onChange: changed }), { key, human: false }) as Side;
 }
 
-// Both sides open on a creator from the default cycle with the model left for the player
-// to pick, so the king wisps show at once and Start waits for two real choices.
-const chessDefaults = resolveDefaultCreators(TEXT_CREATORS, 2);
-const white = makeSide('white', 'setup-white', chessDefaults[0] ?? 'openai');
-const black = makeSide('black', 'setup-black', chessDefaults[1] ?? 'anthropic');
+// Both sides open on a creator with the model left for the player to pick, so the king
+// wisps show at once and Start waits for a real choice. The creators are fixed to the
+// colors (Anthropic White, OpenAI Black) whichever side the human takes, so playing White
+// means facing GPT and playing Black means facing Claude.
+const chessDefaults = dealDefaultCreators(TEXT_CREATORS, 2, undefined, CHESS_CREATOR_RANKING);
+const white = makeSide('white', 'setup-white', chessDefaults[0] ?? 'anthropic');
+const black = makeSide('black', 'setup-black', chessDefaults[1] ?? 'openai');
 
 // The match mode folds the "am I playing, and which color?" choice into one control —
 // chess's analogue to poker's Play/Spectate, plus the side dimension chess needs (White
@@ -231,7 +233,7 @@ export function setMatchSetupModelCatalog(
 ): void {
   TEXT_CREATORS = [...textCreators];
   REALTIME_CREATORS = [...realtimeCreators];
-  const defaults = resolveDefaultCreators(TEXT_CREATORS, 2);
+  const defaults = dealDefaultCreators(TEXT_CREATORS, 2, undefined, CHESS_CREATOR_RANKING);
   [white, black].forEach((side, i) => setModelSeatCreators(side, TEXT_CREATORS, defaults[i]));
   setModelSeatCreators(swap, swapRuntime === 'realtime' ? REALTIME_CREATORS : TEXT_CREATORS);
   changed();
