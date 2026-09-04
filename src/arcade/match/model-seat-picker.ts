@@ -99,15 +99,15 @@ export function createModelSeatPicker(opts: ModelSeatPickerOpts): ModelSeatPicke
   return picker;
 }
 
-// Swap in a new catalog, keeping the current model when the catalog still has it. When it
-// does not, `fallback` decides the seat: a `{ creator, model }` to select, `null` to leave
-// the model unset (the creator column keeps its place, the model column shows its
-// placeholder, and the panel's Start stays disabled), or undefined for the historical
-// behavior of the creator's first model.
+// Swap in a new catalog. The current model stays if the catalog still has it. Otherwise the
+// seat keeps its creator (model unset, so the player picks again from that creator's list)
+// when the catalog has the creator, falls to `fallbackCreator` when it does not, and only
+// with no fallback at all lands on the first creator. The model is never substituted: an
+// unset model shows its placeholder and keeps the panel's Start disabled.
 export function setModelSeatCreators(
   picker: ModelSeatPicker,
   creators: readonly ModelCreator[],
-  fallback?: { creator: string; model: string } | null,
+  fallbackCreator?: string | null,
 ): void {
   const previousCreator = picker.creator;
   const previousModelId = picker.modelId;
@@ -121,24 +121,19 @@ export function setModelSeatCreators(
     return;
   }
 
-  const has = (modelId: string | null): boolean => modelId !== null && creators.some((creator) => creator.models.some((model) => model.id === modelId));
-  const keep = has(previousModelId) ? previousModelId : fallback && has(fallback.model) ? fallback.model : null;
-  let creatorIndex = keep
-    ? creators.findIndex((creator) => creator.models.some((model) => model.id === keep))
-    : -1;
-  if (creatorIndex < 0 && previousCreator) creatorIndex = creators.findIndex((creator) => creator.slug === previousCreator);
+  const bySlug = (slug: string | null | undefined): number => (slug ? creators.findIndex((creator) => creator.slug === slug) : -1);
+  let creatorIndex = previousModelId ? creators.findIndex((creator) => creator.models.some((model) => model.id === previousModelId)) : -1;
+  if (creatorIndex < 0) creatorIndex = bySlug(previousCreator);
+  if (creatorIndex < 0) creatorIndex = bySlug(fallbackCreator);
   if (creatorIndex < 0) creatorIndex = 0;
 
   const creator = creators[creatorIndex];
   picker.creator = creator.slug;
   picker.models = creator.models;
-  const modelIndex = keep ? creator.models.findIndex((model) => model.id === keep) : -1;
-  const selectedModelIndex = modelIndex >= 0
-    ? modelIndex
-    : fallback === undefined && creator.models.length > 0 ? 0 : -1;
-  picker.modelId = selectedModelIndex >= 0 ? creator.models[selectedModelIndex].id : null;
+  const modelIndex = previousModelId ? creator.models.findIndex((model) => model.id === previousModelId) : -1;
+  picker.modelId = modelIndex >= 0 ? creator.models[modelIndex].id : null;
   picker.creatorDropdown.setItems(creators.map((candidate) => candidate.name), creatorIndex);
-  picker.modelDropdown.setItems(creator.models.map((model) => model.name), selectedModelIndex);
+  picker.modelDropdown.setItems(creator.models.map((model) => model.name), modelIndex);
 }
 
 export function selectModelSeat(picker: ModelSeatPicker, creatorSlug: string, modelId?: string): void {

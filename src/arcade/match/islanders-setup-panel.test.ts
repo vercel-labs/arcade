@@ -1,15 +1,23 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Node } from '../../tui/index.ts';
-import { buildIslandersSetupPanel, islandersSeatColors, islandersSetupCommunicationMode, islandersSetupSelection, communicationDropdown, modeDropdown, seatsDropdown, setIslandersSetupCommunicationMode } from './islanders-setup-panel.ts';
+import { selectModelSeat } from './model-seat-picker.ts';
+import { buildIslandersSetupPanel, islandersSeatColors, islandersSeatPicker, islandersSetupCommunicationMode, islandersSetupReady, islandersSetupSelection, communicationDropdown, modeDropdown, seatsDropdown, setIslandersSetupCommunicationMode } from './islanders-setup-panel.ts';
 
 function collectNodes(root: Node): Node[] {
   return [root, ...(root.children ?? []).flatMap(collectNodes)];
 }
 
-test('Islanders setup defaults to a four-player table', () => {
+test('Islanders setup defaults to a four-player table with creators pre-filled and models left to pick', () => {
   assert.equal(seatsDropdown.index, 2);
   assert.equal(islandersSeatColors().length, 4);
+  assert.deepEqual([1, 2, 3].map((i) => islandersSeatPicker(i).creator), ['anthropic', 'google', 'spacexai']);
+  assert.equal(islandersSetupReady(), false, 'Start waits for real picks');
+  assert.equal(islandersSetupSelection(), null);
+  for (const i of [1, 2, 3]) {
+    const picker = islandersSeatPicker(i);
+    selectModelSeat(picker, picker.creator!, picker.models[0]!.id);
+  }
   assert.equal(islandersSetupSelection()?.length, 4);
 });
 

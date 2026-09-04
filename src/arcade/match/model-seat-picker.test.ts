@@ -78,7 +78,7 @@ test('model seat picker preserves an available selection across catalog refreshe
   assert.equal(picker.modelDropdown.value, 'Two');
 });
 
-test('model seat picker chooses a valid replacement when a model becomes unavailable', () => {
+test('model seat picker never substitutes a model when the chosen one becomes unavailable', () => {
   const picker = createModelSeatPicker({
     idPrefix: 'fallback-seat',
     creators,
@@ -88,22 +88,25 @@ test('model seat picker chooses a valid replacement when a model becomes unavail
 
   setModelSeatCreators(picker, creators.slice(1));
 
-  assert.equal(picker.creator, 'beta');
-  assert.equal(picker.modelId, 'beta/three');
+  assert.equal(picker.creator, 'beta', 'the creator column still has a value to browse from');
+  assert.equal(picker.modelId, null, 'the model waits for a real pick');
   assert.equal(picker.creatorDropdown.value, 'Beta');
-  assert.equal(picker.modelDropdown.value, 'Three');
+  assert.equal(picker.modelDropdown.value, null);
 });
 
 const creator = (slug: string, ...ids: string[]): ModelCreator => ({ slug, name: slug, models: ids.map((id) => ({ id, name: id })) });
 
-test('a vanished model falls to the given default, or stays unset when told to', () => {
+test('a catalog swap keeps the model, else the creator with the model unset, else the fallback creator', () => {
   const picker = createModelSeatPicker({ idPrefix: 'seat', creators: [creator('openai', 'openai/old')], defaultCreator: 'openai', defaultModelId: 'openai/old', onChange: () => {} });
-  const fresh = [creator('openai', 'openai/new'), creator('google', 'google/gemini')];
-  setModelSeatCreators(picker, fresh, { creator: 'google', model: 'google/gemini' });
-  assert.equal(picker.modelId, 'google/gemini');
-  assert.equal(picker.creator, 'google');
-  setModelSeatCreators(picker, [creator('openai', 'openai/new')], null);
-  assert.equal(picker.modelId, null, 'no silent substitution');
-  assert.equal(picker.creator, 'openai', 'the creator column still has a value to browse from');
+  assert.equal(picker.modelId, 'openai/old');
+  setModelSeatCreators(picker, [creator('openai', 'openai/new'), creator('google', 'google/gemini')], 'google');
+  assert.equal(picker.creator, 'openai', 'the creator survives when the catalog still has it');
+  assert.equal(picker.modelId, null, 'the vanished model is not replaced');
   assert.equal(picker.modelDropdown.value, null);
+  setModelSeatCreators(picker, [creator('google', 'google/gemini')], 'google');
+  assert.equal(picker.creator, 'google', 'a vanished creator falls to the default creator');
+  assert.equal(picker.modelId, null);
+  setModelSeatCreators(picker, [creator('zai', 'zai/glm')], null);
+  assert.equal(picker.creator, 'zai', 'with nothing else to go on, the first creator');
+  assert.equal(picker.modelId, null);
 });
