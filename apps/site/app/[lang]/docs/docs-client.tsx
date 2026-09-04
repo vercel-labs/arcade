@@ -5,6 +5,7 @@ import { IconChevronRight } from '@vercel/geistdocs/assets/icons/icon-chevron-ri
 import { IconCopy } from '@vercel/geistdocs/assets/icons/icon-copy';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
+import type { DocsNavItem } from './docs-navigation';
 
 export function CopyCodeButton({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
@@ -27,8 +28,6 @@ export function CopyPageButton() {
   };
   return <button className="doc-action" onClick={copy} type="button">{copied ? <IconCheck size={14} /> : <IconCopy size={14} />}<span>{copied ? 'Copied' : 'Copy page'}</span></button>;
 }
-
-export interface DocsNavItem { href: string; label: string; group?: string; drillIn?: boolean }
 
 function DocsNavLinks({ active, items }: { active: string; items: DocsNavItem[] }) {
   return <>{items.map((item, index) => item.group
