@@ -8,14 +8,22 @@ test('docs use a flat peer-page navigation and Sans typography', async () => {
     readFile(new URL('./[lang]/docs/docs-content.tsx', import.meta.url), 'utf8'),
     readFile(new URL('./global.css', import.meta.url), 'utf8'),
   ]);
-  for (const label of ['Overview', 'Getting started', 'Package API', 'Engine', 'Rendering pipeline', 'TUI', 'Components', 'Game visuals', 'Rules', 'Game harness', 'Headless tooling', 'Web API', 'Platform', 'Browser host']) assert.match(content, new RegExp(`label: '${label}'`));
+  for (const label of ['Overview', 'Getting started', 'Package API', 'Engine', 'Rendering pipeline', 'Terminal platform', 'Terminal UI', 'Components', 'Game visuals', 'Rules', 'Game harness', 'Agentic tooling', 'Browser API', 'Browser host']) assert.match(content, new RegExp(`label: '${label}'`));
+  assert.match(content, /slug: 'renderer-pipeline'[\s\S]*slug: 'platform'[\s\S]*slug: 'tui'[\s\S]*slug: 'components'/);
+  assert.match(content, /@vercel\/geistdocs\/components\/mermaid/);
+  assert.match(content, /<Mermaid chart=\{ARCHITECTURE_CHART\}/);
+  assert.match(content, /<Mermaid chart=\{MOBILE_ARCHITECTURE_CHART\}/);
+  assert.doesNotMatch(content, /<Code title="Architecture">/);
+  assert.match(content, /npx @vercel\/arcade@latest/);
   assert.match(page, /const CORE_NAV/);
+  assert.match(page, /href: '\/docs\/app', label: 'Using Arcade', drillIn: true/);
   assert.match(page, /href: '\/docs\/reference', label: 'API Reference'.*href: '\/docs\/motivation', label: 'Motivation'/);
   assert.match(page, /nestedNavItems/);
   assert.match(page, /drillIn: true/);
   assert.doesNotMatch(page, /<details|<summary/);
   assert.match(css, /\.doc-page-header h1 \{[^\n]*var\(--font-geist-sans\)/);
   assert.match(css, /\.doc-article h2 \{[^\n]*var\(--font-geist-sans\)/);
+  assert.match(css, /\.doc-architecture svg \{[^\n]*var\(--font-geist-sans\)/);
   assert.doesNotMatch(css, /\.doc-(?:shell|article|sidebar|toc|page-header)[^\n]*font-site-display/);
 });
 
@@ -88,6 +96,32 @@ test('games are a drill-in chapter with rules, graphics, model, record, and comm
   assert.match(games, /<dt>\{name\}<\/dt><dd>\{description\}<\/dd>/);
   assert.doesNotMatch(games, /Build a fourth game/);
   assert.match(css, /\.doc-cards--games \{ grid-template-columns: repeat\(3, minmax\(0, 1fr\)\); \}/);
+});
+
+test('Using Arcade is a player-facing chapter with controls, billing, and recoverable model setup', async () => {
+  const [page, app, sitemap, corpus, tutorial] = await Promise.all([
+    readFile(new URL('./[lang]/docs/[[...slug]]/page.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('./[lang]/docs/docs-app.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('./sitemap.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../public/llms-full.txt', import.meta.url), 'utf8'),
+    readFile(new URL('../../../src/arcade/tutorial/chapters.ts', import.meta.url), 'utf8'),
+  ]);
+  for (const slug of ['app', 'app/controls', 'app/models']) {
+    assert.match(app, new RegExp(`slug: '${slug}'`));
+    assert.match(sitemap, new RegExp(`/docs/${slug}`));
+    assert.match(corpus, new RegExp(`/docs/${slug.replace('/', '\\/')}`));
+  }
+  for (const topic of ['Choose how to play', 'Follow the app flow', 'Start a match', 'Start with the Tutorial', 'Use global controls', 'Understand the Arcade key', 'Understand the model picker', 'Understand free and paid access', 'Troubleshoot model play']) assert.match(app, new RegExp(`heading: '${topic}'`));
+  assert.match(app, /Arcade \(<username>\)/);
+  assert.match(app, /models\?freeTier=true/);
+  for (const fact of ['availability-aware AI Gateway model catalog', 'monthly free credit no longer applies', 'Start-time health', 'Signing out of Arcade clears local access only']) assert.match(app, new RegExp(fact));
+  for (const url of ['ai-gateway%2Fapi-keys', 'docs/ai-gateway/pricing', 'observability-and-spend/budgets']) assert.match(app, new RegExp(url));
+  assert.match(page, /import \{ APP_DOCS \}/);
+  assert.match(page, /nestedMode === 'app'/);
+  assert.match(page, /nestedNavItems\(APP_DOCS, 'app'\)/);
+  assert.doesNotMatch(app, /\$5|card on file/i);
+  assert.match(tutorial, /monthly included Gateway credit/);
+  assert.doesNotMatch(tutorial, /card on file/i);
 });
 
 test('game documentation examples match the public contracts they teach', async () => {
@@ -189,14 +223,15 @@ test('docs overview teaches a task-first path and supported package boundaries',
 
 test('getting started covers install, source, sign-in, and supported library paths', async () => {
   const content = await readFile(new URL('./[lang]/docs/docs-content.tsx', import.meta.url), 'utf8');
-  for (const heading of ['Install the CLI', 'Run from source', 'Enable model play', 'Use Arcade as a library']) assert.match(content, new RegExp(`heading: '${heading}'`));
+  for (const heading of ['Before you start', 'Install the CLI', 'Run from source', 'Enable model play', 'Play your first game', 'Use Arcade as a library']) assert.match(content, new RegExp(`heading: '${heading}'`));
   assert.match(content, /arcade --login/);
+  assert.match(content, /href="\/docs\/app"/);
   assert.match(content, /npm install @vercel\/arcade/);
 });
 
 test('the agent corpus preserves the implementation contracts documented for humans', async () => {
   const corpus = await readFile(new URL('../public/llms-full.txt', import.meta.url), 'utf8');
   for (const detail of ['Core contracts for agents', 'Material<U>', 'Screen', 'GameState<Action>', 'MatchScene.playMove()', 'CanvasSurfaceHost']) assert.match(corpus, new RegExp(detail.replace(/[<>()]/g, '\\$&')));
-  for (const detail of ['/docs/games', 'Chess case study', 'Poker case study', 'Islanders case study', 'Communication and chat', 'ambient', 'autoreply', '@model', 'runHeadlessChessMatch', 'runPokerSession', 'play and whimsy']) assert.match(corpus, new RegExp(detail.replace(/[<>()]/g, '\\$&')));
+  for (const detail of ['/docs/app', '/docs/app/controls', '/docs/app/models', '/docs/games', 'Chess case study', 'Poker case study', 'Islanders case study', 'Communication and chat', 'ambient', 'autoreply', '@model', 'runHeadlessChessMatch', 'runPokerSession', 'play and whimsy']) assert.match(corpus, new RegExp(detail.replace(/[<>()]/g, '\\$&')));
   assert.match(corpus, /Current limitations/);
 });

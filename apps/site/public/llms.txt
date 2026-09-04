@@ -5,6 +5,9 @@ Arcade is an open-source TypeScript CPU 3D renderer, retained-mode terminal UI t
 Canonical site: https://vercel-arcade.vercel.app
 Repository: https://github.com/vercel-labs/arcade
 Docs: https://vercel-arcade.vercel.app/docs
+Using Arcade: https://vercel-arcade.vercel.app/docs/app
+Controls and tutorial: https://vercel-arcade.vercel.app/docs/app/controls
+Models, teams, and billing: https://vercel-arcade.vercel.app/docs/app/models
 Motivation: https://vercel-arcade.vercel.app/docs/motivation
 Hosted terminal: https://vercel-arcade.vercel.app/docs/browser-host
 HTTP interface: https://vercel-arcade.vercel.app/openapi.json
