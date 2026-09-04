@@ -26,3 +26,17 @@ test('Chess setup defaults eval and illegal moves off and places them after both
   findNode(reset, 'setup-eval')?.onClick?.();
   findNode(reset, 'setup-illegal')?.onClick?.();
 });
+
+test('Chess setup keeps the menu available without showing chat', () => {
+  let opened = false;
+  const root = buildMatchSetup(
+    { x: 0, y: 0, w: 140, h: 50 },
+    { onStart: () => {}, onCancel: () => {}, onOpenMenu: () => { opened = true; } },
+  );
+
+  assert.equal(findNode(root, 'chat-open'), undefined);
+  const menu = findNode(root, 'chess-menu');
+  assert.ok(menu);
+  menu.onClick?.();
+  assert.equal(opened, true);
+});
