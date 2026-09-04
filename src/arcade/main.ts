@@ -27,7 +27,7 @@ import { ChessGameScene } from './games/chess/scene.ts';
 import { CardsScene } from './games/poker/cards-scene.ts';
 import { type TileScene } from './games/islanders/tile-scene.ts';
 import { IslandersController } from './games/islanders/islanders-controller.ts';
-import { ISLANDERS_RAIL_W, islandersRailVisible } from './games/islanders/card-hud.ts';
+import { closeIslandersSidebar, ISLANDERS_RAIL_W, islandersRailVisible } from './games/islanders/card-hud.ts';
 import { IslandersGameScene } from './games/islanders/game-scene.ts';
 import { buildIslandersGameRoot, mountIslandersGameHud } from './games/islanders/game-hud.ts';
 import { islandersChatComposerRows } from './games/islanders/chat-composer.ts';
@@ -689,7 +689,7 @@ let pokerChatOpen = false;
 // agree on the exact left-side viewport that remains visible.
 function activeSceneViewport(): LayoutBox {
   const reservedRight =
-    mode === 'chess-game' && chatVisible
+    mode === 'chess-game' && chatVisible && matchSeats !== null
       ? CHAT_WIDTH
       : mode === 'poker' && pokerChatOpen && pokerScene.isActive()
         ? CHAT_WIDTH
@@ -1069,6 +1069,7 @@ function toggleHistory(): void {
 
 // Show/hide the model-DM chat panel (bound to 't', and the panel's own header/✕).
 function toggleChat(): void {
+  if (!matchSeats) return;
   chatVisible = !chatVisible;
   forceFrame = true;
   r.requestRender();
@@ -1122,6 +1123,7 @@ function stopAiMatch(): void {
   aiMatch.stop();
   commentary = null;
   matchSeats = null;
+  chatVisible = false;
   if (wispSwap?.game === 'chess') closeWispSwap(); // dismiss this match's open swap popup
   chessGame.resetGame();
   clearChat();
@@ -1802,6 +1804,7 @@ function leaveIslandersGame(): void {
   cancelModelHealthCheck('islanders');
   if (wasActive) clearFailureState();
   islandersDriver.reset();
+  closeIslandersSidebar();
   if (islandersGameTimer !== null) {
     clearInterval(islandersGameTimer);
     islandersGameTimer = null;
@@ -2384,13 +2387,13 @@ function syncBar(): void {
       gameOverFocused = true;
       forceFrame = true;
     }
-  } else if (matchSetupOpen) {
+  } else if (matchSetupOpen && !chessMenuOpen) {
     if (keymap.hasContext('promoting')) keymap.popContext('promoting');
     popGameOver();
     popSwap();
     promoFocused = false;
     if (!keymap.hasContext('setup')) keymap.pushContext('setup', true);
-    ui.setRoot(buildMatchSetup(region, { onStart: () => { void confirmMatchSetup(); }, onCancel: closeMatchSetup, healthStatus: modelHealthStatus('chess') }), region);
+    ui.setRoot(buildMatchSetup(region, { onStart: () => { void confirmMatchSetup(); }, onCancel: closeMatchSetup, onOpenMenu: openChessMenu, healthStatus: modelHealthStatus('chess') }), region);
     if (!setupFocused) {
       ui.setFocus('setup-mode'); // start on the mode picker (the human side has no creator list)
       setupFocused = true;
@@ -2546,7 +2549,7 @@ function syncBar(): void {
         chatVisible,
         onToggleChat: toggleChat,
         onOpenMenu: openChessMenu,
-        chatActive: chessGame.isMatchActive(),
+        chatActive: matchSeats !== null,
         illegalOn: illegalAllowed,
         matchup: matchSeats ? chessMatchupLabels(matchSeats) : null,
       }),

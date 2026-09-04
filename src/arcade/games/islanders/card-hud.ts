@@ -390,6 +390,9 @@ export function islandersRailVisible(cols: number, rows: number): boolean {
 export function toggleIslandersSidebar(): void {
   sidebarOpen = !sidebarOpen;
 }
+export function closeIslandersSidebar(): void {
+  sidebarOpen = false;
+}
 
 // Exported so callers (and tests) can reach the rows the way the chess HUD exposes its move
 // history — the rail's Slot renders it through the component registry, not the node tree.

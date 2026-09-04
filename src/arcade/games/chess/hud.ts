@@ -234,7 +234,7 @@ export function buildChessGameRoot(
     chatVisible: boolean;
     onToggleChat: () => void;
     onOpenMenu: () => void; // ☰ pill → the in-game menu popup (home / new game / mode / …)
-    chatActive: boolean; // an AI match is in progress (suppresses the chat's empty placeholder)
+    chatActive: boolean; // an AI match exists, so its transcript affordance is available
     illegalOn?: boolean; // illegal-moves mode on → show an "(illegal)" tag beside the "moves" header
     matchup?: { white: MatchSide; black: MatchSide } | null; // top banner: the matchup, or free play (null)
   },
@@ -306,20 +306,21 @@ export function buildChessGameRoot(
     bar,
     Box({ height: 1 }), // lift the bar off the very bottom edge
   ]);
+  const chatShown = opts.chatActive && opts.chatVisible;
   const row = Box({ width: region.w, height: region.h, flexDirection: 'row' }, [
     main,
     ...(opts.evalVisible ? [buildEvalBar(opts.evalCp, opts.evalResult, region.h)] : []),
-    ...(opts.chatVisible ? [buildChatPanel(region.h, opts.onToggleChat, opts.chatActive)] : []),
+    ...(chatShown ? [buildChatPanel(region.h, opts.onToggleChat, opts.chatActive)] : []),
   ]);
   // The ☰ menu pill lives to the LEFT of the chat (mirroring poker). Chat hidden → a
   // top-right cluster [☰ menu][chat]. Chat shown → the chat panel carries its own ✕, so
   // the cluster is just the menu pill, floated flush against the panel's left edge (past
   // the eval rail too, when it's showing).
-  const railW = (opts.chatVisible ? CHAT_WIDTH : 0) + (opts.evalVisible ? EVAL_COL_W : 0);
+  const railW = (chatShown ? CHAT_WIDTH : 0) + (opts.evalVisible ? EVAL_COL_W : 0);
   const cluster = hudTopRight([
     Button({ id: 'chess-menu', label: MENU_BUTTON_LABEL, onClick: opts.onOpenMenu, style: UI_CHROME_PILL }),
-    ...(opts.chatVisible ? [] : [Button({ id: 'chat-open', label: 'chat', onClick: opts.onToggleChat, style: UI_CHROME_PILL })]),
-  ], { railWidth: opts.chatVisible ? railW - 1 : 0 });
+    ...(opts.chatActive && !chatShown ? [Button({ id: 'chat-open', label: 'chat', onClick: opts.onToggleChat, style: UI_CHROME_PILL })] : []),
+  ], { railWidth: chatShown ? railW - 1 : 0 });
   // The match banner floats at the top, centered in the space to the LEFT of the right
   // rail (chat + eval) rather than the full screen width — so it tracks the board area
   // and re-centers when chat or the eval bar toggles.

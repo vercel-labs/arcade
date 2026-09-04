@@ -7,13 +7,14 @@
 // only once BOTH sides have a model committed; picking a different creator clears
 // that side's model (re-picking the same creator, or a different model under it,
 // leaves the creator intact).
-import { Box, Dialog, Dropdown, Field, Modal, RoundedButton, ToggleButton, Slot, Text, type LayoutBox, type Node, type Screen } from '../../tui/index.ts';
+import { Box, Button, Dialog, Dropdown, Field, Modal, RoundedButton, ToggleButton, Slot, Text, type LayoutBox, type Node, type Screen } from '../../tui/index.ts';
 import type { RGB } from '../../engine/index.ts';
 import { includeEarlyAccessModels, pickerCreators } from './models.ts';
 import { resolveDefaultCreators } from './default-seats.ts';
 import { availableRealtimeModels } from '../../voice/index.ts';
 import type { Seat } from './driver.ts';
-import { ARCADE_OUTLINE_CONTROL, UI_CHROME_BG } from '../theme.ts';
+import { ARCADE_OUTLINE_CONTROL, MENU_BUTTON_LABEL, UI_CHROME_BG, UI_CHROME_PILL } from '../theme.ts';
+import { hudTopRight } from '../shell/hud-chrome.ts';
 import { CHESS_PALETTE } from '../games/chess/palette.ts';
 import { createModelSeatPicker, hiddenModelSeat, modelSeatControls, modelSeatSlowBadge, modelSeatTint, mountModelSeat, selectModelSeat, setModelSeatCreators, type ModelCreator, type ModelSeatPicker } from './model-seat-picker.ts';
 import { cancelMatchButton, matchSetupHeading, matchSetupLayout, startMatchButton } from './match-setup-chrome.ts';
@@ -186,7 +187,7 @@ function sideRow(side: Side): Node {
 // The new-match setup: a top-left settings panel floating over the board (no modal, no
 // scrim — the board stays visible behind, like the poker setup over the felt), with the
 // start/cancel controls bottom-left. `onStart` is wired only when both sides are ready.
-export function buildMatchSetup(region: LayoutBox, opts: { onStart: () => void; onCancel: () => void; healthStatus?: { lines: string[]; failed: boolean } }): Node {
+export function buildMatchSetup(region: LayoutBox, opts: { onStart: () => void; onCancel: () => void; onOpenMenu?: () => void; healthStatus?: { lines: string[]; failed: boolean } }): Node {
   const ready = matchSetupReady();
   // Rounded (outlined) controls over the board: a green "start" (dim + inert until both
   // sides are ready) beside a neutral "cancel". Green matches poker's new-match button.
@@ -207,9 +208,11 @@ export function buildMatchSetup(region: LayoutBox, opts: { onStart: () => void; 
   ]);
 
   // Full region: panel top-left, start/cancel bottom-left (mirrors the poker HUD layout).
-  return matchSetupLayout(region, panel, [
-    start,
-    cancel,
+  return Box({ width: region.w, height: region.h }, [
+    matchSetupLayout(region, panel, [start, cancel]),
+    ...(opts.onOpenMenu
+      ? [hudTopRight([Button({ id: 'chess-menu', label: MENU_BUTTON_LABEL, onClick: opts.onOpenMenu, style: UI_CHROME_PILL })])]
+      : []),
   ]);
 }
 

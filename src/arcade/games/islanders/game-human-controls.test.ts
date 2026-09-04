@@ -6,7 +6,7 @@ import { Screen, type Node } from '../../../tui/index.ts';
 import type { KeyEvent } from '../../../platform/input.ts';
 import { IslandersDriver, type IslandersSeatSpec } from '../../match/islanders-driver.ts';
 import { buildIslandersGameRoot, islandersLiveView, islandersStatusLine } from './game-hud.ts';
-import { islandersSidebarOpen, islandersSidebarPlayers, toggleIslandersSidebar } from './card-hud.ts';
+import { closeIslandersSidebar, islandersSidebarOpen, islandersSidebarPlayers, toggleIslandersSidebar } from './card-hud.ts';
 import { IslandersGameScene, islandersActionPlaybackFrames } from './game-scene.ts';
 import { PLAYER_LOOK } from './palette.ts';
 import { ARCADE_OUTLINE_CONTROL } from '../../theme.ts';
@@ -138,7 +138,15 @@ test('setup menu stays at the true top-right even when a previous sidebar remain
   const menu = findNode(root, 'islanders-game-menu');
   assert.ok(menu?.layout);
   assert.equal(menu.layout.x + menu.layout.w, region.w - 2, 'no ghost rail shifts setup chrome left');
-  if (islandersSidebarOpen()) toggleIslandersSidebar();
+  closeIslandersSidebar();
+});
+
+test('leaving Islanders can collapse the persisted game-log rail', () => {
+  closeIslandersSidebar();
+  toggleIslandersSidebar();
+  assert.equal(islandersSidebarOpen(), true);
+  closeIslandersSidebar();
+  assert.equal(islandersSidebarOpen(), false);
 });
 
 test('live status is one borderless row with color confined to the actor', () => {

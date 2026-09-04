@@ -2127,7 +2127,7 @@ function setupSnapshot(): void {
   chess.setPreview(chessPreviewSides());
   chess.renderScene(target, 0.6);
   const region = { x: 0, y: 0, w: cols, h: rows };
-  screen.setRoot(buildMatchSetup(region, { onStart: noop, onCancel: noop, healthStatus: process.argv.includes('checking') ? { lines: ['checking model health ...'], failed: false } : process.argv.includes('health-failed') ? { lines: ['claude-haiku-4.5, gpt-5.4-nano failed health check.'], failed: true } : undefined }), region);
+  screen.setRoot(buildMatchSetup(region, { onStart: noop, onCancel: noop, onOpenMenu: noop, healthStatus: process.argv.includes('checking') ? { lines: ['checking model health ...'], failed: false } : process.argv.includes('health-failed') ? { lines: ['claude-haiku-4.5, gpt-5.4-nano failed health check.'], failed: true } : undefined }), region);
   const surf = screen.snapshot((s) => shapeGlyphToSurface(s, target, cols, rows, { color: true, hybrid: true }));
   surfaceToPpm(surf, cols, rows, out);
 }
