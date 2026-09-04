@@ -9,6 +9,7 @@ import { type BoardToken, type IslandersMode, type SailLabel } from './tile-scen
 import { type PortKind } from './mesh/index.ts';
 import { MENU_BUTTON_LABEL, UI_CHROME_BG, UI_CHROME_PILL, uiChromeBg } from '../../theme.ts';
 import { buildIslandersCardsOverlay, ISLANDERS_RAIL_W, islandersResourceFace, islandersSidebarOpen, islandersWorkbenchDiscardOpen, mountIslandersCardsHud, toggleIslandersSidebar, type IslandersCardsView } from './card-hud.ts';
+import type { IslandersWorkbenchBuild } from './card-workbench.ts';
 import { hudBottomRight, hudTopCenter, hudTopRight } from '../../shell/hud-chrome.ts';
 import { type FlyingResource } from './scene/resource-flight.ts';
 import { ISLANDERS_NUMBER_TOKEN, DEV_CARD_ICON, DEV_LOOK, RESOURCE_ORDER } from './palette.ts';
@@ -149,7 +150,17 @@ export interface IslandersTileHandlers {
   onBuyDevelopmentCard(): boolean;
   onPlayDevelopmentCard(type: DevCardType): boolean;
   onChooseDevelopmentResource(resource: Resource): boolean;
+  onRemoveDevelopmentResource(resource: Resource): boolean;
+  onConfirmDevelopment(): boolean;
   onDiscard(): boolean;
+  activeBuild(): IslandersWorkbenchBuild | null;
+  canAffordBuild(type: IslandersWorkbenchBuild): boolean;
+  hasLegalBuildTarget(type: IslandersWorkbenchBuild): boolean;
+  buildPieceCount(type: IslandersWorkbenchBuild): number;
+  canBuild(type: IslandersWorkbenchBuild): boolean;
+  onBuild(type: IslandersWorkbenchBuild): boolean;
+  onCancelBuild(): void;
+  onCancelDevelopment(): void;
 }
 let H: IslandersTileHandlers | null = null;
 let robberOn = false; // whether the robber is currently shown (toggled from the panel)
@@ -186,7 +197,7 @@ export interface PieceModalOpts {
   road: boolean;
   city: boolean;
   color: PlayerColor;
-  onUpgrade: () => void;
+  onUpgrade?: () => void;
   onRemove: () => void;
   onColor: (c: PlayerColor) => void;
   onClose: () => void;
@@ -195,7 +206,7 @@ export function buildIslandersPieceModal(o: PieceModalOpts): Node {
   // Rounded outlined actions (same family as the game-menu items), stacked flush so their arc
   // borders read as one list.
   const actions: Node[] = [];
-  if (!o.road && !o.city) actions.push(RoundedButton({ id: 'pm-upgrade', label: 'upgrade to city', onClick: o.onUpgrade, color: [212, 214, 224], borderColor: [88, 92, 110] }));
+  if (!o.road && !o.city && o.onUpgrade) actions.push(RoundedButton({ id: 'pm-upgrade', label: 'upgrade to city', onClick: o.onUpgrade, color: [212, 214, 224], borderColor: [88, 92, 110] }));
   actions.push(RoundedButton({ id: 'pm-remove', label: 'remove', onClick: o.onRemove, color: [212, 214, 224], borderColor: [88, 92, 110] }));
   // Borderless color swatches; the active color is marked with a check whose ink is picked for
   // contrast against the swatch.
@@ -264,6 +275,21 @@ export function buildIslandersTileRoot(region: LayoutBox, onOpenMenu: () => void
           undefined,
           undefined,
           H?.onDiscard,
+          undefined,
+          undefined,
+          undefined,
+          boardMode && H ? {
+            active: H.activeBuild(),
+            canAfford: H.canAffordBuild,
+            hasLegalTarget: H.hasLegalBuildTarget,
+            pieceCount: H.buildPieceCount,
+            canBuild: H.canBuild,
+            onBuild: H.onBuild,
+            onCancel: H.onCancelBuild,
+            onCancelDevelopment: H.onCancelDevelopment,
+            onRemoveDevelopmentResource: H.onRemoveDevelopmentResource,
+            onConfirmDevelopment: H.onConfirmDevelopment,
+          } : undefined,
         )]
       : []),
     // Cards in flight paint OVER the hand panel, not under it: they have to cross the panel's top
@@ -289,7 +315,7 @@ export function buildIslandersTileRoot(region: LayoutBox, onOpenMenu: () => void
     // margin from the right as the ☰ menu button, same from the bottom as the bottom bar, and it
     // steps left by the rail's width alongside that chrome so it stays over the visible scene.
     // The hand panel hugs the bottom-LEFT corner, so the two never meet.
-    ...(boardMode && !movingRobber && !islandersWorkbenchDiscardOpen()
+    ...(boardMode && !movingRobber && !islandersWorkbenchDiscardOpen() && cardsView?.interactionBusy !== true && !H?.activeBuild()
       ? [hudBottomRight(FilledButton({ id: 'islanders-roll', label: 'roll dice', onClick: () => H?.onRollDice() }), { railWidth: railOpen ? ISLANDERS_RAIL_W : 0 })]
       : []),
   ]);

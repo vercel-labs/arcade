@@ -65,16 +65,17 @@ import { ARCADE_THEME, MENU_BUTTON_LABEL, UI_CHROME_PILL } from './theme.ts';
 import { escapeBackRequiresConfirmation, installKeymap } from './shell/keybindings.ts';
 import { TUTORIAL_PULSE, TutorialController, tutorialRailWidth, type TutorialChapter } from './tutorial/tutorial.ts';
 import { eventToChord } from '../tui/index.ts';
-import { buildTeamSwitch, markSwitchSucceeded, mountTeamSwitch, setTeamSwitchHandlers, setTeamSwitchTeams, type TeamSwitchView } from './shell/team-switch.ts';
+import { buildGatewaySignInPrompt, buildTeamSwitch, markSwitchSucceeded, mountTeamSwitch, setTeamSwitchHandlers, setTeamSwitchTeams, type TeamSwitchView } from './shell/team-switch.ts';
 import * as term from '../platform/terminal.ts';
-import { availableTeams, ensureGatewayKey, isLoggedIn, loadEnv, signOut as signOutVercel, switchTeam, type EnsureResult, type Team, useTeam } from '../auth/index.ts';
+import { availableTeams, ensureGatewayKey, isLoggedIn, loadEnv, signInWithAnotherAccount, signOut as signOutVercel, type EnsureResult, type Team, useTeam } from '../auth/index.ts';
 import { AiMatch, type Seat } from './match/driver.ts';
 import { disambiguateLabels } from '../harness/labels.ts';
-import { flushTelemetry, initTelemetry, isTelemetryEnabled, setTelemetryEnabled, telemetryStatus, trackSessionStart, type RecordEndReason } from '../telemetry/index.ts';
+import { flushTelemetry, initTelemetry, isTelemetryEnabled, isTelemetryEnvironmentOptedOut, isTelemetryPreferenceEnabled, setTelemetryEnabled, telemetryStatus, toggleTelemetryPreference, trackSessionStart, type RecordEndReason } from '../telemetry/index.ts';
 import { supersampleForMode, supersampleForViewport } from './render-quality.ts';
 import { openBrowser } from '../platform/open-browser.ts';
 import type { ModelFailureNotice } from '../harness/model-failure-notice.ts';
 import { checkModelHealth } from '../harness/model-health.ts';
+import { AccountOperations } from './account-operations.ts';
 
 // Populate process.env from .env.local before anything reads AI_GATEWAY_API_KEY.
 loadEnv();
@@ -343,6 +344,8 @@ let homeMenuOpen = false;
 let teamModalOpen = false;
 let teamModalFocused = false;
 let teamView: TeamSwitchView = { kind: 'loading' };
+let currentAccountUsername: string | undefined;
+const teamOperations = new AccountOperations();
 
 // AI-vs-AI match. The two sides are chosen in the setup modal (creator → model).
 // The match turn-loop lifecycle lives in AiMatch (ai-match.ts); main owns the
@@ -489,18 +492,87 @@ function pausedFailureStatus(): Node {
   ]);
 }
 
-// The Screen has one global overlay slot; the Gateway-failure modal and the tutorial rail
-// share it. The failure modal paints last so it stays on top.
+// The Screen has one global overlay slot; the auth gate, Gateway-failure modal, and
+// tutorial rail share it. Failure paints last; the sign-in gate sits above Tutorial.
 let failureOverlay: Node | null = null;
+let gatewaySignInOverlay: Node | null = null;
+let gatewaySignInResume: (() => void) | null = null;
+let gatewaySignInBusy = false;
+let gatewayAccountRecovery = false;
 function applyGlobalOverlay(): void {
-  const layers = [tutorial.active() ? tutorial.build(cols, rows) : null, failureOverlay].filter((l): l is Node => l !== null);
+  const layers = [tutorial.active() ? tutorial.build(cols, rows) : null, gatewaySignInOverlay, failureOverlay].filter((l): l is Node => l !== null);
   if (layers.length === 0) ui.setGlobalOverlay(null);
-  else if (layers.length === 1) ui.setGlobalOverlay(layers[0]);
+  else if (layers.length === 1) ui.setGlobalOverlay(layers[0], gatewaySignInOverlay);
   else {
     ui.setGlobalOverlay(
       Box({ width: cols, height: rows, position: 'relative' }, layers.map((l) => ({ ...l, style: { ...l.style, position: 'absolute', top: 0, left: 0, width: cols, height: rows } }))),
+      gatewaySignInOverlay,
     );
   }
+}
+
+function refreshGatewaySignInOverlay(): void {
+  if (!gatewaySignInResume) {
+    gatewayAccountRecovery = false;
+    gatewaySignInOverlay = null;
+  } else if (gatewayAccountRecovery) {
+    mountTeamSwitch(ui);
+    gatewaySignInOverlay = buildTeamSwitch(teamView, teamSwitchActions(dismissGatewaySignInPrompt), cols, rows);
+  } else {
+    gatewaySignInOverlay = buildGatewaySignInPrompt(signInFromGatewayPrompt, dismissGatewaySignInPrompt, cols, rows);
+  }
+  applyGlobalOverlay();
+  if (gatewayAccountRecovery && teamView.kind === 'loaded' && !teamModalFocused) {
+    ui.setFocus('team-switch-dropdown');
+    teamModalFocused = true;
+  }
+}
+
+function requireGateway(resume: () => void): boolean {
+  if (process.env.AI_GATEWAY_API_KEY) return true;
+  gatewaySignInResume = resume;
+  gatewayAccountRecovery = false;
+  refreshGatewaySignInOverlay();
+  ui.setFocus('gateway-signin-action');
+  forceFrame = true;
+  r.requestRender();
+  return false;
+}
+
+function dismissGatewaySignInPrompt(): void {
+  teamOperations.invalidate();
+  gatewaySignInResume = null;
+  gatewayAccountRecovery = false;
+  teamModalFocused = false;
+  refreshGatewaySignInOverlay();
+  forceFrame = true;
+  r.requestRender();
+}
+
+function signInFromGatewayPrompt(): void {
+  const resume = gatewaySignInResume;
+  if (!resume || gatewaySignInBusy) return;
+  gatewaySignInBusy = true;
+  void withSuspendedTui(async () => {
+    try {
+      const auth = await ensureGatewayKey();
+      if (!auth) {
+        gatewayAccountRecovery = true;
+        teamModalFocused = false;
+        teamView = isLoggedIn() ? { kind: 'loading' } : { kind: 'signedOut' };
+        refreshGatewaySignInOverlay();
+        if (isLoggedIn()) await loadTeams();
+        return;
+      }
+      await refreshTeamModelCatalog(auth);
+      gatewaySignInResume = null;
+      refreshGatewaySignInOverlay();
+      resume();
+    } finally {
+      gatewaySignInBusy = false;
+      if (gatewaySignInResume) refreshGatewaySignInOverlay();
+    }
+  });
 }
 
 function refreshFailureNoticeOverlay(): void {
@@ -762,22 +834,15 @@ async function withSuspendedTui(fn: () => Promise<void>): Promise<void> {
   }
 }
 
-async function refreshTeamModelCatalog(auth: EnsureResult | null): Promise<void> {
+async function refreshTeamModelCatalog(auth: EnsureResult | null, isCurrent: () => boolean = () => true): Promise<boolean> {
   const catalog = auth
     ? await fetchTeamModelCatalog(auth.key)
     : fallbackArcadeModelCatalog('not signed in');
+  if (!isCurrent()) return false;
   setMatchSetupModelCatalog(catalog.textCreators, catalog.realtimeCreators);
   setPokerSetupModelCatalog(catalog.textCreators);
   setIslandersSetupModelCatalog(catalog.textCreators);
-}
-
-// In-app "switch team": re-pick the billing team (logging in first if needed)
-// and re-mint the key. Suspends the TUI for the plain-text picker.
-function accountSwitchTeam(): void {
-  void withSuspendedTui(async () => {
-    const auth = await switchTeam();
-    if (auth) await refreshTeamModelCatalog(auth);
-  });
+  return true;
 }
 
 // Home menu + Vercel account modal.
@@ -799,6 +864,7 @@ function closeHomeMenu(): void {
 // Closing Account therefore returns to the menu. Loading and switching stay live.
 function openTeamSwitch(): void {
   if (mode !== 'menu' || teamModalOpen) return;
+  teamOperations.invalidate();
   teamModalOpen = true;
   teamModalFocused = false;
   teamView = isLoggedIn() ? { kind: 'loading' } : { kind: 'signedOut' };
@@ -808,19 +874,69 @@ function openTeamSwitch(): void {
   if (isLoggedIn()) void loadTeams();
 }
 
+function accountSurfaceOpen(): boolean {
+  return teamModalOpen || gatewayAccountRecovery;
+}
+
+function refreshAccountSurface(): void {
+  if (gatewayAccountRecovery) refreshGatewaySignInOverlay();
+  else r.requestRender();
+}
+
+function finishGatewayAccountRecovery(): boolean {
+  const resume = gatewaySignInResume;
+  if (!gatewayAccountRecovery || !resume) return false;
+  teamOperations.invalidate();
+  gatewaySignInResume = null;
+  gatewayAccountRecovery = false;
+  teamModalFocused = false;
+  refreshGatewaySignInOverlay();
+  resume();
+  return true;
+}
+
+function teamSwitchActions(onClose: () => void): Parameters<typeof buildTeamSwitch>[1] {
+  return {
+    onClose,
+    onSignIn: teamSwitchSignIn,
+    onChangeAccount: teamSwitchChangeAccount,
+    onRetry: () => {
+      teamView = { kind: 'loading' };
+      teamModalFocused = false;
+      refreshAccountSurface();
+      void loadTeams();
+    },
+    onOpenVercel: teamSwitchOpenVercel,
+    onBack: teamSwitchBack,
+    onLogout: teamSwitchSignOut,
+  };
+}
+
 async function loadTeams(): Promise<void> {
+  const operation = teamOperations.begin();
   try {
     const res = await availableTeams();
+    if (!operation.isCurrent() || !accountSurfaceOpen()) return;
     if (!res) teamView = { kind: 'signedOut' };
-    else if (res.teams.length === 0) teamView = { kind: 'error', message: 'No teams on this account.' };
+    else if (res.teams.length === 0) {
+      currentAccountUsername = res.username;
+      teamView = { kind: 'noTeams', username: res.username };
+    }
     else {
+      currentAccountUsername = res.username;
       setTeamSwitchTeams(res.teams, res.current);
-      teamView = { kind: 'loaded' };
+      teamView = { kind: 'loaded', username: res.username };
     }
   } catch (err) {
-    teamView = { kind: 'error', message: err instanceof Error ? err.message : String(err) };
+    if (!operation.isCurrent() || !accountSurfaceOpen()) return;
+    teamView = {
+      kind: 'error',
+      message: err instanceof Error ? err.message : String(err),
+      canRetry: true,
+      username: currentAccountUsername,
+    };
   }
-  r.requestRender();
+  refreshAccountSurface();
 }
 
 // Commit a picked team: show a "switching…" state and re-mint the key for it
@@ -828,33 +944,38 @@ async function loadTeams(): Promise<void> {
 // as its current value and the modal stays open. The re-minted key lands in
 // process.env, so subsequent model/voice calls bill the new team.
 function pickTeamChoice(team: Team): void {
-  if (!teamModalOpen) return;
-  teamView = { kind: 'switching', team: team.name };
-  r.requestRender();
+  if (!accountSurfaceOpen()) return;
+  const operation = teamOperations.begin();
+  const isCurrent = (): boolean => operation.isCurrent() && accountSurfaceOpen();
+  teamView = { kind: 'switching', team: team.name, username: currentAccountUsername };
+  refreshAccountSurface();
   void (async () => {
     try {
-      const auth = await useTeam(team);
-      await refreshTeamModelCatalog(auth);
+      const auth = await useTeam(team, isCurrent);
+      if (!auth || !await refreshTeamModelCatalog(auth, isCurrent)) return;
+      if (finishGatewayAccountRecovery()) return;
       markSwitchSucceeded(team);
-      teamView = { kind: 'loaded' }; // current account is now shown in the closed field
+      teamView = { kind: 'loaded', username: currentAccountUsername }; // current account is now shown in the closed field
     } catch (err) {
+      if (!isCurrent()) return;
       // The accounts are still loaded, so offer "← back" to it (canReturn).
       teamView = { kind: 'error', message: err instanceof Error ? err.message : String(err), canReturn: true };
     }
-    r.requestRender();
+    refreshAccountSurface();
   })();
 }
 
 // The switch-error "← back": return to the loaded account dropdown (still in memory).
 function teamSwitchBack(): void {
-  if (!teamModalOpen) return;
-  teamView = { kind: 'loaded' };
+  if (!accountSurfaceOpen()) return;
+  teamView = { kind: 'loaded', username: currentAccountUsername };
   forceFrame = true;
-  r.requestRender();
+  refreshAccountSurface();
 }
 
 function closeTeamSwitch(): void {
   if (!teamModalOpen) return;
+  teamOperations.invalidate();
   teamModalOpen = false;
   teamModalFocused = false;
   forceFrame = true;
@@ -864,16 +985,42 @@ function closeTeamSwitch(): void {
 // The signed-out modal's "Sign in" button: close the popup and fall back to the
 // existing plain-text device-login + team-pick flow (it suspends the TUI).
 function teamSwitchSignIn(): void {
-  closeTeamSwitch();
-  accountSwitchTeam();
+  teamSwitchChangeAccount();
 }
 
-// Account-modal reset for testing first-run flows. Clear the cached Vercel OAuth
-// session and the process-local Gateway key, restore the terminal,
-// then exit. The next launch has no session and starts device authorization.
-function teamSwitchLogoutAndQuit(): void {
+// Authorize a replacement user while preserving the current account and key until
+// the replacement can fully initialize. Failure/cancellation returns to the same
+// working account; success refreshes the team list and model availability.
+function teamSwitchChangeAccount(): void {
+  teamOperations.invalidate();
+  teamView = { kind: 'loading' };
+  teamModalFocused = false;
+  refreshAccountSurface();
+  void withSuspendedTui(async () => {
+    const auth = await signInWithAnotherAccount();
+    if (auth) {
+      await refreshTeamModelCatalog(auth);
+      if (finishGatewayAccountRecovery()) return;
+    }
+    await loadTeams();
+  });
+}
+
+// Sign out in place. Human-only play remains available, and Account immediately
+// exposes sign-in again instead of coupling authentication state to quitting.
+function teamSwitchSignOut(): void {
+  teamOperations.invalidate();
   signOutVercel();
-  quit();
+  setTeamSwitchTeams([], null);
+  currentAccountUsername = undefined;
+  teamView = { kind: 'signedOut' };
+  void refreshTeamModelCatalog(null);
+  forceFrame = true;
+  refreshAccountSurface();
+}
+
+function teamSwitchOpenVercel(): void {
+  openBrowser('https://vercel.com/account');
 }
 
 setTeamSwitchHandlers({ onPick: pickTeamChoice });
@@ -980,11 +1127,7 @@ function stopAiMatch(): void {
 // selects are (re)mounted for their Slots; pickers retain their last selection.
 function openMatchSetup(): void {
   tutorial.signal('chess.setup'); // the tutorial's "open new match" counts even when signed out
-  if (!process.env.AI_GATEWAY_API_KEY) {
-    commentary = { text: 'to sign in, go home, open the menu, then choose account', model: '', until: t + 6 };
-    r.requestRender();
-    return;
-  }
+  if (!requireGateway(openMatchSetup)) return;
   mountMatchSetup(ui);
   matchSetupOpen = true;
   setupFocused = false;
@@ -1004,6 +1147,7 @@ function closeMatchSetup(): void {
 // Start button: only fires when both sides are ready (human, or a committed model),
 // so the selection is guaranteed.
 async function confirmMatchSetup(): Promise<void> {
+  if (!requireGateway(() => { void confirmMatchSetup(); })) return;
   const sel = matchSetupSelection();
   if (!sel) return;
   const models = [sel.white, sel.black].flatMap((seat) => seat.kind === 'ai' ? [seat.model] : []);
@@ -1047,11 +1191,7 @@ function openWispSwap(color: Color): void {
 function openPokerWispSwap(seat: number): void {
   const spec = pokerMatch.seatSpecs()[seat];
   if (spec?.kind !== 'ai' && spec?.kind !== 'bot') return;
-  if (spec.kind === 'bot' && !process.env.AI_GATEWAY_API_KEY) {
-    commentary = { text: 'to sign in, go home, open the menu, then choose account', model: '', until: t + 6 };
-    r.requestRender();
-    return;
-  }
+  if (spec.kind === 'bot' && !requireGateway(() => openPokerWispSwap(seat))) return;
   const wasPaused = pokerMatch.isPaused();
   if (!wasPaused) pokerMatch.pause();
   wispSwap = { game: 'poker', seat, wasPaused };
@@ -1193,11 +1333,7 @@ function stopPokerMatch(): void {
 // Non-modal: it stacks down the top-left while the table stays orbit/zoomable, and the
 // idle scene previews the chosen seats live (chairs + creator wisps).
 function openPokerSetup(): void {
-  if (!process.env.AI_GATEWAY_API_KEY) {
-    commentary = { text: 'to sign in, go home, open the menu, then choose account', model: '', until: t + 6 };
-    r.requestRender();
-    return;
-  }
+  if (!requireGateway(openPokerSetup)) return;
   mountPokerSetup(ui);
   pokerSetupOpen = true;
   pokerSetupFocused = false;
@@ -1255,6 +1391,7 @@ setMatchSetupChanged(() => {
 
 // Start-match button: begin a session with the chosen seats (guaranteed present).
 async function confirmPokerSetup(): Promise<void> {
+  if (!requireGateway(() => { void confirmPokerSetup(); })) return;
   const seats = pokerSetupSelection();
   if (!seats) return;
   const models = seats.flatMap((seat) => seat.kind === 'ai' && seat.runtime === 'text' ? [seat.model] : []);
@@ -1506,7 +1643,8 @@ function toggleEvalBar(): void {
 // Persist the anonymous-telemetry opt-in/out from the home menu (no key binding), the
 // in-app companion to `arcade telemetry enable|disable`.
 function toggleTelemetry(): void {
-  setTelemetryEnabled(!isTelemetryEnabled());
+  if (isTelemetryEnvironmentOptedOut()) return;
+  toggleTelemetryPreference();
   forceFrame = true;
   r.requestRender();
 }
@@ -1595,6 +1733,7 @@ function enterIslandersGame(): void {
 
 // Begin a session from the setup panel's committed choices.
 async function startIslandersGame(): Promise<void> {
+  if (!requireGateway(() => { void startIslandersGame(); })) return;
   const seats = islandersSetupSelection();
   if (!seats) return;
   const models = seats.flatMap((seat) => seat.kind === 'ai' ? [seat.model] : []);
@@ -2286,12 +2425,7 @@ function syncBar(): void {
     if (teamModalOpen) {
       if (!keymap.hasContext('teamswitch')) keymap.pushContext('teamswitch', true);
       ui.setRoot(
-        buildTeamSwitch(teamView, {
-          onClose: closeTeamSwitch,
-          onSignIn: teamSwitchSignIn,
-          onBack: teamSwitchBack,
-          onLogout: teamSwitchLogoutAndQuit,
-        }),
+        buildTeamSwitch(teamView, teamSwitchActions(closeTeamSwitch), cols, rows),
         region,
       );
       // Focus the dropdown once it's populated so ↑↓/Enter drive it (the Slot isn't in
@@ -2304,6 +2438,7 @@ function syncBar(): void {
     } else if (homeMenuOpen) {
       if (keymap.hasContext('teamswitch')) keymap.popContext('teamswitch');
       if (!keymap.hasContext('home-menu')) keymap.pushContext('home-menu', true);
+      const telemetryForcedOff = isTelemetryEnvironmentOptedOut();
       const groups: MenuItem[][] = [
         [
           { id: 'home-menu-display', label: 'display', value: renderMode, onClick: cycleMode },
@@ -2312,7 +2447,13 @@ function syncBar(): void {
         [
           { id: 'home-menu-shortcuts', label: 'controls', onClick: openShortcuts },
           { id: 'home-menu-account', label: 'account', onClick: openTeamSwitch },
-          { id: 'home-menu-telemetry', label: 'telemetry', value: isTelemetryEnabled() ? 'on' : 'off', onClick: toggleTelemetry },
+          {
+            id: 'home-menu-telemetry',
+            label: 'telemetry',
+            value: telemetryForcedOff ? 'off (env)' : isTelemetryPreferenceEnabled() ? 'on' : 'off',
+            onClick: toggleTelemetry,
+            disabled: telemetryForcedOff,
+          },
           { id: 'home-menu-quit', label: 'quit', onClick: openConfirmQuit },
         ],
       ];
@@ -2731,6 +2872,13 @@ function onKeyImpl(ev: KeyEvent): void {
     quit();
     return;
   }
+  if (gatewaySignInResume) {
+    if (ev.name === 'escape') {
+      if (!gatewayAccountRecovery || !ui.handleKey(ev)) dismissGatewaySignInPrompt();
+    }
+    else ui.handleKey(ev);
+    return;
+  }
   // Trailer is an uninterrupted film surface. Its sole visible control is Menu;
   // suppress global display/shortcuts/quit actions until playback returns home.
   if (mode === 'trailer') {
@@ -2797,7 +2945,7 @@ function onMouseImpl(e: MouseEvent): void {
   // A Gateway failure is a blocking modal: all pointer input belongs to its
   // action, close control, or scrim. Never let a click fall through to a board
   // move, poker action, or camera gesture while the failed turn is paused.
-  if (failureNotice || failureResume) {
+  if (gatewaySignInResume || failureNotice || failureResume) {
     if (e.type === 'move') ui.hover(e.x, e.y);
     else if (e.type === 'down') ui.pointerDown(e.x, e.y, e.button);
     else if (e.type === 'drag') ui.drag(e.x, e.y);
@@ -2922,7 +3070,7 @@ function onMouseImpl(e: MouseEvent): void {
       // A hit on a UI node (bar button or component) fires its onClick / onMouse
       // and captures the pointer; a miss begins a camera drag (an up near here is
       // a click). The button goes along so an onMouse can tell left from right.
-      if (!ui.pointerDown(e.x, e.y, e.button)) {
+      if (!ui.pointerDown(e.x, e.y, e.button, { shift: e.shift, meta: e.meta, ctrl: e.ctrl })) {
         draggingCamera = true;
         if (mode === 'islanders-tiles') islanders.scene.setCameraInteracting(true);
         else if (mode === 'islanders') islandersGameScene.scene.setCameraInteracting(true);
@@ -3323,6 +3471,7 @@ process.stdout.on('resize', () => {
   const supersample = supersampleForViewport(renderMode, cols, rows);
   target = new RenderTarget(viewport.w * supersample, viewport.h * SCENE_CELL_PIXEL_ASPECT * supersample);
   ui.resize(cols, rows);
+  if (gatewaySignInResume) refreshGatewaySignInOverlay();
   display = undefined;
   // The scene repaints every cell it owns each frame, but the reserved button
   // row does not, and the buttons re-center when the width changes — so without

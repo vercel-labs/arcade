@@ -21,6 +21,8 @@ test('noticeToastHeight matches the dialog child, gap, and padding geometry', ()
   assert.equal(noticeToastHeight({ id: 'one', severity: 'warning', title: 'warning', body: 'one line' }), 5);
   assert.equal(noticeToastHeight({ id: 'action', severity: 'error', title: 'error', body: 'one line', actionLabel: 'retry' }), 7);
   assert.equal(noticeToastHeight({ id: 'wrapped', severity: 'warning', title: 'warning', body: 'one two three four five six seven eight nine ten', actionLabel: 'retry' }, 28), 9);
+  assert.equal(noticeToastHeight({ id: 'boundary', severity: 'warning', title: 'warning', body: '1234567890123456789012345' }, 28), 7);
+  assert.equal(noticeToastHeight({ id: 'compact', severity: 'warning', title: 'warning', body: '12345678901234567890123' }, 18, true), 7);
 });
 
 test('NoticeToast wraps long copy inside the card width', () => {

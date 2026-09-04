@@ -26,6 +26,8 @@ import {
   type IslandersPlayerTradeOffersController,
   type IslandersTradeEditorController,
   islandersCardsLayout,
+  islandersBuildControl,
+  islandersLiveActionButton,
   islandersRailVisible,
   ISLANDERS_RAIL_INNER_W,
   mountIslandersCardsHud,
@@ -33,7 +35,7 @@ import {
 } from './card-hud.ts';
 import { IslandersState } from '../../../rules/islanders/islanders.ts';
 import { DEV_CARD_TYPES, type IslandersAction, type DevCardType, RESOURCES, type Resource, resourceIndex } from '../../../rules/islanders/types.ts';
-import { CITY_ICON, ISLANDERS_CARD, ISLANDERS_STATUS, PLAYER_LOOK, RESOURCE_LOOK, ROAD_ICON, SETTLEMENT_ICON } from './palette.ts';
+import { ISLANDERS_CARD, ISLANDERS_STATUS, PLAYER_LOOK, RESOURCE_LOOK } from './palette.ts';
 import { hudTopCenter, hudTopRight } from '../../shell/hud-chrome.ts';
 import type { BoardToken, SailLabel } from './tile-scene.ts';
 import { islandersFlyingCardNodes, islandersProjectedBoardLabels } from './tile-hud.ts';
@@ -361,27 +363,7 @@ export interface IslandersGameHudDeps {
   notice?: string;
 }
 
-// The hand's small prompt pills lighten a step under the pointer and keep their ink, rather than
-// flipping to the chrome pill's white: these sit over the board, where a white flash pulls the eye.
-const LIVE_PILL_HOVER_BG: [number, number, number] = [52, 56, 70];
-
-function liveActionButton(id: string, label: string, onClick: () => void, disabled = false, active = false): Node {
-  return Button({
-    id: `islanders-live-${id}`,
-    label,
-    onClick,
-    disabled,
-    style: {
-      ...UI_CHROME_PILL,
-      hover: { background: LIVE_PILL_HOVER_BG },
-      padding: [0, 1],
-      ...(active ? { background: ISLANDERS_CARD.actionPressed, color: ISLANDERS_CARD.actionPressedInk, bold: true } : {}),
-      disabled: active
-        ? { background: ISLANDERS_CARD.actionPressed, color: ISLANDERS_CARD.actionPressedInk, bold: true }
-        : UI_CHROME_PILL.disabled,
-    },
-  });
-}
+const liveActionButton = islandersLiveActionButton;
 
 function actionTypes(actions: readonly IslandersAction[]): Set<IslandersAction['type']> {
   return new Set(actions.map((action) => action.type));
@@ -534,6 +516,8 @@ function humanActionPanel(deps: IslandersGameHudDeps, region: LayoutBox): Node |
   const menu = humanMenuPanel(scene, state);
   const children: Node[] = menu ?? [];
   let column = false;
+  let detachedBuildControls = false;
+  let compactBuildControls = false;
   if (!menu) {
     const victimSeats = scene.robberVictimSeats();
     if (victimSeats.length) {
@@ -583,10 +567,17 @@ function humanActionPanel(deps: IslandersGameHudDeps, region: LayoutBox): Node |
         children.push(liveActionButton('cancel-trade', 'cancel trade', () => scene.submitHumanAction({ type: 'cancelTrade' })));
       }
       if (prompt.kind === 'playTurn') {
-        // The same glyphs the log and the players table use for these pieces.
-        if (types.has('buildRoad')) children.push(liveActionButton('road', `${ROAD_ICON} road`, () => scene.beginBoardChoice('buildRoad')));
-        if (types.has('buildSettlement')) children.push(liveActionButton('settlement', `${SETTLEMENT_ICON} settlement`, () => scene.beginBoardChoice('buildSettlement')));
-        if (types.has('buildCity')) children.push(liveActionButton('city', `${CITY_ICON} city`, () => scene.beginBoardChoice('buildCity')));
+        detachedBuildControls = true;
+        compactBuildControls = region.w < 40;
+        const seat = state.currentPlayer();
+        const builds = [
+          ['road', 'buildRoad'],
+          ['settlement', 'buildSettlement'],
+          ['city', 'buildCity'],
+        ] as const;
+        for (const [type, choice] of builds) {
+          children.push(islandersBuildControl(type, state.buildAvailability(seat, type), () => scene.beginBoardChoice(choice)));
+        }
       }
     }
   }
@@ -597,8 +588,10 @@ function humanActionPanel(deps: IslandersGameHudDeps, region: LayoutBox): Node |
     bottom: layout.handHeight + 2,
     maxWidth: Math.max(1, region.w - (islandersRailVisible(region.w, region.h) ? ISLANDERS_RAIL_W : 0) - 4),
     minHeight: 1,
-    ...(column ? { flexDirection: 'column', alignItems: 'stretch', gap: 0, padding: [0, 1] } : { gap: 1, padding: [0, 1] }),
-    background: UI_CHROME_BG,
+    ...(column || compactBuildControls
+      ? { flexDirection: 'column', alignItems: compactBuildControls ? 'start' : 'stretch', gap: 0, padding: compactBuildControls ? [0, 0] : [0, 1] }
+      : { gap: 1, padding: [0, 1] }),
+    ...(detachedBuildControls ? {} : { background: UI_CHROME_BG }),
   }, children);
 }
 

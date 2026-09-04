@@ -9,7 +9,8 @@ import { DICE_RESULT_REVEAL_DELAY, DICE_ROLL_DUR, DICE_STAGGER, type Die } from 
 import { type Node, Screen } from '../../../tui/index.ts';
 import { maritimePortTradeRates, maritimeTradeRates } from '../../../rules/islanders/maritime-trade.ts';
 import { generateBoard } from '../../../rules/islanders/setup.ts';
-import { DEV_CARD_COUNTS } from '../../../rules/islanders/types.ts';
+import { edgeNodes, nodeEdges } from '../../../rules/islanders/board-topology.ts';
+import { COSTS, DEV_CARD_COUNTS, PIECE_LIMITS, resourceIndex } from '../../../rules/islanders/types.ts';
 import {
   adjustIslandersWorkbenchDiscard,
   adjustIslandersWorkbenchDev,
@@ -22,8 +23,11 @@ import {
   beginStagedIslandersWorkbenchBankTrade,
   buildIslandersCardsOverlay,
   buyIslandersWorkbenchDevCard,
+  canAffordIslandersWorkbenchBuild,
+  canConfirmIslandersWorkbenchDevelopmentSelection,
   canSubmitIslandersWorkbenchDiscard,
   cancelIslandersWorkbenchPlayerTrade,
+  cancelIslandersWorkbenchDevelopmentPlay,
   islandersWorkbenchPlayerTradeOffers,
   islandersBankDepartureCell,
   islandersDevDeckDepartureCell,
@@ -50,19 +54,24 @@ import {
   landIslandersWorkbenchDevCard,
   logIslandersWorkbenchDevPurchase,
   logIslandersWorkbenchMaritimeTrade,
+  logIslandersRobberMove,
   performIslandersWorkbenchBankTrade,
   performIslandersWorkbenchPortTrade,
   performStagedIslandersWorkbenchBankTrade,
   performStagedIslandersWorkbenchPortTrade,
+  payIslandersWorkbenchBuild,
   resetIslandersWorkbenchCards,
   resolveIslandersWorkbenchPlayerTradeOffer,
   setIslandersTradeEditorOpen,
   submitIslandersWorkbenchDiscard,
+  stageIslandersWorkbenchDevelopmentResource,
+  unstageIslandersWorkbenchDevelopmentResource,
 } from './card-hud.ts';
 import { stagedIslandersBankTrade, stagedIslandersPortTrade } from './card-workbench.ts';
 import { IslandersController } from './islanders-controller.ts';
 import { ISLANDERS_CARD, DEV_HAND_LOOK } from './palette.ts';
 import { TileScene } from './tile-scene.ts';
+import { UI_CHROME_PILL } from '../../theme.ts';
 
 function findNode(node: Node, id: string): Node | undefined {
   if (node.id === id) return node;
@@ -71,6 +80,26 @@ function findNode(node: Node, id: string): Node | undefined {
     if (found) return found;
   }
   return undefined;
+}
+
+function findParent(node: Node, id: string): Node | undefined {
+  if (node.children?.some((child) => child.id === id)) return node;
+  for (const child of node.children ?? []) {
+    const found = findParent(child, id);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function tooltipText(node: Node | undefined): string {
+  const content = node?.tooltip?.content;
+  if (typeof content === 'string') return content;
+  return content?.map((item) => typeof item === 'string' ? item : item.text).join(' ') ?? '';
+}
+
+function nodeText(node: Node | undefined): string {
+  if (!node) return '';
+  return [node.text ?? '', ...(node.children ?? []).map(nodeText)].join(' ');
 }
 
 test('Islanders action history wraps complete model commentary onto physical continuation rows', () => {
@@ -147,7 +176,25 @@ test('the full four-row trade editor is shared by live Islanders rather than lim
   assert.ok(findNode(root, 'islanders-trade-close'));
 });
 
+test('the trade close glyph is centered over the middle letter of its label', () => {
+  resetIslandersWorkbenchCards();
+  adjustIslandersWorkbenchHand('brick', 1);
+  setIslandersTradeEditorOpen(true);
+  const region = { x: 0, y: 0, w: 140, h: 50 };
+  const root = buildIslandersCardsOverlay(region, () => {});
+  const screen = new Screen(region.w, region.h);
+  screen.setRoot(root, region);
+  const close = findNode(root, 'islanders-trade-close');
+  const icon = close?.children?.[0];
+  const label = close?.children?.[1];
+  assert.ok(icon?.layout && label?.layout);
+  assert.equal(icon.text, 'x');
+  assert.equal(icon.layout.x, label.layout.x + 2, '× should sit directly above the o in close');
+  resetIslandersWorkbenchCards();
+});
+
 test('a playable live development card submits through its hand card while VP remains passive', () => {
+  resetIslandersWorkbenchCards();
   const view = islandersWorkbenchView();
   view.source = 'live';
   view.devHand.knight = 1;
@@ -168,9 +215,11 @@ test('a playable live development card submits through its hand card while VP re
   );
   const knight = findNode(root, 'islanders-dev-knight');
   assert.ok(knight?.onMouse);
-  assert.equal(knight.onMouse({ type: 'down', x: 0, y: 0, w: 7, h: 6, button: 0 }), true);
+  assert.equal(knight.onMouse({ type: 'down', x: 0, y: 0, w: 7, h: 6, button: 0, shift: true }), true);
   assert.equal(played, 'knight');
+  assert.equal(islandersWorkbenchView().devHand.knight, 0, 'live Shift-click never mutates Test inventory');
   assert.equal(findNode(root, 'islanders-dev-victoryPoint')?.onMouse, undefined);
+  resetIslandersWorkbenchCards();
 });
 
 test('Board + cards remains a full board scene with projected number tokens', () => {
@@ -265,6 +314,596 @@ test('left-clicking a held development card plays it instead of adding another c
   resetIslandersWorkbenchCards();
 });
 
+test('workbench card gestures add resources with normal click, remove with right-click, and add development cards with Shift-click', () => {
+  resetIslandersWorkbenchCards();
+  const region = { x: 0, y: 0, w: 140, h: 50 };
+  const screen = new Screen(region.w, region.h);
+  let view = islandersWorkbenchView();
+  screen.setRoot(buildIslandersCardsOverlay(region, () => {}, view), region);
+
+  const lumber = islandersHandLandingCell(region, 'lumber');
+  screen.pointerDown(lumber.col + 1, lumber.row + 1, 0);
+  assert.equal(islandersWorkbenchView().hand.lumber, 1, 'normal click adds one test resource');
+  screen.pointerDown(lumber.col + 1, lumber.row + 1, 2);
+  assert.equal(islandersWorkbenchView().hand.lumber, 0, 'right-click removes one test resource');
+  screen.pointerDown(lumber.col + 1, lumber.row + 1, 2);
+  assert.equal(islandersWorkbenchView().hand.lumber, 0, 'right-click remains clamped at zero');
+
+  const knight = islandersDevHandLandingCell(region, 'knight', false, view);
+  screen.pointerDown(knight.col + 1, knight.row + 1, 0, { shift: true });
+  assert.equal(islandersWorkbenchView().devHand.knight, 1, 'Shift-click adds an otherwise empty development card');
+  assert.equal(islandersWorkbenchDevelopmentPlay(), null);
+
+  view = islandersWorkbenchView();
+  screen.setRoot(buildIslandersCardsOverlay(region, () => {}, view), region);
+  screen.pointerDown(knight.col + 1, knight.row + 1);
+  assert.equal(islandersWorkbenchView().devHand.knight, 0, 'ordinary click plays the held card');
+  assert.deepEqual(islandersWorkbenchDevelopmentPlay(), { type: 'knight', remaining: 1, resources: [] });
+  resetIslandersWorkbenchCards();
+});
+
+test('an active development explainer places a cancel button immediately to its right', () => {
+  resetIslandersWorkbenchCards();
+  adjustIslandersWorkbenchDev('knight', 1);
+  const region = { x: 0, y: 0, w: 140, h: 50 };
+  const screen = new Screen(region.w, region.h);
+  const controller = new IslandersController({
+    ui: screen,
+    requestRender: () => {},
+    requestFrame: () => {},
+    shell: {
+      renderMode: () => 'ascii', colorMode: () => 'truecolor', onHome: () => {},
+      onCycleDisplay: () => {}, onCycleColor: () => {}, onControls: () => {}, onQuit: () => {}, menuValueColW: 10,
+    },
+  });
+  controller.scene.setMode('boardCards');
+  controller.scene.settle();
+  controller.scene.seedWorkbench();
+  const internals = controller as unknown as { beginDevelopmentPlay(type: 'knight'): boolean };
+  assert.equal(internals.beginDevelopmentPlay('knight'), true);
+  const root = controller.buildRoot(region.w, region.h);
+  screen.setRoot(root, region);
+  const prompt = findNode(root, 'islanders-development-prompt');
+  const cancel = findNode(root, 'islanders-live-development-cancel');
+  assert.ok(prompt?.layout && cancel?.layout);
+  assert.equal(cancel.layout.x, prompt.layout.x + prompt.layout.w + 1);
+
+  cancel.onClick?.();
+  assert.equal(islandersWorkbenchDevelopmentPlay(), null);
+  assert.equal(islandersWorkbenchView().devHand.knight, 1, 'cancel restores the uncommitted card');
+  assert.doesNotMatch(islandersWorkbenchView().history.at(-1)?.message ?? '', /played a knight/);
+  controller.reset();
+  resetIslandersWorkbenchCards();
+});
+
+test('Year of Plenty stages two bank choices and commits only through receive', () => {
+  resetIslandersWorkbenchCards();
+  adjustIslandersWorkbenchDev('yearOfPlenty', 1);
+  assert.equal(beginIslandersWorkbenchDevelopmentPlay('yearOfPlenty'), true);
+  const region = { x: 0, y: 0, w: 140, h: 50 };
+  const screen = new Screen(region.w, region.h);
+  const controller = new IslandersController({
+    ui: screen, requestRender: () => {}, requestFrame: () => {},
+    shell: {
+      renderMode: () => 'ascii', colorMode: () => 'truecolor', onHome: () => {},
+      onCycleDisplay: () => {}, onCycleColor: () => {}, onControls: () => {}, onQuit: () => {}, menuValueColW: 10,
+    },
+  });
+  controller.scene.setMode('boardCards');
+  controller.scene.settle();
+  controller.scene.seedWorkbench();
+  const bankBefore = islandersWorkbenchView().bank.ore;
+  let root = controller.buildRoot(region.w, region.h);
+  assert.equal(findNode(root, 'islanders-development-confirm')?.disabled, true);
+
+  findNode(root, 'islanders-development-bank-ore')?.onMouse?.({ type: 'down', x: 0, y: 0, w: 7, h: 4, button: 0 });
+  assert.equal(islandersWorkbenchView().hand.ore, 0);
+  assert.equal(islandersWorkbenchView().bank.ore, bankBefore);
+  assert.equal(canConfirmIslandersWorkbenchDevelopmentSelection(), false);
+  root = controller.buildRoot(region.w, region.h);
+  findNode(root, 'islanders-development-bank-ore')?.onMouse?.({ type: 'down', x: 0, y: 0, w: 7, h: 4, button: 0 });
+  assert.equal(canConfirmIslandersWorkbenchDevelopmentSelection(), true);
+
+  root = controller.buildRoot(region.w, region.h);
+  assert.equal(findNode(root, 'islanders-development-confirm')?.disabled, false);
+  findNode(root, 'islanders-development-choice-ore')?.onMouse?.({ type: 'down', x: 0, y: 0, w: 7, h: 4, button: 0 });
+  assert.equal(canConfirmIslandersWorkbenchDevelopmentSelection(), false, 'clicking the staged card removes one copy');
+  assert.equal(stageIslandersWorkbenchDevelopmentResource('grain'), true);
+  assert.equal(canConfirmIslandersWorkbenchDevelopmentSelection(), true);
+  root = controller.buildRoot(region.w, region.h);
+  findNode(root, 'islanders-development-confirm')?.onClick?.();
+  const received = islandersWorkbenchView();
+  assert.equal(received.hand.ore, 1);
+  assert.equal(received.hand.grain, 1);
+  assert.equal(received.bank.ore, bankBefore - 1);
+  assert.equal(received.developmentPlay, undefined);
+  controller.reset();
+  resetIslandersWorkbenchCards();
+});
+
+test('Monopoly selection toggles and waits for the steal confirmation', () => {
+  resetIslandersWorkbenchCards();
+  adjustIslandersWorkbenchDev('monopoly', 1);
+  assert.equal(beginIslandersWorkbenchDevelopmentPlay('monopoly'), true);
+  assert.equal(stageIslandersWorkbenchDevelopmentResource('grain'), true);
+  assert.deepEqual(islandersWorkbenchDevelopmentPlay()?.resources, ['grain']);
+  assert.equal(unstageIslandersWorkbenchDevelopmentResource('grain'), true);
+  assert.deepEqual(islandersWorkbenchDevelopmentPlay()?.resources, []);
+  assert.equal(stageIslandersWorkbenchDevelopmentResource('ore'), true);
+  assert.equal(stageIslandersWorkbenchDevelopmentResource('wool'), true);
+  assert.deepEqual(islandersWorkbenchDevelopmentPlay()?.resources, ['wool'], 'choosing another resource replaces the selection');
+  assert.equal(canConfirmIslandersWorkbenchDevelopmentSelection(), true);
+  const root = buildIslandersCardsOverlay({ x: 0, y: 0, w: 140, h: 50 }, () => {});
+  assert.doesNotMatch(nodeText(findNode(root, 'islanders-development-monopoly-wool')), /✓/,
+    'the resource color alone communicates Monopoly selection');
+  cancelIslandersWorkbenchDevelopmentPlay();
+  resetIslandersWorkbenchCards();
+});
+
+test('development cancellation rolls back partial sandbox choices', () => {
+  resetIslandersWorkbenchCards();
+  adjustIslandersWorkbenchDev('yearOfPlenty', 1);
+  const bankBefore = islandersWorkbenchView().bank.ore;
+  assert.equal(beginIslandersWorkbenchDevelopmentPlay('yearOfPlenty'), true);
+  assert.equal(chooseIslandersWorkbenchDevelopmentResource('ore'), true);
+  assert.equal(cancelIslandersWorkbenchDevelopmentPlay(), true);
+  let view = islandersWorkbenchView();
+  assert.equal(view.hand.ore, 0);
+  assert.equal(view.bank.ore, bankBefore);
+  assert.equal(view.devHand.yearOfPlenty, 1);
+
+  resetIslandersWorkbenchCards();
+  adjustIslandersWorkbenchDev('roadBuilding', 1);
+  const screen = new Screen(140, 50);
+  const controller = new IslandersController({
+    ui: screen, requestRender: () => {}, requestFrame: () => {},
+    shell: {
+      renderMode: () => 'ascii', colorMode: () => 'truecolor', onHome: () => {},
+      onCycleDisplay: () => {}, onCycleColor: () => {}, onControls: () => {}, onQuit: () => {}, menuValueColW: 10,
+    },
+  });
+  controller.scene.setMode('boardCards');
+  controller.scene.settle();
+  controller.scene.seedWorkbench();
+  const internals = controller as unknown as {
+    beginDevelopmentPlay(type: 'roadBuilding'): boolean;
+    placeDevelopmentRoad(edge: number): boolean;
+    cancelDevelopmentPlay(): void;
+  };
+  assert.equal(internals.beginDevelopmentPlay('roadBuilding'), true);
+  const edge = controller.scene.legalRoadEdges('red')[0];
+  assert.equal(internals.placeDevelopmentRoad(edge), true);
+  assert.equal(controller.scene.roadInfo(edge), 'red');
+  internals.cancelDevelopmentPlay();
+  view = islandersWorkbenchView();
+  assert.equal(controller.scene.roadInfo(edge), undefined);
+  assert.equal(view.devHand.roadBuilding, 1);
+  assert.equal(view.developmentPlay, undefined);
+  controller.reset();
+  resetIslandersWorkbenchCards();
+});
+
+test('workbench build, development, and maritime-trade modes do not overlap', () => {
+  resetIslandersWorkbenchCards();
+  adjustIslandersWorkbenchHand('lumber', 2);
+  adjustIslandersWorkbenchHand('brick', 6);
+  adjustIslandersWorkbenchTradeStaging('give', 'brick', 4);
+  adjustIslandersWorkbenchTradeStaging('receive', 'ore', 1);
+  adjustIslandersWorkbenchDev('roadBuilding', 1);
+  const screen = new Screen(140, 50);
+  const controller = new IslandersController({
+    ui: screen, requestRender: () => {}, requestFrame: () => {},
+    shell: {
+      renderMode: () => 'ascii', colorMode: () => 'truecolor', onHome: () => {},
+      onCycleDisplay: () => {}, onCycleColor: () => {}, onControls: () => {}, onQuit: () => {}, menuValueColW: 10,
+    },
+  });
+  controller.scene.setMode('boardCards');
+  controller.scene.settle();
+  controller.scene.seedWorkbench();
+  const internals = controller as unknown as {
+    pendingBuild: 'road' | 'settlement' | 'city' | null;
+    beginBuild(type: 'road'): boolean;
+    beginDevelopmentPlay(type: 'roadBuilding'): boolean;
+    cancelDevelopmentPlay(): void;
+    beginMaritimeTrade(via: 'bank'): boolean;
+  };
+  assert.equal(internals.beginBuild('road'), true);
+  assert.equal(internals.beginDevelopmentPlay('roadBuilding'), true);
+  assert.equal(internals.pendingBuild, null, 'development mode replaces the paid build selection');
+  assert.equal(internals.beginMaritimeTrade('bank'), false, 'an active development play blocks unrelated trades');
+  assert.equal(findNode(controller.buildRoot(140, 50), 'islanders-roll'), undefined,
+    'an active development play hides the incompatible roll action');
+  internals.cancelDevelopmentPlay();
+
+  assert.equal(internals.beginBuild('road'), true);
+  assert.equal(internals.beginMaritimeTrade('bank'), true);
+  assert.equal(internals.pendingBuild, null, 'opening a trade cancels the paid build selection');
+  assert.equal(internals.beginBuild('road'), false, 'reserved trade cards block a paid build until settlement');
+  assert.equal(findNode(controller.buildRoot(140, 50), 'islanders-live-road'), undefined,
+    'build controls stay hidden while maritime cards are in flight');
+  controller.reset();
+  resetIslandersWorkbenchCards();
+});
+
+test('Board editor keeps free authoring while Board + cards uses paid controls', () => {
+  resetIslandersWorkbenchCards();
+  const screen = new Screen(140, 50);
+  const controller = new IslandersController({
+    ui: screen, requestRender: () => {}, requestFrame: () => {},
+    shell: {
+      renderMode: () => 'ascii', colorMode: () => 'truecolor', onHome: () => {},
+      onCycleDisplay: () => {}, onCycleColor: () => {}, onControls: () => {}, onQuit: () => {}, menuValueColW: 10,
+    },
+  });
+  let freeClicks = 0;
+  const originalClick = controller.scene.clickBoard.bind(controller.scene);
+  controller.scene.clickBoard = () => { freeClicks++; return null; };
+  controller.scene.setMode('board');
+  controller.scene.settle();
+  controller.clickAt(0, 0);
+  assert.equal(freeClicks, 1);
+  controller.scene.setMode('boardCards');
+  controller.clickAt(0, 0);
+  assert.equal(freeClicks, 1, 'paid Board + cards never falls through to free placement');
+  controller.scene.clickBoard = originalClick;
+
+  controller.scene.setMode('board');
+  controller.scene.settle();
+  controller.scene.seedWorkbench();
+  (controller as unknown as { pieceEdit: { kind: 'building'; id: number } | null }).pieceEdit = { kind: 'building', id: 0 };
+  assert.ok(findNode(controller.buildPieceModalRoot()!, 'pm-upgrade'), 'free Board mode keeps its editor upgrade');
+  controller.scene.setMode('boardCards');
+  assert.equal(controller.buildPieceModalRoot(), null,
+    'paid Board + cards routes all mutations through paid build controls instead of the free editor');
+  controller.reset();
+  resetIslandersWorkbenchCards();
+});
+
+test('leaving Board + cards clears paid interactions and re-entry resets board and inventory together', () => {
+  resetIslandersWorkbenchCards();
+  adjustIslandersWorkbenchHand('lumber', 2);
+  adjustIslandersWorkbenchHand('brick', 2);
+  const screen = new Screen(140, 50);
+  const controller = new IslandersController({
+    ui: screen, requestRender: () => {}, requestFrame: () => {},
+    shell: {
+      renderMode: () => 'ascii', colorMode: () => 'truecolor', onHome: () => {},
+      onCycleDisplay: () => {}, onCycleColor: () => {}, onControls: () => {}, onQuit: () => {}, menuValueColW: 10,
+    },
+  });
+  controller.scene.setMode('boardCards');
+  controller.scene.settle();
+  controller.scene.seedWorkbench();
+  const internals = controller as unknown as {
+    pendingBuild: 'road' | null;
+    beginBuild(type: 'road'): boolean;
+    commitBuild(type: 'road', target: { kind: 'edge'; id: number }): boolean;
+    changeMode(mode: 'board' | 'boardCards'): void;
+  };
+  assert.equal(internals.beginBuild('road'), true);
+  internals.changeMode('board');
+  assert.equal(internals.pendingBuild, null);
+  assert.equal(internals.commitBuild('road', { kind: 'edge', id: controller.scene.legalRoadEdges('red')[0] }), false);
+  assert.equal(islandersWorkbenchView().hand.lumber, 2, 'free Board mode cannot spend a hidden paid selection');
+
+  internals.changeMode('boardCards');
+  assert.equal(internals.beginBuild('road'), true);
+  const road = controller.scene.legalRoadEdges('red')[0];
+  assert.equal(internals.commitBuild('road', { kind: 'edge', id: road }), true);
+  assert.equal(controller.scene.pieceCount('red', 'road'), 1);
+  controller.reset();
+  controller.enter();
+  controller.scene.settle();
+  assert.equal(controller.scene.pieceCount('red', 'road'), 0);
+  assert.deepEqual(islandersWorkbenchView().hand, { lumber: 0, brick: 0, wool: 0, grain: 0, ore: 0 });
+  controller.reset();
+  resetIslandersWorkbenchCards();
+});
+
+test('leaving during a robber flight settles the move and steal together', () => {
+  resetIslandersWorkbenchCards();
+  adjustIslandersWorkbenchDev('knight', 1);
+  const screen = new Screen(140, 50);
+  const controller = new IslandersController({
+    ui: screen, requestRender: () => {}, requestFrame: () => {},
+    shell: {
+      renderMode: () => 'ascii', colorMode: () => 'truecolor', onHome: () => {},
+      onCycleDisplay: () => {}, onCycleColor: () => {}, onControls: () => {}, onQuit: () => {}, menuValueColW: 10,
+    },
+  });
+  controller.scene.setMode('boardCards');
+  controller.scene.settle();
+  controller.scene.seedWorkbench();
+  const internals = controller as unknown as {
+    beginDevelopmentPlay(type: 'knight'): boolean;
+    moveWorkbenchRobberTo(hex: number): boolean;
+    pendingRobberSteal: boolean;
+  };
+  assert.equal(internals.beginDevelopmentPlay('knight'), true);
+  const destination = controller.scene.currentRobberHex() === 0 ? 1 : 0;
+  assert.equal(internals.moveWorkbenchRobberTo(destination), true);
+  assert.ok(controller.scene.robberMotion());
+  controller.reset();
+  assert.equal(internals.pendingRobberSteal, false);
+  assert.equal(controller.scene.robberMotion(), null);
+  assert.equal(Object.values(islandersWorkbenchView().hand).reduce((sum, count) => sum + count, 0), 1);
+  assert.match(islandersWorkbenchView().history.at(-1)?.message ?? '', /stole .* x1 from/);
+  resetIslandersWorkbenchCards();
+});
+
+test('workbench builds use official costs and invalid targets never spend the hand', () => {
+  for (const type of ['road', 'settlement', 'city'] as const) {
+    resetIslandersWorkbenchCards();
+    const bankBefore = { ...islandersWorkbenchView().bank };
+    for (const resource of ['lumber', 'brick', 'wool', 'grain', 'ore'] as const) {
+      adjustIslandersWorkbenchHand(resource, COSTS[type][resourceIndex(resource)]);
+    }
+    assert.equal(canAffordIslandersWorkbenchBuild(type), true);
+    assert.equal(payIslandersWorkbenchBuild(type), true);
+    const paid = islandersWorkbenchView();
+    for (const resource of ['lumber', 'brick', 'wool', 'grain', 'ore'] as const) {
+      const cost = COSTS[type][resourceIndex(resource)];
+      assert.equal(paid.hand[resource], 0);
+      assert.equal(paid.bank[resource], bankBefore[resource] + cost);
+    }
+  }
+  resetIslandersWorkbenchCards();
+  const region = { x: 0, y: 0, w: 140, h: 50 };
+  const screen = new Screen(region.w, region.h);
+  const controller = new IslandersController({
+    ui: screen,
+    requestRender: () => {},
+    requestFrame: () => {},
+    shell: {
+      renderMode: () => 'ascii', colorMode: () => 'truecolor', onHome: () => {},
+      onCycleDisplay: () => {}, onCycleColor: () => {}, onControls: () => {}, onQuit: () => {}, menuValueColW: 10,
+    },
+  });
+  controller.scene.setMode('boardCards');
+  controller.scene.settle();
+  controller.scene.seedWorkbench();
+  screen.setRoot(controller.buildRoot(region.w, region.h), region);
+  const unfundedRoot = controller.buildRoot(region.w, region.h);
+  const unavailableRoad = findNode(unfundedRoot, 'islanders-live-road');
+  assert.equal(unavailableRoad?.disabled, true);
+  assert.ok(unavailableRoad?.tooltip, 'unavailable builds retain their cost tooltip');
+  assert.deepEqual(unavailableRoad?.style.disabled, { background: 'disabledBg', color: 'disabledFg', bold: false });
+  assert.match(tooltipText(unavailableRoad), /Costs .*Not enough resources\./);
+  assert.doesNotMatch(tooltipText(unavailableRoad), /No valid spot/);
+  const unavailableSettlement = findNode(unfundedRoot, 'islanders-live-settlement');
+  assert.match(tooltipText(unavailableSettlement), /Costs .*Not enough resources\..*No valid spot to build a settlement\./);
+  const buildRow = findParent(unfundedRoot, 'islanders-live-road');
+  assert.equal(buildRow?.style.background, undefined, 'each build pill owns its rectangle; the gaps stay transparent');
+  assert.equal(buildRow?.style.gap, 1);
+
+  for (const resource of ['lumber', 'brick', 'wool', 'grain', 'ore'] as const) {
+    adjustIslandersWorkbenchHand(resource, 4);
+  }
+  const fundedRoot = controller.buildRoot(region.w, region.h);
+  const availableRoad = findNode(fundedRoot, 'islanders-live-road');
+  assert.equal(availableRoad?.disabled, false);
+  assert.ok(availableRoad?.tooltip, 'available builds retain the same cost tooltip');
+  assert.deepEqual(
+    { background: availableRoad?.style.hover?.background, color: availableRoad?.style.hover?.color },
+    UI_CHROME_PILL.hover,
+    'available builds use the shared menu/sidebar hover colors',
+  );
+  assert.equal(availableRoad?.style.hover?.bold, false, 'the cost tooltip does not add its own bold hover treatment');
+  assert.equal(findNode(fundedRoot, 'islanders-live-settlement')?.disabled, true);
+  assert.match(tooltipText(findNode(fundedRoot, 'islanders-live-settlement')), /No valid spot to build a settlement\./);
+  assert.equal(findNode(fundedRoot, 'islanders-live-city')?.disabled, false);
+
+  screen.resize(24, 24);
+  const narrowRoot = controller.buildRoot(24, 24);
+  screen.setRoot(narrowRoot, { x: 0, y: 0, w: 24, h: 24 });
+  for (const type of ['road', 'settlement', 'city'] as const) {
+    const button = findNode(narrowRoot, `islanders-live-${type}`);
+    assert.ok(button?.layout && button.layout.x + button.layout.w <= 24, `${type} stays visible in a narrow terminal`);
+  }
+  screen.resize(region.w, region.h);
+  screen.setRoot(controller.buildRoot(region.w, region.h), region);
+
+  const internals = controller as unknown as {
+    beginBuild(type: 'road' | 'settlement' | 'city'): boolean;
+    commitBuild(type: 'road' | 'settlement' | 'city', target: { kind: 'node' | 'edge'; id: number }): boolean;
+  };
+  assert.equal(internals.beginBuild('road'), true);
+  const beforeInvalid = { ...islandersWorkbenchView().hand };
+  assert.equal(internals.commitBuild('road', { kind: 'node', id: 0 }), false);
+  assert.deepEqual(islandersWorkbenchView().hand, beforeInvalid);
+
+  const road = controller.scene.legalRoadEdges('red')[0];
+  assert.notEqual(road, undefined);
+  assert.equal(findNode(controller.buildRoot(region.w, region.h), 'islanders-roll'), undefined,
+    'selecting a paid build target hides the incompatible roll action');
+  void controller.scene.rollDice([3, 4]);
+  assert.equal(internals.commitBuild('road', { kind: 'edge', id: road }), false,
+    'a rolling die blocks a stale paid build commit');
+  controller.scene.cancelActionAnimations();
+  assert.equal(internals.commitBuild('road', { kind: 'edge', id: road }), true);
+  assert.equal(controller.scene.roadInfo(road), 'red');
+  assert.equal(islandersWorkbenchView().hand.lumber, 3);
+  assert.equal(islandersWorkbenchView().hand.brick, 3);
+  assert.equal(findNode(controller.buildRoot(region.w, region.h), 'islanders-live-settlement')?.disabled, true,
+    'one road is still directly adjacent to the starting settlement');
+
+  const [roadA, roadB] = edgeNodes[road];
+  const far = roadA === 0 ? roadB : roadA;
+  const secondRoad = nodeEdges[far].find((edge) => edge !== road && controller.scene.legalRoadEdges('red').includes(edge));
+  assert.notEqual(secondRoad, undefined);
+  assert.equal(internals.beginBuild('road'), true);
+  assert.equal(internals.commitBuild('road', { kind: 'edge', id: secondRoad! }), true);
+  assert.equal(findNode(controller.buildRoot(region.w, region.h), 'islanders-live-settlement')?.disabled, false,
+    'a connected two-road path exposes a legal settlement target');
+
+  assert.equal(internals.beginBuild('settlement'), true);
+  const settlement = controller.scene.legalSettlementNodes('red')[0];
+  assert.notEqual(settlement, undefined);
+  assert.equal(internals.commitBuild('settlement', { kind: 'node', id: settlement }), true);
+  assert.deepEqual(controller.scene.buildingInfo(settlement), { city: false, color: 'red' });
+
+  assert.equal(internals.beginBuild('city'), true);
+  assert.equal(internals.commitBuild('city', { kind: 'node', id: 0 }), true);
+  assert.deepEqual(controller.scene.buildingInfo(0), { city: true, color: 'red' });
+  const final = islandersWorkbenchView();
+  assert.equal(final.hand.ore, 1);
+  assert.equal(final.hand.grain, 1);
+  assert.equal(final.bank.ore, 20);
+  assert.equal(final.bank.grain, 21);
+
+  adjustIslandersWorkbenchHand('ore', 3);
+  adjustIslandersWorkbenchHand('grain', 2);
+  assert.equal(findNode(controller.buildRoot(region.w, region.h), 'islanders-live-city')?.disabled, false,
+    'the newly built settlement becomes an available city target once the hand is funded');
+  assert.equal(internals.beginBuild('city'), true);
+  assert.equal(internals.commitBuild('city', { kind: 'node', id: settlement }), true);
+  adjustIslandersWorkbenchHand('ore', 3);
+  adjustIslandersWorkbenchHand('grain', 2);
+  const noCityTarget = findNode(controller.buildRoot(region.w, region.h), 'islanders-live-city');
+  assert.equal(noCityTarget?.disabled, true);
+  assert.match(tooltipText(noCityTarget), /Costs .*No valid spot to build a city\./);
+  assert.doesNotMatch(tooltipText(noCityTarget), /Not enough resources/);
+  controller.reset();
+  resetIslandersWorkbenchCards();
+});
+
+test('workbench road availability disables when every network exit is occupied', () => {
+  resetIslandersWorkbenchCards();
+  adjustIslandersWorkbenchHand('lumber', 1);
+  adjustIslandersWorkbenchHand('brick', 1);
+  const screen = new Screen(140, 50);
+  const controller = new IslandersController({
+    ui: screen, requestRender: () => {}, requestFrame: () => {},
+    shell: {
+      renderMode: () => 'ascii', colorMode: () => 'truecolor', onHome: () => {},
+      onCycleDisplay: () => {}, onCycleColor: () => {}, onControls: () => {}, onQuit: () => {}, menuValueColW: 10,
+    },
+  });
+  controller.scene.setMode('boardCards');
+  controller.scene.settle();
+  controller.scene.seedWorkbench();
+  const exits = controller.scene.legalRoadEdges('red');
+  assert.ok(exits.length > 0);
+  for (const edge of exits) void controller.scene.placePiece('road', edge, 'blue');
+  assert.deepEqual(controller.scene.legalRoadEdges('red'), []);
+  const road = findNode(controller.buildRoot(140, 50), 'islanders-live-road');
+  assert.equal(road?.disabled, true);
+  assert.match(tooltipText(road), /Costs .*No valid spot to build a road\./);
+  assert.doesNotMatch(tooltipText(road), /Not enough resources/);
+  controller.reset();
+  resetIslandersWorkbenchCards();
+});
+
+test('workbench build controls enforce and explain the official piece supply', () => {
+  resetIslandersWorkbenchCards();
+  for (const resource of ['lumber', 'brick', 'wool', 'grain', 'ore'] as const) {
+    adjustIslandersWorkbenchHand(resource, 30);
+  }
+  const screen = new Screen(140, 50);
+  const controller = new IslandersController({
+    ui: screen, requestRender: () => {}, requestFrame: () => {},
+    shell: {
+      renderMode: () => 'ascii', colorMode: () => 'truecolor', onHome: () => {},
+      onCycleDisplay: () => {}, onCycleColor: () => {}, onControls: () => {}, onQuit: () => {}, menuValueColW: 10,
+    },
+  });
+  controller.scene.setMode('boardCards');
+  controller.scene.settle();
+  controller.scene.seedWorkbench();
+  for (let edge = 0; edge < PIECE_LIMITS.road; edge++) void controller.scene.placePiece('road', edge, 'red');
+  for (const node of [1, 2, 3, 4]) void controller.scene.placePiece('building', node, 'red');
+  for (const node of [10, 11, 12, 13]) void controller.scene.placePiece('building', node, 'red', true);
+
+  assert.equal(controller.scene.pieceCount('red', 'road'), PIECE_LIMITS.road);
+  assert.equal(controller.scene.pieceCount('red', 'settlement'), PIECE_LIMITS.settlement);
+  assert.equal(controller.scene.pieceCount('red', 'city'), PIECE_LIMITS.city);
+  const root = controller.buildRoot(140, 50);
+  const internals = controller as unknown as {
+    beginBuild(type: 'road' | 'settlement' | 'city'): boolean;
+    beginDevelopmentPlay(type: 'roadBuilding'): boolean;
+  };
+  for (const type of ['road', 'settlement', 'city'] as const) {
+    const button = findNode(root, `islanders-live-${type}`);
+    assert.equal(button?.disabled, true);
+    assert.match(tooltipText(button), /Costs/);
+    const plural = type === 'city' ? 'Cities' : type === 'road' ? 'Roads' : 'Settlements';
+    assert.match(tooltipText(button), new RegExp(`${plural}: ${PIECE_LIMITS[type]}/${PIECE_LIMITS[type]} built\\.`));
+    assert.equal(internals.beginBuild(type), false);
+  }
+  adjustIslandersWorkbenchDev('roadBuilding', 1);
+  assert.equal(internals.beginDevelopmentPlay('roadBuilding'), false);
+  assert.equal(islandersWorkbenchView().devHand.roadBuilding, 1, 'an unplayable card remains in hand');
+  controller.reset();
+  resetIslandersWorkbenchCards();
+});
+
+test('workbench Monopoly and robber steals animate from inert opponent hands before logging', () => {
+  resetIslandersWorkbenchCards();
+  const region = { x: 0, y: 0, w: 140, h: 50 };
+  const screen = new Screen(region.w, region.h);
+  const controller = new IslandersController({
+    ui: screen,
+    requestRender: () => {},
+    requestFrame: () => {},
+    shell: {
+      renderMode: () => 'ascii', colorMode: () => 'truecolor', onHome: () => {},
+      onCycleDisplay: () => {}, onCycleColor: () => {}, onControls: () => {}, onQuit: () => {}, menuValueColW: 10,
+    },
+  });
+  controller.scene.setMode('boardCards');
+  controller.scene.settle();
+  controller.scene.seedWorkbench();
+  controller.buildRoot(region.w, region.h);
+  const target = new RenderTarget(region.w, region.h * 2);
+  const internals = controller as unknown as {
+    beginDevelopmentPlay(type: 'monopoly'): boolean;
+    chooseDevelopmentResource(resource: 'grain'): boolean;
+    confirmDevelopmentSelection(): boolean;
+    moveWorkbenchRobberTo(hex: number): boolean;
+  };
+
+  adjustIslandersWorkbenchDev('monopoly', 1);
+  const beforeMonopoly = islandersWorkbenchView().opponents.reduce((sum, player) => sum + player.resourceCards, 0);
+  assert.equal(internals.beginDevelopmentPlay('monopoly'), true);
+  assert.equal(internals.chooseDevelopmentResource('grain'), true);
+  let view = islandersWorkbenchView();
+  assert.equal(view.opponents.reduce((sum, player) => sum + player.resourceCards, 0), beforeMonopoly,
+    'selection alone does not steal');
+  assert.equal(internals.confirmDevelopmentSelection(), true);
+  view = islandersWorkbenchView();
+  assert.equal(view.hand.grain, 0, 'stolen cards remain in flight until they reach the hand');
+  assert.equal(view.opponents.reduce((sum, player) => sum + player.resourceCards, 0), beforeMonopoly - 6);
+  assert.doesNotMatch(view.history.at(-1)?.message ?? '', /with monopoly from/);
+  controller.renderScene(target, 0);
+  controller.renderScene(target, 3);
+  view = islandersWorkbenchView();
+  assert.equal(view.hand.grain, 6);
+  assert.equal(view.history.at(-1)?.message, 'took 🌾 x6 with monopoly');
+
+  const beforeRobber = view.opponents.reduce((sum, player) => sum + player.resourceCards, 0);
+  controller.scene.beginRobberMove();
+  const robberDestination = controller.scene.currentRobberHex() === 0 ? 1 : 0;
+  assert.equal(internals.moveWorkbenchRobberTo(robberDestination), true);
+  assert.equal(islandersWorkbenchView().opponents.reduce((sum, player) => sum + player.resourceCards, 0), beforeRobber,
+    'the victim keeps the hidden card while the robber is moving');
+  controller.renderScene(target, 4);
+  controller.renderScene(target, 5);
+  view = islandersWorkbenchView();
+  assert.equal(view.opponents.reduce((sum, player) => sum + player.resourceCards, 0), beforeRobber - 1,
+    'the card leaves its simulated opponent only after the robber settles');
+  const handAfterRobberDeparture = Object.values(view.hand).reduce((sum, count) => sum + count, 0);
+  assert.equal(handAfterRobberDeparture, 6);
+  controller.renderScene(target, 7);
+  view = islandersWorkbenchView();
+  assert.equal(Object.values(view.hand).reduce((sum, count) => sum + count, 0), 7);
+  const steal = view.history.at(-1);
+  assert.match(steal?.message ?? '', /stole .* x1 from claude-haiku-4\.5/);
+  assert.equal(steal?.resourceCounts, undefined, 'the sentence owns the resource token exactly once');
+  controller.reset();
+  resetIslandersWorkbenchCards();
+});
+
 test('the workbench controller turns a played knight into robber-targeting mode', () => {
   resetIslandersWorkbenchCards();
   adjustIslandersWorkbenchDev('knight', 1);
@@ -302,9 +941,11 @@ test('the workbench controller animates confirmed discards from the staged row i
   resetIslandersWorkbenchCards();
   for (let i = 0; i < 5; i++) adjustIslandersWorkbenchHand('brick', 1);
   for (let i = 0; i < 4; i++) adjustIslandersWorkbenchHand('grain', 1);
+  adjustIslandersWorkbenchHand('lumber', 1);
   assert.equal(beginIslandersWorkbenchDiscard(), true);
   for (let i = 0; i < 3; i++) assert.equal(adjustIslandersWorkbenchDiscard('brick', 1), true);
   assert.equal(adjustIslandersWorkbenchDiscard('grain', 1), true);
+  assert.equal(adjustIslandersWorkbenchDiscard('lumber', 1), true);
 
   const region = { x: 0, y: 0, w: 140, h: 50 };
   const screen = new Screen(region.w, region.h);
@@ -334,11 +975,15 @@ test('the workbench controller animates confirmed discards from the staged row i
   assert.equal(controller.needsRender(), true, 'the controller keeps rendering while discarded cards fly');
   assert.equal(islandersWorkbenchView().hand.brick, 5, 'staged cards stay in hand until departure');
   assert.equal(islandersWorkbenchView().bank.brick, bankBefore.brick, 'the bank waits for each landing');
+  const internals = controller as unknown as { beginBuild(type: 'road'): boolean };
+  assert.equal(internals.beginBuild('road'), false, 'reserved discard cards cannot be spent on a build');
+  assert.equal(findNode(controller.buildRoot(region.w, region.h), 'islanders-live-road'), undefined,
+    'paid build controls stay hidden until the mandatory discard transfer settles');
 
   const target = new RenderTarget(region.w, region.h * 2);
   controller.renderScene(target, 0);
   const flyingRoot = controller.buildRoot(region.w, region.h);
-  const departure = islandersDiscardDepartureCell(region, 'brick');
+  const departure = islandersDiscardDepartureCell(region, 'lumber');
   const projected = (function all(node: Node): Node[] {
     return [node, ...(node.children ?? []).flatMap(all)];
   })(flyingRoot).find((node) => node.style.left === departure.col - 2 && node.style.top === departure.row);
@@ -346,8 +991,10 @@ test('the workbench controller animates confirmed discards from the staged row i
 
   for (let frame = 1; frame <= 28; frame++) controller.renderScene(target, frame * 0.25);
   assert.equal(controller.needsRender(), false);
+  assert.equal(islandersWorkbenchView().hand.lumber, 0);
   assert.equal(islandersWorkbenchView().hand.brick, 2);
   assert.equal(islandersWorkbenchView().hand.grain, 3);
+  assert.equal(islandersWorkbenchView().bank.lumber, bankBefore.lumber + 1);
   assert.equal(islandersWorkbenchView().bank.brick, bankBefore.brick + 3);
   assert.equal(islandersWorkbenchView().bank.grain, bankBefore.grain + 1);
   assert.equal(controller.scene.isMovingRobber(), true, 'robber choice starts after the cards land');
@@ -932,7 +1579,7 @@ test('workbench development cards play from the paid hand while victory points r
   resetIslandersWorkbenchCards();
 });
 
-test('workbench year of plenty draws from the bank and monopoly records its named resource', () => {
+test('workbench year of plenty draws from the bank and monopoly transfers named opponent resources', () => {
   resetIslandersWorkbenchCards();
   adjustIslandersWorkbenchDev('yearOfPlenty', 1);
   adjustIslandersWorkbenchDev('monopoly', 1);
@@ -948,10 +1595,31 @@ test('workbench year of plenty draws from the bank and monopoly records its name
   assert.deepEqual(view.history.at(-1)?.resources, ['ore', 'ore']);
 
   assert.equal(beginIslandersWorkbenchDevelopmentPlay('monopoly'), true);
+  const opposingCardsBefore = view.opponents.reduce((sum, player) => sum + player.resourceCards, 0);
   assert.equal(chooseIslandersWorkbenchDevelopmentResource('grain'), true);
   view = islandersWorkbenchView();
   assert.equal(view.developmentPlay, undefined);
-  assert.match(view.history.at(-1)?.message ?? '', /named wheat for monopoly/);
+  assert.equal(view.hand.grain, 6);
+  assert.equal(view.opponents.reduce((sum, player) => sum + player.resourceCards, 0), opposingCardsBefore - 6);
+  assert.equal(view.history.at(-1)?.message, 'took 🌾 x6 with monopoly');
+  resetIslandersWorkbenchCards();
+});
+
+test('workbench Year of Plenty can receive the bank\'s final single resource', () => {
+  resetIslandersWorkbenchCards();
+  const bank = islandersWorkbenchView().bank;
+  for (const resource of ['lumber', 'brick', 'wool', 'grain', 'ore'] as const) {
+    const keep = resource === 'ore' ? 1 : 0;
+    for (let count = keep; count < bank[resource]; count++) {
+      assert.equal(departIslandersWorkbenchBankResource(resource), true);
+    }
+  }
+  adjustIslandersWorkbenchDev('yearOfPlenty', 1);
+  assert.equal(beginIslandersWorkbenchDevelopmentPlay('yearOfPlenty'), true);
+  assert.deepEqual(islandersWorkbenchDevelopmentPlay(), { type: 'yearOfPlenty', remaining: 1, resources: [] });
+  assert.equal(chooseIslandersWorkbenchDevelopmentResource('ore'), true);
+  assert.equal(islandersWorkbenchView().hand.ore, 1);
+  assert.equal(islandersWorkbenchView().developmentPlay, undefined);
   resetIslandersWorkbenchCards();
 });
 
@@ -971,6 +1639,18 @@ test('workbench development purchases exhaust the official uneven 25-card deck',
   adjustIslandersWorkbenchHand('wool', 1);
   adjustIslandersWorkbenchHand('grain', 1);
   assert.equal(buyIslandersWorkbenchDevCard(), false);
+  const buy = findNode(buildIslandersCardsOverlay({ x: 0, y: 0, w: 140, h: 50 }, () => {}, islandersWorkbenchView()), 'islanders-buy-dev');
+  assert.equal(buy?.disabled, true);
+  assert.match(tooltipText(buy), /Costs .*No development cards remaining\./);
+  resetIslandersWorkbenchCards();
+});
+
+test('workbench robber destinations use number and resource, while desert remains literal', () => {
+  resetIslandersWorkbenchCards();
+  logIslandersRobberMove('fields', 9);
+  assert.equal(islandersWorkbenchView().history.at(-1)?.message, 'moved the robber to the 9🌾 tile');
+  logIslandersRobberMove('desert', null);
+  assert.equal(islandersWorkbenchView().history.at(-1)?.message, 'moved the robber to the desert tile');
   resetIslandersWorkbenchCards();
 });
 

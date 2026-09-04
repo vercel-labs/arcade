@@ -44,6 +44,12 @@ export interface EnsureResult {
   team?: Team;
 }
 
+export interface AvailableTeamsResult {
+  teams: Team[];
+  current: Team | null;
+  username?: string;
+}
+
 export function isLoggedIn(): boolean {
   return readAuth() !== null || (process.env[HOSTED_TERMINAL_ENV] !== '1' && hostedTerminalKey() !== null);
 }
@@ -87,39 +93,52 @@ export async function ensureGatewayKey(opts: EnsureOpts = {}): Promise<EnsureRes
   }
 }
 
-// Force a team re-pick from inside the arcade (the in-app "switch team" action).
-// Logs in first if needed. Returns null on any failure/back-out.
-export async function switchTeam(): Promise<EnsureResult | null> {
+// Sign in as a different Vercel user without destroying the working session first.
+// The new OAuth tokens remain staged in memory until a billing team is selected and
+// its Gateway key is successfully minted. Cancelling or failing at any point leaves
+// both the stored account and the process-local key untouched.
+export async function signInWithAnotherAccount(): Promise<EnsureResult | null> {
+  const preserveExistingSession = readAuth() !== null;
+  const previousKey = process.env[ENV_KEY];
   try {
-    const auth = await ensureSession(false);
-    const team = await ensureTeam(auth, true);
-    const key = await mintKey(auth, team);
+    const auth = await login(!preserveExistingSession);
+    const team = await ensureTeam(auth, true, !preserveExistingSession);
+    const key = await mintKey(auth, team, false, !preserveExistingSession);
+    writeAuth(auth);
     return { key, team };
   } catch (err) {
-    out(`  Could not switch team: ${errMessage(err)}`);
+    if (previousKey === undefined) delete process.env[ENV_KEY];
+    else process.env[ENV_KEY] = previousKey;
+    out(`  Could not change account: ${errMessage(err)}`);
     return null;
   }
 }
 
 // The teams the signed-in user can switch between, plus the team currently billed.
 // For the in-app modal team picker (the menu's settings gear), which needs the raw
-// list to render — unlike switchTeam(), it neither prompts nor prints. Returns null
+// list to render without prompting or printing. Returns null
 // when there's no usable session (not signed in), so the caller can offer sign-in.
-export async function availableTeams(): Promise<{ teams: Team[]; current: Team | null } | null> {
-  if (!isLoggedIn()) return null;
-  const auth = await ensureSession(false);
+export async function availableTeams(): Promise<AvailableTeamsResult | null> {
+  const auth = await cachedSession('if-current');
+  if (!auth) return null;
   const teams = await listTeams(auth.access_token);
-  return { teams, current: auth.team ?? null };
+  return { teams, current: auth.team ?? null, username: await ensureUsername(auth, false) };
 }
 
-// Commit a team chosen in the in-app modal: persist it and re-mint the key, all
-// silently — the alt-screen TUI is live, so nothing here may touch stdout. Throws
-// on failure (the caller surfaces it in the modal).
-export async function useTeam(team: Team): Promise<EnsureResult> {
-  const auth = await ensureSession(false);
-  auth.team = team;
-  writeAuth(auth);
-  const key = await mintKey(auth, team, true);
+// Stage a team chosen in the in-app modal and commit it only while the owning UI operation is
+// still current. Key creation may finish after sign-out; the predicate prevents that stale result
+// from restoring auth or AI_GATEWAY_API_KEY. The one-argument overload remains convenient for
+// non-interactive tools whose call is their whole operation.
+export async function useTeam(team: Team): Promise<EnsureResult>;
+export async function useTeam(team: Team, isCurrent: () => boolean): Promise<EnsureResult | null>;
+export async function useTeam(team: Team, isCurrent: () => boolean = () => true): Promise<EnsureResult | null> {
+  const auth = await cachedSession('if-current');
+  if (!auth) throw new Error('not signed in');
+  const candidate: StoredAuth = { ...auth, team, ...(auth.user ? { user: { ...auth.user } } : {}) };
+  const key = await mintKey(candidate, team, true, false, false);
+  if (!isCurrent()) return null;
+  writeAuth(candidate);
+  process.env[ENV_KEY] = key;
   return { key, team };
 }
 
@@ -150,14 +169,18 @@ async function ensureSession(forceLogin: boolean): Promise<StoredAuth> {
 }
 
 // Yield a fresh cached session without ever starting interactive login.
-async function cachedSession(): Promise<StoredAuth | null> {
+async function cachedSession(persist: boolean | 'if-current' = true): Promise<StoredAuth | null> {
   const auth = readAuth();
   if (!auth) return null;
   if (!isExpired(auth)) return auth;
   if (!auth.refresh_token) return null;
   try {
     const refreshed = toStoredAuth(await refreshAccessToken(auth.refresh_token), auth);
-    writeAuth(refreshed);
+    const current = persist === 'if-current' ? readAuth() : null;
+    const unchanged = current !== null
+      && current.access_token === auth.access_token
+      && current.refresh_token === auth.refresh_token;
+    if (persist === true || (persist === 'if-current' && unchanged)) writeAuth(refreshed);
     return refreshed;
   } catch {
     return null;
@@ -165,7 +188,7 @@ async function cachedSession(): Promise<StoredAuth | null> {
 }
 
 // The device-authorization flow, rendered as plain text.
-async function login(): Promise<StoredAuth> {
+async function login(persist = true): Promise<StoredAuth> {
   const device = await requestDeviceCode();
   const url = device.verification_uri_complete ?? device.verification_uri;
 
@@ -185,15 +208,15 @@ async function login(): Promise<StoredAuth> {
   const auth = toStoredAuth(tokens);
   const user = await getUser(auth.access_token);
   if (user?.username) auth.user = { username: user.username }; // persisted → key name + skips a refetch later
-  writeAuth(auth);
+  if (persist) writeAuth(auth);
 
-  out(status(`  ✓ Signed in${user ? ` as ${user.username}` : ''}.`));
+  if (persist) out(status(`  ✓ Signed in${user ? ` as ${user.username}` : ''}.`));
   return auth;
 }
 
 // Yield the team to bill against: the stored one, or a fresh pick. Persists the
 // choice so later launches skip straight to minting.
-async function ensureTeam(auth: StoredAuth, forcePick: boolean): Promise<Team> {
+async function ensureTeam(auth: StoredAuth, forcePick: boolean, persist = true): Promise<Team> {
   if (auth.team && !forcePick) return auth.team;
 
   const teams = await listTeams(auth.access_token);
@@ -202,7 +225,7 @@ async function ensureTeam(auth: StoredAuth, forcePick: boolean): Promise<Team> {
   }
   const team = teams.length === 1 ? soleTeam(teams[0]!) : await pickTeam(teams);
   auth.team = team;
-  writeAuth(auth);
+  if (persist) writeAuth(auth);
   return team;
 }
 
@@ -235,12 +258,12 @@ async function pickTeam(teams: Team[]): Promise<Team> {
 
 // The signed-in user's handle, for attributing the key's name. Cached in the
 // token store; backfilled (best-effort) for sessions that predate it.
-async function ensureUsername(auth: StoredAuth): Promise<string | undefined> {
+async function ensureUsername(auth: StoredAuth, persist = true): Promise<string | undefined> {
   if (auth.user?.username) return auth.user.username;
   const user = await getUser(auth.access_token);
   if (user?.username) {
     auth.user = { username: user.username };
-    writeAuth(auth);
+    if (persist) writeAuth(auth);
     return user.username;
   }
   return undefined; // anonymous fetch failed — fall back to the bare name
@@ -248,13 +271,13 @@ async function ensureUsername(auth: StoredAuth): Promise<string | undefined> {
 
 // `quiet` skips the success lines — set when minting from inside the live TUI
 // (the in-app modal), where any stdout write would corrupt the alt-screen.
-async function mintKey(auth: StoredAuth, team: Team, quiet = false): Promise<string> {
-  const username = await ensureUsername(auth);
+async function mintKey(auth: StoredAuth, team: Team, quiet = false, persist = true, install = true): Promise<string> {
+  const username = await ensureUsername(auth, persist);
   // Name only takes effect on the create branch of exchange (get-or-create); an
   // existing key keeps its original name. Matches the playground's "(<user>)" form.
   const name = username ? `${KEY_NAME} (${username})` : KEY_NAME;
   const key = await createGatewayKey(auth.access_token, team.id, name);
-  process.env[ENV_KEY] = key;
+  if (install) process.env[ENV_KEY] = key;
   if (!quiet) {
     out(status(`  ✓ AI Gateway ready. Billed to ${team.name}.`));
     out();

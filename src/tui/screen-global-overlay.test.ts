@@ -5,6 +5,7 @@ import { Modal } from './components/modal.ts';
 import { Screen } from './screen.ts';
 
 const enter = { name: 'enter', raw: '\r', sequence: '\r', ctrl: false, shift: false, meta: false, eventType: 'press' as const };
+const tab = { name: 'tab', raw: '\t', sequence: '\t', ctrl: false, shift: false, meta: false, eventType: 'press' as const };
 
 test('global overlay survives screen root replacement and only captures its own bounds', () => {
   const screen = new Screen(80, 24);
@@ -45,4 +46,22 @@ test('a modal global overlay stays centered and consumes scene clicks', () => {
   screen.pointerDown(1, 1);
   assert.equal(dismissals, 1);
   assert.equal(sceneClicks, 0);
+});
+
+test('a global overlay focus scope traps keyboard activation above the base root', () => {
+  const screen = new Screen(40, 12);
+  let sceneClicks = 0;
+  let overlayClicks = 0;
+  screen.setRoot(Box({ width: 40, height: 12 }, [Button({ id: 'scene-action', label: 'scene', onClick: () => sceneClicks++ })]));
+  const overlay = Box({ width: 40, height: 12 }, [
+    Button({ id: 'overlay-action', label: 'continue', onClick: () => overlayClicks++ }),
+    Button({ id: 'overlay-close', label: 'close' }),
+  ]);
+  screen.setGlobalOverlay(overlay, overlay);
+  screen.setFocus('overlay-close');
+
+  assert.equal(screen.handleKey(tab), true);
+  assert.equal(screen.handleKey(enter), true);
+  assert.equal(overlayClicks, 1, 'Tab wraps within the blocking overlay');
+  assert.equal(sceneClicks, 0, 'the obscured base action cannot receive keyboard activation');
 });

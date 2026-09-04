@@ -140,6 +140,9 @@ export interface PointerHit {
   // SGR button held: 0 = left, 1 = middle, 2 = right. A drag reports the button
   // its down captured with. Callers that don't forward one are read as left.
   button?: number;
+  shift?: boolean;
+  meta?: boolean;
+  ctrl?: boolean;
 }
 
 export interface Node {
@@ -149,10 +152,10 @@ export interface Node {
   children?: Node[];
   text?: string; // Text/Button content
   focusable?: boolean;
-  // Inert: no clicks, no hover/focus/pressed styling, skipped by Tab. Mirrors the DOM
-  // attribute — `focusable` still describes what the control IS, so re-enabling it
-  // doesn't have to restore anything. The node keeps absorbing pointer gestures, so a
-  // click on a dead button doesn't fall through and drag the scene behind it.
+  // Inert: no clicks and no hover/focus/pressed styling. Normally skipped by Tab; a disabled
+  // control with a tooltip remains focusable so its explanation is keyboard-accessible.
+  // `focusable` still describes what the control IS, so re-enabling it does not need to restore
+  // anything. The node keeps absorbing pointer gestures, preventing scene drag-through.
   disabled?: boolean;
   // Opt into hover hit-testing without also making the node clickable or
   // keyboard-focusable. Tooltip() sets this for passive and disabled controls.

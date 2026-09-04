@@ -284,6 +284,7 @@ export interface MenuItem {
   label: string;
   value?: string; // a toggle/cycle state (e.g. "ascii", "off") — right-aligned into a column
   onClick: () => void;
+  disabled?: boolean;
 }
 
 // The in-game menu popup (Wii + / PS-button style): a "menu" title + ✕, then a stack of
@@ -304,7 +305,7 @@ export function buildGameMenu(opts: { groups: MenuItem[][]; onClose: () => void;
   // border + readable label; hover/focus whitens the border + label and bolds. No
   // fill, so box-drawing corners stay seam-free over the Dialog card.
   const btn = (item: MenuItem): Node =>
-    RoundedButton({ id: item.id, label: labelOf(item), onClick: item.onClick, color: ARCADE_OUTLINE_CONTROL.neutralText, borderColor: ARCADE_OUTLINE_CONTROL.neutralBorder });
+    RoundedButton({ id: item.id, label: labelOf(item), onClick: item.onClick, disabled: item.disabled, color: ARCADE_OUTLINE_CONTROL.neutralText, borderColor: ARCADE_OUTLINE_CONTROL.neutralBorder });
 
   // The outlined items stack flush (gap 0): each button's own arc border is the
   // divider, so adjacent bottom/top borders read as one continuous list — no empty

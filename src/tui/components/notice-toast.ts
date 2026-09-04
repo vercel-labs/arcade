@@ -16,6 +16,7 @@ export interface NoticeToastOpts {
   action?: { label: string; onClick: () => void };
   actionColor?: ColorToken;
   actionBorderColor?: ColorToken;
+  compact?: boolean;
 }
 
 export interface NoticeToastView {
@@ -26,21 +27,31 @@ export interface NoticeToastView {
   actionLabel?: string;
 }
 
-export function noticeToastHeight(view: NoticeToastView, width = 44): number {
-  const bodyWidth = Math.max(24, width - 4);
-  const bodyLines = wrapText(view.body, bodyWidth).length;
+function noticeToastGeometry(width: number, compact: boolean): { width: number; horizontalPadding: number; bodyWidth: number } {
+  const resolvedWidth = Math.max(compact ? 12 : 28, width);
+  const horizontalPadding = compact ? 1 : 3;
+  return {
+    width: resolvedWidth,
+    horizontalPadding,
+    // Preserve the established default wrap width; compact mode uses its tighter one-cell pads.
+    bodyWidth: Math.max(1, resolvedWidth - (compact ? 2 : 4)),
+  };
+}
+
+export function noticeToastHeight(view: NoticeToastView, width = 44, compact = false): number {
+  const { bodyWidth } = noticeToastGeometry(width, compact);
+  const bodyLines = view.body ? wrapText(view.body, bodyWidth).length : 0;
   const children = 1 + bodyLines + (view.actionLabel ? 1 : 0);
   return children + Math.max(0, children - 1) + 2;
 }
 
 /** Centered blocking notice. The modal scrim dims the scene and owns pointer input. */
 export function NoticeToast(opts: NoticeToastOpts): Node {
-  const width = Math.max(28, opts.width ?? 44);
-  const bodyWidth = width - 4;
+  const { width, horizontalPadding, bodyWidth } = noticeToastGeometry(opts.width ?? 44, opts.compact ?? false);
   const titleColor: ColorToken = opts.severity === 'error' ? 'danger' : 'textStrong';
-  const body = wrapText(opts.body, bodyWidth).map((text) => Text({ text, style: { color: 'textPrimary' } }));
+  const body = opts.body ? wrapText(opts.body, bodyWidth).map((text) => Text({ text, style: { color: 'textPrimary' } })) : [];
   const controls = opts.action
-    ? [RoundedButton({ id: `${opts.id}-action`, label: opts.action.label, onClick: opts.action.onClick, color: opts.actionColor ?? 'textStrong', borderColor: opts.actionBorderColor ?? 'textStrong', padding: [0, 3] })]
+    ? [RoundedButton({ id: `${opts.id}-action`, label: opts.action.label, onClick: opts.action.onClick, color: opts.actionColor ?? 'textStrong', borderColor: opts.actionBorderColor ?? 'textStrong', padding: [0, opts.compact ? 1 : 3] })]
     : [];
   const card = Dialog({
     title: opts.title,
@@ -49,7 +60,7 @@ export function NoticeToast(opts: NoticeToastOpts): Node {
     closeId: `${opts.id}-close`,
     closeInset: 1,
     width,
-    padding: [1, 3],
+    padding: [1, horizontalPadding],
     background: 'surfaceChrome',
   }, [
     ...body,

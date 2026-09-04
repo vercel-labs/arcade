@@ -57,6 +57,8 @@ const devGateOpen = env === 'prod' || endpointOverride !== '';
 // Resolved by initTelemetry() once the persisted opt-out is read from the store, and
 // flipped at runtime by setTelemetryEnabled(). No public entry point sends while false.
 let runtimeEnabled = false;
+let preferenceEnabled = true;
+let preferenceResolved = false;
 
 // Stamped on every event so any of them can be sliced by run / install / build / env.
 const sessionId = randomUUID();
@@ -124,6 +126,8 @@ export function initTelemetry(): void {
     writeStore(store);
   }
   installId = store.installId;
+  preferenceEnabled = store.enabled !== false;
+  preferenceResolved = true;
   playerKey = installId ? createHash('sha256').update(installId).digest('hex') : '';
   // Opt-out (env override or persisted choice) always wins; otherwise the dev gate decides.
   const optedOut = envOptedOut || store.enabled === false;
@@ -154,9 +158,30 @@ const recordOutbox = new RecordOutbox({
 export function setTelemetryEnabled(on: boolean): void {
   const store = readStore() ?? { installId: installId || randomUUID() };
   writeStore({ ...store, enabled: on });
+  preferenceEnabled = on;
+  preferenceResolved = true;
   runtimeEnabled = on && !envOptedOut && devGateOpen;
   recordOutbox.setEnabled(runtimeEnabled);
   if (!on) recordOutbox.discardAll();
+}
+
+// The user's saved choice is distinct from whether this process may currently deliver. Local
+// development deliberately closes the delivery gate, but the preference still needs to be
+// inspectable so the in-app control can represent it.
+export function isTelemetryPreferenceEnabled(): boolean {
+  if (!preferenceResolved) {
+    preferenceEnabled = readStore()?.enabled !== false;
+    preferenceResolved = true;
+  }
+  return preferenceEnabled;
+}
+
+export function isTelemetryEnvironmentOptedOut(): boolean {
+  return envOptedOut;
+}
+
+export function toggleTelemetryPreference(): void {
+  setTelemetryEnabled(!isTelemetryPreferenceEnabled());
 }
 
 // Human-readable persisted telemetry state for `arcade telemetry status`. Reads the store
