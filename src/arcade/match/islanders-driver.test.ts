@@ -157,6 +157,13 @@ test('driver installs the scene before models run a complete rules-authoritative
     }
   }
   assert.ok(driver.history().some((entry) => entry.message.startsWith('rolled ') && entry.message.includes(' = ')));
+  const winner = driver.winner();
+  assert.deepEqual(driver.history().at(-1), {
+    seat: winner,
+    color: driver.colorOf(winner),
+    actor: driver.labelOf(winner),
+    message: `wins · ${state.victoryPoints(winner, true)} victory points`,
+  });
   assert.ok(driver.latestAction());
   assert.match(islandersStatusLine(driver)?.narration ?? '', /^wins · 10 victory points$/);
   assert.equal('detail' in (islandersStatusLine(driver) ?? {}), false, 'top narration does not repeat sidebar history');
@@ -176,6 +183,7 @@ test('driver installs the scene before models run a complete rules-authoritative
     );
     assert.equal(players[seat].resourceCards, expectedCards, `seat ${seat} public hand count`);
     assert.equal(players[seat].publicVp, state.victoryPoints(seat, false), `seat ${seat} public victory points`);
+    assert.equal(players[seat].actualVp, state.victoryPoints(seat, true), `seat ${seat} final victory points are revealed`);
     assert.equal(players[seat].longestRoad, state.roadLength(seat), `seat ${seat} road length`);
   }
   for (const resource of RESOURCES) {
@@ -208,6 +216,61 @@ test('ambient live games offer affected models reaction-only turns while autorep
   const autoreply = make('autoreply');
   await waitForIdle(autoreply);
   assert.equal(autoreply.history().some((entry) => entry.chat && entry.message.includes('reacts to')), false);
+});
+
+test('directly addressed trade participants reply through their required actions only once', async () => {
+  const scene = new DriverScene();
+  const directedReplies = [0, 0];
+  const driver = new IslandersDriver({
+    scene,
+    reflectionModel: () => null,
+    syncLive: () => {},
+    createPlayer: (_spec, seat, label): Player<IslandersAction> => ({
+      name: label,
+      chooseAction: async (game) => {
+        const prompt = (game as IslandersState).currentPrompt();
+        if (seat === 0 && prompt.kind === 'playTurn') return {
+          action: { type: 'offerTrade', give: [1, 0, 0, 0, 0], receive: [0, 1, 0, 0, 0] },
+          communication: { mode: 'speak', intent: 'negotiate', text: 'I can trade one brick for one grain.', addressedSeats: [1] },
+        };
+        if (seat === 1 && prompt.kind === 'respondTrade') return {
+          action: { type: 'acceptTrade' },
+          communication: { mode: 'speak', intent: 'negotiate', text: 'Accepted. Please confirm the exchange.', addressedSeats: [0] },
+        };
+        if (seat === 0 && prompt.kind === 'decideAcceptees') return {
+          action: { type: 'confirmTrade', with: 1 },
+          communication: { mode: 'speak', intent: 'negotiate', text: 'I am locking in the exchange now.', addressedSeats: [1] },
+        };
+        throw new Error(`unexpected prompt ${prompt.kind} for seat ${seat}`);
+      },
+      chooseCommunication: async () => {
+        directedReplies[seat]++;
+        return { mode: 'speak', intent: 'reply', text: 'The agreement works for me.' };
+      },
+    }),
+  });
+  const state = driver.start([
+    { kind: 'ai', color: 'red', model: 'test/red' },
+    { kind: 'ai', color: 'blue', model: 'test/blue' },
+  ], { autoRun: false, rng: rng(13), communicationMode: 'ambient' });
+  while (!state.initialPlacementComplete()) state.applyAction(state.legalActions()[0]);
+  state.applyAction({ type: 'roll' }, { dice: [1, 1] });
+  const hands = (state as unknown as { hands: number[][] }).hands;
+  hands[0].fill(0);
+  hands[1].fill(0);
+  hands[0][resourceIndex('brick')] = 1;
+  hands[1][resourceIndex('grain')] = 1;
+
+  await (driver as unknown as { run(maxActions: number): Promise<void> }).run(3);
+
+  assert.deepEqual(directedReplies, [0, 1], 'a participant may react after completion, but never just before its own trade action');
+  assert.deepEqual(
+    driver.history().filter((entry) => entry.chat).map((entry) => entry.message),
+    ['I can trade one brick for one grain.', 'Accepted. Please confirm the exchange.', 'I am locking in the exchange now.', 'The agreement works for me.'],
+  );
+  assert.equal(driver.history().some((entry, index, history) =>
+    entry.chat && history[index + 1]?.chat && history[index + 1]?.seat === entry.seat), false,
+  'one model never produces adjacent reply and action-speech entries');
 });
 
 test('human UI labels stay conversational while model observations identify the human unambiguously', () => {
