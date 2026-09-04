@@ -1,63 +1,43 @@
-// Which models a fresh setup panel pre-seats, and how those seats survive a catalog the
-// models are missing from. One ladder of creators, each with its models in preference
-// order: the current flagship where the flagship answers in seconds, the fast sibling
-// where it does not. Every id here has played chess, poker, and Islanders headless without
-// a parse failure; a slow flagship (a reasoning Grok at minutes per Islanders turn) is
-// deliberately not the first thing a new player watches.
+// What a fresh setup panel pre-fills: a creator per seat, never a model. The seat opens on
+// that creator's popularity-sorted list with "pick a model…" showing, so the player makes
+// the one choice that matters and Start waits for it. A creator is enough to show the
+// seat's wisp, so the table comes alive as soon as anyone picks.
 //
-// Resolution walks the ladder from a seat's own rung and takes the first model the team's
-// catalog actually offers, never reusing a model, so a four-seat table spans four creators
-// and a six-seat table comes back around to each creator's next model. A seat the whole
-// ladder cannot fill stays unset, which keeps Start disabled until the player picks: a
-// visible gap beats a silently substituted model.
+// The cycle is OpenAI, Anthropic, Google, xAI, then around again, so a four-seat table
+// spans four creators and a six-seat table gives OpenAI and Anthropic a second seat.
+// A creator the team's catalog lacks is skipped for the next one that is present, and a
+// seat cycles back to an already-used creator only once every present creator has a seat.
 import type { ModelCreator } from './model-seat-picker.ts';
 
-export interface DefaultSeatRung {
-  // Catalog slugs this rung's models may appear under. xAI renamed itself on the gateway
-  // (`xai/` → `spacexai/`) and the baked catalog and live catalog can disagree, so both
-  // spellings are listed and the id found in the catalog wins.
-  models: readonly string[];
-}
+export const DEFAULT_CREATOR_CYCLE: readonly string[] = ['openai', 'anthropic', 'google', 'spacexai'];
 
-export const DEFAULT_SEAT_LADDER: readonly DefaultSeatRung[] = [
-  { models: ['openai/gpt-5.6-luna', 'openai/gpt-5.6-sol', 'openai/gpt-5.4-nano'] },
-  { models: ['anthropic/claude-sonnet-5', 'anthropic/claude-haiku-4.5'] },
-  { models: ['google/gemini-3.8-flash', 'google/gemini-2.5-flash'] },
-  {
-    models: [
-      'spacexai/grok-4.20-non-reasoning',
-      'xai/grok-4.20-non-reasoning',
-      'spacexai/grok-4.1-fast-non-reasoning',
-      'xai/grok-4.1-fast-non-reasoning',
-    ],
-  },
-];
-
-export interface DefaultSeat {
-  creator: string;
-  model: string;
-}
-
-// The ladder heads, for tools that need model ids without a catalog (self-play, match-lab
-// defaults). The live picker resolves against the catalog instead.
-export function defaultSeatModelIds(count: number): string[] {
-  return Array.from({ length: count }, (_, seat) => DEFAULT_SEAT_LADDER[seat % DEFAULT_SEAT_LADDER.length].models[0]);
-}
-
-export function resolveDefaultSeats(creators: readonly ModelCreator[], count: number): (DefaultSeat | null)[] {
-  const creatorOf = new Map<string, string>();
-  for (const creator of creators) for (const model of creator.models) creatorOf.set(model.id, creator.slug);
-  const used = new Set<string>();
-  const seats: (DefaultSeat | null)[] = [];
+export function resolveDefaultCreators(creators: readonly ModelCreator[], count: number): (string | null)[] {
+  const present = new Set(creators.filter((creator) => creator.models.length > 0).map((creator) => creator.slug));
+  const uses = new Map<string, number>();
+  const seats: (string | null)[] = [];
   for (let seat = 0; seat < count; seat++) {
-    let pick: DefaultSeat | null = null;
-    for (let step = 0; step < DEFAULT_SEAT_LADDER.length && !pick; step++) {
-      const rung = DEFAULT_SEAT_LADDER[(seat + step) % DEFAULT_SEAT_LADDER.length];
-      const model = rung.models.find((id) => creatorOf.has(id) && !used.has(id));
-      if (model) pick = { creator: creatorOf.get(model)!, model };
+    const rotated = DEFAULT_CREATOR_CYCLE.map((_, step) => DEFAULT_CREATOR_CYCLE[(seat + step) % DEFAULT_CREATOR_CYCLE.length]).filter((slug) => present.has(slug));
+    if (!rotated.length) {
+      seats.push(null);
+      continue;
     }
-    if (pick) used.add(pick.model);
+    const fewest = Math.min(...rotated.map((slug) => uses.get(slug) ?? 0));
+    const pick = rotated.find((slug) => (uses.get(slug) ?? 0) === fewest)!;
+    uses.set(pick, fewest + 1);
     seats.push(pick);
   }
   return seats;
+}
+
+// Model ids for headless tools that have no picker (self-play, match-lab defaults): one
+// fast, structured-output model per creator in the cycle, all benchmarked in every game.
+export const DEFAULT_TOOL_MODELS: readonly string[] = [
+  'openai/gpt-5.6-luna',
+  'anthropic/claude-sonnet-5',
+  'google/gemini-3.8-flash',
+  'spacexai/grok-4.20-non-reasoning',
+];
+
+export function defaultToolModels(count: number): string[] {
+  return Array.from({ length: count }, (_, seat) => DEFAULT_TOOL_MODELS[seat % DEFAULT_TOOL_MODELS.length]);
 }

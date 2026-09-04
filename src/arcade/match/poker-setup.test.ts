@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { resolveDefaultSeats } from './default-seats.ts';
-import { pickerCreators } from './models.ts';
+import { selectModelSeat } from './model-seat-picker.ts';
 
 import {
   buildPokerSetupPanel,
   modeDropdown,
   playersDropdown,
   pokerPreviewSeats,
+  pokerSeatPicker,
+  pokerSetupReady,
   pokerSetupSelection,
 } from './poker-setup.ts';
 
@@ -27,10 +28,15 @@ test('heads-up setup always selects a text model and exposes no voice controls',
     modeDropdown.pick(0);
     playersDropdown.pick(0);
 
+    // The seat opens on its default creator with the model left to pick: the wisp previews
+    // by creator while Start waits.
     assert.deepEqual(pokerPreviewSeats().map((seat) => seat.creator), [undefined, 'anthropic']);
+    assert.equal(pokerSetupReady(), false);
+    assert.equal(pokerSetupSelection(), null);
+    selectModelSeat(pokerSeatPicker(1), 'anthropic', 'anthropic/claude-haiku-4.5');
     assert.deepEqual(pokerSetupSelection(), [
       { kind: 'human' },
-      { kind: 'ai', model: resolveDefaultSeats(pickerCreators(), 6)[1]!.model, runtime: 'text' },
+      { kind: 'ai', model: 'anthropic/claude-haiku-4.5', runtime: 'text' },
     ]);
 
     const visibleText = collectNodes(buildPokerSetupPanel()).flatMap((node) => node.text ?? []);

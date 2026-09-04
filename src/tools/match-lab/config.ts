@@ -10,7 +10,7 @@ const DEFAULT_MODELS: Record<MatchLabGame, string[]> = {
   chess: ['anthropic/claude-haiku-4.5', 'openai/gpt-5.4-nano'],
   islanders: DEFAULT_ISLANDERS_MODELS,
   poker: [
-    'xai/grok-4.1-fast-non-reasoning',
+    'spacexai/grok-4.1-fast-non-reasoning',
     'anthropic/claude-haiku-4.5',
     'openai/gpt-5.4-nano',
     'google/gemini-2.5-flash',

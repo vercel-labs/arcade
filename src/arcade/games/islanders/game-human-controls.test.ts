@@ -118,7 +118,8 @@ test('Islanders setup uses the shared rounded new-match CTA', () => {
   const start = findNode(root, 'islanders-start');
   assert.equal(start?.text, 'new match');
   assert.equal(start?.style.border, 'round');
-  assert.equal(start?.style.color, ARCADE_OUTLINE_CONTROL.neutralText);
+  assert.equal(start?.disabled, true, 'seats open with creators only, so the CTA waits for model picks');
+  assert.notEqual(start?.style.color, ARCADE_OUTLINE_CONTROL.neutralText, 'and reads as inert until then');
 });
 
 test('setup menu stays at the true top-right even when a previous sidebar remains open', () => {

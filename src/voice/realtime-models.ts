@@ -14,7 +14,7 @@ export const REALTIME_MODELS: readonly RealtimeModelInfo[] = [
   { id: 'openai/gpt-realtime-2', name: 'GPT Realtime 2', creator: 'openai', creatorName: 'OpenAI' },
   { id: 'openai/gpt-realtime-1.5', name: 'GPT Realtime 1.5', creator: 'openai', creatorName: 'OpenAI' },
   { id: 'openai/gpt-realtime-mini', name: 'GPT Realtime Mini', creator: 'openai', creatorName: 'OpenAI' },
-  { id: 'xai/grok-voice-think-fast-1.0', name: 'Grok Voice Think Fast 1.0', creator: 'xai', creatorName: 'xAI', earlyAccess: true },
+  { id: 'spacexai/grok-voice-think-fast-1.0', name: 'Grok Voice Think Fast 1.0', creator: 'spacexai', creatorName: 'xAI', earlyAccess: true },
 ];
 
 export const DEFAULT_REALTIME_MODEL_ID = REALTIME_MODELS[0].id;

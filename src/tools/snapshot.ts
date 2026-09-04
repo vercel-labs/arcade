@@ -1325,7 +1325,7 @@ function pokerSnapshot(): void {
     mountPokerGameHud(screen); // mounts the notes ScrollBox + observer dropdown so their Slots resolve
     const observers = args.includes('longnames')
       ? [
-          { label: 'grok-4.1-fast-non-reasoning', creator: 'xai' },
+          { label: 'grok-4.1-fast-non-reasoning', creator: 'spacexai' },
           { label: 'claude-opus-4.8', creator: 'anthropic' },
           { label: 'gpt-5.4-nano', creator: 'openai' },
         ]
