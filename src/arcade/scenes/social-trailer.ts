@@ -13,13 +13,13 @@ import { BrowserChessBoardShowcase } from '../../web/browser-mini-scenes.ts';
 import type { BrowserMiniSceneOptions } from '../../web/mini-scene.ts';
 import type { CinematicOrbitCamera } from '../../cinematic/camera.ts';
 import { islandersCinematicCamera } from '../../cinematic/camera.ts';
+import { GLYPH_SUPERSAMPLE } from '../render-quality.ts';
+import { islandersWaterMesh as productionIslandersWaterMesh } from '../games/islanders/water.ts';
 
 export const SOCIAL_TRAILER_SECONDS = 30;
 export const SOCIAL_TRAILER_INK_SECONDS = 1.5;
 export const SOCIAL_TRAILER_RENDER_STYLE = {
-  // The film renders continuously at terminal cadence; 2x is the intentional performance
-  // exception. Lighting, materials, and shadow glyphs still come from the production CLI.
-  rasterScale: 2,
+  rasterScale: GLYPH_SUPERSAMPLE,
   productionLighting: true,
   shadowGlyphs: true,
 } as const;
@@ -126,12 +126,8 @@ export function socialTrailerSample(elapsedSeconds: number): SocialTrailerSample
 
 /** CLI-only, self-editing social film. Shared renderers stay at native speed. */
 export class SocialTrailerDirector {
-  private readonly hookIslanders = new BrowserIslandersCinematic(socialTrailerIslandersHookCamera, TRAILER_RASTER_SCALE, {
-    productionLighting: SOCIAL_TRAILER_RENDER_STYLE.productionLighting,
-  });
-  private readonly islanders = new BrowserIslandersCinematic(socialTrailerIslandersCamera, TRAILER_RASTER_SCALE, {
-    productionLighting: SOCIAL_TRAILER_RENDER_STYLE.productionLighting,
-  });
+  private readonly hookIslanders: BrowserIslandersCinematic;
+  private readonly islanders: BrowserIslandersCinematic;
   private readonly poker: BrowserPokerCinematic;
   private readonly chess: BrowserChessBoardShowcase;
   private readonly covers: SocialTrailerCoverFlow;
@@ -141,8 +137,20 @@ export class SocialTrailerDirector {
   private readonly transitionPlates = new Map<string, MovingTransitionPlates>();
   private elapsed = 0;
   private preparation: Promise<void> | null = null;
+  private readonly wispRenderers: NonNullable<BrowserMiniSceneOptions['wispRenderer']>[];
 
   constructor(options: SocialTrailerOptions = {}) {
+    this.wispRenderers = [...new Set([options.chess?.wispRenderer, options.poker?.wispRenderer].filter((renderer): renderer is NonNullable<typeof renderer> => renderer !== undefined))];
+    const water = {
+      full: productionIslandersWaterMesh(),
+      settled: productionIslandersWaterMesh({ omitSettledLand: true }),
+    };
+    this.hookIslanders = new BrowserIslandersCinematic(socialTrailerIslandersHookCamera, TRAILER_RASTER_SCALE, {
+      productionLighting: SOCIAL_TRAILER_RENDER_STYLE.productionLighting,
+    }, water);
+    this.islanders = new BrowserIslandersCinematic(socialTrailerIslandersCamera, TRAILER_RASTER_SCALE, {
+      productionLighting: SOCIAL_TRAILER_RENDER_STYLE.productionLighting,
+    }, water);
     this.poker = new BrowserPokerCinematic({
       ...options.poker,
       rasterScale: TRAILER_RASTER_SCALE,
@@ -154,7 +162,7 @@ export class SocialTrailerDirector {
       rasterScale: TRAILER_RASTER_SCALE,
       productionLighting: SOCIAL_TRAILER_RENDER_STYLE.productionLighting,
       shadowGlyphs: SOCIAL_TRAILER_RENDER_STYLE.shadowGlyphs,
-    });
+    }, true);
     this.chess.setChromeVisible(false);
     this.covers = new SocialTrailerCoverFlow(options.covers);
   }
@@ -164,12 +172,21 @@ export class SocialTrailerDirector {
     return this.preparation;
   }
 
-  reset(): void { this.elapsed = 0; this.transitionPlates.clear(); }
-  seek(seconds: number): void { this.elapsed = clamp(seconds, 0, SOCIAL_TRAILER_SECONDS); }
+  reset(): void { this.resetVisualState(); this.elapsed = 0; }
+  seek(seconds: number): void {
+    const elapsed = clamp(seconds, 0, SOCIAL_TRAILER_SECONDS);
+    if (elapsed < this.elapsed) this.resetVisualState();
+    this.elapsed = elapsed;
+  }
   step(seconds: number): void { this.elapsed = Math.min(SOCIAL_TRAILER_SECONDS, this.elapsed + Math.max(0, seconds)); }
   done(): boolean { return this.elapsed >= SOCIAL_TRAILER_SECONDS; }
   progress(): number { return this.elapsed / SOCIAL_TRAILER_SECONDS; }
   sample(): SocialTrailerSample { return socialTrailerSample(this.elapsed); }
+
+  private resetVisualState(): void {
+    this.transitionPlates.clear();
+    for (const renderer of this.wispRenderers) renderer.reset?.();
+  }
 
   frame(cols: number, rows: number): Surface {
     const sample = this.sample();

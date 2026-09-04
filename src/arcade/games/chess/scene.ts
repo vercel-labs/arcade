@@ -29,6 +29,10 @@ import {
   CHESS_PIECE_NAMES,
   measureChessPieceMeshes,
   parseChessPieceMesh,
+  buildChessBoardMeshes,
+  CHESS_CAMERA_FOVY,
+  CHESS_PIECE_TALLEST,
+  CHESS_SCENE_BACKGROUND,
   type ChessPieceMeshes,
 } from '../../../game-visuals/chess/index.ts';
 import { chessJailPosition, chessMovePosition, chessSquarePosition, planChessMove } from '../../../game-visuals/chess/move-animation.ts';
@@ -67,8 +71,8 @@ import { asset } from '../../assets.ts';
 
 const pieceMeshCache = new ResourceCache<string, Mesh>();
 
-const FOVY = (50 * Math.PI) / 180;
-const TALLEST = 1.7; // world height of the tallest piece (king)
+const FOVY = CHESS_CAMERA_FOVY;
+const TALLEST = CHESS_PIECE_TALLEST;
 
 // Single muted pastel-yellow used for the selected-square tint (light and dark
 // squares alike) and the legal-move dots.
@@ -239,7 +243,7 @@ export class ChessGameScene {
     this.meshByType[QUEEN] = meshes.queen;
     this.meshByType[KING] = meshes.king;
 
-    const board = this.buildBoard();
+    const board = buildChessBoardMeshes(this.square);
     this.lightSquares = board.light;
     this.darkSquares = board.dark;
     this.base = board.base;
@@ -622,7 +626,7 @@ export class ChessGameScene {
   // `t` (seconds) drives the match HUD wisp pulse; the board itself is static, so
   // it defaults to 0 for the snapshot/bench tools that render a single still frame.
   renderScene(target: RenderTarget, t = 0): void {
-    target.clear(10, 11, 14);
+    target.clear(CHESS_SCENE_BACKGROUND.x, CHESS_SCENE_BACKGROUND.y, CHESS_SCENE_BACKGROUND.z);
     this.authoredPool.begin();
     const camera = this.cam.toCamera({ fovy: FOVY, near: 0.05, far: 400 });
     const eye = camera.eye;
@@ -749,22 +753,6 @@ export class ChessGameScene {
     this.dirty = this.anim !== null || justSettled;
   }
 
-  private buildBoard(): { light: Mesh; dark: Mesh; base: Mesh } {
-    const light: Mesh = { vertices: [], indices: [] };
-    const dark: Mesh = { vertices: [], indices: [] };
-    const half = this.square / 2;
-    for (let f = 0; f < 8; f++) {
-      for (let r = 0; r < 8; r++) {
-        const c = this.squareCenter(r * 16 + f);
-        const mesh = (f + r) % 2 === 1 ? light : dark; // a1 (f0,r0) is dark
-        quad(mesh, c.x - half, c.z - half, c.x + half, c.z + half, 0);
-      }
-    }
-    const base: Mesh = { vertices: [], indices: [] };
-    const ext = 4 * this.square + this.square * 0.35;
-    quad(base, -ext, -ext, ext, ext, -0.02);
-    return { light, dark, base };
-  }
 }
 
 // Append a flat axis-aligned quad (two triangles, +Y normal) at height y.

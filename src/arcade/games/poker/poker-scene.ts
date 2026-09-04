@@ -51,7 +51,7 @@ import {
   playerColumns,
   takeChipColumns,
 } from '../../../game-visuals/poker/chips.ts';
-import { POKER_TABLE_AMBIENT as TABLE_AMBIENT, POKER_TABLE_LIGHT as TABLE_LIGHT } from '../../../game-visuals/poker/table.ts';
+import { POKER_SCENE_BACKGROUND, POKER_TABLE_AMBIENT as TABLE_AMBIENT, POKER_TABLE_LIGHT as TABLE_LIGHT } from '../../../game-visuals/poker/table.ts';
 import {
   POKER_BOARD_Z as BOARD_Z,
   POKER_CARD_LIFT as CARD_LIFT,
@@ -457,7 +457,7 @@ export class PokerGameScene {
   }
 
   private drawStaticEnvironment(target: RenderTarget, camera: ReturnType<OrbitCamera['toCamera']>, chairCount: number): void {
-    target.clear(6, 10, 8);
+    target.clear(POKER_SCENE_BACKGROUND.x, POKER_SCENE_BACKGROUND.y, POKER_SCENE_BACKGROUND.z);
     this.queueTable();
     this.queueChairRing(chairCount);
     this.sceneRenderer.render(target, this.authoredScene, camera);

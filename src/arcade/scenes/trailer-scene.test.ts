@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ARCADE_CATALOGUE } from '../../cinematic/catalogue.ts';
-import { buildTrailerOverlay, SOCIAL_TRAILER_SECONDS, trailerCoverTextures, trailerWispTextures, TrailerScene } from './trailer-scene.ts';
+import { SOCIAL_TRAILER_SECONDS, trailerCoverTextures, TrailerScene } from './trailer-scene.ts';
 import { SOCIAL_TRAILER_BEATS, SOCIAL_TRAILER_INK_SECONDS, SOCIAL_TRAILER_RENDER_STYLE, SocialTrailerDirector, socialTrailerCoverPosition, socialTrailerIslandersCamera, socialTrailerIslandersElapsed, socialTrailerIslandersHookCamera, socialTrailerSample } from './social-trailer.ts';
-import { layout } from '../../tui/layout.ts';
 import { ISLANDERS_GAMEPLAY_START, islandersCinematicGameplay } from '../../cinematic/islanders-choreography.ts';
 import { CHESS_LOOP_SECONDS, POKER_LOOP_SECONDS, pokerLoopState } from '../../cinematic/scripted-games.ts';
 import { islandersCinematicCamera } from '../../cinematic/camera.ts';
 import { BrowserIslandersCinematic, BrowserPokerCinematic } from '../../web/browser-game-cinematics.ts';
 import { BrowserChessBoardShowcase } from '../../web/browser-mini-scenes.ts';
+import { GLYPH_SUPERSAMPLE } from '../render-quality.ts';
+import { islandersWaterMesh as productionIslandersWaterMesh } from '../games/islanders/water.ts';
+import type { Texture } from '../../engine/texture-data.ts';
+import { TrailerCreatorWisps } from './trailer-wisps.ts';
 
 test('Trailer advances through its CLI-only 30-second social cut and resets for replay', () => {
   const trailer = new TrailerScene();
@@ -29,6 +32,37 @@ test('Trailer supports wall-clock seeking without cumulative frame-step drift', 
   trailer.seek(30);
   assert.equal(trailer.done(), true);
   assert.equal(trailer.progress(), 1);
+});
+
+test('Trailer replay and backward seeking reset production wisp state', async () => {
+  const trailer = new TrailerScene();
+  await trailer.prepare();
+  assert.equal(trailer.start(), true);
+  trailer.seek(14);
+  const first = surfaceSignature(trailer.frame(80, 30));
+  assert.equal(trailer.start(), true);
+  trailer.seek(14);
+  assert.equal(surfaceSignature(trailer.frame(80, 30)), first);
+  trailer.seek(20);
+  trailer.frame(80, 30);
+  trailer.seek(14);
+  assert.equal(surfaceSignature(trailer.frame(80, 30)), first);
+
+  const sequential = new TrailerScene();
+  await sequential.prepare();
+  assert.equal(sequential.start(), true);
+  sequential.seek(13);
+  sequential.frame(80, 30);
+  sequential.seek(14);
+  assert.equal(surfaceSignature(sequential.frame(80, 30)), first, 'absolute time must not depend on rendered-frame history');
+});
+
+test('production wisp preparation accumulates creators for a shared renderer', async () => {
+  const wisps = new TrailerCreatorWisps(1, {});
+  await wisps.prepare(['xai', 'google']);
+  await wisps.prepare(['anthropic']);
+  const prepared = (wisps as unknown as { preparedCreators: string[] }).preparedCreators;
+  assert.deepEqual(prepared, ['xai', 'google', 'anthropic']);
 });
 
 test('Trailer construction defers synchronous asset loading until playback or preparation', () => {
@@ -59,6 +93,15 @@ test('equal hooks reach the Islanders landing and complete Poker bridge before t
   assert.ok(shuffleClock > 3.05, 'Poker hook should complete the bridge and cascade before cutting');
 });
 
+test('Poker shuffle uses the host-provided production face artwork', () => {
+  const magenta: Texture = { width: 1, height: 1, data: new Uint8Array([255, 0, 255, 255]) };
+  const options = { rasterScale: GLYPH_SUPERSAMPLE, productionLighting: true, shadowGlyphs: true } as const;
+  const args = [48, 20, 0.02, 0.6, 0.6 / POKER_LOOP_SECONDS, 0] as const;
+  const fallback = surfaceSignature(new BrowserPokerCinematic(options).frame(...args));
+  const injected = surfaceSignature(new BrowserPokerCinematic({ ...options, faceTexture: () => magenta }).frame(...args));
+  assert.notEqual(injected, fallback, 'the exposed riffle and bridge faces must use the injected provider');
+});
+
 test('CLI social trailer owns its moving cuts without changing the shared browser timeline', async () => {
   const [director, livingTitle, timeline] = await Promise.all([
     import('node:fs/promises').then(({ readFile }) => readFile(new URL('./social-trailer.ts', import.meta.url), 'utf8')),
@@ -75,7 +118,7 @@ test('CLI social trailer owns its moving cuts without changing the shared browse
 test('CLI Trailer routes production game presentation without changing website renderer defaults', async () => {
   const livingTitle = await import('node:fs/promises').then(({ readFile }) => readFile(new URL('../../web/living-title-scene.ts', import.meta.url), 'utf8'));
   assert.deepEqual(SOCIAL_TRAILER_RENDER_STYLE, {
-    rasterScale: 2,
+    rasterScale: GLYPH_SUPERSAMPLE,
     productionLighting: true,
     shadowGlyphs: true,
   });
@@ -91,6 +134,7 @@ test('CLI Trailer routes production game presentation without changing website r
       socialTrailerIslandersHookCamera,
       SOCIAL_TRAILER_RENDER_STYLE.rasterScale,
       { productionLighting: SOCIAL_TRAILER_RENDER_STYLE.productionLighting },
+      { full: productionIslandersWaterMesh(), settled: productionIslandersWaterMesh({ omitSettledLand: true }) },
     ).frame(cols, rows, 0.54, islandersSeconds, islandersSeconds)),
     'Islanders hook must render with the Trailer production style',
   );
@@ -111,7 +155,7 @@ test('CLI Trailer routes production game presentation without changing website r
     rasterScale: SOCIAL_TRAILER_RENDER_STYLE.rasterScale,
     productionLighting: SOCIAL_TRAILER_RENDER_STYLE.productionLighting,
     shadowGlyphs: SOCIAL_TRAILER_RENDER_STYLE.shadowGlyphs,
-  }, cols, rows);
+  }, cols, rows, true);
   assert.equal(surfaceSignature(director.frame(cols, rows)), trailerChess, 'Chess hook must render with the Trailer production style');
 
   const islandersArgs = [cols, rows, 0.54, islandersSeconds, islandersSeconds] as const;
@@ -137,8 +181,8 @@ test('CLI Trailer routes production game presentation without changing website r
   assert.notEqual(browserChess, chessFrame({ productionLighting: true, shadowGlyphs: true }, cols, rows));
 });
 
-function chessFrame(options: ConstructorParameters<typeof BrowserChessBoardShowcase>[0], cols: number, rows: number): string {
-  const chess = new BrowserChessBoardShowcase(options);
+function chessFrame(options: ConstructorParameters<typeof BrowserChessBoardShowcase>[0], cols: number, rows: number, exactDimensions = false): string {
+  const chess = new BrowserChessBoardShowcase(options, exactDimensions);
   chess.setChromeVisible(false);
   chess.setCinematicState(0.4, 5.15 / CHESS_LOOP_SECONDS);
   return surfaceSignature(chess.frame(cols, rows, 5.15).surface);
@@ -242,16 +286,13 @@ test('Trailer bounds resize-keyed transition plates', async () => {
   assert.ok(scene.transitionPlates.size <= 8);
 });
 
-test('Trailer loads every packaged cover and creator mark in Node', () => {
+test('Trailer loads every packaged cover in Node', () => {
   const covers = trailerCoverTextures();
   assert.deepEqual(Object.keys(covers), ARCADE_CATALOGUE.map(({ id }) => id));
   for (const texture of Object.values(covers)) assert.ok(texture.width > 1 && texture.height > 1 && texture.data.some((channel) => channel !== 0));
-  const wisps = trailerWispTextures();
-  assert.deepEqual(Object.keys(wisps), ['xai', 'openai', 'anthropic', 'google', 'deepseek']);
-  for (const texture of Object.values(wisps)) assert.ok(texture.data.some((channel, index) => index % 4 === 3 && channel > 0));
 });
 
-test('Trailer frame contains no text beyond its separate Menu overlay', () => {
+test('Trailer frame contains no text or controls', () => {
   const trailer = new TrailerScene();
   trailer.step(22);
   const surface = trailer.frame(100, 40);
@@ -259,23 +300,20 @@ test('Trailer frame contains no text beyond its separate Menu overlay', () => {
   for (const phrase of ['Every player', 'has a tell', 'Discover the hidden tendencies', 'Chess', 'coming soon']) assert.doesNotMatch(text, new RegExp(phrase));
 });
 
-test('Trailer exposes only the menu control', () => {
-  const root = buildTrailerOverlay(100, 40, () => {});
-  layout(root, { x: 0, y: 0, w: 100, h: 40 });
-  const ids: string[] = [];
-  const visit = (node: typeof root): void => {
-    if (node.id) ids.push(node.id);
-    for (const child of node.children ?? []) visit(child);
-  };
-  visit(root);
-  assert.deepEqual(ids, ['trailer-menu-button']);
+test('Trailer renders Chess at the exact requested compact grid', () => {
+  const chess = new BrowserChessBoardShowcase({ productionLighting: true, shadowGlyphs: true }, true);
+  const frame = chess.frame(30, 18).surface;
+  assert.equal(frame.cols, 30);
+  assert.equal(frame.rows, 18);
 });
 
-test('the app reserves Trailer input for Menu while retaining the hard exit hatch', async () => {
+test('the app gives Trailer only Escape-to-home and the hard exit hatch', async () => {
   const main = await import('node:fs/promises').then(({ readFile }) => readFile(new URL('../main.ts', import.meta.url), 'utf8'));
-  const trailerGate = main.slice(main.indexOf("if (mode === 'trailer') {"), main.indexOf("if (failureNotice)"));
-  assert.match(trailerGate, /ev\.name === 'escape' \|\| ev\.name === 'm'/);
-  assert.match(trailerGate, /else ui\.handleKey\(ev\)/);
   const keyHandler = main.slice(main.indexOf('function onKeyImpl'), main.indexOf('function onMouseImpl'));
+  const trailerGate = keyHandler.slice(keyHandler.indexOf("if (mode === 'trailer') {"), keyHandler.indexOf("if (failureNotice)"));
+  assert.match(trailerGate, /ev\.name === 'escape'/);
+  assert.doesNotMatch(trailerGate, /ev\.name === 'm'|ui\.handleKey/);
+  assert.match(main, /if \(mode === 'trailer'\) trailerScene = null/);
+  assert.doesNotMatch(main, /buildTrailerOverlay|trailer-menu-button/);
   assert.ok(keyHandler.indexOf("ev.ctrl && ev.name === 'c'") < keyHandler.indexOf("if (mode === 'trailer') {"));
 });

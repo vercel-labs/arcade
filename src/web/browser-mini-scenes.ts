@@ -67,11 +67,11 @@ export class BrowserChessBoardShowcase implements BrowserMiniScene {
   private readonly loadPieceMeshes: () => Promise<void>;
   private preparation: Promise<void> | null = null;
 
-  constructor(options: BrowserMiniSceneOptions = {}) {
+  constructor(options: BrowserMiniSceneOptions = {}, exactDimensions = false) {
     this.arcade = new BrowserArcade(options.wispTextures, options.rasterScale, {
       shadowGlyphs: options.shadowGlyphs,
       productionLighting: options.productionLighting,
-    });
+    }, options.wispRenderer, exactDimensions);
     this.arcade.openChess();
     this.loadPieceMeshes = async () => this.arcade.setPieceMeshes(await loadChessMeshes(options));
   }

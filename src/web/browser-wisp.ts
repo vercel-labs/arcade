@@ -7,8 +7,9 @@ import { quad, type Mesh } from '../engine/mesh.ts';
 import { rasterize } from '../engine/raster.ts';
 import type { Texture } from '../engine/texture-data.ts';
 import { drawWispFlame } from '../game-visuals/wisp.ts';
+import { cinematicWispVisible, type CinematicCreator, type CinematicWispRenderer } from '../cinematic/wisp-renderer.ts';
 
-export type CinematicCreator = 'xai' | 'openai' | 'anthropic' | 'google' | 'deepseek';
+export { cinematicWispVisible, type CinematicCreator, type CinematicWispRenderer } from '../cinematic/wisp-renderer.ts';
 
 export const CINEMATIC_CREATOR_TINT: Record<CinematicCreator, Vec3> = {
   xai: { x: 126, y: 145, z: 176 },
@@ -29,7 +30,7 @@ const LOGO_URLS: Record<CinematicCreator, string> = {
 };
 
 /** Browser counterpart to Arcade's creator Wisp: production flame + masked logo. */
-export class BrowserCreatorWisps {
+export class BrowserCreatorWisps implements CinematicWispRenderer {
   private readonly textures: Map<CinematicCreator, Texture>;
   private preparation: Promise<void> | null = null;
   private readonly mark: Mesh = quad(1);
@@ -58,7 +59,7 @@ export class BrowserCreatorWisps {
     // is a screen-space effect. Never divide a behind/near-camera anchor into a
     // giant viewport-filling flame; hide the complete wisp until its billboard
     // is safely in front of the lens.
-    if (center.w <= scale * 3.5) return;
+    if (!cinematicWispVisible(vp, anchor, scale)) return;
     const edge = project(vp, { x: anchor.x + camera.up.x * scale, y: anchor.y + camera.up.y * scale, z: anchor.z + camera.up.z * scale }, target.width, target.height);
     const radius = Math.max(7, Math.hypot(edge.x - center.x, edge.y - center.y));
     drawWispFlame(target, center.x, center.y, radius, tint, time, phase, { glow: 0.9, energy: 0.72, emphasis: 0.2 });

@@ -33,6 +33,10 @@ import {
   Surface,
 } from '../engine/surface.ts';
 import {
+  buildChessBoardMeshes,
+  CHESS_CAMERA_FOVY,
+  CHESS_PIECE_TALLEST,
+  CHESS_SCENE_BACKGROUND,
   measureChessPieceMeshes,
   chessMovePosition,
   chessJailPosition,
@@ -57,7 +61,7 @@ import {
 } from '../game-visuals/chess/lighting.ts';
 import { ChessState } from '../rules/chess/chess.ts';
 import { BrowserCreatorWisps } from './browser-wisp.ts';
-import type { CinematicCreator } from './browser-wisp.ts';
+import type { CinematicCreator, CinematicWispRenderer } from '../cinematic/wisp-renderer.ts';
 import type { Texture } from '../engine/texture-data.ts';
 import {
   BLACK,
@@ -137,26 +141,30 @@ export class BrowserArcade {
   private rows = 52;
   private pieceMeshes: ChessPieceMeshes | null = null;
   private importedPieceScale = 1;
+  private productionSquare = 1.05;
+  private productionBoard = buildChessBoardMeshes(this.productionSquare);
   private cinematic: { move: Move; progress: number; plan: ChessMovePlan } | null = null;
   private whiteJail: Array<{ type: PieceType; color: number }> = [];
   private blackJail: Array<{ type: PieceType; color: number }> = [];
   private cinematicTime = 0;
   private hideChrome = false;
-  private readonly wisps: BrowserCreatorWisps;
+  private readonly wisps: CinematicWispRenderer;
 
   constructor(
     wispTextures: Partial<Record<CinematicCreator, Texture>> = {},
     private readonly rasterScale = 3,
     private readonly renderStyle: { shadowGlyphs?: boolean; productionLighting?: boolean } = {},
+    wispRenderer?: CinematicWispRenderer,
+    private readonly exactDimensions = false,
   ) {
-    this.wisps = new BrowserCreatorWisps(wispTextures);
+    this.wisps = wispRenderer ?? new BrowserCreatorWisps(wispTextures);
   }
 
   prepareWisps(): Promise<void> { return this.wisps.prepare(['anthropic', 'openai']); }
 
   frame(cols = this.cols, rows = this.rows, timeSeconds = 0): BrowserArcadeFrame {
-    this.cols = Math.max(48, cols);
-    this.rows = Math.max(26, rows);
+    this.cols = this.exactDimensions ? Math.max(1, cols) : Math.max(48, cols);
+    this.rows = this.exactDimensions ? Math.max(1, rows) : Math.max(26, rows);
     this.cinematicTime = timeSeconds;
     return this.screen === 'launcher' ? this.launcherFrame() : this.chessFrame();
   }
@@ -222,7 +230,12 @@ export class BrowserArcade {
   /** Swap the temporary procedural markers for Arcade's production Chess OBJ set. */
   setPieceMeshes(meshes: ChessPieceMeshes): void {
     this.pieceMeshes = meshes;
-    this.importedPieceScale = measureChessPieceMeshes(meshes, 1.55).scale;
+    const metrics = measureChessPieceMeshes(meshes, this.renderStyle.productionLighting ? CHESS_PIECE_TALLEST : 1.55);
+    this.importedPieceScale = metrics.scale;
+    if (this.renderStyle.productionLighting) {
+      this.productionSquare = metrics.square;
+      this.productionBoard = buildChessBoardMeshes(metrics.square);
+    }
   }
 
   cycleDisplayMode(): BrowserDisplayMode {
@@ -337,8 +350,13 @@ export class BrowserArcade {
   private renderTarget(): RenderTarget {
     const target = this.displayMode === 'pixel' ? this.pixelTarget : this.asciiTarget;
     target.resize(this.displayMode === 'pixel' ? this.cols : this.cols * this.rasterScale, this.displayMode === 'pixel' ? this.rows * 2 : this.rows * this.rasterScale * 2);
-    target.clear(0, 0, 0);
-    const camera = this.camera.toCamera({ fovy: (48 * Math.PI) / 180, near: 0.05, far: 100 });
+    const production = this.renderStyle.productionLighting === true;
+    target.clear(
+      production ? CHESS_SCENE_BACKGROUND.x : 0,
+      production ? CHESS_SCENE_BACKGROUND.y : 0,
+      production ? CHESS_SCENE_BACKGROUND.z : 0,
+    );
+    const camera = this.camera.toCamera({ fovy: production ? CHESS_CAMERA_FOVY : (48 * Math.PI) / 180, near: 0.05, far: 100 });
     const { viewProjection } = cameraMatrices(camera, target.width / target.height);
     const lightDir = normalize3({ x: -0.4, y: 0.9, z: 0.5 });
     const draw = (mesh: Mesh, model: Mat4, color: RGB, ambient = 0.28) => {
@@ -360,17 +378,22 @@ export class BrowserArcade {
         wrap: 0.22,
       });
     };
-    draw(this.boardMesh, mat4Multiply(mat4Translate(0, -0.28, 0), mat4Scale(9.3, 0.35, 9.3)), FRAME, 0.42);
+    if (production) {
+      const identity: Mat4 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+      draw(this.productionBoard.base, identity, FRAME);
+      draw(this.productionBoard.dark, identity, DARK);
+      draw(this.productionBoard.light, identity, LIGHT);
+    } else draw(this.boardMesh, mat4Multiply(mat4Translate(0, -0.28, 0), mat4Scale(9.3, 0.35, 9.3)), FRAME, 0.42);
     for (let rank = 0; rank < 8; rank++) {
       for (let file = 0; file < 8; file++) {
         const sq = square(file, rank);
-        const x = (file - 3.5) * 1.05;
-        const z = (3.5 - rank) * 1.05;
+        const position = production ? chessSquarePosition(sq, this.productionSquare, false) : squarePosition(sq);
+        const { x, z } = position;
         const selected = this.selected === sq;
         const targetMove = this.targets.has(sq);
-        draw(
+        if (!production || selected || targetMove) draw(
           this.boardMesh,
-          mat4Multiply(mat4Translate(x, 0, z), mat4Scale(1, targetMove ? 0.16 : 0.1, 1)),
+          mat4Multiply(mat4Translate(x, production ? 0.004 : 0, z), mat4Scale(production ? this.productionSquare * 0.95 : 1, targetMove ? 0.16 : 0.1, production ? this.productionSquare * 0.95 : 1)),
           selected ? GOLD : targetMove ? [110, 160, 128] : (file + rank) % 2 ? LIGHT : DARK,
           0.5,
         );
@@ -379,19 +402,21 @@ export class BrowserArcade {
         if (this.cinematic?.plan.segments.some((segment) => segment.hideSq === sq)) continue;
         const type = pieceType(encoded) as PieceType;
         const color = pieceColor(encoded);
-        this.drawPiece(target, viewProjection, camera.eye, type, color, x, 0.08, z);
+        this.drawPiece(target, viewProjection, camera.eye, type, color, x, production ? 0 : 0.08, z);
       }
     }
-    for (let index = 0; index < this.whiteJail.length; index++) { const entry = this.whiteJail[index]; const p = this.jailPosition(WHITE, index); this.drawPiece(target, viewProjection, camera.eye, entry.type, entry.color, p.x, 0.08, p.z); }
-    for (let index = 0; index < this.blackJail.length; index++) { const entry = this.blackJail[index]; const p = this.jailPosition(BLACK, index); this.drawPiece(target, viewProjection, camera.eye, entry.type, entry.color, p.x, 0.08, p.z); }
+    const pieceLift = production ? 0 : 0.08;
+    for (let index = 0; index < this.whiteJail.length; index++) { const entry = this.whiteJail[index]; const p = this.jailPosition(WHITE, index); this.drawPiece(target, viewProjection, camera.eye, entry.type, entry.color, p.x, pieceLift, p.z); }
+    for (let index = 0; index < this.blackJail.length; index++) { const entry = this.blackJail[index]; const p = this.jailPosition(BLACK, index); this.drawPiece(target, viewProjection, camera.eye, entry.type, entry.color, p.x, pieceLift, p.z); }
     if (this.cinematic) for (const segment of this.cinematic.plan.segments) {
       const position = chessMovePosition(segment, this.cinematic.progress);
-      this.drawPiece(target, viewProjection, camera.eye, segment.type, segment.color, position.x, position.y + 0.08, position.z);
+      this.drawPiece(target, viewProjection, camera.eye, segment.type, segment.color, position.x, position.y + pieceLift, position.z);
     }
     const whiteKing = movingKingPosition(this.cinematic?.plan ?? null, WHITE, this.cinematic?.progress ?? 0) ?? this.kingPosition(WHITE);
     const blackKing = movingKingPosition(this.cinematic?.plan ?? null, BLACK, this.cinematic?.progress ?? 0) ?? this.kingPosition(BLACK);
-    if (whiteKing) this.wisps.draw(target, viewProjection, camera, 'anthropic', { ...whiteKing, y: 2.7 }, this.cinematicTime, 0, 0.58);
-    if (blackKing) this.wisps.draw(target, viewProjection, camera, 'openai', { ...blackKing, y: 2.7 }, this.cinematicTime, 1.7, 0.58);
+    const wispScale = production ? 0.6 : 0.58;
+    if (whiteKing) this.wisps.draw(target, viewProjection, camera, 'anthropic', { ...whiteKing, y: 2.7 }, this.cinematicTime, 0, wispScale);
+    if (blackKing) this.wisps.draw(target, viewProjection, camera, 'openai', { ...blackKing, y: 2.7 }, this.cinematicTime, 1.7, wispScale);
     return target;
   }
 
@@ -415,13 +440,13 @@ export class BrowserArcade {
     for (let rank = 0; rank < 8; rank++) for (let file = 0; file < 8; file++) {
       const sq = square(file, rank);
       const piece = this.game.board.squares[sq];
-      if (piece && pieceType(piece) === KING && pieceColor(piece) === color) return squarePosition(sq);
+      if (piece && pieceType(piece) === KING && pieceColor(piece) === color) return this.renderStyle.productionLighting ? chessSquarePosition(sq, this.productionSquare, false) : squarePosition(sq);
     }
     return null;
   }
 
-  private planMove(move: Move): ChessMovePlan { return planChessMove(move, { square: 1.05, whiteJailCount: this.whiteJail.length, blackJailCount: this.blackJail.length }); }
-  private jailPosition(color: number, index: number): { x: number; z: number } { return chessJailPosition(color as 0 | 1, index, 1.05); }
+  private planMove(move: Move): ChessMovePlan { return planChessMove(move, { square: this.renderStyle.productionLighting ? this.productionSquare : 1.05, whiteJailCount: this.whiteJail.length, blackJailCount: this.blackJail.length }); }
+  private jailPosition(color: number, index: number): { x: number; z: number } { return chessJailPosition(color as 0 | 1, index, this.renderStyle.productionLighting ? this.productionSquare : 1.05); }
 
   private tintedMesh(mesh: Mesh, color: RGB): Mesh {
     const key = color.join(',');
@@ -439,13 +464,15 @@ export class BrowserArcade {
 
   private squareAt(ndcX: number, ndcY: number): number {
     const pixelHeight = this.rows * 2;
-    const camera = this.camera.toCamera({ fovy: (48 * Math.PI) / 180, near: 0.05, far: 100 });
+    const production = this.renderStyle.productionLighting === true;
+    const camera = this.camera.toCamera({ fovy: production ? CHESS_CAMERA_FOVY : (48 * Math.PI) / 180, near: 0.05, far: 100 });
     const hit = this.raycaster
       .setFromCamera(camera, ndcX, ndcY, this.cols / pixelHeight)
       .intersectPlane({ x: 0, y: 1, z: 0 });
     if (!hit) return -1;
-    const file = Math.floor(hit.x / 1.05 + 4);
-    const rank = Math.floor(4 - hit.z / 1.05);
+    const squareSize = production ? this.productionSquare : 1.05;
+    const file = Math.floor(hit.x / squareSize + 4);
+    const rank = Math.floor(4 - hit.z / squareSize);
     return file < 0 || file > 7 || rank < 0 || rank > 7 ? -1 : square(file, rank);
   }
 }
