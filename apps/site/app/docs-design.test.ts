@@ -15,6 +15,18 @@ test('docs navigation is owned by a persistent layout so pane transitions can ru
   assert.doesNotMatch(page, /DesktopDocsNav|MobileDocsNav|className="doc-shell/);
 });
 
+test('docs drill-in changes local pane state before navigation and the tablet drawer uses the viewport', async () => {
+  const [client, css] = await Promise.all([
+    readFile(new URL('./[lang]/docs/docs-client.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('./global.css', import.meta.url), 'utf8'),
+  ]);
+  assert.match(client, /navigationForPathname\(item\.href\)/);
+  assert.match(client, /setView\('section'\)/);
+  assert.match(client, /requestAnimationFrame\(\(\) => setSectionRevealed\(true\)\)/);
+  assert.match(client, /<button aria-label="Back to all documentation sections"/);
+  assert.match(css, /header\.sticky\.is-menu-open \{[^\n]*backdrop-filter: none !important;/);
+});
+
 test('docs use a task-first grouped navigation and Sans typography', async () => {
   const [page, client, navigation, content, css] = await Promise.all([
     readFile(new URL('./[lang]/docs/[[...slug]]/page.tsx', import.meta.url), 'utf8'),
