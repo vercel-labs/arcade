@@ -38,6 +38,7 @@ export { CINEMATIC_CELL_HEIGHT, MOBILE_CINEMATIC_CELL_HEIGHT, responsiveTerminal
 export { LIVING_TITLE_TOUR_SECONDS, advanceAutoTourProgress, interruptsAutoTourKey } from '../cinematic/auto-tour.ts';
 export { CINEMATIC_CHAPTERS, type CinematicChapterCopy } from '../cinematic/copy.ts';
 export { ActiveSceneLoopClock, type CinematicLoopSample } from '../cinematic/scene-loop.ts';
+export { cinematicWispVisible, type CinematicCreator, type CinematicWispRenderer } from '../cinematic/wisp-renderer.ts';
 export { SPLASH_END } from '../prism/splash.ts';
 export { applySurfacePointerEffect, applySurfacePointerTrail, type SurfacePointerEffectOptions, type SurfacePointerMode } from './surface-pointer-effects.ts';
 export { PointerField, samplePointerField, type PointerFieldInput, type PointerFieldOptions, type PointerFieldSnapshot, type PointerTrailSample } from '../engine/pointer-field.ts';

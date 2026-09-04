@@ -2,7 +2,7 @@ import type { Surface } from '../engine/surface.ts';
 import type { ChessPieceName } from '../game-visuals/chess/index.ts';
 import type { Terrain } from '../rules/islanders/types.ts';
 import type { BrowserDisplayMode } from './browser-chess.ts';
-import type { CinematicCreator } from './browser-wisp.ts';
+import type { CinematicCreator, CinematicWispRenderer } from '../cinematic/wisp-renderer.ts';
 import type { Texture } from '../engine/texture-data.ts';
 
 export type BrowserIslandersTerrainSceneId = `islanders-${Terrain}`;
@@ -27,6 +27,8 @@ export interface BrowserMiniSceneOptions {
   chessPieceFetchText?: (url: string) => Promise<string>;
   /** Already-decoded marks for non-browser hosts. */
   wispTextures?: Partial<Record<CinematicCreator, Texture>>;
+  /** Host-provided production wisp renderer; browser hosts default to BrowserCreatorWisps. */
+  wispRenderer?: CinematicWispRenderer;
 }
 
 export interface BrowserMiniSceneFrame {

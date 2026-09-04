@@ -43,7 +43,7 @@ import { PokerMatch } from './match/poker-driver.ts';
 import { buildPokerSetupPanel, mountPokerSetup, pokerPreviewSeats, pokerSetupReady, pokerSetupSelection, pokerStartingStack, setPokerSetupChanged, setPokerSetupModelCatalog } from './match/poker-setup.ts';
 import { LogosScene } from './scenes/logos-scene.ts';
 import { AudioScene } from './scenes/audio-scene.ts';
-import { buildTrailerOverlay, TrailerScene } from './scenes/trailer-scene.ts';
+import { TrailerScene } from './scenes/trailer-scene.ts';
 import { createInputParser, type KeyEvent, type MouseEvent } from '../platform/input.ts';
 import { detectTerminalColorMode } from '../platform/terminal-color-detection.ts';
 import { buildBar, buildConfirm, buildGameMenu, buildGameOver, buildPromotion, buildShortcuts, buildUpdateModal, mouseControlsFor, type BarActions, type MenuItem, type Mode, type RenderMode } from './shell/bars.ts';
@@ -1913,6 +1913,7 @@ function toPrism(): void {
 // returned to by a game's "back". No bar — the tiles are the navigation surface.
 // Going home is how every route out of the tutorial ends it.
 function enterMenu(clear = true): void {
+  if (mode === 'trailer') trailerScene = null;
   stopTutorial();
   stopAiMatch();
   stopPokerMatch();
@@ -2469,7 +2470,7 @@ function syncBar(): void {
     popGameOver();
     popSetup();
     popSwap();
-    ui.setRoot(buildTrailerOverlay(cols, rows, enterMenu));
+    ui.setRoot(null);
   } else if (mode === 'menu') {
     popGameOver();
     popSetup();
@@ -2936,11 +2937,10 @@ function onKeyImpl(ev: KeyEvent): void {
     else ui.handleKey(ev);
     return;
   }
-  // Trailer is an uninterrupted film surface. Its sole visible control is Menu;
-  // suppress global display/shortcuts/quit actions until playback returns home.
+  // Trailer is an uninterrupted film surface. Escape returns home; all other
+  // display/shortcut actions stay suppressed until playback finishes.
   if (mode === 'trailer') {
-    if (ev.name === 'escape' || ev.name === 'm') enterMenu();
-    else ui.handleKey(ev);
+    if (ev.name === 'escape') enterMenu();
     return;
   }
   if (failureNotice) {
@@ -3070,9 +3070,6 @@ function onMouseImpl(e: MouseEvent): void {
     return;
   }
   if (mode === 'trailer') {
-    if (e.type === 'move') ui.hover(e.x, e.y);
-    else if (e.type === 'down') ui.pointerDown(e.x, e.y, e.button);
-    else if (e.type === 'up') ui.pointerUp();
     return;
   }
   // Modal popups (promotion picker, game-over result, wisp model swap): clicks/hover go

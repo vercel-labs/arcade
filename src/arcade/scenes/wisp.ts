@@ -115,8 +115,8 @@ export class Wisp {
   // projection, with the flame/embers in screen space sized to the projected
   // radius — so the wisp floats in 3D (e.g. above a chess king) and scales with
   // perspective. `scale` shrinks/grows it relative to the default WISP_SIZE.
-  renderWorld(target: RenderTarget, vp: Mat4, right: Vec3, up: Vec3, P: Vec3, W: number, H: number, t: number, dt: number, scale = 1): void {
-    const f = this.frame(t, dt);
+  renderWorld(target: RenderTarget, vp: Mat4, right: Vec3, up: Vec3, P: Vec3, W: number, H: number, t: number, dt: number, scale = 1, advanceState = true): void {
+    const f = this.frame(t, advanceState ? dt : 0);
     const size = WISP_SIZE * scale;
     // Slow, irregular vertical bob (two detuned sines, ~7s and ~4s, desynced by
     // phase) applied to the orb's anchor so flame, mark, and embers all hover as
@@ -138,8 +138,13 @@ export class Wisp {
       flicker: f.markFlicker,
     });
 
-    this.updateEmbers(dt, f.emberEnergy);
+    if (advanceState) this.updateEmbers(dt, f.emberEnergy);
     drawEmbers(target, Pb, this.embers, (x, y, z) => project(vp, x, y, z, W, H), R, t, f.glow, this.tint);
+  }
+
+  advance(t: number, dt: number): void {
+    const frame = this.frame(t, dt);
+    this.updateEmbers(dt, frame.emberEnergy);
   }
 
   private spawnEmber(seeded: boolean, energy: number): Ember {

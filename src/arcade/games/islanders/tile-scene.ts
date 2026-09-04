@@ -59,14 +59,26 @@ import { ROBBER_MOVE_DURATION, robberFlightPoint } from '../../../game-visuals/i
 import { ISLANDERS_BOARD_BUILD_END, ISLANDERS_TILE_PLACE_HOP, ISLANDERS_TILE_STACK_BASE_Y, ISLANDERS_TILE_STACK_THICKNESS, ISLANDERS_TILE_STACK_X, ISLANDERS_TILE_STACK_Z, islandersCoastProgress, islandersHarborProgress, islandersTilePlacementProgress } from '../../../game-visuals/islanders/setup-choreography.ts';
 import { islandersPieceMaterial, type IslandersPieceUniforms } from '../../../game-visuals/islanders/piece-material.ts';
 import {
+  blitIslandersWater,
+  islandersWaterLayerScale,
+  ISLANDERS_SETTLED_WATER_COLOR_STEP as SETTLED_WATER_COLOR_STEP,
+} from '../../../game-visuals/islanders/render-quality.ts';
+import {
   ISLANDERS_PIECE_AMBIENT as PIECE_AMBIENT,
   ISLANDERS_PIECE_LIGHT as PIECE_LIGHT,
   ISLANDERS_PIECE_WRAP as PIECE_WRAP,
+  ISLANDERS_SCENE_BACKGROUND as SCENE_BACKGROUND,
   ISLANDERS_PORT_LIGHT as PORT_LIGHT,
   ISLANDERS_PORT_WRAP as PORT_WRAP,
   ISLANDERS_TERRAIN_AMBIENT as AMBIENT,
   ISLANDERS_TERRAIN_LIGHT as LIGHT,
   ISLANDERS_TERRAIN_WRAP as WRAP,
+  ISLANDERS_WATER_CURRENT as WATER_CURRENT,
+  ISLANDERS_WATER_DEEP as WATER_DEEP,
+  ISLANDERS_WATER_FLOW_SPEED as WATER_FLOW_SPEED,
+  ISLANDERS_WATER_HORIZON as WATER_HORIZON,
+  ISLANDERS_WATER_SKY as WATER_SKY,
+  ISLANDERS_WATER_SURFACE as WATER_SURFACE,
 } from '../../../game-visuals/islanders/lighting.ts';
 import { EDGE_ENDS, hexRing, hexWorld, NODE_XZ } from './scene/board-layout.ts';
 import { DICE_BURN_DUR, DICE_HOLD, DICE_RESULT_REVEAL_DELAY, DICE_ROLL_DUR, DICE_STAGGER, type Die, type DicePhase, freshDie } from './scene/dice.ts';
@@ -76,76 +88,10 @@ import { type HexPayout, rollPayouts, rollYield } from './scene/production.ts';
 import { ISLANDERS_WATER_RADIUS_X, ISLANDERS_WATER_RADIUS_Z, islandersWaterMesh } from './water.ts';
 
 const FOVY = (44 * Math.PI) / 180;
-const WATER_BUILD_LAYER_SCALE = 2 / 3;
-const WATER_SETTLED_LAYER_SCALE = 1 / 2;
-const WATER_SETTLED_LARGE_LAYER_SCALE = 1 / 3;
-const WATER_SETTLED_LARGE_TARGET_PIXELS = 4_000_000;
-const WATER_LAYER_MIN_WIDTH = 180;
-const WATER_LAYER_MIN_HEIGHT = 120;
-const SETTLED_WATER_COLOR_STEP = 8;
 const CAMERA_MOTION_SCALE = 2 / 3;
 const CAMERA_MOTION_MIN_WIDTH = 700;
 const CAMERA_MOTION_MIN_HEIGHT = 420;
 
-function blitNearest(source: RenderTarget, target: RenderTarget, colorStep = 1): void {
-  includeScaledDepthBounds(source, target);
-  // Settled water renders at an exact integer fraction of the scene. Expand each source pixel
-  // directly instead of visiting the full destination and repeatedly flooring coordinates.
-  // This is byte-for-byte equivalent to the generic nearest sampler.
-  const integerScale = target.width / source.width;
-  if (
-    integerScale >= 2 &&
-    Number.isInteger(integerScale) &&
-    target.height === source.height * integerScale
-  ) {
-    for (let sy = 0; sy < source.height; sy++) {
-      const sourceRow = sy * source.width;
-      const targetRow = sy * integerScale * target.width;
-      for (let sx = 0; sx < source.width; sx++) {
-        const sourcePixel = sourceRow + sx;
-        const depth = source.depth[sourcePixel];
-        if (!Number.isFinite(depth)) continue;
-        const sourceColor = sourcePixel * 3;
-        const r = colorStep > 1 ? Math.round(source.color[sourceColor] / colorStep) * colorStep : source.color[sourceColor];
-        const g = colorStep > 1 ? Math.round(source.color[sourceColor + 1] / colorStep) * colorStep : source.color[sourceColor + 1];
-        const b = colorStep > 1 ? Math.round(source.color[sourceColor + 2] / colorStep) * colorStep : source.color[sourceColor + 2];
-        const left = sx * integerScale;
-        for (let dy = 0; dy < integerScale; dy++) {
-          let targetPixel = targetRow + dy * target.width + left;
-          for (let dx = 0; dx < integerScale; dx++, targetPixel++) {
-            const targetColor = targetPixel * 3;
-            target.color[targetColor] = r;
-            target.color[targetColor + 1] = g;
-            target.color[targetColor + 2] = b;
-            target.depth[targetPixel] = depth;
-          }
-        }
-      }
-    }
-    return;
-  }
-  const xScale = source.width / target.width;
-  const yScale = source.height / target.height;
-  for (let y = 0; y < target.height; y++) {
-    const sourceRow = Math.min(source.height - 1, Math.floor(y * yScale)) * source.width;
-    const targetRow = y * target.width;
-    for (let x = 0; x < target.width; x++) {
-      const sourcePixel = sourceRow + Math.min(source.width - 1, Math.floor(x * xScale));
-      const depth = source.depth[sourcePixel];
-      // The destination was already cleared to the same backdrop. Skip both the
-      // outer hex corners and the settled island hole instead of copying values
-      // that full-resolution land will immediately replace.
-      if (!Number.isFinite(depth)) continue;
-      const targetPixel = targetRow + x;
-      const sourceColor = sourcePixel * 3;
-      const targetColor = targetPixel * 3;
-      target.color[targetColor] = colorStep > 1 ? Math.round(source.color[sourceColor] / colorStep) * colorStep : source.color[sourceColor];
-      target.color[targetColor + 1] = colorStep > 1 ? Math.round(source.color[sourceColor + 1] / colorStep) * colorStep : source.color[sourceColor + 1];
-      target.color[targetColor + 2] = colorStep > 1 ? Math.round(source.color[sourceColor + 2] / colorStep) * colorStep : source.color[sourceColor + 2];
-      target.depth[targetPixel] = depth;
-    }
-  }
-}
 
 function finitePixels(target: RenderTarget): Uint32Array {
   const pixels: number[] = [];
@@ -187,12 +133,6 @@ const COAST_MESH = coastMesh();
 // Islanders's sea frame is a clear cyan-blue rather than near-black ocean. Keep enough depth for
 // the island to pop, but lift the palette into multiple ASCII luminance buckets so the ripple
 // shape remains visible when a camera rotation moves the narrow sun reflection off-screen.
-const WATER_DEEP: Vec3 = { x: 6, y: 40, z: 66 };
-const WATER_SURFACE: Vec3 = { x: 20, y: 119, z: 157 };
-const WATER_SKY: Vec3 = { x: 94, y: 152, z: 174 };
-const WATER_HORIZON: Vec3 = { x: 205, y: 185, z: 146 };
-const WATER_CURRENT: Vec3 = { x: 183, y: 229, z: 225 };
-const WATER_FLOW_SPEED = 0.22;
 const EMPTY_MESH: Mesh = { vertices: [], indices: [] };
 
 // Board placement animation: hexes start stacked face-down off the board, then fly in one by
@@ -1304,14 +1244,14 @@ export class TileScene {
       this.cameraMotionTarget = new RenderTarget(width, height);
     }
     this.renderSceneAtResolution(this.cameraMotionTarget, t);
-    target.clear(14, 16, 22);
-    blitNearest(this.cameraMotionTarget, target);
+    target.clear(SCENE_BACKGROUND.x, SCENE_BACKGROUND.y, SCENE_BACKGROUND.z);
+      blitIslandersWater(this.cameraMotionTarget, target);
   }
 
   private renderSceneAtResolution(target: RenderTarget, t: number): void {
     this.tokensDirty = false; // consume the previous frame's one-shot
     this.lastAspect = target.width / target.height; // remember for hit-test projection
-    target.clear(14, 16, 22);
+    target.clear(SCENE_BACKGROUND.x, SCENE_BACKGROUND.y, SCENE_BACKGROUND.z);
     this.renderSequence = 0;
     this.waterPool.begin();
     this.authoredPool.begin();
@@ -1323,10 +1263,7 @@ export class TileScene {
     // stretch while the coast emerges after them.
     const camera = cam.toCamera({ fovy: FOVY, near: 0.05, far: 100 });
     const eye = camera.eye;
-    const useWaterLayer =
-      isBoardMode(this.modeName) &&
-      target.width >= WATER_LAYER_MIN_WIDTH &&
-      target.height >= WATER_LAYER_MIN_HEIGHT;
+    const useWaterLayer = isBoardMode(this.modeName) && islandersWaterLayerScale(target.width, target.height, this.placing) !== null;
     if (isBoardMode(this.modeName)) this.renderBoard(t, eye, useWaterLayer);
     else if (this.modeName === 'pieces') this.queuePiece(piecesMesh(this.pieceColor), MODEL);
     else if (this.modeName === 'port') this.queueLambert(portMesh(this.portKind), MODEL, PORT_LIGHT, PORT_WRAP);
@@ -1346,28 +1283,23 @@ export class TileScene {
   // expand its color/depth layer, then rasterize the crisp island and pieces at full resolution.
   // Tiny authoring targets keep the original single-pass path.
   private renderBoardLayers(target: RenderTarget, camera: Camera): void {
-    if (target.width < WATER_LAYER_MIN_WIDTH || target.height < WATER_LAYER_MIN_HEIGHT) {
+    const scale = islandersWaterLayerScale(target.width, target.height, this.placing);
+    if (scale === null) {
       this.sceneRenderer.render(target, this.authoredScene, camera);
       return;
     }
-
-    const scale = this.placing
-      ? WATER_BUILD_LAYER_SCALE
-      : target.width * target.height > WATER_SETTLED_LARGE_TARGET_PIXELS
-        ? WATER_SETTLED_LARGE_LAYER_SCALE
-        : WATER_SETTLED_LAYER_SCALE;
     const width = Math.max(1, Math.round(target.width * scale));
     const height = Math.max(1, Math.round(target.height * scale));
     if (!this.waterTarget || this.waterTarget.width !== width || this.waterTarget.height !== height) {
       this.waterTarget = new RenderTarget(width, height);
     }
-    this.waterTarget.clear(14, 16, 22);
+    this.waterTarget.clear(SCENE_BACKGROUND.x, SCENE_BACKGROUND.y, SCENE_BACKGROUND.z);
 
     this.authoredScene.remove(this.waterPool);
     this.waterScene.add(this.waterPool);
     try {
       this.sceneRenderer.render(this.waterTarget, this.waterScene, camera);
-      blitNearest(this.waterTarget, target, this.placing ? 1 : SETTLED_WATER_COLOR_STEP);
+      blitIslandersWater(this.waterTarget, target, this.placing ? 1 : SETTLED_WATER_COLOR_STEP);
       // During construction every tile moves, so preserve the original live scene.
       // Once settled, cache the immutable coast, tile bodies, piers, and ports as a
       // sparse full-resolution depth/color layer. Environmental meshes and pieces

@@ -5,6 +5,7 @@ export const POKER_WOOD_BROWN: Vec3 = { x: 132, y: 88, z: 52 };
 export const POKER_TABLE_LIGHT = normalize3({ x: 0.25, y: 0.9, z: 0.4 });
 export const POKER_TABLE_AMBIENT = 0.74;
 export const POKER_TABLE_ASCII_CONTRAST = 2;
+export const POKER_SCENE_BACKGROUND: Vec3 = { x: 6, y: 10, z: 8 };
 export const POKER_FELT_STIPPLE = { stipple: { x: 40, y: 120, z: 78 } as Vec3, stippleFreq: 1.2, stippleDensity: 0.1, stippleGain: 1.1, stippleRadius: 0.27 };
 const TABLE_FELT_Y = 26;
 const TABLE_OUTER = 34.8;

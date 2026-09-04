@@ -12,3 +12,4 @@ export {
   type ChessPieceObjSources,
 } from './pieces.ts';
 export { CHESS_MOVE_ARC_HEIGHT, chessJailPosition, chessMovePosition, chessSquarePosition, movingKingPosition, planChessMove, type ChessMoveLayout, type ChessMoveMotion, type ChessMovePlan, type ChessMoveSegment } from './move-animation.ts';
+export { buildChessBoardMeshes, CHESS_CAMERA_FOVY, CHESS_PIECE_TALLEST, CHESS_SCENE_BACKGROUND } from './board.ts';

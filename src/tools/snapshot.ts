@@ -80,7 +80,6 @@ import { ARCADE_THEME, UI_CHROME_PILL } from '../arcade/theme.ts';
 import { TUTORIAL_CHAPTERS, TUTORIAL_PULSE, TutorialController, tutorialRailWidth } from '../arcade/tutorial/tutorial.ts';
 import { modelFailureNotice } from '../harness/model-failure-notice.ts';
 import { TrailerScene } from '../arcade/scenes/trailer-scene.ts';
-import { buildTrailerOverlay } from '../arcade/scenes/trailer-scene.ts';
 
 type Rgb = [number, number, number];
 // Terminal cells are roughly twice as tall as they are wide. Rasterize each
@@ -1586,9 +1585,7 @@ async function trailerSnapshot(): Promise<void> {
   await trailer.prepare();
   trailer.step(seconds);
   const scene = trailer.frame(cols, rows);
-  const screen = new Screen(cols, rows, ARCADE_THEME);
-  screen.setRoot(buildTrailerOverlay(cols, rows, () => {}), { x: 0, y: 0, w: cols, h: rows });
-  surfaceToPpm(screen.snapshot((surface) => scene.copyInto(surface)), cols, rows, out);
+  surfaceToPpm(scene, cols, rows, out);
 }
 
 // The home menu button over Cover Flow; `open` shows its menu and `account`

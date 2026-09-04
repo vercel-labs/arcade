@@ -10,25 +10,37 @@ import { type Mesh } from '../engine/mesh.ts';
 import { shapeGlyphLayerToSurface, shapeGlyphToSurface, ShapeGlyphSurfaceCache } from '../engine/present-cells.ts';
 import { rasterize } from '../engine/raster.ts';
 import { Surface } from '../engine/surface.ts';
-import { AnimatedTileMeshCache, animatedTileMesh, boardHarborPoses, boardOverlayMesh, coastMesh, harborPiersMesh, ISLANDERS_TILE_PLACE_HOP, ISLANDERS_TILE_STACK_BASE_Y, ISLANDERS_TILE_STACK_THICKNESS, ISLANDERS_TILE_STACK_X, ISLANDERS_TILE_STACK_Z, islandersWaterMesh, drawIslandersDiceOverlay, EDGE_ENDS, hexWorld, NODE_XZ, portMesh, robberFlightPoint, robberMesh, tileBackMesh, tileMesh, type Die } from '../game-visuals/islanders/index.ts';
-import { CARD_SCALE, POKER_CARD_LIFT, POKER_CHIP_AWARD_HOP, POKER_CHIP_POT_POSITION, POKER_DEAL_HOP, POKER_DECK_FULL, POKER_DECK_POSITION, POKER_DECK_THICKNESS, POKER_FELT_STIPPLE, POKER_TABLE_AMBIENT, POKER_TABLE_ASCII_CONTRAST, POKER_TABLE_LIGHT, POKER_WOOD_BROWN, TABLE_MODEL, DeckShuffle, chairModel, createPokerGatherCard, createPokerMuckCards, drawCard, drawChipStack, drawPeekCard, fetchPokerTableMeshes, flatDown, flatUp, mergeChipColumns, playerColumns, pokerBetCenter, pokerBoardCardPose, pokerCardBackTexture, pokerChipFlight, pokerGatherCardPose, pokerHoleCardPose, pokerMuckCardPose, pokerSeatAngle, pokerStackCenter, preparePokerCardTextures, takeChipColumns, type ChipColumn, type PokerGatherCard, type PokerMuckCard, type PokerTableMeshes } from '../game-visuals/poker/index.ts';
+import { AnimatedTileMeshCache, animatedTileMesh, boardHarborPoses, boardOverlayMesh, coastMesh, harborPiersMesh, ISLANDERS_TILE_PLACE_HOP, ISLANDERS_TILE_STACK_BASE_Y, ISLANDERS_TILE_STACK_THICKNESS, ISLANDERS_TILE_STACK_X, ISLANDERS_TILE_STACK_Z, islandersWaterMesh, drawIslandersDiceOverlay, EDGE_ENDS, hexWorld, NODE_XZ, portMesh, robberFlightPoint, robberMesh, surfMesh, swashMesh, tileBackMesh, tileMesh, type Die } from '../game-visuals/islanders/index.ts';
+import { CARD_SCALE, POKER_CARD_LIFT, POKER_CHIP_AWARD_HOP, POKER_CHIP_POT_POSITION, POKER_DEAL_HOP, POKER_DECK_FULL, POKER_DECK_POSITION, POKER_DECK_THICKNESS, POKER_FELT_STIPPLE, POKER_SCENE_BACKGROUND, POKER_TABLE_AMBIENT, POKER_TABLE_ASCII_CONTRAST, POKER_TABLE_LIGHT, POKER_WOOD_BROWN, TABLE_MODEL, DeckShuffle, chairModel, createPokerGatherCard, createPokerMuckCards, drawCard, drawChipStack, drawPeekCard, fetchPokerTableMeshes, flatDown, flatUp, mergeChipColumns, playerColumns, pokerBetCenter, pokerBoardCardPose, pokerCardBackTexture, pokerChipFlight, pokerGatherCardPose, pokerHoleCardPose, pokerMuckCardPose, pokerSeatAngle, pokerStackCenter, preparePokerCardTextures, takeChipColumns, type CardFaceTextureProvider, type ChipColumn, type PokerGatherCard, type PokerMuckCard, type PokerTableMeshes } from '../game-visuals/poker/index.ts';
 import { HEX_COORDS } from '../rules/islanders/board-topology.ts';
 import { generateBoard } from '../rules/islanders/setup.ts';
 import type { BoardSetup } from '../rules/islanders/setup.ts';
 import { mulberry32 } from '../engine/random.ts';
 import { parseCard, RANK_LABELS, type Card } from '../rules/poker/cards.ts';
 import { BrowserCreatorWisps } from './browser-wisp.ts';
-import type { CinematicCreator } from './browser-wisp.ts';
+import type { CinematicCreator, CinematicWispRenderer } from '../cinematic/wisp-renderer.ts';
 import type { Texture } from '../engine/texture-data.ts';
 import {
   ISLANDERS_PIECE_AMBIENT,
   ISLANDERS_PIECE_LIGHT,
   ISLANDERS_PIECE_WRAP,
+  ISLANDERS_SCENE_BACKGROUND,
   ISLANDERS_TERRAIN_AMBIENT,
   ISLANDERS_TERRAIN_LIGHT,
   ISLANDERS_TERRAIN_WRAP,
+  ISLANDERS_WATER_CURRENT,
+  ISLANDERS_WATER_DEEP,
+  ISLANDERS_WATER_FLOW_SPEED,
+  ISLANDERS_WATER_HORIZON,
+  ISLANDERS_WATER_SKY,
+  ISLANDERS_WATER_SURFACE,
 } from '../game-visuals/islanders/lighting.ts';
 import { islandersPieceMaterial } from '../game-visuals/islanders/piece-material.ts';
+import {
+  blitIslandersWater,
+  islandersWaterLayerScale,
+  ISLANDERS_SETTLED_WATER_COLOR_STEP,
+} from '../game-visuals/islanders/render-quality.ts';
 
 const BLACK: RGB = [0, 0, 0];
 const RED: RGB = [196, 54, 62];
@@ -68,11 +80,11 @@ function createPokerHandAssets(script: typeof POKER_CINEMATIC_HANDS[number], han
 export class BrowserPokerCinematic {
   private readonly glyphCache = new ShapeGlyphSurfaceCache();
   private readonly target = new RenderTarget(1, 1);
-  private readonly shuffle = new DeckShuffle(pokerCardBackTexture(), POKER_DECK_POSITION);
+  private readonly shuffle: DeckShuffle;
   private table: PokerTableMeshes | null = null;
   private preparation: Promise<void> | null = null;
   private readonly hands: readonly PokerHandAssets[];
-  private readonly wisps: BrowserCreatorWisps;
+  private readonly wisps: CinematicWispRenderer;
   private readonly creators = ['xai', 'openai', 'anthropic', 'google', 'deepseek'] as const;
   private readonly seatCount = 5;
 
@@ -80,14 +92,17 @@ export class BrowserPokerCinematic {
   private readonly rasterScale: number;
   private readonly shadowGlyphs: boolean;
   private readonly productionLighting: boolean;
+  private readonly faceTexture?: CardFaceTextureProvider;
 
-  constructor(options: { table?: PokerTableMeshes; fetchTableText?: (url: string) => Promise<string>; wispTextures?: Partial<Record<CinematicCreator, Texture>>; rasterScale?: number; shadowGlyphs?: boolean; productionLighting?: boolean } = {}) {
+  constructor(options: { table?: PokerTableMeshes; fetchTableText?: (url: string) => Promise<string>; wispTextures?: Partial<Record<CinematicCreator, Texture>>; wispRenderer?: CinematicWispRenderer; rasterScale?: number; shadowGlyphs?: boolean; productionLighting?: boolean; faceTexture?: CardFaceTextureProvider } = {}) {
     this.table = options.table ?? null;
     this.fetchTableText = options.fetchTableText;
-    this.wisps = new BrowserCreatorWisps(options.wispTextures);
+    this.wisps = options.wispRenderer ?? new BrowserCreatorWisps(options.wispTextures);
     this.rasterScale = options.rasterScale ?? 3;
     this.shadowGlyphs = options.shadowGlyphs ?? false;
     this.productionLighting = options.productionLighting ?? false;
+    this.faceTexture = options.faceTexture;
+    this.shuffle = new DeckShuffle(pokerCardBackTexture(), POKER_DECK_POSITION, options.faceTexture);
     this.hands = POKER_CINEMATIC_HANDS.map((script, handIndex) => createPokerHandAssets(script, handIndex, this.seatCount));
   }
 
@@ -107,7 +122,11 @@ export class BrowserPokerCinematic {
     const assets = this.hands[hand.handIndex];
     const target = this.target;
     target.resize(cols * this.rasterScale, rows * this.rasterScale * 2);
-    target.clear();
+    target.clear(
+      this.productionLighting ? POKER_SCENE_BACKGROUND.x : 0,
+      this.productionLighting ? POKER_SCENE_BACKGROUND.y : 0,
+      this.productionLighting ? POKER_SCENE_BACKGROUND.z : 0,
+    );
     const camera = pokerCinematicCamera(p, target.width / target.height);
     const vp = cameraMatrices(camera, target.width / target.height).viewProjection;
     const chipLight = this.productionLighting ? POKER_TABLE_LIGHT : LIGHT;
@@ -159,7 +178,7 @@ export class BrowserPokerCinematic {
         if (gathering) continue;
         if ((hand.seatPeeks[seat]?.[round] ?? 0) > 0) continue;
         if (hand.foldedSeats.includes(seat)) continue;
-        drawSeatDeal(target, vp, assets.seatCards[seat][round], pokerHoleCardPose(seat, round, this.seatCount), progress, stockCount, hand.showdown > 0);
+        drawSeatDeal(target, vp, assets.seatCards[seat][round], pokerHoleCardPose(seat, round, this.seatCount), progress, stockCount, hand.showdown > 0, this.faceTexture);
       }
     }
     if (!gathering) {
@@ -167,19 +186,19 @@ export class BrowserPokerCinematic {
         const reveal = hand.seatPeeks[seat]?.[round] ?? 0;
         if (reveal <= 0 || hand.foldedSeats.includes(seat)) continue;
         const pose = pokerHoleCardPose(seat, round, this.seatCount);
-        drawPeekCard(target, vp, { seatX: pose.x, seatZ: pose.z, reveal, peek: 0.45, restAz: pose.yaw, az: pose.yaw }, assets.seatCards[seat][round], pokerCardBackTexture(), 1.08);
+        drawPeekCard(target, vp, { seatX: pose.x, seatZ: pose.z, reveal, peek: 0.45, restAz: pose.yaw, az: pose.yaw }, assets.seatCards[seat][round], pokerCardBackTexture(), 1.08, this.faceTexture);
       }
     }
     const boardProgress = [hand.flop, hand.flop, hand.flop, hand.turn, hand.river];
     for (let i = 0; i < assets.boardCards.length && !gathering; i++) {
       const cardP = i < 3 ? smoothstep(clamp01(hand.flop * 1.35 - i * 0.16)) : boardProgress[i];
-      drawCommunityDeal(target, vp, assets.boardCards[i], pokerBoardCardPose(i), cardP, stockCount);
+      drawCommunityDeal(target, vp, assets.boardCards[i], pokerBoardCardPose(i), cardP, stockCount, this.faceTexture);
     }
     if (!gathering) {
       for (const fold of hand.folds) {
         for (const muck of assets.muckCards.filter((card) => card.seat === fold.seat)) {
           const pose = pokerMuckCardPose(muck, fold.progress);
-          drawCard(target, vp, mat4Multiply(mat4Translate(pose.x, pose.y, pose.z), mat4Multiply(mat4RotY(pose.yaw), flatDown())), muck.card, pokerCardBackTexture(), 1);
+          drawCard(target, vp, mat4Multiply(mat4Translate(pose.x, pose.y, pose.z), mat4Multiply(mat4RotY(pose.yaw), flatDown())), muck.card, pokerCardBackTexture(), 1, this.faceTexture);
         }
       }
     } else {
@@ -187,7 +206,7 @@ export class BrowserPokerCinematic {
       for (let index = 0; index < assets.gatherCards.length; index++) {
         const card = assets.gatherCards[index];
         const pose = pokerGatherCardPose(card, index, hand.gatherElapsed!, baseTopY);
-        drawCard(target, vp, mat4Multiply(mat4Translate(pose.x, pose.y, pose.z), mat4Multiply(mat4RotY(pose.yaw), mat4Multiply(mat4RotX(pose.rx ?? Math.PI / 2), CARD_SCALE))), card.card, pokerCardBackTexture(), 1);
+        drawCard(target, vp, mat4Multiply(mat4Translate(pose.x, pose.y, pose.z), mat4Multiply(mat4RotY(pose.yaw), mat4Multiply(mat4RotX(pose.rx ?? Math.PI / 2), CARD_SCALE))), card.card, pokerCardBackTexture(), 1, this.faceTexture);
       }
     }
     if (hand.award > 0 && hand.award < 1 && potColumns.length) {
@@ -213,7 +232,7 @@ export class BrowserPokerCinematic {
       const radius = 5.57 + 0.4;
       this.wisps.draw(target, vp, camera, this.creators[seat], {
         x: Math.sin(angle) * radius, y: 2.2, z: Math.cos(angle) * radius,
-      }, timeSeconds, seat * 1.3, 0.72);
+      }, timeSeconds, seat * 1.3, this.productionLighting ? 1 : 0.72);
     }
     const surface = present(target, cols, rows, this.glyphCache, this.shadowGlyphs);
     return surface;
@@ -223,6 +242,7 @@ export class BrowserPokerCinematic {
 export class BrowserIslandersCinematic {
   private readonly glyphCache = new ShapeGlyphSurfaceCache();
   private readonly target = new RenderTarget(1, 1);
+  private readonly waterTarget = new RenderTarget(1, 1);
   private readonly diceTarget = new RenderTarget(1, 1);
   private readonly board = generateBoard(mulberry32(1));
   private readonly harbors = boardHarborPoses(this.board.harbors);
@@ -230,7 +250,8 @@ export class BrowserIslandersCinematic {
     const harbor = this.harbors.find(({ kind }) => kind === 'brick') ?? this.harbors[0];
     return { x: harbor.model[12], z: harbor.model[14] };
   })();
-  private readonly water = islandersWaterMesh();
+  private readonly water: Mesh;
+  private readonly settledWater: Mesh;
   private readonly animatedTileCache = new AnimatedTileMeshCache();
   private readonly dice: [Die, Die] = [
     { val: 4, spinX: 2.4, spinZ: 1.8, yaw: 0.28, yawSpin: 1.7, jx: -0.08, jz: 0.06, wob: 0.22, dur: 0.96 },
@@ -249,18 +270,26 @@ export class BrowserIslandersCinematic {
     private readonly cameraFor: (progress: number, aspect: number, brickHarbor: { x: number; z: number }) => CinematicOrbitCamera = islandersCinematicCamera,
     private readonly rasterScale = 3,
     private readonly renderStyle: { productionLighting?: boolean } = {},
-  ) {}
+    waterMeshes: { full: Mesh; settled: Mesh } | null = null,
+  ) {
+    this.water = waterMeshes?.full ?? islandersWaterMesh();
+    this.settledWater = waterMeshes?.settled ?? this.water;
+  }
 
   frame(cols: number, rows: number, progress: number, timeSeconds: number, gameplayElapsed = timeSeconds): Surface {
     const p = clamp01(progress);
     const gameplay = islandersCinematicGameplay(gameplayElapsed);
     const target = this.target;
+    const productionLighting = this.renderStyle.productionLighting === true;
     target.resize(cols * this.rasterScale, rows * this.rasterScale * 2);
-    target.clear();
+    target.clear(
+      productionLighting ? ISLANDERS_SCENE_BACKGROUND.x : 0,
+      productionLighting ? ISLANDERS_SCENE_BACKGROUND.y : 0,
+      productionLighting ? ISLANDERS_SCENE_BACKGROUND.z : 0,
+    );
     const camera = this.cameraFor(p, target.width / target.height, this.brickHarbor);
     const focus = camera.target;
     const vp = cameraMatrices(camera, target.width / target.height).viewProjection;
-    const productionLighting = this.renderStyle.productionLighting === true;
     const terrainLight = productionLighting ? ISLANDERS_TERRAIN_LIGHT : LIGHT;
     const terrainWrap = productionLighting ? ISLANDERS_TERRAIN_WRAP : 0.25;
     const draw = (mesh: Mesh, model: Mat4, color?: RGB, ambient = 0.36, wrap = terrainWrap) => rasterize(target, color ? tintCached(mesh, color) : mesh, lambertMaterial, {
@@ -270,15 +299,30 @@ export class BrowserIslandersCinematic {
     const resolvedRobberHex = (hex: number): number => hex < 0 ? this.board.robberHex : hex;
     const settledRobberHex = robber?.progress === 1 ? resolvedRobberHex(robber.to) : this.board.robberHex;
 
-    // Production staging: establish the sea first, then deal/flip the real seeded
-    // board center-out. Nothing else is allowed onto the island during setup.
-    rasterize(target, this.water, waterMaterial, {
-      mvp: vp, model: identity(), time: timeSeconds, cameraPos: camera.eye,
-      sunDirection: ISLANDERS_TERRAIN_LIGHT,
-      deepColor: { x: 10, y: 58, z: 88 }, surfaceColor: { x: 28, y: 139, z: 177 },
-      skyColor: { x: 112, y: 174, z: 194 }, horizonColor: { x: 218, y: 199, z: 158 },
-      currentColor: { x: 196, y: 239, z: 235 }, flowSpeed: 0.22,
-    });
+    const coastProgress = islandersSetupCoastProgress(gameplay.setupElapsed);
+    const placing = gameplay.setupElapsed < ISLANDERS_SETUP_END;
+    const renderWater = (destination: RenderTarget, optimized = true): void => {
+      const waterUniforms = {
+        mvp: vp, model: identity(), time: timeSeconds, cameraPos: camera.eye,
+        sunDirection: ISLANDERS_TERRAIN_LIGHT,
+        deepColor: productionLighting ? ISLANDERS_WATER_DEEP : { x: 10, y: 58, z: 88 },
+        surfaceColor: productionLighting ? ISLANDERS_WATER_SURFACE : { x: 28, y: 139, z: 177 },
+        skyColor: productionLighting ? ISLANDERS_WATER_SKY : { x: 112, y: 174, z: 194 },
+        horizonColor: productionLighting ? ISLANDERS_WATER_HORIZON : { x: 218, y: 199, z: 158 },
+        currentColor: productionLighting ? ISLANDERS_WATER_CURRENT : { x: 196, y: 239, z: 235 },
+        flowSpeed: productionLighting ? ISLANDERS_WATER_FLOW_SPEED : 0.22,
+      };
+      rasterize(destination, productionLighting && optimized && !placing ? this.settledWater : this.water, waterMaterial, waterUniforms);
+      if (productionLighting && coastProgress >= 1) rasterize(destination, swashMesh(timeSeconds), waterMaterial, waterUniforms);
+    };
+    const waterScale = productionLighting ? islandersWaterLayerScale(target.width, target.height, placing) : null;
+    if (productionLighting && waterScale !== null) {
+      const scale = waterScale;
+      this.waterTarget.resize(Math.max(1, Math.round(target.width * scale)), Math.max(1, Math.round(target.height * scale)));
+      this.waterTarget.clear(ISLANDERS_SCENE_BACKGROUND.x, ISLANDERS_SCENE_BACKGROUND.y, ISLANDERS_SCENE_BACKGROUND.z);
+      renderWater(this.waterTarget);
+      blitIslandersWater(this.waterTarget, target, placing ? 1 : ISLANDERS_SETTLED_WATER_COLOR_STEP);
+    } else renderWater(target, false);
     for (let oi = 0; oi < this.order.length; oi++) {
       const hex = this.order[oi];
       const { q, r } = HEX_COORDS[hex];
@@ -301,8 +345,8 @@ export class BrowserIslandersCinematic {
     // Connector endpoints are authored against the production beach apron,
     // which extends beyond the narrower tile slab. Grow that same shoreline
     // after the tiles settle and before the ships arrive, matching the CLI.
-    const coastProgress = islandersSetupCoastProgress(gameplay.setupElapsed);
     if (coastProgress > 0) draw(coastMesh(coastProgress), identity(), undefined, 0.72, productionLighting ? 1 : terrainWrap);
+    if (productionLighting && coastProgress >= 1) draw(surfMesh(timeSeconds), identity(), undefined, 0.82, 1);
 
     // Only after every tile has landed do all nine rules-derived harbor ships
     // approach their real coastal slots; no arbitrary ports are stamped on land.
@@ -371,8 +415,8 @@ export class BrowserIslandersCinematic {
         scale: islandersPortraitDiceScale(target.width / target.height),
       });
     }
-    const surface = presentIslandersAscii(target, cols, rows, this.glyphCache);
-    if (gameplay.dice) paintIslandersDiceLayer(surface, diceTarget, cols, rows);
+    const surface = presentIslandersAscii(target, cols, rows, this.glyphCache, productionLighting);
+    if (gameplay.dice) paintIslandersDiceLayer(surface, diceTarget, cols, rows, productionLighting);
     return surface;
   }
 }
@@ -385,17 +429,17 @@ export function islandersPortraitDiceScale(aspect: number): number {
 }
 
 
-function drawCommunityDeal(target: RenderTarget, vp: Mat4, card: Card, destination: { x: number; z: number }, progress: number, stockCount: number): void {
+function drawCommunityDeal(target: RenderTarget, vp: Mat4, card: Card, destination: { x: number; z: number }, progress: number, stockCount: number, faceTexture?: CardFaceTextureProvider): void {
   if (progress <= 0) return;
   const p = smoothstep(progress);
   const x = lerp(POKER_DECK_POSITION.x, destination.x, p);
   const z = lerp(POKER_DECK_POSITION.z, destination.z, p);
   const y = lerp(deckTopY(stockCount), POKER_CARD_LIFT, p) + Math.sin(p * Math.PI) * POKER_DEAL_HOP;
   const rx = Math.PI / 2 - Math.PI * p;
-  drawCard(target, vp, mat4Multiply(mat4Translate(x, y, z), mat4Multiply(mat4RotX(rx), CARD_SCALE)), card, pokerCardBackTexture(), 1);
+  drawCard(target, vp, mat4Multiply(mat4Translate(x, y, z), mat4Multiply(mat4RotX(rx), CARD_SCALE)), card, pokerCardBackTexture(), 1, faceTexture);
 }
 
-function drawSeatDeal(target: RenderTarget, vp: Mat4, card: Card, destination: { x: number; z: number; yaw: number }, progress: number, stockCount: number, faceUp = false): void {
+function drawSeatDeal(target: RenderTarget, vp: Mat4, card: Card, destination: { x: number; z: number; yaw: number }, progress: number, stockCount: number, faceUp = false, faceTexture?: CardFaceTextureProvider): void {
   if (progress <= 0) return;
   const p = smoothstep(progress);
   const y = lerp(deckTopY(stockCount), POKER_CARD_LIFT, p) + Math.sin(p * Math.PI) * POKER_DEAL_HOP;
@@ -403,7 +447,7 @@ function drawSeatDeal(target: RenderTarget, vp: Mat4, card: Card, destination: {
     mat4Translate(lerp(POKER_DECK_POSITION.x, destination.x, p), y, lerp(POKER_DECK_POSITION.z, destination.z, p)),
     mat4Multiply(mat4RotY(destination.yaw * p), faceUp ? flatUp() : flatDown()),
   );
-  drawCard(target, vp, model, card, pokerCardBackTexture(), 1);
+  drawCard(target, vp, model, card, pokerCardBackTexture(), 1, faceTexture);
 }
 
 function drawCardStock(target: RenderTarget, vp: Mat4, count: number): void {
@@ -428,12 +472,12 @@ function present(target: RenderTarget, cols: number, rows: number, cache?: Shape
   return surface;
 }
 
-function presentIslandersAscii(target: RenderTarget, cols: number, rows: number, glyphCache?: ShapeGlyphSurfaceCache): Surface {
+function presentIslandersAscii(target: RenderTarget, cols: number, rows: number, glyphCache?: ShapeGlyphSurfaceCache, production = false): Surface {
   const surface = new Surface(cols, rows);
   surface.fillRect(0, 0, cols, rows, BLACK);
   shapeGlyphToSurface(surface, target, cols, rows, {
     color: true,
-    contrast: 2.15,
+    contrast: production ? 2 : 2.15,
     hybrid: false,
     coloredBackground: false,
     blankOutsideDepthBounds: true,
@@ -441,10 +485,10 @@ function presentIslandersAscii(target: RenderTarget, cols: number, rows: number,
   return surface;
 }
 
-function paintIslandersDiceLayer(surface: Surface, target: RenderTarget, cols: number, rows: number): void {
+function paintIslandersDiceLayer(surface: Surface, target: RenderTarget, cols: number, rows: number, production = false): void {
   shapeGlyphLayerToSurface(surface, target, cols, rows, {
     color: true,
-    contrast: 2.15,
+    contrast: production ? 2 : 2.15,
     hybrid: false,
     coloredBackground: false,
   });
