@@ -16,7 +16,6 @@
   <p>
     <a href="https://ascii-arcade.vercel.app">Play online</a>
     · <a href="https://ascii-arcade.vercel.app/docs">Documentation</a>
-    · <a href="https://ascii-arcade.vercel.app/docs/package-api">Package API</a>
   </p>
 </div>
 
