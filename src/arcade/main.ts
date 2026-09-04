@@ -21,7 +21,7 @@ import { PrismScene, SplashScene } from '../prism/index.ts';
 import { coverFlowIndex } from '../cinematic/scenes/cover-flow.ts';
 import { CoverFlowScene, LAUNCH_TOTAL } from './shell/coverflow.ts';
 import { CoverFlowWheelInput } from './shell/coverflow-input.ts';
-import { HOME_MENU_INDEX, MENU_ITEMS, menuItemAction, TUTORIAL_MENU_INDEX } from './shell/menu.ts';
+import { coverTail, HOME_MENU_INDEX, MENU_ITEMS, menuItemAction, TUTORIAL_MENU_INDEX } from './shell/menu.ts';
 import { isFirstRun, markFirstRunSeen } from './shell/first-run.ts';
 import { ChessGameScene } from './games/chess/scene.ts';
 import { CardsScene } from './games/poker/cards-scene.ts';
@@ -2010,11 +2010,11 @@ function menuWheelNav(e: MouseEvent): void {
 }
 
 // The Cover Flow chrome over the 3D covers: the focused game's title centred below
-// the carousel, with a dim tail: "coming soon" for placeholders, and on an install's first
-// launch a nudge under the Tutorial.
+// the carousel, with its dim tail (see coverTail).
 function drawCoverChrome(surf: Surface, cols: number, rows: number, sel: number): void {
   const item = MENU_ITEMS[coverFlowIndex(sel, MENU_ITEMS.length)];
-  const suffix = !item.enabled ? '   coming soon' : item.id === 'tutorial' && firstLaunch ? '   new here? start with this' : '';
+  const tail = coverTail(item, firstLaunch);
+  const suffix = tail ? `   ${tail}` : '';
   const tx = Math.max(0, Math.floor((cols - (item.title.length + suffix.length)) / 2));
   const ty = rows - 4;
   surf.drawTextOver(tx, ty, item.title, [240, 244, 255], STYLE_BOLD);
