@@ -17,8 +17,8 @@ import { PLAYER_LOOK } from '../games/islanders/palette.ts';
 import { PLAYER_COLORS, type PlayerColor } from '../../rules/islanders/types.ts';
 import type { IslandersSeatSpec } from './islanders-driver.ts';
 import { ARCADE_CHROME_TEXT } from '../theme.ts';
-import { createModelSeatPicker, hiddenModelSeat, modelSeatControls, mountModelSeat, setModelSeatCreators, type ModelCreator, type ModelSeatPicker } from './model-seat-picker.ts';
-import { resolveDefaultCreators } from './default-seats.ts';
+import { createModelSeatPicker, hiddenModelSeat, modelSeatControls, mountModelSeat, selectModelSeat, setModelSeatCreators, type ModelCreator, type ModelSeatPicker } from './model-seat-picker.ts';
+import { dealDefaultCreators } from './default-seats.ts';
 import { matchSetupHeading } from './match-setup-chrome.ts';
 
 let TEXT_CREATORS: ModelCreator[] = pickerCreators();
@@ -37,21 +37,32 @@ const changed = (): void => {
   onChanged?.();
 };
 
-// One config per AI seat the table can hold, each opening on a creator from the default
-// cycle with the model left to pick. Index 0 is only used when spectating (where seat 1 is
-// a model too); playing, you are seat 1 and indices 1.. are your opponents. The cycle spans
-// four creators, so the default 4-seat spectate table never repeats one.
+// One config per AI seat the table can hold, each opening on a creator with the model left
+// to pick. Index 0 is only used when spectating (where seat 1 is a model too); playing, you
+// are seat 1 and indices 1.. are your opponents. Creators are dealt down the AI configs of
+// the current mode, so your first opponent is OpenAI whether or not you are at the table.
 const SEATS = 4;
-const sides: ModelSeatPicker[] = resolveDefaultCreators(TEXT_CREATORS, SEATS).map((creator, i) => createModelSeatPicker({
+function aiConfigs(spectate: boolean): number[] {
+  return Array.from({ length: SEATS }, (_, i) => i).filter((i) => spectate || i > 0);
+}
+const sides: ModelSeatPicker[] = dealDefaultCreators(TEXT_CREATORS, SEATS, aiConfigs(false)).map((creator, i) => createModelSeatPicker({
   idPrefix: `islanders-seat${i}`,
   creators: TEXT_CREATORS,
   defaultCreator: creator ?? 'openai',
   onChange: changed,
 }));
+// Re-deal the default creators for the mode. A seat the player has already given a model
+// keeps it; a seat still on "pick a model…" takes its rank's creator.
+function dealSeats(): void {
+  const defaults = dealDefaultCreators(TEXT_CREATORS, SEATS, aiConfigs(spectating()));
+  sides.forEach((side, i) => {
+    if (side.modelId === null && defaults[i] && side.creator !== defaults[i]) selectModelSeat(side, defaults[i]);
+  });
+}
 
 export function setIslandersSetupModelCatalog(textCreators: readonly ModelCreator[]): void {
   TEXT_CREATORS = [...textCreators];
-  const defaults = resolveDefaultCreators(TEXT_CREATORS, SEATS);
+  const defaults = dealDefaultCreators(TEXT_CREATORS, SEATS, aiConfigs(spectating()));
   sides.forEach((side, i) => setModelSeatCreators(side, TEXT_CREATORS, defaults[i]));
   changed();
 }
@@ -89,7 +100,10 @@ export const modeDropdown = new Dropdown({
   items: ['play vs AI', 'spectate AI'],
   width: 16,
   index: 0,
-  onSelect: () => changed(),
+  onSelect: () => {
+    dealSeats();
+    changed();
+  },
 });
 
 const COMMUNICATION_W = 14;

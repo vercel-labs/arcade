@@ -30,7 +30,7 @@ test('heads-up setup always selects a text model and exposes no voice controls',
 
     // The seat opens on its default creator with the model left to pick: the wisp previews
     // by creator while Start waits.
-    assert.deepEqual(pokerPreviewSeats().map((seat) => seat.creator), [undefined, 'anthropic']);
+    assert.deepEqual(pokerPreviewSeats().map((seat) => seat.creator), [undefined, 'openai'], 'heads-up, your one opponent is the top-ranked creator');
     assert.equal(pokerSetupReady(), false);
     assert.equal(pokerSetupSelection(), null);
     selectModelSeat(pokerSeatPicker(1), 'anthropic', 'anthropic/claude-haiku-4.5');
@@ -45,4 +45,22 @@ test('heads-up setup always selects a text model and exposes no voice controls',
     modeDropdown.pick(previousMode);
     playersDropdown.pick(previousPlayers);
   }
+});
+
+test('switching between play and spectate re-deals untouched seats so OpenAI leads either way', () => {
+  selectModelSeat(pokerSeatPicker(1), 'google'); // back to a creator with no model: an untouched seat
+  assert.equal(pokerSeatPicker(1).modelId, null);
+  modeDropdown.pick(1); // spectate: seat 1 is a model too
+  assert.deepEqual([0, 1, 2].map((i) => pokerSeatPicker(i).creator), ['openai', 'anthropic', 'google']);
+  modeDropdown.pick(0); // play: you take seat 1, the opponents shift down
+  assert.deepEqual([1, 2, 3].map((i) => pokerSeatPicker(i).creator), ['openai', 'anthropic', 'google']);
+
+  // A seat the player has already committed keeps its model through a mode switch.
+  selectModelSeat(pokerSeatPicker(2), 'google');
+  selectModelSeat(pokerSeatPicker(2), 'google', pokerSeatPicker(2).models[0]!.id);
+  modeDropdown.pick(1);
+  assert.equal(pokerSeatPicker(2).creator, 'google');
+  assert.ok(pokerSeatPicker(2).modelId);
+  modeDropdown.pick(0);
+  selectModelSeat(pokerSeatPicker(2), 'anthropic'); // leave the shared pickers untouched for later tests
 });
