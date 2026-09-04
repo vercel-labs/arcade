@@ -5,7 +5,6 @@ import { CopyPageButton } from '../docs-client';
 import { APP_DOCS } from '../docs-app';
 import { CORE_DOCS, type DocPage } from '../docs-content';
 import { GAME_DOCS } from '../docs-games';
-import { MOTIVATION_DOC } from '../docs-motivation';
 import { GUIDE_DOCS, REFERENCE_DOCS } from '../docs-reference';
 
 const hrefFor = (slug: string) => `/docs${slug ? `/${slug}` : ''}`;
@@ -28,7 +27,6 @@ const DOCS = [
   ...GUIDE_DOCS,
   corePage('package-api'),
   ...REFERENCE_DOCS,
-  MOTIVATION_DOC,
 ];
 const findDoc = (slug: string) => DOCS.find((page) => page.slug === slug);
 const sectionLabel = (section: string): string => section === 'app' ? 'Using Arcade' : section === 'reference' ? 'API Reference' : section === 'guides' ? 'Guides' : section === 'web' ? 'Browser integration' : 'Games';

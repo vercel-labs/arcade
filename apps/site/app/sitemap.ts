@@ -9,7 +9,7 @@ const docsPaths = [
   '/docs/reference', '/docs/reference/engine/render-target', '/docs/reference/engine/material', '/docs/reference/engine/surface', '/docs/reference/engine/camera-resources',
   '/docs/reference/tui/screen', '/docs/reference/tui/layout-nodes', '/docs/reference/tui/renderer-keymap',
   '/docs/reference/components/input', '/docs/reference/components/select-dropdown', '/docs/reference/components/slider', '/docs/reference/components/table-scrollbox', '/docs/reference/components/overlays',
-  '/docs/reference/symbols', '/docs/motivation',
+  '/docs/reference/symbols',
 ];
 
 export default function sitemap(): MetadataRoute.Sitemap {

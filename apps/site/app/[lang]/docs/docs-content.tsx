@@ -99,7 +99,7 @@ import {
       {
         heading: 'Install the CLI',
         body: <><p>Arcade requires Node.js 22 or newer. Install the package globally when you plan to return, then launch it from any terminal.</p><Code title="Terminal">{`npm i -g @vercel/arcade
-arcade`}</Code><p>For a one-off run, <code>npx @vercel/arcade@latest</code> downloads and launches the newest published version without leaving a global <code>arcade</code> command behind.</p><Code title="Terminal">{`npx @vercel/arcade@latest`}</Code><p>The first screen is a CPU-rendered prism followed by the game launcher. Keyboard and mouse input both work; open the in-app menu to see the active controls for the current screen.</p><Note>The npm package currently has restricted access while the public beta is finalized. If npm cannot resolve the package for your account, clone the repository and use the development workflow below.</Note></>,
+arcade`}</Code><p>For a one-off run, <code>npx @vercel/arcade@latest</code> downloads and launches the newest published version without leaving a global <code>arcade</code> command behind.</p><Code title="Terminal">{`npx @vercel/arcade@latest`}</Code><p><code>arcade --help</code> and <code>arcade --version</code> print plain text and exit before authentication, network requests, or terminal takeover, so they are safe to use from scripts and coding agents.</p><p>Before entering full-screen mode, Arcade detects terminal color support and resolves Vercel sign-in and team selection. It reuses a cached session when available; otherwise it starts device authorization in the normal terminal. After those startup checks, a CPU-rendered prism introduces the game launcher. Keyboard and mouse input both work; open the in-app menu to see the active controls for the current screen.</p><Note>The npm package currently has restricted access while the public beta is finalized. If npm cannot resolve the package for your account, clone the repository and use the development workflow below.</Note></>,
       },
       {
         heading: 'Run from source',
@@ -111,7 +111,7 @@ pnpm snapshot:png islanders 180 70 0.7`}</Code><p>Snapshot output is written und
       },
       {
         heading: 'Enable model play',
-        body: <><p>Arcade uses Vercel device authorization rather than asking you to paste a credential. On first model-enabled launch, follow the browser prompt, select the Vercel team that should own AI Gateway usage, and return to the terminal. Arcade automatically obtains a team-scoped AI Gateway key, then refreshes the model picker from an availability-aware team catalog.</p><Code title="Terminal">{`arcade --login
+        body: <><p>Arcade uses Vercel device authorization rather than asking you to paste a credential. On every interactive launch it tries to reuse the cached Vercel session and selected team. If no usable session exists, device authorization starts before the full-screen UI. Arcade then obtains a process-local, team-scoped AI Gateway key and refreshes the model picker from an availability-aware team catalog.</p><Code title="Terminal">{`arcade --login
 arcade --switch-team
 arcade --logout`}</Code><p>The session is cached in <code>~/.config/arcade/auth.json</code>. The minted AI Gateway key is re-derived instead of stored. An unrelated <code>AI_GATEWAY_API_KEY</code> inherited from your shell is intentionally ignored. Continue to <a href="/docs/app/models">Models, teams, and billing</a> for key naming, free and paid access, spend links, and health-check failures.</p></>,
       },
@@ -881,8 +881,8 @@ const result = await runHeadlessChessMatch(
 
 console.log(result.status, result.plies, result.state.fen())`}</Code><Api rows={[
           ['runHeadlessChessMatch', 'Exactly two players; defaults to a 300-ply evaluator bound; returns completed or bounded state and ply count.'],
-          ['runHeadlessIslandersMatch', 'One Player per state seat; defaults to 8,000 actions; returns victory/action-limit/stopped/aborted status.'],
-          ['runIslandersInitialPlacement', 'Runs only the snake-placement phase and supports a bounded smoke-test action limit.'],
+          ['runHeadlessIslandersMatch', 'One Player per state seat; defaults to 8,000 actions; returns completed or bounded plus state, actionCount, and a victory/action_limit/stopped/aborted stopReason.'],
+          ['runIslandersInitialPlacement', 'Runs only the snake-placement phase and returns the resulting state. An optional maxActions smoke-test bound throws IslandersMatchActionLimitError if setup does not finish in time.'],
           ['runPokerSession', 'Runs 2–6 seats across hands with carried stacks/button, escalating blinds, action/hand limits, events, and canonical records.'],
         ]} /><p>Inject <code>rng</code>, <code>fallbackRng</code>, or <code>chanceRng</code> where the runner exposes it. Bounds are evaluator safeguards, not game rules. An interactive scene can use the corresponding non-headless runner and resolve <code>playMove()</code> after visible animation.</p></>,
       },
@@ -1023,7 +1023,7 @@ $ arcade
       },
       {
         heading: 'Sign in and use models',
-        body: <><p>Every fresh hosted session starts signed out and uses the same Vercel device authorization as a local installation. When Arcade requests sign-in, the terminal emits a private browser-open event; the site accepts only Vercel HTTPS destinations and exposes the authorization page as a browser action. Team selection and team-scoped AI Gateway key setup remain part of Arcade’s normal flow.</p><p>The site owns no shared model credential. The browser bundle and visitor shell never receive the user’s Gateway key; it exists only in the Arcade process inside that temporary Sandbox and disappears with the session.</p></>,
+        body: <><p>Every fresh hosted session starts without cached Arcade authentication. Launching <code>arcade</code> starts the same Vercel device authorization as a local installation before entering the full-screen UI. The terminal emits a private browser-open event; the site accepts only Vercel HTTPS destinations and exposes the authorization page as a browser action. Team selection and team-scoped AI Gateway key setup remain part of Arcade’s normal flow.</p><p>The site owns no shared model credential. The browser bundle and visitor shell never receive the user’s Gateway key; it exists only in the Arcade process inside that temporary Sandbox and disappears with the session.</p></>,
       },
       {
         heading: 'Isolation and credentials',

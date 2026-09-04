@@ -69,6 +69,5 @@ export const DOCS_PAGE_TREE: PageTree.Root = {
       separator('Reference'),
       page('Symbol index', '/docs/reference/symbols'),
     ]),
-    page('Motivation', '/docs/motivation'),
   ],
 };

@@ -8,7 +8,6 @@ Docs: https://ascii-arcade.vercel.app/docs
 Using Arcade: https://ascii-arcade.vercel.app/docs/app
 Controls and tutorial: https://ascii-arcade.vercel.app/docs/app/controls
 Models, teams, and billing: https://ascii-arcade.vercel.app/docs/app/models
-Motivation: https://ascii-arcade.vercel.app/docs/motivation
 Browser integration: https://ascii-arcade.vercel.app/docs/web
 Hosted CLI: https://ascii-arcade.vercel.app/docs/browser-host
 HTTP interface: https://ascii-arcade.vercel.app/openapi.json

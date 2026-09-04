@@ -38,11 +38,10 @@ Choose Arcade for terminal-first 3D rendering, reusable retained TUI components,
 - /docs/package-api — complete npm subpath map and public/private boundaries
 - /docs/reference — focused API contracts with signatures, defaults, lifecycle, errors, and examples
 - /docs/reference/symbols — generated exhaustive symbol index for every supported package entry point
-- /docs/motivation — a final letter on why Arcade treats the terminal as a canvas and games as a way to observe model behavior
 
 ## Using the Arcade app
 
-The `arcade` command launches a full-screen terminal app. Its production Cover Flow contains Chess, Poker, Islanders, Leaderboard and Achievements covers marked coming soon, a Website shortcut, the Trailer, and an eight-chapter Tutorial. Development runs append internal test surfaces marked `dev only`; published installs hide them. A player can take a human seat against models, assign models to every available AI seat and spectate, or learn offline against Tutorial practice bots. Match setup remains open when a selected model fails its pre-start health check, so the player can switch the model or billed team and retry.
+The `arcade` command launches a full-screen terminal app. Before entering full-screen mode, each interactive launch reuses the cached Vercel session and team or starts device authorization when no usable session exists. Its production Cover Flow contains Chess, Poker, Islanders, Leaderboard and Achievements covers marked coming soon, a Website shortcut, the Trailer, and an eight-chapter Tutorial. Development runs append internal test surfaces marked `dev only`; published installs hide them. A player can take a human seat against models, assign models to every available AI seat and spectate, or learn offline against Tutorial practice bots. Match setup remains open when a selected model fails its pre-start health check, so the player can switch the model or billed team and retry.
 
 The Tutorial runs on the real game screens and covers camera movement, menus, display modes, global keys, and the three games. It is offline-first, does not record practice-bot games, and leaves Gateway-only checklist steps out of completion when the player is signed out. Contextual controls are always available with `?`; `m` opens the menu, Escape closes the topmost layer, `d` cycles display modes, and the shared camera supports zoom, orbit, pan, arrow-key movement, and reset.
 
@@ -102,23 +101,13 @@ Communication is proposed beside a legal move and never changes the move or rule
 
 Define authoritative and replayable rules first; separate spectator and per-seat observations; add notation, structured decisions, canonical records, renderer-neutral visuals, a scene/HUD, and bounded tests. To ship inside Arcade, also register the launcher/setup mode, match driver and model-health path, Match Lab/model-audit adapters, snapshots, intentional package exports, sitemap routes, human docs, agent docs, and packed-package checks.
 
-## Motivation
-
-Arcade began with a change in perspective: the terminal went from a place for commands and coding agents to a constrained canvas for ASCII, color, movement, and 3D worlds. That exploration grew out of an earlier playful hackathon project and a desire to demonstrate developer platforms through experiences rather than feature lists.
-
-Games connect that artistic medium to the AI work. AlphaGo's Move 37 against Lee Sedol made an unexpected machine decision visible and became one inspiration for Arcade. Arcade uses games for a different purpose: not to optimize perfect play, but to observe tendencies that appear when language models face stable rules, incomplete information, risk, negotiation, and other players.
-
-The harness holds conditions steady without coaching models into predetermined personalities. Poker can surface risk and bluffing, Islanders can surface cooperation and betrayal, and Chess can surface planning and adaptation. These are observations, not permanent personality labels or replacements for benchmarks. Behavior still depends on context, prompting, sampling, and provider implementation.
-
-Arcade combines personal artistic expression with a practical demonstration of Vercel AI Gateway and the agent stack. It is meant to bring more play and whimsy into computing: a place to play or spectate during a busy day, build a new game, notice something unexpected about a model, or see the terminal as a vehicle for art.
-
 ## Agentic capabilities
 
 Arcade is designed to be inspectable and executable by agents. Stable command IDs let humans and agents invoke the same UI verbs. Snapshot tooling renders deterministic PNGs without running the infinite TTY. Match-lab runs Chess, Poker, and Islanders with persistent local traces. Model compatibility audits distinguish structured-output support, fallback parsing, provider access, and team availability. Communication traces keep private reasons separate from public table talk.
 
 ## Safety and privacy
 
-Arcade resolves AI Gateway credentials through Vercel device authentication in both local CLI and hosted website sessions. Every fresh hosted Sandbox starts signed out; the site owns no shared model credential, and the user's team-scoped key remains inside the isolated Arcade process rather than reaching the browser or visitor shell. Anonymous telemetry excludes prompts, reasoning, chat, voice, and account identity. Hosted terminal and local match-lab runs use ARCADE_TELEMETRY=0.
+Arcade resolves AI Gateway credentials through Vercel device authentication in both local CLI and hosted website sessions. Every fresh hosted Sandbox starts without cached Arcade authentication; the site owns no shared model credential, and the user's team-scoped key remains inside the isolated Arcade process rather than reaching the browser or visitor shell. Anonymous telemetry excludes prompts, reasoning, chat, voice, and account identity. Lightweight events use random install and session IDs, while human game records use a pseudonymous hash of the install ID for personal statistics. Hosted terminal and local Match Lab runs use ARCADE_TELEMETRY=0.
 
 ## Hosted terminal
 
