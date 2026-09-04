@@ -89,7 +89,7 @@ test('terminal and browser share the exact production Islanders dice overlay', (
 
 test('Islanders cinematic composites sparse dice after settlements without number pips', () => {
   const cinematic = readFileSync(new URL('./browser-game-cinematics.ts', import.meta.url), 'utf8');
-  const overlay = cinematic.indexOf('if (buildings.length || roads.length) draw(overlay');
+  const overlay = cinematic.indexOf('const overlay = boardOverlayMesh');
   const dice = cinematic.indexOf('paintIslandersDiceLayer(surface');
   assert.ok(overlay >= 0 && dice > overlay, 'dice must be the final visual layer above pieces');
   assert.ok(!cinematic.includes('drawIslandersNumberTokens'));

@@ -15,6 +15,10 @@ export type BrowserMiniSceneId =
 export interface BrowserMiniSceneOptions {
   /** Internal raster samples per terminal-cell width; defaults to production 3x6. */
   rasterScale?: number;
+  /** Use the CLI's shadow-preserving glyph matcher while keeping cell backgrounds black. */
+  shadowGlyphs?: boolean;
+  /** Use the playable CLI scene's lighting/material setup rather than the website look. */
+  productionLighting?: boolean;
   /** Browser-visible directory containing pawn.obj, knight.obj, and the other production pieces. */
   chessPieceAssetBaseUrl?: string;
   /** Exact per-piece URLs override the package-owned model URLs. */

@@ -16,6 +16,13 @@ import { islandersCinematicCamera } from '../../cinematic/camera.ts';
 
 export const SOCIAL_TRAILER_SECONDS = 30;
 export const SOCIAL_TRAILER_INK_SECONDS = 1.5;
+export const SOCIAL_TRAILER_RENDER_STYLE = {
+  // The film renders continuously at terminal cadence; 2x is the intentional performance
+  // exception. Lighting, materials, and shadow glyphs still come from the production CLI.
+  rasterScale: 2,
+  productionLighting: true,
+  shadowGlyphs: true,
+} as const;
 
 export type SocialTrailerBeat =
   | 'hook-islanders'
@@ -91,7 +98,7 @@ const ISLANDERS_SETUP_HEAD_START = 1.5;
 // one readable Chess landing without spending the ending on a static cover.
 const COVER_SETTLE_SECONDS = SOCIAL_TRAILER_INK_SECONDS + COVER_PROOF_SECONDS - 0.1;
 const BLACK: [number, number, number] = [0, 0, 0];
-const TRAILER_RASTER_SCALE = 2;
+const TRAILER_RASTER_SCALE = SOCIAL_TRAILER_RENDER_STYLE.rasterScale;
 const MAX_TRANSITION_PLATES = 8;
 
 interface MovingTransitionPlates {
@@ -119,8 +126,12 @@ export function socialTrailerSample(elapsedSeconds: number): SocialTrailerSample
 
 /** CLI-only, self-editing social film. Shared renderers stay at native speed. */
 export class SocialTrailerDirector {
-  private readonly hookIslanders = new BrowserIslandersCinematic(socialTrailerIslandersHookCamera, TRAILER_RASTER_SCALE);
-  private readonly islanders = new BrowserIslandersCinematic(socialTrailerIslandersCamera, TRAILER_RASTER_SCALE);
+  private readonly hookIslanders = new BrowserIslandersCinematic(socialTrailerIslandersHookCamera, TRAILER_RASTER_SCALE, {
+    productionLighting: SOCIAL_TRAILER_RENDER_STYLE.productionLighting,
+  });
+  private readonly islanders = new BrowserIslandersCinematic(socialTrailerIslandersCamera, TRAILER_RASTER_SCALE, {
+    productionLighting: SOCIAL_TRAILER_RENDER_STYLE.productionLighting,
+  });
   private readonly poker: BrowserPokerCinematic;
   private readonly chess: BrowserChessBoardShowcase;
   private readonly covers: SocialTrailerCoverFlow;
@@ -132,8 +143,18 @@ export class SocialTrailerDirector {
   private preparation: Promise<void> | null = null;
 
   constructor(options: SocialTrailerOptions = {}) {
-    this.poker = new BrowserPokerCinematic({ ...options.poker, rasterScale: TRAILER_RASTER_SCALE });
-    this.chess = new BrowserChessBoardShowcase({ ...options.chess, rasterScale: TRAILER_RASTER_SCALE });
+    this.poker = new BrowserPokerCinematic({
+      ...options.poker,
+      rasterScale: TRAILER_RASTER_SCALE,
+      productionLighting: SOCIAL_TRAILER_RENDER_STYLE.productionLighting,
+      shadowGlyphs: SOCIAL_TRAILER_RENDER_STYLE.shadowGlyphs,
+    });
+    this.chess = new BrowserChessBoardShowcase({
+      ...options.chess,
+      rasterScale: TRAILER_RASTER_SCALE,
+      productionLighting: SOCIAL_TRAILER_RENDER_STYLE.productionLighting,
+      shadowGlyphs: SOCIAL_TRAILER_RENDER_STYLE.shadowGlyphs,
+    });
     this.chess.setChromeVisible(false);
     this.covers = new SocialTrailerCoverFlow(options.covers);
   }
