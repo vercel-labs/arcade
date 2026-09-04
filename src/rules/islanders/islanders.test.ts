@@ -653,6 +653,44 @@ function mainPhaseWithDev(type: Exclude<DevCardType, 'victoryPoint'>): Islanders
   return s;
 }
 
+test('the outlook states what each build still needs and where the awards stand, and can be switched off', () => {
+  const s = fresh();
+  finishSetup(s);
+  s.applyAction({ type: 'roll' }, { dice: [1, 1] });
+  setHand(s, 0, { lumber: 1, brick: 1 });
+  const text = s.informationStateString(0);
+  assert.match(text, /Your outlook \(facts, not advice\):/);
+  assert.match(text, /- Victory: 2 VP counting hidden cards; 8 more to win\./);
+  assert.match(text, /- Settlement \(need 1 wheat, 1 sheep\): (spots you can take now: |no spot reachable yet)/);
+  assert.match(text, /- City \(need 2 wheat, 3 ore\): settlements you can upgrade: /);
+  assert.match(text, /- Road \(affordable now\); development card \(need 1 wheat, 1 ore, 1 sheep\), 25 left in the deck\./);
+  assert.match(text, /- Longest Road: yours is 1; no one holds it yet \(5 needed\)\./);
+  assert.match(text, /- Largest Army: you have played 0 knights; no one holds it yet \(3 needed\)\./);
+  assert.ok(text.indexOf('Your outlook') > text.indexOf('Your portfolio'), 'the outlook follows the portfolio line');
+  assert.equal(s.clone().informationStateString(0).includes('Your outlook'), true, 'clones keep the setting');
+
+  const quiet = new IslandersState({ numPlayers: 4, rng: rng(), promptOutlook: false });
+  finishSetup(quiet);
+  assert.equal(quiet.informationStateString(0).includes('Your outlook'), false);
+});
+
+test('ending the turn and building read on equal terms: what is kept, what is spent, what the next build then needs', () => {
+  const s = fresh();
+  finishSetup(s);
+  s.applyAction({ type: 'roll' }, { dice: [1, 1] });
+  setHand(s, 0, { lumber: 1, brick: 1, grain: 1 });
+  const ctx = s.decisionContextString(0);
+  assert.match(ctx, /Building spends cards now; ending the turn keeps every card in hand/);
+  assert.match(ctx, /- end \[keeps 1 brick, 1 wheat, 1 wood in hand for later turns; a settlement (at [^;]+|\(once a road reaches an open spot\)) needs 1 sheep; a city needs 1 wheat, 3 ore\]/);
+  const road = ctx.split('\n').find((line) => line.startsWith('- road '));
+  assert.ok(road);
+  assert.match(road, /spends 1 brick, 1 wood; a settlement (at [^;]+|\(once a road reaches an open spot\)) then needs 1 brick, 1 wood, 1 sheep\]/);
+  assert.doesNotMatch(road, /a city then/, 'a wood+brick spend does not touch the city cost');
+  assert.match(s.informationStateString(0), /- Trading for what you lack: bank 4:1 \(you hold no 4 of a kind\); your ports: /);
+  setHand(s, 0, {});
+  assert.match(s.decisionContextString(0), /- end \[keeps an empty hand\]/);
+});
+
 test('a held development card explains why it cannot be played yet', () => {
   const s = mainPhaseWithDev('knight');
   assert.equal(s.developmentCardHold(0, 'knight'), null);

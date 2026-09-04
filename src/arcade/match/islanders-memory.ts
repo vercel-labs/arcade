@@ -20,7 +20,7 @@ const NOTE_MAXLEN = 160;
 const PLAN_MAXLEN = 200;
 
 const reflectionSchema = z.object({
-  plan: z.string().describe('one sentence: what you are trying to do over the next few turns'),
+  plan: z.string().describe('one sentence: the next thing you intend to build or claim, which resources you still lack for it, and how you expect to get them (rolls, bank or port, or a player trade)'),
   players: z
     .array(
       z.object({
@@ -120,7 +120,7 @@ export class IslandersMemory {
       'Your current notes:',
       current,
       '',
-      `Rewrite your plan in one sentence, and update your notes on the other players: at most ${MAX_NOTES} per player, each one short sentence. ` +
+      `Rewrite your plan in one sentence: the next thing you intend to build or claim, which resources you still lack for it, and how you expect to get them (rolls, bank or port, or a player trade). Then update your notes on the other players: at most ${MAX_NOTES} per player, each one short sentence. ` +
         'Refine, merge, or drop notes rather than only adding. Note what their play shows — who trades fairly, who refuses, who robs you, who is close to winning — and remember deals made in talk are not enforced by the game. ' +
         'Refer to players by the names above. Do not invent reads you have no evidence for.',
     ].join('\n');

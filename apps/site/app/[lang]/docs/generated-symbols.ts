@@ -616,6 +616,7 @@ export const PUBLIC_SYMBOLS = {
   ],
   "@vercel/arcade/harness/islanders": [
     "ISLANDERS_MOVE_NOTATION",
+    "ISLANDERS_RULES_PRIMER",
     "ISLANDERS_SETUP_MOVE_NOTATION",
     "ISLANDERS_SETUP_SPEECH_GUIDE",
     "ISLANDERS_SPEECH_GUIDE",

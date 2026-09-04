@@ -10,6 +10,7 @@ import {
   createIslandersSetupModelPlayer,
   runIslandersInitialPlacement,
   runHeadlessIslandersMatch,
+  ISLANDERS_RULES_PRIMER,
 } from '../../../harness/games/islanders/islanders-setup.ts';
 import { normalizerModel } from '../../../arcade/match/models.ts';
 import { IslandersCommunicationCoordinator } from '../../../harness/games/islanders/islanders-communication.ts';
@@ -81,6 +82,8 @@ export const runIslandersMatchLab: MatchLabAdapter = async ({ plan, signal, emit
     domesticTrade: true,
     domesticTradeOfferLimit: 3,
     ...(current ? { domesticTradePolicy: plan.models.map(() => ({ maxOffersPerTurn: MODEL_OFFERS_PER_TURN, noRepeatRefused: true })) } : {}),
+    // Legacy prompts stop at the legal menu: no outlook block and no rules primer.
+    promptOutlook: current,
     rng,
   });
   const communication = new IslandersCommunicationCoordinator(plan.communicationMode, labels);
@@ -111,6 +114,7 @@ export const runIslandersMatchLab: MatchLabAdapter = async ({ plan, signal, emit
   const players: Player<IslandersAction>[] = plan.models.map((model, seat) => makePlayer({
     model,
     name: labels[seat],
+    ...(current ? { persona: ISLANDERS_RULES_PRIMER } : {}),
     normalizer,
     fallbackRng: rng,
     communication: communication.modelConfig(),

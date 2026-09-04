@@ -4,4 +4,7 @@
 .claude
 .snapshots
 .audio-logs
+.runs
+.worktrees
+vercel-arcade-*.tgz
 reference

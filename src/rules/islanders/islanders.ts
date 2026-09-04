@@ -105,6 +105,12 @@ export interface IslandersOpts {
    * never the recorded game: `applyAction` doesn't consult it, so transcripts replay without it.
    */
   domesticTradePolicy?: readonly (IslandersSeatOfferPolicy | undefined)[];
+  /**
+   * Whether a seat's observation ends with its outlook: what each next build still needs and
+   * where it stands on the awards. Facts drawn from the same state, never rankings; off lets a
+   * harness compare prompts that stop at the legal menu. Defaults to on.
+   */
+  promptOutlook?: boolean;
 }
 
 export interface IslandersSeatOfferPolicy {
@@ -284,6 +290,7 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
   private domesticTradeOfferLimit: number;
   private domesticOffersThisTurn = 0;
   private offerPolicy: (IslandersSeatOfferPolicy | undefined)[];
+  private promptOutlook: boolean;
   // The current turn owner's offers so far, newest last; reset when the turn ends.
   private turnOffers: IslandersTurnOffer[] = [];
   private lastDice: [number, number] | null = null;
@@ -305,6 +312,7 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
       throw new RangeError(`domesticTradeOfferLimit must be a nonnegative integer; received ${this.domesticTradeOfferLimit}`);
     }
     this.offerPolicy = Array.from({ length: this.n }, (_, seat) => opts.domesticTradePolicy?.[seat]);
+    this.promptOutlook = opts.promptOutlook ?? true;
     for (const policy of this.offerPolicy) {
       const max = policy?.maxOffersPerTurn;
       if (max !== undefined && (!Number.isInteger(max) || max < 0)) throw new RangeError(`maxOffersPerTurn must be a nonnegative integer; received ${max}`);
@@ -406,6 +414,7 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
     s.domesticTradeOfferLimit = this.domesticTradeOfferLimit;
     s.domesticOffersThisTurn = this.domesticOffersThisTurn;
     s.offerPolicy = this.offerPolicy.slice();
+    s.promptOutlook = this.promptOutlook;
     s.turnOffers = this.turnOffers.map((offer) => ({ ...offer, give: offer.give.slice(), receive: offer.receive.slice(), accepted: [...offer.accepted], countered: [...offer.countered], rejected: [...offer.rejected] }));
     s.lastDice = this.lastDice ? [...this.lastDice] : null;
     s.records = this.records.map((record) => ({
@@ -992,6 +1001,7 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
     lines.push(...this.recentTurnsSummary());
     lines.push(...this.dealingsDigest(player));
     lines.push(`Your portfolio: production pips ${this.productionStr(portfolio.production)}; numbers [${portfolio.numberCoverage.join(',')}]; ports ${this.portsStr(portfolio.ports)}; pieces left roads=${portfolio.roadsLeft}, settlements=${portfolio.settlementsLeft}, cities=${portfolio.citiesLeft}.`);
+    if (this.promptOutlook) lines.push(...this.outlookLines(player));
     lines.push(`Private rules vocabulary maps to public table talk as follows: ${PUBLIC_RESOURCE_ORDER}. Keep canonical IDs and pip calculations in private thinking; public speech uses the supplied public labels and player names.`);
     if (this.trade) {
       const offerer = this.seatName(this.trade.from);
@@ -1024,6 +1034,7 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
     const lines = [
       'Legal actions (choose exactly one canonical action shown below).',
       'Facts are descriptive, not recommendations; decide how to value production, diversity, ports, expansion, and route competition.',
+      'Building spends cards now; ending the turn keeps every card in hand for a later build or trade. Each is one of the actions below.',
       `Canonical five-slot resource vectors are always brick/grain/lumber/ore/wool. In public speech these mean ${PUBLIC_RESOURCE_ORDER}. Domestic offers and counteroffers are player-to-player trades, never bank or port trades.`,
       'Your public communication must describe the exact canonical action you select. Treat its supplied public spot, route, trade, resource, and player facts as authoritative; never substitute a different action or exchange.',
       'For a listed legal action, the canonical move is only the text before any opening bracket [. Put only that canonical text in move; brackets contain explanatory public facts, never move syntax.',
@@ -1043,6 +1054,7 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
       return lines.join('\n');
     }
     const legal = this.legalActions();
+    if (legal.some((action) => action.type === 'buildRoad')) lines.push('Road lines name the settlement spots a road would open; those are settlement opportunities, not city upgrades.');
     if (this.prompt.kind === 'discard') {
       const combinations = countDiscardCombinations(this.hands[player], this.discardRemaining[player]);
       lines.push(`Discard exactly ${this.discardRemaining[player]} cards. Use: discard resource,resource,... (duplicates mean multiple cards).`);
@@ -1864,7 +1876,11 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
       case 'initialRoad':
         return `public route: ${this.publicRoadLabel(action.edge)}`;
       case 'buildRoad':
-        return this.roadDecisionHint(action.edge, player);
+        return `${this.roadDecisionHint(action.edge, player)}; ${this.spendHint(player, COSTS.road)}`;
+      case 'buyDevCard':
+        return this.spendHint(player, COSTS.devCard);
+      case 'endTurn':
+        return this.keepHint(player);
       case 'playRoadBuilding':
         return `public routes: ${action.edges.map((edge) => this.publicRoadLabel(edge)).join(' | ')}`;
       case 'moveRobber':
@@ -1896,6 +1912,34 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
       return `confirm counter with ${this.seatName(withSeat)}: YOU give ${this.publicDeckPhrase(counter.receive)}; YOU receive ${this.publicDeckPhrase(counter.give)}`;
     }
     return `confirm original offer with ${this.seatName(withSeat)}: YOU give ${this.publicDeckPhrase(this.trade.give)}; YOU receive ${this.publicDeckPhrase(this.trade.receive)}`;
+  }
+
+  // The other side of a build: what it spends and what the seat's next settlement or city
+  // would still need afterwards. Facts, so that spending and keeping read on equal terms.
+  private spendHint(player: number, cost: FreqDeck): string {
+    const hand = this.hands[player];
+    const { settleable, upgradable } = this.buildSites(player);
+    const overlaps = (other: FreqDeck): boolean => RESOURCES.some((_, i) => (cost[i] ?? 0) > 0 && (other[i] ?? 0) > 0);
+    const parts = [`spends ${this.publicDeckPhrase(cost)}`];
+    if (overlaps(COSTS.settlement) && this.pieceCount(player, 'settlement') < PIECE_LIMITS.settlement) {
+      parts.push(`a settlement${settleable.length ? ` at ${this.publicNodeLabel(settleable[0])}` : ' (once a road reaches an open spot)'} then ${this.lacks(hand, COSTS.settlement, cost)}`);
+    }
+    if (overlaps(COSTS.city) && upgradable.length) parts.push(`a city then ${this.lacks(hand, COSTS.city, cost)}`);
+    return parts.join('; ');
+  }
+
+  // Ending the turn as a choice: the hand it keeps and what that hand is short of for the
+  // nearest settlement or city.
+  private keepHint(player: number): string {
+    const hand = this.hands[player];
+    if (freqTotal(hand) === 0) return 'keeps an empty hand';
+    const { settleable, upgradable } = this.buildSites(player);
+    const parts = [`keeps ${this.publicDeckPhrase(hand)} in hand for later turns`];
+    if (this.pieceCount(player, 'settlement') < PIECE_LIMITS.settlement) {
+      parts.push(`a settlement${settleable.length ? ` at ${this.publicNodeLabel(settleable[0])}` : ' (once a road reaches an open spot)'} ${this.lacks(hand, COSTS.settlement)}`);
+    }
+    if (upgradable.length) parts.push(`a city ${this.lacks(hand, COSTS.city)}`);
+    return parts.join('; ');
   }
 
   private roadDecisionHint(edge: number, player: number): string {
@@ -1933,8 +1977,54 @@ export class IslandersState implements ImperfectInfoState<IslandersAction> {
       `settlement expansion — settle now: ${spots(settleNow)}`,
       `future settlement one road away: ${spots(oneRoadAway)}`,
       `adjacent rival roads: ${rivals.length ? rivals.join(', ') : 'none'}`,
-      'frontier sites are settlement opportunities, not city upgrades',
     ].join('; ');
+  }
+
+  // What stands between this seat and each of its next builds and awards, so a turn is chosen
+  // against every option's remaining cost and not only against what is affordable this moment.
+  // Everything here is derivable from the public board plus the seat's own hand; nothing ranks
+  // the options or names a strategy.
+  // The settlement spots this seat could take right now (road-connected, distance rule) and the
+  // settlements it could upgrade, by node. Public geometry only.
+  buildSites(player: number): { settleable: number[]; upgradable: number[] } {
+    const occ = this.occupancy();
+    const settleable: number[] = [];
+    const upgradable: number[] = [];
+    for (let node = 0; node < NUM_NODES; node++) {
+      if (canPlaceSettlement(node, occ) && nodeEdges[node].some((edge) => this.roads.get(edge) === player)) settleable.push(node);
+      if (canUpgradeCity(node, player, occ)) upgradable.push(node);
+    }
+    return { settleable, upgradable };
+  }
+
+  // What a hand still lacks for a cost, as public words; `after` is a deck about to be spent.
+  private lacks(hand: FreqDeck, cost: FreqDeck, after?: FreqDeck): string {
+    const missing = RESOURCES.map((_, i) => Math.max(0, (cost[i] ?? 0) - ((hand[i] ?? 0) - (after?.[i] ?? 0))));
+    return freqTotal(missing) === 0 ? 'affordable now' : `needs ${this.publicDeckPhrase(missing)}`;
+  }
+
+  private outlookLines(player: number): string[] {
+    const hand = this.hands[player];
+    const lacks = (cost: FreqDeck): string => this.lacks(hand, cost).replace(/^needs/, 'need');
+    const { settleable, upgradable } = this.buildSites(player);
+    const spots = (nodes: number[]): string => {
+      const shown = nodes.slice(0, 4).map((node) => this.publicNodeLabel(node));
+      return `${shown.join(' | ')}${nodes.length > shown.length ? ` | +${nodes.length - shown.length} more` : ''}`;
+    };
+    const vp = this.victoryPoints(player, true);
+    const lines = ['Your outlook (facts, not advice):'];
+    lines.push(`- Victory: ${vp} VP counting hidden cards; ${Math.max(0, VP_TO_WIN - vp)} more to win.`);
+    lines.push(`- Settlement (${lacks(COSTS.settlement)}): ${this.pieceCount(player, 'settlement') >= PIECE_LIMITS.settlement ? 'no settlement pieces left' : settleable.length ? `spots you can take now: ${spots(settleable)}` : 'no spot reachable yet; a road toward an open spot comes first'}.`);
+    lines.push(`- City (${lacks(COSTS.city)}): ${this.pieceCount(player, 'city') >= PIECE_LIMITS.city ? 'no city pieces left' : upgradable.length ? `settlements you can upgrade: ${spots(upgradable)}` : 'no settlement to upgrade'}.`);
+    lines.push(`- Road (${lacks(COSTS.road)}); development card (${lacks(COSTS.devCard)}), ${this.devDeck.length} left in the deck.`);
+    const bankable = RESOURCES.filter((_, i) => (hand[i] ?? 0) >= 4).map(publicResource);
+    const ports = this.portsStr(this.portfolio(player).ports);
+    lines.push(`- Trading for what you lack: bank 4:1 (${bankable.length ? `you hold 4+ ${bankable.join(', ')}` : 'you hold no 4 of a kind'}); your ports: ${ports}; player offers${this.domesticTradeEnabled && this.prompt.kind === 'playTurn' ? ` (${this.offersOpen(player) ? 'available this turn' : 'used up this turn'})` : ''}.`);
+    const roadHolder = this.longestRoadHolder;
+    lines.push(`- Longest Road: yours is ${this.longestRoadLengths[player]}; ${roadHolder < 0 ? `no one holds it yet (${LONGEST_ROAD_MIN} needed)` : roadHolder === player ? 'you hold it' : `${this.seatName(roadHolder)} holds it at ${this.longestRoadLengths[roadHolder]}`}.`);
+    const armyHolder = this.largestArmyHolder;
+    lines.push(`- Largest Army: you have played ${this.playedKnights[player]} knights; ${armyHolder < 0 ? `no one holds it yet (${LARGEST_ARMY_MIN} needed)` : armyHolder === player ? 'you hold it' : `${this.seatName(armyHolder)} holds it at ${this.playedKnights[armyHolder]}`}.`);
+    return lines;
   }
 
   // The last full round of turns plus the one in progress, one line per turn, with each
