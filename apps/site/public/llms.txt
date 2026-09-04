@@ -33,7 +33,7 @@ Do not use Arcade as a general-purpose hosted model API, multiplayer server, or 
 - Pure TypeScript CPU renderer; no GPU or native dependency is required for graphics.
 - Library modules never import Arcade app code.
 - Browser surfaces must not import terminal, filesystem, auth, telemetry, or credentials.
-- The hosted terminal must keep real AI Gateway credentials in server-side network policy, outside the browser and visitor shell.
+- Each hosted terminal uses the visitor's Vercel device login; the site owns no shared AI Gateway credential.
 - Match-lab telemetry is disabled by default and run artifacts are gitignored.
 
 For a larger offline corpus, read /llms-full.txt. For agent operating guidance, read /agents.md. The OpenAPI document describes the existing installer and prism-stream HTTP surfaces; it is not a promise of a remote game-control API.

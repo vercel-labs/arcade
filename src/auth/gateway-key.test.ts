@@ -32,18 +32,11 @@ describe('ensureGatewayKey precedence', () => {
     assert.equal(res, null);
   });
 
-  test('accepts the isolated hosted-terminal key without starting OAuth', async () => {
+  test('hosted terminals never accept an inherited shared key', async () => {
     process.env.ARCADE_HOSTED_TERMINAL = '1';
     process.env.AI_GATEWAY_API_KEY = 'hosted-placeholder';
     const res = await ensureGatewayKey({ interactive: false });
-    assert.deepEqual(res, { key: 'hosted-placeholder' });
-  });
-
-  test('explicit hosted login does not silently reuse the demo credential', async () => {
-    process.env.ARCADE_HOSTED_TERMINAL = '1';
-    process.env.AI_GATEWAY_API_KEY = 'hosted-demo';
-    const result = await ensureGatewayKey({ forceLogin: true, interactive: false });
-    assert.equal(result, null);
+    assert.equal(res, null);
   });
 
   test('does not accept the hosted key unless the explicit adapter flag is set', async () => {

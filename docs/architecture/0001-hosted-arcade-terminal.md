@@ -42,13 +42,13 @@ not presented as a second full Arcade application or a separate website gallery.
 
 - The visitor shell runs as an unprivileged Linux user.
 - The Arcade process runs as a separate unprivileged user through one exact sudo command.
-- The browser and visitor shell never receive the real AI Gateway credential.
-- Arcade receives a random placeholder credential. The Sandbox network policy replaces it only
-  for a matching request to `ai-gateway.vercel.sh`.
-- General session egress is denied. Without a hosted credential, all egress is denied and Arcade
-  still works without model play.
-- `ARCADE_HOSTED_TERMINAL=1` is the only condition under which the CLI accepts an inherited key;
-  normal local launches continue to ignore inherited keys and use Vercel device authentication.
+- Every fresh visitor Sandbox starts signed out and uses Arcade's normal Vercel device flow.
+- The browser and visitor shell never receive the team-scoped AI Gateway key. It exists only in
+  the Arcade process owned by the separate unprivileged `arcade` user.
+- General session egress is denied except for the Vercel authorization APIs and AI Gateway. The
+  user's own key passes through unchanged; the site owns no shared model credential.
+- `ARCADE_HOSTED_TERMINAL=1` changes browser-opening and terminal-input integration only. It does
+  not allow an inherited `AI_GATEWAY_API_KEY`.
 - `ARCADE_TELEMETRY=0` is set for every hosted session.
 - Sessions expire automatically and are not a persistence or remote game-control API.
 
@@ -62,5 +62,5 @@ not presented as a second full Arcade application or a separate website gallery.
 - Package exports remain important for third-party authors and the homepage's browser-safe
   cinematic surfaces, but the full website demo does not depend on an alternate browser app
   orchestrator.
-- A deployment must expose Vercel Sandbox access and a server-side Gateway credential (or OIDC)
-  before AI model play is available in the hosted terminal.
+- A deployment needs Vercel Sandbox access. Each visitor authorizes their own team before AI
+  model play is available in the hosted terminal.

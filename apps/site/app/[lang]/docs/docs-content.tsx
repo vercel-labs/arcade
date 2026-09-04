@@ -1023,7 +1023,7 @@ $ arcade
       },
       {
         heading: 'Sign in and use models',
-        body: <><p>The hosted CLI supports the same Vercel device authorization used locally. When Arcade requests sign-in, the terminal emits a private browser-open event; the site accepts only Vercel HTTPS destinations and opens the authorization page in a new tab. Team selection and team-scoped AI Gateway key setup remain part of Arcade’s normal flow.</p><p>The browser bundle never receives a Gateway key. A demo credential, when configured, is held in Sandbox network policy and replaces only the exact random placeholder used by the isolated Arcade process. A personal key minted through device authorization passes through according to the session policy rather than being substituted with the demo credential.</p></>,
+        body: <><p>Every fresh hosted session starts signed out and uses the same Vercel device authorization as a local installation. When Arcade requests sign-in, the terminal emits a private browser-open event; the site accepts only Vercel HTTPS destinations and exposes the authorization page as a browser action. Team selection and team-scoped AI Gateway key setup remain part of Arcade’s normal flow.</p><p>The site owns no shared model credential. The browser bundle and visitor shell never receive the user’s Gateway key; it exists only in the Arcade process inside that temporary Sandbox and disappears with the session.</p></>,
       },
       {
         heading: 'Isolation and credentials',

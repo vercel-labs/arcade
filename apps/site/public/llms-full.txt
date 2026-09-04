@@ -118,11 +118,11 @@ Arcade is designed to be inspectable and executable by agents. Stable command ID
 
 ## Safety and privacy
 
-Arcade resolves AI Gateway credentials through Vercel device authentication in local CLI sessions. Hosted website sessions use a server-side Sandbox network transform so neither the browser nor visitor shell receives the real credential. Anonymous telemetry excludes prompts, reasoning, chat, voice, and account identity. Hosted terminal and local match-lab runs use ARCADE_TELEMETRY=0.
+Arcade resolves AI Gateway credentials through Vercel device authentication in both local CLI and hosted website sessions. Every fresh hosted Sandbox starts signed out; the site owns no shared model credential, and the user's team-scoped key remains inside the isolated Arcade process rather than reaching the browser or visitor shell. Anonymous telemetry excludes prompts, reasoning, chat, voice, and account identity. Hosted terminal and local match-lab runs use ARCADE_TELEMETRY=0.
 
 ## Hosted terminal
 
-The home page connects xterm.js to a temporary Linux PTY containing the actual Arcade package packed from the same source revision as the site deployment. Users can run ordinary shell commands, browse the seeded docs/examples filesystem, and type `arcade` to launch the same CLI used after installation. The visitor shell and Arcade process run as separate unprivileged users, general egress is denied, model credentials remain server-side, and the session expires automatically.
+The home page connects xterm.js to a temporary Linux PTY containing the actual Arcade package packed from the same source revision as the site deployment. Users can run ordinary shell commands, browse the seeded docs/examples filesystem, and type `arcade` to launch the same CLI used after installation. The visitor shell and Arcade process run as separate unprivileged users, egress is limited to Vercel authorization and AI Gateway, each visitor supplies their own model credential through device login, and the session expires automatically.
 
 ## Browser surfaces
 
