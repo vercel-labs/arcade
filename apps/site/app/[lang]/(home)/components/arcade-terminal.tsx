@@ -6,22 +6,10 @@ import { Terminal } from '@xterm/xterm';
 import { ARCADE_UNICODE_VERSION, arcadeUnicodeProvider } from '@vercel/arcade/web';
 import { useEffect, useRef, useState } from 'react';
 import { HOSTED_SHELL_GUIDE, TerminalModeDetector, TerminalModeOutputFilter, hostedBrowserUrl, terminalFontGeometry, terminalFontSize, type HostedTerminalMode } from './terminal-mode';
+import { acquireArcadeTerminalSession, prepareArcadeTerminalSession, warmArcadeTerminalBase } from './terminal-session-client';
 import { pinchWheelSteps, sgrMouse, terminalCell } from './terminal-touch';
 
-interface InteractiveStart {
-  command: string;
-  args: string[];
-  env: string[];
-  cwd: string;
-  cols: number;
-  rows: number;
-}
-
-interface TerminalSession {
-  url: string;
-  token: string;
-  start: InteractiveStart;
-}
+export { prepareArcadeTerminalSession, warmArcadeTerminalBase };
 
 type ConnectionState = 'connecting' | 'ready' | 'ended' | 'unavailable';
 
@@ -177,15 +165,7 @@ export function ArcadeTerminal() {
 
     const connect = async () => {
       try {
-        const response = await fetch('/api/terminal/session', {
-          method: 'POST',
-          body: JSON.stringify({ cols: terminal.cols, rows: terminal.rows }),
-          headers: { 'Content-Type': 'application/json' },
-          cache: 'no-store',
-          signal: abort.signal,
-        });
-        if (!response.ok) throw new Error('session unavailable');
-        const session = await response.json() as TerminalSession;
+        const session = await acquireArcadeTerminalSession(terminal.cols, terminal.rows, abort.signal);
         if (abort.signal.aborted) return;
 
         const url = new URL(session.url);

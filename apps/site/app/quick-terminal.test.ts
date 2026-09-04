@@ -35,8 +35,27 @@ test('the terminal window resizes from every edge and corner', async () => {
     assert.match(css, new RegExp(`data-resize-direction='${direction}'`));
   }
   assert.match(component, /resizeTerminalRect\(/);
-  assert.match(css, /data-resize-direction='se'\]::after/);
+  assert.doesNotMatch(css, /data-resize-direction='se'\]::after/);
   assert.match(css, /@media \(pointer: coarse\) \{\s*\.quick-terminal-resize-handle \{ display: none; \}/);
+});
+
+test('the terminal keeps scrollback without drawing browser scrollbar chrome', async () => {
+  const css = await readFile(new URL('./global.css', import.meta.url), 'utf8');
+  assert.match(css, /\.arcade-terminal__viewport \.xterm-viewport \{[^}]*scrollbar-width: none;/);
+  assert.match(css, /\.arcade-terminal__viewport \.xterm-viewport::-webkit-scrollbar \{ display: none; \}/);
+  assert.doesNotMatch(css, /\.arcade-terminal__viewport \.xterm-viewport \{[^}]*overflow: hidden/);
+});
+
+test('page idle warms the shared base and terminal intent starts one reusable session', async () => {
+  const [component, route] = await Promise.all([
+    readFile(new URL('../components/quick-terminal.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('./api/terminal/session/route.ts', import.meta.url), 'utf8'),
+  ]);
+  assert.match(component, /warmArcadeTerminalBase\(\)/);
+  assert.match(component, /onFocus=\{terminal\.prepare\}/);
+  assert.match(component, /onPointerEnter=\{terminal\.prepare\}/);
+  assert.match(component, /onPointerDown=\{terminal\.prepare\}/);
+  assert.ok(route.indexOf('isTerminalBaseWarmRequest(payload)') < route.indexOf('readBasePlaceholder(baseSandbox)'), 'base-only warming must not read the credential gate');
 });
 
 test('hovering or focusing the traffic-light group reveals every symbol', async () => {

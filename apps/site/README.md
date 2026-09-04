@@ -20,6 +20,11 @@ own dependency graph. Browser surfaces consume the root package through a worksp
 link and public subpath exports rather than copying game or renderer code. The hosted
 terminal build packs the current root workspace into a deployment artifact, installs that
 exact artifact into a reusable base snapshot, and forks a temporary session for each visitor.
+The browser warms only that shared base during page idle. A visitor sandbox is
+created on explicit terminal intent (hover, keyboard focus, or pointer-down), and
+the terminal reuses that in-flight session when Play opens. This keeps the first
+post-deploy install/snapshot work off the click path without allocating a
+20-minute sandbox for every page view.
 
 ## Layout
 

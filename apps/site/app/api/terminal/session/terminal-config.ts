@@ -43,6 +43,10 @@ export function baseSandboxName(env: NodeJS.ProcessEnv = process.env): string {
   return `arcade-web-base-v${TERMINAL_BASE_VERSION}-${revision}`;
 }
 
+export function isTerminalBaseWarmRequest(value: unknown): boolean {
+  return typeof value === 'object' && value !== null && (value as Record<string, unknown>).warmOnly === true;
+}
+
 export function hostedGatewayCredential(env: NodeJS.ProcessEnv = process.env): HostedGatewayCredential | null {
   const apiKey = env.AI_GATEWAY_API_KEY?.trim();
   if (apiKey) return { token: apiKey, authMethod: 'api-key' };

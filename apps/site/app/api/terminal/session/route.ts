@@ -10,6 +10,7 @@ import {
   baseSandboxName,
   hostedGatewayCredential,
   interactiveStart,
+  isTerminalBaseWarmRequest,
   packageSpec,
   parseTerminalSize,
   sessionNetworkPolicy,
@@ -20,9 +21,9 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
-let baseSandboxPromise: Promise<string> | null = null;
+let baseSandboxPromise: Promise<Sandbox> | null = null;
 
-function ensureBaseSandbox(name: string, source: string): Promise<string> {
+function ensureBaseSandbox(name: string, source: string): Promise<Sandbox> {
   if (baseSandboxPromise) return baseSandboxPromise;
   const createdPlaceholder = randomBytes(32).toString('hex');
   const archive = readFile(join(process.cwd(), 'app/api/terminal/session/arcade-package.tgz')).then((value) => new Uint8Array(value));
@@ -41,15 +42,6 @@ function ensureBaseSandbox(name: string, source: string): Promise<string> {
       await initializeBaseSandbox(sandbox, source, createdPlaceholder, await archive);
       await sandbox.snapshot();
     },
-  }).then(async (sandbox) => {
-    const result = await sandbox.runCommand({
-      cmd: 'cat',
-      args: [`${TERMINAL_CWD}/system/gateway-placeholder`],
-      sudo: true,
-    });
-    const placeholder = (await result.stdout()).trim();
-    if (result.exitCode !== 0 || !placeholder) throw new Error('Hosted terminal credential placeholder is missing.');
-    return placeholder;
   });
   // Cache only concurrent initialization. Later requests re-enter getOrCreate,
   // allowing its stale/deleted-base recovery logic to run before every fork.
@@ -60,12 +52,28 @@ function ensureBaseSandbox(name: string, source: string): Promise<string> {
   return pending;
 }
 
+async function readBasePlaceholder(sandbox: Sandbox): Promise<string> {
+  const result = await sandbox.runCommand({
+    cmd: 'cat',
+    args: [`${TERMINAL_CWD}/system/gateway-placeholder`],
+    sudo: true,
+  });
+  const placeholder = (await result.stdout()).trim();
+  if (result.exitCode !== 0 || !placeholder) throw new Error('Hosted terminal credential placeholder is missing.');
+  return placeholder;
+}
+
 export async function POST(request: Request) {
   try {
-    const size = parseTerminalSize(await request.json().catch(() => ({})));
+    const payload: unknown = await request.json().catch(() => ({}));
+    const size = parseTerminalSize(payload);
     const source = packageSpec();
     const name = baseSandboxName();
-    const placeholder = await ensureBaseSandbox(name, source);
+    const baseSandbox = await ensureBaseSandbox(name, source);
+    if (isTerminalBaseWarmRequest(payload)) {
+      return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
+    }
+    const placeholder = await readBasePlaceholder(baseSandbox);
 
     const session = await Sandbox.fork({
       sourceSandbox: name,

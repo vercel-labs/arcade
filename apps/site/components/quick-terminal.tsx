@@ -22,6 +22,7 @@ const ArcadeTerminal = dynamic(
 interface QuickTerminalContextValue {
   close: () => void;
   open: () => void;
+  prepare: () => void;
   isOpen: boolean;
 }
 
@@ -56,13 +57,27 @@ export function QuickTerminalProvider({ children }: { children: ReactNode }) {
   } | null>(null);
 
   useEffect(() => {
-    const preload = () => { void loadArcadeTerminal(); };
+    // Page-idle work prepares only the shared deployment base. A per-visitor
+    // sandbox is intentionally reserved for an explicit Play interaction.
+    const preload = () => {
+      void loadArcadeTerminal()
+        .then((module) => module.warmArcadeTerminalBase())
+        .catch(() => {});
+    };
     const idle = window.requestIdleCallback?.(preload, { timeout: 2_000 });
     if (idle === undefined) {
       const timer = window.setTimeout(preload, 800);
       return () => window.clearTimeout(timer);
     }
     return () => window.cancelIdleCallback?.(idle);
+  }, []);
+
+  // Hover/focus/pointer-down is strong intent: begin the visitor fork before
+  // click and let ArcadeTerminal consume the same in-flight session.
+  const prepare = useCallback(() => {
+    void loadArcadeTerminal()
+      .then((module) => module.prepareArcadeTerminalSession())
+      .catch(() => {});
   }, []);
 
   const open = () => {
@@ -247,7 +262,7 @@ export function QuickTerminalProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <QuickTerminalContext.Provider value={{ close, open, isOpen }}>
+    <QuickTerminalContext.Provider value={{ close, open, prepare, isOpen }}>
       {children}
       {hasOpened ? (
         <div className={`quick-terminal-shell${isOpen ? ' is-open' : ''}`}>
@@ -336,7 +351,15 @@ export function QuickTerminalButton({
   const terminal = useContext(QuickTerminalContext);
   if (!terminal) throw new Error('QuickTerminalButton must be used within QuickTerminalProvider');
   return (
-    <button aria-label={ariaLabel} className={className} onClick={terminal.open} type="button">
+    <button
+      aria-label={ariaLabel}
+      className={className}
+      onClick={terminal.open}
+      onFocus={terminal.prepare}
+      onPointerDown={terminal.prepare}
+      onPointerEnter={terminal.prepare}
+      type="button"
+    >
       {children}
     </button>
   );
