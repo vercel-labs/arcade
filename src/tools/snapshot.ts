@@ -458,7 +458,7 @@ const HELP = `snapshot — render one frame headlessly to a .ppm (convert with s
       (robber-move5: preview moving the robber to hex 5 while leaving the current robber in place)
       (<t> a decimal spins the turntable · azN/elN rotate in degrees · zoomN scales camera distance · hud composites the terrain dropdown panel)
       (board modes also take anim<s>|roll[<s>]|build[<s>] to freeze the fly-in, a dice roll, or a build-drop · water<N> sets the current time · varN rerolls the layout · top orbits overhead · modal shows the piece-edit popup)
-  pnpm snapshot islanders-game [setup|actions|discard|trade|counter|ai-trade|posted-trade] [spectate] [pov=N] [sidebar] [seats=N] [plies=N] [seed=N] [cols] [rows] [out]   the Islanders game screen
+  pnpm snapshot islanders-game [setup|actions|build-road|discard|trade|counter|ai-trade|posted-trade] [spectate] [pov=N] [sidebar] [seats=N] [plies=N] [seed=N] [cols] [rows] [out]   the Islanders game screen
       (default: placement in progress, driven by the rules engine's own legal options — no model calls · setup: the pre-game seat panel)
       (the board is seeded, so the same arguments always render the same hexes; seed=N picks another)
   pnpm snapshot poker [cols] [rows] [preflop|flop|river|showdown] [players=N] [stack=N] [hud|setup|cine|result|menu|notes] [bet=N] [spectate] [longnames] [muck|gather|shuffle] [color] [out]   the poker table
@@ -826,7 +826,7 @@ function islandersSnapshot(): void {
 // rather than models, so the still is reproducible and needs no network. The board is seeded
 // (`seed=N` to pick another one), so re-rendering the same arguments lands the same hexes — a
 // visual change is then the only thing that can move the pixels.
-//   pnpm exec tsx src/tools/snapshot.ts islanders-game [setup|actions|discard|trade|counter|ai-trade|posted-trade] [spectate] [longnames] [pov=N] [sidebar] [seats=N] [plies=N] [seed=N] [cols] [rows] [out.ppm]
+//   pnpm exec tsx src/tools/snapshot.ts islanders-game [setup|actions|build-road|discard|trade|counter|ai-trade|posted-trade] [spectate] [longnames] [pov=N] [sidebar] [seats=N] [plies=N] [seed=N] [cols] [rows] [out.ppm]
 function islandersGameSnapshot(): void {
   const args = process.argv.slice(3);
   const nums = args.filter((a) => /^\d+$/.test(a)).map(Number);
@@ -850,6 +850,7 @@ function islandersGameSnapshot(): void {
     const postedTrade = args.includes('posted-trade');
     const spectate = args.includes('spectate') || aiTrade || postedTrade;
     const actions = args.includes('actions');
+    const buildRoad = args.includes('build-road');
     const discard = args.includes('discard');
     const humanSeat = counter ? 1 : 0;
     const snapshotModels = args.includes('longnames')
@@ -892,7 +893,7 @@ function islandersGameSnapshot(): void {
       void gameScene.requestHumanMove();
       gameScene.pickHumanMenuResource('brick');
       gameScene.pickHumanMenuResource('grain');
-    } else if (trade || actions) {
+    } else if (trade || actions || buildRoad) {
       while (!state.initialPlacementComplete()) void gameScene.playMove(state.legalActions()[0]);
       void gameScene.playMove({ type: 'roll' });
       const hands = (state as unknown as { hands: number[][] }).hands;
@@ -906,6 +907,7 @@ function islandersGameSnapshot(): void {
       hands[0][resourceIndex('grain')] = 3;
       hands[0][resourceIndex('ore')] = 3;
       void gameScene.requestHumanMove();
+      if (buildRoad) gameScene.beginBoardChoice('buildRoad');
       if (trade) {
         gameScene.beginHumanMenu('tradeEditor');
         for (let i = 0; i < 4; i++) gameScene.adjustHumanTradeResource('brick', 'give', 1);

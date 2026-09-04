@@ -77,6 +77,40 @@ test('the actual game keeps unavailable build controls visible with cost and pie
   await pending;
 });
 
+test('a tutorial-width live build selection keeps the shared spaced row and cancel action', async () => {
+  const scene = new IslandersGameScene();
+  const driver = new IslandersDriver({ scene, syncLive: () => {} });
+  const state = driver.start([
+    { kind: 'human', color: 'red' },
+    { kind: 'bot', color: 'blue' },
+    { kind: 'bot', color: 'orange' },
+  ], { autoRun: false, rng: () => 0.5 });
+  while (!state.initialPlacementComplete()) state.applyAction(state.legalActions()[0]);
+  state.applyAction({ type: 'roll' }, { dice: [1, 1] });
+  state.grantResources(0, RESOURCES.map(() => 6));
+  const pending = scene.requestHumanMove();
+  const region = { x: 0, y: 0, w: 112, h: 50 };
+  let root = buildIslandersGameRoot(region, { driver, scene, onOpenMenu: () => {}, onStart: () => {} });
+
+  findNode(root, 'islanders-live-road')?.onClick?.();
+  assert.equal(scene.boardChoiceType(), 'buildRoad');
+  root = buildIslandersGameRoot(region, { driver, scene, onOpenMenu: () => {}, onStart: () => {} });
+  const screen = new Screen(region.w, region.h);
+  screen.setRoot(root, region);
+  const controls = ['road', 'settlement', 'city', 'build-cancel']
+    .map((id) => findNode(root, `islanders-live-${id}`));
+  assert.ok(controls.every((control) => control?.layout));
+  for (let index = 1; index < controls.length; index++) {
+    assert.equal(controls[index]!.layout!.x, controls[index - 1]!.layout!.x + controls[index - 1]!.layout!.w + 1);
+  }
+  assert.equal(controls[0]?.style.bold, true, 'the active build remains visibly selected');
+
+  controls[3]?.onClick?.();
+  assert.equal(scene.boardChoiceType(), null);
+  assert.equal(scene.submitHumanAction({ type: 'endTurn' }), true);
+  await pending;
+});
+
 test('pre-game setup ignores board hover until a session starts', () => {
   const scene = new IslandersGameScene();
   let forwarded = 0;

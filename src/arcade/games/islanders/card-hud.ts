@@ -1472,14 +1472,25 @@ export function islandersBuildControl(
   );
 }
 
+export function islandersBuildControls(
+  availability: (type: IslandersWorkbenchBuild) => IslandersBuildControlAvailability,
+  onBuild: (type: IslandersWorkbenchBuild) => void,
+  active: IslandersWorkbenchBuild | null = null,
+  onCancel?: () => void,
+): Node[] {
+  const buttons = (['road', 'settlement', 'city'] as const).map((type) =>
+    islandersBuildControl(type, availability(type), () => onBuild(type), active === type));
+  if (active && onCancel) buttons.push(workbenchChromeButton('build-cancel', 'cancel', onCancel));
+  return buttons;
+}
+
 function workbenchBuildPanel(layout: IslandersCardsLayout, controller: IslandersWorkbenchBuildController): Node {
-  const buttons = (['road', 'settlement', 'city'] as const).map((type) => islandersBuildControl(type, {
+  const buttons = islandersBuildControls((type) => ({
     canAfford: controller.canAfford(type),
     hasLegalTarget: controller.hasLegalTarget(type),
     piecesUsed: controller.pieceCount(type),
     pieceLimit: PIECE_LIMITS[type],
-  }, () => { controller.onBuild(type); }, controller.active === type));
-  if (controller.active) buttons.push(workbenchChromeButton('build-cancel', 'cancel', controller.onCancel));
+  }), (type) => { controller.onBuild(type); }, controller.active, controller.onCancel);
   // Each button owns its own chrome rectangle. A transparent parent leaves the one-cell gaps
   // visibly open instead of merging all three controls into one dark strip.
   const narrow = layout.width < 40;
