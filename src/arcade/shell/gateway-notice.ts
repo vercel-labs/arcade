@@ -61,9 +61,9 @@ export function gatewayNoticeFor(signedIn: boolean, catalog: ArcadeModelCatalog 
 // the product is named in the body instead.
 export function gatewayNoticeSentence(notice: GatewayNotice): string {
   switch (notice.kind) {
-    case 'sign-in': return 'Sign in to play AI matches.';
-    case 'add-card': return 'Add a credit card to play AI matches and unlock $5 in free monthly AI Gateway credits.';
-    case 'buy-credits': return 'Add AI Gateway credits to play AI matches.';
+    case 'sign-in': return 'sign in to play AI matches.';
+    case 'add-card': return 'add a credit card to play AI matches and unlock $5 in free monthly AI Gateway credits.';
+    case 'buy-credits': return 'add AI Gateway credits to play AI matches.';
   }
 }
 

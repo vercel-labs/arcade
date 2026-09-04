@@ -242,23 +242,23 @@ interface DevCardHelp {
 const DEV_CARD_HELP: Record<DevCardType, DevCardHelp> = {
   knight: {
     title: 'Knight',
-    effect: 'Move the robber to another hex. Then steal 1 random resource from a player with a settlement or city beside its new hex.',
+    effect: 'move the robber to another hex. then steal 1 random resource from a player with a settlement or city beside its new hex.',
   },
   victoryPoint: {
     title: 'Victory Point',
-    effect: 'Keep this card hidden. It is worth 1 victory point; reveal it when it gives you enough points to win.',
+    effect: 'keep this card hidden. it is worth 1 victory point; reveal it when it gives you enough points to win.',
   },
   roadBuilding: {
     title: 'Road Building',
-    effect: 'Place 2 new roads for free, following the normal road placement rules.',
+    effect: 'place 2 new roads for free, following the normal road placement rules.',
   },
   yearOfPlenty: {
     title: 'Year of Plenty',
-    effect: 'Take any 2 resources from the supply and add them to your hand. They may be the same resource or different resources.',
+    effect: 'take any 2 resources from the supply and add them to your hand. they may be the same resource or different resources.',
   },
   monopoly: {
     title: 'Monopoly',
-    effect: 'Name 1 resource type. Every other player gives you every resource of that type in their hand.',
+    effect: 'name 1 resource type. every other player gives you every resource of that type in their hand.',
   },
 };
 
@@ -898,7 +898,7 @@ function isYou(player: IslandersCardsPlayerView): boolean {
 }
 
 function playerIs(player: IslandersCardsPlayerView, phrase: string): string {
-  return isYou(player) ? `You are ${phrase}` : `${player.name} is ${phrase}`;
+  return isYou(player) ? `you are ${phrase}` : `${player.name} is ${phrase}`;
 }
 
 function workbenchTradeController(
@@ -944,7 +944,7 @@ function tradeEditor(view: IslandersCardsView, controller: IslandersTradeEditorC
   ));
   const portAction = !controller.hasPort
     ? Box({ width: HAND_ACTION_W, height: CARD_H })
-    : tradeDisabledReason(controller.canPort, 'Matching port ratio required.', tradeActionButton(
+    : tradeDisabledReason(controller.canPort, 'matching port ratio required.', tradeActionButton(
         'islanders-port-trade-confirm',
         '⛵',
         'port',
@@ -954,9 +954,9 @@ function tradeEditor(view: IslandersCardsView, controller: IslandersTradeEditorC
         controller.activeAction === 'port',
       ));
   const playerAction = controller.mode === 'counter'
-    ? tradeDisabledReason(controller.canCounter, 'Valid counteroffer required.',
+    ? tradeDisabledReason(controller.canCounter, 'valid counteroffer required.',
         tradeActionButton('islanders-trade-counter', '↗', 'counter', controller.canCounter, () => { controller.onCounter(); }, undefined, controller.activeAction === 'counter'))
-    : tradeDisabledReason(controller.canPlayer, 'Offer and request required.',
+    : tradeDisabledReason(controller.canPlayer, 'offer and request required.',
         tradeActionButton('islanders-player-trade', '👥', 'player', controller.canPlayer, () => { controller.onPlayer(); }, undefined, controller.activeAction === 'player'));
   const closeAction = controller.readOnly
     ? Box({ width: HAND_ACTION_W, height: CARD_H })
@@ -1022,7 +1022,7 @@ function discardEditor(view: IslandersCardsView, controller: IslandersDiscardEdi
   const selected = RESOURCE_ORDER.reduce((sum, resource) => sum + controller.selected[resource], 0);
   const submit = tradeDisabledReason(
     controller.canSubmit,
-    `Select exactly ${controller.required} cards.`,
+    `select exactly ${controller.required} cards.`,
     tradeActionButton(
       'islanders-discard-confirm',
       `${selected}/${controller.required}`,
@@ -1089,9 +1089,9 @@ function playerTradeDecision(
     ? `${playerIs(reaction.player, 'deciding')}.`
     : accepted
       ? isYou(reaction.player)
-        ? `You accepted. ${isYou(offer.offerer) ? 'Complete the trade.' : `${offer.offerer.name} decides.`}`
+        ? `you accepted. ${isYou(offer.offerer) ? 'complete the trade.' : `${offer.offerer.name} decides.`}`
         : isYou(offer.offerer)
-          ? `Complete the trade with ${reaction.player.name}.`
+          ? `complete the trade with ${reaction.player.name}.`
           : `${reaction.player.name} accepted. ${offer.offerer.name} decides.`
       : countered
         ? `${isYou(reaction.player) ? 'You' : reaction.player.name} countered (the card below).`
@@ -1256,7 +1256,7 @@ function playerTradeOffer(offer: IslandersPlayerTradeOffer, controller: Islander
   ])];
   const cancel = Tooltip({
     id: `islanders-player-trade-${offer.id}-cancel-help`,
-    content: [{ text: 'Cancel player trade', bold: true }, 'Withdraw this offer from every player.'],
+    content: [{ text: 'cancel player trade', bold: true }, 'withdraw this offer from every player.'],
     maxWidth: 34,
   }, cancelButton);
   const decisions = Box({
@@ -1320,12 +1320,12 @@ function playerCounterOffer(
     ...(controller.onComplete
       ? [decisionButton(`${idBase}-accept`, '✓', PLAYER_LOOK[counterer.color], () => {
           if (controller.onComplete?.(offer.id, counterer.name)) controller.onChange?.();
-        }, `Trade with ${counterer.name}`)]
+        }, `trade with ${counterer.name}`)]
       : [decisionStatus(`${idBase}-pending`, '...', PLAYER_LOOK[offer.offerer.color], `${isYou(offer.offerer) ? 'You decide' : `${offer.offerer.name} decides`}.`)]),
     ...(isYou(counterer) && controller.onWithdrawCounter
       ? [decisionButton(`${idBase}-withdraw`, 'x', ISLANDERS_CARD.cancelBg, () => {
           if (controller.onWithdrawCounter?.(counterer.name)) controller.onChange?.();
-        }, 'Withdraw your counter', ISLANDERS_CARD.cancelHover)]
+        }, 'withdraw your counter', ISLANDERS_CARD.cancelHover)]
       : []),
   ]);
   return tradeCard(
@@ -1435,9 +1435,9 @@ function workbenchChromeButton(id: string, label: string, onClick: () => void, d
 }
 
 const BUILD_CONTROL_SPEC: Record<IslandersWorkbenchBuild, { label: string; cost: string; plural: string }> = {
-  road: { label: `${ROAD_ICON} road`, cost: 'Costs 🧱 🌲.', plural: 'Roads' },
-  settlement: { label: `${SETTLEMENT_ICON} settlement`, cost: 'Costs 🧱 🌲 🐑 🌾.', plural: 'Settlements' },
-  city: { label: `${CITY_ICON} city`, cost: 'Costs 🪨 x3 and 🌾 x2.', plural: 'Cities' },
+  road: { label: `${ROAD_ICON} road`, cost: 'costs 🧱 🌲.', plural: 'roads' },
+  settlement: { label: `${SETTLEMENT_ICON} settlement`, cost: 'costs 🧱 🌲 🐑 🌾.', plural: 'settlements' },
+  city: { label: `${CITY_ICON} city`, cost: 'costs 🪨 x3 and 🌾 x2.', plural: 'cities' },
 };
 
 export interface IslandersBuildControlAvailability {
@@ -1462,8 +1462,8 @@ export function islandersBuildControl(
         { text: spec.label, bold: true },
         spec.cost,
         `${spec.plural}: ${availability.piecesUsed}/${availability.pieceLimit} built.`,
-        ...(!availability.canAfford ? ['Not enough resources.'] : []),
-        ...(!availability.hasLegalTarget ? [`No valid spot to build a ${type}.`] : []),
+        ...(!availability.canAfford ? ['not enough resources.'] : []),
+        ...(!availability.hasLegalTarget ? [`no valid spot to build a ${type}.`] : []),
       ],
       maxWidth: 36,
       hover: { ...UI_CHROME_PILL.hover, bold: false },
@@ -1708,8 +1708,8 @@ function handPanel(
         Tooltip({
           id: 'islanders-trade',
           content: [
-            { text: 'Trade', bold: true },
-            'Trade with the bank, a port, or other players.',
+            { text: 'trade', bold: true },
+            'trade with the bank, a port, or other players.',
           ],
           maxWidth: 34,
         }, workbenchActionButton(
@@ -1724,9 +1724,9 @@ function handPanel(
         Tooltip({
           id: 'islanders-buy-dev',
           content: [
-            { text: 'Buy development card', bold: true },
-            'Costs 🐑 🌾 🪨.',
-            ...(view.developmentDeck <= 0 ? ['No development cards remaining.'] : []),
+            { text: 'buy development card', bold: true },
+            'costs 🐑 🌾 🪨.',
+            ...(view.developmentDeck <= 0 ? ['no development cards remaining.'] : []),
           ],
           maxWidth: 36,
         }, workbenchActionButton('islanders-buy-dev', `💲 ${DEV_CARD_ICON}`, 'buy dev', actionController.canBuyDevelopmentCard, () => {

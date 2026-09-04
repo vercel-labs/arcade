@@ -57,12 +57,12 @@ test('the actual game keeps unavailable build controls visible with cost and pie
   const root = buildIslandersGameRoot({ x: 0, y: 0, w: 140, h: 50 }, {
     driver, scene, onOpenMenu: () => {}, onStart: () => {},
   });
-  for (const [type, count] of [['road', 'Roads: 2/15 built.'], ['settlement', 'Settlements: 2/5 built.'], ['city', 'Cities: 0/4 built.']] as const) {
+  for (const [type, count] of [['road', 'roads: 2/15 built.'], ['settlement', 'settlements: 2/5 built.'], ['city', 'cities: 0/4 built.']] as const) {
     const button = findNode(root, `islanders-live-${type}`);
     assert.equal(button?.disabled, true);
-    assert.match(tooltipText(button), /Costs/);
+    assert.match(tooltipText(button), /costs/);
     assert.ok(tooltipText(button).includes(count));
-    assert.match(tooltipText(button), /Not enough resources\./);
+    assert.match(tooltipText(button), /not enough resources\./);
   }
   const compactRoot = buildIslandersGameRoot({ x: 0, y: 0, w: 20, h: 24 }, {
     driver, scene, onOpenMenu: () => {}, onStart: () => {},

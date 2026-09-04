@@ -72,7 +72,7 @@ export function setPokerVoiceStage(label: string | null): void {
 const BTN_PAD_H = 2; // ACTION style horizontal padding (each side)
 const FOLD_LABEL_W = 10; // Fold is short → narrowest
 const CALL_LABEL_W = 14;
-const RAISE_LABEL_W = 18; // "Raise to $X" is the longest label → widest
+const RAISE_LABEL_W = 18; // "raise to $X" is the longest label → widest
 const BTN_GAP = 2; // between the three buttons
 const SIZE_GAP = 1; // between sizing-row elements
 const CHIP_W = 5; // a 3-char chip ("1/2","2/3","pot","max") + [0,1] padding
@@ -510,7 +510,7 @@ export function buildPokerGameRoot(
     // in a human game. Null when idle/ended/cinematic, or on the hero's own turn.
     pauseControl: { paused: boolean; onToggle: () => void } | null;
     hideHud: boolean; // during a community-deal cinematic: hide all but the top-right pills + rail
-    cineLabel: { label: string; cards: Card[] } | null; // top-centre "Board" + cards during that cinematic
+    cineLabel: { label: string; cards: Card[] } | null; // top-centre "board" + cards during that cinematic
     resultLabel: string | null; // top-centre end-of-hand winner line (over the visible table)
     awaitingContinue: boolean; // show the timed Space prompt under the banner
     continueIn?: number | null; // seconds left before the gate auto-advances (null → no countdown shown)

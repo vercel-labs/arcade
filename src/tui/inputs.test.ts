@@ -207,7 +207,7 @@ test('Dropdown searchable: filtering, editing, navigation, commit, and empty res
   combo.onKey(ch('z'));
   combo.onKey(ch('z'));
   ok(combo.filteredItems.length === 0, 'an unmatched query produces an empty result set');
-  const empty = (combo.build().children ?? []).find((node) => node.overlay && node.children?.[0]?.text === 'No matches');
+  const empty = (combo.build().children ?? []).find((node) => node.overlay && node.children?.[0]?.text === 'no matches');
   ok(empty != null, 'the open list renders an explicit empty state below search');
   ok(queries.includes('flash') && queries.includes(''), 'query changes are observable by owners');
 });

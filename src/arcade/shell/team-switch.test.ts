@@ -71,7 +71,7 @@ describe('Vercel account settings', () => {
 
   test('the AI match gate stays focused on Gateway sign-in', () => {
     const root = buildGatewaySignInPrompt(noop, noop, 80);
-    assert.match(text(root), /Sign in to play with AI models using Vercel AI Gateway/);
+    assert.match(text(root), /sign in to play with AI models using Vercel AI Gateway/);
     assert.doesNotMatch(text(root), /Human play/);
   });
 
@@ -144,7 +144,7 @@ describe('Vercel account settings', () => {
       }),
     );
     assert.equal(root.children?.[0]?.style.width, 42, 'account card leaves three cells around the account dropdown');
-    assert.match(text(root), /Signed in as\s+brian\.zhang/);
+    assert.match(text(root), /signed in as\s+brian\.zhang/);
     assert.match(text(root), /AI Gateway billing team/);
     const change = find(root, 'team-change-account');
     const logout = find(root, 'team-logout');
@@ -303,8 +303,8 @@ describe('Vercel account settings', () => {
   test('no-team recovery keeps the user in Arcade with three next actions', () => {
     const root = buildTeamSwitch({ kind: 'noTeams', username: 'new-player' }, actions());
     const rendered = text(root);
-    assert.match(rendered, /Signed in as\s+new-player/);
-    assert.match(rendered, /No Vercel team is available for AI Gateway billing/);
+    assert.match(rendered, /signed in as\s+new-player/);
+    assert.match(rendered, /no Vercel team is available for AI Gateway billing/);
     assert.match(rendered, /continue playing without AI/);
     assert.ok(find(root, 'team-open-vercel'));
     assert.ok(find(root, 'team-retry'));

@@ -490,7 +490,7 @@ export class Dropdown implements Component {
       if (!this.lines.length) {
         children.push({
           ...Box({ position: 'absolute', top: dropdownTop, left: 0, width: this.width, height: 1, background: 'surfaceControl' }, [
-            Text({ text: this.opts.emptyLabel ?? 'No matches', style: { width: this.width, padding: [0, 1], color: 'textMuted', background: 'surfaceControl' } }),
+            Text({ text: this.opts.emptyLabel ?? 'no matches', style: { width: this.width, padding: [0, 1], color: 'textMuted', background: 'surfaceControl' } }),
           ]),
           overlay: true,
           onMouse: (ev: PointerHit) => this.onListMouse(ev),

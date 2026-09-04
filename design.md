@@ -41,20 +41,22 @@ identity established by the product and its renderer:
 
 ## Copy
 
-Terminal copy is lowercase: buttons, links, menu items, form labels,
-placeholders, rail headings, chrome pills, modal titles, status lines, and
-seat badges (`sign out`, `new match`, `sign in for AI matches`, `fold`,
-`your turn`). Only names keep their case:
+Terminal copy is lowercase, sentences included: buttons, menu items, labels,
+modal titles, status lines, seat badges, tooltip and toast bodies, tutorial
+prose, and the plain-text startup transcript (`sign out`, `sign in for AI
+matches`, `fold`, `your turn`, `every game is a 3D scene. frame it however you
+like.`). Only names keep their case, wherever they fall in a sentence:
 
 - `Vercel`, `AI Gateway`, and `Arcade` as the product.
-- Acronyms: `AI`, `BYOK`, `PGN`, `HTTP`, `URL`, `PATH`.
+- Acronyms: `AI`, `3D`, `BYOK`, `PGN`, `HTTP`, `URL`, `PATH`.
 - Creator and model names as the gateway spells them (`OpenAI`, `xAI`).
 - Game titles on the covers (`Chess`, `Islanders`, `Tutorial`), development
   card names (`Year of Plenty`), and poker streets (`Pre-flop`, `Showdown`).
 
-A body sentence may start with a capital and ends with a period; a one-line
-status fragment does neither (`checking model health…`). Do not capitalize a
-word to make it look like a heading.
+A body sentence still ends with a period; a one-line status fragment does not
+(`checking model health…`). The postinstall banner (`install-banner.ts`) is
+the one surface outside this rule: it prints into a package manager's log and
+keeps ordinary Sentence case.
 
 ## Precedence
 

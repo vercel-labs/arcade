@@ -169,9 +169,9 @@ export function islandersLiveView(
 }
 
 const DEV_CARD_HOLD_COPY = {
-  boughtThisTurn: 'Bought this turn. You can play it from your next turn.',
-  alreadyPlayed: 'You already played a development card this turn.',
-  notYourTurn: 'Playable on your turn, before or after you roll.',
+  boughtThisTurn: 'bought this turn. you can play it from your next turn.',
+  alreadyPlayed: 'you already played a development card this turn.',
+  notYourTurn: 'playable on your turn, before or after you roll.',
 } as const;
 
 // ── status ──────────────────────────────────────────────────────────────────────────────────
