@@ -21,7 +21,7 @@ test('shared Cover Flow renders carousel and launch without platform APIs', () =
 });
 
 test('production catalogue retains exact CLI and browser ordering', () => {
-  assert.deepEqual(ARCADE_CATALOGUE.map(({ id }) => id), ['chess', 'poker', 'islanders', 'leaderboard', 'achievements', 'website']);
+  assert.deepEqual(ARCADE_CATALOGUE.map(({ id }) => id), ['chess', 'poker', 'islanders', 'leaderboard', 'achievements', 'website', 'tutorial']);
   const website = ARCADE_CATALOGUE.find((item) => item.id === 'website');
   assert.ok(website);
   assert.equal(website.externalUrl, 'https://ascii-arcade.vercel.app');

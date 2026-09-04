@@ -1,6 +1,6 @@
 import { cameraMatrices } from '../engine/camera.ts';
 import { islandersCinematicCamera, pokerCinematicCamera, type CinematicOrbitCamera } from '../cinematic/camera.ts';
-import { ISLANDERS_SETUP_END, islandersCinematicGameplay, islandersSetupCoastProgress, islandersSetupHarborProgress, islandersSetupTileProgress } from '../cinematic/islanders-choreography.ts';
+import { ISLANDERS_SETUP_END, islandersCinematicGameplay, islandersSetupCoastProgress, islandersSetupHarborProgress, islandersSetupTileProgress, type IslandersGameplaySample } from '../cinematic/islanders-choreography.ts';
 import { POKER_CINEMATIC_HANDS, pokerLoopState } from '../cinematic/scripted-games.ts';
 import type { RGB } from '../engine/color.ts';
 import { RenderTarget } from '../engine/framebuffer.ts';
@@ -116,7 +116,7 @@ export class BrowserPokerCinematic {
   }
 
 
-  frame(cols: number, rows: number, cameraProgress: number, timeSeconds: number, gameplayPhase = cameraProgress, gameplayIteration = 0): Surface {
+  frame(cols: number, rows: number, cameraProgress: number, timeSeconds: number, gameplayPhase = cameraProgress, gameplayIteration = 0, cameraAdjustment: { distanceScale?: number; ndcOffsetY?: number } = {}): Surface {
     const p = clamp01(cameraProgress);
     const hand = pokerLoopState(gameplayPhase, gameplayIteration);
     const assets = this.hands[hand.handIndex];
@@ -127,7 +127,20 @@ export class BrowserPokerCinematic {
       this.productionLighting ? POKER_SCENE_BACKGROUND.y : 0,
       this.productionLighting ? POKER_SCENE_BACKGROUND.z : 0,
     );
-    const camera = pokerCinematicCamera(p, target.width / target.height);
+    let camera = pokerCinematicCamera(p, target.width / target.height);
+    if (cameraAdjustment.distanceScale !== undefined) {
+      const scale = cameraAdjustment.distanceScale;
+      const center = camera.target;
+      camera = {
+        ...camera,
+        eye: {
+          x: center.x + (camera.eye.x - center.x) * scale,
+          y: center.y + (camera.eye.y - center.y) * scale,
+          z: center.z + (camera.eye.z - center.z) * scale,
+        },
+      };
+    }
+    if (cameraAdjustment.ndcOffsetY !== undefined) camera = { ...camera, ndcOffsetY: (camera.ndcOffsetY ?? 0) + cameraAdjustment.ndcOffsetY };
     const vp = cameraMatrices(camera, target.width / target.height).viewProjection;
     const chipLight = this.productionLighting ? POKER_TABLE_LIGHT : LIGHT;
     const chipAmbient = (fallback: number): number => this.productionLighting ? POKER_TABLE_AMBIENT : fallback;
@@ -244,12 +257,11 @@ export class BrowserIslandersCinematic {
   private readonly target = new RenderTarget(1, 1);
   private readonly waterTarget = new RenderTarget(1, 1);
   private readonly diceTarget = new RenderTarget(1, 1);
-  private readonly board = generateBoard(mulberry32(1));
-  private readonly harbors = boardHarborPoses(this.board.harbors);
-  private readonly brickHarbor = (() => {
-    const harbor = this.harbors.find(({ kind }) => kind === 'brick') ?? this.harbors[0];
-    return { x: harbor.model[12], z: harbor.model[14] };
-  })();
+  private readonly board: BoardSetup;
+  private readonly harbors: ReturnType<typeof boardHarborPoses>;
+  private readonly brickHarbor: { x: number; z: number };
+  private readonly gameplayFor: (elapsed: number) => IslandersGameplaySample;
+  private readonly tileRotationFor: (hex: number) => number;
   private readonly water: Mesh;
   private readonly settledWater: Mesh;
   private readonly animatedTileCache = new AnimatedTileMeshCache();
@@ -271,14 +283,25 @@ export class BrowserIslandersCinematic {
     private readonly rasterScale = 3,
     private readonly renderStyle: { productionLighting?: boolean } = {},
     waterMeshes: { full: Mesh; settled: Mesh } | null = null,
+    scene: {
+      board?: BoardSetup;
+      gameplayFor?: (elapsed: number) => IslandersGameplaySample;
+      tileRotationFor?: (hex: number) => number;
+    } = {},
   ) {
+    this.board = scene.board ?? generateBoard(mulberry32(1));
+    this.harbors = boardHarborPoses(this.board.harbors);
+    const brickHarbor = this.harbors.find(({ kind }) => kind === 'brick') ?? this.harbors[0];
+    this.brickHarbor = { x: brickHarbor.model[12], z: brickHarbor.model[14] };
+    this.gameplayFor = scene.gameplayFor ?? islandersCinematicGameplay;
+    this.tileRotationFor = scene.tileRotationFor ?? (() => 0);
     this.water = waterMeshes?.full ?? islandersWaterMesh();
     this.settledWater = waterMeshes?.settled ?? this.water;
   }
 
   frame(cols: number, rows: number, progress: number, timeSeconds: number, gameplayElapsed = timeSeconds): Surface {
     const p = clamp01(progress);
-    const gameplay = islandersCinematicGameplay(gameplayElapsed);
+    const gameplay = this.gameplayFor(gameplayElapsed);
     const target = this.target;
     const productionLighting = this.renderStyle.productionLighting === true;
     target.resize(cols * this.rasterScale, rows * this.rasterScale * 2);
@@ -332,13 +355,20 @@ export class BrowserIslandersCinematic {
       const x = lerp(source.x, dest.x, reveal), z = lerp(source.z, dest.z, reveal);
       const y = lerp(source.y, 0, reveal) + Math.sin(reveal * Math.PI) * ISLANDERS_TILE_PLACE_HOP;
       const flip = Math.PI * (1 - smoothstep(clamp01(reveal / 0.8)));
-      const model = mat4Multiply(mat4Translate(x, y, z), mat4RotX(flip));
+      const rotation = this.tileRotationFor(hex);
+      const localModel = rotation === 0 ? mat4RotX(flip) : mat4Multiply(mat4RotY(rotation), mat4RotX(flip));
+      const model = mat4Multiply(mat4Translate(x, y, z), localModel);
       const terrain = this.board.hexes[hex].terrain;
       const robberOn = !robber || robber.progress >= 1 ? hex === settledRobberHex : false;
       draw(flip > Math.PI / 2 ? tileBackMesh() : tileMesh(terrain, 19 + hex, robberOn), model, undefined, ISLANDERS_TERRAIN_AMBIENT);
       if (reveal > 0.98) {
         const animated = animatedTileMesh(terrain, 19 + hex, timeSeconds, dest, this.animatedTileCache);
-        if (animated) draw(animated, mat4Translate(dest.x, 0, dest.z), undefined, productionLighting ? ISLANDERS_TERRAIN_AMBIENT : 0.54);
+        if (animated) {
+          const settledModel = rotation === 0
+            ? mat4Translate(dest.x, 0, dest.z)
+            : mat4Multiply(mat4Translate(dest.x, 0, dest.z), mat4RotY(rotation));
+          draw(animated, settledModel, undefined, productionLighting ? ISLANDERS_TERRAIN_AMBIENT : 0.54);
+        }
       }
     }
 

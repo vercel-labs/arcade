@@ -1,6 +1,6 @@
 import { anchoredInkMatchCut, type InkMatchCut } from '../../cinematic/transitions/ink-match-cut.ts';
 import { CHESS_LOOP_SECONDS, POKER_LOOP_SECONDS } from '../../cinematic/scripted-games.ts';
-import { ISLANDERS_GAMEPLAY_START } from '../../cinematic/islanders-choreography.ts';
+import { ISLANDERS_GAMEPLAY_START, islandersCinematicGameplay, islandersDropProgress, type IslandersGameplaySample, type IslandersPlacementBeat } from '../../cinematic/islanders-choreography.ts';
 import { RenderTarget } from '../../engine/framebuffer.ts';
 import { shapeGlyphToSurface, ShapeGlyphSurfaceCache } from '../../engine/present-cells.ts';
 import { Surface } from '../../engine/surface.ts';
@@ -11,10 +11,11 @@ import { CoverFlowRenderer, type CoverFlowItem } from '../../cinematic/scenes/co
 import { BrowserIslandersCinematic, BrowserPokerCinematic } from '../../web/browser-game-cinematics.ts';
 import { BrowserChessBoardShowcase } from '../../web/browser-mini-scenes.ts';
 import type { BrowserMiniSceneOptions } from '../../web/mini-scene.ts';
-import type { CinematicOrbitCamera } from '../../cinematic/camera.ts';
-import { islandersCinematicCamera } from '../../cinematic/camera.ts';
+import type { ChessCinematicPose, CinematicOrbitCamera } from '../../cinematic/camera.ts';
 import { GLYPH_SUPERSAMPLE } from '../render-quality.ts';
 import { islandersWaterMesh as productionIslandersWaterMesh } from '../games/islanders/water.ts';
+import { generateBoard, type BoardSetup } from '../../rules/islanders/setup.ts';
+import { mulberry32 } from '../../engine/random.ts';
 
 export const SOCIAL_TRAILER_SECONDS = 30;
 export const SOCIAL_TRAILER_INK_SECONDS = 1.5;
@@ -67,9 +68,9 @@ export const SOCIAL_TRAILER_BEATS: readonly TrailerBeatDefinition[] = [
   { beat: 'poker-to-chess', durationSeconds: SOCIAL_TRAILER_INK_SECONDS },
   { beat: 'chess', durationSeconds: 4.5 },
   { beat: 'chess-to-covers', durationSeconds: SOCIAL_TRAILER_INK_SECONDS },
-  { beat: 'covers', durationSeconds: 1.75 },
+  { beat: 'covers', durationSeconds: 1.15 },
   { beat: 'covers-to-prism', durationSeconds: SOCIAL_TRAILER_INK_SECONDS },
-  { beat: 'prism', durationSeconds: 2.5 },
+  { beat: 'prism', durationSeconds: 3.1 },
 ] as const;
 
 const CUTS: Record<'islanders-to-poker' | 'poker-to-chess' | 'chess-to-covers' | 'covers-to-prism', InkMatchCut> = {
@@ -87,16 +88,29 @@ const POKER_EXCERPT_START = 4.2;
 const POKER_HOOK_START = 0.6;
 const CHESS_EXCERPT_START = 7.8;
 const CHESS_CASTLE_START = 5.15;
+export const SOCIAL_TRAILER_CHESS_HOOK_MOVES = ['e4', 'e5', 'Ke2', 'Ke7', 'Ke1', 'Ke8', 'Ke2', 'Ke7'] as const;
+export const SOCIAL_TRAILER_CHESS_HOOK_MOVE_SECONDS = 0.72;
+export const SOCIAL_TRAILER_CHESS_HOOK_SCRIPT_START = SOCIAL_TRAILER_CHESS_HOOK_MOVE_SECONDS * 1.5;
 const ISLANDERS_PROOF_SECONDS = 5;
 const POKER_PROOF_SECONDS = 5;
 const CHESS_PROOF_SECONDS = 4.5;
-const COVER_PROOF_SECONDS = 1.75;
+export const SOCIAL_TRAILER_ISLANDERS_HOOK_GAMEPLAY_START = ISLANDERS_GAMEPLAY_START + 10.8;
+// Existing center-pasture phase: focal sheep bends at ~0.4s, its neighbour at ~0.7s,
+// and both hold the grazing pose from ~1.2s through the hard cut.
+export const SOCIAL_TRAILER_ISLANDERS_HOOK_VISUAL_START = 153.51;
+const ISLANDERS_HOOK_PLACEMENTS = [
+  { seat: 0, color: 'red', action: { type: 'initialSettlement', node: 19 }, offset: 0.1 },
+  { seat: 0, color: 'red', action: { type: 'initialRoad', edge: 21 }, offset: 0.45 },
+  { seat: 2, color: 'purple', action: { type: 'initialSettlement', node: 17 }, offset: 0.8 },
+  { seat: 2, color: 'purple', action: { type: 'initialRoad', edge: 16 }, offset: 1.15 },
+] as const;
+const COVER_PROOF_SECONDS = 1.15;
 // Enter with roughly the final six hexes still in flight, so the extended shot
 // reads immediately as an active board build rather than an almost-complete hold.
 const ISLANDERS_SETUP_HEAD_START = 1.5;
-// Finish the inertial swipe just before the clean Cover Flow beat ends. It gets
-// one readable Chess landing without spending the ending on a static cover.
-const COVER_SETTLE_SECONDS = SOCIAL_TRAILER_INK_SECONDS + COVER_PROOF_SECONDS - 0.1;
+// Cover motion spans its incoming burn, clean beat, and outgoing burn. Tutorial reaches
+// center as the prism reveal begins, then keeps moving so there is no static hold.
+export const SOCIAL_TRAILER_COVER_MOTION_SECONDS = SOCIAL_TRAILER_INK_SECONDS * 2 + COVER_PROOF_SECONDS;
 const BLACK: [number, number, number] = [0, 0, 0];
 const TRAILER_RASTER_SCALE = SOCIAL_TRAILER_RENDER_STYLE.rasterScale;
 const MAX_TRANSITION_PLATES = 8;
@@ -121,7 +135,7 @@ export function socialTrailerSample(elapsedSeconds: number): SocialTrailerSample
     }
     start = end;
   }
-  return { beat: 'prism', localSeconds: 2.5, durationSeconds: 2.5 };
+  return { beat: 'prism', localSeconds: 3.1, durationSeconds: 3.1 };
 }
 
 /** CLI-only, self-editing social film. Shared renderers stay at native speed. */
@@ -147,7 +161,11 @@ export class SocialTrailerDirector {
     };
     this.hookIslanders = new BrowserIslandersCinematic(socialTrailerIslandersHookCamera, TRAILER_RASTER_SCALE, {
       productionLighting: SOCIAL_TRAILER_RENDER_STYLE.productionLighting,
-    }, water);
+    }, water, {
+      board: socialTrailerIslandersHookBoard(),
+      gameplayFor: socialTrailerIslandersHookGameplay,
+      tileRotationFor: socialTrailerIslandersHookTileRotation,
+    });
     this.islanders = new BrowserIslandersCinematic(socialTrailerIslandersCamera, TRAILER_RASTER_SCALE, {
       productionLighting: SOCIAL_TRAILER_RENDER_STYLE.productionLighting,
     }, water);
@@ -193,9 +211,18 @@ export class SocialTrailerDirector {
     const local = sample.localSeconds;
     const unit = local / sample.durationSeconds;
     switch (sample.beat) {
-      case 'hook-islanders': return this.hookIslanders.frame(cols, rows, 0.54 + unit * 0.08, ISLANDERS_GAMEPLAY_START + 10.8 + local, ISLANDERS_GAMEPLAY_START + 10.8 + local);
-      case 'hook-poker': return this.pokerFrame(cols, rows, 0.02 + unit * 0.08, POKER_HOOK_START + local);
-      case 'hook-chess': return this.chessFrame(cols, rows, 0.4 + unit * 0.1, CHESS_CASTLE_START + local);
+      case 'hook-islanders': return this.hookIslanders.frame(
+        cols,
+        rows,
+        unit,
+        SOCIAL_TRAILER_ISLANDERS_HOOK_VISUAL_START + local,
+        SOCIAL_TRAILER_ISLANDERS_HOOK_GAMEPLAY_START + local,
+      );
+      case 'hook-poker': {
+        const camera = socialTrailerPokerHookCamera(unit);
+        return this.pokerFrame(cols, rows, camera.progress, POKER_HOOK_START + local, camera);
+      }
+      case 'hook-chess': return this.chessHookFrame(cols, rows, local, unit);
       case 'islanders': return this.islandersProofFrame(cols, rows, local);
       case 'islanders-to-poker': return this.transition(cols, rows, sample.beat, unit);
       case 'poker': return this.pokerProofFrame(cols, rows, SOCIAL_TRAILER_INK_SECONDS + local);
@@ -282,13 +309,23 @@ export class SocialTrailerDirector {
     return this.islanders.frame(cols, rows, cameraProgress, gameplaySeconds, gameplaySeconds);
   }
 
-  private pokerFrame(cols: number, rows: number, cameraProgress: number, gameplaySeconds: number): Surface {
-    return this.poker.frame(cols, rows, cameraProgress, gameplaySeconds, gameplaySeconds / POKER_LOOP_SECONDS, 0);
+  private pokerFrame(cols: number, rows: number, cameraProgress: number, gameplaySeconds: number, cameraAdjustment?: { distanceScale?: number; ndcOffsetY?: number }): Surface {
+    return this.poker.frame(cols, rows, cameraProgress, gameplaySeconds, gameplaySeconds / POKER_LOOP_SECONDS, 0, cameraAdjustment);
   }
 
   private chessFrame(cols: number, rows: number, cameraProgress: number, gameplaySeconds: number): Surface {
     this.chess.setCinematicState(cameraProgress, gameplaySeconds / CHESS_LOOP_SECONDS);
     return this.chess.frame(cols, rows, gameplaySeconds).surface;
+  }
+
+  private chessHookFrame(cols: number, rows: number, local: number, unit: number): Surface {
+    this.chess.setCinematicScript(
+      socialTrailerChessHookCamera(unit),
+      SOCIAL_TRAILER_CHESS_HOOK_MOVES,
+      SOCIAL_TRAILER_CHESS_HOOK_SCRIPT_START + local,
+      SOCIAL_TRAILER_CHESS_HOOK_MOVE_SECONDS,
+    );
+    return this.chess.frame(cols, rows, CHESS_CASTLE_START + local).surface;
   }
 
   private prismFrame(cols: number, rows: number, elapsed: number): Surface {
@@ -303,18 +340,127 @@ export class SocialTrailerDirector {
   }
 }
 
-/** One iPod-like swipe: accelerate through the catalogue, brake, land on Chess. */
+/** One iPod-like swipe: brake gently into Tutorial, then continue through the prism burn. */
 export function socialTrailerCoverPosition(clock: number): number {
-  return ARCADE_CATALOGUE.length * smootherstep(clamp(clock / COVER_SETTLE_SECONDS, 0, 1));
+  const t = clamp(clock / SOCIAL_TRAILER_COVER_MOTION_SECONDS, 0, 1);
+  const seconds = t * SOCIAL_TRAILER_COVER_MOTION_SECONDS;
+  const visibleStartClock = SOCIAL_TRAILER_INK_SECONDS;
+  const burnStartClock = SOCIAL_TRAILER_COVER_MOTION_SECONDS - SOCIAL_TRAILER_INK_SECONDS;
+  const visibleStartSpeed = 3.2;
+  const finalSpeed = 2.5;
+  // Constant deceleration avoids both easing shoulders. The clean carousel enters at 3.2
+  // covers/s and the final outgoing frame retains 2.5, with no required end cover.
+  const deceleration = (visibleStartSpeed - finalSpeed)
+    / (SOCIAL_TRAILER_COVER_MOTION_SECONDS - visibleStartClock);
+  const initialSpeed = visibleStartSpeed + deceleration * visibleStartClock;
+  const distanceToBurnStart = initialSpeed * burnStartClock
+    - 0.5 * deceleration * burnStartClock ** 2;
+  const tutorialIndex = ARCADE_CATALOGUE.findIndex(({ id }) => id === 'tutorial');
+  const tutorialPosition = ARCADE_CATALOGUE.length + tutorialIndex;
+  const startPosition = tutorialPosition - distanceToBurnStart;
+  return startPosition + initialSpeed * seconds - 0.5 * deceleration * seconds ** 2;
 }
 
 export function socialTrailerIslandersElapsed(clock: number): number {
-  return ISLANDERS_SETUP_HEAD_START + Math.max(0, clock) * 1.15;
+  return ISLANDERS_SETUP_HEAD_START + Math.max(0, clock) * 1.3;
 }
 
-/** Preserve the original close terrain-study framing for the one-second dice hook. */
-export function socialTrailerIslandersHookCamera(progress: number, aspect: number, harbor: { x: number; z: number }): CinematicOrbitCamera {
-  return islandersCinematicCamera(progress, aspect, harbor);
+/** Opening-shot board dressing only; the seeded production board remains untouched. */
+export function socialTrailerIslandersHookBoard(): BoardSetup {
+  const source = generateBoard(mulberry32(1));
+  const hexes = source.hexes.map((hex) => ({ ...hex }));
+  // Put the desert and robber immediately above the focal pasture. The displaced forest
+  // moves to the old desert slot, preserving one desert and the official terrain count.
+  hexes[2] = { terrain: 'forest', token: hexes[4].token };
+  hexes[4] = { terrain: 'desert', token: null };
+  // Upper-right fields become mountains; the pasture below-left becomes fields so its
+  // windmill meets the focal sheep tile. An off-frame mountain absorbs the displaced pasture.
+  hexes[7] = { terrain: 'mountains', token: hexes[7].token };
+  hexes[8] = { terrain: 'fields', token: hexes[8].token };
+  hexes[11] = { terrain: 'pasture', token: hexes[11].token };
+  return { ...source, hexes, robberHex: 4 };
+}
+
+/** Rotate only the Trailer's adjacent fields dressing one edge toward the focal sheep. */
+export function socialTrailerIslandersHookTileRotation(hex: number): number {
+  return hex === 8 ? Math.PI / 3 : 0;
+}
+
+/** Preserve the dice beat while replacing settled pieces with four in-frame drops. */
+export function socialTrailerIslandersHookGameplay(elapsed: number): IslandersGameplaySample {
+  const base = islandersCinematicGameplay(elapsed);
+  const placements: IslandersPlacementBeat[] = ISLANDERS_HOOK_PLACEMENTS.map((beat) => {
+    const at = SOCIAL_TRAILER_ISLANDERS_HOOK_GAMEPLAY_START + beat.offset;
+    return {
+      seat: beat.seat,
+      color: beat.color,
+      action: { ...beat.action } as IslandersPlacementBeat['action'],
+      at,
+      progress: islandersDropProgress(elapsed, at),
+    };
+  }).filter(({ progress }) => progress > 0);
+  return { ...base, placements, robber: null };
+}
+
+export function socialTrailerPokerHookCamera(unit: number): { progress: number; distanceScale: number; ndcOffsetY: number } {
+  const p = clamp(unit, 0, 1);
+  return {
+    progress: lerp(0.06, 0.18, p),
+    // Begin tighter on the cards, then relax toward the prior framing while the authored
+    // camera also pulls back. The linear scale change gives frame one visible lens motion.
+    distanceScale: lerp(0.88, 0.93, p),
+    ndcOffsetY: -0.06,
+  };
+}
+
+export function socialTrailerChessHookCamera(unit: number): ChessCinematicPose {
+  const p = clamp(unit, 0, 1);
+  return {
+    // One constant-velocity white-side shoulder track. A single clock prevents the target,
+    // zoom, and orbit from entering separate phases that shimmer under ASCII rematching.
+    azimuth: lerp(-0.54, -0.44, p),
+    elevation: lerp(0.35, 0.3, p),
+    distance: lerp(4.85, 4, p),
+    target: {
+      x: lerp(0.2, 0.42, p),
+      y: lerp(1.3, 1.55, p),
+      z: lerp(0.95, 1.35, p),
+    },
+  };
+}
+
+/** Trailer-only pasture insert: follow one grazing sheep while the dice settle over the frame. */
+export function socialTrailerIslandersHookCamera(progress: number, aspect: number, _harbor: { x: number; z: number }): CinematicOrbitCamera {
+  const p = clamp(progress, 0, 1);
+  const fit = aspect >= 1 ? 1 : lerp(2.15, 1, clamp((aspect - 0.55) / 0.45, 0, 1));
+  // The focal sheep lives on the center pasture (hex 9, seed 28). Two gameplay loops later,
+  // its existing cycle walks into this shot upright and lowers its head before the hard cut.
+  // A center tile keeps a complete ring of neighbouring terrain around the close insert.
+  const target = {
+    x: lerp(0.3, 0.26, p),
+    y: lerp(0.18, 0.21, p),
+    z: lerp(0.12, 0.17, p),
+  };
+  const azimuth = lerp(0.9, 1.02, p);
+  const elevation = lerp(0.62, 0.54, p);
+  const distance = lerp(2.65, 2.2, p) * fit;
+  const ce = Math.cos(elevation);
+  return {
+    eye: {
+      x: target.x + ce * Math.sin(azimuth) * distance,
+      y: target.y + Math.sin(elevation) * distance,
+      z: target.z + ce * Math.cos(azimuth) * distance,
+    },
+    target,
+    up: { x: 0, y: 1, z: 0 },
+    fovy: 45 * Math.PI / 180,
+    near: 0.05,
+    far: 100,
+    azimuth,
+    // Keep the sheep just left of the fixed screen-space dice pair.
+    ndcOffsetX: -0.12,
+    ndcOffsetY: -0.04,
+  };
 }
 
 /** Trailer-only camera: overview during tile setup, then a readable coast push. */
@@ -322,20 +468,24 @@ export function socialTrailerIslandersCamera(progress: number, aspect: number, h
   const p = clamp(progress, 0, 1);
   // One camera move, not an overview followed by a separate coast move. Every
   // authored parameter shares this same eased clock from the first frame.
-  const travel = smootherstep(p);
+  // This shot enters on a hard cut, so it should already be moving. A linear master clock keeps
+  // target travel, orbit, zoom, and film shift constant through the proof and outgoing burn.
+  const travel = p;
   const fit = aspect >= 1 ? 1 : lerp(2.5, 1, clamp((aspect - 0.55) / 0.45, 0, 1));
   const harborAngle = Math.atan2(harbor.x, harbor.z);
   const coast = { x: Math.sin(harborAngle) * 2.45, y: 0.03, z: Math.cos(harborAngle) * 2.45 };
   const target = { x: lerp(0, coast.x, travel), y: lerp(-0.08, coast.y, travel), z: lerp(0, coast.z, travel) };
   const azimuth = lerp(-0.72, -0.72 + Math.PI * 0.72, travel);
   const elevation = lerp(0.98, 0.66, travel);
-  const distance = lerp(14.6, 5.75, travel) * fit;
+  const distance = lerp(14.6, 5.45, travel) * fit;
   const ce = Math.cos(elevation);
   return {
     eye: { x: target.x + ce * Math.sin(azimuth) * distance, y: target.y + Math.sin(elevation) * distance, z: target.z + ce * Math.cos(azimuth) * distance },
     target, up: { x: 0, y: 1, z: 0 }, fovy: 48 * Math.PI / 180, near: 0.05, far: 100, azimuth,
-    ndcOffsetX: lerp(0, -0.25, travel),
-    ndcOffsetY: lerp(0, -0.08, travel),
+    // Keep the coast detail biased left, but recover a few cells on the left edge so the
+    // second player's road and the next settlement drop remain inside the final frame.
+    ndcOffsetX: lerp(0, -0.13, travel),
+    ndcOffsetY: lerp(0, -0.04, travel),
   };
 }
 

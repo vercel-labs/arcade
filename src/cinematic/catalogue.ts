@@ -10,4 +10,5 @@ export const ARCADE_CATALOGUE = [
   { id: 'leaderboard', title: 'Leaderboard', enabled: false },
   { id: 'achievements', title: 'Achievements', enabled: false },
   { id: 'website', title: 'Website', enabled: true, externalUrl: ARCADE_WEBSITE_URL },
+  { id: 'tutorial', title: 'Tutorial', enabled: true },
 ] as const satisfies readonly CoverFlowItem[];
