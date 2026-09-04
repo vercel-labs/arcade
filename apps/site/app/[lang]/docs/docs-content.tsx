@@ -6,12 +6,12 @@ export interface DocSection { heading: string; body: ReactNode }
 export interface DocPage { slug: string; label: string; title: string; summary: string; sections: DocSection[]; body?: ReactNode; navParent?: string; navGroup?: string }
 
 const REPO = 'https://github.com/vercel-labs/arcade/blob/main/';
-const Code = ({ children, title }: { children: string; title?: string }) => <CodeBlock title={title}>{children}</CodeBlock>;
+const Code = ({ children, title, language }: { children: string; title?: string; language?: 'typescript' | 'bash' | 'text' }) => <CodeBlock language={language} title={title}>{children}</CodeBlock>;
 const Source = ({ path, children }: { path: string; children?: ReactNode }) => <a className="source-link" href={`${REPO}${path}`} rel="noreferrer" target="_blank">{children ?? path} ↗</a>;
 const Note = ({ children }: { children: ReactNode }) => <aside className="doc-note">{children}</aside>;
-const Api = ({ rows }: { rows: [string, string][] }) => <div className="api-list">{rows.map(([name, description]) => <div key={name}><code>{name}</code><p>{description}</p></div>)}</div>;
+const Api = ({ rows }: { rows: [string, string][] }) => <dl className="api-list">{rows.map(([name, description]) => <div key={name}><dt><code>{name}</code></dt><dd>{description}</dd></div>)}</dl>;
 const ARCHITECTURE_CHART = `flowchart TB
-  subgraph complete["Complete Arcade"]
+  subgraph complete["Arcade architecture"]
     direction LR
     fullLayers["Reusable layers<br/>Engine · Terminal platform · Terminal UI<br/>Rules · Game harness · Game visuals"]
     cli["Arcade CLI"]
@@ -22,7 +22,7 @@ const ARCHITECTURE_CHART = `flowchart TB
     cli --> hosted
   end
 
-  subgraph focused["Focused browser surfaces"]
+  subgraph focused["Browser surfaces"]
     direction LR
     browserLayers["Browser-safe layers<br/>Engine · Terminal UI · Rules · Game visuals"]
     browser["Browser API"]
@@ -32,17 +32,17 @@ const ARCHITECTURE_CHART = `flowchart TB
   end
   complete ~~~ focused`;
 const MOBILE_ARCHITECTURE_CHART = `flowchart TB
-  full["Complete Arcade<br/>all reusable layers"] --> cli["Arcade CLI"]
+  full["Arcade architecture<br/>all reusable layers"] --> cli["Arcade CLI"]
   cli --> local["Local terminal<br/>ANSI"]
   cli --> hosted["Browser host<br/>isolated PTY + xterm.js"]
-  hosted ~~~ focused["Focused browser surfaces<br/>browser-safe layers"]
+  hosted ~~~ focused["Browser surfaces<br/>browser-safe layers"]
   focused --> browser["Browser API"]
   browser --> canvas["Canvas"]`;
 
 const ArchitectureDiagram = () => <figure className="doc-architecture">
   <div className="doc-architecture__diagram doc-architecture__diagram--desktop"><Mermaid chart={ARCHITECTURE_CHART} /></div>
   <div className="doc-architecture__diagram doc-architecture__diagram--mobile"><Mermaid chart={MOBILE_ARCHITECTURE_CHART} /></div>
-  <figcaption>Two delivery paths from the same reusable package: the complete CLI and focused browser-safe scenes.</figcaption>
+  <figcaption>Two delivery paths from the same reusable package: the complete CLI and browser-safe scenes.</figcaption>
 </figure>;
 
 export const CORE_DOCS: DocPage[] = [
@@ -58,14 +58,14 @@ export const CORE_DOCS: DocPage[] = [
 arcade`}</Code><p>To try the latest version once without installing a global command, run <code>npx @vercel/arcade@latest</code>. Arcade requires Node.js 22 or newer and a terminal with truecolor support for the intended presentation. The renderer itself is CPU-only: there are no native graphics dependencies and no GPU requirement.</p></>,
       },
       {
-        heading: 'Choose an API',
+        heading: 'Choose what to build',
         body: <><div className="doc-cards">
           <a href="/docs/engine"><strong>Render a scene</strong><span>Geometry, cameras, materials, rasterization, and terminal-cell presentation</span></a>
           <a href="/docs/tui"><strong>Build an interface</strong><span>Retained components, layout, focus, input, and Surface composition</span></a>
           <a href="/docs/game-harness"><strong>Run models in games</strong><span>Rules contracts, player-safe context, decisions, communication, and records</span></a>
           <a href="/docs/game-visuals"><strong>Reuse game visuals</strong><span>Production geometry, asset loading, layouts, and animation choreography</span></a>
           <a href="/docs/tools"><strong>Develop with agents</strong><span>Headless runners, bounded snapshots, artifacts, and deterministic checks</span></a>
-          <a href="/docs/browser-host"><strong>Host Arcade on the web</strong><span>Canvas adapters or the packaged CLI in an isolated browser terminal</span></a>
+          <a href="/docs/web"><strong>Integrate with the browser</strong><span>Focused Canvas scenes or the complete CLI in an isolated browser terminal</span></a>
         </div><Code title="TypeScript">{`npm install @vercel/arcade
 
 import { Surface } from '@vercel/arcade/engine'
@@ -81,8 +81,8 @@ import {
         body: <><p>Arcade has two delivery paths. The full CLI composes the reusable graphics, terminal interface, rules, game harness, and game visuals, then writes ANSI to a local terminal or runs unchanged inside the website’s isolated PTY. The Browser API imports browser-safe package layers and renders focused scenes directly to Canvas instead of loading the full application.</p><ArchitectureDiagram /><p>Read the <Source path="docs/architecture/0001-hosted-arcade-terminal.md">hosted-terminal decision record</Source> before introducing a new host or credential path.</p></>,
       },
       {
-        heading: 'Choose the right path',
-        body: <><ul><li>Start with <a href="/docs/getting-started">Getting started</a> to install the CLI, sign in, or run from source.</li><li>Open <a href="/docs/app">Using Arcade</a> to learn the launcher, tutorial, controls, model setup, teams, and billing.</li><li>Use <a href="/docs/package-api">Package API</a> to choose a stable npm subpath.</li><li>Open <a href="/docs/games">Games</a> to follow Chess, Poker, Islanders, and communication from rules through rendering and model play.</li><li>Continue to <a href="/docs/engine">Rendering engine</a> to draw your first CPU-rendered mesh.</li><li>Read <a href="/docs/renderer-pipeline">Rendering pipeline</a> to understand how pixels become ASCII, pixel, or hybrid cells.</li><li>Use <a href="/docs/platform">Terminal platform</a>, <a href="/docs/tui">Terminal UI</a>, and <a href="/docs/components">Components</a> to own terminal lifecycle and place interactive UI over a live scene.</li><li>Start with <a href="/docs/game-harness">Game harness</a> when rules, models, human players, or reproducible match records are the primary problem.</li><li>Reuse <a href="/docs/game-visuals">Game visuals</a> when a new host needs Arcade’s production boards, cards, pieces, or motion.</li><li>Use <a href="/docs/tools">Agentic tooling</a> to give coding agents bounded snapshots, structured artifacts, and inspectable self-play.</li></ul><p>Arcade fits terminal-first graphics and agent-playable games. Choose a GPU renderer, remote-desktop stack, or authoritative multiplayer service when those are the actual requirements.</p></>,
+        heading: 'Explore the documentation',
+        body: <><ul><li>Start with <a href="/docs/getting-started">Getting started</a> to install the CLI, sign in, or run from source.</li><li>Open <a href="/docs/app">Using Arcade</a> to learn the launcher, tutorial, controls, model setup, teams, and billing.</li><li>Study <a href="/docs/games">Games</a> for complete Chess, Poker, and Islanders case studies, shared rules, and model communication.</li><li>Continue through <a href="/docs/engine">Rendering engine</a> and <a href="/docs/renderer-pipeline">Rendering pipeline</a> to understand how meshes become terminal cells.</li><li>Reuse <a href="/docs/game-visuals">Game visuals</a> when a new host needs Arcade’s production boards, cards, pieces, or motion.</li><li>Use <a href="/docs/platform">Terminal platform</a>, <a href="/docs/tui">Terminal UI</a>, and <a href="/docs/components">Components</a> to own terminal lifecycle and place interactive UI over a live scene.</li><li>Start with <a href="/docs/game-harness">Game harness</a> when rules, models, human players, or reproducible match records are the primary problem.</li><li>Use <a href="/docs/tools">Agentic tooling</a> to give coding agents bounded snapshots, structured artifacts, and inspectable self-play.</li><li>Choose <a href="/docs/web">Browser integration</a> for focused Canvas scenes or the complete CLI hosted in an isolated PTY.</li><li>Follow a <a href="/docs/guides">Guide</a> for an end-to-end workflow, then use <a href="/docs/package-api">Package API</a> and <a href="/docs/reference">API Reference</a> for exact lookup.</li></ul><p>Arcade fits terminal-first graphics and agent-playable games. Choose a GPU renderer, remote-desktop stack, or authoritative multiplayer service when those are the actual requirements.</p></>,
       },
     ],
   },
@@ -94,7 +94,7 @@ import {
     sections: [
       {
         heading: 'Before you start',
-        body: <><ul><li>Use Node.js 22 or newer.</li><li>Run Arcade in a terminal with truecolor support for the intended presentation; 256-color terminals receive a compatible fallback.</li><li>You do not need a Vercel account to open Arcade or complete most of the offline-first Tutorial.</li><li>Real model seats require a Vercel account that belongs to at least one team. The selected team owns the generated AI Gateway key and model usage.</li></ul><p>The AI Gateway free tier covers a changing subset of models without a credit purchase. Read <a href="/docs/app/models">Models, teams, and billing</a> before selecting paid models or troubleshooting access.</p></>,
+        body: <><ul><li>Use Node.js 22 or newer.</li><li>Run Arcade in a terminal with truecolor support for the intended presentation; 256-color terminals receive a compatible fallback.</li><li>You do not need a Vercel account to open Arcade or complete most of the offline-first Tutorial.</li><li>Real model seats require a Vercel account that belongs to at least one team. The selected team owns the generated AI Gateway key and model usage.</li></ul><p>After valid card verification, the AI Gateway Free tier grants $5 every 30 days for a changing subset of models with lower limits. Read <a href="/docs/app/models">Models, teams, and billing</a> before selecting paid models or troubleshooting access.</p></>,
       },
       {
         heading: 'Install the CLI',
@@ -103,21 +103,21 @@ arcade`}</Code><p>For a one-off run, <code>npx @vercel/arcade@latest</code> down
       },
       {
         heading: 'Run from source',
-        body: <><p>Use the repository workflow when contributing to Arcade or inspecting unreleased work. The application is a full-screen raw-mode TTY, so use snapshots—not redirected terminal output—to review visuals.</p><Code title="Terminal">{`git clone https://github.com/vercel-labs/arcade.git
+        body: <><p>Use the repository workflow when contributing to Arcade or inspecting unreleased work. The application is a full-screen raw-mode TTY, so use snapshots, not redirected terminal output, to review visuals.</p><Code title="Terminal">{`git clone https://github.com/vercel-labs/arcade.git
 cd arcade
 pnpm install
 pnpm dev`}</Code><Code title="Terminal">{`pnpm snapshot:png 140 50 0.7
-pnpm snapshot:png islanders 180 70 0.7`}</Code><p>Snapshot output is written under <code>.snapshots/</code>. Continue to <a href="/docs/tools">Agentic tooling</a> for bounded render checks, self-play, and model audits.</p></>,
+pnpm snapshot:png islanders 180 70 0.7`}</Code><p>Snapshot output is written under <code>.snapshots/</code>. A development run also appends internal test surfaces to Cover Flow and labels each one <strong>dev only</strong>; published installs hide them. Continue to <a href="/docs/tools">Agentic tooling</a> for bounded render checks, self-play, and model audits.</p></>,
       },
       {
         heading: 'Enable model play',
-        body: <><p>Arcade uses Vercel device authorization rather than asking you to paste a credential. On first model-enabled launch, follow the browser prompt, select the Vercel team that should own AI Gateway usage, and return to the terminal. Arcade creates or reuses that team’s key, then refreshes the model picker from an availability-aware team catalog.</p><Code title="Terminal">{`arcade --login
+        body: <><p>Arcade uses Vercel device authorization rather than asking you to paste a credential. On first model-enabled launch, follow the browser prompt, select the Vercel team that should own AI Gateway usage, and return to the terminal. Arcade automatically obtains a team-scoped AI Gateway key, then refreshes the model picker from an availability-aware team catalog.</p><Code title="Terminal">{`arcade --login
 arcade --switch-team
 arcade --logout`}</Code><p>The session is cached in <code>~/.config/arcade/auth.json</code>. The minted AI Gateway key is re-derived instead of stored. An unrelated <code>AI_GATEWAY_API_KEY</code> inherited from your shell is intentionally ignored. Continue to <a href="/docs/app/models">Models, teams, and billing</a> for key naming, free and paid access, spend links, and health-check failures.</p></>,
       },
       {
         heading: 'Play your first game',
-        body: <><p>From Cover Flow, open the Tutorial to learn camera movement, menus, global keys, Chess, Poker, and Islanders on their real screens. The walkthrough uses local practice bots by default and skips its optional Gateway steps when you are signed out.</p><p>To start a model match instead, open a game, choose New match, assign each seat to a human or model, and press Start. Arcade tests each unique selected model before beginning, so a billing or routing problem remains recoverable in setup.</p><p>Continue to <a href="/docs/app">Using Arcade</a> for the complete app flow and <a href="/docs/games">Games</a> for detailed rules and technical case studies.</p></>,
+        body: <><p>From Cover Flow, open the Tutorial to learn camera movement, menus, global keys, Chess, Poker, and Islanders on their real screens. The walkthrough uses local practice bots by default and skips its optional Gateway steps when you are signed out.</p><p>To start a model match instead, open a game and choose New match. Arcade suggests a creator for each AI seat, but waits for you to choose every model before Start is available. It then tests each unique selected model, so a billing or routing problem remains recoverable in setup.</p><p>Continue to <a href="/docs/app">Using Arcade</a> for the complete app flow and <a href="/docs/games">Games</a> for detailed rules and technical case studies.</p></>,
       },
       {
         heading: 'Use Arcade as a library',
@@ -221,7 +221,7 @@ rasterize(target, flatShade(cube()), lambertMaterial, {
         body: <Api rows={[
           ['VertexIn', 'Position, normal, UV, and base color entering a material vertex program.'],
           ['Mesh', 'A vertex array plus triangle indices. Use cube, quad, tetrahedron, GeometryBuilder, BufferGeometry, or parseObj.'],
-          ['Material<U>', 'A typed vertex/fragment shader pair plus blend and cull state—the extension point for every visual look.'],
+          ['Material<U>', 'A typed vertex and fragment shader pair plus blend and cull state. This is the extension point for every visual look.'],
           ['RenderTarget', 'Float RGB color storage plus depth. Opaque, additive, and alpha writes share one tested plot path.'],
           ['Surface', 'The final cell grid: glyph, foreground, background, style bits, opacity, and wide-character continuation.'],
         ]} />,
@@ -278,7 +278,7 @@ target.plot(x, y, depth, { r: 255, g: 160, b: 80, a: 1 }, 'opaque')`}</Code><p><
       },
       {
         heading: 'Materials and color',
-        body: <><p>Materials are the style hook. The same mesh becomes Lambert-lit geometry, felt, water, glass, a textured piece, a speech wisp, or a cover by changing shader code and uniforms—not by teaching the rasterizer about Arcade games.</p><p>Color helpers parse CSS-like colors, blend RGBA over RGB, interpolate palettes, and convert HSL. Terminal conversion is deliberately later: <code>rgbToAnsi256</code> and <code>applyTerminalColorMode</code> preserve hue while providing a 256-color fallback.</p><Source path="src/engine/materials.ts" /><Source path="src/engine/terminal-color.ts" /></>,
+        body: <><p>Materials are the style hook. The same mesh becomes Lambert-lit geometry, felt, water, glass, a textured piece, a speech wisp, or a cover by changing shader code and uniforms, without teaching the rasterizer about Arcade games.</p><p>Color helpers parse CSS-like colors, blend RGBA over RGB, interpolate palettes, and convert HSL. Terminal conversion is deliberately later: <code>rgbToAnsi256</code> and <code>applyTerminalColorMode</code> preserve hue while providing a 256-color fallback.</p><Source path="src/engine/materials.ts" /><Source path="src/engine/terminal-color.ts" /></>,
       },
       {
         heading: 'Present terminal cells',
@@ -679,6 +679,8 @@ const meshes = await fetchObjMeshSet({
     slug: 'rules',
     label: 'Rules',
     title: 'Rules engines',
+    navParent: 'games',
+    navGroup: 'Shared systems',
     summary: 'Use presentation-independent game states for legal actions, deterministic tests, search, model observations, chance events, and replay.',
     sections: [
       {
@@ -759,7 +761,7 @@ console.log(state.fen())`}</Code></>,
           ['normalizer', 'A separate model that recovers intended legal syntax without choosing a better action.'],
           ['fallbackRng', 'Injectable source for deterministic final legal fallback.'],
           ['onFailureNotice', 'Receives sanitized actionable Gateway failure metadata for UI recovery. Persistent failures then reject with NotifiedModelFailure instead of choosing a random move.'],
-        ]} /><Note>A fallback-completed turn is traceable and does not count as model compatibility. Billing, authentication, access, and unavailable-model failures are persistent: after <code>onFailureNotice</code>, <code>chooseAction()</code> throws an exported <code>NotifiedModelFailure</code> so a host can pause and offer recovery. Diagnostics store phases, latency, token counts, rejection categories, and sanitized failure kinds—not prompts, raw responses, rationale, or provider error text.</Note></>,
+        ]} /><Note>A fallback-completed turn is traceable and does not count as model compatibility. Billing, authentication, access, and unavailable-model failures are persistent: after <code>onFailureNotice</code>, <code>chooseAction()</code> throws an exported <code>NotifiedModelFailure</code> so a host can pause and offer recovery. Diagnostics store phases, latency, token counts, rejection categories, and sanitized failure kinds. They do not store prompts, raw responses, rationale, or provider error text.</Note></>,
       },
       {
         heading: 'Drive a match',
@@ -785,9 +787,9 @@ console.log(state.fen())`}</Code></>,
         body: <><p><code>@vercel/arcade/harness/communication</code> keeps speech separate from action choice. A proposal is silent or speak, with intent, public text, optional addressees, and a private reason that never enters table talk.</p><Api rows={[
           ['PublicConversation', 'Stores ordered, speaker-labelled public messages and addressed seats.'],
           ['CommunicationPolicy', 'Accepts every proposal in autoreply mode; ambient mode scores salience, direct replies, silence gaps, repetition, and monologues.'],
-          ['TableCommunicationCoordinator', 'Builds model communication context, identifies reply opportunities, and applies host policy across seats.'],
+          ['TableCommunicationCoordinator', 'Builds communication context, accepts human messages, identifies directed replies, and applies host policy across seats.'],
           ['primaryMoment / reactionOpportunities', 'Reduce game-specific public events into typed moments and bounded response opportunities.'],
-        ]} /><p>Call <code>CommunicationPolicy.reset()</code> between independent tables. A decision returns both the accepted/suppressed communication and the original proposal, score, threshold, reason, and score components for inspection.</p><p>Drivers synchronize model progression with visible dice, resource, card, trade, and construction animations. Models may decide quickly; the UI reveals intent at human-readable pace without changing authoritative game ordering.</p></>,
+        ]} /><p>Arcade’s shared composer resolves exact <code>@model</code> labels into addressed seats. Chess, Poker, and ambient Islanders games then serialize one bounded directed reply per addressed model without creating a reply chain. Call <code>CommunicationPolicy.reset()</code> between independent tables. A decision returns both the accepted or suppressed communication and the original proposal, score, threshold, reason, and score components for inspection.</p><p>Drivers synchronize model progression with visible dice, resource, card, trade, and construction animations. Models may decide quickly; the UI reveals intent at human-readable pace without changing authoritative game ordering.</p></>,
       },
       {
         heading: 'Self-play and persistent traces',
@@ -821,7 +823,7 @@ pnpm snapshot:png shortcuts chess`}</Code><p>The first command freezes the prism
       },
       {
         heading: 'Follow the snapshot pipeline',
-        body: <><Code title="Pipeline">{`rules or fixture state
+        body: <><Code language="text" title="Pipeline">{`rules or fixture state
   -> scene.frame(time)
   -> supersampled RenderTarget
   -> downsample and bloom
@@ -913,7 +915,7 @@ pnpm match:run -- --game islanders --models=a,b,c,d --communication=ambient`}</C
       },
       {
         heading: 'Privacy and telemetry',
-        body: <><p>Match-lab forces telemetry off. Local traces may contain prompts, model attempts, private reasoning, public communication, hands, and intermediate state; they must not be committed or uploaded as production telemetry. Arcade telemetry separately records anonymous usage and canonical game records only—never prompts, reasoning, chat, voice, or account identity.</p><p>Credentials are resolved by the CLI’s Vercel device flow and selected team. They never enter the browser bundle, documentation, repository, or run manifest.</p></>,
+        body: <><p>Match-lab forces telemetry off. Local traces may contain prompts, model attempts, private reasoning, public communication, hands, and intermediate state; they must not be committed or uploaded as production telemetry. Arcade telemetry separately records anonymous usage and canonical game records only. It never records prompts, reasoning, chat, voice, or account identity.</p><p>Credentials are resolved by the CLI’s Vercel device flow and selected team. They never enter the browser bundle, documentation, repository, or run manifest.</p></>,
       },
       {
         heading: 'Design tools for agents',
@@ -923,10 +925,17 @@ pnpm match:run -- --game islanders --models=a,b,c,d --communication=ambient`}</C
   },
   {
     slug: 'web',
-    label: 'Browser API',
-    title: 'Browser API',
-    summary: 'Present Arcade Surface cells in a browser, host focused production scenes, and keep terminal glyph geometry consistent with xterm.',
+    label: 'Browser integration',
+    title: 'Browser integration',
+    summary: 'Render focused Arcade surfaces directly to Canvas or host the complete CLI in an isolated browser terminal.',
     sections: [
+      {
+        heading: 'Choose a browser path',
+        body: <><Api rows={[
+          ['Canvas and focused scenes', 'Import the browser-safe web API when you own the page, render loop, and scene. This keeps the complete terminal application out of the browser bundle.'],
+          ['Hosted CLI', 'Run the packaged Arcade command inside an isolated PTY when people should use the complete launcher, games, terminal input, and model flow unchanged.'],
+        ]} /><div className="doc-cards doc-cards--single"><a href="/docs/browser-host"><strong>Host the complete CLI</strong><span>Sandbox lifecycle, xterm transport, device authorization, isolation, and credential boundaries</span></a></div></>,
+      },
       {
         heading: 'Render a Surface to Canvas',
         body: <><Code>{`import {
@@ -992,9 +1001,10 @@ const { surface, status, displayMode } = scene.frame(cols, rows, time)`}</Code><
   },
   {
     slug: 'browser-host',
-    label: 'Browser host',
-    title: 'Browser host',
-    summary: 'Run the packaged Arcade CLI in an isolated browser terminal, or render focused browser-safe scenes directly through the Canvas Surface adapter.',
+    label: 'Hosted CLI',
+    title: 'Hosting the complete CLI',
+    navParent: 'web',
+    summary: 'Run the packaged Arcade CLI in an isolated Vercel Sandbox PTY, stream it through xterm.js, and keep credentials out of the browser.',
     sections: [
       {
         heading: 'Start the hosted shell',
@@ -1013,7 +1023,7 @@ $ arcade
       },
       {
         heading: 'Sign in and use models',
-        body: <><p>The hosted CLI supports the same Vercel device authorization used locally. When Arcade requests sign-in, the terminal emits a private browser-open event; the site accepts only Vercel HTTPS destinations and opens the authorization page in a new tab. Team selection and AI Gateway key exchange remain part of Arcade’s normal flow.</p><p>The browser bundle never receives a Gateway key. A demo credential, when configured, is held in Sandbox network policy and replaces only the exact random placeholder used by the isolated Arcade process. A personal key minted through device authorization passes through according to the session policy rather than being substituted with the demo credential.</p></>,
+        body: <><p>The hosted CLI supports the same Vercel device authorization used locally. When Arcade requests sign-in, the terminal emits a private browser-open event; the site accepts only Vercel HTTPS destinations and opens the authorization page in a new tab. Team selection and team-scoped AI Gateway key setup remain part of Arcade’s normal flow.</p><p>The browser bundle never receives a Gateway key. A demo credential, when configured, is held in Sandbox network policy and replaces only the exact random placeholder used by the isolated Arcade process. A personal key minted through device authorization passes through according to the session policy rather than being substituted with the demo credential.</p></>,
       },
       {
         heading: 'Isolation and credentials',

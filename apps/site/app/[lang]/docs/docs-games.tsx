@@ -29,10 +29,7 @@ export const GAME_DOCS: DocPage[] = [
           ['harness/games/<game>', 'Turns observations and legal actions into model decisions, communication opportunities, bounded sessions, and canonical records.'],
           ['game-visuals/<game>', 'Owns renderer-neutral geometry, layouts, asset loading, and deterministic motion that can be shared by terminal and browser hosts.'],
           ['arcade/games/<game>', 'Composes the production scene, HUD, input, cameras, sound cues, and match lifecycle. It remains application code, not a package API.'],
-        ]} /><Code title="Architecture">{`authoritative rules ──> player-safe observation ──> Player decision
-        │                                      │
-        ├──> canonical action ──> record       │
-        └──> visual plan ───────> scene + HUD <┘`}</Code><p>The invariant is one action authority. Humans, models, headless policies, and visual playback all pass through the same legal-action and apply-action boundary.</p></>,
+        ]} /><p>The loop moves from authoritative rules to a player-safe observation, then to a human or model decision. The resulting canonical action feeds both the durable record and the visual plan rendered by the scene and HUD.</p><p>The invariant is one action authority. Humans, models, headless policies, and visual playback all pass through the same legal-action and apply-action boundary.</p></>,
       },
       {
         heading: 'Choose a game to borrow from',
@@ -206,11 +203,11 @@ drawChipColumn(at.x, at.lift, at.z)`}</Code><p>Chip motion follows the same obje
         heading: 'What each model sees',
         body: <><p>Poker is imperfect information. A seat sees its own hole cards, community cards, street, blinds, pot, own stack in chips and big blinds, amount to call, minimum raise-to, all-in ceiling, public seat states, and public action log. It never sees another live seat’s hole cards.</p><Code language="text" title="Model observation (abridged)">{`No-Limit Texas Hold'em, 4 players. You are seat 2.
 Your hole cards: A♠ Q♠
-Community: J♠ 8♦ 2♠ — flop
+Community: J♠ 8♦ 2♠ (flop)
 Blinds: 10/20. Pot: 150. Your stack: 920 (46 BB).
 To call: 40. Min raise to: 120. All-in to: 960.
 Seats: …
-Action: …`}</Code><p>Private thinking, the selected move, and public speech are separate fields. This gives strategy a private home while table talk stays optional and cannot casually leak hole cards. Model creators can also appear as seat wisps; the scene marks the acting wisp as speaking without making the visual avatar part of game authority.</p><Source path="src/harness/games/poker/poker-session.ts" /><Source path="src/arcade/scenes/wisp.ts" /></>,
+Action: …`}</Code><p>Private thinking, the selected move, and public speech are separate fields. This gives strategy a private home while table talk stays optional and cannot casually leak hole cards. Model creators can also appear as seat wisps; the scene marks the acting wisp as speaking without making the visual avatar part of game authority.</p><Note>The published CLI currently offers text-model Poker seats only. The experimental realtime voice layer and Audio surface remain development-only and are not selectable in published match setup.</Note><Source path="src/harness/games/poker/poker-session.ts" /><Source path="src/arcade/scenes/wisp.ts" /><Source path="docs/voice.md">Voice status</Source></>,
       },
       {
         heading: 'Run a tournament and preserve both records',
@@ -287,7 +284,7 @@ const robber = robberFlightPoint(from, to, moveProgress)`}</Code><p>Rules outcom
       },
       {
         heading: 'What an Islanders model sees',
-        body: <><p>Each seat receives its own exact resources, development cards, actual and public VP, production portfolio, ports, and remaining pieces. Opponents are summarized by public VP, total resource-card count, hidden development-card count, played knights, and road length—never exact hand contents. The observation also includes every public hex, building, road, award, recent turn, trade history, and current role.</p><Code language="text" title="Model context (abridged)">{`YOU ARE: model-a.
+        body: <><p>Each seat receives its own exact resources, development cards, actual and public VP, production portfolio, ports, and remaining pieces. Opponents are summarized by public VP, total resource-card count, hidden development-card count, played knights, and road length, never exact hand contents. The observation also includes every public hex, building, road, award, recent turn, trade history, and current role.</p><Code language="text" title="Model context (abridged)">{`YOU ARE: model-a.
 PLAYER REQUIRED TO ACT NOW: model-a (YOU).
 Your hand: … Your development cards: …
 Opponents: model-b: 4 public VP, 6 resource cards, 2 hidden dev cards…
@@ -347,8 +344,8 @@ if (decision.communication.mode === 'speak') {
       },
       {
         heading: 'Address a model with @',
-        body: <><p>Human Islanders games include a composer beneath the public history. Type <code>@</code> to open model suggestions at the caret, continue typing to filter by model label, then choose a completion. Exact labels are parsed into addressed seats; one message may address several models.</p><Code language="text" title="At the table">{`@claude-haiku-4.5 why block that route?
-@gpt-5.4-nano would you trade two grain for ore?`}</Code><p>In ambient mode, submitting a message with exact mentions immediately queues one required reply opportunity for each addressed model. Replies are serialized, tied to the source message, and appended without creating a reply-to-reply obligation, so one mention cannot start an infinite agent conversation. Unaddressed human chat remains public context but does not force a response.</p><Note>The explicit human <code>@model</code> reply queue currently belongs to live Islanders games in ambient mode. Autoreply controls acting-model speech after game actions; it does not turn free-form chat into an unbounded conversation.</Note><Source path="src/arcade/games/islanders/chat-composer.ts" /><Source path="src/arcade/match/islanders-driver.ts" /></>,
+        body: <><p>Every live Chess, Poker, and Islanders game uses the same composer beneath its public history when a human holds a seat. Open chat, type <code>@</code> to show model suggestions at the caret, continue typing to filter by label, then choose a completion. One message may address several models.</p><Code language="text" title="At the table">{`@claude-haiku-4.5 why block that route?
+@gpt-5.4-nano would you trade two grain for ore?`}</Code><p>Exact mentions queue one required reply opportunity for each addressed model in Chess and Poker, and in ambient Islanders games. Replies are serialized, tied to the source message, and appended without creating a reply-to-reply obligation. Unaddressed human chat remains public context but does not force a response.</p><Note>A directed reply is public conversation, not a legal game action. It cannot alter the board or table, and a reply never creates another required reply.</Note><Source path="src/arcade/match/chat-composer.ts" /><Source path="src/arcade/match/directed-replies.ts" /><Source path="src/arcade/match/driver.ts" /><Source path="src/arcade/match/poker-driver.ts" /><Source path="src/arcade/match/islanders-driver.ts" /></>,
       },
       {
         heading: 'Preserve public context, not private state',
@@ -363,7 +360,7 @@ if (decision.communication.mode === 'speak') {
         body: <><Api rows={[
           ['PublicConversation', 'Store sanitized public messages, addressed seats, pending response obligations, and a bounded per-seat prompt projection.'],
           ['CommunicationPolicy', 'Accept autoreply speech or score ambient proposals while suppressing repetition and excessive monologues.'],
-          ['TableCommunicationCoordinator', 'Connect a generic game’s model configuration, policy, public context, and speech-rate summary.'],
+          ['TableCommunicationCoordinator', 'Connect model configuration, policy, public context, human messages, directed replies, and speech-rate summaries.'],
           ['GameMoment helpers', 'Select a primary applied-action beat, choose bounded reaction seats, and convert direct addresses into required reply opportunities.'],
         ]} /><p>Game-specific adapters should supply public facts and action salience. Keep hidden-state rules in each model’s observation, and keep legal actions independent from anything said in chat.</p><Source path="src/harness/communication/index.ts" /></>,
       },
