@@ -3,18 +3,13 @@ import type { NetworkPolicy } from '@vercel/sandbox';
 export const TERMINAL_CWD = '/vercel/sandbox/arcade';
 export const TERMINAL_TIMEOUT_MS = 20 * 60 * 1000;
 export const BASE_TIMEOUT_MS = 10 * 60 * 1000;
-export const TERMINAL_BASE_VERSION = 16;
+export const TERMINAL_BASE_VERSION = 17;
 export const GATEWAY_HOST = 'ai-gateway.vercel.sh';
 export const VERCEL_API_HOST = 'api.vercel.com';
 
 export interface TerminalSize {
   cols: number;
   rows: number;
-}
-
-export interface HostedGatewayCredential {
-  token: string;
-  authMethod: 'api-key' | 'oidc';
 }
 
 export function parseTerminalSize(value: unknown): TerminalSize {
@@ -47,14 +42,6 @@ export function isTerminalBaseWarmRequest(value: unknown): boolean {
   return typeof value === 'object' && value !== null && (value as Record<string, unknown>).warmOnly === true;
 }
 
-export function hostedGatewayCredential(env: NodeJS.ProcessEnv = process.env): HostedGatewayCredential | null {
-  const apiKey = env.AI_GATEWAY_API_KEY?.trim();
-  if (apiKey) return { token: apiKey, authMethod: 'api-key' };
-  const oidc = env.VERCEL_OIDC_TOKEN?.trim();
-  if (oidc) return { token: oidc, authMethod: 'oidc' };
-  return null;
-}
-
 export function baseNetworkPolicy(): NetworkPolicy {
   return {
     allow: [
@@ -64,37 +51,18 @@ export function baseNetworkPolicy(): NetworkPolicy {
   };
 }
 
-export function sessionNetworkPolicy(
-  placeholder: string,
-  credential: HostedGatewayCredential | null,
-): NetworkPolicy {
+export function sessionNetworkPolicy(): NetworkPolicy {
   return {
     allow: {
       [VERCEL_API_HOST]: [],
-      [GATEWAY_HOST]: [
-        ...(credential ? [{
-          match: {
-            headers: [{
-              key: { exact: 'authorization' },
-              value: { exact: `Bearer ${placeholder}` },
-            }],
-          },
-          transform: [{
-            headers: {
-              authorization: `Bearer ${credential.token}`,
-              'ai-gateway-auth-method': credential.authMethod,
-            },
-          }],
-        }] : []),
-        // Personal keys minted by the device flow pass through unchanged. The
-        // demo placeholder above always matches first and is never forwarded.
-        { match: {}, transform: [] },
-      ],
+      // Every fresh hosted session signs in through Vercel's device flow. The
+      // resulting team-scoped key belongs to that user and passes through unchanged.
+      [GATEWAY_HOST]: [],
     },
   };
 }
 
-export function terminalFiles(packageSource: string, placeholder: string): Array<{
+export function terminalFiles(packageSource: string): Array<{
   path: string;
   content: string;
   mode?: number;
@@ -145,13 +113,8 @@ export function terminalFiles(packageSource: string, placeholder: string): Array
       content: `${packageSource}\n`,
     },
     {
-      path: `${TERMINAL_CWD}/system/gateway-placeholder`,
-      content: `${placeholder}\n`,
-      mode: 0o600,
-    },
-    {
       path: `${TERMINAL_CWD}/system/arcade-demo`,
-      content: `#!/bin/sh\nset -eu\nexport HOME=/home/arcade\nexport PATH=/usr/local/bin:/usr/bin:/bin\nexport ARCADE_HOSTED_TERMINAL=1\nexport ARCADE_TELEMETRY=0\nexport AI_GATEWAY_API_KEY="$(cat ${TERMINAL_CWD}/system/gateway-placeholder)"\nexport ARCADE_HOSTED_DEMO_KEY="$AI_GATEWAY_API_KEY"\nexec /usr/local/bin/arcade "$@"\n`,
+      content: `#!/bin/sh\nset -eu\nexport HOME=/home/arcade\nexport PATH=/usr/local/bin:/usr/bin:/bin\nexport ARCADE_HOSTED_TERMINAL=1\nexport ARCADE_TELEMETRY=0\nunset AI_GATEWAY_API_KEY\nexec /usr/local/bin/arcade "$@"\n`,
       mode: 0o755,
     },
     {

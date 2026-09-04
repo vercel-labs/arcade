@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Sandbox, type CommandFinished } from '@vercel/sandbox';
@@ -8,7 +7,6 @@ import {
   TERMINAL_TIMEOUT_MS,
   baseNetworkPolicy,
   baseSandboxName,
-  hostedGatewayCredential,
   interactiveStart,
   isTerminalBaseWarmRequest,
   packageSpec,
@@ -25,7 +23,6 @@ let baseSandboxPromise: Promise<Sandbox> | null = null;
 
 function ensureBaseSandbox(name: string, source: string): Promise<Sandbox> {
   if (baseSandboxPromise) return baseSandboxPromise;
-  const createdPlaceholder = randomBytes(32).toString('hex');
   const archive = readFile(join(process.cwd(), 'app/api/terminal/session/arcade-package.tgz')).then((value) => new Uint8Array(value));
   const pending = Sandbox.getOrCreate({
     name,
@@ -39,7 +36,7 @@ function ensureBaseSandbox(name: string, source: string): Promise<Sandbox> {
     keepLastSnapshots: { count: 1, expiration: 30 * 24 * 60 * 60 * 1000 },
     tags: { application: 'arcade-site', purpose: 'terminal-base' },
     onCreate: async (sandbox) => {
-      await initializeBaseSandbox(sandbox, source, createdPlaceholder, await archive);
+      await initializeBaseSandbox(sandbox, source, await archive);
       await sandbox.snapshot();
     },
   });
@@ -52,17 +49,6 @@ function ensureBaseSandbox(name: string, source: string): Promise<Sandbox> {
   return pending;
 }
 
-async function readBasePlaceholder(sandbox: Sandbox): Promise<string> {
-  const result = await sandbox.runCommand({
-    cmd: 'cat',
-    args: [`${TERMINAL_CWD}/system/gateway-placeholder`],
-    sudo: true,
-  });
-  const placeholder = (await result.stdout()).trim();
-  if (result.exitCode !== 0 || !placeholder) throw new Error('Hosted terminal credential placeholder is missing.');
-  return placeholder;
-}
-
 export async function POST(request: Request) {
   try {
     const payload: unknown = await request.json().catch(() => ({}));
@@ -73,13 +59,11 @@ export async function POST(request: Request) {
     if (isTerminalBaseWarmRequest(payload)) {
       return new Response(null, { status: 204, headers: { 'Cache-Control': 'no-store' } });
     }
-    const placeholder = await readBasePlaceholder(baseSandbox);
-
     const session = await Sandbox.fork({
       sourceSandbox: name,
       persistent: false,
       timeout: TERMINAL_TIMEOUT_MS,
-      networkPolicy: sessionNetworkPolicy(placeholder, hostedGatewayCredential()),
+      networkPolicy: sessionNetworkPolicy(),
       tags: { application: 'arcade-site', purpose: 'terminal-session' },
     });
     const interactive = await session.openInteractive();
@@ -105,7 +89,6 @@ export async function POST(request: Request) {
 async function initializeBaseSandbox(
   sandbox: Sandbox,
   source: string,
-  placeholder: string,
   archive: Uint8Array,
 ): Promise<void> {
   await sandbox.writeFiles([{
@@ -131,7 +114,7 @@ async function initializeBaseSandbox(
     sudo: true,
   }), 'create terminal users');
 
-  await sandbox.writeFiles(terminalFiles(source, placeholder));
+  await sandbox.writeFiles(terminalFiles(source));
   await assertCommand(await sandbox.runCommand({
     cmd: 'bash',
     args: ['-lc', [
@@ -139,8 +122,6 @@ async function initializeBaseSandbox(
       `install -o visitor -g visitor -m 644 ${TERMINAL_CWD}/system/visitor.bashrc /home/visitor/.bashrc`,
       `install -o visitor -g visitor -m 644 ${TERMINAL_CWD}/system/visitor.profile /home/visitor/.profile`,
       `chown -R visitor:visitor ${TERMINAL_CWD}`,
-      `chown arcade:arcade ${TERMINAL_CWD}/system/gateway-placeholder`,
-      `chmod 600 ${TERMINAL_CWD}/system/gateway-placeholder`,
       `grep -qxF 'visitor ALL=(arcade) NOPASSWD: /usr/local/bin/arcade-demo, /usr/local/bin/arcade-demo *' /etc/sudoers || cat ${TERMINAL_CWD}/system/arcade-visitor-sudoers >> /etc/sudoers`,
       'chmod 440 /etc/sudoers',
       'visudo -c',

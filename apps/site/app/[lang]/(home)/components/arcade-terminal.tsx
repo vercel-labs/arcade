@@ -124,6 +124,10 @@ export function ArcadeTerminal() {
     observer.observe(container);
 
     const syncInputMode = (next: HostedTerminalMode) => {
+      // The browser action is only a fallback while device authorization is pending.
+      // Re-entering Arcade proves that flow finished (or ended), so stale auth chrome
+      // must not cover the app's own menu and chat controls or reappear after exit.
+      if (next === 'arcade') setAuthUrl(null);
       if (next === terminalMode) return;
       terminalMode = next;
       setMode(next);

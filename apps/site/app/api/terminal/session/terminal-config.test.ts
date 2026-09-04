@@ -6,7 +6,6 @@ import {
   TERMINAL_CWD,
   baseNetworkPolicy,
   baseSandboxName,
-  hostedGatewayCredential,
   interactiveStart,
   packageSpec,
   parseTerminalSize,
@@ -25,7 +24,7 @@ describe('hosted Arcade terminal configuration', () => {
   test('pins the installed package and reusable base to the deployment revision', () => {
     const env = { VERCEL_GIT_COMMIT_SHA: 'ABCDEF1234567890' } as unknown as NodeJS.ProcessEnv;
     assert.equal(packageSpec(env), '@vercel/arcade#ABCDEF1234567890');
-    assert.equal(baseSandboxName(env), 'arcade-web-base-v16-abcdef123456');
+    assert.equal(baseSandboxName(env), 'arcade-web-base-v17-abcdef123456');
   });
 
   test('recognizes only an explicit base-only warm request', () => {
@@ -40,34 +39,24 @@ describe('hosted Arcade terminal configuration', () => {
     });
   });
 
-  test('allows browser-auth APIs but no demo credential transform without a hosted credential', () => {
-    const policy = sessionNetworkPolicy('placeholder', null);
+  test('allows personal browser auth and Gateway calls without credential transforms', () => {
+    const policy = sessionNetworkPolicy();
     assert.notEqual(policy, 'deny-all');
     if (typeof policy === 'string' || !policy.allow || Array.isArray(policy.allow)) assert.fail('expected allow policy');
     assert.deepEqual(policy.allow[VERCEL_API_HOST], []);
-    assert.deepEqual(policy.allow[GATEWAY_HOST], [{ match: {}, transform: [] }]);
-    assert.equal(hostedGatewayCredential({} as unknown as NodeJS.ProcessEnv), null);
-  });
-
-  test('injects a credential only for a matching placeholder request to Gateway', () => {
-    const policy = sessionNetworkPolicy('placeholder', { token: 'real-token', authMethod: 'api-key' });
-    assert.notEqual(policy, 'deny-all');
-    if (typeof policy === 'string' || !policy.allow || Array.isArray(policy.allow)) assert.fail('expected transformed allow policy');
-    const rules = policy.allow[GATEWAY_HOST];
-    const valueMatcher = rules?.[0]?.match?.headers?.[0]?.value;
-    assert.ok(valueMatcher && 'exact' in valueMatcher);
-    assert.equal(valueMatcher.exact, 'Bearer placeholder');
-    assert.equal(rules?.[0]?.transform?.[0]?.headers?.authorization, 'Bearer real-token');
-    assert.deepEqual(rules?.[1], { match: {}, transform: [] });
+    assert.deepEqual(policy.allow[GATEWAY_HOST], []);
   });
 
   test('seeds the actual CLI wrapper and navigable docs filesystem', () => {
-    const files = terminalFiles('git+https://example.test/arcade#sha', 'placeholder');
+    const files = terminalFiles('git+https://example.test/arcade#sha');
     const byPath = new Map(files.map((file) => [file.path, file.content]));
     assert.match(byPath.get(`${TERMINAL_CWD}/README.md`) ?? '', /cd docs/);
     assert.match(byPath.get(`${TERMINAL_CWD}/docs/engine.md`) ?? '', /@vercel\/arcade\/engine/);
     assert.match(byPath.get(`${TERMINAL_CWD}/examples/README.md`) ?? '', /rendering\.md/);
     assert.match(byPath.get(`${TERMINAL_CWD}/system/arcade-demo`) ?? '', /ARCADE_TELEMETRY=0/);
+    assert.match(byPath.get(`${TERMINAL_CWD}/system/arcade-demo`) ?? '', /unset AI_GATEWAY_API_KEY/);
+    assert.doesNotMatch(byPath.get(`${TERMINAL_CWD}/system/arcade-demo`) ?? '', /export (?:AI_GATEWAY_API_KEY|ARCADE_HOSTED_DEMO_KEY)/);
+    assert.equal(byPath.has(`${TERMINAL_CWD}/system/gateway-placeholder`), false);
     assert.match(byPath.get(`${TERMINAL_CWD}/system/arcade-demo`) ?? '', /exec \/usr\/local\/bin\/arcade/);
     assert.match(byPath.get(`${TERMINAL_CWD}/system/arcade-demo`) ?? '', /"\$@"/);
     const visitorShell = byPath.get(`${TERMINAL_CWD}/system/visitor.bashrc`) ?? '';

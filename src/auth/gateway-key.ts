@@ -26,8 +26,6 @@ import { createGatewayKey, getUser, listTeams, type Team } from './vercel-api.ts
 export const GATEWAY_SPEND_URL = 'https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai';
 
 const ENV_KEY = 'AI_GATEWAY_API_KEY';
-const HOSTED_TERMINAL_ENV = 'ARCADE_HOSTED_TERMINAL';
-const HOSTED_DEMO_KEY_ENV = 'ARCADE_HOSTED_DEMO_KEY';
 const KEY_NAME = 'Arcade';
 
 const bold = (s: string): string => `\x1b[1m${s}\x1b[0m`;
@@ -56,7 +54,7 @@ export interface AvailableTeamsResult {
 }
 
 export function isLoggedIn(): boolean {
-  return readAuth() !== null || (process.env[HOSTED_TERMINAL_ENV] !== '1' && hostedTerminalKey() !== null);
+  return readAuth() !== null;
 }
 
 // Non-interactive entry point for Arcade's terminal tools. Reuses the cached
@@ -77,9 +75,6 @@ export async function ensureCachedGatewayKey(): Promise<EnsureResult | null> {
 // Returns null when no key could be obtained — the arcade still runs, just with
 // AI gated.
 export async function ensureGatewayKey(opts: EnsureOpts = {}): Promise<EnsureResult | null> {
-  const hostedKey = hostedTerminalKey();
-  if (hostedKey && !opts.forceLogin) return { key: hostedKey };
-
   const interactive = opts.interactive ?? !!process.stdin.isTTY;
 
   if (!interactive) return null; // can't run the browser flow without a TTY
@@ -152,15 +147,8 @@ export async function useTeam(team: Team, isCurrent: () => boolean = () => true)
 export function signOut(): boolean {
   const was = isLoggedIn();
   clearAuth();
-  const hostedDemoKey = process.env[HOSTED_DEMO_KEY_ENV]?.trim();
-  if (hostedDemoKey) process.env[ENV_KEY] = hostedDemoKey;
-  else delete process.env[ENV_KEY];
+  delete process.env[ENV_KEY];
   return was;
-}
-
-function hostedTerminalKey(): string | null {
-  if (process.env[HOSTED_TERMINAL_ENV] !== '1') return null;
-  return process.env[ENV_KEY]?.trim() || null;
 }
 
 // ---- internals ----

@@ -46,6 +46,13 @@ test('the terminal keeps scrollback without drawing browser scrollbar chrome', a
   assert.doesNotMatch(css, /\.arcade-terminal__viewport \.xterm-viewport \{[^}]*overflow: hidden/);
 });
 
+test('the Vercel sign-in fallback leaves no chrome over a running Arcade session', async () => {
+  const component = await readFile(new URL('./[lang]/(home)/components/arcade-terminal.tsx', import.meta.url), 'utf8');
+  const syncInputMode = component.slice(component.indexOf('const syncInputMode'), component.indexOf('const writePtyOutput'));
+  assert.match(syncInputMode, /if \(next === 'arcade'\) setAuthUrl\(null\);/);
+  assert.ok(syncInputMode.indexOf("if (next === 'arcade')") < syncInputMode.indexOf('if (next === terminalMode) return;'));
+});
+
 test('page idle warms the shared base and terminal intent starts one reusable session', async () => {
   const [component, route] = await Promise.all([
     readFile(new URL('../components/quick-terminal.tsx', import.meta.url), 'utf8'),
@@ -55,7 +62,7 @@ test('page idle warms the shared base and terminal intent starts one reusable se
   assert.match(component, /onFocus=\{terminal\.prepare\}/);
   assert.match(component, /onPointerEnter=\{terminal\.prepare\}/);
   assert.match(component, /onPointerDown=\{terminal\.prepare\}/);
-  assert.ok(route.indexOf('isTerminalBaseWarmRequest(payload)') < route.indexOf('readBasePlaceholder(baseSandbox)'), 'base-only warming must not read the credential gate');
+  assert.ok(route.indexOf('isTerminalBaseWarmRequest(payload)') < route.indexOf('Sandbox.fork'), 'base-only warming must not create a visitor session');
 });
 
 test('hovering or focusing the traffic-light group reveals every symbol', async () => {
