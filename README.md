@@ -1,5 +1,5 @@
 <div align="center">
-  <a href="https://ascii-arcade.vercel.app">
+  <a href="https://ascii-arcade.dev">
     <img src="./apps/site/public/opengraph-image.png" alt="arcade — The 3D game engine built for agents." width="100%" />
   </a>
   <h1>arcade</h1>
@@ -9,13 +9,13 @@
   </p>
   <p>
     <a href="https://vercel.com"><img alt="Made by Vercel" src="https://img.shields.io/badge/MADE%20BY-Vercel-000000.svg?style=for-the-badge&amp;logo=vercel&amp;logoColor=white&amp;labelColor=000000" /></a>
-    <a href="./package.json"><img alt="npm package @vercel/arcade" src="https://img.shields.io/badge/npm-%40vercel%2Farcade-CB3837.svg?style=for-the-badge&amp;logo=npm&amp;logoColor=white&amp;labelColor=000000" /></a>
+    <a href="./package.json"><img alt="npm package ascii-arcade" src="https://img.shields.io/badge/npm-ascii--arcade-CB3837.svg?style=for-the-badge&amp;logo=npm&amp;logoColor=white&amp;labelColor=000000" /></a>
     <a href="./LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-55AA00.svg?style=for-the-badge&amp;labelColor=000000" /></a>
-    <a href="https://ascii-arcade.vercel.app/docs"><img alt="Arcade documentation" src="https://img.shields.io/badge/docs-online-0070F3.svg?style=for-the-badge&amp;labelColor=000000" /></a>
+    <a href="https://ascii-arcade.dev/docs"><img alt="Arcade documentation" src="https://img.shields.io/badge/docs-online-0070F3.svg?style=for-the-badge&amp;labelColor=000000" /></a>
   </p>
   <p>
-    <a href="https://ascii-arcade.vercel.app">Play online</a>
-    · <a href="https://ascii-arcade.vercel.app/docs">Documentation</a>
+    <a href="https://ascii-arcade.dev">Play online</a>
+    · <a href="https://ascii-arcade.dev/docs">Documentation</a>
   </p>
 </div>
 
@@ -38,20 +38,20 @@ deterministic snapshots, and headless matches.
 Install the CLI and launch it:
 
 ```bash
-npm install --global @vercel/arcade
+npm install --global ascii-arcade
 arcade
 ```
 
 Or run the latest release without keeping a global installation:
 
 ```bash
-npx @vercel/arcade@latest
+npx ascii-arcade@latest
 ```
 
 The standalone installer checks Node.js and installs the same npm package:
 
 ```bash
-curl -fsSL https://ascii-arcade.vercel.app/install | sh
+curl -fsSL https://ascii-arcade.dev/install | sh
 ```
 
 On first launch, Arcade opens Vercel's device sign-in flow, asks which team
@@ -83,27 +83,27 @@ state instead of maintaining parallel implementations.
 
 ## Build with Arcade
 
-`@vercel/arcade` exposes deliberate package boundaries instead of publicizing
+`ascii-arcade` exposes deliberate package boundaries instead of publicizing
 the repository's internal directory structure.
 
 | Import | Use it for |
 | --- | --- |
-| `@vercel/arcade` | Browser-safe convenience exports and packaged showcases. |
-| `@vercel/arcade/engine` | CPU rasterization, meshes, materials, cameras, animation, picking, effects, terminal surfaces, and presenters. |
-| `@vercel/arcade/tui` | Retained layout, components, themes, focus, pointer input, compositing, and the terminal renderer. |
-| `@vercel/arcade/platform` | Node terminal input, color detection, and alternate-screen lifecycle. |
-| `@vercel/arcade/rules/*` | UI-independent Chess, Poker, and Islanders game states. |
-| `@vercel/arcade/harness/*` | Players, model decisions, communication policy, headless sessions, diagnostics, and records. |
-| `@vercel/arcade/game-visuals/*` | Shared production geometry and deterministic game animation plans. |
-| `@vercel/arcade/web` | Canvas presentation, browser scenes, responsive terminal grids, and cinematic adapters. |
+| `ascii-arcade` | Browser-safe convenience exports and packaged showcases. |
+| `ascii-arcade/engine` | CPU rasterization, meshes, materials, cameras, animation, picking, effects, terminal surfaces, and presenters. |
+| `ascii-arcade/tui` | Retained layout, components, themes, focus, pointer input, compositing, and the terminal renderer. |
+| `ascii-arcade/platform` | Node terminal input, color detection, and alternate-screen lifecycle. |
+| `ascii-arcade/rules/*` | UI-independent Chess, Poker, and Islanders game states. |
+| `ascii-arcade/harness/*` | Players, model decisions, communication policy, headless sessions, diagnostics, and records. |
+| `ascii-arcade/game-visuals/*` | Shared production geometry and deterministic game animation plans. |
+| `ascii-arcade/web` | Canvas presentation, browser scenes, responsive terminal grids, and cinematic adapters. |
 
 For example, a player is simply an asynchronous policy over an authoritative
 game state:
 
 ```ts
-import type { Player } from '@vercel/arcade/harness';
-import { runHeadlessChessMatch } from '@vercel/arcade/harness/chess';
-import { ChessState, type Move } from '@vercel/arcade/rules/chess';
+import type { Player } from 'ascii-arcade/harness';
+import { runHeadlessChessMatch } from 'ascii-arcade/harness/chess';
+import { ChessState, type Move } from 'ascii-arcade/rules/chess';
 
 const firstLegal: Player<Move> = {
   name: 'first legal',
@@ -119,10 +119,10 @@ const result = await runHeadlessChessMatch(
 console.log(result.status, result.state.moveHistory());
 ```
 
-Start with the [rendering engine](https://ascii-arcade.vercel.app/docs/engine),
-[terminal UI](https://ascii-arcade.vercel.app/docs/tui), or
-[game harness](https://ascii-arcade.vercel.app/docs/game-harness) guides. The
-[package API](https://ascii-arcade.vercel.app/docs/package-api) lists every
+Start with the [rendering engine](https://ascii-arcade.dev/docs/engine),
+[terminal UI](https://ascii-arcade.dev/docs/tui), or
+[game harness](https://ascii-arcade.dev/docs/game-harness) guides. The
+[package API](https://ascii-arcade.dev/docs/package-api) lists every
 supported import.
 
 ## Architecture
@@ -152,11 +152,11 @@ complete dependency and distribution contract.
 Arcade is designed to be understood and operated by coding agents as well as
 people:
 
-- [`llms.txt`](https://ascii-arcade.vercel.app/llms.txt) is the concise product and API index.
-- [`llms-full.txt`](https://ascii-arcade.vercel.app/llms-full.txt) contains the complete offline documentation corpus.
-- [`agents.md`](https://ascii-arcade.vercel.app/agents.md) documents supported agent workflows and commands.
-- [`openapi.json`](https://ascii-arcade.vercel.app/openapi.json) describes the public installer, status, and prism-stream HTTP surfaces.
-- [`examples.json`](https://ascii-arcade.vercel.app/examples.json) indexes browser-safe examples and capabilities.
+- [`llms.txt`](https://ascii-arcade.dev/llms.txt) is the concise product and API index.
+- [`llms-full.txt`](https://ascii-arcade.dev/llms-full.txt) contains the complete offline documentation corpus.
+- [`agents.md`](https://ascii-arcade.dev/agents.md) documents supported agent workflows and commands.
+- [`openapi.json`](https://ascii-arcade.dev/openapi.json) describes the public installer, status, and prism-stream HTTP surfaces.
+- [`examples.json`](https://ascii-arcade.dev/examples.json) indexes browser-safe examples and capabilities.
 
 For local visual work, `pnpm snapshot` renders a bounded frame through the real
 production scene pipeline. Match Lab runs deterministic or model-backed Chess,

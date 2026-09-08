@@ -3,6 +3,7 @@ import '@/lib/geistdocs/site-url-warning';
 import type { Metadata } from 'next';
 import { GeistdocsProvider } from '@/components/geistdocs/provider';
 import { QuickTerminalProvider } from '@/components/quick-terminal';
+import { SiteNav } from '@/components/site-nav';
 import { config } from '@/lib/geistdocs/config';
 import { mono, pixel, sans } from '@/lib/geistdocs/fonts';
 import { i18n } from '@/lib/geistdocs/i18n';
@@ -35,6 +36,7 @@ const Layout = async ({ children }: LayoutProps<'/[lang]'>) => {
       <body>
         <GeistdocsProvider basePath={config.basePath} lang={lang}>
           <QuickTerminalProvider>
+            <SiteNav />
             {children}
           </QuickTerminalProvider>
         </GeistdocsProvider>

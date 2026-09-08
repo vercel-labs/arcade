@@ -13,7 +13,6 @@ import { useEffect, useRef, useState } from 'react';
 // assets and design tokens (theme.css) so it still matches the rest of the page.
 const NAV_LINKS = [
   { label: 'Docs', href: '/docs', external: false },
-  { label: 'AI Gateway', href: 'https://vercel.com/ai-gateway', external: true },
   { label: 'GitHub', href: 'https://github.com/vercel-labs/arcade', external: true },
 ];
 
@@ -66,7 +65,7 @@ export const SiteNav = () => {
           <span className="site-wordmark">arcade</span>
         </Link>
         <nav aria-label="Primary navigation" className="site-nav__desktop flex items-center gap-5">
-          {NAV_LINKS.slice(0, 2).map((link) => (
+          {NAV_LINKS.slice(0, 1).map((link) => (
             <Link
               className={`site-nav__link text-sm ${!link.external && pathname.includes('/docs') ? 'text-gray-1000' : 'text-gray-900'}`}
               href={link.href}

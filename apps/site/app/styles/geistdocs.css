@@ -10,6 +10,6 @@
   }
 
   :root {
-    --font-sans: var(--font-geist-sans);
+    --font-sans: var(--font-geist-mono);
   }
 }

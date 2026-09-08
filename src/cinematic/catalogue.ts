@@ -1,6 +1,6 @@
 import type { CoverFlowItem } from './scenes/cover-flow.ts';
 
-export const ARCADE_WEBSITE_URL = 'https://ascii-arcade.vercel.app';
+export const ARCADE_WEBSITE_URL = 'https://ascii-arcade.dev';
 
 /** Public production order shared by the CLI launcher and launch-film Cover Flow. */
 export const ARCADE_CATALOGUE = [

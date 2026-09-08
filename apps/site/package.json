@@ -2,7 +2,7 @@
   "name": "@vercel/arcade-site",
   "private": true,
   "version": "0.0.0",
-  "description": "Arcade's hero site and `curl … | sh` installer — the front door for the @vercel/arcade CLI.",
+  "description": "Arcade's hero site and `curl … | sh` installer — the front door for the ascii-arcade CLI.",
   "engines": {
     "node": ">=22"
   },
@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@vercel/analytics": "1.6.1",
-    "@vercel/arcade": "link:../..",
+    "ascii-arcade": "link:../..",
     "@vercel/geistdocs": "1.23.1",
     "@vercel/sandbox": "2.9.0",
     "@vercel/speed-insights": "1.3.1",

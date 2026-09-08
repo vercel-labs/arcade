@@ -14,7 +14,7 @@ test('the CLI catalogue is in production order with the tutorial one press left 
 test('the website cover is a stable external action', () => {
   const website = MENU_ITEMS.find(({ id }) => id === 'website');
   assert.deepEqual(website, { id: 'website', title: 'Website', enabled: true, externalUrl: ARCADE_WEBSITE_URL });
-  assert.equal(ARCADE_WEBSITE_URL, 'https://ascii-arcade.vercel.app');
+  assert.equal(ARCADE_WEBSITE_URL, 'https://ascii-arcade.dev');
   assert.deepEqual(menuItemAction(website), { kind: 'external', url: ARCADE_WEBSITE_URL });
   assert.deepEqual(menuItemAction(MENU_ITEMS.find(({ id }) => id === 'chess')), { kind: 'launch' });
   assert.equal(menuItemAction(MENU_ITEMS.find(({ id }) => id === 'leaderboard')), null);

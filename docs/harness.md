@@ -1,6 +1,6 @@
 # Agentic game harness
 
-`@vercel/arcade/harness` is the reusable boundary between a turn-based game and the
+`ascii-arcade/harness` is the reusable boundary between a turn-based game and the
 players controlling it. It is the same match seam used by the terminal app and the
 headless match-lab.
 
@@ -17,8 +17,8 @@ open a terminal. Applications own those policies.
 ## Run custom players
 
 ```ts
-import { runMatch, type MatchScene, type Player } from '@vercel/arcade/harness';
-import { ChessState, type Move } from '@vercel/arcade/rules/chess';
+import { runMatch, type MatchScene, type Player } from 'ascii-arcade/harness';
+import { ChessState, type Move } from 'ascii-arcade/rules/chess';
 
 const state = new ChessState();
 const scene: MatchScene<Move> = {
@@ -42,7 +42,7 @@ cannot race ahead of the displayed state.
 
 ```ts
 import { gateway } from '@ai-sdk/gateway';
-import { ModelPlayer } from '@vercel/arcade/harness';
+import { ModelPlayer } from 'ascii-arcade/harness';
 
 const player = new ModelPlayer({
   name: 'claude',
@@ -54,10 +54,10 @@ const player = new ModelPlayer({
 The caller configures the AI SDK provider and credentials. Arcade's device-login and team
 picker are CLI product behavior, not a requirement of the harness.
 
-Game-specific helpers are available from `@vercel/arcade/harness/chess`,
-`@vercel/arcade/harness/islanders`, and `@vercel/arcade/harness/poker`. Public conversation
+Game-specific helpers are available from `ascii-arcade/harness/chess`,
+`ascii-arcade/harness/islanders`, and `ascii-arcade/harness/poker`. Public conversation
 types, ambient/autoreply policy, and notable-moment helpers live at
-`@vercel/arcade/harness/communication`. A `TableCommunicationCoordinator` holds a table's
+`ascii-arcade/harness/communication`. A `TableCommunicationCoordinator` holds a table's
 public conversation: `addHuman` records what a human said and whom it addressed,
 `noteSpeech` records a line a seat said through another channel (a move's rationale), and
 `decideDirectedReply` bounds the reply a `ModelPlayer.chooseCommunication` call proposes.
@@ -67,8 +67,8 @@ or, for games whose move prompt stays rationale-based, through `replyGuide`.
 ## Run a headless Chess match
 
 ```ts
-import { runHeadlessChessMatch } from '@vercel/arcade/harness/chess';
-import { ChessState } from '@vercel/arcade/rules/chess';
+import { runHeadlessChessMatch } from 'ascii-arcade/harness/chess';
+import { ChessState } from 'ascii-arcade/rules/chess';
 
 const result = await runHeadlessChessMatch(
   new ChessState(),
@@ -88,7 +88,7 @@ Poker expose result-based headless runners through their game-specific harness s
 
 Use `onActionChosen`, `onActionApplied`, `onCommentary`, and game-session `onEvent` hooks to
 write local traces or feed your own observability system. Canonical match, hand, participant,
-action, and result contracts are available from `@vercel/arcade/harness/records`; the live
+action, and result contracts are available from `ascii-arcade/harness/records`; the live
 Arcade and match-lab use the same contracts. Arcade's telemetry delivery, durable outbox,
 Node-specific record envelope, hashing, and hosted proxy remain product implementation
 details rather than public package APIs.

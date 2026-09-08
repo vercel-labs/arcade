@@ -1,6 +1,6 @@
 'use client';
 
-import { CanvasSurfaceHost, CINEMATIC_CHAPTERS, LIVING_TITLE_MORPH_STARTS, LivingTitleScene, MOBILE_CINEMATIC_CELL_HEIGHT, PointerField, TERMINAL_CELL_ASPECT_RATIO, advanceAutoTourProgress, interruptsAutoTourKey, livingTitleTimeline, responsiveTerminalGrid, type CanvasLike } from '@vercel/arcade/web';
+import { CanvasSurfaceHost, CINEMATIC_CHAPTERS, LIVING_TITLE_MORPH_STARTS, LivingTitleScene, MOBILE_CINEMATIC_CELL_HEIGHT, PointerField, TERMINAL_CELL_ASPECT_RATIO, advanceAutoTourProgress, interruptsAutoTourKey, livingTitleTimeline, responsiveTerminalGrid, type CanvasLike } from 'ascii-arcade/web';
 import { QuickTerminalButton } from '@/components/quick-terminal';
 import { useEffect, useRef, useState } from 'react';
 import { InstallCommand } from './install-command';
@@ -369,9 +369,9 @@ export const Hero = () => {
           <div className="living-title__actions">
             <QuickTerminalButton className="living-title__primary"><span aria-hidden="true">›_</span>Play</QuickTerminalButton>
             <InstallCommand />
+            {tourControl}
           </div>
         </div>
-        {tourControl}
       </div>
     </section>
   );

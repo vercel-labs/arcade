@@ -41,25 +41,25 @@ try {
   writeFileSync(join(consumer, 'package.json'), JSON.stringify({ private: true, type: 'module' }));
   writeFileSync(join(consumer, 'smoke.mjs'), `
 import assert from 'node:assert/strict';
-import { BrowserArcade as RootBrowserArcade, engine as rootEngine, tui as rootTui } from '@vercel/arcade';
-import { Surface } from '@vercel/arcade/engine';
-import { decodePng } from '@vercel/arcade/engine/png';
-import { fetchObjMesh } from '@vercel/arcade/game-visuals';
-import { tileMesh } from '@vercel/arcade/game-visuals/islanders';
-import { CHESS_PIECE_NAMES, parseChessPieceMeshes } from '@vercel/arcade/game-visuals/chess';
-import { playerColumns } from '@vercel/arcade/game-visuals/poker';
-import { runMatch } from '@vercel/arcade/harness';
-import { CommunicationPolicy } from '@vercel/arcade/harness/communication';
-import { CHESS_DEFAULT_MAX_PLIES, runHeadlessChessMatch } from '@vercel/arcade/harness/chess';
-import { createIslandersModelPlayer, runHeadlessIslandersMatch } from '@vercel/arcade/harness/islanders';
-import { STARTING_STACK } from '@vercel/arcade/harness/poker';
-import { RECORD_SCHEMA_VERSION } from '@vercel/arcade/harness/records';
-import { createInputParser } from '@vercel/arcade/platform';
-import { Box, Text } from '@vercel/arcade/tui';
-import { IslandersState } from '@vercel/arcade/rules/islanders';
-import { ChessState } from '@vercel/arcade/rules/chess';
-import { HoldemState } from '@vercel/arcade/rules/poker';
-import { BrowserArcade, BrowserRenderShowcase, BrowserTuiShowcase, createBrowserMiniScene } from '@vercel/arcade/web';
+import { BrowserArcade as RootBrowserArcade, engine as rootEngine, tui as rootTui } from 'ascii-arcade';
+import { Surface } from 'ascii-arcade/engine';
+import { decodePng } from 'ascii-arcade/engine/png';
+import { fetchObjMesh } from 'ascii-arcade/game-visuals';
+import { tileMesh } from 'ascii-arcade/game-visuals/islanders';
+import { CHESS_PIECE_NAMES, parseChessPieceMeshes } from 'ascii-arcade/game-visuals/chess';
+import { playerColumns } from 'ascii-arcade/game-visuals/poker';
+import { runMatch } from 'ascii-arcade/harness';
+import { CommunicationPolicy } from 'ascii-arcade/harness/communication';
+import { CHESS_DEFAULT_MAX_PLIES, runHeadlessChessMatch } from 'ascii-arcade/harness/chess';
+import { createIslandersModelPlayer, runHeadlessIslandersMatch } from 'ascii-arcade/harness/islanders';
+import { STARTING_STACK } from 'ascii-arcade/harness/poker';
+import { RECORD_SCHEMA_VERSION } from 'ascii-arcade/harness/records';
+import { createInputParser } from 'ascii-arcade/platform';
+import { Box, Text } from 'ascii-arcade/tui';
+import { IslandersState } from 'ascii-arcade/rules/islanders';
+import { ChessState } from 'ascii-arcade/rules/chess';
+import { HoldemState } from 'ascii-arcade/rules/poker';
+import { BrowserArcade, BrowserRenderShowcase, BrowserTuiShowcase, createBrowserMiniScene } from 'ascii-arcade/web';
 
 assert.equal(new Surface(3, 2).cols, 3);
 assert.equal(typeof decodePng, 'function');
@@ -93,9 +93,9 @@ console.log('packed Arcade subpaths execute in plain Node');
   execFileSync(process.execPath, ['smoke.mjs'], { cwd: consumer, stdio: 'inherit' });
 
   writeFileSync(join(consumer, 'consumer.ts'), `
-import { BrowserArcade } from '@vercel/arcade';
-import { runHeadlessChessMatch, type ChessMatchResult } from '@vercel/arcade/harness/chess';
-import { ChessState, type Move } from '@vercel/arcade/rules/chess';
+import { BrowserArcade } from 'ascii-arcade';
+import { runHeadlessChessMatch, type ChessMatchResult } from 'ascii-arcade/harness/chess';
+import { ChessState, type Move } from 'ascii-arcade/rules/chess';
 
 const state = new ChessState();
 const move: Move = state.legalActions()[0];
@@ -114,7 +114,7 @@ void move; void browser; void runner; void result;
   execFileSync(process.execPath, [resolve(root, 'node_modules/typescript/bin/tsc'), '-p', 'tsconfig.json'], { cwd: consumer, stdio: 'inherit' });
 
   writeFileSync(join(consumer, 'browser-entry.mjs'), `
-import { BrowserArcade, engine, tui } from '@vercel/arcade';
+import { BrowserArcade, engine, tui } from 'ascii-arcade';
 new BrowserArcade().frame();
 new engine.Surface(2, 1);
 tui.Box({}, [tui.Text({ text: 'browser safe' })]);
@@ -129,7 +129,7 @@ tui.Box({}, [tui.Text({ text: 'browser safe' })]);
   }
 
   writeFileSync(join(consumer, 'web-browser-entry.mjs'), `
-import { BrowserArcade } from '@vercel/arcade/web';
+import { BrowserArcade } from 'ascii-arcade/web';
 new BrowserArcade().frame();
 `);
   execFileSync(esbuild, [

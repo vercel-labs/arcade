@@ -118,7 +118,7 @@ export function bannerLines(opts: BannerOpts = {}): string[] {
   lines.push('');
   lines.push(note('  first launch signs you in with Vercel. the tutorial is available from the menu.'));
   lines.push(note('  AI usage is billed to the team you select.'));
-  lines.push(note('  docs: https://ascii-arcade.vercel.app/docs'));
+  lines.push(note('  docs: https://ascii-arcade.dev/docs'));
 
   const bin = globalBinDir(env, platform);
   if (!onPath(bin, env, platform)) {

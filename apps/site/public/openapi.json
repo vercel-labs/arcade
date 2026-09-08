@@ -10,11 +10,11 @@
     }
   },
   "servers": [
-    { "url": "https://ascii-arcade.vercel.app", "description": "Production website" }
+    { "url": "https://ascii-arcade.dev", "description": "Production website" }
   ],
   "externalDocs": {
     "description": "Arcade developer documentation",
-    "url": "https://ascii-arcade.vercel.app/docs"
+    "url": "https://ascii-arcade.dev/docs"
   },
   "paths": {
     "/api/v1/status": {

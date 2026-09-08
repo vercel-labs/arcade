@@ -5,31 +5,31 @@ import ts from 'typescript';
 const ROOT = resolve(import.meta.dirname, '..');
 const OUTPUT = resolve(ROOT, 'apps/site/app/[lang]/docs/generated-symbols.ts');
 const ENTRYPOINTS = {
-  '@vercel/arcade': 'src/public-api.ts',
-  '@vercel/arcade/engine': 'src/engine/index.ts',
-  '@vercel/arcade/engine/png': 'src/engine/texture.ts',
-  '@vercel/arcade/tui': 'src/tui/index.ts',
-  '@vercel/arcade/platform': 'src/platform/index.ts',
-  '@vercel/arcade/rules': 'src/rules/game.ts',
-  '@vercel/arcade/rules/chess': 'src/rules/chess/index.ts',
-  '@vercel/arcade/rules/poker': 'src/rules/poker/index.ts',
-  '@vercel/arcade/rules/islanders': 'src/rules/islanders/index.ts',
-  '@vercel/arcade/harness': 'src/harness/index.ts',
-  '@vercel/arcade/harness/communication': 'src/harness/communication/index.ts',
-  '@vercel/arcade/harness/chess': 'src/harness/games/chess/index.ts',
-  '@vercel/arcade/harness/poker': 'src/harness/games/poker/index.ts',
-  '@vercel/arcade/harness/islanders': 'src/harness/games/islanders/index.ts',
-  '@vercel/arcade/harness/records': 'src/harness/records.ts',
-  '@vercel/arcade/game-visuals': 'src/game-visuals/index.ts',
-  '@vercel/arcade/game-visuals/chess': 'src/game-visuals/chess/index.ts',
-  '@vercel/arcade/game-visuals/poker': 'src/game-visuals/poker/index.ts',
-  '@vercel/arcade/game-visuals/islanders': 'src/game-visuals/islanders/index.ts',
-  '@vercel/arcade/web': 'src/web/index.ts',
+  'ascii-arcade': 'src/public-api.ts',
+  'ascii-arcade/engine': 'src/engine/index.ts',
+  'ascii-arcade/engine/png': 'src/engine/texture.ts',
+  'ascii-arcade/tui': 'src/tui/index.ts',
+  'ascii-arcade/platform': 'src/platform/index.ts',
+  'ascii-arcade/rules': 'src/rules/game.ts',
+  'ascii-arcade/rules/chess': 'src/rules/chess/index.ts',
+  'ascii-arcade/rules/poker': 'src/rules/poker/index.ts',
+  'ascii-arcade/rules/islanders': 'src/rules/islanders/index.ts',
+  'ascii-arcade/harness': 'src/harness/index.ts',
+  'ascii-arcade/harness/communication': 'src/harness/communication/index.ts',
+  'ascii-arcade/harness/chess': 'src/harness/games/chess/index.ts',
+  'ascii-arcade/harness/poker': 'src/harness/games/poker/index.ts',
+  'ascii-arcade/harness/islanders': 'src/harness/games/islanders/index.ts',
+  'ascii-arcade/harness/records': 'src/harness/records.ts',
+  'ascii-arcade/game-visuals': 'src/game-visuals/index.ts',
+  'ascii-arcade/game-visuals/chess': 'src/game-visuals/chess/index.ts',
+  'ascii-arcade/game-visuals/poker': 'src/game-visuals/poker/index.ts',
+  'ascii-arcade/game-visuals/islanders': 'src/game-visuals/islanders/index.ts',
+  'ascii-arcade/web': 'src/web/index.ts',
 };
 
 const packageJson = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf8'));
 const packageSpecifiers = Object.keys(packageJson.exports).map((subpath) =>
-  subpath === '.' ? '@vercel/arcade' : `@vercel/arcade${subpath.slice(1)}`,
+  subpath === '.' ? 'ascii-arcade' : `ascii-arcade${subpath.slice(1)}`,
 ).sort();
 const sourceSpecifiers = Object.keys(ENTRYPOINTS).sort();
 if (JSON.stringify(packageSpecifiers) !== JSON.stringify(sourceSpecifiers)) {

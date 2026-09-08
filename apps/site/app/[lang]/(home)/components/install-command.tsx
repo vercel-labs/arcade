@@ -4,7 +4,7 @@ import { IconCheck } from '@vercel/geistdocs/assets/icons/icon-check';
 import { IconCopy } from '@vercel/geistdocs/assets/icons/icon-copy';
 import { useEffect, useRef, useState } from 'react';
 
-const INSTALL_COMMAND = 'npm i -g @vercel/arcade';
+const INSTALL_COMMAND = 'npm i -g ascii-arcade';
 
 export function InstallCommand() {
   const [copied, setCopied] = useState(false);

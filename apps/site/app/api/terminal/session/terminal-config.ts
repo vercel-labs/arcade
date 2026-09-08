@@ -30,7 +30,7 @@ export function packageRevision(env: NodeJS.ProcessEnv = process.env): string {
 
 export function packageSpec(env: NodeJS.ProcessEnv = process.env): string {
   return env.ARCADE_TERMINAL_PACKAGE_SPEC?.trim()
-    || `@vercel/arcade#${packageRevision(env)}`;
+    || `ascii-arcade#${packageRevision(env)}`;
 }
 
 export function baseSandboxName(env: NodeJS.ProcessEnv = process.env): string {
@@ -78,11 +78,11 @@ export function terminalFiles(packageSource: string): Array<{
     },
     {
       path: `${TERMINAL_CWD}/docs/engine.md`,
-      content: `# Engine\n\nArcade's engine is a pure-TypeScript CPU renderer. It owns geometry, transforms, cameras, materials, lighting, picking, rasterization, and the ASCII, pixel, and hybrid presenters. It has no dependency on the Arcade application.\n\nPackage import:\n\n    import { Camera, Mesh, RenderTarget } from '@vercel/arcade/engine';\n`,
+      content: `# Engine\n\nArcade's engine is a pure-TypeScript CPU renderer. It owns geometry, transforms, cameras, materials, lighting, picking, rasterization, and the ASCII, pixel, and hybrid presenters. It has no dependency on the Arcade application.\n\nPackage import:\n\n    import { Camera, Mesh, RenderTarget } from 'ascii-arcade/engine';\n`,
     },
     {
       path: `${TERMINAL_CWD}/docs/tui.md`,
-      content: `# TUI\n\nThe retained TUI library lays out components, handles focus and pointer input, and paints into a terminal Surface. The same Surface is used by the CLI, snapshots, and browser terminal transport.\n\nPackage import:\n\n    import { Box, Button, Screen } from '@vercel/arcade/tui';\n`,
+      content: `# TUI\n\nThe retained TUI library lays out components, handles focus and pointer input, and paints into a terminal Surface. The same Surface is used by the CLI, snapshots, and browser terminal transport.\n\nPackage import:\n\n    import { Box, Button, Screen } from 'ascii-arcade/tui';\n`,
     },
     {
       path: `${TERMINAL_CWD}/docs/games.md`,
@@ -98,7 +98,7 @@ export function terminalFiles(packageSource: string): Array<{
     },
     {
       path: `${TERMINAL_CWD}/examples/rendering.md`,
-      content: `# Rendering example\n\n    import { Camera, Mesh, RenderTarget } from '@vercel/arcade/engine';\n    import { CanvasSurfaceHost } from '@vercel/arcade/web';\n\nCreate the scene with engine primitives, paint it into a Surface, and select the host appropriate to the environment.\n`,
+      content: `# Rendering example\n\n    import { Camera, Mesh, RenderTarget } from 'ascii-arcade/engine';\n    import { CanvasSurfaceHost } from 'ascii-arcade/web';\n\nCreate the scene with engine primitives, paint it into a Surface, and select the host appropriate to the environment.\n`,
     },
     {
       path: `${TERMINAL_CWD}/examples/self-play.md`,
