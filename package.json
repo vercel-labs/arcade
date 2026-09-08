@@ -3,7 +3,7 @@
   "version": "0.1.6",
   "type": "module",
   "packageManager": "pnpm@10.34.5",
-  "description": "Terminal-rendered ASCII arcade \u2014 3D games in the terminal, powered by Vercel AI Gateway",
+  "description": "The 3D game engine built for agents. ASCII games in your terminal, no GPU, powered by Vercel AI Gateway",
   "license": "MIT",
   "author": "Vercel, Inc.",
   "keywords": [
@@ -49,6 +49,7 @@
     "watch": "ARCADE_DEV=1 tsx watch src/arcade/main.ts",
     "type-check": "tsc --noEmit",
     "test": "node --import tsx --test '{src,apps}/**/*.test.ts'",
+    "test:package": "node --import tsx --test 'src/**/*.test.ts'",
     "postinstall": "node scripts/postinstall.mjs"
   },
   "devDependencies": {

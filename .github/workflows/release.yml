@@ -32,10 +32,16 @@ jobs:
         with:
           version: 10.34.5
       - run: pnpm install --frozen-lockfile
+      # Gate the publish on the code that actually ships. `pnpm test` also covers
+      # apps/site, which is deployed separately and contributes no files to the
+      # tarball, so the site's design tests must not be able to block a release.
+      - run: pnpm type-check
+      - run: pnpm test:package
       # Trusted Publishing needs npm >= 11.5.1 — newer than the npm bundled with Node 24.
       - run: npm install -g npm@latest
-      # access (public) comes from package.json publishConfig. Provenance is off: a
-      # private source repo can't emit a public transparency-log provenance statement.
+      # access (public) comes from package.json publishConfig. Provenance is on: the
+      # source repo is public, so the build can emit a public transparency-log
+      # statement and npm shows the package as built and signed by this workflow.
       - run: npm publish
         env:
-          NPM_CONFIG_PROVENANCE: "false"
+          NPM_CONFIG_PROVENANCE: "true"

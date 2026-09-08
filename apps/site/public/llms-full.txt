@@ -95,7 +95,7 @@ Communication is proposed beside a legal move and never changes the move or rule
 - `PublicConversation` sanitizes text, limits a message to 360 characters, stores addressed seats, and projects bounded recent public context per model. It never contains hidden hands, chain-of-thought, or account identity.
 - Live Chess, Poker, and Islanders games share a human chat composer. Type `@` to filter model labels and complete an exact `@model` mention. Chess and Poker queue one bounded reply for each addressed model; ambient Islanders does the same. Unaddressed messages become public context without forcing a reply, and model replies never create reply-to-reply obligations.
 - Canonical records and anonymous telemetry exclude chat, prompts, reasoning, voice, and raw model responses. Local Match Lab traces may separately retain communication decisions for debugging.
-- `CommunicationPolicy`, `PublicConversation`, `TableCommunicationCoordinator`, and the game-moment helpers are exported from `@vercel/arcade/harness/communication`.
+- `CommunicationPolicy`, `PublicConversation`, `TableCommunicationCoordinator`, and the game-moment helpers are exported from `ascii-arcade/harness/communication`.
 
 ### Build your own game
 
@@ -115,7 +115,7 @@ The home page connects xterm.js to a temporary Linux PTY containing the actual A
 
 ## Browser surfaces
 
-The cinematic and hosted terminal reuse `@vercel/arcade/web` and the packaged CLI instead of rebuilding Arcade in React. Complete game shells remain in the hosted CLI until an honest browser-safe boundary is extracted for them.
+The cinematic and hosted terminal reuse `ascii-arcade/web` and the packaged CLI instead of rebuilding Arcade in React. Complete game shells remain in the hosted CLI until an honest browser-safe boundary is extracted for them.
 
 ## Core contracts for agents
 
@@ -162,6 +162,6 @@ The cinematic and hosted terminal reuse `@vercel/arcade/web` and the packaged CL
 
 - Never capture `pnpm dev` to inspect graphics: it is an infinite raw-mode ANSI application. Run `pnpm snapshot help`, then render one bounded state with `pnpm snapshot:png`.
 - A scene snapshot freezes production render state at explicit terminal dimensions, time, seed, and interaction state; resolves supersampling/bloom; presents pixels as Surface cells; rasterizes terminal glyphs; and writes a PPM/PNG for inspection.
-- The repository does not yet export a one-call Surface-to-PNG function. `@vercel/arcade/engine/png` encodes/decodes RGBA8 Texture data; the bundled terminal-font rasterizer remains snapshot-tool implementation.
+- The repository does not yet export a one-call Surface-to-PNG function. `ascii-arcade/engine/png` encodes/decodes RGBA8 Texture data; the bundled terminal-font rasterizer remains snapshot-tool implementation.
 - Use `runHeadlessChessMatch`, `runHeadlessIslandersMatch`, `runIslandersInitialPlacement`, or `runPokerSession` to build a consumer-owned evaluator without importing Arcade UI.
 - Match-lab writes manifest.json first, then run-wide events.jsonl and per-match trace.jsonl incrementally, followed by result/canonical/summary artifacts. It always disables telemetry.

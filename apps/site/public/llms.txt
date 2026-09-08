@@ -21,11 +21,11 @@ Do not use Arcade as a general-purpose hosted model API, multiplayer server, or 
 
 ## Public module intentions
 
-- @vercel/arcade/engine — geometry, materials, camera, CPU rasterizer, Surface, display modes
-- @vercel/arcade/tui — retained layout, components, input semantics, compositing
-- @vercel/arcade/rules — presentation-independent game contracts
-- @vercel/arcade/rules/chess — authoritative ChessState
-- @vercel/arcade/web — browser Surface adapters and focused local scenes
+- ascii-arcade/engine — geometry, materials, camera, CPU rasterizer, Surface, display modes
+- ascii-arcade/tui — retained layout, components, input semantics, compositing
+- ascii-arcade/rules — presentation-independent game contracts
+- ascii-arcade/rules/chess — authoritative ChessState
+- ascii-arcade/web — browser Surface adapters and focused local scenes
 
 ## Important constraints
 
