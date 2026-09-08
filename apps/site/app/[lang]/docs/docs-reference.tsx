@@ -22,7 +22,7 @@ export const REFERENCE_DOCS: DocPage[] = [
     slug: 'reference/engine/render-target', label: 'RenderTarget', title: 'RenderTarget', navParent: 'reference', navGroup: 'Engine',
     summary: 'Own the CPU color/depth framebuffer, clear or resize it, and control opaque, additive, and alpha writes.',
     sections: [
-      { heading: 'Import', body: <Code>{`import { RenderTarget } from '@vercel/arcade/engine'`}</Code> },
+      { heading: 'Import', body: <Code>{`import { RenderTarget } from 'ascii-arcade/engine'`}</Code> },
       { heading: 'Signature', body: <Code>{`class RenderTarget {
   width: number
   height: number
@@ -56,7 +56,7 @@ shapeGlyphToSurface(surface, target, cols, rows, { color: true })`}</Code> },
     slug: 'reference/engine/material', label: 'Material and rasterize', title: 'Material and rasterize', navParent: 'reference', navGroup: 'Engine',
     summary: 'Define typed CPU vertex and fragment programs and submit indexed meshes through Arcade’s triangle rasterizer.',
     sections: [
-      { heading: 'Import', body: <Code>{`import { rasterize, type Material, type VertexIn, type Varying } from '@vercel/arcade/engine'`}</Code> },
+      { heading: 'Import', body: <Code>{`import { rasterize, type Material, type VertexIn, type Varying } from 'ascii-arcade/engine'`}</Code> },
       { heading: 'Signature', body: <Code>{`interface Material<U> {
   vertex(uniforms: U, vertex: VertexIn): Varying
   fragment(uniforms: U, varying: Varying): RGBA8 | null
@@ -99,7 +99,7 @@ const flat: Material<FlatUniforms> = {
       { heading: 'Import', body: <Code>{`import {
   Surface, halfBlockToSurface, shapeGlyphToSurface,
   luminanceToSurface, ShapeGlyphSurfaceCache
-} from '@vercel/arcade/engine'`}</Code> },
+} from 'ascii-arcade/engine'`}</Code> },
       { heading: 'Cell contract', body: <Code>{`interface Cell {
   ch: string
   fg: [number, number, number]
@@ -159,7 +159,7 @@ const piece = meshes.getOrCreate(name, loadPiece)`}</Code><p>An unbounded cache 
     slug: 'reference/tui/screen', label: 'Screen', title: 'Screen', navParent: 'reference', navGroup: 'TUI',
     summary: 'Retain focus, pointer state, mounted components, scene caches, and terminal diffs across disposable node trees.',
     sections: [
-      { heading: 'Import', body: <Code>{`import { Screen, Slot } from '@vercel/arcade/tui'`}</Code> },
+      { heading: 'Import', body: <Code>{`import { Screen, Slot } from 'ascii-arcade/tui'`}</Code> },
       { heading: 'Lifecycle', body: <Api rows={[
         ['setRoot(root, region?)', 'Expand mounted slots and lay out immediately. Equivalent rebuilt trees do not mark the Screen dirty.'],
         ['mount / unmount / component', 'Own persistent Component instances. Slots leaving the tree auto-unmount after reconciliation.'],
@@ -255,7 +255,7 @@ export const GUIDE_DOCS: DocPage[] = [
   RenderTarget, Surface, OrbitCamera, cameraMatrices,
   cube, flatShade, lambertMaterial, mat4Identity,
   normalize3, rasterize, shapeGlyphToSurface
-} from '@vercel/arcade/engine'
+} from 'ascii-arcade/engine'
 
 const cols = 100, rows = 36
 const target = new RenderTarget(cols * 3, rows * 6)
@@ -288,10 +288,10 @@ process.stdout.write(surface.serialize())`}</Code> },
     sections: [
       { heading: 'Create persistent state', body: <Code>{`import {
   Box, FilledButton, Renderer, Screen, Text
-} from '@vercel/arcade/tui'
+} from 'ascii-arcade/tui'
 import {
   createInputParser, enterTerminal, leaveTerminal
-} from '@vercel/arcade/platform'
+} from 'ascii-arcade/platform'
 
 const screen = new Screen(process.stdout.columns, process.stdout.rows)
 const renderer = new Renderer()
@@ -418,7 +418,7 @@ assert.deepEqual(surface.getCell(10, 4), expectedCell)
 // Or inspect renderer pixels/depth directly.
 assert.ok(target.depth.some(Number.isFinite))`}</Code><p>Cell and framebuffer assertions produce sharper failures than perceptual image diffs. Encode a PNG when composition, spacing, color, or motion needs human judgment.</p></> },
       { heading: 'Know what remains human-only', body: <><p>PNG inspection covers frame composition and explicit animation samples. It cannot prove live terminal color calibration, perceived motion smoothness, keyboard feel, mouse feel, audio, or terminal-specific font rendering. After the agent closes the static loop, ask for targeted human verification only when one of those properties matters.</p><Note>Do not substitute raw ANSI capture for a screenshot. <code>pnpm dev</code> is an infinite raw-mode app; redirected output is escape sequences, not visual evidence.</Note></> },
-      { heading: 'Build consumer tooling', body: <p>The reusable foundation is public: RenderTarget, Surface, presenters, <code>Screen.snapshot()</code>, rules, headless runners, and <code>@vercel/arcade/engine/png</code>. Arcade does not yet export its app-specific Surface-to-font-raster PNG adapter, so the exact repository command remains contributor tooling rather than a promised npm API.</p> },
+      { heading: 'Build consumer tooling', body: <p>The reusable foundation is public: RenderTarget, Surface, presenters, <code>Screen.snapshot()</code>, rules, headless runners, and <code>ascii-arcade/engine/png</code>. Arcade does not yet export its app-specific Surface-to-font-raster PNG adapter, so the exact repository command remains contributor tooling rather than a promised npm API.</p> },
     ],
   },
 ];
@@ -487,7 +487,7 @@ function componentPage(slug: string, title: string, signature: string, rows: [st
     slug: `reference/components/${slug}`, label: title, title, navParent: 'reference', navGroup: 'Components',
     summary: `Reference for Arcade’s ${title} terminal UI component${title.includes(' and ') ? 's' : ''}.`,
     sections: [
-      { heading: 'Import', body: <Code>{`import { ${title.replace(' and ', ', ')} } from '@vercel/arcade/tui'`}</Code> },
+      { heading: 'Import', body: <Code>{`import { ${title.replace(' and ', ', ')} } from 'ascii-arcade/tui'`}</Code> },
       { heading: 'Signature', body: <Code>{signature}</Code> },
       { heading: 'Behavior', body: <Api rows={rows} /> },
       { heading: 'Example', body: <Code>{example}</Code> },

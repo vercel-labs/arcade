@@ -1,6 +1,5 @@
 import '../global.css';
 import '@/lib/geistdocs/site-url-warning';
-import { Footer } from '@vercel/geistdocs/footer';
 import type { Metadata } from 'next';
 import { GeistdocsProvider } from '@/components/geistdocs/provider';
 import { QuickTerminalProvider } from '@/components/quick-terminal';
@@ -39,7 +38,6 @@ const Layout = async ({ children }: LayoutProps<'/[lang]'>) => {
           <QuickTerminalProvider>
             <SiteNav />
             {children}
-            <div className="site-default-footer"><Footer /></div>
           </QuickTerminalProvider>
         </GeistdocsProvider>
       </body>

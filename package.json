@@ -1,5 +1,5 @@
 {
-  "name": "@vercel/arcade",
+  "name": "ascii-arcade",
   "version": "0.1.5",
   "type": "module",
   "packageManager": "pnpm@10.34.5",
@@ -15,7 +15,7 @@
     "tui",
     "vercel-ai-gateway"
   ],
-  "homepage": "https://ascii-arcade.vercel.app",
+  "homepage": "https://ascii-arcade.dev",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/vercel-labs/arcade.git"
@@ -105,6 +105,6 @@
     "docs/architecture/repository-map.md"
   ],
   "publishConfig": {
-    "access": "restricted"
+    "access": "public"
   }
 }

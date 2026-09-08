@@ -4,7 +4,7 @@ The front door for the `@vercel/arcade` CLI. The hero presents the canonical npm
 install command; the curl installer remains available as a standalone endpoint.
 
 ```
-curl -fsSL ascii-arcade.vercel.app/install | sh
+curl -fsSL ascii-arcade.dev/install | sh
 ```
 
 A Next.js app built on **[`@vercel/geistdocs`](https://github.com/vercel/geistdocs)** —
@@ -58,7 +58,7 @@ pnpm build && pnpm start   # production build
 
 ## Deploy
 
-Live at **https://ascii-arcade.vercel.app**.
+Live at **https://ascii-arcade.dev**.
 Project `ascii-arcade` in **vercel-labs**, Root Directory `apps/site`, framework
 auto-detected as Next.js — no custom build/install command needed anymore.
 `vercel.json`'s `ignoreCommand` still skips the build unless something under

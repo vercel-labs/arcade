@@ -1,6 +1,6 @@
 # Arcade package boundaries
 
-The public beta uses one npm package, `@vercel/arcade`. Keeping one artifact preserves
+This package uses one npm artifact, `ascii-arcade`. Keeping one artifact preserves
 development velocity and lets the CLI and reusable libraries ship together. The package
 has three different kinds of code; only one is a supported consumer contract.
 
@@ -9,17 +9,17 @@ has three different kinds of code; only one is a supported consumer contract.
 These paths are intentionally documented, smoke-tested from a packed tarball, and covered
 by compatibility expectations:
 
-- `@vercel/arcade`
-- `@vercel/arcade/engine` and `/engine/png`
-- `@vercel/arcade/tui`
-- `@vercel/arcade/platform`
-- `@vercel/arcade/rules`, `/rules/chess`, `/rules/islanders`, and `/rules/poker`
-- `@vercel/arcade/harness`, `/harness/communication`, `/harness/islanders`,
+- `ascii-arcade`
+- `ascii-arcade/engine` and `/engine/png`
+- `ascii-arcade/tui`
+- `ascii-arcade/platform`
+- `ascii-arcade/rules`, `/rules/chess`, `/rules/islanders`, and `/rules/poker`
+- `ascii-arcade/harness`, `/harness/communication`, `/harness/islanders`,
   `/harness/chess`, `/harness/poker`, and `/harness/records`
-- `@vercel/arcade/game-visuals` and its `/islanders`, `/chess`, and `/poker` subpaths
-- `@vercel/arcade/web`
+- `ascii-arcade/game-visuals` and its `/islanders`, `/chess`, and `/poker` subpaths
+- `ascii-arcade/web`
 
-Consumers should import only these package subpaths—not `@vercel/arcade/src/...`.
+Consumers should import only these package subpaths—not `ascii-arcade/src/...`.
 
 ## 2. Compiled package implementation
 
@@ -81,4 +81,4 @@ app adapter.
   are available only from explicit subpaths.
 - Before publishing, the packed-package smoke test must execute every documented subpath and
   the CLI with plain Node, compile a TypeScript consumer, and bundle both the root and
-  `@vercel/arcade/web` for the browser.
+  `ascii-arcade/web` for the browser.

@@ -77,7 +77,7 @@ export const GAME_DOCS: DocPage[] = [
       },
       {
         heading: 'The rules authority',
-        body: <><p><code>ChessState</code> owns the board, side to move, repetition keys, SAN history, legal-action cache, and result. Move generation operates on a 0x88 board representation; the scene never decides whether a move is legal.</p><Code title="TypeScript">{`import { ChessState } from '@vercel/arcade/rules/chess'
+        body: <><p><code>ChessState</code> owns the board, side to move, repetition keys, SAN history, legal-action cache, and result. Move generation operates on a 0x88 board representation; the scene never decides whether a move is legal.</p><Code title="TypeScript">{`import { ChessState } from 'ascii-arcade/rules/chess'
 
 const game = new ChessState()
 const move = game.actionFromString('Nf3')
@@ -92,7 +92,7 @@ console.log(game.moveHistory()) // 1. Nf3`}</Code><p>The parser accepts canonica
         body: <><p>The six piece families begin as OBJ assets. The shared loader parses each source into an indexed <code>Mesh</code>, measures its bounds, and exposes transport-injected loading so Node and browser hosts can fetch the same geometry differently. The production scene applies color, lighting, board scale, and camera composition at draw time.</p><Code title="TypeScript">{`import {
   fetchChessPieceMeshes,
   measureChessPieceMeshes
-} from '@vercel/arcade/game-visuals/chess'
+} from 'ascii-arcade/game-visuals/chess'
 
 const meshes = await fetchChessPieceMeshes('/assets/chess_blender', loadText)
 const metrics = measureChessPieceMeshes(meshes)
@@ -122,9 +122,9 @@ Examples: "Nf3", "e4", "O-O", "exd5"`}</Code><p>If structured output fails, the 
       },
       {
         heading: 'Run and record a match',
-        body: <><p><code>runChessMatch()</code> drives an animated <code>MatchScene</code>; <code>runHeadlessChessMatch()</code> applies the same legal actions directly to a <code>ChessState</code>. Both require exactly two players, stop at 300 plies by default, expose chosen/applied hooks, and return <code>completed</code> or <code>bounded</code>.</p><Code title="TypeScript">{`import { type Player } from '@vercel/arcade/harness'
-import { runHeadlessChessMatch } from '@vercel/arcade/harness/chess'
-import { ChessState, type Move } from '@vercel/arcade/rules/chess'
+        body: <><p><code>runChessMatch()</code> drives an animated <code>MatchScene</code>; <code>runHeadlessChessMatch()</code> applies the same legal actions directly to a <code>ChessState</code>. Both require exactly two players, stop at 300 plies by default, expose chosen/applied hooks, and return <code>completed</code> or <code>bounded</code>.</p><Code title="TypeScript">{`import { type Player } from 'ascii-arcade/harness'
+import { runHeadlessChessMatch } from 'ascii-arcade/harness/chess'
+import { ChessState, type Move } from 'ascii-arcade/rules/chess'
 
 declare const white: Player<Move>
 declare const black: Player<Move>
@@ -159,7 +159,7 @@ console.log(result.status, result.plies, result.state.moveHistory())`}</Code><p>
       },
       {
         heading: 'Hand ranking',
-        body: <><p>From strongest to weakest: straight flush, four of a kind, full house, flush, straight, three of a kind, two pair, pair, and high card. Arcade’s evaluator encodes the category and ordered kickers into one comparable integer, so ties are exact integer equality and split pots remain deterministic. Aces are high except in the A–2–3–4–5 wheel.</p><Code title="TypeScript">{`import { evaluate, parseCard } from '@vercel/arcade/rules/poker'
+        body: <><p>From strongest to weakest: straight flush, four of a kind, full house, flush, straight, three of a kind, two pair, pair, and high card. Arcade’s evaluator encodes the category and ordered kickers into one comparable integer, so ties are exact integer equality and split pots remain deterministic. Aces are high except in the A–2–3–4–5 wheel.</p><Code title="TypeScript">{`import { evaluate, parseCard } from 'ascii-arcade/rules/poker'
 
 const cards = ['Ah', 'Ac', 'Kh', 'Qh', 'Jh', '9h', '2h']
   .map(card => parseCard(card)!)
@@ -211,7 +211,7 @@ Action: …`}</Code><p>Private thinking, the selected move, and public speech ar
       },
       {
         heading: 'Run a tournament and preserve both records',
-        body: <><p><code>runPokerSession()</code> carries stacks and the dealer button across hands, advances blind levels, stops when one seat remains or a configured bound is reached, and emits lifecycle events from <code>hand_started</code> through <code>hand_finished</code>.</p><Code title="TypeScript">{`import { runPokerSession } from '@vercel/arcade/harness/poker'
+        body: <><p><code>runPokerSession()</code> carries stacks and the dealer button across hands, advances blind levels, stops when one seat remains or a configured bound is reached, and emits lifecycle events from <code>hand_started</code> through <code>hand_finished</code>.</p><Code title="TypeScript">{`import { runPokerSession } from 'ascii-arcade/harness/poker'
 
 const result = await runPokerSession({
   models: ['openai/gpt-5-mini', 'anthropic/claude-haiku-4.5'],
@@ -317,7 +317,7 @@ Legal actions (choose exactly one canonical action shown below).`}</Code><p>A se
       },
       {
         heading: 'Keep speech structured',
-        body: <><p>A model returns private reasoning, its legal move, and an optional public communication separately. Public speech has an intent, text, optional addressed seats, and an optional source message. The host may accept or suppress the speech; it never rewrites the selected game action.</p><Code title="TypeScript">{`import { CommunicationPolicy } from '@vercel/arcade/harness/communication'
+        body: <><p>A model returns private reasoning, its legal move, and an optional public communication separately. Public speech has an intent, text, optional addressed seats, and an optional source message. The host may accept or suppress the speech; it never rewrites the selected game action.</p><Code title="TypeScript">{`import { CommunicationPolicy } from 'ascii-arcade/harness/communication'
 
 const policy = new CommunicationPolicy()
 const decision = policy.decide({

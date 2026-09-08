@@ -290,7 +290,7 @@ test('every published package family and agentic workflow has a documentation pa
   ]);
   const exportedSubpaths = Object.keys((JSON.parse(packageJson) as { exports: Record<string, unknown> }).exports);
   for (const subpath of exportedSubpaths) {
-    const specifier = subpath === '.' ? '@vercel/arcade' : `@vercel/arcade${subpath.slice(1)}`;
+    const specifier = subpath === '.' ? 'ascii-arcade' : `ascii-arcade${subpath.slice(1)}`;
     assert.match(content, new RegExp(specifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), `missing docs coverage for ${specifier}`);
   }
   for (const subpath of ['/engine/png', '/harness/communication', '/harness/chess', '/harness/islanders', '/harness/poker', '/harness/records', '/game-visuals/chess', '/game-visuals/islanders', '/game-visuals/poker']) assert.match(content, new RegExp(subpath.replaceAll('/', '\\/')));

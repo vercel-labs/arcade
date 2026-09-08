@@ -3,7 +3,7 @@
 import '@xterm/xterm/css/xterm.css';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
-import { ARCADE_UNICODE_VERSION, arcadeUnicodeProvider } from '@vercel/arcade/web';
+import { ARCADE_UNICODE_VERSION, arcadeUnicodeProvider } from 'ascii-arcade/web';
 import { useEffect, useRef, useState } from 'react';
 import { HOSTED_SHELL_GUIDE, TerminalModeDetector, TerminalModeOutputFilter, hostedBrowserUrl, terminalFontGeometry, terminalFontSize, type HostedTerminalMode } from './terminal-mode';
 import { acquireArcadeTerminalSession, prepareArcadeTerminalSession, warmArcadeTerminalBase } from './terminal-session-client';
@@ -217,7 +217,7 @@ export function ArcadeTerminal() {
         console.error('Unable to connect to Arcade terminal:', error);
         setConnection('unavailable');
         terminal.writeln('\r\n\x1b[31mThe hosted terminal is temporarily unavailable.\x1b[0m');
-        terminal.writeln('\x1b[2mInstall locally with: npm i -g @vercel/arcade\x1b[0m');
+        terminal.writeln('\x1b[2mInstall locally with: npm i -g ascii-arcade\x1b[0m');
       }
     };
 

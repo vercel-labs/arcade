@@ -54,8 +54,8 @@ export const CORE_DOCS: DocPage[] = [
     sections: [
       {
         heading: 'Start here',
-        body: <><p>Arcade is both an application and a set of reusable TypeScript layers. Install the CLI when you want to play, spectate, or run the complete product. Import a package subpath when you want to build a renderer, terminal interface, game, model harness, or browser presentation of your own.</p><Code title="Terminal">{`npm i -g @vercel/arcade
-arcade`}</Code><p>To try the latest version once without installing a global command, run <code>npx @vercel/arcade@latest</code>. Arcade requires Node.js 22 or newer and a terminal with truecolor support for the intended presentation. The renderer itself is CPU-only: there are no native graphics dependencies and no GPU requirement.</p></>,
+        body: <><p>Arcade is both an application and a set of reusable TypeScript layers. Install the CLI when you want to play, spectate, or run the complete product. Import a package subpath when you want to build a renderer, terminal interface, game, model harness, or browser presentation of your own.</p><Code title="Terminal">{`npm i -g ascii-arcade
+arcade`}</Code><p>To try the latest version once without installing a global command, run <code>npx ascii-arcade@latest</code>. Arcade requires Node.js 22 or newer and a terminal with truecolor support for the intended presentation. The renderer itself is CPU-only: there are no native graphics dependencies and no GPU requirement.</p></>,
       },
       {
         heading: 'Choose what to build',
@@ -66,15 +66,15 @@ arcade`}</Code><p>To try the latest version once without installing a global com
           <a href="/docs/game-visuals"><strong>Reuse game visuals</strong><span>Production geometry, asset loading, layouts, and animation choreography</span></a>
           <a href="/docs/tools"><strong>Develop with agents</strong><span>Headless runners, bounded snapshots, artifacts, and deterministic checks</span></a>
           <a href="/docs/web"><strong>Integrate with the browser</strong><span>Focused Canvas scenes or the complete CLI in an isolated browser terminal</span></a>
-        </div><Code title="TypeScript">{`npm install @vercel/arcade
+        </div><Code title="TypeScript">{`npm install ascii-arcade
 
-import { Surface } from '@vercel/arcade/engine'
-import { Box, Text } from '@vercel/arcade/tui'
-import { ChessState } from '@vercel/arcade/rules/chess'
-import { runMatch } from '@vercel/arcade/harness'
+import { Surface } from 'ascii-arcade/engine'
+import { Box, Text } from 'ascii-arcade/tui'
+import { ChessState } from 'ascii-arcade/rules/chess'
+import { runMatch } from 'ascii-arcade/harness'
 import {
   CanvasSurfaceHost, createBrowserMiniScene
-} from '@vercel/arcade/web'`}</Code><Note>The package currently has restricted npm access while its public beta is being finalized. These documented subpaths are the supported consumer boundary; repository-internal <code>src/</code> paths are not public APIs.</Note></>,
+} from 'ascii-arcade/web'`}</Code><p>These documented subpaths are the supported consumer boundary; repository-internal <code>src/</code> paths are not public APIs.</p></>,
       },
       {
         heading: 'Understand the architecture',
@@ -98,8 +98,8 @@ import {
       },
       {
         heading: 'Install the CLI',
-        body: <><p>Arcade requires Node.js 22 or newer. Install the package globally when you plan to return, then launch it from any terminal.</p><Code title="Terminal">{`npm i -g @vercel/arcade
-arcade`}</Code><p>For a one-off run, <code>npx @vercel/arcade@latest</code> downloads and launches the newest published version without leaving a global <code>arcade</code> command behind.</p><Code title="Terminal">{`npx @vercel/arcade@latest`}</Code><p><code>arcade --help</code> and <code>arcade --version</code> print plain text and exit before authentication, network requests, or terminal takeover, so they are safe to use from scripts and coding agents.</p><p>Before entering full-screen mode, Arcade detects terminal color support and resolves Vercel sign-in and team selection. It reuses a cached session when available; otherwise it starts device authorization in the normal terminal. After those startup checks, a CPU-rendered prism introduces the game launcher. Keyboard and mouse input both work; open the in-app menu to see the active controls for the current screen.</p><Note>The npm package currently has restricted access while the public beta is finalized. If npm cannot resolve the package for your account, clone the repository and use the development workflow below.</Note></>,
+        body: <><p>Arcade requires Node.js 22 or newer. Install the package globally when you plan to return, then launch it from any terminal.</p><Code title="Terminal">{`npm i -g ascii-arcade
+arcade`}</Code><p>For a one-off run, <code>npx ascii-arcade@latest</code> downloads and launches the newest published version without leaving a global <code>arcade</code> command behind.</p><Code title="Terminal">{`npx ascii-arcade@latest`}</Code><p><code>arcade --help</code> and <code>arcade --version</code> print plain text and exit before authentication, network requests, or terminal takeover, so they are safe to use from scripts and coding agents.</p><p>Before entering full-screen mode, Arcade detects terminal color support and resolves Vercel sign-in and team selection. It reuses a cached session when available; otherwise it starts device authorization in the normal terminal. After those startup checks, a CPU-rendered prism introduces the game launcher. Keyboard and mouse input both work; open the in-app menu to see the active controls for the current screen.</p></>,
       },
       {
         heading: 'Run from source',
@@ -121,14 +121,14 @@ arcade --logout`}</Code><p>The session is cached in <code>~/.config/arcade/auth.
       },
       {
         heading: 'Use Arcade as a library',
-        body: <><p>Install the package locally when your application needs only part of Arcade. Import supported subpaths instead of reaching into <code>src/</code>.</p><Code title="Terminal">{`npm install @vercel/arcade`}</Code><Api rows={[
-          ['@vercel/arcade/engine', 'CPU rasterization, geometry, materials, cameras, animation, terminal presenters, and Surface.'],
-          ['@vercel/arcade/tui', 'Retained terminal components, layout, focus, input, and compositing.'],
-          ['@vercel/arcade/rules/*', 'Presentation-independent Chess, Poker, and Islanders rules.'],
-          ['@vercel/arcade/harness', 'Human and model players, match execution, communication, and records.'],
-          ['@vercel/arcade/game-visuals/*', 'Production geometry, layouts, asset loaders, and reusable game animation plans.'],
-          ['@vercel/arcade/engine/png', 'Node-only PNG decoding and encoding, intentionally separate from the browser-safe engine barrel.'],
-          ['@vercel/arcade/web', 'Browser-safe Canvas presentation and focused scene adapters.'],
+        body: <><p>Install the package locally when your application needs only part of Arcade. Import supported subpaths instead of reaching into <code>src/</code>.</p><Code title="Terminal">{`npm install ascii-arcade`}</Code><Api rows={[
+          ['ascii-arcade/engine', 'CPU rasterization, geometry, materials, cameras, animation, terminal presenters, and Surface.'],
+          ['ascii-arcade/tui', 'Retained terminal components, layout, focus, input, and compositing.'],
+          ['ascii-arcade/rules/*', 'Presentation-independent Chess, Poker, and Islanders rules.'],
+          ['ascii-arcade/harness', 'Human and model players, match execution, communication, and records.'],
+          ['ascii-arcade/game-visuals/*', 'Production geometry, layouts, asset loaders, and reusable game animation plans.'],
+          ['ascii-arcade/engine/png', 'Node-only PNG decoding and encoding, intentionally separate from the browser-safe engine barrel.'],
+          ['ascii-arcade/web', 'Browser-safe Canvas presentation and focused scene adapters.'],
         ]} /><p>Continue to <a href="/docs/engine">Rendering engine</a> for your first mesh or <a href="/docs/game-harness">Game harness</a> for an agent-playable game loop.</p></>,
       },
     ],
@@ -141,44 +141,44 @@ arcade --logout`}</Code><p>The session is cached in <code>~/.config/arcade/auth.
     sections: [
       {
         heading: 'Import from a public subpath',
-        body: <><p>The package export map is the compatibility boundary. If a path is listed here, a consumer can import it from the packed npm artifact without reaching into <code>src/</code>. A source file being exported from an internal barrel does not make that source path public.</p><Code>{`import { RenderTarget, Surface } from '@vercel/arcade/engine'
-import { Screen, Box, Text } from '@vercel/arcade/tui'
-import { ChessState } from '@vercel/arcade/rules/chess'
-import { runHeadlessChessMatch } from '@vercel/arcade/harness/chess'`}</Code><Note>The package currently publishes with restricted access. The boundaries below describe what the packed artifact exposes; they do not imply that every npm user can install the beta today.</Note></>,
+        body: <><p>The package export map is the compatibility boundary. If a path is listed here, a consumer can import it from the packed npm artifact without reaching into <code>src/</code>. A source file being exported from an internal barrel does not make that source path public.</p><Code>{`import { RenderTarget, Surface } from 'ascii-arcade/engine'
+import { Screen, Box, Text } from 'ascii-arcade/tui'
+import { ChessState } from 'ascii-arcade/rules/chess'
+import { runHeadlessChessMatch } from 'ascii-arcade/harness/chess'`}</Code></>,
       },
       {
         heading: 'Core and host subpaths',
         body: <Api rows={[
-          ['@vercel/arcade', 'Browser-safe convenience entry: engine and TUI namespaces plus CanvasSurfaceHost and packaged browser showcases.'],
-          ['@vercel/arcade/engine', 'Browser-safe math, shaders, CPU rasterization, scene objects, materials, animation, picking, effects, Surface, presenters, and terminal color helpers.'],
-          ['@vercel/arcade/engine/png', 'Node-only decodePng and encodePng for 8-bit non-interlaced PNGs, plus Texture sampling. Uses node:zlib.'],
-          ['@vercel/arcade/tui', 'The browser-safe retained TUI API plus the Node terminal Renderer. Use individual named imports.'],
-          ['@vercel/arcade/platform', 'Raw input parsing, terminal-color detection/probing, and alternate-screen enter/leave helpers. Node terminal applications only.'],
-          ['@vercel/arcade/web', 'Canvas Surface presentation, responsive grids, xterm width parity, browser showcases, cinematic clocks, and pointer effects.'],
+          ['ascii-arcade', 'Browser-safe convenience entry: engine and TUI namespaces plus CanvasSurfaceHost and packaged browser showcases.'],
+          ['ascii-arcade/engine', 'Browser-safe math, shaders, CPU rasterization, scene objects, materials, animation, picking, effects, Surface, presenters, and terminal color helpers.'],
+          ['ascii-arcade/engine/png', 'Node-only decodePng and encodePng for 8-bit non-interlaced PNGs, plus Texture sampling. Uses node:zlib.'],
+          ['ascii-arcade/tui', 'The browser-safe retained TUI API plus the Node terminal Renderer. Use individual named imports.'],
+          ['ascii-arcade/platform', 'Raw input parsing, terminal-color detection/probing, and alternate-screen enter/leave helpers. Node terminal applications only.'],
+          ['ascii-arcade/web', 'Canvas Surface presentation, responsive grids, xterm width parity, browser showcases, cinematic clocks, and pointer effects.'],
         ]} />,
       },
       {
         heading: 'Rules and harness subpaths',
         body: <Api rows={[
-          ['@vercel/arcade/rules', 'Generic Game, GameState, ImperfectInfoState, TERMINAL, and CHANCE contracts.'],
-          ['@vercel/arcade/rules/chess', 'ChessState, chessGame, board constants/types, square helpers, and SAN/UCI conversion.'],
-          ['@vercel/arcade/rules/poker', 'HoldemState, holdemGame, cards/deck, hand evaluation, actions, records, and blind structures.'],
-          ['@vercel/arcade/rules/islanders', 'IslandersState, islandersGame, actions, topology, setup, placement, development cards, production, and maritime trade.'],
-          ['@vercel/arcade/harness', 'Player, HumanPlayer, ModelPlayer, runMatch, diagnostics, error classification, and common canonical records.'],
-          ['@vercel/arcade/harness/communication', 'Public conversation, communication proposals, ambient/autoreply policy, moments, and coordination.'],
-          ['@vercel/arcade/harness/chess', 'Chess model-player factory, bounded scene/headless runners, salience, notation, hooks, results, and recorder.'],
-          ['@vercel/arcade/harness/poker', 'Production text-player factory and complete headless multi-hand tournament session with records and events.'],
-          ['@vercel/arcade/harness/islanders', 'Model-player factories, initial-placement/full-match runners, communication helpers, bounds, hooks, and results.'],
-          ['@vercel/arcade/harness/records', 'Complete versioned Chess, Poker, and Islanders canonical record types.'],
+          ['ascii-arcade/rules', 'Generic Game, GameState, ImperfectInfoState, TERMINAL, and CHANCE contracts.'],
+          ['ascii-arcade/rules/chess', 'ChessState, chessGame, board constants/types, square helpers, and SAN/UCI conversion.'],
+          ['ascii-arcade/rules/poker', 'HoldemState, holdemGame, cards/deck, hand evaluation, actions, records, and blind structures.'],
+          ['ascii-arcade/rules/islanders', 'IslandersState, islandersGame, actions, topology, setup, placement, development cards, production, and maritime trade.'],
+          ['ascii-arcade/harness', 'Player, HumanPlayer, ModelPlayer, runMatch, diagnostics, error classification, and common canonical records.'],
+          ['ascii-arcade/harness/communication', 'Public conversation, communication proposals, ambient/autoreply policy, moments, and coordination.'],
+          ['ascii-arcade/harness/chess', 'Chess model-player factory, bounded scene/headless runners, salience, notation, hooks, results, and recorder.'],
+          ['ascii-arcade/harness/poker', 'Production text-player factory and complete headless multi-hand tournament session with records and events.'],
+          ['ascii-arcade/harness/islanders', 'Model-player factories, initial-placement/full-match runners, communication helpers, bounds, hooks, and results.'],
+          ['ascii-arcade/harness/records', 'Complete versioned Chess, Poker, and Islanders canonical record types.'],
         ]} />,
       },
       {
         heading: 'Game visual subpaths',
         body: <><Api rows={[
-          ['@vercel/arcade/game-visuals', 'Namespaced chess, poker, and islanders modules plus transport-injected OBJ loading helpers.'],
-          ['@vercel/arcade/game-visuals/chess', 'Piece assets/metrics and deterministic move plans for captures, castling, en passant, jail placement, and arcs.'],
-          ['@vercel/arcade/game-visuals/poker', 'Cards, chips, table assets, seat/card/stack layout, shuffle, collection, muck, and award motion.'],
-          ['@vercel/arcade/game-visuals/islanders', 'Tiles, coast/water/harbors, pieces, dice overlay/choreography, board setup timing, and robber motion.'],
+          ['ascii-arcade/game-visuals', 'Namespaced chess, poker, and islanders modules plus transport-injected OBJ loading helpers.'],
+          ['ascii-arcade/game-visuals/chess', 'Piece assets/metrics and deterministic move plans for captures, castling, en passant, jail placement, and arcs.'],
+          ['ascii-arcade/game-visuals/poker', 'Cards, chips, table assets, seat/card/stack layout, shuffle, collection, muck, and award motion.'],
+          ['ascii-arcade/game-visuals/islanders', 'Tiles, coast/water/harbors, pieces, dice overlay/choreography, board setup timing, and robber motion.'],
         ]} /><p>These modules share production geometry without exporting the complete Arcade application scenes or HUDs. See <a href="/docs/game-visuals">Game visuals</a> for the composition boundary.</p></>,
       },
       {
@@ -199,7 +199,7 @@ import { runHeadlessChessMatch } from '@vercel/arcade/harness/chess'`}</Code><No
   RenderTarget, cameraMatrices, cube, flatShade,
   lambertMaterial, mat4Multiply, mat4RotY, normalize3,
   OrbitCamera, rasterize
-} from '@vercel/arcade/engine'
+} from 'ascii-arcade/engine'
 
 const target = new RenderTarget(120, 80)
 target.clear()
@@ -265,7 +265,7 @@ target.plot(x, y, depth, { r: 255, g: 160, b: 80, a: 1 }, 'opaque')`}</Code><p><
           ['interaction', 'Nearest-hit selection, hysteresis thresholds, and sticky-hover resolution for noisy projected geometry.'],
           ['random', 'Seedable mulberry32 plus stable scalar and two-dimensional hashes.'],
           ['color / texture / logo', 'Color parsing/blending/interpolation, RGBA8 texture sampling, and alpha-mask analysis/baking.'],
-        ]} /><p>These are renderer-neutral functions rather than hidden helpers. Import them by name from <code>@vercel/arcade/engine</code> when building custom materials, pickers, effects, deterministic tests, or asset preprocessing.</p></>,
+        ]} /><p>These are renderer-neutral functions rather than hidden helpers. Import them by name from <code>ascii-arcade/engine</code> when building custom materials, pickers, effects, deterministic tests, or asset preprocessing.</p></>,
       },
       {
         heading: 'Scene objects and resources',
@@ -329,7 +329,7 @@ target.plot(x, y, depth, { r: 255, g: 160, b: 80, a: 1 }, 'opaque')`}</Code><p><
       },
       {
         heading: 'Browser-safe scenes',
-        body: <><p><code>@vercel/arcade/web</code> adapts the same geometry, cameras, rules, cinematic timing, and terminal-cell surfaces to Canvas. The homepage composes the prism, Cover Flow, Chess, Poker, and Islanders from those shared layers; it is the replacement for the former standalone examples gallery.</p><p>Use <code>CanvasSurfaceHost</code> for a focused browser surface and keep reusable scene logic below <code>src/arcade</code>. Browser hosts should own only image decoding, Canvas presentation, pointer input, visibility, and resize behavior.</p><Source path="src/web/index.ts" /><Source path="src/web/living-title-scene.ts" /></>,
+        body: <><p><code>ascii-arcade/web</code> adapts the same geometry, cameras, rules, cinematic timing, and terminal-cell surfaces to Canvas. The homepage composes the prism, Cover Flow, Chess, Poker, and Islanders from those shared layers; it is the replacement for the former standalone examples gallery.</p><p>Use <code>CanvasSurfaceHost</code> for a focused browser surface and keep reusable scene logic below <code>src/arcade</code>. Browser hosts should own only image decoding, Canvas presentation, pointer input, visibility, and resize behavior.</p><Source path="src/web/index.ts" /><Source path="src/web/living-title-scene.ts" /></>,
       },
       {
         heading: 'Performance checklist',
@@ -369,7 +369,7 @@ const frame = applyTerminalColorMode(ansiFrame, mode)`}</Code></>,
       },
       {
         heading: 'Respect the platform boundary',
-        body: <><p>The public platform subpath intentionally stops at input, color capability, and terminal lifecycle. Arcade’s URL opener, clipboard integration, hosted private OSC events, authentication, and process policy remain application internals.</p><p>If your terminal application opens a browser, print the URL as a fallback and own validation at the host boundary. Do not depend on <code>src/platform/open-browser.ts</code>; it is not exported by <code>@vercel/arcade/platform</code>.</p></>,
+        body: <><p>The public platform subpath intentionally stops at input, color capability, and terminal lifecycle. Arcade’s URL opener, clipboard integration, hosted private OSC events, authentication, and process policy remain application internals.</p><p>If your terminal application opens a browser, print the URL as a fallback and own validation at the host boundary. Do not depend on <code>src/platform/open-browser.ts</code>; it is not exported by <code>ascii-arcade/platform</code>.</p></>,
       },
     ],
   },
@@ -381,7 +381,7 @@ const frame = applyTerminalColorMode(ansiFrame, mode)`}</Code></>,
     sections: [
       {
         heading: 'Build a component tree',
-        body: <><Code>{`import { Box, FilledButton, Screen, Text } from '@vercel/arcade/tui'
+        body: <><Code>{`import { Box, FilledButton, Screen, Text } from 'ascii-arcade/tui'
 
 const screen = new Screen(120, 40)
 const hud = Box({
@@ -612,7 +612,7 @@ screen.setGlobalOverlay(notice)`}</Code><p><code>noticeToastHeight(view, width?)
     sections: [
       {
         heading: 'Compose rather than fork',
-        body: <><p>The rules packages answer what happened. <code>game-visuals</code> answers where shared objects belong and how visible motion progresses. A host still owns its camera, RenderTarget, scene objects, clock, UI, and rules state.</p><Code>{`import { planChessMove, chessMovePosition } from '@vercel/arcade/game-visuals/chess'
+        body: <><p>The rules packages answer what happened. <code>game-visuals</code> answers where shared objects belong and how visible motion progresses. A host still owns its camera, RenderTarget, scene objects, clock, UI, and rules state.</p><Code>{`import { planChessMove, chessMovePosition } from 'ascii-arcade/game-visuals/chess'
 
 const plan = planChessMove(move, {
   square: 1,
@@ -631,7 +631,7 @@ for (const segment of plan.segments) {
         body: <><Code>{`import {
   fetchObjMeshSet,
   type TextAssetTransport
-} from '@vercel/arcade/game-visuals'
+} from 'ascii-arcade/game-visuals'
 
 const fromDisk: TextAssetTransport = async (path) =>
   readFile(path, 'utf8')
@@ -703,7 +703,7 @@ const meshes = await fetchObjMeshSet({
       },
       {
         heading: 'Chess',
-        body: <><p><code>@vercel/arcade/rules/chess</code> exports <code>ChessState</code>, board/types, attack and move generation, SAN parsing/formatting, and evaluation helpers. Actions parse SAN or UCI through the state; canonical output is SAN. The engine covers castling, en passant, promotion, repetition, the fifty-move rule, insufficient material, stalemate, and checkmate.</p><Code>{`import { ChessState } from '@vercel/arcade/rules/chess'
+        body: <><p><code>ascii-arcade/rules/chess</code> exports <code>ChessState</code>, board/types, attack and move generation, SAN parsing/formatting, and evaluation helpers. Actions parse SAN or UCI through the state; canonical output is SAN. The engine covers castling, en passant, promotion, repetition, the fifty-move rule, insufficient material, stalemate, and checkmate.</p><Code>{`import { ChessState } from 'ascii-arcade/rules/chess'
 
 const state = new ChessState()
 const move = state.actionFromString('e4')
@@ -713,11 +713,11 @@ console.log(state.fen())`}</Code></>,
       },
       {
         heading: 'Poker',
-        body: <><p><code>@vercel/arcade/rules/poker</code> exports card parsing, hand evaluation, blind schedules, action types, and <code>HoldemState</code>. Poker is N-player and imperfect-information: each seat sees its own hole cards plus public board and betting history.</p><p>The state enforces fold/check/call/bet/raise legality, minimum raises, all-ins, side pots, dealer/blind movement, showdown, and payout. Chance may be explicit or internal depending on the session adapter; callers should rely on the state interface rather than assuming one deal model.</p></>,
+        body: <><p><code>ascii-arcade/rules/poker</code> exports card parsing, hand evaluation, blind schedules, action types, and <code>HoldemState</code>. Poker is N-player and imperfect-information: each seat sees its own hole cards plus public board and betting history.</p><p>The state enforces fold/check/call/bet/raise legality, minimum raises, all-ins, side pots, dealer/blind movement, showdown, and payout. Chance may be explicit or internal depending on the session adapter; callers should rely on the state interface rather than assuming one deal model.</p></>,
       },
       {
         heading: 'Islanders',
-        body: <><p><code>@vercel/arcade/rules/islanders</code> exports board topology, setup generation, placement validation, maritime trade, development cards, action/state types, and the complete <code>IslandersState</code>. Nodes and edges have stable integer IDs derived from one shared topology.</p><p>The action state machine covers initial snake placement, dice, production, robber movement, discards, domestic and maritime trades, roads, settlements, cities, development cards, awards, and terminal scoring. Use <code>decisionContextString()</code> for computed action facts and <code>parameterizedActionExamples()</code> for legal trade shapes that cannot be exhaustively flattened.</p><Source path="src/rules/islanders/index.ts" /></>,
+        body: <><p><code>ascii-arcade/rules/islanders</code> exports board topology, setup generation, placement validation, maritime trade, development cards, action/state types, and the complete <code>IslandersState</code>. Nodes and edges have stable integer IDs derived from one shared topology.</p><p>The action state machine covers initial snake placement, dice, production, robber movement, discards, domestic and maritime trades, roads, settlements, cities, development cards, awards, and terminal scoring. Use <code>decisionContextString()</code> for computed action facts and <code>parameterizedActionExamples()</code> for legal trade shapes that cannot be exhaustively flattened.</p><Source path="src/rules/islanders/index.ts" /></>,
       },
       {
         heading: 'Test and replay rules',
@@ -784,7 +784,7 @@ console.log(state.fen())`}</Code></>,
       },
       {
         heading: 'Communication and human pacing',
-        body: <><p><code>@vercel/arcade/harness/communication</code> keeps speech separate from action choice. A proposal is silent or speak, with intent, public text, optional addressees, and a private reason that never enters table talk.</p><Api rows={[
+        body: <><p><code>ascii-arcade/harness/communication</code> keeps speech separate from action choice. A proposal is silent or speak, with intent, public text, optional addressees, and a private reason that never enters table talk.</p><Api rows={[
           ['PublicConversation', 'Stores ordered, speaker-labelled public messages and addressed seats.'],
           ['CommunicationPolicy', 'Accepts every proposal in autoreply mode; ambient mode scores salience, direct replies, silence gaps, repetition, and monologues.'],
           ['TableCommunicationCoordinator', 'Builds communication context, accepts human messages, identifies directed replies, and applies host policy across seats.'],
@@ -799,7 +799,7 @@ console.log(state.fen())`}</Code></>,
       },
       {
         heading: 'Canonical records',
-        body: <><p><code>@vercel/arcade/harness/records</code> defines versioned match and hand records for Chess, Poker, and Islanders. Every record has stable record/match IDs, revision, status, timestamps, participants, controller assignments, ordered action sequence, results, rules version, and game-specific details.</p><Api rows={[
+        body: <><p><code>ascii-arcade/harness/records</code> defines versioned match and hand records for Chess, Poker, and Islanders. Every record has stable record/match IDs, revision, status, timestamps, participants, controller assignments, ordered action sequence, results, rules version, and game-specific details.</p><Api rows={[
           ['requested', 'Structured action requested by a controller when it differs from the canonical applied action. Never raw model text.'],
           ['applied', 'Authoritative action produced by the rules engine and used for replay.'],
           ['status', 'in_progress, completed, or abandoned, with an explicit end reason where applicable.'],
@@ -835,12 +835,12 @@ pnpm snapshot:png shortcuts chess`}</Code><p>The first command freezes the prism
       },
       {
         heading: 'Build a portable snapshot',
-        body: <><Code>{`import { encodePng } from '@vercel/arcade/engine/png'
+        body: <><Code>{`import { encodePng } from 'ascii-arcade/engine/png'
 import {
   RenderTarget,
   Surface,
   shapeGlyphToSurface
-} from '@vercel/arcade/engine'
+} from 'ascii-arcade/engine'
 
 const target = new RenderTarget(pixelWidth, pixelHeight)
 renderScene(target, time)
@@ -853,7 +853,7 @@ shapeGlyphToSurface(surface, target, cols, rows, {
 
 // A host can rasterize Surface cells into an RGBA Texture, then:
 const png = encodePng(texture)
-await writeFile('frame.png', png)`}</Code><p><code>encodePng()</code> and <code>decodePng()</code> live under the Node-only <code>@vercel/arcade/engine/png</code> subpath. They accept Arcade’s row-major RGBA8 <code>Texture</code>. The package does not yet export a one-call <code>Surface → PNG</code> adapter; the repository snapshot tool’s font rasterizer remains app-specific.</p><p>For tests that do not need a human-readable file, assert directly against RenderTarget colors, depth, Surface cells, or canonical rules state. Image output is most useful for composition and visual review.</p></>,
+await writeFile('frame.png', png)`}</Code><p><code>encodePng()</code> and <code>decodePng()</code> live under the Node-only <code>ascii-arcade/engine/png</code> subpath. They accept Arcade’s row-major RGBA8 <code>Texture</code>. The package does not yet export a one-call <code>Surface → PNG</code> adapter; the repository snapshot tool’s font rasterizer remains app-specific.</p><p>For tests that do not need a human-readable file, assert directly against RenderTarget colors, depth, Surface cells, or canonical rules state. Image output is most useful for composition and visual review.</p></>,
       },
       {
         heading: 'Inspect animations and states',
@@ -870,8 +870,8 @@ pnpm snapshot:png poker 160 60 flop players=4 hud`}</Code><p>Use identical dimen
       },
       {
         heading: 'Run exported headless games',
-        body: <><p>Headless execution is not limited to Arcade’s internal match lab. Game-specific npm subpaths expose UI-independent runners that accept custom <code>Player</code> implementations.</p><Code>{`import { runHeadlessChessMatch } from '@vercel/arcade/harness/chess'
-import { ChessState } from '@vercel/arcade/rules/chess'
+        body: <><p>Headless execution is not limited to Arcade’s internal match lab. Game-specific npm subpaths expose UI-independent runners that accept custom <code>Player</code> implementations.</p><Code>{`import { runHeadlessChessMatch } from 'ascii-arcade/harness/chess'
+import { ChessState } from 'ascii-arcade/rules/chess'
 
 const result = await runHeadlessChessMatch(
   new ChessState(),
@@ -941,7 +941,7 @@ pnpm match:run -- --game islanders --models=a,b,c,d --communication=ambient`}</C
         body: <><Code>{`import {
   CanvasSurfaceHost,
   TERMINAL_CELL_ASPECT_RATIO
-} from '@vercel/arcade/web'
+} from 'ascii-arcade/web'
 
 const host = new CanvasSurfaceHost(canvas, {
   devicePixelRatio: window.devicePixelRatio,

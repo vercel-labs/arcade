@@ -23,7 +23,7 @@ describe('hosted Arcade terminal configuration', () => {
 
   test('pins the installed package and reusable base to the deployment revision', () => {
     const env = { VERCEL_GIT_COMMIT_SHA: 'ABCDEF1234567890' } as unknown as NodeJS.ProcessEnv;
-    assert.equal(packageSpec(env), '@vercel/arcade#ABCDEF1234567890');
+    assert.equal(packageSpec(env), 'ascii-arcade#ABCDEF1234567890');
     assert.equal(baseSandboxName(env), 'arcade-web-base-v17-abcdef123456');
   });
 

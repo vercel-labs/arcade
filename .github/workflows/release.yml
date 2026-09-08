@@ -1,6 +1,6 @@
 name: Release
 
-# Publishes @vercel/arcade to npm via npm Trusted Publishing (OIDC) — no NPM_TOKEN.
+# Publishes ascii-arcade to npm via npm Trusted Publishing (OIDC) — no NPM_TOKEN.
 # The package's trusted publisher on npm is configured to trust THIS workflow
 # (vercel-labs/arcade → release.yml, no environment). Publish the version currently in
 # package.json by cutting a GitHub Release, or run the workflow manually.
@@ -29,7 +29,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # Trusted Publishing needs npm >= 11.5.1 — newer than the npm bundled with Node 24.
       - run: npm install -g npm@latest
-      # access (restricted) comes from package.json publishConfig. Provenance is off: a
+      # access (public) comes from package.json publishConfig. Provenance is off: a
       # private source repo can't emit a public transparency-log provenance statement.
       - run: npm publish
         env:
