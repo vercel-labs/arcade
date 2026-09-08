@@ -5,10 +5,10 @@ name: Release
 # (vercel-labs/arcade → release.yml, no environment). Publish the version currently in
 # package.json by cutting a GitHub Release, or run the workflow manually.
 #
-# The trusted publisher only allows staged publishing (direct `npm publish` is
-# disabled), so this stages the tarball rather than publishing it live. After a run,
-# approve it on npmjs.com (Staged Packages tab) or via `npm stage approve <stage-id>`
-# to make the version installable.
+# The trusted publisher allows direct `npm publish` — the release goes live as soon
+# as this workflow finishes. No one triggers this workflow without the repo owner's
+# explicit approval (see AGENTS.md), which is the gate in place of a staged-publish
+# approval step.
 
 on:
   release:
@@ -36,6 +36,6 @@ jobs:
       - run: npm install -g npm@latest
       # access (public) comes from package.json publishConfig. Provenance is off: a
       # private source repo can't emit a public transparency-log provenance statement.
-      - run: npm stage publish
+      - run: npm publish
         env:
           NPM_CONFIG_PROVENANCE: "false"
