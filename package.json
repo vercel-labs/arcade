@@ -69,7 +69,7 @@
     ]
   },
   "bin": {
-    "arcade": "./bin/arcade.mjs"
+    "arcade": "bin/arcade.mjs"
   },
   "exports": {
     ".": { "types": "./dist/public-api.d.ts", "import": "./dist/public-api.js" },
