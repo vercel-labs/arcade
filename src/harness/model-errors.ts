@@ -44,16 +44,26 @@ const compact = (s: string): string => s.replace(/\s+/g, ' ').trim();
 const redact = (s: string): string =>
   s.replace(/\b(?:vck|sk|key|bearer|token)[-_ ]?[A-Za-z0-9._-]{12,}\b/gi, '<redacted>');
 
-// The error plus its `.cause` ancestors (Gateway → APICallError → parse error),
-// deduped and depth-capped so a self-referential cause can't loop.
+// The error plus every nested error it points at, deduped and capped so a
+// self-referential graph can't loop. Errors nest two different ways here, and
+// missing either one loses the only copy of the status/type:
+//   `.cause`                  — the Gateway wraps the provider's APICallError.
+//   `.lastError` / `.errors[]` — the AI SDK's RetryError keeps the attempts it gave
+//     up on here and leaves `.cause` null. A rate limit arrives this way (the SDK
+//     retries a 429 before surfacing it), so walking only `.cause` sees a bare
+//     "Failed after 3 attempts" summary with no statusCode and no gateway type.
 function chain(e: unknown): Record<string, unknown>[] {
   const out: Record<string, unknown>[] = [];
   const seen = new Set<unknown>();
-  let cur: unknown = e;
-  while (cur && typeof cur === 'object' && !seen.has(cur) && out.length < 6) {
+  const queue: unknown[] = [e];
+  while (queue.length && out.length < 12) {
+    const cur = queue.shift();
+    if (!cur || typeof cur !== 'object' || seen.has(cur)) continue;
     seen.add(cur);
     out.push(cur as Record<string, unknown>);
-    cur = (cur as { cause?: unknown }).cause;
+    const n = cur as { cause?: unknown; lastError?: unknown; errors?: unknown };
+    queue.push(n.cause, n.lastError);
+    if (Array.isArray(n.errors)) queue.push(...n.errors);
   }
   return out;
 }
@@ -104,9 +114,14 @@ export function classifyModelError(e: unknown): ClassifiedError {
   if (gatewayType === 'quota_for_entity_exceeded') return result('quota');
   if (status === 401 || gatewayType === 'authentication_error') return result('authentication');
   if (gatewayType === 'model_not_found' || gatewayType === 'model_unavailable_in_region') return result('model');
+  // Rate limiting is decided before the access prose below, and on the authoritative
+  // signals only. The Gateway's own free-tier rate-limit copy ends "...for unrestricted
+  // access", which the access regex would otherwise claim as a permissions failure.
+  if (status === 429 || gatewayType === 'rate_limit_exceeded') return result('transient');
   // Access / provider availability: the defining signals are HTTP 403 and the
   // gateway type `no_providers_available`; the prose is a fallback for older bodies.
-  if (status === 403 || gatewayType === 'no_providers_available' || /restricted access|no_providers_available|not authorized|access profile|forbidden/i.test(haystack)) {
+  // `\brestricted` keeps "unrestricted" from matching "restricted access".
+  if (status === 403 || gatewayType === 'no_providers_available' || /\brestricted access|no_providers_available|not authorized|access profile|forbidden/i.test(haystack)) {
     return result('access');
   }
   // Structured-output / schema: the model ran but couldn't emit the JSON schema.

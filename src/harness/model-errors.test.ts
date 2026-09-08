@@ -126,3 +126,41 @@ test('classify: message is single-line and redacts key-shaped tokens', () => {
   assert.ok(!/\n/.test(c.message), 'message is single-line');
   assert.ok(!/vck_abcdEFGH12345678/.test(c.message), 'credential redacted');
 });
+
+// The shape a real free-tier rate limit arrives in, captured from AI Gateway:
+// the SDK retries the 429, gives up, and reports an AI_RetryError whose `.cause`
+// is null — the GatewayRateLimitError carrying the 429 and the gateway type sits
+// on `.lastError`/`.errors[]` instead. Its message ends "for unrestricted access",
+// which must not read as a permissions failure.
+function retryWrappedRateLimit(): unknown {
+  const message =
+    'Free tier requests on this model are rate-limited. Upgrade to paid credits at ' +
+    'https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai%3Fmodal%3Dtop-up for unrestricted access.';
+  const inner = Object.assign(new Error(message), {
+    name: 'GatewayRateLimitError',
+    type: 'rate_limit_exceeded',
+    statusCode: 429,
+    cause: Object.assign(new Error(message), { name: 'AI_APICallError', statusCode: 429 }),
+  });
+  return Object.assign(new Error(`Failed after 3 attempts. Last error: ${message}`), {
+    name: 'AI_RetryError',
+    reason: 'maxRetriesExceeded',
+    cause: null,
+    lastError: inner,
+    errors: [inner, inner, inner],
+  });
+}
+
+test('classify: a retry-wrapped 429 recovers the status and type from .lastError', () => {
+  const c = classifyModelError(retryWrappedRateLimit());
+  assert.equal(c.status, 429, 'the 429 is found even though .cause is null');
+  assert.equal(c.gatewayType, 'rate_limit_exceeded');
+  assert.equal(c.kind, 'transient');
+  assert.equal(c.gatewayFailure, true);
+});
+
+test('classify: "unrestricted access" is not a permissions failure', () => {
+  // Guards the substring trap: /restricted access/ matches inside "unrestricted access".
+  const e = Object.assign(new Error('Upgrade to paid credits for unrestricted access.'), { statusCode: 429 });
+  assert.notEqual(classifyModelError(e).kind, 'access');
+});

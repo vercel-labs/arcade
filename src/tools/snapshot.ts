@@ -334,12 +334,14 @@ function noticeSnapshot(): void {
   if (!notice) throw new Error(`notice fixture ${kind} produced no notice`);
   const screen = new Screen(cols, rows);
   screen.setRoot(Box({ width: cols, height: rows }), { x: 0, y: 0, w: cols, h: rows });
+  // Mirrors main.ts: a caution notice tints its action to match the title.
+  const actionTone = notice.severity === 'caution' ? 'caution' : 'textStrong';
   screen.setGlobalOverlay(NoticeToast({
     id: 'gateway-failure', severity: notice.severity, title: notice.title,
     body: notice.body,
     width: Math.min(48, Math.max(30, cols - 4)),
-    actionColor: 'textStrong',
-    actionBorderColor: 'textStrong',
+    actionColor: actionTone,
+    actionBorderColor: actionTone,
     ...(notice.action ? { action: { label: notice.action.label, onClick: () => {} } } : {}), onDismiss: () => {},
   }));
   if (focused) screen.setFocus('gateway-failure-action');

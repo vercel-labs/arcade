@@ -34,9 +34,11 @@ test('local timeouts can produce temporary notices', () => {
 test('a typed rate-limit failure is a caution notice with an AI Gateway logs link', () => {
   const notice = modelFailureNotice({ kind: 'transient', status: 429, gatewayType: 'rate_limit_exceeded', gatewayFailure: true, message: 'rate limited' }, 'provider/model');
   assert.equal(notice?.severity, 'caution');
-  assert.equal(notice?.persistent, false);
   assert.equal(notice?.action?.url, GATEWAY_LOGS_URL);
   assert.match(notice?.body ?? '', /free-tier/);
+  // Persistent so it renders as the notice card that carries the link — a
+  // non-persistent notice degrades to a plain commentary line with no action.
+  assert.equal(notice?.persistent, true);
 });
 
 test('an untyped 429 (no gatewayType) still gets the same caution notice', () => {
