@@ -1,10 +1,8 @@
 import '../global.css';
 import '@/lib/geistdocs/site-url-warning';
-import { Footer } from '@vercel/geistdocs/footer';
 import type { Metadata } from 'next';
 import { GeistdocsProvider } from '@/components/geistdocs/provider';
 import { QuickTerminalProvider } from '@/components/quick-terminal';
-import { SiteNav } from '@/components/site-nav';
 import { config } from '@/lib/geistdocs/config';
 import { mono, pixel, sans } from '@/lib/geistdocs/fonts';
 import { i18n } from '@/lib/geistdocs/i18n';
@@ -37,9 +35,7 @@ const Layout = async ({ children }: LayoutProps<'/[lang]'>) => {
       <body>
         <GeistdocsProvider basePath={config.basePath} lang={lang}>
           <QuickTerminalProvider>
-            <SiteNav />
             {children}
-            <div className="site-default-footer"><Footer /></div>
           </QuickTerminalProvider>
         </GeistdocsProvider>
       </body>

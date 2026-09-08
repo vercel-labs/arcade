@@ -359,18 +359,19 @@ export const Hero = () => {
       <div className="living-title__stage">
         <canvas aria-label="Arcade scenes transforming from a glass prism into games" className="living-title__canvas" ref={canvasRef} />
         <div aria-hidden="true" className="living-title__vignette" />
-        <div className="living-title__copy" aria-live="polite">
-          <div className={`living-title__chapter ${chapter === 0 ? 'is-initial' : ''}`} key={CINEMATIC_CHAPTERS[chapter].title.join(' ')}>
-            <h1>{CINEMATIC_CHAPTERS[chapter].title.map((line) => <span key={line}>{line}</span>)}</h1>
-            <p>{CINEMATIC_CHAPTERS[chapter].body.map((line) => <span key={line}>{line}</span>)}</p>
+        <div className="living-title__center">
+          <div className="living-title__copy" aria-live="polite">
+            <div className={`living-title__chapter ${chapter === 0 ? 'is-initial' : ''}`} key={CINEMATIC_CHAPTERS[chapter].title.join(' ')}>
+              <h1>{CINEMATIC_CHAPTERS[chapter].title.join(' ')}</h1>
+              <p>{CINEMATIC_CHAPTERS[chapter].body.join(' ')}</p>
+            </div>
+          </div>
+          <div className="living-title__actions">
+            <QuickTerminalButton className="living-title__primary"><span aria-hidden="true">›_</span>Play</QuickTerminalButton>
+            <InstallCommand />
           </div>
         </div>
-        <div className="living-title__tour-desktop">{tourControl}</div>
-        <div className="living-title__actions">
-          <QuickTerminalButton className="living-title__primary"><span aria-hidden="true">›_</span>Play</QuickTerminalButton>
-          <InstallCommand />
-          <div className="living-title__tour-mobile">{tourControl}</div>
-        </div>
+        {tourControl}
       </div>
     </section>
   );
