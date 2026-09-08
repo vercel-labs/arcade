@@ -1,6 +1,6 @@
 <div align="center">
   <a href="https://ascii-arcade.dev">
-    <img src="./apps/site/public/opengraph-image.png" alt="arcade — The 3D game engine built for agents." width="100%" />
+    <img src="https://ascii-arcade.dev/opengraph-image.png" alt="arcade, the 3D game engine built for agents." width="100%" />
   </a>
   <h1>arcade</h1>
   <p>
@@ -9,13 +9,12 @@
   </p>
   <p>
     <a href="https://vercel.com"><img alt="Made by Vercel" src="https://img.shields.io/badge/MADE%20BY-Vercel-000000.svg?style=for-the-badge&amp;logo=vercel&amp;logoColor=white&amp;labelColor=000000" /></a>
-    <a href="./package.json"><img alt="npm package ascii-arcade" src="https://img.shields.io/badge/npm-ascii--arcade-CB3837.svg?style=for-the-badge&amp;logo=npm&amp;logoColor=white&amp;labelColor=000000" /></a>
+    <a href="https://www.npmjs.com/package/ascii-arcade"><img alt="npm package ascii-arcade" src="https://img.shields.io/badge/npm-ascii--arcade-CB3837.svg?style=for-the-badge&amp;logo=npm&amp;logoColor=white&amp;labelColor=000000" /></a>
     <a href="./LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-55AA00.svg?style=for-the-badge&amp;labelColor=000000" /></a>
     <a href="https://ascii-arcade.dev/docs"><img alt="Arcade documentation" src="https://img.shields.io/badge/docs-online-0070F3.svg?style=for-the-badge&amp;labelColor=000000" /></a>
   </p>
   <p>
-    <a href="https://ascii-arcade.dev">Play online</a>
-    · <a href="https://ascii-arcade.dev/docs">Documentation</a>
+    <a href="https://ascii-arcade.dev">Website</a>
   </p>
 </div>
 
@@ -64,7 +63,7 @@ WezTerm, or VS Code. It detects terminal capabilities and falls back to
 
 ### Controls
 
-- **Every 3D scene:** left-drag to orbit, scroll to zoom, and use arrow keys to pan.
+- **Every 3D scene:** left-click and drag to orbit, scroll to zoom, right-click and drag or use arrow keys to pan.
 - **Chess:** select a piece, choose a legal square, or start a human/model match.
 - **Poker:** hover to peek, click to lift cards, and size actions from the betting controls.
 - **Islanders:** build, trade, move the robber, and negotiate around a procedurally rendered board.
@@ -75,7 +74,7 @@ WezTerm, or VS Code. It detects terminal capabilities and falls back to
 | --- | --- |
 | **Chess** | A verified 0x88 rules engine with legal move generation, SAN/UCI, castling, en passant, promotion, repetition, draw rules, perft tests, and animated human/model play. |
 | **Poker** | No-limit Texas Hold'em for 2–6 seats with private observations, betting and all-ins, side pots, physical chips and cards, table talk, multi-hand sessions, and canonical records. |
-| **Islanders** | A 2–4 player procedural island with production, building, maritime and player trades, development cards, robber/discard phases, negotiation, awards, and replayable rules state. |
+| **Islanders** | A Catan alternative: 2–4 players on a procedural island with production, building, maritime and player trades, development cards, robber/discard phases, negotiation, awards, and replayable rules state. |
 
 Each game separates authoritative rules from presentation. Terminal scenes,
 browser cinematics, headless runners, and model prompts consume the same game
@@ -132,15 +131,18 @@ one-way: app and host layers consume the renderer, rules, harness, and visuals;
 those libraries never import product UI.
 
 ```text
-rules ────────────> harness ────────────────┐
-                                             │
-engine ──┬────────> tui ─────────────────────┼──> arcade CLI
-         ├────────> game-visuals ────────────┤
-         ├────────> cinematic ───────┬───────┘
-         │                           └──> web ──> site
-         └────────> prism ──────────────────> curl API
+LIBRARIES  (reusable; never import product UI)
 
-auth · voice · telemetry ───────────────────> arcade CLI
+   engine ──┬──→ tui                    rules ──→ harness
+            ├──→ game-visuals
+            ├──→ cinematic ──→ web      auth · voice · telemetry
+            └──→ prism
+
+HOSTS  (the product layer; one-way consumers of everything above)
+
+   arcade CLI  ←── tui · game-visuals · cinematic · harness · auth · voice · telemetry
+   site        ←── web
+   curl API    ←── prism
 ```
 
 Read the [repository map](./docs/architecture/repository-map.md) and
@@ -157,11 +159,13 @@ people:
 - [`agents.md`](https://ascii-arcade.dev/agents.md) documents supported agent workflows and commands.
 - [`openapi.json`](https://ascii-arcade.dev/openapi.json) describes the public installer, status, and prism-stream HTTP surfaces.
 - [`examples.json`](https://ascii-arcade.dev/examples.json) indexes browser-safe examples and capabilities.
-
-For local visual work, `pnpm snapshot` renders a bounded frame through the real
-production scene pipeline. Match Lab runs deterministic or model-backed Chess,
-Poker, and Islanders sessions while preserving manifests, events, traces, and
-canonical records.
+- **Headless games** run Chess, Poker, and Islanders with no terminal attached, through
+  `ascii-arcade/harness/*`. Any async policy over the authoritative state is a valid player,
+  so an agent can play or evaluate a full match in-process.
+- **Match Lab** (`pnpm match:run`) runs deterministic or model-backed sessions across all
+  three games, preserving manifests, events, traces, and canonical records for later study.
+- **Snapshots** (`pnpm snapshot`) render a bounded frame through the real production scene
+  pipeline, so visual work is verifiable without starting an infinite raw-mode TTY.
 
 ## Develop
 
