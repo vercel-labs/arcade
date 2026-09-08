@@ -10,8 +10,9 @@ test('the banner tells the reader the command and where the docs are', () => {
   assert.match(text, /The 3D game engine built for agents\./);
   assert.match(text, /^\s*arcade\s+launch Arcade$/m);
   assert.match(text, /arcade --help/);
-  assert.match(text, /ascii-arcade\.vercel\.app\/docs/);
-  assert.match(text, /the tutorial is available from the menu/);
+  assert.match(text, /ascii-arcade\.dev\/docs/);
+  assert.match(text, /^\s*first launch signs you in with Vercel\.\s*$/m);
+  assert.match(text, /^\s*the tutorial is available from the menu\.\s*$/m);
   assert.match(text, /billed to the team you select/);
 });
 
@@ -29,7 +30,12 @@ test('color: false emits no escape sequences', () => {
 });
 
 test('the colored wordmark keeps its glyphs and closes every sequence', () => {
-  const colored = bannerLines({ color: true, env: { PATH: '/usr/local/bin' }, platform: 'linux' });
+  const colored = bannerLines({
+    color: true,
+    colorDepth: 'truecolor',
+    env: { PATH: '/usr/local/bin' },
+    platform: 'linux',
+  });
   const glyphs = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, '');
   assert.deepEqual(
     colored.map(glyphs).map((line) => line.replaceAll('█', '░')),
@@ -40,6 +46,43 @@ test('the colored wordmark keeps its glyphs and closes every sequence', () => {
   const opens = colored.join('').match(/\x1b\[[0-9;]+m/g)?.length ?? 0;
   const resets = colored.join('').match(/\x1b\[0m/g)?.length ?? 0;
   assert.ok(opens > resets && resets > 0, 'runs of color are closed, not left open');
+});
+
+test('a 256-color wordmark stays compact and skips fg+bg blend codes', () => {
+  const lines = bannerLines({
+    color: true,
+    colorDepth: '256',
+    env: { PATH: '/usr/local/bin' },
+    platform: 'linux',
+  });
+  const mark = lines.slice(1, 5);
+  assert.equal(mark.length, 4, 'stays the same compact height as the truecolor version');
+  const text = mark.join('');
+  assert.doesNotMatch(text, /48;5/, 'no background-color codes — nothing for a shaky 256-color renderer to blend');
+  assert.match(text, /38;5;255/, 'the face still renders');
+  assert.match(text, /38;5;237/, 'the shadow still renders');
+});
+
+test('a 256-color terminal gets a heads-up, a truecolor one does not', () => {
+  const withoutTruecolor = bannerLines({
+    color: true,
+    env: { PATH: '/usr/local/bin' },
+    platform: 'linux',
+  }).join('\n');
+  assert.match(withoutTruecolor, /doesn't support truecolor/);
+  assert.match(withoutTruecolor, /some appearances may be off/);
+  assert.match(withoutTruecolor, /Ghostty/);
+  assert.match(withoutTruecolor, /VS Code\/Cursor/);
+
+  const withTruecolor = bannerLines({
+    color: true,
+    colorDepth: 'truecolor',
+    env: { PATH: '/usr/local/bin' },
+    platform: 'linux',
+  }).join('\n');
+  assert.doesNotMatch(withTruecolor, /doesn't support truecolor/);
+
+  assert.doesNotMatch(plain().join('\n'), /doesn't support truecolor/, 'no notice without color at all');
 });
 
 test('the PATH hint appears only when the global bin dir is missing from PATH', () => {

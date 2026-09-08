@@ -15,9 +15,33 @@ import { closeSync, openSync, writeSync } from 'node:fs';
 import { posix, win32 } from 'node:path';
 const RESET = '\x1b[0m';
 const BOLD = '\x1b[1m';
-const WHITE = '\x1b[38;2;237;237;237m';
-const MUTED = '\x1b[38;2;161;161;161m';
-const SHADOW = '\x1b[38;2;63;63;63m';
+
+type ColorDepth = 'truecolor' | '256';
+
+// 24-bit codes for terminals that advertise COLORTERM=truecolor/24bit (Ghostty, iTerm2,
+// kitty, WezTerm, ...). macOS Terminal.app never sets COLORTERM and only understands the
+// 256-color (8-bit) palette — sending it 38;2;… codes leaves it unable to tell WHITE from
+// MUTED from SHADOW apart, so every ink level looks the same on it.
+const TRUECOLOR = {
+  white: '\x1b[38;2;237;237;237m',
+  muted: '\x1b[38;2;161;161;161m',
+  shadow: '\x1b[38;2;63;63;63m',
+};
+// xterm's 256-color grayscale ramp (indices 232-255, step = 8 + 10n) picked to preserve
+// the same three-level contrast the truecolor values give.
+const INDEXED = {
+  white: '\x1b[38;5;255m',
+  muted: '\x1b[38;5;247m',
+  shadow: '\x1b[38;5;237m',
+};
+// RGB triples for the wordmark's two ink levels (pixel value 2 = face, 1 = shadow),
+// used to build the truecolor two-color half-block codes below.
+const TRUECOLOR_INK: Record<number, string> = { 1: '63;63;63', 2: '237;237;237' };
+
+function detectColorDepth(env: NodeJS.ProcessEnv): ColorDepth {
+  const colorterm = (env.COLORTERM ?? '').trim().toLowerCase();
+  return colorterm === 'truecolor' || colorterm === '24bit' ? 'truecolor' : '256';
+}
 
 // Press Start 2P's stepped 7px silhouette, reduced to the six glyphs this fixed
 // wordmark needs. The OFL face is based on 1980s Namco arcade lettering. Keeping
@@ -35,11 +59,12 @@ const PLAIN_HALF = [' ', '▄', '▀', '█'];
 
 export interface BannerOpts {
   color?: boolean;
+  colorDepth?: ColorDepth;
   env?: NodeJS.ProcessEnv;
   platform?: string;
 }
 
-function wordmark(color: boolean): string[] {
+function wordmark(color: boolean, depth: ColorDepth): string[] {
   const glyphs = [...'ARCADE'].map((letter) => WORDMARK[letter]);
   const letterGap = 2;
   const face = glyphs.map((glyph) => glyph[0].length).reduce(
@@ -66,10 +91,18 @@ function wordmark(color: boolean): string[] {
     if (top === 0 || bottom === 0 || top === bottom) {
       const ink = top || bottom;
       if (!ink) return ' ';
-      return `${ink === 2 ? WHITE : SHADOW}${char}${RESET}`;
+      const solid = depth === 'truecolor' ? TRUECOLOR : INDEXED;
+      return `${ink === 2 ? solid.white : solid.shadow}${char}${RESET}`;
     }
-    const fg = top === 2 ? '237;237;237' : '63;63;63';
-    const bg = bottom === 2 ? '237;237;237' : '63;63;63';
+    // Blend cell: the shadow (1) sits on one half, the face (2) on the other — the
+    // diagonal/curved spots in letters like R, C, and E. Truecolor terminals get a
+    // proper two-color glyph. 256-color terminals (Terminal.app, notably) render that
+    // combined fg+bg 8-bit pair inconsistently, showing up as flecked/off-color cells,
+    // so there we paint only the face half and leave the shadow half unset — close
+    // enough to invisible against a dark terminal background.
+    if (depth !== 'truecolor') return `${INDEXED.white}${top === 2 ? '▀' : '▄'}${RESET}`;
+    const fg = TRUECOLOR_INK[top];
+    const bg = TRUECOLOR_INK[bottom];
     return `\x1b[38;2;${fg};48;2;${bg}m${char}${RESET}`;
   };
 
@@ -107,22 +140,30 @@ function onPath(dir: string | null, env: NodeJS.ProcessEnv, platform: string): b
 
 export function bannerLines(opts: BannerOpts = {}): string[] {
   const { color = true, env = process.env, platform = process.platform } = opts;
+  const depth = opts.colorDepth ?? detectColorDepth(env);
+  const solid = depth === 'truecolor' ? TRUECOLOR : INDEXED;
   const paint = (code: string, text: string): string => (color ? `${code}${text}${RESET}` : text);
-  const cmd = (text: string): string => paint(`${BOLD}${WHITE}`, text);
-  const note = (text: string): string => paint(MUTED, text);
+  const cmd = (text: string): string => paint(`${BOLD}${solid.white}`, text);
+  const note = (text: string): string => paint(solid.muted, text);
 
-  const lines = ['', ...wordmark(color), ''];
+  const lines = ['', ...wordmark(color, depth), ''];
   lines.push(note('  The 3D game engine built for agents.'), '');
   lines.push(`  ${cmd('arcade')}${note('           launch Arcade')}`);
   lines.push(`  ${cmd('arcade --help')}${note('    view commands and options')}`);
   lines.push('');
-  lines.push(note('  first launch signs you in with Vercel. the tutorial is available from the menu.'));
+  lines.push(note('  first launch signs you in with Vercel.'));
+  lines.push(note('  the tutorial is available from the menu.'));
   lines.push(note('  AI usage is billed to the team you select.'));
   lines.push(note('  docs: https://ascii-arcade.dev/docs'));
 
   const bin = globalBinDir(env, platform);
   if (!onPath(bin, env, platform)) {
     lines.push('', note(`  ${bin} is not in your PATH — add it there to run \`arcade\` by name.`));
+  }
+  if (color && depth !== 'truecolor') {
+    lines.push('', note(
+      '  this terminal doesn\'t support truecolor, so some appearances may be off. try Ghostty, kitty, iTerm2, or VS Code/Cursor\'s terminal for the full look.',
+    ));
   }
   lines.push('');
   return lines;

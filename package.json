@@ -40,6 +40,7 @@
     "models:audit": "tsx src/tools/model-compat-report.ts",
     "models:game-audit": "ARCADE_TELEMETRY=0 node --import tsx src/tools/model-game-audit.ts",
     "models:report": "tsx src/tools/model-compat-view.ts",
+    "print:banner": "tsx src/tools/print-install-banner.ts",
     "smoke:package": "node scripts/smoke-package.mjs",
     "build:package": "node scripts/build-package.mjs",
     "docs:symbols": "node scripts/generate-doc-symbols.mjs",
