@@ -162,6 +162,10 @@ postinstall that throws fails the install, so nothing in that path may throw. It
 silent for `npx`, a dev checkout, CI, and quiet log levels — and never runs under
 `pnpm add -g`, which blocks a package's lifecycle scripts.
 
+## Publishing to npm
+
+npm releases are triggered by publishing a GitHub Release (or manually dispatching `release.yml`). **Never bump `version` in `package.json`, create a GitHub Release, or trigger `release.yml` without the user's explicit approval.** The user decides when a version ships and what the version number is. An agent's job is to prepare code and surface what changed — not to initiate a publish.
+
 ## Conventions
 
 - Pin dependency versions (no `^`/`~`); prefer zero/few deps.
