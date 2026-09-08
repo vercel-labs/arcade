@@ -1,5 +1,7 @@
 import '../global.css';
 import '@/lib/geistdocs/site-url-warning';
+import { Analytics } from '@vercel/analytics/next';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 import type { Metadata } from 'next';
 import { GeistdocsProvider } from '@/components/geistdocs/provider';
 import { QuickTerminalProvider } from '@/components/quick-terminal';
@@ -40,6 +42,8 @@ const Layout = async ({ children }: LayoutProps<'/[lang]'>) => {
             {children}
           </QuickTerminalProvider>
         </GeistdocsProvider>
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
