@@ -57,13 +57,15 @@ export const SiteNav = () => {
   return (
     <header className={`sticky top-0 z-30 bg-background-100/80 backdrop-blur ${open ? 'is-menu-open' : ''}`}>
       <div className="site-nav__inner mx-auto flex h-16 w-full max-w-[1448px] items-center justify-between px-4">
-        <Link className="flex items-center gap-2.5 text-gray-1000" href="/" onClick={close}>
-          <LogoIconVercel size={18} />
-          <span className="w-4 text-center text-gray-alpha-400">
+        <div className="flex items-center gap-2.5 text-gray-1000">
+          <a aria-label="Vercel" href="https://vercel.com" rel="noopener noreferrer" target="_blank">
+            <LogoIconVercel size={18} />
+          </a>
+          <span aria-hidden="true" className="w-4 text-center text-gray-alpha-400">
             <IconSlashForward size={18} />
           </span>
-          <span className="site-wordmark">arcade</span>
-        </Link>
+          <Link className="site-wordmark" href="/" onClick={close}>arcade</Link>
+        </div>
         <nav aria-label="Primary navigation" className="site-nav__desktop flex items-center gap-5">
           {NAV_LINKS.slice(0, 1).map((link) => (
             <Link
