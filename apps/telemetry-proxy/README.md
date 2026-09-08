@@ -1,6 +1,6 @@
 # Arcade telemetry proxy
 
-The public `@vercel/arcade` CLI ships **no credentials**. It POSTs anonymous gameplay
+The public `ascii-arcade` CLI ships **no credentials**. It POSTs anonymous gameplay
 telemetry to this proxy, which is the trust boundary: it validates every record, re-checks
 the privacy boundary server-side, rate-limits, and forwards to Tinybird holding the only
 credential (a resource-scoped append token in the proxy's env — never in any client).

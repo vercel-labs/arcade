@@ -8,7 +8,7 @@ the package's supported import API.
 
 | Path | Purpose | Deployment / distribution |
 | --- | --- | --- |
-| `src/arcade/` | The full-screen terminal application | `@vercel/arcade` CLI |
+| `src/arcade/` | The full-screen terminal application | `ascii-arcade` CLI |
 | `apps/site/` | Landing page, docs, examples, and hosted terminal | `ascii-arcade` Vercel project |
 | `api/` + `src/prism/` | Curlable animated prism | `ascii-prisms` Vercel project |
 | `apps/telemetry-proxy/` | Credential-holding telemetry ingress | `arcade-telemetry` Vercel project |

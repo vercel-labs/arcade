@@ -2,7 +2,7 @@ import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { NextConfig } from 'next';
 
-// The site consumes browser-safe subpaths from the parent @vercel/arcade package.
+// The site consumes browser-safe subpaths from the parent ascii-arcade package.
 // Keep Turbopack rooted at the repository so it can follow that deliberate link;
 // package exports prevent the browser graph from reaching Node-only app modules.
 const siteRoot = dirname(fileURLToPath(import.meta.url));
@@ -10,7 +10,7 @@ const root = dirname(dirname(siteRoot));
 
 const config: NextConfig = {
   turbopack: { root },
-  transpilePackages: ['@vercel/arcade'],
+  transpilePackages: ['ascii-arcade'],
   outputFileTracingIncludes: {
     '/api/terminal/session': ['./app/api/terminal/session/arcade-package.tgz'],
   },

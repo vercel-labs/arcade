@@ -26,19 +26,19 @@ test('isNewer orders prereleases before their release', () => {
   assert.equal(isNewer('0.2.0-beta.1', '0.2.0-beta.2'), true, 'later prerelease is newer');
 });
 
-const NAME = '@vercel/arcade';
+const NAME = 'ascii-arcade';
 const p = (...segs: string[]): string => sep + segs.join(sep) + sep;
 
 test('detectInstall recognizes an npx run', () => {
-  const { kind, command } = detectInstall(NAME, p('home', '.npm', '_npx', 'abc', 'node_modules', '@vercel', 'arcade', 'src'), {});
+  const { kind, command } = detectInstall(NAME, p('home', '.npm', '_npx', 'abc', 'node_modules', 'ascii-arcade', 'src'), {});
   assert.equal(kind, 'npx');
-  assert.equal(command, 'npx @vercel/arcade@latest');
+  assert.equal(command, 'npx ascii-arcade@latest');
 });
 
 test('detectInstall recognizes a pnpm global install (path and PNPM_HOME)', () => {
-  const byPath = detectInstall(NAME, p('home', '.local', 'share', 'pnpm', 'global', '5', 'node_modules', '@vercel', 'arcade'), {});
+  const byPath = detectInstall(NAME, p('home', '.local', 'share', 'pnpm', 'global', '5', 'node_modules', 'ascii-arcade'), {});
   assert.equal(byPath.kind, 'pnpm');
-  assert.equal(byPath.command, 'pnpm add -g @vercel/arcade@latest');
+  assert.equal(byPath.command, 'pnpm add -g ascii-arcade@latest');
 
   const home = `${sep}home${sep}me${sep}Library${sep}pnpm`;
   const byEnv = detectInstall(NAME, `${home}${sep}store${sep}arcade${sep}index.js`, { PNPM_HOME: home });
@@ -46,15 +46,15 @@ test('detectInstall recognizes a pnpm global install (path and PNPM_HOME)', () =
 });
 
 test('detectInstall recognizes a yarn global install', () => {
-  const { kind, command } = detectInstall(NAME, p('home', '.yarn', 'global', 'node_modules', '@vercel', 'arcade'), {});
+  const { kind, command } = detectInstall(NAME, p('home', '.yarn', 'global', 'node_modules', 'ascii-arcade'), {});
   assert.equal(kind, 'yarn');
-  assert.equal(command, 'yarn global add @vercel/arcade@latest');
+  assert.equal(command, 'yarn global add ascii-arcade@latest');
 });
 
 test('detectInstall defaults to npm global', () => {
-  const { kind, command } = detectInstall(NAME, p('usr', 'local', 'lib', 'node_modules', '@vercel', 'arcade', 'src'), {});
+  const { kind, command } = detectInstall(NAME, p('usr', 'local', 'lib', 'node_modules', 'ascii-arcade', 'src'), {});
   assert.equal(kind, 'npm');
-  assert.equal(command, 'npm i -g @vercel/arcade@latest');
+  assert.equal(command, 'npm i -g ascii-arcade@latest');
 });
 
 // Snapshot + restore the env keys the check reads, so tests don't leak into each other.
@@ -78,7 +78,7 @@ test('checkForUpdate: ARCADE_UPDATE_TEST forces a newer version through', () => 
     const info = checkForUpdate();
     assert.ok(info, 'an update is reported');
     assert.equal(info?.latest, '99.0.0');
-    assert.match(info?.command ?? '', /@vercel\/arcade@latest$/);
+    assert.match(info?.command ?? '', /ascii-arcade@latest$/);
   });
 });
 
@@ -98,7 +98,7 @@ test('checkForUpdate: suppressed in a dev checkout (no override)', () => {
 // hard-coded fallbacks (which would signal the file couldn't be read).
 test('packageInfo reads name, version, and description from package.json', () => {
   const { name, version, description } = packageInfo();
-  assert.equal(name, '@vercel/arcade');
+  assert.equal(name, 'ascii-arcade');
   assert.match(version, /^\d+\.\d+\.\d+/, 'a semver-ish version');
   assert.ok(description.length > 0, 'a non-empty description');
 });

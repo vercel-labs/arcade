@@ -2,16 +2,13 @@
 # curl -fsSL ascii-arcade.dev/install | sh
 #
 # Served by this project at /install (see build.mjs). A thin front door for
-# `npm i -g @vercel/arcade`: it checks for a usable Node, then hands off to npm.
+# `npm i -g ascii-arcade`: it checks for a usable Node, then hands off to npm.
 # The "here's how to run it" banner comes from the package's own postinstall.
-#
-# Arcade is a private @vercel package, so npm still needs your registry auth —
-# this script cannot supply it, and says so plainly when npm reports 401/403/404.
 #
 # POSIX sh on purpose: `curl | sh` should not assume bash.
 set -eu
 
-PKG="@vercel/arcade"
+PKG="ascii-arcade"
 MIN_NODE_MAJOR=22
 
 red() { printf '\033[38;2;235;130;130m%s\033[0m\n' "$1" >&2; }
@@ -53,9 +50,9 @@ fi
 
 if grep -qE 'E40[134]|ENEEDAUTH|need auth' "$log"; then
   rm -f "$log"
-  die "npm could not read ${PKG} — it is a private, Vercel-internal package." \
-    "Sign in to the registry with @vercel access, then re-run this installer:" \
-    "  npm login --scope=@vercel"
+  die "npm could not install ${PKG} (registry auth error)." \
+    "Check your npm registry config — a corporate/proxy registry may be blocking public installs:" \
+    "  npm config get registry"
 fi
 rm -f "$log"
 die "npm failed to install ${PKG} (see its output above)."

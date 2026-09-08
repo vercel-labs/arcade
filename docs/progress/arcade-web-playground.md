@@ -10,7 +10,7 @@ site while preserving the terminal product and the one-way library import graph.
 ## Architecture
 
 - Hosted PTY runs the actual packaged Arcade CLI; xterm.js is only its display/input device.
-- Focused browser surfaces import browser-safe `@vercel/arcade` subpaths.
+- Focused browser surfaces import browser-safe `ascii-arcade` subpaths.
 - Site-specific React, CSS, docs navigation, and marketing copy stay under `apps/site`.
 - The browser and visitor shell never receive the real model credential; Sandbox network policy performs a request-scoped replacement.
 - Hosted sessions are temporary, telemetry-disabled, and network-denied except for matching Gateway calls.

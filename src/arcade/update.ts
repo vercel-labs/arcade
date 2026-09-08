@@ -35,7 +35,7 @@ const FETCH_TIMEOUT_MS = 1500;
 export function packageInfo(): { name: string; version: string; description: string } {
   const p = fileURLToPath(new URL('../../package.json', import.meta.url));
   const raw = JSON.parse(readFileSync(p, 'utf8')) as { name?: string; version?: string; description?: string };
-  return { name: raw.name ?? '@vercel/arcade', version: raw.version ?? '0.0.0', description: raw.description ?? '' };
+  return { name: raw.name ?? 'ascii-arcade', version: raw.version ?? '0.0.0', description: raw.description ?? '' };
 }
 
 function cachePath(): string {

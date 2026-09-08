@@ -4,7 +4,7 @@ Load this for work under `apps/site`.
 
 ## Product role
 
-The site is the front door for the `@vercel/arcade` terminal application and its reusable engine, TUI, game harness, agent tooling, docs, and examples. The visitor should quickly understand what Arcade is, how to run it, and where to learn or inspect more.
+The site is the front door for the `ascii-arcade` terminal application and its reusable engine, TUI, game harness, agent tooling, docs, and examples. The visitor should quickly understand what Arcade is, how to run it, and where to learn or inspect more.
 
 ## Established direction
 

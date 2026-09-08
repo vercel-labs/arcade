@@ -1,5 +1,5 @@
 // The "you installed it, here's how to run it" banner, printed by the package's
-// postinstall after a global install (`npm i -g @vercel/arcade`).
+// postinstall after a global install (`npm i -g ascii-arcade`).
 //
 // Two non-obvious constraints shape this file:
 //   1. Package managers run lifecycle scripts with stdout piped, not attached to the
@@ -9,7 +9,7 @@
 //   2. A postinstall that throws fails the install, so nothing here may throw.
 //
 // Only a global install prints. A dev checkout (`pnpm install` at the repo root) and
-// `npx @vercel/arcade` stay silent: neither leaves an `arcade` on PATH to describe.
+// `npx ascii-arcade` stay silent: neither leaves an `arcade` on PATH to describe.
 
 import { closeSync, openSync, writeSync } from 'node:fs';
 import { posix, win32 } from 'node:path';

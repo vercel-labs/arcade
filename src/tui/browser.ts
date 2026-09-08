@@ -1,6 +1,6 @@
 // Browser-safe public API of the retained TUI library. The terminal render loop
 // is intentionally excluded because it flushes ANSI through process.stdout;
-// Node/terminal consumers can import Renderer from @vercel/arcade/tui.
+// Node/terminal consumers can import Renderer from ascii-arcade/tui.
 export { Box, Text, Button, Slot } from './nodes.ts';
 export {
   RoundedButton,

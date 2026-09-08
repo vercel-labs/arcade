@@ -1,5 +1,5 @@
 {
-  "name": "@vercel/arcade-telemetry-proxy",
+  "name": "ascii-arcade-telemetry-proxy",
   "private": true,
   "version": "0.0.0",
   "type": "module",

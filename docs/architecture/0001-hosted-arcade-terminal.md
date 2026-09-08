@@ -35,7 +35,7 @@ a temporary fork with its own shell and filesystem. Typing `arcade` invokes the 
 simulations.
 
 Browser-native engine, cinematic, and TUI surfaces remain useful through the homepage and
-public `@vercel/arcade/web` exports. They demonstrate reusable package boundaries, but they are
+public `ascii-arcade/web` exports. They demonstrate reusable package boundaries, but they are
 not presented as a second full Arcade application or a separate website gallery.
 
 ## Credential and process boundary

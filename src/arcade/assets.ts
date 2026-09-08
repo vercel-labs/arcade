@@ -2,7 +2,7 @@
 // path RELATIVE TO THIS MODULE rather than the process working directory. The app
 // reads these with readFileSync at load / first use, and must find them no matter
 // where it's launched from: `pnpm dev` runs from the repo root, but a published
-// `npx @vercel/arcade` runs in the user's cwd. Every asset read goes through
+// `npx ascii-arcade` runs in the user's cwd. Every asset read goes through
 // asset() — nothing should hardcode a 'assets/...' cwd-relative path again.
 //
 // Layout assumption: this file is <root>/src/arcade/assets.ts and the assets live

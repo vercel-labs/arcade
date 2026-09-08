@@ -1,6 +1,6 @@
 # Arcade site
 
-The front door for the `@vercel/arcade` CLI. The hero presents the canonical npm
+The front door for the `ascii-arcade` CLI. The hero presents the canonical npm
 install command; the curl installer remains available as a standalone endpoint.
 
 ```
@@ -42,7 +42,7 @@ post-deploy install/snapshot work off the click path without allocating a
 | `app/install/route.ts` | serves `install.sh` verbatim at `/install` (and `/install.sh` via a rewrite) |
 | `public/llms.txt`, `public/llms-full.txt`, `public/agents.md` | agent-readable entry points |
 | `public/examples.json`, `public/schemas/examples-v1.json` | compatibility index retained for the public v1 capability contract |
-| `install.sh` | the installer itself — checks Node 22+ then runs `npm i -g @vercel/arcade` |
+| `install.sh` | the installer itself — checks Node 22+ then runs `npm i -g ascii-arcade` |
 
 The `[lang]` segment is geistdocs' routing convention; only `en` is configured
 (`translations` in `geistdocs.tsx`) — there's no real i18n content here.
