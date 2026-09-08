@@ -58,7 +58,7 @@ body:has(.living-title-page) .site-default-footer { display: block; position: re
 .living-title__stage { position: sticky; top: 0; width: 100%; height: 100vh; height: var(--arcade-viewport-height); overflow: hidden; isolation: isolate; background: #000; }
 .living-title__canvas { position: absolute; z-index: -3; inset: 0; display: block; width: 100%; height: 100%; touch-action: pan-y; }
 .living-title__vignette { display: none; }
-.living-title__center { position: absolute; z-index: 1; top: 0; bottom: 0; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; width: calc(100vw - 2 * var(--arcade-shell-inset)); gap: clamp(32px, 4vh, 52px); padding-top: max(64px, 10vh); padding-bottom: max(64px, 10vh); }
+.living-title__center { position: absolute; z-index: 1; top: 0; bottom: 0; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; justify-content: space-between; align-items: center; text-align: center; width: calc(100vw - 2 * var(--arcade-shell-inset)); padding-top: clamp(80px, 10vh, 120px); padding-bottom: clamp(56px, 7vh, 88px); }
 .living-title__copy { width: 100%; }
 .living-title__chapter { width: 100%; pointer-events: none; animation: living-title-copy-in 320ms cubic-bezier(.2,.8,.2,1) both; }
 .living-title__chapter.is-initial { animation: none; }
