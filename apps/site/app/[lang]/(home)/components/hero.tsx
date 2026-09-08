@@ -362,8 +362,8 @@ export const Hero = () => {
         <div className="living-title__center">
           <div className="living-title__copy" aria-live="polite">
             <div className={`living-title__chapter ${chapter === 0 ? 'is-initial' : ''}`} key={CINEMATIC_CHAPTERS[chapter].title.join(' ')}>
-              <h1>{CINEMATIC_CHAPTERS[chapter].title.join(' ')}</h1>
-              <p>{CINEMATIC_CHAPTERS[chapter].body.join(' ')}</p>
+              <h1>{CINEMATIC_CHAPTERS[chapter].title[0]}{' '}<br aria-hidden="true" className="living-title__line-break" />{CINEMATIC_CHAPTERS[chapter].title[1]}</h1>
+              <p>{CINEMATIC_CHAPTERS[chapter].body[0]}{' '}<br aria-hidden="true" className="living-title__line-break" />{CINEMATIC_CHAPTERS[chapter].body[1]}</p>
             </div>
           </div>
           <div className="living-title__actions">

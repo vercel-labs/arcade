@@ -62,6 +62,7 @@ body:has(.living-title-page) .site-default-footer { display: block; position: re
 .living-title__copy { width: 100%; }
 .living-title__chapter { width: 100%; pointer-events: none; animation: living-title-copy-in 320ms cubic-bezier(.2,.8,.2,1) both; }
 .living-title__chapter.is-initial { animation: none; }
+.living-title__line-break { display: none; }
 .living-title__chapter h1 { margin: 0 0 17px; font: 400 clamp(28px, 3.5vw, 52px)/.96 var(--font-site-display), var(--font-geist-mono), monospace; letter-spacing: -.012em; text-align: center; white-space: nowrap; text-shadow: 0 1px 2px #000, 0 0 14px rgb(0 0 0 / 94%); }
 .living-title__chapter p { margin: 0; color: rgb(255 255 255 / 80%); font: 400 18px/1.5 var(--font-site-display), var(--font-geist-mono), monospace; letter-spacing: -.01em; text-align: center; text-shadow: 0 1px 2px #000, 0 0 12px rgb(0 0 0 / 96%); }
 .living-title__tour { position: absolute; z-index: 2; right: 0; bottom: clamp(28px, 5vh, 48px); display: inline-flex; width: 44px; height: 44px; align-items: center; justify-content: center; border: 0; border-radius: 999px; padding: 0; color: rgb(255 255 255 / 58%); background: rgb(0 0 0 / 34%); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); cursor: pointer; transition: color 180ms ease, background-color 180ms ease; }
@@ -102,6 +103,7 @@ body:has(.living-title-page) .site-default-footer { display: block; position: re
   .site-nav__mobile-link { display: flex; min-height: 52px; align-items: center; border-radius: 6px; padding: 0 12px; color: rgb(255 255 255 / 72%); font: 400 24px/1.2 var(--font-geist-mono), monospace; text-decoration: none; transition: color 150ms ease, background-color 150ms ease; }
   .site-nav__mobile-link:hover, .site-nav__mobile-link:focus-visible { color: #fff; background: rgb(255 255 255 / 6%); outline: none; }
   .living-title__canvas { opacity: .84; }
+  .living-title__line-break { display: inline; }
   .living-title__chapter h1 { font-size: clamp(26px, 8.7vw, 42px); white-space: normal; }
   .living-title__chapter p { font-size: clamp(13px, 4vw, 16px); line-height: 1.5; }
   .living-title__actions { gap: 8px; flex-wrap: nowrap; }
