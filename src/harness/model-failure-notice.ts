@@ -3,10 +3,18 @@ import type { ClassifiedError } from './model-errors.ts';
 export const GATEWAY_TOP_UP_URL = 'https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai%3Fmodal%3Dtop-up';
 export const GATEWAY_ADD_CARD_URL = 'https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai%3Fmodal%3Dadd-credit-card';
 export const GATEWAY_BILLING_URL = 'https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fsettings%2Fbilling';
+export const GATEWAY_LOGS_URL = 'https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai-gateway%2Flogs';
+
+// The AI Gateway free tier applies a lower per-model rate limit than the paid tier,
+// which removes it entirely (https://vercel.com/docs/ai-gateway/rate-limits) — so a
+// free-tier team hits 429s under everyday use, not just abuse. Point at the fix
+// rather than only naming the symptom.
+const RATE_LIMIT_BODY = (model: string): string =>
+  `${model} is temporarily rate limited. Arcade used a legal move. free-tier teams hit AI Gateway's lower per-model limits — adding AI Gateway credit (even $10) moves your team to the paid tier, which removes them.`;
 
 export interface ModelFailureNotice {
   code: string;
-  severity: 'warning' | 'error';
+  severity: 'warning' | 'caution' | 'error';
   title: string;
   body: string;
   persistent: boolean;
@@ -32,7 +40,7 @@ export function modelFailureNotice(failure: ClassifiedError, model: string): Mod
     case 'authentication_error': return { code: 'authentication_error', severity: 'error', title: 'AI Gateway authentication failed', body: 'return home and sign in again to refresh Arcade access.', persistent: true };
     case 'model_not_found': return { code: 'model_not_found', severity: 'error', title: 'model unavailable', body: `${model} was not found. choose another model.`, persistent: true };
     case 'model_unavailable_in_region': return { code: 'model_unavailable_in_region', severity: 'error', title: 'model unavailable in this region', body: `${model} cannot serve requests from this region.`, persistent: true };
-    case 'rate_limit_exceeded': return { code: 'rate_limit_exceeded', severity: 'warning', title: 'rate limit reached', body: `${model} is temporarily rate limited. Arcade used a legal move.`, persistent: false };
+    case 'rate_limit_exceeded': return { code: 'rate_limit_exceeded', severity: 'caution', title: 'rate limit reached', body: RATE_LIMIT_BODY(model), persistent: false, action: { label: 'view AI Gateway logs', url: GATEWAY_LOGS_URL } };
     case 'no_providers_available': return { code: 'no_providers_available', severity: 'error', title: 'model unavailable for this team', body: `${model} could not route to an available provider. choose another model.`, persistent: true };
   }
   // Older Gateway/SDK shapes may retain only the classified kind + HTTP status.
@@ -44,7 +52,7 @@ export function modelFailureNotice(failure: ClassifiedError, model: string): Mod
   if (failure.kind === 'model') return { code: 'model_error', severity: 'error', title: 'model unavailable', body: `${model} is unavailable. choose another model.`, persistent: true };
   if (failure.kind === 'access') return { code: 'access_error', severity: 'error', title: 'model unavailable for this team', body: `${model} could not be accessed by this team. choose another model.`, persistent: true };
   if (!failure.gatewayFailure && failure.kind !== 'timeout' && failure.kind !== 'transient') return null;
-  if (failure.status === 429) return { code: 'rate_limit', severity: 'warning', title: 'rate limit reached', body: `${model} is temporarily rate limited. Arcade used a legal move.`, persistent: false };
+  if (failure.status === 429) return { code: 'rate_limit', severity: 'caution', title: 'rate limit reached', body: RATE_LIMIT_BODY(model), persistent: false, action: { label: 'view AI Gateway logs', url: GATEWAY_LOGS_URL } };
   if (failure.kind === 'timeout' || failure.kind === 'transient') return { code: failure.gatewayType ?? failure.kind, severity: 'warning', title: 'AI Gateway request failed', body: `${model} is temporarily unavailable. Arcade used a legal move.`, persistent: false };
   return { code: failure.gatewayType ?? `http_${failure.status ?? 'error'}`, severity: 'warning', title: 'AI Gateway request failed', body: `${model} returned an error. Arcade used a legal move.`, persistent: false };
 }

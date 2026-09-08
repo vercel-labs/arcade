@@ -8,7 +8,7 @@ import { Modal } from './modal.ts';
 
 export interface NoticeToastOpts {
   id: string;
-  severity: 'warning' | 'error';
+  severity: 'warning' | 'caution' | 'error';
   title: string;
   body: string;
   width?: number;
@@ -21,7 +21,7 @@ export interface NoticeToastOpts {
 
 export interface NoticeToastView {
   id: string;
-  severity: 'warning' | 'error';
+  severity: 'warning' | 'caution' | 'error';
   title: string;
   body: string;
   actionLabel?: string;
@@ -48,7 +48,7 @@ export function noticeToastHeight(view: NoticeToastView, width = 44, compact = f
 /** Centered blocking notice. The modal scrim dims the scene and owns pointer input. */
 export function NoticeToast(opts: NoticeToastOpts): Node {
   const { width, horizontalPadding, bodyWidth } = noticeToastGeometry(opts.width ?? 44, opts.compact ?? false);
-  const titleColor: ColorToken = opts.severity === 'error' ? 'danger' : 'textStrong';
+  const titleColor: ColorToken = opts.severity === 'error' ? 'danger' : opts.severity === 'caution' ? 'caution' : 'textStrong';
   const body = opts.body ? wrapText(opts.body, bodyWidth).map((text) => Text({ text, style: { color: 'textPrimary' } })) : [];
   const controls = opts.action
     ? [RoundedButton({ id: `${opts.id}-action`, label: opts.action.label, onClick: opts.action.onClick, color: opts.actionColor ?? 'textStrong', borderColor: opts.actionBorderColor ?? 'textStrong', padding: [0, opts.compact ? 1 : 3] })]

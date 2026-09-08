@@ -46,6 +46,9 @@ export interface Theme {
   pillHoverFg: RGB;
   focusRing: RGB;
   danger: RGB;
+  // A recoverable condition worth flagging distinctly from an error — e.g. a rate
+  // limit that will clear on its own, versus a failure that needs the user to act.
+  caution: RGB;
   // A control that is present but inert. Kept a real surface rather than dropped to
   // the page color, so the shape still reads as a control you can't use yet.
   disabledBg: RGB;
@@ -85,6 +88,7 @@ export const defaultTheme: Theme = {
   pillHoverFg: [16, 16, 24],
   focusRing: [86, 90, 108],
   danger: [220, 80, 80],
+  caution: [214, 168, 64],
   disabledBg: [34, 36, 44],
   disabledFg: [96, 100, 114],
 };

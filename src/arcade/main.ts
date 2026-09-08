@@ -595,14 +595,15 @@ function refreshFailureNoticeOverlay(): void {
     applyGlobalOverlay();
     return;
   }
+  const actionTone = notice.severity === 'caution' ? 'caution' : 'textStrong';
   const modal = NoticeToast({
     id: 'gateway-failure',
     severity: notice.severity,
     title: notice.title,
     body: notice.body,
     width: Math.min(48, Math.max(30, cols - 4)),
-    actionColor: 'textStrong',
-    actionBorderColor: 'textStrong',
+    actionColor: actionTone,
+    actionBorderColor: actionTone,
     onDismiss: dismissFailureNotice,
     ...(notice.action ? { action: { label: notice.action.label, onClick: () => {
       copyToClipboard(notice.action!.url);
