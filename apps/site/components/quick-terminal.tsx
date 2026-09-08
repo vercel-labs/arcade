@@ -320,10 +320,6 @@ export function QuickTerminalProvider({ children }: { children: ReactNode }) {
             <div aria-hidden={isMinimized} className="quick-terminal-content">
               <ArcadeTerminal />
             </div>
-            <div aria-hidden="true" className="quick-terminal-hint">
-              <span>Install the CLI on your computer for the best experience: npm i -g ascii-arcade</span>
-              <span className="quick-terminal-hint-mobile">Use the browser terminal on your computer for a better experience.</span>
-            </div>
             {RESIZE_DIRECTIONS.map((direction) => (
               <div
                 aria-hidden="true"

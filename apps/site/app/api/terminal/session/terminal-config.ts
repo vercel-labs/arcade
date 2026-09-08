@@ -70,7 +70,7 @@ export function terminalFiles(packageSource: string): Array<{
   const files = [
     {
       path: `${TERMINAL_CWD}/README.md`,
-      content: `# Arcade terminal\n\nThis is an isolated Linux shell containing the real Arcade CLI.\n\nStart it:\n\n    arcade\n\nExplore this miniature documentation filesystem:\n\n    ls\n    cd docs\n    cat README.md\n    cd ../examples\n    cat README.md\n\nThe session is temporary. Telemetry is disabled.\n`,
+      content: `# Arcade terminal\n\nThis is an isolated Linux shell containing the real Arcade CLI.\n\nStart it:\n\n    arcade\n\nExplore this miniature documentation filesystem:\n\n    ls\n    cd docs\n    cat README.md\n    cd ../examples\n    cat README.md\n\nThe session is temporary. It expires after ${Math.round(TERMINAL_TIMEOUT_MS / 60_000)} minutes.\n`,
     },
     {
       path: `${TERMINAL_CWD}/docs/README.md`,
@@ -119,7 +119,7 @@ export function terminalFiles(packageSource: string): Array<{
     },
     {
       path: `${TERMINAL_CWD}/system/visitor.bashrc`,
-      content: `export PATH="/usr/local/bin:/usr/bin:/bin"\nexport PS1='arcade \\w $ '\nexport PAGER=cat\nfunction arcade() { sudo -n -u arcade -- /usr/local/bin/arcade-demo "$@"; }\nfunction arcade_help() {\n  printf '\\033[1mArcade terminal\\033[0m\\n\\n'\n  printf '  \\033[36marcade\\033[0m             Start Arcade\\n'\n  printf '  \\033[36mhelp\\033[0m               Show this guide\\n'\n  printf '  \\033[36mls\\033[0m                 List files\\n'\n  printf '  \\033[36mcd docs\\033[0m            Browse documentation\\n'\n  printf '  \\033[36mcd examples\\033[0m        Browse examples\\n'\n  printf '  \\033[36mcat README.md\\033[0m      Read the current directory\\n'\n  printf '  \\033[36marcade --version\\033[0m   Show the installed version\\n\\n'\n  printf '\\033[2mThis session is temporary. Telemetry is disabled.\\033[0m\\n'\n}\nfunction help() { arcade_help; }\ncd ${TERMINAL_CWD}\nclear\narcade_help\nprintf '\\n'\n`,
+      content: `export PATH="/usr/local/bin:/usr/bin:/bin"\nexport PS1='arcade \\w $ '\nexport PAGER=cat\nfunction arcade() { sudo -n -u arcade -- /usr/local/bin/arcade-demo "$@"; }\nfunction arcade_help() {\n  printf '\\033[1mArcade terminal\\033[0m\\n\\n'\n  printf '  \\033[36marcade\\033[0m             Start Arcade\\n'\n  printf '  \\033[36mhelp\\033[0m               Show this guide\\n'\n  printf '  \\033[36mls\\033[0m                 List files\\n'\n  printf '  \\033[36mcd docs\\033[0m            Browse documentation\\n'\n  printf '  \\033[36mcd examples\\033[0m        Browse examples\\n'\n  printf '  \\033[36mcat README.md\\033[0m      Read the current directory\\n'\n  printf '  \\033[36marcade --version\\033[0m   Show the installed version\\n\\n'\n  printf '\\033[2mThis session is temporary — it expires after ${Math.round(TERMINAL_TIMEOUT_MS / 60_000)} minutes.\\033[0m\\n'\n  printf '\\033[2mFor the best experience, install the CLI: npm i -g ascii-arcade\\033[0m\\n'\n}\nfunction help() { arcade_help; }\ncd ${TERMINAL_CWD}\nclear\narcade_help\nprintf '\\n'\n`,
     },
     {
       path: `${TERMINAL_CWD}/system/visitor.profile`,
