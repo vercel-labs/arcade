@@ -78,6 +78,11 @@ export function cellWidth(cp: number): number {
   // a cell the terminal never draws, desyncing the surface and leaving a stale
   // placeholder-background remnant to the side of a revealed card.
   if (cp >= 0x2660 && cp <= 0x2667) return 1;
+  // Trigrams (☰–☷, U+2630–2637) are text-presentation single-cell in terminals —
+  // ☰ is the hamburger menu glyph. The misc-symbols block is otherwise wide, so
+  // without this override the TUI reserves 2 cells but the cursor advances 1,
+  // leaving a stale cell next to the menu pill.
+  if (cp >= 0x2630 && cp <= 0x2637) return 1;
   // Inside the otherwise-wide emoji blocks, but East_Asian_Width=Neutral.
   if (isTextPresentation(cp)) return 1;
   // Emoji-presentation singletons whose blocks are otherwise text-presentation and stay narrow.
