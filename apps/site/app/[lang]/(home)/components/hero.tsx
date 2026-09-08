@@ -369,9 +369,9 @@ export const Hero = () => {
           <div className="living-title__actions">
             <QuickTerminalButton className="living-title__primary"><span aria-hidden="true">›_</span>Play</QuickTerminalButton>
             <InstallCommand />
+            {tourControl}
           </div>
         </div>
-        {tourControl}
       </div>
     </section>
   );
