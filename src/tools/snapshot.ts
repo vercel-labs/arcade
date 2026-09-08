@@ -77,7 +77,7 @@ import type { Color } from '../rules/chess/types.ts';
 import { Box, Button, Dropdown, NoticeToast, insetSceneViewport, layout, paint, Screen, Text, wrapText, type Node, type PaintState } from '../tui/index.ts';
 import { buildGatewaySignInPrompt, buildTeamSwitch, markSwitchSucceeded, mountTeamSwitch, setTeamSwitchTeams } from '../arcade/shell/team-switch.ts';
 import { buildGatewayNoticePill, catalogAccessLine, gatewayNoticeFor, gatewayNoticeSentence } from '../arcade/shell/gateway-notice.ts';
-import { ARCADE_THEME, UI_CHROME_PILL } from '../arcade/theme.ts';
+import { ARCADE_THEME, MENU_BUTTON_LABEL, UI_CHROME_PILL } from '../arcade/theme.ts';
 import { TUTORIAL_CHAPTERS, TUTORIAL_PULSE, TutorialController, tutorialRailWidth } from '../arcade/tutorial/tutorial.ts';
 import { modelFailureNotice } from '../harness/model-failure-notice.ts';
 import { TrailerScene } from '../arcade/scenes/trailer-scene.ts';
@@ -1687,7 +1687,7 @@ function settingsSnapshot(): void {
     const pill = notice ? buildGatewayNoticePill(notice, { maxWidth: cols - 2 - 8 - 2 - 2, onAction: noop, onDismiss: noop }) : null;
     const overlay = Box({ width: cols, height: rows }, [
       ...(pill ? [Box({ position: 'absolute', top: 1, left: 2 }, [pill])] : []),
-      Box({ position: 'absolute', top: 1, right: 2 }, [Button({ id: 'menu-button', label: '☰ menu', style: UI_CHROME_PILL })]),
+      Box({ position: 'absolute', top: 1, right: 2 }, [Button({ id: 'menu-button', label: MENU_BUTTON_LABEL, style: UI_CHROME_PILL })]),
     ]);
     screen.setRoot(overlay, region);
   }

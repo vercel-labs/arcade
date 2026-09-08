@@ -77,7 +77,7 @@ export const TUTORIAL_CHAPTERS: readonly TutorialChapter[] = [
     id: 'menu',
     title: 'menu',
     screen: 'chess',
-    intro: 'every game has the same ☰ menu (press m). settings change live.',
+    intro: 'every game has the same menu (press m). settings change live.',
     steps: [
       { id: 'open', label: 'open the menu', hint: 'top right, or press m.', signal: 'ui.menuOpen', target: ['chess-menu'] },
       { id: 'display', label: 'cycle through the display styles', hint: 'ascii → pixels → hybrid → back to ascii. ascii is the shape-matched default; pixels is half-block color; hybrid is both. d cycles it anywhere.', signal: 'ui.display', target: ['chess-menu-mode'], count: 3 },

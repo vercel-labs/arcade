@@ -51,7 +51,7 @@ describe('hosted Arcade terminal configuration', () => {
     const files = terminalFiles('git+https://example.test/arcade#sha');
     const byPath = new Map(files.map((file) => [file.path, file.content]));
     assert.match(byPath.get(`${TERMINAL_CWD}/README.md`) ?? '', /cd docs/);
-    assert.match(byPath.get(`${TERMINAL_CWD}/docs/engine.md`) ?? '', /@vercel\/arcade\/engine/);
+    assert.match(byPath.get(`${TERMINAL_CWD}/docs/engine.md`) ?? '', /ascii-arcade\/engine/);
     assert.match(byPath.get(`${TERMINAL_CWD}/examples/README.md`) ?? '', /rendering\.md/);
     assert.match(byPath.get(`${TERMINAL_CWD}/system/arcade-demo`) ?? '', /ARCADE_TELEMETRY=0/);
     assert.match(byPath.get(`${TERMINAL_CWD}/system/arcade-demo`) ?? '', /unset AI_GATEWAY_API_KEY/);

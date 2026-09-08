@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { MOBILE_CINEMATIC_CELL_HEIGHT, responsiveTerminalGrid } from './responsive-grid.ts';
+import { CINEMATIC_CELL_HEIGHT, MOBILE_CINEMATIC_CELL_HEIGHT, responsiveTerminalGrid } from './responsive-grid.ts';
 
 test('resizing changes terminal dimensions without changing cell size or camera aspect', () => {
   const laptop = responsiveTerminalGrid(1265, 656);
@@ -16,13 +16,18 @@ test('resizing changes terminal dimensions without changing cell size or camera 
   }
 });
 
-test('mobile cinematic cells increase ASCII sampling density without changing geometry', () => {
-  const desktopDensity = responsiveTerminalGrid(390, 844);
-  const mobileDensity = responsiveTerminalGrid(390, 844, MOBILE_CINEMATIC_CELL_HEIGHT);
-  assert.deepEqual(desktopDensity, { cols: 65, rows: 70 });
-  assert.deepEqual(mobileDensity, { cols: 78, rows: 84 });
-  assert.ok(mobileDensity.cols * mobileDensity.rows > desktopDensity.cols * desktopDensity.rows * 1.4);
-  assert.equal(mobileDensity.cols / (mobileDensity.rows * 2), 78 / 168);
+test('a phone viewport gets the denser mobile cell without being asked', () => {
+  const phone = responsiveTerminalGrid(390, 844);
+  // The ≤760px tier picks MOBILE_CINEMATIC_CELL_HEIGHT itself, so passing it
+  // explicitly is now a no-op rather than an opt-in upgrade.
+  assert.deepEqual(phone, responsiveTerminalGrid(390, 844, MOBILE_CINEMATIC_CELL_HEIGHT));
+  assert.deepEqual(phone, { cols: 78, rows: 84 });
+  // Still the density win the mobile tier exists for, measured against the 12px
+  // laptop cell the phone would otherwise have used.
+  const atLaptopCell = responsiveTerminalGrid(390, 844, CINEMATIC_CELL_HEIGHT);
+  assert.deepEqual(atLaptopCell, { cols: 65, rows: 70 });
+  assert.ok(phone.cols * phone.rows > atLaptopCell.cols * atLaptopCell.rows * 1.4);
+  assert.equal(phone.cols / (phone.rows * 2), 78 / 168);
 });
 
 test('large monitors increase cinematic cell size without affecting laptop or shallow-wide grids', () => {

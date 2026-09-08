@@ -46,7 +46,7 @@ test('docs use a task-first grouped navigation and Sans typography', async () =>
   assert.match(content, /subgraph focused\["Browser surfaces"\]/);
   assert.doesNotMatch(content, /Complete Arcade|Focused browser surfaces/);
   assert.doesNotMatch(content, /<Code title="Architecture">/);
-  assert.match(content, /npx @vercel\/arcade@latest/);
+  assert.match(content, /npx ascii-arcade@latest/);
   assert.match(content, /arcade --help/);
   assert.match(content, /exit before authentication, network requests, or terminal takeover/);
   assert.match(navigation, /section\('Using Arcade', '\/docs\/app'/);
@@ -96,8 +96,8 @@ test('guides and reference use real child routes with generated symbol coverage'
   for (const section of ['Import', 'Signature', 'Lifecycle', 'Example', 'Common failures']) assert.match(reference, new RegExp(`heading: '${section}'`));
   assert.match(navigation, /section\('Guides', '\/docs\/guides'/);
   assert.match(navigation, /section\('API Reference', '\/docs\/reference'/);
-  assert.match(generated, /@vercel\/arcade\/engine/);
-  assert.match(generated, /@vercel\/arcade\/tui/);
+  assert.match(generated, /ascii-arcade\/engine/);
+  assert.match(generated, /ascii-arcade\/tui/);
   assert.match(script, /checker\.getExportsOfModule/);
   assert.match(script, /packageJson\.exports/);
 });
@@ -295,16 +295,16 @@ test('every published package family and agentic workflow has a documentation pa
   }
   for (const subpath of ['/engine/png', '/harness/communication', '/harness/chess', '/harness/islanders', '/harness/poker', '/harness/records', '/game-visuals/chess', '/game-visuals/islanders', '/game-visuals/poker']) assert.match(content, new RegExp(subpath.replaceAll('/', '\\/')));
   for (const concept of ['Why snapshots exist', 'Follow the snapshot pipeline', 'Build a portable snapshot', 'Run exported headless games', 'manifest.json', 'events.jsonl']) assert.match(content, new RegExp(concept));
-  assert.match(content, /not exported by <code>@vercel\/arcade\/platform<\/code>/);
+  assert.match(content, /not exported by <code>ascii-arcade\/platform<\/code>/);
   assert.doesNotMatch(content, /--players(?:=|\s)/);
 });
 
 test('docs overview teaches a task-first path and supported package boundaries', async () => {
   const content = await readFile(new URL('./[lang]/docs/docs-content.tsx', import.meta.url), 'utf8');
   for (const heading of ['Start here', 'Choose what to build', 'Understand the architecture', 'Explore the documentation']) assert.match(content, new RegExp(`heading: '${heading}'`));
-  assert.match(content, /npm i -g @vercel\/arcade/);
+  assert.match(content, /npm i -g ascii-arcade/);
   assert.match(content, /supported consumer boundary/);
-  assert.match(content, /@vercel\/arcade\/harness/);
+  assert.match(content, /ascii-arcade\/harness/);
 });
 
 test('getting started covers install, source, sign-in, and supported library paths', async () => {
@@ -312,7 +312,7 @@ test('getting started covers install, source, sign-in, and supported library pat
   for (const heading of ['Before you start', 'Install the CLI', 'Run from source', 'Enable model play', 'Play your first game', 'Use Arcade as a library']) assert.match(content, new RegExp(`heading: '${heading}'`));
   assert.match(content, /arcade --login/);
   assert.match(content, /href="\/docs\/app"/);
-  assert.match(content, /npm install @vercel\/arcade/);
+  assert.match(content, /npm install ascii-arcade/);
 });
 
 test('the agent corpus preserves the implementation contracts documented for humans', async () => {

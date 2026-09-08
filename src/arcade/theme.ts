@@ -55,4 +55,4 @@ export const UI_CHROME_PILL: Style = {
   pressed: { background: 'controlPressedBg', color: 'controlPressedFg' },
 };
 
-export const MENU_BUTTON_LABEL = '☰ menu';
+export const MENU_BUTTON_LABEL = 'menu';
