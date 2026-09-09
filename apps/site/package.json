@@ -12,7 +12,7 @@
     "predev": "pnpm prepare:terminal",
     "dev": "next dev",
     "prebuild": "pnpm prepare:terminal",
-    "build": "next build",
+    "build": "rm -rf .next && next build",
     "start": "next start"
   },
   "dependencies": {
