@@ -5,6 +5,7 @@ import { Surface } from '../engine/surface.ts';
 import { inkNoise } from '../cinematic/transitions/ink-match-cut.ts';
 import { ARCADE_CATALOGUE } from '../cinematic/catalogue.ts';
 import { POKER_LOOP_SECONDS } from '../cinematic/scripted-games.ts';
+import { SPLASH_END } from '../prism/splash.ts';
 
 test('living title renders prism, Cover Flow, chess, poker, and Islanders acts at one grid size', () => {
   const scene = new LivingTitleScene();
@@ -165,6 +166,33 @@ test('browser ink cuts select advancing pre-rendered motion plates without live 
   assert.equal(plates?.destinationMotion?.length, 4);
   const pokerLoop = (scene as unknown as { pokerLoop: { sample(total: number, active: boolean, duration: number): { elapsed: number } } }).pokerLoop;
   assert.ok(pokerLoop.sample(20.5, true, POKER_LOOP_SECONDS).elapsed > 0, 'incoming Poker gameplay should already be moving beneath the burn');
+});
+
+test('the prism ink cut burns the settled prism rather than the opening splash', () => {
+  const scene = new LivingTitleScene();
+  // Hosts prime plates during idle time moments after the film starts, while the
+  // prism is still inside its 3.6s splash, and keep them for the whole session
+  // unless the grid changes. Nothing re-renders them by the time the viewer
+  // scrolls into the cut, so a plate that honored the raw clock would burn the
+  // white splash triangle over a prism that settled minutes earlier.
+  scene.frame({ cols: 100, rows: 40, timeSeconds: 100, progress: 0 });
+  for (let index = 1; index < 4; index++) scene.prepareTransitionMotionSample(0, 100, 40, 'source', index, 100.05);
+  const samples = (scene as unknown as { transitionPlates: Map<string, { sourceMotion?: Surface[] }> })
+    .transitionPlates.get('0:100:40')?.sourceMotion ?? [];
+  const prismAt = (elapsed: number) => {
+    const other = new LivingTitleScene();
+    other.frame({ cols: 100, rows: 40, timeSeconds: 100, progress: 0 });
+    return surfaceSignature(other.frame({ cols: 100, rows: 40, timeSeconds: 100 + elapsed, progress: 0 }));
+  };
+  assert.equal(samples.filter(Boolean).length, 3);
+  for (let index = 1; index < 4; index++) {
+    const phase = index / 3;
+    assert.notEqual(surfaceSignature(samples[index]!), prismAt(0.05 + phase * 1.5), `outgoing plate ${index} replayed the splash`);
+    assert.equal(surfaceSignature(samples[index]!), prismAt(SPLASH_END + phase * 1.5), `outgoing plate ${index} left the prism's opening`);
+  }
+  // Holding the plate clock past the splash must not collapse the samples onto
+  // one frozen frame: the outgoing prism still has to move under the burn.
+  assert.notEqual(surfaceSignature(samples[1]!), surfaceSignature(samples[3]!));
 });
 
 test('anchored ink match cut preserves exact endpoints and returns a cold silver seam', () => {
