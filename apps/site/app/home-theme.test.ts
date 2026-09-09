@@ -253,10 +253,14 @@ test('the hero overlay survives a mobile viewport the browser reports wrongly', 
   // first touch scroll, while svh stays 684 and lvh stays 792. Anchoring the
   // copy and actions to the edges of that phantom viewport hid the headline
   // behind the URL bar and the buttons behind the tab bar.
-  assert.match(css, /\.living-title__center \{[^\n]*max-height: 100svh; margin-block: auto;/);
+  assert.match(css, /\.living-title__center \{[^\n]*max-height: calc\(100dvh - clamp\(0px, \(100dvh - 100lvh\) \* 3, 100dvh - 100svh\)\); margin-block: auto;/);
+  // Gated, not permanent: with the toolbars merely collapsed the browser is
+  // honest, dvh <= lvh zeroes the clamp, and the copy anchors to the real edges
+  // instead of floating in a band inset from them.
+  assert.doesNotMatch(css, /\.living-title__center \{[^\n]*max-height: 100svh;/);
   // dvh exceeds lvh only while the browser claims that impossible viewport, so
   // this offset is exactly zero in every honest state, desktop included.
-  assert.match(css, /header\.sticky \{ position: fixed; inset: max\(0px, calc\(100dvh - 100lvh\)\) 0 auto;/);
+  assert.match(css, /header\.sticky \{ position: fixed; inset: clamp\(0px, calc\(\(100dvh - 100lvh\) \* 1\.4\), calc\(100dvh - 100svh\)\) 0 auto;/);
   // The canvas still fills whatever space the browser believes exists; only the
   // overlay is constrained, so the scene stays full-bleed with no letterboxing.
   assert.match(css, /\.living-title__stage \{[^\n]*height: var\(--arcade-viewport-height\)/);

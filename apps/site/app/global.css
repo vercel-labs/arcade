@@ -39,12 +39,21 @@ body { background: var(--site-background); color: var(--site-foreground); }
    tapped link: `innerHeight`, `visualViewport.height`, and `dvh` all jump from
    684 to 874 on a 402x874 screen 30ms after load, and stay there until the
    first touch scroll. `svh` and `lvh` keep reporting 684 and 792 throughout, so
-   the overlay is capped to `svh` and centered rather than anchored to edges the
+   the overlay shrinks to `svh` and centers rather than anchoring to edges the
    browser is wrong about, and chrome offsets key off `dvh - lvh`, which is
-   positive only while the browser is claiming that impossible viewport. */
+   positive only while the browser is claiming that impossible viewport. Both
+   corrections are gated on that term so they vanish the moment it settles: the
+   overlay's own cap saturates against `dvh - svh`, the exact overstatement, so
+   the multiplier only has to be big enough to reach it — while the viewport is
+   honest the cap is `dvh` and the copy anchors to the real edges as before. The
+   1.4 scales that gap to the chrome actually covering the top: dvh - lvh is the
+   status bar plus the collapsed URL bar, while the hidden band is the status bar
+   plus the expanded one (82px versus 118px measured). Scaling rather than adding
+   keeps the whole term zero whenever dvh <= lvh, and the upper bound is the
+   total overstatement, so it can never push past what the browser is hiding. */
 body:has(.living-title-page) { background: #000; }
 html:has(.living-title-page) { scroll-behavior: auto; }
-body:has(.living-title-page) header.sticky { position: fixed; inset: max(0px, calc(100dvh - 100lvh)) 0 auto; background-color: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; transition: background-color 200ms ease; }
+body:has(.living-title-page) header.sticky { position: fixed; inset: clamp(0px, calc((100dvh - 100lvh) * 1.4), calc(100dvh - 100svh)) 0 auto; background-color: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; transition: background-color 200ms ease; }
 .site-nav__inner { max-width: none; padding-inline: var(--arcade-shell-gutter); }
 .site-nav__desktop .site-nav__link { font-family: var(--font-site-display), var(--font-geist-mono), monospace; font-size: 13px; }
 .site-nav__inner > a, .site-nav__desktop { filter: drop-shadow(0 1px 2px #000) drop-shadow(0 0 10px rgb(0 0 0 / 96%)); }
@@ -66,7 +75,7 @@ body:has(.living-title-page) .site-default-footer { display: block; position: re
 .living-title__stage { position: sticky; top: 0; width: 100%; height: 100vh; height: var(--arcade-viewport-height); overflow: hidden; isolation: isolate; background: #000; }
 .living-title__canvas { position: absolute; z-index: -3; inset: 0; display: block; width: 100%; height: 100%; touch-action: pan-y; }
 .living-title__vignette { display: none; }
-.living-title__center { position: absolute; z-index: 1; top: 0; bottom: 0; left: 50%; max-height: 100svh; margin-block: auto; transform: translateX(-50%); display: flex; flex-direction: column; justify-content: space-between; align-items: center; text-align: center; width: calc(100vw - 2 * var(--arcade-shell-inset)); padding-top: clamp(80px, 10vh, 120px); padding-bottom: clamp(56px, 7vh, 88px); }
+.living-title__center { position: absolute; z-index: 1; top: 0; bottom: 0; left: 50%; max-height: calc(100dvh - clamp(0px, (100dvh - 100lvh) * 3, 100dvh - 100svh)); margin-block: auto; transform: translateX(-50%); display: flex; flex-direction: column; justify-content: space-between; align-items: center; text-align: center; width: calc(100vw - 2 * var(--arcade-shell-inset)); padding-top: clamp(80px, 10vh, 120px); padding-bottom: clamp(56px, 7vh, 88px); }
 .living-title__copy { width: 100%; }
 .living-title__chapter { width: 100%; pointer-events: none; animation: living-title-copy-in 320ms cubic-bezier(.2,.8,.2,1) both; }
 .living-title__chapter.is-initial { animation: none; }
