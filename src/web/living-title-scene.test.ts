@@ -206,6 +206,26 @@ test('preparing the prism cut leaves its clock and its outgoing plate alone', ()
   );
 });
 
+test('a cut ends on the frame the live scene draws rather than a rescaled copy', () => {
+  const scene = new LivingTitleScene();
+  scene.frame({ cols: 120, rows: 50, timeSeconds: 100, progress: 0 });
+  for (let index = 0; index < 4; index++) scene.prepareTransitionMotionSample(0, 120, 50, 'destination', index, 100);
+  const boundary = LIVING_TITLE_ACT_BOUNDARIES[1];
+  const at = (progress: number) => scene.frame({ cols: 120, rows: 50, timeSeconds: 140, progress });
+  const lastBurn = at(boundary - 1e-9), firstLive = at(boundary + 1e-9);
+  let redrawn = 0;
+  for (let y = 0; y < 50; y++) for (let x = 0; x < 120; x++) {
+    const before = lastBurn.getCell(x, y), after = firstLive.getCell(x, y);
+    if (`${before?.ch}${before?.fg.join('.')}` !== `${after?.ch}${after?.fg.join('.')}`) redrawn++;
+  }
+  // A plate rendered on a denser grid has to be read back by dropping cells, and
+  // glyph choice is made at a grid size, so the settled incoming scene was built
+  // from characters picked for a grid it was no longer on: 1378 of these 6000
+  // cells redrew the instant the live scene took over, on an image that had
+  // otherwise gone completely still.
+  assert.ok(redrawn < 60, `the cut redrew ${redrawn} cells handing over to the live scene`);
+});
+
 test('anchored ink match cut preserves exact endpoints and returns a cold silver seam', () => {
   const from = solidSurface(20, 10, 'A', [220, 120, 50]);
   const to = solidSurface(20, 10, 'B', [40, 210, 120]);
