@@ -127,6 +127,10 @@ test('the opening hero leads with the agent engine proposition in Geist Pixel', 
   assert.match(css, /\.living-title__chapter p \{ font-size: clamp\(13px, 4vw, 16px\); line-height: 1\.5; \}/);
   assert.match(css, /\.living-title__install-command code[^\n]*var\(--font-geist-mono\)/);
   assert.match(css, /body:has\(\.living-title-page\) \.site-wordmark[^\n]*var\(--font-site-display\)/);
+  // The pixel display face reads as Arcade because the wordmark and the chapter
+  // headlines are the only places it appears. Ordinary controls take Mono, which
+  // is also the voice of the command they sit beside.
+  assert.match(css, /\.living-title__actions button, \.living-title__actions a \{ font: 550 13px\/1 var\(--font-geist-mono\), monospace; \}/);
 });
 
 test('the cinematic chapters explain Gateway, the harness, model behavior, and play', async () => {

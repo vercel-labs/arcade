@@ -93,7 +93,10 @@ body:has(.living-title-page) .site-default-footer { display: block; position: re
 .living-title__tour:focus-visible { outline: 1px solid currentColor; outline-offset: 4px; }
 .living-title__tour.is-playing { color: rgb(255 255 255 / 68%); }
 .living-title__actions { display: flex; align-items: center; justify-content: center; gap: 14px; }
-.living-title__actions button, .living-title__actions a { font: 550 13px/1 var(--font-site-display), var(--font-geist-mono), monospace; }
+/* Mono, not the pixel display face: these are ordinary controls sitting beside
+   a command, and the pixel face reads as Arcade precisely because the wordmark
+   and the chapter headlines are the only places it appears. */
+.living-title__actions button, .living-title__actions a { font: 550 13px/1 var(--font-geist-mono), monospace; }
 .living-title__primary { box-sizing: border-box; display: inline-flex; height: 44px; align-items: center; gap: 9px; border: 1px solid #ededed; border-radius: 999px; padding: 0 16px; color: #000; background: #ededed; cursor: pointer; transition: background 150ms ease; }
 .living-title__primary:hover { background: #fff; }
 .living-title__install-command { box-sizing: border-box; position: relative; display: inline-flex; width: max-content; max-width: min(42vw, 430px); height: 44px; align-items: center; border: 1px solid rgb(255 255 255 / 16%); border-radius: 999px; padding: 0 42px 0 16px; color: rgb(255 255 255 / 90%); background: rgb(0 0 0 / 34%); backdrop-filter: blur(10px); cursor: pointer; transition: border-color 150ms ease, background 150ms ease; }
@@ -129,7 +132,7 @@ body:has(.living-title-page) .site-default-footer { display: block; position: re
      need, a tighter gap, and 2px off each pill — rather than truncating the
      command or dropping a button. */
   .living-title__actions { gap: 6px; flex-wrap: nowrap; width: calc(100% + 16px); margin-inline: -8px; }
-  .living-title__primary { flex: 0 0 auto; padding-inline: 10px; }
+  .living-title__primary { flex: 0 0 auto; padding-inline: 12px; }
   .living-title__primary > span { display: none; }
   .living-title__install-command { min-width: 0; width: auto; max-width: none; flex: 0 1 auto; padding-left: 12px; padding-right: 34px; }
   .living-title__install-icon { right: 5px; width: 24px; height: 24px; }
