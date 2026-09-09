@@ -182,6 +182,7 @@ arcade --logout`}</Code><Details rows={[
           ['$5 credit after purchase', <>Once a team purchases Gateway Credits, it remains on the Paid tier and the recurring $5 Free-tier credit no longer applies. See <External href={GATEWAY_PRICING}>AI Gateway pricing</External> for the current policy.</>],
           ['Credit card verification', 'A valid credit card is required to receive the recurring Free-tier credit. The same payment method can be used when purchasing Gateway Credits.'],
           ['Enterprise', 'Eligible Enterprise teams can arrange invoiced billing instead of purchasing credits through the dashboard.'],
+          ['After purchasing', 'Quit and relaunch Arcade to fetch the updated catalog. The model picker refreshes at launch and after a team switch, so a running session does not automatically reflect a tier change.'],
           ['Token pricing', 'AI Gateway charges provider list prices with no token markup. Model pages show current input, output, and cached-token rates.'],
         ]} />,
       },
