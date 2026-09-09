@@ -24,9 +24,9 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     siteName: 'Arcade',
-    title: 'Arcade — 3D games in your terminal',
-    description: 'Build and play CPU-rendered 3D ASCII games in terminals and browsers.',
-    images: [{ url: '/opengraph-image', width: 1200, height: 630, alt: 'Arcade — 3D games in your terminal' }],
+    title: 'arcade: the 3D game engine for agents',
+    description: 'The 3D game engine built for agents.',
+    images: [{ url: '/opengraph-image', width: 1200, height: 630, alt: 'arcade: the 3D game engine for agents' }],
   },
 };
 
