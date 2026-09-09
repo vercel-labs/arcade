@@ -60,9 +60,12 @@ body:has(.living-title-page) header.sticky { position: fixed; inset: clamp(0px, 
 .dark body:has(.living-title-page) header.sticky { color: #ededed; background-color: transparent; }
 .dark body:has(.living-title-page) header.sticky.is-over-footer { background-color: #000; }
 .dark body:has(.living-title-page) header.sticky a { color: #d7d7d7; }
-.dark body:has(.living-title-page) header.sticky .site-nav__link { transition: color 150ms ease; }
-.dark body:has(.living-title-page) header.sticky .site-nav__link:hover,
-.dark body:has(.living-title-page) header.sticky .site-nav__link:focus-visible { color: #fff; }
+/* Hover feedback belongs to the nav, not to one route: the cinematic sets its
+   own resting colour over the canvas, but every page's links brighten the same
+   way, docs and GitHub icon included. */
+.dark header.sticky .site-nav__link { transition: color 150ms ease; }
+.dark header.sticky .site-nav__link:hover,
+.dark header.sticky .site-nav__link:focus-visible { color: #fff; }
 .site-nav__link:focus-visible { outline: 1px solid currentColor; outline-offset: 4px; border-radius: 2px; }
 .site-nav__menu-toggle, .site-nav__mobile-sheet { display: none; }
 body:has(.living-title-page) .site-wordmark { font-family: var(--font-site-display), var(--font-geist-mono), monospace; font-size: 20px; letter-spacing: 0; }

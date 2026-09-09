@@ -36,6 +36,9 @@ test('the living title uses borderless chrome and no duplicate examples or docs 
   assert.match(nav, /pathname\.includes\('\/docs'\).*'text-gray-1000' : 'text-gray-900'/);
   assert.match(nav, /site-nav__link site-nav__github text-gray-900/);
   assert.match(css, /header\.sticky \.site-nav__link:hover,[\s\S]*header\.sticky \.site-nav__link:focus-visible \{ color: #fff; \}/);
+  // Hover feedback is the nav's, not the cinematic's: scoping it to the home
+  // page left the docs header with no response to a pointer at all.
+  assert.doesNotMatch(css, /living-title-page\) header\.sticky \.site-nav__link:hover/);
   assert.match(css, /\.site-nav__link:focus-visible \{ outline: 1px solid currentColor;/);
   assert.doesNotMatch(hero, /Docs ↗|href="\/docs"/);
   assert.doesNotMatch(css, /site-default-footer[^\n]*border-top/);
