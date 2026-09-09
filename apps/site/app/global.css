@@ -131,7 +131,7 @@ body:has(.living-title-page) .site-default-footer { display: block; position: re
   .living-title__actions { gap: 6px; flex-wrap: nowrap; width: calc(100% + 16px); margin-inline: -8px; }
   .living-title__primary { flex: 0 0 auto; padding-inline: 10px; }
   .living-title__primary > span { display: none; }
-  .living-title__install-command { min-width: 0; width: auto; max-width: none; flex: 1 1 auto; padding-left: 12px; padding-right: 34px; }
+  .living-title__install-command { min-width: 0; width: auto; max-width: none; flex: 0 1 auto; padding-left: 12px; padding-right: 34px; }
   .living-title__install-icon { right: 5px; width: 24px; height: 24px; }
   .living-title__tour { position: static; flex: 0 0 44px; }
 }

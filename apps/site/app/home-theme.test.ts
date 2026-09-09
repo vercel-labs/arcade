@@ -215,7 +215,9 @@ test('the progress-ring tour control is responsive and tracks real scroll progre
   assert.match(css, /\.living-title__tour \{[^}]*position: absolute;[^}]*right: 0;[^}]*bottom: clamp\(/);
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*\.living-title__actions \{[^}]*gap: 6px;[^}]*flex-wrap: nowrap;[^}]*\}/);
   assert.match(css, /\.living-title__primary > span \{ display: none; \}/);
-  assert.match(css, /\.living-title__install-command \{[^}]*min-width: 0;[^}]*flex: 1 1 auto;/);
+  // Shrink-only, never grow: the pill hugs the command exactly as it does on a
+  // desktop, and still gives way before the row can overflow.
+  assert.match(css, /\.living-title__install-command \{[^}]*min-width: 0;[^}]*flex: 0 1 auto;/);
   assert.match(css, /\.living-title__tour \{[^}]*width: 44px;[^}]*height: 44px;/);
   assert.doesNotMatch(css, /living-title__tour-mouse|arcade-scroll-cue/);
 });
