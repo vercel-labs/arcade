@@ -110,8 +110,8 @@ export class LivingTitleScene {
     if (act < 0 || act >= ACTS - 1) return;
     const key = `${act}:${cols}:${rows}`;
     const plate = this.transitionPlates.get(key) ?? {};
-    if (part === 'source' && !plate.source) plate.source = this.scene(act, cols, rows, MATCH_CUT_SOURCE_PROGRESS[act], timeSeconds, false);
-    else if (part === 'destination' && !plate.destination) plate.destination = this.scene(act + 1, cols * ZOOM_DETAIL_SCALE, rows * ZOOM_DETAIL_SCALE, 0, timeSeconds, false);
+    if (part === 'source' && !plate.source) plate.source = this.scene(act, cols, rows, MATCH_CUT_SOURCE_PROGRESS[act], this.plateTime(act, timeSeconds), false);
+    else if (part === 'destination' && !plate.destination) plate.destination = this.scene(act + 1, cols * ZOOM_DETAIL_SCALE, rows * ZOOM_DETAIL_SCALE, 0, this.plateTime(act + 1, timeSeconds), false);
     this.setTransitionPlate(key, plate);
   }
 
@@ -131,7 +131,7 @@ export class LivingTitleScene {
     const sampleCols = side === 'source' ? cols : cols * ZOOM_DETAIL_SCALE;
     const sampleRows = side === 'source' ? rows : rows * ZOOM_DETAIL_SCALE;
     const progress = side === 'source' ? lerp(MATCH_CUT_SOURCE_PROGRESS[act], 1, phase) : 0;
-    const sampleTime = timeSeconds + phase * 1.5;
+    const sampleTime = this.plateTime(sampleAct, timeSeconds) + phase * 1.5;
     const previous = [this.chessGameplayPhase, this.pokerGameplayPhase, this.pokerGameplayIteration] as const;
     if (sampleAct === 2) this.chessGameplayPhase = phase * 1.5 / CHESS_LOOP_SECONDS;
     if (sampleAct === 3) { this.pokerGameplayPhase = phase * 1.5 / POKER_LOOP_SECONDS; this.pokerGameplayIteration = 0; }
@@ -139,6 +139,19 @@ export class LivingTitleScene {
     [this.chessGameplayPhase, this.pokerGameplayPhase, this.pokerGameplayIteration] = previous;
     plate[field] = samples;
     this.setTransitionPlate(key, plate);
+  }
+
+  /**
+   * Hosts prime plates during idle time moments after the film starts, while the
+   * prism is still playing its splash and the intro ramps that settle at
+   * SPLASH_END. A plate rendered on that raw clock burns the white splash
+   * triangle into a cut the viewer only reaches once the prism has long settled,
+   * so hold the prism's plate clock past its opening. Later primings (a resize
+   * mid-film) already sit beyond it and keep their own time.
+   */
+  private plateTime(act: number, time: number): number {
+    if (act !== 0) return time;
+    return Math.max(time, (this.prismStartedAt ?? time) + SPLASH_END);
   }
 
   frame(options: LivingTitleFrameOptions): Surface {
