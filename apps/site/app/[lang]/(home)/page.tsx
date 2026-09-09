@@ -10,7 +10,7 @@ const structuredData = {
 };
 
 export const metadata: Metadata = {
-  title: { absolute: 'Arcade — the 3D game engine for agents' },
+  title: { absolute: 'arcade: the 3D game engine for agents' },
   description: 'A pure-TypeScript 3D engine for games that live in your terminal.',
   alternates: { canonical: '/' },
   openGraph: {
