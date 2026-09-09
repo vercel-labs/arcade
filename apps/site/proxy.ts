@@ -29,7 +29,7 @@ const proxy = createProxy({
 
 export const config = {
   matcher: [
-    '/((?!api(?:/|$)|agent-content(?:/|$)|install(?:\\.sh)?(?:/|$)|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|opengraph-image|llms(?:-full)?\\.txt|agents\\.md|examples\\.json|openapi\\.json|schemas(?:/|$)).*)',
+    '/((?!api(?:/|$)|agent-content(?:/|$)|install(?:\\.sh)?(?:/|$)|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|opengraph-image|llms(?:-full)?\\.txt|agents\\.md|examples\\.json|openapi\\.json|schemas(?:/|$)|viewport-check\\.html).*)',
   ],
 };
 
