@@ -21,7 +21,6 @@ import { applySurfacePointerEffect, type SurfacePointerMode } from './surface-po
 const BLACK: RGB = [0, 0, 0];
 const ACTS = LIVING_TITLE_ACTS.length;
 const MATCH_CUT_SOURCE_PROGRESS = [LIVING_TITLE_MORPH_STARTS[0], 0.9, LIVING_TITLE_MORPH_STARTS[2], LIVING_TITLE_MORPH_STARTS[3]] as const;
-const ZOOM_DETAIL_SCALE = 2;
 // The prism renders in ~3ms where Chess costs ~20ms, so its cut is the one that
 // can keep rendering the outgoing scene live rather than cutting to a plate.
 const LIVE_BURN_ACT = 0;
@@ -116,7 +115,7 @@ export class LivingTitleScene {
     const key = `${act}:${cols}:${rows}`;
     const plate = this.transitionPlates.get(key) ?? {};
     if (part === 'source' && !plate.source) plate.source = this.scene(act, cols, rows, MATCH_CUT_SOURCE_PROGRESS[act], timeSeconds, false);
-    else if (part === 'destination' && !plate.destination) plate.destination = this.scene(act + 1, cols * ZOOM_DETAIL_SCALE, rows * ZOOM_DETAIL_SCALE, 0, timeSeconds, false);
+    else if (part === 'destination' && !plate.destination) plate.destination = this.scene(act + 1, cols, rows, 0, timeSeconds, false);
     this.setTransitionPlate(key, plate);
   }
 
@@ -136,8 +135,8 @@ export class LivingTitleScene {
     if (samples[index]) return;
     const phase = index / (TRANSITION_MOTION_SAMPLES - 1);
     const sampleAct = side === 'source' ? act : act + 1;
-    const sampleCols = side === 'source' ? cols : cols * ZOOM_DETAIL_SCALE;
-    const sampleRows = side === 'source' ? rows : rows * ZOOM_DETAIL_SCALE;
+    const sampleCols = cols;
+    const sampleRows = rows;
     const progress = side === 'source' ? lerp(MATCH_CUT_SOURCE_PROGRESS[act], 1, phase) : 0;
     const sampleTime = timeSeconds + phase * 1.5;
     const previous = [this.chessGameplayPhase, this.pokerGameplayPhase, this.pokerGameplayIteration] as const;
@@ -175,8 +174,12 @@ export class LivingTitleScene {
       }
       return reducedMotion ? rendered : applySurfacePointerEffect(rendered, pointerField, pointerMode, { protectedTop: 3 });
     }
-    // Render denser transition plates so local ink fibers stay crisp. The shared
-    // compositor preserves each plate's authored position and scale.
+    // Plates are rendered on the output grid. A denser plate has to be read back
+    // by dropping cells, and glyph choice is a decision made at a grid size, so
+    // the settled incoming scene would be assembled from characters picked for a
+    // grid it is no longer on — then redrawn the instant the live scene took
+    // over. Matching the grids costs no visible seam detail and lets the cut end
+    // on exactly the frame that follows it.
     const { source: detailedScene, destination: next } = this.motionTransitionPlate(act, cols, rows, local, timeSeconds);
     const transition = anchoredInkMatchCut(
       detailedScene,
