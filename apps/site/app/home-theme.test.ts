@@ -242,8 +242,25 @@ test('hero geometry follows the currently available viewport without hydration r
   assert.match(hero, /const viewportHeight = \(\) => canvas\.parentElement\?\.clientHeight \|\| window\.innerHeight/);
   const css = await readFile(new URL('./global.css', import.meta.url), 'utf8');
   assert.match(css, /--arcade-viewport-height: 100dvh/);
-  assert.doesNotMatch(css, /100lvh|100svh/);
   assert.match(css, /\.living-title__stage \{[^\n]*height: var\(--arcade-viewport-height\)/);
+});
+
+test('the hero overlay survives a mobile viewport the browser reports wrongly', async () => {
+  const css = await readFile(new URL('./global.css', import.meta.url), 'utf8');
+  // iOS Chrome opened from a tapped link resizes the page to the whole screen
+  // while still drawing its toolbars over it: on a 402x874 device innerHeight,
+  // visualViewport.height and dvh all read 874 from 30ms after load until the
+  // first touch scroll, while svh stays 684 and lvh stays 792. Anchoring the
+  // copy and actions to the edges of that phantom viewport hid the headline
+  // behind the URL bar and the buttons behind the tab bar.
+  assert.match(css, /\.living-title__center \{[^\n]*max-height: 100svh; margin-block: auto;/);
+  // dvh exceeds lvh only while the browser claims that impossible viewport, so
+  // this offset is exactly zero in every honest state, desktop included.
+  assert.match(css, /header\.sticky \{ position: fixed; inset: max\(0px, calc\(100dvh - 100lvh\)\) 0 auto;/);
+  // The canvas still fills whatever space the browser believes exists; only the
+  // overlay is constrained, so the scene stays full-bleed with no letterboxing.
+  assert.match(css, /\.living-title__stage \{[^\n]*height: var\(--arcade-viewport-height\)/);
+  assert.doesNotMatch(css, /\.living-title__canvas \{[^\n]*svh/);
 });
 
 test('the initial title is server-visible without an entrance animation', async () => {
