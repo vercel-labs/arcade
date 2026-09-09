@@ -1,0 +1,45 @@
+name: CI
+
+# Runs on every push and pull request. release.yml re-runs the package checks before
+# publishing, so a release is never gated on a green run here, but this is where a
+# regression should surface first.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # The code that ships in the npm package.
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.5
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm type-check
+      - run: pnpm test:package
+
+  # apps/site is its own nested pnpm workspace with its own lockfile, and is deployed
+  # by Vercel rather than published, so it installs and runs separately.
+  site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.5
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --dir apps/site install --frozen-lockfile
+      - run: node --import tsx --test 'apps/**/*.test.ts'

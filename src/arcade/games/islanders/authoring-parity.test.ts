@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { RenderTarget } from '../../../engine/index.ts';
+import { assertFrameSignature } from '../frame-signature.ts';
 import { ShapeGlyphSurfaceCache, shapeGlyphToSurface } from '../../../engine/present-cells.ts';
 import { Surface } from '../../../engine/surface.ts';
 import { TileScene, type IslandersMode } from './tile-scene.ts';
@@ -13,22 +14,13 @@ function frameHash(target: RenderTarget): string {
     .digest('hex');
 }
 
-// These baselines are sha256 over the raw float32 color and depth buffers, captured on
-// one machine. Transcendental math and FMA contraction differ across CPU architectures,
-// so any case that accumulates float error (settle loops, animation integration) diverges
-// in the last ULP on a different host: identical picture, different bytes. Keep them as a
-// local regression guard, matching how AGENTS.md treats `islanders:check` baselines, and
-// skip in CI rather than pretending a byte baseline is portable.
-const MACHINE_BASELINE = {
-  skip: process.env.CI ? 'framebuffer byte baselines are machine-specific' : false,
-};
 
-test('authored Islanders traversal preserves every showcase framebuffer baseline', MACHINE_BASELINE, () => {
+test('authored Islanders traversal preserves every showcase framebuffer baseline', () => {
   const cases: { mode: IslandersMode; configure(scene: TileScene): void; expected: string }[] = [
-    { mode: 'tile', configure: () => {}, expected: 'c0548aa8bb4493d2f588172ae8665ae66d9a11535e55100c60f74038f2eb4e7b' },
-    { mode: 'board', configure: (scene) => scene.seedDemo(), expected: '70cee2d1f06e6b7881659f349c7b78cc1d23f96caf51fdb29b8304a900d6115d' },
-    { mode: 'pieces', configure: (scene) => scene.setActiveColor('blue'), expected: '2446ef4446021cbb402048154da0846bca91ad2f0a230d7806851814cdcc7ee3' },
-    { mode: 'port', configure: (scene) => scene.setPortKind('ore'), expected: 'e13e798a204d243ff546b218e1ec564f67e81a08bd7108fb910f78ba24719c0b' },
+    { mode: 'tile', configure: () => {}, expected: 'DhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWEBQYDxIXDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWEhUZJ0YvMFE4MFk4JDkqHy8lDhAWDhAWDhAWDhAWDhAWFRwcS3RLNmI8SndPVHJNOGlBOmtDERUZDhAWDhAWDhAWDhAWPUk4RHRLO2pCOWtDUG5ISntOU4JYNjowDhAWDhAWDhAWDhAWUko5f4piUH5WUYNYVYNXW4lcdIpgWVRBDhAWDhAWDhAWDhAWDhAWMColgHVUfZBnhIdgfW1PQjkuFxcaDhAWDhAWDhAWDhAWDhAWDhAWExQYQzouKCQiDhAWDhAWDhAWDhAWDhAW' },
+    { mode: 'board', configure: (scene) => scene.seedDemo(), expected: 'DhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWEBMZIDA5MTU3Gi04IyovDhEXDhAWDhAWDhAWDhAWDhAWEBslXGdRl3s/fGVAmItVnZxXOVVbFxkeDhAWDhAWDhAWFyMtfHxkoI1bYX5Tb490eJhwa5Flgp53NlFXDhEYDhAWDhAWERwmUnBzk5OWoHRYrX1Gwa5FaIRXc4pgWG1uEBkiDhAWDhAWDhAWRlxjlZCGjouLj5GbvKdXuadFYnxyFzlMDhAWDhAWDhAWDhAWHUVaX3Z0enpsf4V3doNssZZXQ2x7DxUdDhAWDhAWDhAWDhAWEBggEiMvFS08FjNDFzlLI0RVGC88DhAWDhAWDhAW' },
+    { mode: 'pieces', configure: (scene) => scene.setActiveColor('blue'), expected: 'DhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWEBUfEBUfFyM8ERYiFyM8ExssDhAWDhAWDhAWDhAWDhAWDhAWDxIaFSE3HjNdHTFZLFOcGCZBDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWEhoqDxIaDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAW' },
+    { mode: 'port', configure: (scene) => scene.setPortKind('ore'), expected: 'DhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWMzE0aWZkGhsgDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWkpGQ0c/KIiQpDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWd29ro5SKGRkdDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWMiYigF1KcWpqQzEpEBEXDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWLiMgTTQqOyslDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAW' },
   ];
   for (const entry of cases) {
     const scene = new TileScene();
@@ -37,25 +29,25 @@ test('authored Islanders traversal preserves every showcase framebuffer baseline
     if (entry.mode === 'board') scene.settle();
     const target = new RenderTarget(96, 64);
     scene.renderScene(target, 0.7);
-    assert.equal(frameHash(target), entry.expected, entry.mode);
+    assertFrameSignature(target, entry.expected, entry.mode);
   }
 });
 
-test('authored Islanders traversal preserves the staged island-build animation', MACHINE_BASELINE, () => {
+test('authored Islanders traversal preserves the staged island-build animation', () => {
   const frames = [
-    { time: 0, expected: '45c58577d8e053c6a1bd656a0b9f40a9b0fa868687c5a3608a3dc1640651abe1' },
-    { time: 1.5, expected: '61b5c3e6c42c9649f88c58d33e8686a54add78facf294a3385339aea7091e062' },
-    { time: 3.1, expected: '7dd3606d692b7ca07c20c80ecaa65af7cb8c2132c6205e3aef824df18f88a3c5' },
-    { time: 3.7, expected: '45e35776b42f91aeaf8b980664ca96c62e8f4b158199129078b3a33e365143a1' },
-    { time: 4.4, expected: 'd429b50da75b9f96e3943155705d06bf7523a405bf49354ca40b3039214640d4' },
-    { time: 5.3, expected: '1cff47b58f939fdc7b22ef1d31098a51b53d8d83d8024822950f10e7caae1bcb' },
+    { time: 0, expected: 'DhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhEXFC8/Eys6Eyw6ESMvDhEXDhAWDhAWDhAWfGZIExQYEBslG01mH117HVl2GlVyHFl3F0FXDhEYDhAWDhAWfmhIMjo5GlJuHFVyG1NwHFVxHVh1Hlp3H1x5GERaDhEYDhAWOjMqFyIpHVd0Hlh1HFVyHll1HVh1H116IF57HVh0EBkiDhAWDhAWDhAWHVRvIV56IFt4HVd0IFx4I2F+H1x6FzlMDhAWDhAWDhAWDhAWGURbH1l2IFt4H1p2IFx5JWOAJGB7DxUdDhAWDhAWDhAWDhAWDxcfEiMvFS07FTJDGDlMGkJXFi48DhAWDhAWDhAW' },
+    { time: 1.5, expected: 'DhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhEXIDhAHzI4RkInESIuDhEXDhAWDhAWDhAWJSIhIR8fKi4uG05mbZuCkZlqmptbJF93F0FXDhEYDhAWDhAWk3lUQkdCKFVpJ1hsV31afJVsdJpvQHBhHlx5GERbDhEYDhAWOjMqFyIpHVh0Hlh1f2JOrXxFwK1EQ25vH117HFh0EBkiDhAWDhAWDhAWHVVwIV16J1tzJVlyQmluJWJ+H116FzlMDhAWDhAWDhAWDhAWGURaH1p2IFx4H1p2IV16JWSAJmF8DxUdDhAWDhAWDhAWDhAWEBggEiIuFS08FzREFzhLG0NXFi48DhAWDhAWDhAW' },
+    { time: 3.1, expected: 'DhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhEYHS04Giw4Fyw5ESIuDhEYDhAWDhAWDhAWDhAWDhAWEBslR2JXkHpDe2hDmItWkJZZKU1aDhEYDhAWDhAWDhAWESEsTmhmoI1bYX9QfJhudptxapBlcph8Jk9fDhEXDhAWDhAWER0mMWB1kpKVoHRYrX1HwK1EaIRXXn9gKl90EBkiDhAWDhAWDhAWHVRwfoWHjouLj5GbvKdXt6ZDPm11FzlMDhAWDhAWDhAWDhAWGUNZNmR2N2Z3U3N8U3RveoZlJGF8DxUcDhAWDhAWDhAWDhAWEBggEiIuFS07FzRFGDpNGkNXFy89DhAWDhAWDhAW' },
+    { time: 3.7, expected: 'DhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhEYIC84NDs+Gi45FiQtDhEYDhAWDhAWDhAWDhAWDhAWER0nVWtbkntDfGlDmYxVmppYMlFaDhEYDhAWDhAWDhAWESEsaXVmoY5aYX9QepZsdJlvapBle5x7NFVdDhEXDhAWDhAWER0nT3J5k5OWoHRYrH1GwK1EaIRXcophOmZyEBkiDhAWDhAWDhAWJVdvl5KJjouLj5GbvKdXtqVEYntxFzlMDhAWDhAWDhAWDhAWHENYX3Z0WXV1e4R5d4NspJdgNWl9DxUcDhAWDhAWDhAWDhAWEBggEiIuFS07FzRFGDtNG0NYFy89DhAWDhAWDhAW' },
+    { time: 4.4, expected: 'DhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhEYIC84MDQ3Gi45FiQuDhEYDhAWDhAWDhAWDhAWDhAWERwmXGVPk3tCe2hDmYxVnJ1aQllcERQaDhAWDhAWDhAWHSYudHdioY5aYX9QeJRqdptwapBle5x7NFVdDhIZDhAWDhAWER0nUm9yk5OWoHRYrX1HwK1EaIRXcYhfU21wEBkiDhAWDhAWDhAWP15rlZGKjouLj5GbvKdXuadFXntyFjlLDhAWDhAWDhAWDhAWG0JWYHd1cHxzh4Z2d4Ntp5deVW1zDxUcDhAWDhAWDhAWDhAWEBggEiIuGC47GjRDGDtOHERYFi49DhAWDhAWDhAW' },
+    { time: 5.3, expected: 'DhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWDhAWEBMaIC43Mzc4Gi46IykuDhEYDhAWDhAWDhAWDhAWDhAWEBwmWmdSlXpAe2hDmIxVnZtXN1NZFxkeDhAWDhAWDhAWFyMsfHpioY5aYX9Qe5dtd51yaI1jgZx2N1RbDxMaDhAWDhAWER0nUW9yk5OWoHRYrX1HwK1EaIRXcIdfWG1uEBkiDhAWDhAWDhAWRl1jlZCGjouLj5GbvKdXtqVEX3x0FjlLDhAWDhAWDhAWDhAWHEJWX3Z0d3ltf4R2eIRtsZZXQW18DxUcDhAWDhAWDhAWDhAWDxcgEiMvFi08FzVFGDtOJEVVGC88DhAWDhAWDhAW' },
   ];
   const scene = new TileScene();
   scene.setMode('board');
   for (const frame of frames) {
     const target = new RenderTarget(96, 64);
     scene.renderScene(target, frame.time);
-    assert.equal(frameHash(target), frame.expected, `t=${frame.time}`);
+    assertFrameSignature(target, frame.expected, `t=${frame.time}`);
   }
 });
 

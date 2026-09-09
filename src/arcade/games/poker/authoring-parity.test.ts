@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { RenderTarget } from '../../../engine/index.ts';
+import { assertFrameSignature } from '../frame-signature.ts';
 import { mulberry32 } from '../../../engine/index.ts';
 import { HoldemState } from '../../../rules/poker/holdem.ts';
 import { CardsScene, type CardsMode } from './cards-scene.ts';
@@ -14,34 +15,25 @@ function frameHash(target: RenderTarget): string {
     .digest('hex');
 }
 
-// These baselines are sha256 over the raw float32 color and depth buffers, captured on
-// one machine. Transcendental math and FMA contraction differ across CPU architectures,
-// so any case that accumulates float error (settle loops, animation integration) diverges
-// in the last ULP on a different host: identical picture, different bytes. Keep them as a
-// local regression guard, matching how AGENTS.md treats `islanders:check` baselines, and
-// skip in CI rather than pretending a byte baseline is portable.
-const MACHINE_BASELINE = {
-  skip: process.env.CI ? 'framebuffer byte baselines are machine-specific' : false,
-};
 
-test('authored Poker composition preserves live-idle and card-showcase baselines', MACHINE_BASELINE, () => {
+test('authored Poker composition preserves live-idle and card-showcase baselines', () => {
   const live = new PokerGameScene();
   const liveTarget = new RenderTarget(96, 64);
   live.renderScene(liveTarget, 0);
   // Shared production card-back texture (also used by the browser cinematic).
-  assert.equal(frameHash(liveTarget), '5f33e57a99004b9e0c5e0c6c43d0431ae4a0cf0835ad42c44a3bf1f71b2bbde1');
+  assertFrameSignature(liveTarget, 'BgoIBgoIBgoIBgoIBgoIBgoIBgoIBgoIBgoIBgoIBgoIBgoIBgoIBgoIBgoIBgoICw0KLCIVLSIVCw0KBgoIBgoIBgoIBgoIBgoICw0KGB0TGisaNkU9LCsfKykfESwbKjEjIikhCw0KBgoIFBMNQjUpVDUwCykZCykZOy8mOiwjCykZEC0ebkpMQzUqFBMNKi8dYiMjTkA9CysaDCwbO1FEO1FEDCwbCykZMiceTiEdLjAdHDEhUmJiIzs2DCwbCyoaDCwbCykZCyoaCykZCykZCykZGS8cHS8cIT8vCyoaCykZKzYqOjowOjowPj42U01KGTYoCyoZHjAdOjMfDSsaCyoZCyoaWyEgeDM1eDM1YSYnRl5XJ0lKDC0bPzUg', 'live idle');
 
   const cases: { mode: CardsMode; expected: string }[] = [
-    { mode: 'single', expected: '601ade6633a8a6da8bae7812f6d9126310dfa27ded03eb5ba02aafff57da771e' },
-    { mode: 'hand', expected: 'a94ea76cc3f96b6619f70c2ec4bf271de0836b024ade81bc02b2d48477e6ee36' },
-    { mode: 'deck', expected: '29d51e9fa2d253ffc9f599b93ccec0bb3844aa8ab3868fec72b22cf977ab9b3e' },
+    { mode: 'single', expected: 'DA0RDA0RDA0RISIlRUZIRUZIRUZIRUZIISIlDA0RDA0RDA0RDA0RDA0RDA0RNzc6vr278e/s8e/s8e/sRUZIDA0RDA0RDA0RDA0RDA0RDA0RRUZI4N7b8e/s8e/s8e/sRUZIDA0RDA0RDA0RDA0RDA0RDA0RRUZI8e/subi2u7q48e/sRUZIDA0RDA0RDA0RDA0RDA0RDA0RMDAz8e/snZybpKOh8e/sMDAzDA0RDA0RDA0RDA0RDA0RDA0RKSks8e/s8e/s8e/s4N7bKSksDA0RDA0RDA0RDA0RDA0RDA0RJSYp1dPQ1dPQ1dPQoaCfJSYpDA0RDA0RDA0RDA0RDA0RDA0RDA0RDA0RDA0RDA0RDA0RDA0RDA0RDA0RDA0R' },
+    { mode: 'hand', expected: 'BgoIBgoIBgoIBgoIBgoIBgoIBgoIBgoIBgoIBgoIBgoIBgoIBgoICQwJFRcPGCAUEyEVFSUXFSUXEiEVGCAUFhgQCQwJBgoIIiMWGi4cCykZCykZCykZCykZCyoZCykZCykZCykZGSwbIiMWCykZDS8dCyoaCysaCyoaDCwbDCwbDCsbCysaDCwbCyoaCykZDCwbCykZCyoaDC0bNSYePighPikhNikgCysaCykZCykZCysaCykZCysaCykZDS8dfTI1ZysqZysqfTI1CykZCyoaDTAdCykZCyoaCykZCykZCykZCykZDCwbCykZCykZCykZDC0cCyoaDC0cCyoaCykZCysaCykZCysaCysaCykZCykZCykZCysaDC0cDCsb' },
+    { mode: 'deck', expected: 'BgoIBgoIBgoIBgoIBgoIExIMExIMBgoIBgoIBgoIBgoIBgoIBgoIBgoIBgoIBgoIFBcPHiEVHiIVExUOBgoIBgoIBgoIBgoICQwJBgoIDQ8LGScYCykZCysaCykZDCoZGSgZDQ8LBgoICQwJJh0TFRMNISwbCyoaCykZKiIYKyMZCykZCykZHSkZFRMNJh0TMSQWQC0cDSwbCykZCysaEi8fEi8fDCwbCysaDCkZQC0cMiQXEBALTzchEy0cCysaCykZCysaCykZDCwbCykZEywbTzchEBALBgoICQwJJigZCysaCykZDC4cDCwbCykZDC0bJikZCQwJBgoIBgoIBgoICw0KLysaJjIeEC0bECwbJzIeMCsaCw0KBgoIBgoI' },
   ];
   for (const entry of cases) {
     const scene = new CardsScene();
     scene.setMode(entry.mode);
     const target = new RenderTarget(96, 64);
     scene.renderScene(target, 0);
-    assert.equal(frameHash(target), entry.expected, entry.mode);
+    assertFrameSignature(target, entry.expected, entry.mode);
   }
 });
 
