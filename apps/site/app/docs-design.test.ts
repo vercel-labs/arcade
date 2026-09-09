@@ -29,7 +29,7 @@ test('docs retain the viewport-safe tablet drawer fix around Geistdocs navigatio
   assert.match(css, /header\.sticky\.is-menu-open \{[^\n]*backdrop-filter: none !important;/);
 });
 
-test('docs use a task-first grouped navigation and Sans typography', async () => {
+test('docs use a task-first grouped navigation and the pixel display face', async () => {
   const [page, client, navigation, content, css] = await Promise.all([
     readFile(new URL('./[lang]/docs/[[...slug]]/page.tsx', import.meta.url), 'utf8'),
     readFile(new URL('./[lang]/docs/docs-client.tsx', import.meta.url), 'utf8'),
@@ -59,14 +59,17 @@ test('docs use a task-first grouped navigation and Sans typography', async () =>
   assert.match(navigation, /type: 'folder'/);
   assert.match(navigation, /index: page\(name, url\)/);
   assert.doesNotMatch(page, /<details|<summary/);
-  assert.match(css, /\.doc-page-header h1 \{[^\n]*var\(--font-geist-sans\)/);
-  assert.match(css, /\.doc-article h2 \{[^\n]*var\(--font-geist-sans\)/);
-  assert.match(css, /\.doc-architecture svg \{[^\n]*var\(--font-geist-sans\)/);
+  // Headings render in the pixel display face and body/diagrams in Geist Mono. Geist
+  // Sans was removed from the site entirely, so assert it has not crept back in.
+  assert.match(css, /\.doc-page-header h1 \{[^\n]*var\(--font-site-display\)/);
+  assert.match(css, /\.doc-article h2 \{[^\n]*var\(--font-site-display\)/);
+  assert.match(css, /\.doc-architecture svg \{[^\n]*var\(--font-geist-mono\)/);
+  assert.doesNotMatch(css, /--font-geist-sans/);
   assert.match(css, /\.doc-architecture \.cluster-label span \{ display: inline-block; transform: translateY\(6px\); \}/);
   assert.match(css, /\.doc-article > section > h2 \{ overflow-wrap: anywhere; \}/);
   assert.match(css, /\.arcade-docs-layout \{/);
   assert.doesNotMatch(css, /\.doc-sidebar(?:__pane|__scroll)/);
-  assert.doesNotMatch(css, /\.doc-(?:shell|article|sidebar|toc|page-header)[^\n]*font-site-display/);
+  assert.doesNotMatch(css, /\.doc-(?:shell|sidebar|toc)[^\n]*font-site-display/);
 });
 
 test('the Motivation letter is absent from every public documentation surface', async () => {

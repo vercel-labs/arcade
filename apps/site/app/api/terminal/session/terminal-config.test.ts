@@ -66,7 +66,7 @@ describe('hosted Arcade terminal configuration', () => {
     assert.match(visitorShell, /arcade --version/);
     assert.match(visitorShell, /cd docs/);
     assert.match(visitorShell, /cd examples/);
-    assert.match(visitorShell, /Telemetry is disabled/);
+    assert.match(visitorShell, /install the CLI: npm i -g ascii-arcade/);
   });
 
   test('starts a login shell with a truecolor PTY at the requested size', () => {

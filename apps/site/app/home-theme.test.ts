@@ -31,7 +31,7 @@ test('the living title uses borderless chrome and no duplicate examples or docs 
   ]);
   assert.doesNotMatch(nav, /border-b|Examples|\/examples/);
   assert.match(nav, /'Docs'/);
-  assert.match(nav, /'AI Gateway'/);
+  assert.match(nav, /'GitHub'/);
   assert.doesNotMatch(nav, /QuickTerminalButton|Open Arcade terminal|IconDisplaySmall|>Play<|site-terminal-trigger__label/);
   assert.match(nav, /pathname\.includes\('\/docs'\).*'text-gray-1000' : 'text-gray-900'/);
   assert.match(nav, /site-nav__link site-nav__github text-gray-900/);
@@ -61,7 +61,7 @@ test('mobile navigation preserves every desktop destination in an accessible she
   assert.match(nav, /aria-expanded=\{open\}/);
   assert.match(nav, /aria-label=\{open \? 'Close menu' : 'Open menu'\}/);
   assert.match(nav, /id="site-mobile-menu"/);
-  assert.match(nav, /'Docs'[\s\S]*'AI Gateway'[\s\S]*'GitHub'/);
+  assert.match(nav, /'Docs'[\s\S]*'GitHub'/);
   assert.match(nav, /event\.key !== 'Escape'/);
   assert.match(nav, /document\.body\.style\.overflow = 'hidden'/);
   assert.match(nav, /window\.matchMedia\('\(min-width: 761px\)'\)/);
@@ -70,12 +70,14 @@ test('mobile navigation preserves every desktop destination in an accessible she
   assert.match(css, /\.site-nav__mobile-sheet\.is-open \{ opacity: 1; transform: translateY\(0\); pointer-events: auto; \}/);
 });
 
-test('AI Gateway opens externally while Docs stays in the current tab', async () => {
+test('GitHub opens externally while Docs stays in the current tab', async () => {
   const nav = await readFile(new URL('../components/site-nav.tsx', import.meta.url), 'utf8');
   assert.match(nav, /target=\{link\.external \? '_blank' : undefined\}/);
   assert.match(nav, /rel=\{link\.external \? 'noopener noreferrer' : undefined\}/);
   assert.match(nav, /\{ label: 'Docs', href: '\/docs', external: false \}/);
-  assert.match(nav, /\{ label: 'AI Gateway'.*external: true \}/);
+  assert.match(nav, /\{ label: 'GitHub'.*external: true \}/);
+  // The AI Gateway backlink was removed from the nav on purpose.
+  assert.doesNotMatch(nav, /'AI Gateway'/);
   assert.match(nav, /pathname\.includes\('\/docs'\).*text-gray-1000/);
 });
 
@@ -109,18 +111,20 @@ test('the opening hero leads with the agent engine proposition in Geist Pixel', 
   ]);
   assert.match(copy, /title: \['The 3D game engine', 'built for agents\.'\]/);
   assert.match(copy, /body: \['ASCII in your terminal, no GPU\.', 'Humans can play too\.'\]/);
-  assert.match(hero, /title\.map\(\(line\) => <span/);
-  assert.match(hero, /body\.map\(\(line\) => <span/);
+  // The two title parts join with a hidden break: one line on desktop, split at the
+  // natural array boundary on mobile.
+  assert.match(hero, /<br aria-hidden="true" className="living-title__line-break" \/>/);
+  assert.match(hero, /body\[0\]\}\{' '\}<br aria-hidden="true" className="living-title__line-break" \/>/);
   assert.match(css, /\.living-title__chapter h1[^\n]*var\(--font-site-display\)/);
-  assert.match(css, /\.living-title__chapter p[^\n]*var\(--font-geist-sans\)/);
+  assert.match(css, /\.living-title__chapter p[^\n]*var\(--font-site-display\)/);
   assert.match(css, /\.living-title__chapter h1[^\n]*text-shadow: 0 1px 2px #000, 0 0 14px/);
   assert.match(css, /\.living-title__chapter p[^\n]*text-shadow: 0 1px 2px #000, 0 0 12px/);
   assert.match(css, /\.living-title__tour[^\n]*background: rgb\(0 0 0 \/ 34%\)[^\n]*backdrop-filter: blur\(10px\)/);
   assert.match(css, /\.site-nav__inner > a, \.site-nav__desktop[^\n]*drop-shadow\(0 0 10px rgb\(0 0 0 \/ 96%\)\)/);
-  assert.match(css, /\.living-title__chapter h1[^\n]*clamp\(44px, 4vw, 56px\)\/\.96/);
+  assert.match(css, /\.living-title__chapter h1[^\n]*clamp\(28px, 3\.5vw, 52px\)\/\.96/);
   assert.match(css, /\.living-title__chapter p[^\n]*80%[^\n]*18px\/1\.5/);
-  assert.match(css, /\.living-title__chapter h1 span, \.living-title__chapter p span[^\n]*white-space: nowrap/);
-  assert.match(css, /\.living-title__chapter p \{ max-width: 100%; font-size: clamp\(13px, 4vw, 16px\); line-height: 1\.5; \}/);
+  assert.match(css, /\.living-title__line-break \{ display: none; \}/);
+  assert.match(css, /\.living-title__chapter p \{ font-size: clamp\(13px, 4vw, 16px\); line-height: 1\.5; \}/);
   assert.match(css, /\.living-title__install-command code[^\n]*var\(--font-geist-mono\)/);
   assert.match(css, /body:has\(\.living-title-page\) \.site-wordmark[^\n]*var\(--font-site-display\)/);
 });
@@ -131,14 +135,14 @@ test('the cinematic chapters explain Gateway, the harness, model behavior, and p
     readFile(new URL('../../../src/cinematic/copy.ts', import.meta.url), 'utf8'),
   ]);
   assert.match(hero, /CINEMATIC_CHAPTERS\[chapter\]/);
-  assert.match(copy, /title: \['Powered by', 'Vercel AI Gateway\.'\]/);
+  assert.match(copy, /title: \['Powered by Vercel', 'AI Gateway\.'\]/);
   assert.match(copy, /body: \['Watch hundreds of models face off,', 'or challenge them yourself\.'\]/);
   assert.match(copy, /title: \['Different minds\.', 'Endless possibilities\.'\]/);
-  assert.match(copy, /body: \['Everything you see is open source\.', 'Have an idea\? Your move\.'\]/);
+  assert.match(copy, /body: \['Everything you see is open source\.', 'Have an idea\? You move\.'\]/);
   assert.match(copy, /title: \['Every player', 'has a tell\.'\]/);
-  assert.match(copy, /body: \['Discover the hidden tendencies', 'of your favorite models\.'\]/);
+  assert.match(copy, /body: \['Discover the hidden tendencies', 'of your favourite models\.'\]/);
   assert.match(copy, /title: \['Settle in,', 'have some fun!'\]/);
-  assert.match(copy, /body: \['Play a few rounds while waiting for', 'your coding agents to finish\.'\]/);
+  assert.match(copy, /body: \['Play a few rounds while waiting', 'for your coding agents to finish\.'\]/);
 });
 
 test('the pointer effect is discovered through click and drag without a settings control', async () => {
@@ -205,13 +209,14 @@ test('the progress-ring tour control is responsive and tracks real scroll progre
   assert.match(css, /\.living-title__tour-ring-value[^{]*\{[^}]*stroke-dashoffset: calc\(100 \* \(1 - var\(--tour-progress\)\)\)/);
   assert.match(css, /\.living-title__tour \{[^}]*width: 44px;[^}]*height: 44px;[^}]*background: rgb\(0 0 0 \/ 34%\);[^}]*backdrop-filter: blur\(10px\)/);
   assert.match(hero, /className="living-title__tour-media(?: is-play)?" viewBox="0 0 16 16"/);
-  assert.match(hero, /className="living-title__tour-mobile"/);
-  assert.match(hero, /className="living-title__tour-desktop"/);
-  assert.match(css, /\.living-title__tour-mobile \{ display: none; \}/);
+  // One tour button at every width, anchored to the stage's bottom-right, rather than
+  // separate desktop and mobile controls.
+  assert.doesNotMatch(hero, /living-title__tour-mobile|living-title__tour-desktop/);
+  assert.match(css, /\.living-title__tour \{[^}]*position: absolute;[^}]*right: 0;[^}]*bottom: clamp\(/);
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*\.living-title__actions \{[^}]*gap: 8px;[^}]*flex-wrap: nowrap;[^}]*\}/);
   assert.match(css, /\.living-title__primary > span \{ display: none; \}/);
   assert.match(css, /\.living-title__install-command \{[^}]*min-width: 0;[^}]*flex: 1 1 auto;/);
-  assert.match(css, /\.living-title__tour-mobile \{[^}]*width: 44px;[^}]*flex: 0 0 44px;/);
+  assert.match(css, /\.living-title__tour \{[^}]*width: 44px;[^}]*height: 44px;/);
   assert.doesNotMatch(css, /living-title__tour-mouse|arcade-scroll-cue/);
 });
 
