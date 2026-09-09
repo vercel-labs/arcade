@@ -21,7 +21,6 @@ export const Hero = () => {
     const root = rootRef.current;
     const canvas = canvasRef.current;
     if (!root || !canvas) return;
-    const documentStyle = document.documentElement.style;
     const header = document.querySelector<HTMLElement>('header.sticky');
     const footer = document.querySelector<HTMLElement>('.site-default-footer');
     const resolvedMono = getComputedStyle(document.documentElement).getPropertyValue('--font-geist-mono').trim();
@@ -71,24 +70,7 @@ export const Hero = () => {
     }
 
     const viewportHeight = () => canvas.parentElement?.clientHeight || window.innerHeight;
-    // iOS opens a tapped link with the toolbars animating in over a web view that
-    // is still sized and positioned for the toolbar-free viewport, and does not
-    // reconcile the two until the first user scroll. `dvh` and fixed/sticky
-    // offsets both resolve against that stale layout viewport, so the header and
-    // the title hide behind the URL bar while the actions hide behind the tab
-    // bar. The visual viewport reports the truth immediately, so pin the stage to
-    // it. Both values match the CSS defaults once the browser settles.
-    const syncVisualViewport = () => {
-      const visual = window.visualViewport;
-      if (!visual || visual.scale > 1.01) return;
-      const focused = document.activeElement;
-      // The software keyboard shrinks the visual viewport; that is not chrome.
-      if (focused?.closest('input, textarea, select, [contenteditable]')) return;
-      documentStyle.setProperty('--arcade-viewport-height', `${Math.round(visual.height)}px`);
-      documentStyle.setProperty('--arcade-viewport-offset', `${Math.round(visual.offsetTop)}px`);
-    };
     const fitViewport = () => {
-      syncVisualViewport();
       primedGrid = '';
       primedTransitions.clear();
       if (tourStateRef.current === 'playing') {
@@ -299,11 +281,6 @@ export const Hero = () => {
     const onPointerCapability = () => { pointerEffects = precisePointer.matches && !reducedMotion; if (!pointerEffects) clearPointer(); };
 
     fitViewport();
-    // The stale-layout window has no resize event of its own: the browser
-    // believes nothing changed. Re-measure across the toolbar animation.
-    const settleTimers = [0, 100, 250, 500, 900, 1500].map((delay) => window.setTimeout(fitViewport, delay));
-    window.addEventListener('pageshow', fitViewport);
-    window.visualViewport?.addEventListener('scroll', fitViewport);
     window.addEventListener('scroll', measureProgress, { passive: true });
     window.addEventListener('resize', fitViewport);
     window.addEventListener('orientationchange', fitViewport);
@@ -327,9 +304,6 @@ export const Hero = () => {
     frame = requestAnimationFrame(draw);
     return () => {
       cancelAnimationFrame(frame);
-      for (const timer of settleTimers) window.clearTimeout(timer);
-      window.removeEventListener('pageshow', fitViewport);
-      window.visualViewport?.removeEventListener('scroll', fitViewport);
       window.removeEventListener('scroll', measureProgress);
       window.removeEventListener('resize', fitViewport);
       window.removeEventListener('orientationchange', fitViewport);
@@ -352,8 +326,6 @@ export const Hero = () => {
       if (tourFrame) cancelAnimationFrame(tourFrame);
       for (const handle of idleHandles) window.clearTimeout(handle);
       diagnostics?.element.remove();
-      documentStyle.removeProperty('--arcade-viewport-height');
-      documentStyle.removeProperty('--arcade-viewport-offset');
     };
   }, []);
 
