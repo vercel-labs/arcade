@@ -7,34 +7,34 @@
 <title>viewport check</title>
 <style>
   * { box-sizing: border-box; }
-  html, body { margin: 0; background: #000; color: #ededed; font: 500 13px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  html, body { margin: 0; background: #000; color: #ededed; font: 500 12px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; }
   body { height: 300vh; }
   /* Fixed probes: if either banner is invisible in the screenshot, the layout
      viewport extends behind the browser chrome. */
-  .edge { position: fixed; left: 0; right: 0; z-index: 5; height: 34px; padding: 8px 12px; color: #000; font-weight: 700; }
+  .edge { position: fixed; left: 0; right: 0; z-index: 5; height: 30px; padding: 7px 10px; color: #000; font: 700 12px/1.2 ui-monospace, monospace; }
   .edge--top { top: 0; background: #ff2fd0; }
   .edge--bottom { bottom: 0; background: #35e07a; }
   /* Unit probes: each bar is one viewport unit tall, measured from the top of
      the layout viewport. Whichever bar ends exactly at the visible bottom edge
      is the unit that matches reality. */
-  .bars { position: fixed; z-index: 4; top: 0; left: 0; display: flex; gap: 4px; padding-left: 6px; }
-  .bar { width: 52px; padding-top: 40px; text-align: center; font-size: 11px; font-weight: 700; color: #000; }
+  .bars { position: fixed; z-index: 4; top: 0; left: 0; display: flex; gap: 3px; padding-left: 4px; }
+  .bar { width: 22px; padding-top: 34px; text-align: center; font: 700 11px/1 ui-monospace, monospace; color: #000; }
   .bar--svh { height: 100svh; background: #ff5c5c; }
   .bar--dvh { height: 100dvh; background: #5cc8ff; }
   .bar--lvh { height: 100lvh; background: #ffd24a; }
-  .readout { position: relative; z-index: 6; margin: 46px 0 0 176px; padding: 10px 12px; border: 1px solid #444; background: rgb(0 0 0 / 92%); white-space: pre; font-size: 12px; }
-  h1 { margin: 0 0 8px; font-size: 13px; letter-spacing: .04em; }
+  /* Pinned near the middle so it stays on screen whichever edge is obscured. */
+  .readout { position: fixed; z-index: 6; top: 26%; right: 4px; left: 84px; margin: 0; padding: 8px; border: 1px solid #555; background: rgb(0 0 0 / 94%); overflow: hidden; white-space: pre; font-size: 10px; line-height: 1.35; }
 </style>
 </head>
 <body>
 <div class="edge edge--top">FIXED top:0</div>
 <div class="edge edge--bottom">FIXED bottom:0</div>
 <div class="bars">
-  <div class="bar bar--svh" id="probe-svh">svh</div>
-  <div class="bar bar--dvh" id="probe-dvh">dvh</div>
-  <div class="bar bar--lvh" id="probe-lvh">lvh</div>
+  <div class="bar bar--svh" id="probe-svh">s</div>
+  <div class="bar bar--dvh" id="probe-dvh">d</div>
+  <div class="bar bar--lvh" id="probe-lvh">l</div>
 </div>
-<pre class="readout" id="readout"><h1>viewport check</h1>booting…</pre>
+<pre class="readout" id="readout">booting…</pre>
 <script>
 (() => {
   const readout = document.getElementById('readout');
@@ -43,24 +43,24 @@
   let last = '';
   const sample = (label) => {
     const visual = window.visualViewport;
+    // Short tokens: the whole row has to fit a phone's width to be screenshot-readable.
     const line = [
-      `in=${window.innerHeight}`,
-      `cl=${document.documentElement.clientHeight}`,
-      `vv=${visual ? Math.round(visual.height) : '-'}`,
-      `off=${visual ? Math.round(visual.offsetTop) : '-'}`,
-      `pt=${visual ? Math.round(visual.pageTop) : '-'}`,
-      `sc=${visual ? visual.scale.toFixed(2) : '-'}`,
-      `s=${probe('probe-svh')}`,
-      `d=${probe('probe-dvh')}`,
-      `l=${probe('probe-lvh')}`,
-      `y=${Math.round(window.scrollY)}`,
+      `in${window.innerHeight}`,
+      `cl${document.documentElement.clientHeight}`,
+      `vv${visual ? Math.round(visual.height) : '-'}`,
+      `of${visual ? Math.round(visual.offsetTop) : '-'}`,
+      `pt${visual ? Math.round(visual.pageTop) : '-'}`,
+      `s${probe('probe-svh')}`,
+      `d${probe('probe-dvh')}`,
+      `l${probe('probe-lvh')}`,
+      `y${Math.round(window.scrollY)}`,
     ].join(' ');
     // Only record changes: a short list stays readable in one screenshot.
     if (line === last && !label.startsWith('!')) return;
     last = line;
-    rows.push(`${label.padEnd(9)} ${line}`);
-    if (rows.length > 22) rows.splice(0, rows.length - 22);
-    readout.textContent = `viewport check\nscreen=${screen.width}x${screen.height} dpr=${window.devicePixelRatio}\n\n${rows.join('\n')}`;
+    rows.push(`${label.padEnd(8)}${line}`);
+    if (rows.length > 20) rows.splice(0, rows.length - 20);
+    readout.textContent = `scr ${screen.width}x${screen.height} dpr${window.devicePixelRatio} sc${window.visualViewport?.scale.toFixed(2) ?? '-'}\n${rows.join('\n')}`;
   };
 
   sample('load');
@@ -68,18 +68,18 @@
   for (const type of ['resize', 'orientationchange', 'pageshow', 'scroll']) {
     window.addEventListener(type, () => sample(type), { passive: true });
   }
-  window.visualViewport?.addEventListener('resize', () => sample('vv-resize'));
-  window.visualViewport?.addEventListener('scroll', () => sample('vv-scroll'));
+  window.visualViewport?.addEventListener('resize', () => sample('vvsize'));
+  window.visualViewport?.addEventListener('scroll', () => sample('vvscrl'));
 
   // Decisive experiment: does a programmatic scroll make the browser commit the
   // real toolbar geometry, the way the user's own finger does?
   setTimeout(() => {
-    sample('!pre-nudge');
+    sample('!pre');
     window.scrollTo(0, 1);
     requestAnimationFrame(() => {
-      sample('!nudge@1');
+      sample('!nudge');
       window.scrollTo(0, 0);
-      setTimeout(() => sample('!post-nudge'), 120);
+      setTimeout(() => sample('!post'), 120);
     });
   }, 1600);
 })();

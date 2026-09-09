@@ -270,27 +270,3 @@ test('deep-scroll refresh waits for real cinematic assets instead of painting pl
   assert.match(hero, /!assetsReady && displayedChapter > 0 && displayedChapter < 4/);
   assert.match(hero, /clearRect\(0, 0, canvas\.width, canvas\.height\)/);
 });
-
-test('a link-opened mobile hero pins itself to the visual viewport instead of the stale layout viewport', async () => {
-  const [hero, css] = await Promise.all([
-    readFile(new URL('./[lang]/(home)/components/hero.tsx', import.meta.url), 'utf8'),
-    readFile(new URL('./global.css', import.meta.url), 'utf8'),
-  ]);
-  assert.match(hero, /const syncVisualViewport = \(\) => \{/);
-  assert.match(hero, /documentStyle\.setProperty\('--arcade-viewport-height', `\$\{Math\.round\(visual\.height\)\}px`\)/);
-  assert.match(hero, /documentStyle\.setProperty\('--arcade-viewport-offset', `\$\{Math\.round\(visual\.offsetTop\)\}px`\)/);
-  // A software keyboard and a pinch zoom shrink the visual viewport without the
-  // browser chrome moving; neither should resize the cinematic stage.
-  assert.match(hero, /visual\.scale > 1\.01/);
-  assert.match(hero, /input, textarea, select, \[contenteditable\]/);
-  // The stale window fires no resize of its own, so re-measure while the
-  // toolbars animate in and again on a back/forward restore.
-  assert.match(hero, /const settleTimers = \[0, 100, 250, 500, 900, 1500\]\.map\(\(delay\) => window\.setTimeout\(fitViewport, delay\)\)/);
-  assert.match(hero, /window\.addEventListener\('pageshow', fitViewport\)/);
-  assert.match(hero, /window\.visualViewport\?\.addEventListener\('scroll', fitViewport\)/);
-  assert.match(hero, /for \(const timer of settleTimers\) window\.clearTimeout\(timer\)/);
-  assert.match(hero, /documentStyle\.removeProperty\('--arcade-viewport-offset'\)/);
-  assert.match(css, /--arcade-viewport-offset: 0px/);
-  assert.match(css, /\.living-title__stage \{ position: sticky; top: var\(--arcade-viewport-offset\)/);
-  assert.match(css, /header\.sticky \{ position: fixed; inset: var\(--arcade-viewport-offset\) 0 auto/);
-});

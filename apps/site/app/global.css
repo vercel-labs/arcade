@@ -3,7 +3,6 @@
 :root {
   --font-site-display: var(--font-geist-pixel-square);
   --arcade-viewport-height: 100dvh;
-  --arcade-viewport-offset: 0px;
   --arcade-shell-gutter: clamp(24px, 4vw, 96px);
   --arcade-shell-inset: var(--arcade-shell-gutter);
   --site-background: #fff;
@@ -37,7 +36,7 @@ body { background: var(--site-background); color: var(--site-foreground); }
 /* Living title: the home route is one continuous Arcade canvas. */
 body:has(.living-title-page) { background: #000; }
 html:has(.living-title-page) { scroll-behavior: auto; }
-body:has(.living-title-page) header.sticky { position: fixed; inset: var(--arcade-viewport-offset) 0 auto; background-color: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; transition: background-color 200ms ease; }
+body:has(.living-title-page) header.sticky { position: fixed; inset: 0 0 auto; background-color: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; transition: background-color 200ms ease; }
 .site-nav__inner { max-width: none; padding-inline: var(--arcade-shell-gutter); }
 .site-nav__desktop .site-nav__link { font-family: var(--font-site-display), var(--font-geist-mono), monospace; font-size: 13px; }
 .site-nav__inner > a, .site-nav__desktop { filter: drop-shadow(0 1px 2px #000) drop-shadow(0 0 10px rgb(0 0 0 / 96%)); }
@@ -56,7 +55,7 @@ body:has(.living-title-page) .site-default-footer { display: block; position: re
 .living-title-page { background: #000; }
 .living-title { --tour-progress: 0; position: relative; height: 1200vh; min-height: 7200px; color: #ededed; background: #000; }
 .living-title__legacy-anchor { position: absolute; left: 0; width: 1px; height: 1px; pointer-events: none; }
-.living-title__stage { position: sticky; top: var(--arcade-viewport-offset); width: 100%; height: 100vh; height: var(--arcade-viewport-height); overflow: hidden; isolation: isolate; background: #000; }
+.living-title__stage { position: sticky; top: 0; width: 100%; height: 100vh; height: var(--arcade-viewport-height); overflow: hidden; isolation: isolate; background: #000; }
 .living-title__canvas { position: absolute; z-index: -3; inset: 0; display: block; width: 100%; height: 100%; touch-action: pan-y; }
 .living-title__vignette { display: none; }
 .living-title__center { position: absolute; z-index: 1; top: 0; bottom: 0; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; justify-content: space-between; align-items: center; text-align: center; width: calc(100vw - 2 * var(--arcade-shell-inset)); padding-top: clamp(80px, 10vh, 120px); padding-bottom: clamp(56px, 7vh, 88px); }
