@@ -1,6 +1,6 @@
 {
   "name": "ascii-arcade",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "type": "module",
   "packageManager": "pnpm@10.34.5",
   "description": "The 3D game engine built for agents. ASCII games in your terminal, no GPU, powered by Vercel AI Gateway",
