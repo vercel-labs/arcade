@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
+<title>viewport check</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #000; color: #ededed; font: 500 13px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  body { height: 300vh; }
+  /* Fixed probes: if either banner is invisible in the screenshot, the layout
+     viewport extends behind the browser chrome. */
+  .edge { position: fixed; left: 0; right: 0; z-index: 5; height: 34px; padding: 8px 12px; color: #000; font-weight: 700; }
+  .edge--top { top: 0; background: #ff2fd0; }
+  .edge--bottom { bottom: 0; background: #35e07a; }
+  /* Unit probes: each bar is one viewport unit tall, measured from the top of
+     the layout viewport. Whichever bar ends exactly at the visible bottom edge
+     is the unit that matches reality. */
+  .bars { position: fixed; z-index: 4; top: 0; left: 0; display: flex; gap: 4px; padding-left: 6px; }
+  .bar { width: 52px; padding-top: 40px; text-align: center; font-size: 11px; font-weight: 700; color: #000; }
+  .bar--svh { height: 100svh; background: #ff5c5c; }
+  .bar--dvh { height: 100dvh; background: #5cc8ff; }
+  .bar--lvh { height: 100lvh; background: #ffd24a; }
+  .readout { position: relative; z-index: 6; margin: 46px 0 0 176px; padding: 10px 12px; border: 1px solid #444; background: rgb(0 0 0 / 92%); white-space: pre; font-size: 12px; }
+  h1 { margin: 0 0 8px; font-size: 13px; letter-spacing: .04em; }
+</style>
+</head>
+<body>
+<div class="edge edge--top">FIXED top:0</div>
+<div class="edge edge--bottom">FIXED bottom:0</div>
+<div class="bars">
+  <div class="bar bar--svh" id="probe-svh">svh</div>
+  <div class="bar bar--dvh" id="probe-dvh">dvh</div>
+  <div class="bar bar--lvh" id="probe-lvh">lvh</div>
+</div>
+<pre class="readout" id="readout"><h1>viewport check</h1>booting…</pre>
+<script>
+(() => {
+  const readout = document.getElementById('readout');
+  const probe = (id) => Math.round(document.getElementById(id).getBoundingClientRect().height);
+  const rows = [];
+  let last = '';
+  const sample = (label) => {
+    const visual = window.visualViewport;
+    const line = [
+      `in=${window.innerHeight}`,
+      `cl=${document.documentElement.clientHeight}`,
+      `vv=${visual ? Math.round(visual.height) : '-'}`,
+      `off=${visual ? Math.round(visual.offsetTop) : '-'}`,
+      `pt=${visual ? Math.round(visual.pageTop) : '-'}`,
+      `sc=${visual ? visual.scale.toFixed(2) : '-'}`,
+      `s=${probe('probe-svh')}`,
+      `d=${probe('probe-dvh')}`,
+      `l=${probe('probe-lvh')}`,
+      `y=${Math.round(window.scrollY)}`,
+    ].join(' ');
+    // Only record changes: a short list stays readable in one screenshot.
+    if (line === last && !label.startsWith('!')) return;
+    last = line;
+    rows.push(`${label.padEnd(9)} ${line}`);
+    if (rows.length > 22) rows.splice(0, rows.length - 22);
+    readout.textContent = `viewport check\nscreen=${screen.width}x${screen.height} dpr=${window.devicePixelRatio}\n\n${rows.join('\n')}`;
+  };
+
+  sample('load');
+  for (const delay of [30, 80, 150, 250, 400, 600, 850, 1200]) setTimeout(() => sample(`t${delay}`), delay);
+  for (const type of ['resize', 'orientationchange', 'pageshow', 'scroll']) {
+    window.addEventListener(type, () => sample(type), { passive: true });
+  }
+  window.visualViewport?.addEventListener('resize', () => sample('vv-resize'));
+  window.visualViewport?.addEventListener('scroll', () => sample('vv-scroll'));
+
+  // Decisive experiment: does a programmatic scroll make the browser commit the
+  // real toolbar geometry, the way the user's own finger does?
+  setTimeout(() => {
+    sample('!pre-nudge');
+    window.scrollTo(0, 1);
+    requestAnimationFrame(() => {
+      sample('!nudge@1');
+      window.scrollTo(0, 0);
+      setTimeout(() => sample('!post-nudge'), 120);
+    });
+  }, 1600);
+})();
+</script>
+</body>
+</html>
