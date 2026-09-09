@@ -65,6 +65,14 @@ auto-detected as Next.js — no custom build/install command needed anymore.
 `apps/site` changed. Git-connected to `vercel-labs/arcade`, so a push to `main`
 deploys.
 
+`pnpm build` deletes `.next` first. Three consecutive production deploys
+(#81, #82, #83) each served the *previous* build's compiled CSS: the revert in
+#82 shipped #80's stylesheet, and #83's `svh` hero fix shipped the pre-#80 one,
+so a fix verified in the repo and in CI was invisible in the browser. Local
+incremental rebuilds emit correctly, so the stale artifact comes from the build
+cache Vercel restores. Deleting the output directory costs a full recompile per
+deploy and buys back the guarantee that what is deployed is what was built.
+
 `turbopack.root` in `next.config.ts` pins the project root explicitly: Next's
 root-detection walks up looking for lockfiles, finds the outer arcade repo's too,
 and Turbopack then resolves paths against the wrong root and panics on a symlink
