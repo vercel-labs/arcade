@@ -168,31 +168,42 @@ test('browser ink cuts select advancing pre-rendered motion plates without live 
   assert.ok(pokerLoop.sample(20.5, true, POKER_LOOP_SECONDS).elapsed > 0, 'incoming Poker gameplay should already be moving beneath the burn');
 });
 
-test('the prism ink cut burns the settled prism rather than the opening splash', () => {
+test('the prism cut burns the live frame and keeps turning under the ink', () => {
   const scene = new LivingTitleScene();
-  // Hosts prime plates during idle time moments after the film starts, while the
-  // prism is still inside its 3.6s splash, and keep them for the whole session
-  // unless the grid changes. Nothing re-renders them by the time the viewer
-  // scrolls into the cut, so a plate that honored the raw clock would burn the
-  // white splash triangle over a prism that settled minutes earlier.
   scene.frame({ cols: 100, rows: 40, timeSeconds: 100, progress: 0 });
-  for (let index = 1; index < 4; index++) scene.prepareTransitionMotionSample(0, 100, 40, 'source', index, 100.05);
-  const samples = (scene as unknown as { transitionPlates: Map<string, { sourceMotion?: Surface[] }> })
-    .transitionPlates.get('0:100:40')?.sourceMotion ?? [];
-  const prismAt = (elapsed: number) => {
-    const other = new LivingTitleScene();
-    other.frame({ cols: 100, rows: 40, timeSeconds: 100, progress: 0 });
-    return surfaceSignature(other.frame({ cols: 100, rows: 40, timeSeconds: 100 + elapsed, progress: 0 }));
-  };
-  assert.equal(samples.filter(Boolean).length, 3);
-  for (let index = 1; index < 4; index++) {
-    const phase = index / 3;
-    assert.notEqual(surfaceSignature(samples[index]!), prismAt(0.05 + phase * 1.5), `outgoing plate ${index} replayed the splash`);
-    assert.equal(surfaceSignature(samples[index]!), prismAt(SPLASH_END + phase * 1.5), `outgoing plate ${index} left the prism's opening`);
-  }
-  // Holding the plate clock past the splash must not collapse the samples onto
-  // one frozen frame: the outgoing prism still has to move under the burn.
-  assert.notEqual(surfaceSignature(samples[1]!), surfaceSignature(samples[3]!));
+  // Hosts prime every act's plates; the prism must decline the outgoing ones.
+  for (let index = 0; index < 4; index++) scene.prepareTransitionMotionSample(0, 100, 40, 'source', index, 100.05);
+  const plates = (scene as unknown as { transitionPlates: Map<string, { sourceMotion?: Surface[] }> }).transitionPlates.get('0:100:40');
+  assert.equal(plates?.sourceMotion, undefined, 'the prism cut pre-rendered an outgoing plate it will never draw');
+  const start = LIVING_TITLE_ACT_BOUNDARIES[0], end = LIVING_TITLE_ACT_BOUNDARIES[1];
+  const morph = LIVING_TITLE_MORPH_STARTS[0];
+  const at = (local: number, time: number) => surfaceSignature(scene.frame({ cols: 100, rows: 40, timeSeconds: time, progress: start + (end - start) * local }));
+  // At zero burn the composite is the outgoing scene exactly, so entering the
+  // cut has to land on the frame that was already on screen rather than on a
+  // plate rendered at some other moment.
+  assert.equal(at(morph + 1e-12, 130), at(morph - 1e-9, 130), 'the prism teleported on entering its cut');
+  // A plate would hold one frozen frame between quarter-step swaps; the live
+  // prism has to keep turning under the ink on the wall clock alone.
+  assert.notEqual(at(morph + (1 - morph) * 0.6, 130), at(morph + (1 - morph) * 0.6, 132), 'the outgoing prism froze mid-burn');
+});
+
+test('preparing the prism cut leaves its clock and its outgoing plate alone', () => {
+  // Hosts prime plates before the first frame. Rendering an outgoing prism plate
+  // there would both waste the render and start the prism's clock at the priming
+  // time, stranding the live scene inside its splash.
+  const scene = new LivingTitleScene();
+  scene.prepareTransition(0, 100, 40, 1);
+  const plate = (scene as unknown as { transitionPlates: Map<string, { source?: Surface; destination?: Surface }> }).transitionPlates.get('0:100:40');
+  assert.equal(plate?.source, undefined, 'the prism cut prepared an outgoing plate it will never draw');
+  assert.ok(plate?.destination, 'the incoming Cover Flow plate is still worth preparing');
+  const primed = new LivingTitleScene();
+  primed.prepareTransition(0, 100, 40, 1);
+  const fresh = new LivingTitleScene();
+  assert.equal(
+    surfaceSignature(primed.frame({ cols: 100, rows: 40, timeSeconds: 1, progress: 0 })),
+    surfaceSignature(fresh.frame({ cols: 100, rows: 40, timeSeconds: 1, progress: 0 })),
+    'priming moved the prism clock',
+  );
 });
 
 test('anchored ink match cut preserves exact endpoints and returns a cold silver seam', () => {

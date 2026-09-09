@@ -22,6 +22,9 @@ const BLACK: RGB = [0, 0, 0];
 const ACTS = LIVING_TITLE_ACTS.length;
 const MATCH_CUT_SOURCE_PROGRESS = [LIVING_TITLE_MORPH_STARTS[0], 0.9, LIVING_TITLE_MORPH_STARTS[2], LIVING_TITLE_MORPH_STARTS[3]] as const;
 const ZOOM_DETAIL_SCALE = 2;
+// The prism renders in ~3ms where Chess costs ~20ms, so its cut is the one that
+// can keep rendering the outgoing scene live rather than cutting to a plate.
+const LIVE_BURN_ACT = 0;
 const TRANSITION_MOTION_SAMPLES = 4;
 const COVER_FLOW_SETTLED_PROGRESS = 0.9;
 const MATCH_CUTS = [
@@ -108,10 +111,12 @@ export class LivingTitleScene {
   /** Prepare one transition plate at a time so the browser can yield between expensive renders. */
   prepareTransitionPart(act: number, cols: number, rows: number, part: 'source' | 'destination', timeSeconds = 0): void {
     if (act < 0 || act >= ACTS - 1) return;
+    // The prism renders live under its own burn, so it has no outgoing plate.
+    if (part === 'source' && act === LIVE_BURN_ACT) return;
     const key = `${act}:${cols}:${rows}`;
     const plate = this.transitionPlates.get(key) ?? {};
-    if (part === 'source' && !plate.source) plate.source = this.scene(act, cols, rows, MATCH_CUT_SOURCE_PROGRESS[act], this.plateTime(act, timeSeconds), false);
-    else if (part === 'destination' && !plate.destination) plate.destination = this.scene(act + 1, cols * ZOOM_DETAIL_SCALE, rows * ZOOM_DETAIL_SCALE, 0, this.plateTime(act + 1, timeSeconds), false);
+    if (part === 'source' && !plate.source) plate.source = this.scene(act, cols, rows, MATCH_CUT_SOURCE_PROGRESS[act], timeSeconds, false);
+    else if (part === 'destination' && !plate.destination) plate.destination = this.scene(act + 1, cols * ZOOM_DETAIL_SCALE, rows * ZOOM_DETAIL_SCALE, 0, timeSeconds, false);
     this.setTransitionPlate(key, plate);
   }
 
@@ -121,6 +126,9 @@ export class LivingTitleScene {
     // Source sample zero is always the exact live frame captured at cut entry.
     // Leave that slot empty so the first quarter falls back to plate.source.
     if (side === 'source' && index === 0) return;
+    // The prism keeps rendering live under its burn, so pre-rendering its
+    // outgoing motion would only spend load-time frames on surfaces nothing reads.
+    if (side === 'source' && act === LIVE_BURN_ACT) return;
     const key = `${act}:${cols}:${rows}`;
     const plate = this.transitionPlates.get(key) ?? {};
     const field = side === 'source' ? 'sourceMotion' : 'destinationMotion';
@@ -131,7 +139,7 @@ export class LivingTitleScene {
     const sampleCols = side === 'source' ? cols : cols * ZOOM_DETAIL_SCALE;
     const sampleRows = side === 'source' ? rows : rows * ZOOM_DETAIL_SCALE;
     const progress = side === 'source' ? lerp(MATCH_CUT_SOURCE_PROGRESS[act], 1, phase) : 0;
-    const sampleTime = this.plateTime(sampleAct, timeSeconds) + phase * 1.5;
+    const sampleTime = timeSeconds + phase * 1.5;
     const previous = [this.chessGameplayPhase, this.pokerGameplayPhase, this.pokerGameplayIteration] as const;
     if (sampleAct === 2) this.chessGameplayPhase = phase * 1.5 / CHESS_LOOP_SECONDS;
     if (sampleAct === 3) { this.pokerGameplayPhase = phase * 1.5 / POKER_LOOP_SECONDS; this.pokerGameplayIteration = 0; }
@@ -139,19 +147,6 @@ export class LivingTitleScene {
     [this.chessGameplayPhase, this.pokerGameplayPhase, this.pokerGameplayIteration] = previous;
     plate[field] = samples;
     this.setTransitionPlate(key, plate);
-  }
-
-  /**
-   * Hosts prime plates during idle time moments after the film starts, while the
-   * prism is still playing its splash and the intro ramps that settle at
-   * SPLASH_END. A plate rendered on that raw clock burns the white splash
-   * triangle into a cut the viewer only reaches once the prism has long settled,
-   * so hold the prism's plate clock past its opening. Later primings (a resize
-   * mid-film) already sit beyond it and keep their own time.
-   */
-  private plateTime(act: number, time: number): number {
-    if (act !== 0) return time;
-    return Math.max(time, (this.prismStartedAt ?? time) + SPLASH_END);
   }
 
   frame(options: LivingTitleFrameOptions): Surface {
@@ -198,13 +193,13 @@ export class LivingTitleScene {
 
   actAt(progress: number): LivingTitleAct { return LIVING_TITLE_ACTS[livingTitleTimeline(progress).act]; }
 
-  private transitionPlate(act: number, cols: number, rows: number, time: number): { source: Surface; destination: Surface } {
+  private transitionPlate(act: number, cols: number, rows: number, time: number): { source?: Surface; destination: Surface } {
     const key = `${act}:${cols}:${rows}`;
     let plate = this.transitionPlates.get(key);
     if (!plate?.source) this.prepareTransitionPart(act, cols, rows, 'source', time);
     if (!plate?.destination) this.prepareTransitionPart(act, cols, rows, 'destination', time);
     plate = this.transitionPlates.get(key)!;
-    return plate as { source: Surface; destination: Surface };
+    return plate as { source?: Surface; destination: Surface };
   }
 
   private motionTransitionPlate(act: number, cols: number, rows: number, local: number, time: number): { source: Surface; destination: Surface } {
@@ -213,7 +208,14 @@ export class LivingTitleScene {
     const stored = this.transitionPlates.get(key);
     const transitionProgress = clamp01((local - LIVING_TITLE_MORPH_STARTS[act]) / (1 - LIVING_TITLE_MORPH_STARTS[act]));
     return {
-      source: transitionProgress <= 0 ? plate.source : motionSample(stored?.sourceMotion, transitionProgress) ?? plate.source,
+      // Plates freeze the outgoing scene at the moment they were rendered, so a
+      // burn that cuts to one teleports away from the frame the viewer was
+      // watching and then advances in quarter-steps. The prism is cheap enough
+      // to keep rendering, so the sheet being burned stays the live scene:
+      // continuous into the cut, and still turning under the ink.
+      source: act === LIVE_BURN_ACT
+        ? this.scene(act, cols, rows, local, time, false)
+        : transitionProgress <= 0 ? plate.source! : motionSample(stored?.sourceMotion, transitionProgress) ?? plate.source!,
       destination: motionSample(stored?.destinationMotion, transitionProgress) ?? plate.destination,
     };
   }
