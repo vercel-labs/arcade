@@ -18,7 +18,7 @@ export const generateStaticParams = () => i18n.languages.map((lang) => ({ lang }
 export const metadata: Metadata = {
   metadataBase: siteUrl,
   applicationName: 'Arcade',
-  title: { default: 'Arcade — 3D games in your terminal', template: '%s — Arcade' },
+  title: { default: 'Arcade', template: '%s — Arcade' },
   description: 'A pure-TypeScript CPU 3D renderer, retained TUI, and agent-playable game harness.',
   alternates: { canonical: '/' },
   openGraph: {
