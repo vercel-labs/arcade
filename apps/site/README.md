@@ -73,6 +73,10 @@ incremental rebuilds emit correctly, so the stale artifact comes from the build
 cache Vercel restores. Deleting the output directory costs a full recompile per
 deploy and buys back the guarantee that what is deployed is what was built.
 
+When a deploy's effect is invisible, check the CSS or JS chunk the live page
+actually references before re-diagnosing the code — that is what the stale
+artifacts above cost, twice.
+
 `turbopack.root` in `next.config.ts` pins the project root explicitly: Next's
 root-detection walks up looking for lockfiles, finds the outer arcade repo's too,
 and Turbopack then resolves paths against the wrong root and panics on a symlink
